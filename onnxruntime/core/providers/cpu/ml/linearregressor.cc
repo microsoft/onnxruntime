@@ -5,6 +5,7 @@
 
 #include "core/providers/cpu/ml/linearregressor.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
@@ -96,13 +97,16 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
   ptrdiff_t num_batches = input_shape.NumDimensions() <= 1 ? 1 : narrow<ptrdiff_t>(input_shape[0]);
   ptrdiff_t num_features = input_shape.NumDimensions() <= 1 ? narrow<ptrdiff_t>(input_shape.Size())
                                                             : narrow<ptrdiff_t>(input_shape[1]);
-
-  const size_t expected_coefficients_size = SafeInt<size_t>(num_targets_) * SafeInt<size_t>(num_features);
-  if (coefficients_.size() != expected_coefficients_size) {
+  size_t expected_coefficients_size = 0;
+  if (!SafeMultiply(static_cast<size_t>(num_targets_), static_cast<size_t>(num_features),
+                    expected_coefficients_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "LinearRegressor: coefficients length (", coefficients_.size(),
-                           ") must equal targets (", num_targets_, ") * features (", num_features, ")");
+                           "num_targets (", num_targets_, ") * num_features (", num_features,
+                           ") overflows size_t");
   }
+  ORT_RETURN_IF_NOT(coefficients_.size() == expected_coefficients_size,
+                    "LinearRegressor: coefficients length (", coefficients_.size(),
+                    ") must equal targets (", num_targets_, ") * features (", num_features, ")");
 
   Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();

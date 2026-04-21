@@ -1,0 +1,98 @@
+parameters:
+- name: machine_pool
+  type: string
+  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
+
+- name: package_version
+  type: string
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: docker_base_image
+  type: string
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+
+stages:
+- stage: Linux_plugin_webgpu_x64_Build
+  dependsOn: []
+  jobs:
+  - job: Linux_plugin_webgpu_x64_Build
+    timeoutInMinutes: 240
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: webgpu_plugin_linux_x64
+    variables:
+      - template: ../templates/common-variables.yml
+    steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+
+      - template: ../templates/setup-feeds-and-python-steps.yml
+
+      - template: ../templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimewebgpuplugin
+
+      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i onnxruntimewebgpuplugin -c ${{ parameters.cmake_build_type }}
+        workingDirectory: $(Build.SourcesDirectory)
+        displayName: 'Build WebGPU Plugin'
+        env:
+          EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
+
+      - script: |
+          set -e -x
+          mkdir -p $(Build.ArtifactStagingDirectory)/bin
+          plugin_path="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_webgpu.so"
+          if [ ! -f "$plugin_path" ]; then
+            echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
+            exit 1
+          fi
+          cp "$plugin_path" "$(Build.ArtifactStagingDirectory)/bin/"
+        displayName: 'Copy plugin binaries'
+
+      - script: |
+          set -e -x
+          mkdir -p "$(Build.ArtifactStagingDirectory)/version"
+          touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
+        displayName: 'Create version marker file'
+
+      - script: |
+          set -e -x
+          mkdir -p "$(Build.BinariesDirectory)/universal_package"
+          cp -R "$(Build.ArtifactStagingDirectory)/bin/"* "$(Build.BinariesDirectory)/universal_package/"
+        displayName: 'Stage binaries for universal package'
+
+      - task: UniversalPackages@0
+        displayName: 'Publish universal package'
+        inputs:
+          command: publish
+          publishDirectory: '$(Build.BinariesDirectory)/universal_package'
+          vstsFeedPublish: 'PublicPackages/ORT-Nightly'
+          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-linux-x64'
+          versionOption: custom
+          versionPublish: '$(PluginUniversalPackageVersion)'

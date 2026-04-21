@@ -84,39 +84,96 @@ CudaSyncStream::~CudaSyncStream() {
     //   2. UnregisterStream bumps the TLS generation counter, invalidating cached
     //      lookups in other threads.
     //   3. The stream is destroyed only after it is no longer discoverable.
-    UnregisterStream(cuda_stream_);
-
-    auto destroy_result = cudaStreamDestroy(cuda_stream_);
-    if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
-      // Fallback: we only reach here when the earlier cudaStreamSynchronize in
-      // OnSessionRunEndImpl failed, leaving some buffers un-freed.
-      // cudaStreamDestroy on a non-blocking stream returns immediately (async
-      // cleanup), so in-flight ops may still reference these buffers. However,
-      // a prior sync failure indicates a serious CUDA error, so best-effort
-      // cleanup is the most we can do here.
-      OrtStatus* status = CleanupDeferredCPUBuffers();
-      if (status != nullptr) {
-        Ort::GetApi().ReleaseStatus(status);
-      }
+    // Only unregister if the stream was actually registered (InitHandles
+    // succeeded fully). Otherwise we'd bump the global generation counter
+    // for a stream that was never in the map, causing unnecessary TLS
+    // invalidations in other threads.
+    if (registered_) {
+      UnregisterStream(cuda_stream_);
     }
+
+    if (owns_stream_) {
+      auto destroy_result = cudaStreamDestroy(cuda_stream_);
+      if (destroy_result == cudaSuccess && !deferred_cpu_buffers_.empty()) {
+        // Fallback: we only reach here when the earlier cudaStreamSynchronize in
+        // OnSessionRunEndImpl failed, leaving some buffers un-freed.
+        // cudaStreamDestroy on a non-blocking stream returns immediately (async
+        // cleanup), so in-flight ops may still reference these buffers. However,
+        // a prior sync failure indicates a serious CUDA error, so best-effort
+        // cleanup is the most we can do here.
+        OrtStatus* status = CleanupDeferredCPUBuffers();
+        if (status != nullptr) {
+          Ort::GetApi().ReleaseStatus(status);
+        }
+      }
+    }  // else: external stream — do NOT destroy it.
   }
 }
 
 OrtStatus* CudaSyncStream::InitHandles() {
-  PL_CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id_));
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
 
-  PL_CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status.IsOK()) {
+    status = StatusFromCudaError(cudaStreamCreateWithFlags(&cuda_stream_, cudaStreamNonBlocking));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
+  }
 
-  PL_CUBLAS_RETURN_IF_ERROR(cublasCreate(&cublas_handle_));
-  PL_CUBLAS_RETURN_IF_ERROR(cublasSetStream(cublas_handle_, cuda_stream_));
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
 
-  PL_CUDNN_RETURN_IF_ERROR(cudnnCreate(&cudnn_handle_));
-  PL_CUDNN_RETURN_IF_ERROR(cudnnSetStream(cudnn_handle_, cuda_stream_));
+  if (status.IsOK()) {
+    RegisterStream(cuda_stream_, this);
+    registered_ = true;
+  }
 
-  PL_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&cublas_lt_handle_));
-  RegisterStream(cuda_stream_, this);
+  return status.release();
+}
 
-  return nullptr;
+OrtStatus* CudaSyncStream::InitHandlesWithExternalStream(cudaStream_t external_stream) {
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status.IsOK()) {
+    // Graph-mode wrappers only need to publish the raw stream identity. CUDA
+    // library handles fall back to per-thread defaults at kernel dispatch time.
+    cuda_stream_ = external_stream;
+    owns_stream_ = false;
+  }
+
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
+
+  if (status.IsOK()) {
+    RegisterStream(cuda_stream_, this);
+    registered_ = true;
+  }
+
+  return status.release();
 }
 
 void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
@@ -160,6 +217,18 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 
 /*static*/ OrtStatus* ORT_API_CALL CudaSyncStream::FlushImpl(OrtSyncStreamImpl* this_ptr) noexcept {
   auto* stream = static_cast<CudaSyncStream*>(this_ptr);
+
+  // During CUDA graph capture, cudaStreamSynchronize is not permitted on a
+  // capturing stream. Skip the synchronize − the captured graph preserves
+  // kernel ordering and the stream will be synchronized after capture ends.
+  if (!stream->owns_stream_) {
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    cudaError_t query_err = cudaStreamIsCapturing(stream->cuda_stream_, &capture_status);
+    if (query_err == cudaSuccess && capture_status == cudaStreamCaptureStatusActive) {
+      return nullptr;
+    }
+  }
+
   PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream->cuda_stream_));
   return nullptr;
 }
@@ -172,6 +241,20 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
   // Synchronize before releasing deferred CPU buffers to ensure
   // all async copies using those buffers have completed.
   PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream->cuda_stream_));
+
+  // Reset arena chunk-to-stream assignments for this device's current arena.
+  // Uses ResetDeviceArenaChunksUsingStream to hold the arena_mutex across the
+  // entire operation, preventing a concurrent ReleaseAllocatorImpl from destroying
+  // the arena while we hold a raw pointer to it.
+  {
+    OrtStatus* arena_status = stream->factory_.ResetDeviceArenaChunksUsingStream(
+        stream->device_id_, this_ptr);
+    if (arena_status != nullptr) {
+      // Ignore the arena reset error and continue session run end — buffer cleanup is more critical.
+      Ort::GetApi().ReleaseStatus(arena_status);
+    }
+  }
+
   return stream->CleanupDeferredCPUBuffers();
 }
 
@@ -237,8 +320,47 @@ CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
   Release = ReleaseImpl;
 
   // Create a CUDA event for synchronization (disable timing for performance)
-  PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
-  PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+  const auto restore_prev_device_status = [&]() {
+    if (!restore_prev_device) {
+      return Ort::Status{};
+    }
+
+    return StatusFromCudaError(cudaSetDevice(prev_device));
+  };
+  try {
+    PL_CUDA_CALL_THROW(cudaSetDevice(stream_.GetDeviceId()));
+    PL_CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+  } catch (const std::exception& ex) {
+    if (event_ != nullptr) {
+      cudaEventDestroy(event_);
+      event_ = nullptr;
+    }
+    Ort::Status restore_status = restore_prev_device_status();
+    if (!restore_status.IsOK()) {
+      // Surface both failures instead of silently dropping the restore error
+      // or masking the original constructor failure.
+      throw std::runtime_error(
+          "CudaSyncNotification construction failed: " + std::string(ex.what()) +
+          ". Additionally, failed to restore previous CUDA device " +
+          std::to_string(prev_device) + ": " + restore_status.GetErrorMessage());
+    }
+    throw;
+  }
+  Ort::Status restore_status = restore_prev_device_status();
+  if (!restore_status.IsOK()) {
+    if (event_ != nullptr) {
+      // The constructor can still throw after event creation if restoring the
+      // caller's previous device fails, so clean up here instead of relying on
+      // the destructor of a not-fully-constructed object.
+      cudaEventDestroy(event_);
+      event_ = nullptr;
+    }
+    throw std::runtime_error(
+        "Failed to restore previous CUDA device " + std::to_string(prev_device) +
+        " after creating CUDA sync notification: " + restore_status.GetErrorMessage());
+  }
 }
 
 CudaSyncNotification::~CudaSyncNotification() {

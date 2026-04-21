@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 
 #include <iterator>
+#include <limits>
 #include <vector>
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
@@ -12,6 +13,13 @@
 using namespace std;
 namespace onnxruntime {
 namespace test {
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(GRUTest, CalculateBufferElementCountThrowsOnOverflow) {
+  EXPECT_THROW((void)onnxruntime::rnn::detail::CalculateBufferElementCount({std::numeric_limits<int>::max(), std::numeric_limits<int>::max(), 5}),
+               OnnxRuntimeException);
+}
+#endif
 
 static const std::vector<string> default_activations = {"Sigmoid", "Tanh"};
 

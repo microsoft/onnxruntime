@@ -1,0 +1,72 @@
+parameters:
+- name: build_windows_x64
+  displayName: 'Build Windows x64'
+  type: boolean
+  default: true
+
+- name: build_windows_arm64
+  displayName: 'Build Windows ARM64'
+  type: boolean
+  default: false
+
+- name: build_linux_x64
+  displayName: 'Build Linux x64'
+  type: boolean
+  default: false
+
+- name: build_macos_arm64
+  displayName: 'Build macOS ARM64'
+  type: boolean
+  default: false
+
+- name: package_version
+  displayName: 'Package Version'
+  type: string
+  default: dev
+  values:
+  - dev
+  - release
+  - RC
+
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+stages:
+    # Windows x64
+    - ${{ if eq(parameters.build_windows_x64, true) }}:
+      - template: plugin-win-webgpu-stage.yml
+        parameters:
+          arch: 'x64'
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Windows ARM64
+    # ARM64 build requires the x64 tblgen.exe (used during the build), which is not correctly
+    # generated in a cross build. So we require x64 to be built first and download tblgen.exe from it.
+    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+      - template: plugin-win-webgpu-stage.yml
+        parameters:
+          arch: 'arm64'
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Linux x64
+    - ${{ if eq(parameters.build_linux_x64, true) }}:
+      - template: plugin-linux-webgpu-stage.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # macOS ARM64
+    - ${{ if eq(parameters.build_macos_arm64, true) }}:
+      - template: plugin-mac-webgpu-stage.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}

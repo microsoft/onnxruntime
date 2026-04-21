@@ -514,9 +514,13 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
   );
 }
 
-// Regression test: all-false bool mask in decode mode (past_sequence_length > 0).
-// Before the fix: seq_len=0 + negative seqlen_offset produced negative seqlens_k → UB/crash.
-// After the fix: clamped to max(0, ...) → uniform softmax → mean of V values.
+// Regression guard: all-false bool mask in decode mode (past_sequence_length > 0).
+// Guards against a bug where fully-masked batches produce NaN or incorrect output.
+// Expected behavior: uniform softmax over past KV values produces Y = mean-of-V.
+// With past_v = [10,20,30,40] and [20,40,60,80] per head, and all positions masked out,
+// softmax(all -inf + constant mask_filter_value) → uniform weights → Y = {25, 50}.
+// This test originally came from upstream/main and validates that both CPU and CUDA
+// (unfused path) handle the all-false mask case identically.
 TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
   int batch_size = 1;
   int q_num_heads = 2;
@@ -576,9 +580,11 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
       0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f};
 
   // With all-false mask, softmax produces uniform weights: 1/4 per position.
-  // Output = mean of V rows (past_value concat new_v):
+  // Standard concat places new token at past_sequence_length, so present_value =
+  // [past_v[0], past_v[1], past_v[2], new_v]. Output = mean of all V rows:
   //   head 0: mean(0.1, 0.2, 0.3, 0.4) = 0.25
   //   head 1: mean(0.5, 0.6, 0.7, 0.8) = 0.65
+  // These values match upstream/main behavior (unfused standard concat path).
   std::vector<float> y = {
       // head 0
       0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f,
@@ -603,9 +609,9 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
   );
 }
 
-// Flash decode path with fp16 and all-true bool attention mask.
-// Exercises LaunchConcatNewToPastKV + mha_fwd_kvcache(k_new=nullptr) with mask.
-// head_size=64 is Flash-eligible. Uniform keys make output analytically verifiable:
+// Unfused decode path with fp16 and all-true bool attention mask.
+// Flash rejects attn_mask (requires attn_mask==nullptr), so CUDA routes to unfused.
+// head_size=64. Uniform keys make output analytically verifiable:
 // all attention scores are equal, so softmax is uniform over all positions.
 TEST(AttentionTest, Attention4DAttnMaskBoolDecodeWithPastFloat16) {
   int batch_size = 1;
@@ -687,17 +693,13 @@ TEST(AttentionTest, Attention4DAttnMaskBoolDecodeWithPastFloat16) {
   );
 }
 
-// Flash decode path with fp16 and partial bool mask (CUDA-only, direct OpTester).
-// mask [T,T,T,F] → Flash counts 3 leading trues, past_seqlens=2, new token at position 2.
-// Flash attends to [past[0], past[1], new_token] → Y = mean of those 3.
-// Uses direct OpTester for per-output tolerance: present_key/value position 3 may be
-// uninitialized (concat kernel only fills past_seqlens+1 positions).
-// CUDA-only because Flash's seqlens_k mask semantics differ from CPU's element-wise mask.
+// Decode with partial bool mask [T,T,T,F]: the new token is masked out.
+// With mask [T,T,T,F] past_seq=3 total=4: only positions 0,1,2 are attended (past only).
+// Flash is ineligible (bool+past_key rejected), so CUDA uses unfused which handles this
+// spec-correctly via standard ConcatPastToPresent + element-wise mask application.
+// Y = uniform mean over the 3 attended past values (Q=K=constant → uniform softmax).
+// CPU always runs; CUDA runs when SM 5.3+ is available.
 TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
-  if (!HasCudaEnvironment(530)) {
-    return;  // fp16 requires SM 5.3+
-  }
-
   int batch_size = 1;
   int q_num_heads = 2;
   int q_sequence_length = 1;
@@ -728,21 +730,26 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
                     v_head_size, pv[h][s]);
   }
 
-  // Y: uniform 1/3 over [past_v[0], past_v[1], v_new]
-  //   head 0: (0.1 + 0.2 + 0.4) / 3 = 7/30
-  //   head 1: (0.5 + 0.6 + 0.8) / 3 = 19/30
+  // Y: uniform 1/3 over past values [past_v[0], past_v[1], past_v[2]] (new token masked out).
+  //   head 0: (0.1 + 0.2 + 0.3) / 3 = 0.2
+  //   head 1: (0.5 + 0.6 + 0.7) / 3 = 0.6
   std::vector<float> y(batch_size * q_num_heads * q_sequence_length * v_head_size);
   {
-    float y_per_head[] = {7.0f / 30.0f, 19.0f / 30.0f};
+    float y_per_head[] = {0.2f, 0.6f};
     for (int h = 0; h < q_num_heads; ++h)
       std::fill_n(y.begin() + h * v_head_size, v_head_size, y_per_head[h]);
   }
 
-  // Skip present_key/value validation: trailing positions beyond valid tokens are
-  // intentionally uninitialized for performance (Flash respects seqlens_k bounds).
-  // Other tests (AllTrueMask, UnfusedPrompt) verify present_key/value for fully-valid cases.
-  // We must still declare these outputs (required when past_key is provided), but use
-  // placeholder values — the op validates shapes, not content, for optional outputs.
+  // present_key/value: standard concat — all past rows + new at position past_sequence_length.
+  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.5f);
+  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size);
+  {
+    float pv_expected[2][4] = {{0.1f, 0.2f, 0.3f, 0.4f}, {0.5f, 0.6f, 0.7f, 0.8f}};
+    for (int h = 0; h < kv_num_heads; ++h)
+      for (int s = 0; s < total_sequence_length; ++s)
+        std::fill_n(present_value.begin() + (h * total_sequence_length + s) * v_head_size,
+                    v_head_size, pv_expected[h][s]);
+  }
 
   OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
   test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
@@ -752,92 +759,33 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
   test.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_sequence_length, head_size}, ToFloat16(past_key));
   test.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_sequence_length, v_head_size}, ToFloat16(past_value));
 
-  // Declare all 3 outputs (required for graph construction). present_key/value use
-  // placeholder expected data — actual validation is done by the custom verifier below.
   test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
                             ToFloat16(y));
-  std::vector<float> present_key_placeholder(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
-  std::vector<float> present_value_placeholder(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
   test.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                            ToFloat16(present_key_placeholder));
+                            ToFloat16(present_key));
   test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},
-                            ToFloat16(present_value_placeholder));
+                            ToFloat16(present_value));
 
-  // Custom verifier: validate Y and present_key/value prefix (NaN-safe for uninitialized tail).
-  // With mask [T,T,T,F] and seqlen_offset=-1: past_seqlens=2, valid positions=[0,3), position 3 uninitialized.
-  auto expected_y_fp16 = ToFloat16(y);
-  const int valid_seq_positions = 3;  // past_seqlens(2) + kv_sequence_length(1)
-  test.SetCustomOutputVerifier(
-      [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-        ASSERT_GE(fetches.size(), 3u) << "Expected 3 outputs, provider: " << provider_type;
+  test.SetOutputAbsErr("Y", 3e-3f);
+  test.SetOutputAbsErr("present_key", 1e-3f);
+  test.SetOutputAbsErr("present_value", 1e-3f);
 
-        // Validate Y (output 0).
-        const auto& y_tensor = fetches[0].Get<Tensor>();
-        auto y_span = y_tensor.DataAsSpan<MLFloat16>();
-        ASSERT_EQ(y_span.size(), expected_y_fp16.size()) << "Y size mismatch, provider: " << provider_type;
-        for (size_t i = 0; i < y_span.size(); ++i) {
-          ASSERT_NEAR(y_span[i].ToFloat(), expected_y_fp16[i].ToFloat(), 3e-3f)
-              << "Y mismatch at " << i << ", provider: " << provider_type;
-        }
-
-        // Validate present_key prefix (output 1): positions [0, valid_seq_positions) in BNSH layout.
-        // past_seqlens=2 rows from past_key, then 1 row from k. Position 3 is uninitialized (skip).
-        const int past_seqlens = valid_seq_positions - kv_sequence_length;  // = 2
-        {
-          auto pk_span = fetches[1].Get<Tensor>().DataAsSpan<MLFloat16>();
-          for (int h = 0; h < kv_num_heads; ++h) {
-            int present_h = h * total_sequence_length * head_size;
-            int past_h = h * past_sequence_length * head_size;
-            // Check past rows [0, past_seqlens)
-            for (int s = 0; s < past_seqlens; ++s)
-              for (int d = 0; d < head_size; ++d)
-                ASSERT_NEAR(pk_span[present_h + s * head_size + d].ToFloat(),
-                            past_key[past_h + s * head_size + d], 1e-3f)
-                    << "present_key past mismatch h=" << h << " s=" << s << " d=" << d;
-            // Check new key row at position past_seqlens
-            int k_h = h * kv_sequence_length * head_size;
-            for (int d = 0; d < head_size; ++d)
-              ASSERT_NEAR(pk_span[present_h + past_seqlens * head_size + d].ToFloat(),
-                          k[k_h + d], 1e-3f)
-                  << "present_key new-key mismatch h=" << h << " d=" << d;
-          }
-        }
-
-        // Validate present_value prefix (output 2): same structure with v_head_size.
-        {
-          auto pv_span = fetches[2].Get<Tensor>().DataAsSpan<MLFloat16>();
-          for (int h = 0; h < kv_num_heads; ++h) {
-            int present_h = h * total_sequence_length * v_head_size;
-            int past_h = h * past_sequence_length * v_head_size;
-            for (int s = 0; s < past_seqlens; ++s)
-              for (int d = 0; d < v_head_size; ++d)
-                ASSERT_NEAR(pv_span[present_h + s * v_head_size + d].ToFloat(),
-                            past_value[past_h + s * v_head_size + d], 1e-3f)
-                    << "present_value past mismatch h=" << h << " s=" << s << " d=" << d;
-            int v_h = h * kv_sequence_length * v_head_size;
-            for (int d = 0; d < v_head_size; ++d)
-              ASSERT_NEAR(pv_span[present_h + past_seqlens * v_head_size + d].ToFloat(),
-                          v[v_h + d], 1e-3f)
-                  << "present_value new-value mismatch h=" << h << " d=" << d;
-          }
-        }
-        // Position 3 (index [h, 3, :]) intentionally not validated — uninitialized for performance.
-      });
-
+  // CPU always runs; CUDA runs when SM 5.3+ is available for fp16.
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  if (HasCudaEnvironment(530)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// Multi-batch Flash decode with per-batch partial bool masks (CUDA-only, direct OpTester).
-// batch_size=2 with different masks: batch 0 has 3 leading trues (past_seqlens=2),
-// batch 1 has 6 leading trues (past_seqlens=5). Tests LaunchConcatNewToPastKV with
-// variable per-batch past_seq_lens and validates present_key/value per-batch.
-TEST(AttentionTest, FlashAttention_Decode_PartialMask_MultiBatch_Float16) {
-  if (!HasCudaEnvironment(530)) {
-    return;  // fp16 requires SM 5.3+
-  }
-
+// Multi-batch decode with per-batch partial bool masks.
+// batch_size=2: batch 0 [T,T,T,F,F,F] (3 leading trues), batch 1 [T,T,T,T,T,T] (all true).
+// Flash is ineligible (bool+past_key rejected), CUDA uses unfused.
+// Unfused applies standard ConcatPastToPresent (new token at position past_sequence_length=5
+// for all batches) and element-wise mask in softmax.
+// Runs on both CPU and CUDA to verify cross-EP consistency.
+TEST(AttentionTest, Attention4DAttnMaskBoolPartialMask_MultiBatch_Float16) {
   int batch_size = 2;
   int q_num_heads = 2;
   int q_sequence_length = 1;
@@ -848,12 +796,10 @@ TEST(AttentionTest, FlashAttention_Decode_PartialMask_MultiBatch_Float16) {
   int past_sequence_length = 5;
   int total_sequence_length = past_sequence_length + kv_sequence_length;  // 6
 
-  // Uniform Q and K → equal attention scores → softmax is uniform.
   std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.5f);
   std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.5f);
   std::vector<float> past_key(batch_size * kv_num_heads * past_sequence_length * head_size, 0.5f);
 
-  // V: [2, 2, 1, 64] — new token values per batch per head.
   std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size);
   {
     float v_new[2][2] = {{0.4f, 0.8f}, {0.6f, 1.0f}};
@@ -863,12 +809,12 @@ TEST(AttentionTest, FlashAttention_Decode_PartialMask_MultiBatch_Float16) {
   }
 
   // past_value: [2, 2, 5, 64] — distinct per-row values.
-  // Batch 0: only positions 0,1 are valid past (mask has 3 leading trues, past_seqlens=2).
-  // Batch 1: all 5 positions are valid past (mask has 6 leading trues, past_seqlens=5).
+  // Batch 0 mask [T,T,T,F,F,F] → 3 valid positions (all past).
+  // Batch 1 mask [T,T,T,T,T,T] → 6 valid positions (all past + new).
   std::vector<float> past_value(batch_size * kv_num_heads * past_sequence_length * v_head_size);
   {
     float pv[2][2][5] = {
-        {{0.1f, 0.2f, 0.0f, 0.0f, 0.0f}, {0.5f, 0.6f, 0.0f, 0.0f, 0.0f}},  // batch 0
+        {{0.1f, 0.2f, 0.3f, 0.0f, 0.0f}, {0.5f, 0.6f, 0.7f, 0.0f, 0.0f}},  // batch 0
         {{0.1f, 0.2f, 0.3f, 0.4f, 0.5f}, {0.5f, 0.6f, 0.7f, 0.8f, 0.9f}}   // batch 1
     };
     for (int b = 0; b < batch_size; ++b)
@@ -879,27 +825,41 @@ TEST(AttentionTest, FlashAttention_Decode_PartialMask_MultiBatch_Float16) {
                       v_head_size, pv[b][h][s]);
   }
 
-  // 4D bool mask: [2, 1, 1, 6] — per-batch varying masks.
-  // Batch 0: [T,T,T,F,F,F] → 3 leading trues → past_seqlens=2
-  // Batch 1: [T,T,T,T,T,T] → 6 leading trues → past_seqlens=5
-  // Note: use bool array instead of vector<bool> (which is bit-packed and lacks .data()).
   const bool mask[] = {
       true, true, true, false, false, false,  // batch 0
       true, true, true, true, true, true      // batch 1
   };
 
-  // Y: uniform attention over valid positions.
-  // Batch 0 (3 valid): head 0: mean(0.1, 0.2, 0.4) = 7/30, head 1: mean(0.5, 0.6, 0.8) = 19/30
-  // Batch 1 (6 valid): head 0: mean(0.1..0.5, 0.6) = 0.35, head 1: mean(0.5..0.9, 1.0) = 0.75
+  // Y: uniform attention over valid positions (spec-correct).
+  // Batch 0 (3 valid, all past): head 0: mean(0.1, 0.2, 0.3) = 0.2
+  //                               head 1: mean(0.5, 0.6, 0.7) = 0.6
+  // Batch 1 (6 valid, all past + new): head 0: mean(0.1..0.5, 0.6) = 0.35
+  //                                     head 1: mean(0.5..0.9, 1.0) = 0.75
   std::vector<float> y(batch_size * q_num_heads * q_sequence_length * v_head_size);
   {
     float y_per_bh[2][2] = {
-        {7.0f / 30.0f, 19.0f / 30.0f},  // batch 0
-        {0.35f, 0.75f}                  // batch 1
+        {0.2f, 0.6f},   // batch 0
+        {0.35f, 0.75f}  // batch 1
     };
     for (int b = 0; b < batch_size; ++b)
       for (int h = 0; h < q_num_heads; ++h)
         std::fill_n(y.begin() + (b * q_num_heads + h) * v_head_size, v_head_size, y_per_bh[b][h]);
+  }
+
+  // present_key/value: standard concat — all 5 past rows + new at position 5.
+  std::vector<float> present_key(batch_size * kv_num_heads * total_sequence_length * head_size, 0.5f);
+  std::vector<float> present_value(batch_size * kv_num_heads * total_sequence_length * v_head_size);
+  {
+    float pv_expected[2][2][6] = {
+        {{0.1f, 0.2f, 0.3f, 0.0f, 0.0f, 0.4f}, {0.5f, 0.6f, 0.7f, 0.0f, 0.0f, 0.8f}},  // batch 0
+        {{0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f}, {0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f}}   // batch 1
+    };
+    for (int b = 0; b < batch_size; ++b)
+      for (int h = 0; h < kv_num_heads; ++h)
+        for (int s = 0; s < total_sequence_length; ++s)
+          std::fill_n(present_value.begin() +
+                          ((b * kv_num_heads + h) * total_sequence_length + s) * v_head_size,
+                      v_head_size, pv_expected[b][h][s]);
   }
 
   OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
@@ -915,85 +875,27 @@ TEST(AttentionTest, FlashAttention_Decode_PartialMask_MultiBatch_Float16) {
 
   test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
                             ToFloat16(y));
-  std::vector<float> present_key_placeholder(batch_size * kv_num_heads * total_sequence_length * head_size, 0.0f);
-  std::vector<float> present_value_placeholder(batch_size * kv_num_heads * total_sequence_length * v_head_size, 0.0f);
   test.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                            ToFloat16(present_key_placeholder));
+                            ToFloat16(present_key));
   test.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, v_head_size},
-                            ToFloat16(present_value_placeholder));
+                            ToFloat16(present_value));
 
-  // Per-batch valid positions: batch 0 = 3 (past_seqlens=2 + kv_seq=1), batch 1 = 6 (all).
-  const int valid_positions[] = {3, 6};
+  test.SetOutputAbsErr("Y", 3e-3f);
+  test.SetOutputAbsErr("present_key", 1e-3f);
+  test.SetOutputAbsErr("present_value", 1e-3f);
 
-  test.SetCustomOutputVerifier(
-      [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-        ASSERT_GE(fetches.size(), 3u) << "Expected 3 outputs, provider: " << provider_type;
-
-        // Validate Y (output 0).
-        auto expected_y_fp16 = ToFloat16(y);
-        auto y_span = fetches[0].Get<Tensor>().DataAsSpan<MLFloat16>();
-        ASSERT_EQ(y_span.size(), expected_y_fp16.size()) << "Y size mismatch, provider: " << provider_type;
-        for (size_t i = 0; i < y_span.size(); ++i) {
-          ASSERT_NEAR(y_span[i].ToFloat(), expected_y_fp16[i].ToFloat(), 3e-3f)
-              << "Y mismatch at " << i << ", provider: " << provider_type;
-        }
-
-        // Validate present_key prefix per batch (output 1).
-        {
-          auto pk_span = fetches[1].Get<Tensor>().DataAsSpan<MLFloat16>();
-          for (int b = 0; b < batch_size; ++b) {
-            int past_seqlens = valid_positions[b] - kv_sequence_length;
-            for (int h = 0; h < kv_num_heads; ++h) {
-              int present_bh = (b * kv_num_heads + h) * total_sequence_length * head_size;
-              int past_bh = (b * kv_num_heads + h) * past_sequence_length * head_size;
-              // Check past rows [0, past_seqlens)
-              for (int s = 0; s < past_seqlens; ++s)
-                for (int d = 0; d < head_size; ++d)
-                  ASSERT_NEAR(pk_span[present_bh + s * head_size + d].ToFloat(),
-                              past_key[past_bh + s * head_size + d], 1e-3f)
-                      << "present_key past mismatch b=" << b << " h=" << h << " s=" << s << " d=" << d;
-              // Check new key at position past_seqlens
-              int k_bh = (b * kv_num_heads + h) * kv_sequence_length * head_size;
-              for (int d = 0; d < head_size; ++d)
-                ASSERT_NEAR(pk_span[present_bh + past_seqlens * head_size + d].ToFloat(),
-                            k[k_bh + d], 1e-3f)
-                    << "present_key new-key mismatch b=" << b << " h=" << h << " d=" << d;
-            }
-          }
-        }
-
-        // Validate present_value prefix per batch (output 2).
-        {
-          auto pv_span = fetches[2].Get<Tensor>().DataAsSpan<MLFloat16>();
-          for (int b = 0; b < batch_size; ++b) {
-            int past_seqlens = valid_positions[b] - kv_sequence_length;
-            for (int h = 0; h < kv_num_heads; ++h) {
-              int present_bh = (b * kv_num_heads + h) * total_sequence_length * v_head_size;
-              int past_bh = (b * kv_num_heads + h) * past_sequence_length * v_head_size;
-              for (int s = 0; s < past_seqlens; ++s)
-                for (int d = 0; d < v_head_size; ++d)
-                  ASSERT_NEAR(pv_span[present_bh + s * v_head_size + d].ToFloat(),
-                              past_value[past_bh + s * v_head_size + d], 1e-3f)
-                      << "present_value past mismatch b=" << b << " h=" << h << " s=" << s << " d=" << d;
-              int v_bh = (b * kv_num_heads + h) * kv_sequence_length * v_head_size;
-              for (int d = 0; d < v_head_size; ++d)
-                ASSERT_NEAR(pv_span[present_bh + past_seqlens * v_head_size + d].ToFloat(),
-                            v[v_bh + d], 1e-3f)
-                    << "present_value new-value mismatch b=" << b << " h=" << h << " d=" << d;
-            }
-          }
-        }
-        // Uninitialized tail positions beyond valid_positions[b] per batch intentionally not validated.
-      });
-
+  // CPU always runs; CUDA runs when SM 5.3+ is available for fp16.
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  if (HasCudaEnvironment(530)) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  }
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // MEA/unfused prompt path with fp16 and bool mask (single token, no past KV cache).
 // past_key/past_value are absent (None); with bool mask and no past_key, CUDA routes to
-// MEA/unfused (not Flash — flash_eligible requires past_key != nullptr with bool mask).
+// MEA/unfused (not Flash — Flash requires attn_mask == nullptr).
 TEST(AttentionTest, Attention4DAttnMaskBoolUnfusedPromptFloat16) {
   int batch_size = 1;
   int q_num_heads = 2;

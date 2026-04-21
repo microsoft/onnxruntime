@@ -36,15 +36,10 @@ class DeviceStreamCollectionImpl {
   void ReleaseSingleStreamBuffers(Stream* stream) {
     if (!stream) return;
     for (const auto& it : allocators_) {
-      if (it.second->Info().device == stream->GetDevice() &&
-          it.second->Info().alloc_type == OrtArenaAllocator) {
-        if (it.second->IsStreamAware()) {
-          // Previously we only had one StreamAwareBFCArena. We need to guard
-          // against multiple allocators now.
-          auto* arena_alloc = IArena::SafeArenaCast(it.second.get());
-          if (arena_alloc) {
-            arena_alloc->ReleaseStreamBuffers(stream);
-          }
+      if (it.second->Info().device == stream->GetDevice()) {
+        auto* arena = it.second->AsArena();
+        if (arena && arena->IsStreamAware()) {
+          arena->ReleaseStreamBuffers(stream);
         }
       }
     }

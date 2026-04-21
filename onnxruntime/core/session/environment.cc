@@ -862,7 +862,14 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
 
   shared_ort_allocators_.insert(allocator);
 
-  AllocatorPtr shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+  // Wrap as IArena when the plugin allocator implements Shrink(), making it
+  // discoverable by session-level arena management (e.g. ShrinkMemoryArenas).
+  AllocatorPtr shared_allocator;
+  if (allocator->version >= 25 && allocator->Shrink != nullptr) {
+    shared_allocator = std::make_shared<IArenaImplWrappingOrtAllocator>(std::move(ort_allocator));
+  } else {
+    shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
+  }
   shared_allocators_.push_back(std::move(shared_allocator));
 
   if (allocator_out != nullptr) {
