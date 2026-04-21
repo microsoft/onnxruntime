@@ -654,11 +654,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       // synthetic EP name for testing CoreML EP with ML Program
       constexpr const char* kCoreMLExecutionProviderMLProgram = "CoreMLExecutionProvider_MLProgram";
 
-      // Name used by the TensorRT plugin EP (dynamic plugin EP). It must NOT match
-      // kTensorrtExecutionProvider, but tests that exclude the provider-bridge TRT EP should
-      // also exclude the plugin version.
-      constexpr const char* kTensorrtPluginExecutionProviderName = "TensorRTPluginExecutionProvider";
-
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
       static const std::vector<std::string> all_provider_types = {
@@ -700,10 +695,17 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       }
 #endif
 
-      // If the provider-bridge TensorRT EP is excluded, also exclude the TensorRT plugin EP
-      // (which is loaded as a dynamic plugin EP under a distinct name).
-      if (ctx_.excluded_provider_types.count(kTensorrtExecutionProvider) > 0) {
-        ctx_.excluded_provider_types.insert(kTensorrtPluginExecutionProviderName);
+      // If a dynamic plugin EP is registered and declares itself an alias of a built-in EP,
+      // and that built-in EP is in the excluded set, also exclude the plugin EP.
+      // This lets tests keep excluding only the built-in EP name (e.g., kTensorrtExecutionProvider)
+      // while the plugin EP substitute is skipped transparently.
+      if (const auto aliased_built_in_ep_name = dynamic_plugin_ep_infra::GetAliasedBuiltInEpName();
+          aliased_built_in_ep_name.has_value() &&
+          ctx_.excluded_provider_types.count(*aliased_built_in_ep_name) > 0) {
+        if (const auto plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+            plugin_ep_name.has_value()) {
+          ctx_.excluded_provider_types.insert(*plugin_ep_name);
+        }
       }
 
       const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
