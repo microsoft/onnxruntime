@@ -93,15 +93,47 @@ jobs:
           fi
 
       # --- Run Tests using the downloaded build ---
-      # The run-build-script-in-docker action mounts ${{ runner.temp }} to /onnxruntime_src/build
-      # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
+      # Run docker directly (instead of run-build-script-in-docker action) so we can pass
+      # --ipc=host. cuDNN 9.x requires adequate shared memory for handle creation; Docker's
+      # default 64 MB /dev/shm causes CUDNN_STATUS_INTERNAL_ERROR when multiple test
+      # processes create cuDNN handles in parallel.
       - name: Test ONNX Runtime
         id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: Release
-          mode: 'test' # Set mode to test
-          execution_providers: 'cuda tensorrt'
-          extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --use_tensorrt --tensorrt_home /usr  --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+        run: |
+          set -e
+          # Ensure host directories exist for mounts
+          mkdir -p "$HOME/.cache" "$HOME/.onnx"
+          docker run --rm \
+            --gpus all \
+            --ipc=host \
+            --volume "${{ github.workspace }}:/onnxruntime_src" \
+            --volume "${{ runner.temp }}:/onnxruntime_src/build" \
+            --volume "$HOME/.cache:/home/onnxruntimedev/.cache" \
+            --volume "/data/onnx:/data/onnx:ro" \
+            --volume "/data/models:/data/models:ro" \
+            --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
+            -w /onnxruntime_src \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD=1 \
+            -e RUNNER_TEMP=/onnxruntime_src/build \
+            -e CCACHE_DIR=/home/onnxruntimedev/.cache/ccache \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            /bin/bash -c "set -ex; PATH=/opt/python/cp310-cp310/bin:\$PATH && \
+              ccache --version && ccache --max-size=20GiB && ccache --zero-stats && \
+              python3 -m pip install --user -r tools/ci_build/github/linux/python/requirements.txt && \
+              python3 tools/ci_build/build.py \
+                --build_dir build/Release --config Release \
+                --cmake_generator Ninja \
+                --skip_submodule_sync \
+                --build_shared_lib --parallel \
+                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+                --enable_onnx_tests \
+                --use_cuda --use_tensorrt \
+                --use_binskim_compliant_compile_flags \
+                --build_wheel \
+                --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 \
+                --use_tensorrt --tensorrt_home /usr \
+                --build_java \
+                --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON \
+                --test && \
+              ccache --show-stats"
