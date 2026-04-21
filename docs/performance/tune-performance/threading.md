@@ -127,7 +127,7 @@ sess_opt.add_session_config_entry("session.intra_op.spin_backoff_max", "8")
 sess = ort.InferenceSession('model.onnx', sess_opt)
 ```
 
-In benchmarks, `spin_duration_us=1000` combined with `spin_backoff_max=8` was the most consistent best performer across models and thread counts.
+In [benchmarks](https://github.com/microsoft/onnxruntime/pull/28096), `spin_duration_us=1000` combined with `spin_backoff_max=8` was the most consistent best performer across models and thread counts.
 
 ## Set number of inter-op threads
 
