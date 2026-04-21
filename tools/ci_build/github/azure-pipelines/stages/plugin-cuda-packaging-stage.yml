@@ -1,0 +1,150 @@
+parameters:
+- name: build_windows_x64
+  displayName: 'Build Windows x64'
+  type: boolean
+  default: true
+
+- name: build_linux_x64
+  displayName: 'Build Linux x64'
+  type: boolean
+  default: true
+
+- name: build_linux_aarch64
+  displayName: 'Build Linux aarch64'
+  type: boolean
+  default: true
+
+- name: cuda_version
+  type: string
+  displayName: 'CUDA Version'
+  default: '12.8'
+
+- name: package_version
+  displayName: 'Package Version'
+  type: string
+  default: dev
+  values:
+  - dev
+  - release
+  - RC
+
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: docker_base_image
+  type: string
+  displayName: 'Linux x86_64 docker base image'
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+
+- name: docker_base_image_aarch64
+  type: string
+  displayName: 'Linux aarch64 docker base image'
+  default: ''
+
+- name: cmake_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES'
+  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+
+- name: LinuxX64PythonConfigurations
+  type: object
+  displayName: 'x86_64 Linux Python build configurations'
+  default:
+  - python_version: '3.12'
+    docker_python_exe_path: '/opt/python/cp312-cp312/bin/python3.12'
+
+- name: LinuxAArch64PythonConfigurations
+  type: object
+  displayName: 'aarch64 Linux Python build configurations'
+  default: []
+
+stages:
+    # Windows x64
+    - ${{ if eq(parameters.build_windows_x64, true) }}:
+      - template: plugin-win-cuda-stage.yml
+        parameters:
+          cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          package_version: ${{ parameters.package_version }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Linux x64: one parallel stage per Python version
+    - ${{ if eq(parameters.build_linux_x64, true) }}:
+      - ${{ each config in parameters.LinuxX64PythonConfigurations }}:
+        - template: plugin-linux-cuda-stage.yml
+          parameters:
+            stage_name: Linux_plugin_cuda_x64_${{ replace(config.python_version, '.', '_') }}
+            arch: 'x64'
+            machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+            cuda_version: ${{ parameters.cuda_version }}
+            cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+            package_version: ${{ parameters.package_version }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            docker_base_image: ${{ parameters.docker_base_image }}
+            python_version: ${{ config.python_version }}
+            docker_python_exe_path: ${{ config.docker_python_exe_path }}
+            artifact_name: cuda_plugin_linux_x64_${{ replace(config.python_version, '.', '_') }}
+
+    # Linux aarch64: one parallel stage per Python version (CUDA 13.0 only)
+    - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+      - ${{ each config in parameters.LinuxAArch64PythonConfigurations }}:
+        - template: plugin-linux-cuda-stage.yml
+          parameters:
+            stage_name: Linux_plugin_cuda_aarch64_${{ replace(config.python_version, '.', '_') }}
+            arch: 'aarch64'
+            machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+            cuda_version: ${{ parameters.cuda_version }}
+            cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+            package_version: ${{ parameters.package_version }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+            docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+            python_version: ${{ config.python_version }}
+            docker_python_exe_path: ${{ config.docker_python_exe_path }}
+            artifact_name: cuda_plugin_linux_aarch64_${{ replace(config.python_version, '.', '_') }}
+
+    # Merge per-version Linux artifacts into a single combined artifact
+    - stage: Linux_plugin_cuda_Merge_Artifacts
+      dependsOn:
+      - ${{ if eq(parameters.build_linux_x64, true) }}:
+        - ${{ each config in parameters.LinuxX64PythonConfigurations }}:
+          - Linux_plugin_cuda_x64_${{ replace(config.python_version, '.', '_') }}
+      - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+        - ${{ each config in parameters.LinuxAArch64PythonConfigurations }}:
+          - Linux_plugin_cuda_aarch64_${{ replace(config.python_version, '.', '_') }}
+      jobs:
+      - job: Linux_plugin_cuda_Merge_Artifacts
+        workspace:
+          clean: all
+        pool:
+          name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          os: linux
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
+            artifactName: cuda_plugin_linux
+        steps:
+        - checkout: none
+
+        - ${{ if eq(parameters.build_linux_x64, true) }}:
+          - ${{ each config in parameters.LinuxX64PythonConfigurations }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download - x64 Python ${{ config.python_version }}'
+              inputs:
+                artifact: cuda_plugin_linux_x64_${{ replace(config.python_version, '.', '_') }}
+                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
+
+        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          - ${{ each config in parameters.LinuxAArch64PythonConfigurations }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download - aarch64 Python ${{ config.python_version }}'
+              inputs:
+                artifact: cuda_plugin_linux_aarch64_${{ replace(config.python_version, '.', '_') }}
+                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
