@@ -10,6 +10,18 @@ from onnx.backend.base import BackendRep
 
 from onnxruntime import RunOptions
 
+# Allowlist of RunOptions attributes that are safe to set via the backend API.
+# 'terminate' excluded: setting it True would deny the current inference call.
+# 'training_mode' excluded: silently switches inference behavior in training builds.
+_ALLOWED_RUN_OPTIONS = frozenset(
+    {
+        "log_severity_level",
+        "log_verbosity_level",
+        "logid",
+        "only_execute_path_to_fetches",
+    }
+)
+
 
 class OnnxRuntimeBackendRep(BackendRep):
     """
@@ -31,8 +43,14 @@ class OnnxRuntimeBackendRep(BackendRep):
 
         options = RunOptions()
         for k, v in kwargs.items():
-            if hasattr(options, k):
+            if k in _ALLOWED_RUN_OPTIONS:
                 setattr(options, k, v)
+            elif hasattr(options, k):
+                raise RuntimeError(
+                    f"RunOptions attribute '{k}' is not permitted via the backend API. "
+                    f"Allowed attributes: {', '.join(sorted(_ALLOWED_RUN_OPTIONS))}"
+                )
+            # else: silently ignore unknown keys
 
         if isinstance(inputs, list):
             inps = {}

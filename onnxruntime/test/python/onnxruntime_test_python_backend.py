@@ -2,6 +2,8 @@
 # Licensed under the MIT License.
 
 # -*- coding: UTF-8 -*-
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -62,6 +64,116 @@ class TestBackend(unittest.TestCase):
             assert_allclose(session_run_results[0], -(inp0 - inp1), rtol=1e-6, atol=1e-6)
         else:
             assert_allclose(session_run_results[0], -(inp0 - inp1))
+
+
+class TestBackendKwargsAllowlist(unittest.TestCase):
+    """Tests that the SessionOptions/RunOptions kwargs allowlist correctly blocks
+    dangerous attributes and allows safe ones, preventing arbitrary file writes
+    through user-controlled kwargs."""
+
+    def test_blocked_session_option_optimized_model_filepath_raises(self):
+        """optimized_model_filepath is a known SessionOptions attr but is not in the allowlist.
+        It must raise RuntimeError to prevent arbitrary file overwrites."""
+        name = get_name("mul_1.onnx")
+        with tempfile.NamedTemporaryFile(suffix=".bin") as tmp:
+            with self.assertRaises(RuntimeError) as ctx:
+                backend.prepare(name, optimized_model_filepath=tmp.name)
+            self.assertIn("not permitted", str(ctx.exception))
+
+    def test_blocked_session_option_profile_file_prefix_raises(self):
+        """profile_file_prefix is a known SessionOptions attr but is not in the allowlist.
+        It must raise RuntimeError to prevent arbitrary file writes via profiling output."""
+        name = get_name("mul_1.onnx")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            prefix = os.path.join(tmpdir, "profile")
+            with self.assertRaises(RuntimeError) as ctx:
+                backend.prepare(name, profile_file_prefix=prefix)
+            self.assertIn("not permitted", str(ctx.exception))
+
+    def test_blocked_session_option_enable_profiling_raises(self):
+        """enable_profiling is excluded from the allowlist because it causes uncontrolled
+        file writes (profiling JSON) to the current working directory."""
+        name = get_name("mul_1.onnx")
+        with self.assertRaises(RuntimeError) as ctx:
+            backend.prepare(name, enable_profiling=True)
+        self.assertIn("not permitted", str(ctx.exception))
+
+    def test_unknown_kwarg_is_silently_ignored(self):
+        """A kwarg that is not a SessionOptions attribute at all must be silently ignored.
+        This preserves backward compatibility for callers who pass extra kwargs."""
+        name = get_name("mul_1.onnx")
+        rep = backend.prepare(name, totally_unknown_kwarg="foo")
+        self.assertIsNotNone(rep)
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        res = rep.run(x)
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+
+    def test_safe_session_option_graph_optimization_level_is_accepted(self):
+        """graph_optimization_level is in the allowlist and must be accepted without error."""
+        name = get_name("mul_1.onnx")
+        rep = backend.prepare(name, graph_optimization_level=onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL)
+        self.assertIsNotNone(rep)
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        res = rep.run(x)
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+
+    def test_safe_session_option_intra_op_num_threads_is_accepted(self):
+        """intra_op_num_threads is in the allowlist and must be accepted without error."""
+        name = get_name("mul_1.onnx")
+        rep = backend.prepare(name, intra_op_num_threads=1)
+        self.assertIsNotNone(rep)
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        res = rep.run(x)
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+
+    def test_blocked_run_option_terminate_raises(self):
+        """terminate is a known RunOptions attr but is not in _ALLOWED_RUN_OPTIONS.
+        Since run_model() now splits kwargs, terminate arrives only in the RunOptions path
+        and must raise RuntimeError."""
+        name = get_name("mul_1.onnx")
+        rep = backend.prepare(name)
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        with self.assertRaises(RuntimeError) as ctx:
+            rep.run(x, terminate=True)
+        self.assertIn("not permitted", str(ctx.exception))
+
+    def test_run_model_with_safe_session_option(self):
+        """run_model() must accept safe SessionOptions kwargs and produce correct output."""
+        name = get_name("mul_1.onnx")
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        res = backend.run(name, [x], graph_optimization_level=onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL)
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+
+    def test_run_model_with_safe_run_option(self):
+        """run_model() must accept safe RunOptions kwargs and produce correct output."""
+        name = get_name("mul_1.onnx")
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        res = backend.run(name, [x], only_execute_path_to_fetches=True)
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
+
+    def test_run_model_with_blocked_run_option_raises(self):
+        """run_model() must raise RuntimeError when a blocked RunOptions attr is passed.
+        With kwargs split, terminate arrives only in the RunOptions path and raises."""
+        name = get_name("mul_1.onnx")
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        with self.assertRaises(RuntimeError):
+            backend.run(name, [x], terminate=True)
+
+    def test_run_model_with_blocked_session_option_raises(self):
+        """run_model() must raise RuntimeError when a blocked SessionOptions attr is passed.
+        Previously, run_model() pre-filtered kwargs and silently dropped dangerous attrs like
+        optimized_model_filepath without raising. Now kwargs are passed directly to prepare()
+        which validates them."""
+        name = get_name("mul_1.onnx")
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        with self.assertRaises(RuntimeError) as ctx:
+            backend.run(name, [x], optimized_model_filepath="/tmp/evil.bin")
+        self.assertIn("not permitted", str(ctx.exception))
 
 
 if __name__ == "__main__":
