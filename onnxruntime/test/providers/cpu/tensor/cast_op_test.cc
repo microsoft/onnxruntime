@@ -2828,9 +2828,10 @@ TEST(CastOpTest, StandardTypes_Opset25_Cuda) {
 
   // bool -> float
   {
-    const std::vector<bool> input = {true, false, true, true, false, false};
+    const bool input[] = {true, false, true, true, false, false};
+    const gsl::span<const bool> input_span(input);
     const std::vector<float> expected = {1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f};
-    TestCastOp<bool, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+    TestCastOp<bool, float>(input_span, gsl::make_span(expected), shape,
                             OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
   }
 }
