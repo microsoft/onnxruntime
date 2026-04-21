@@ -782,6 +782,14 @@ class InferenceSession {
                                        const std::vector<OrtDevice>* p_fetches_device_info,
                                        int graph_capture_depth);
 
+  // Run() body for C API argument types (char* names, OrtValue* pointers).
+  // Separated so RunAsync can call it without creating a second SessionAccessGuard.
+  [[nodiscard]] common::Status RunWithCApiArgs(const RunOptions& run_options,
+                                               gsl::span<const char* const> feed_names,
+                                               gsl::span<const OrtValue* const> feeds,
+                                               gsl::span<const char* const> fetch_names,
+                                               gsl::span<OrtValue*> fetches);
+
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,

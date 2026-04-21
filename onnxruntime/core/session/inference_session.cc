@@ -3438,6 +3438,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, kSessionShuttingDownError);
   }
 
+  return RunWithCApiArgs(run_options, feed_names, feeds, fetch_names, fetches);
+}
+
+Status InferenceSession::RunWithCApiArgs(const RunOptions& run_options,
+                                         gsl::span<const char* const> feed_names,
+                                         gsl::span<const OrtValue* const> feeds,
+                                         gsl::span<const char* const> fetch_names,
+                                         gsl::span<OrtValue*> fetches) {
   size_t num_feeds = feed_names.size();
   size_t num_fetches = fetch_names.size();
   InlinedVector<std::string> feed_name_vec;
@@ -3527,11 +3535,13 @@ common::Status InferenceSession::RunAsync(const RunOptions* run_options,
                                   callback, user_data, this, session_access_guard]() mutable {
     Status status = Status::OK();
     ORT_TRY {
+      // Call RunWithCApiArgs directly instead of Run() to avoid creating a second
+      // SessionAccessGuard (admission was already granted by the outer guard).
       if (run_options) {
-        status = Run(*run_options, feed_names, feeds, fetch_names, fetches);
+        status = RunWithCApiArgs(*run_options, feed_names, feeds, fetch_names, fetches);
       } else {
         RunOptions default_run_options;
-        status = Run(default_run_options, feed_names, feeds, fetch_names, fetches);
+        status = RunWithCApiArgs(default_run_options, feed_names, feeds, fetch_names, fetches);
       }
     }
     ORT_CATCH(const std::exception& ex) {
