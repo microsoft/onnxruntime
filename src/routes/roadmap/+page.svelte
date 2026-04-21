@@ -3,10 +3,14 @@
 		'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
 	let keywords =
 		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.25, onnx runtime 1.25.0, onnx runtime 1.26';
-	// Added release metadata variables
+	// Release metadata
 	const previousRelease = { version: '1.25.0', date: 'Apr 2026' };
-	const inProgressRelease = { version: 'None', date: '' };
-	const nextRelease = { version: 'None', date: 'May 2026' };
+	const inProgressRelease = { version: '', date: '' };
+	const nextRelease = { version: '1.26', date: 'May 2026' };
+
+	// Visibility flags — flip to true when content is ready
+	const showInProgressRelease = false;
+	const showNextReleaseRoadmap = false;
 </script>
 
 <svelte:head>
@@ -23,7 +27,7 @@
 <div class="container mx-auto px-8">
 	<h1 class="text-3xl">ONNX Runtime Release Roadmap</h1>
 	<p>
-		ONNX Runtime is released on a quarterly basis. Patch releases are published between major
+		ONNX Runtime is released on a monthly basis. Patch releases are published between major
 		releases as necessary.
 	</p>
 	<div class="flex justify-center my-4">
@@ -48,7 +52,7 @@
 				<div class="stat-desc">Release date: {previousRelease.date}</div>
 			</div>
 
-			{#if inProgressRelease.version && inProgressRelease.version !== 'None'}
+			{#if showInProgressRelease}
 			<div class="stat">
 				<div class="stat-figure text-secondary">
 					<svg
@@ -165,7 +169,7 @@
 	</p>
 	<div class="divider" />
 	
-	{#if nextRelease.version && nextRelease.version !== 'None'}
+	{#if showNextReleaseRoadmap}
 	<h2 class="text-xl font-bold mt-2">ONNX Runtime {nextRelease.version}</h2>
 	<p class="font-thin">
 		<strong>Tentative release date:</strong> {nextRelease.date}
