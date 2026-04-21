@@ -31,6 +31,7 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/session/ep_graph_assignment_info.h"
+#include <condition_variable>
 #include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
@@ -972,6 +973,10 @@ class InferenceSession {
 
   // Set to true in destructor to reject new Run() calls and drain active ones.
   std::atomic<bool> is_shutting_down_{false};
+
+  // Signaled when current_num_runs_ drops to zero so the destructor can stop waiting.
+  std::mutex runs_drain_mutex_;
+  std::condition_variable runs_drain_cv_;
 
   mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)

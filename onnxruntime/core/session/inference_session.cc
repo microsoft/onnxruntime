@@ -783,8 +783,11 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::~InferenceSession() {
   // Signal that no new Run() calls should be accepted and wait for active ones to finish.
   is_shutting_down_.store(true, std::memory_order_release);
-  while (current_num_runs_.load(std::memory_order_acquire) > 0) {
-    std::this_thread::yield();
+  {
+    std::unique_lock<std::mutex> lock(runs_drain_mutex_);
+    runs_drain_cv_.wait(lock, [this] {
+      return current_num_runs_.load(std::memory_order_acquire) == 0;
+    });
   }
 
   // Flush any remaining RuntimePerf counters
@@ -3030,11 +3033,13 @@ struct ThreadPoolSpinningSwitch {
   concurrency::ThreadPool* intra_tp_{nullptr};
   concurrency::ThreadPool* inter_tp_{nullptr};
   std::atomic<int>& concurrent_num_runs_;
+  std::condition_variable* drain_cv_{nullptr};
   // __Ctor Refcounting and spinning control
   ThreadPoolSpinningSwitch(concurrency::ThreadPool* intra_tp,
                            concurrency::ThreadPool* inter_tp,
-                           std::atomic<int>& ref) noexcept
-      : intra_tp_(intra_tp), inter_tp_(inter_tp), concurrent_num_runs_(ref) {
+                           std::atomic<int>& ref,
+                           std::condition_variable* drain_cv = nullptr) noexcept
+      : intra_tp_(intra_tp), inter_tp_(inter_tp), concurrent_num_runs_(ref), drain_cv_(drain_cv) {
     if (concurrent_num_runs_.fetch_add(1, std::memory_order_relaxed) == 0) {
       if (intra_tp_) intra_tp_->EnableSpinning();
       if (inter_tp_) inter_tp_->EnableSpinning();
@@ -3044,6 +3049,7 @@ struct ThreadPoolSpinningSwitch {
     if (1 == concurrent_num_runs_.fetch_sub(1, std::memory_order_acq_rel)) {
       if (intra_tp_) intra_tp_->DisableSpinning();
       if (inter_tp_) inter_tp_->DisableSpinning();
+      if (drain_cv_) drain_cv_->notify_one();
     }
   }
 };
@@ -3121,11 +3127,6 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     }
   }
 
-  // Reject new runs if the session is being destroyed.
-  if (is_shutting_down_.load(std::memory_order_acquire)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Session is being destroyed. New Run() calls are rejected.");
-  }
-
   // Increment/decrement concurrent_num_runs_ and control
   // session threads spinning as configured. Do nothing for graph replay except the counter.
   const bool control_spinning = use_per_session_threads_ &&
@@ -3133,7 +3134,15 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                 !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id);
   auto* intra_tp = (control_spinning) ? thread_pool_.get() : nullptr;
   auto* inter_tp = (control_spinning) ? inter_op_thread_pool_.get() : nullptr;
-  ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_);
+  ThreadPoolSpinningSwitch runs_refcounter_and_tp_spin_control(intra_tp, inter_tp, current_num_runs_, &runs_drain_cv_);
+
+  // Reject new runs if the session is being destroyed.
+  // Checked AFTER incrementing current_num_runs_ to close the race window where a thread
+  // could pass this check, get preempted, and the destructor proceeds seeing zero active runs.
+  // The RAII guard above will decrement and notify the destructor on early return.
+  if (is_shutting_down_.load(std::memory_order_acquire)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Session is being destroyed. New Run() calls are rejected.");
+  }
 
   // Check if this Run() can skip normal execution and replay a previously captured graph.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
