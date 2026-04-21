@@ -49,6 +49,8 @@ stages:
         parameters:
           package_version: ${{ parameters.package_version }}
 
+      - template: ../templates/setup-feeds-and-python-steps.yml
+
       - template: ../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile

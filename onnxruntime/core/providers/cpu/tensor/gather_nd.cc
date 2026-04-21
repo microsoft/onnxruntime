@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <atomic>
 #include <core/common/safeint.h>
 #include "gather_nd.h"
 #include "core/platform/threadpool.h"
@@ -85,7 +86,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
     sizes_from_slice_dims[onnxruntime::narrow<size_t>(i)] = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_) + i + 1);
   }
 
-  int64_t err_index = 0;
+  std::atomic<const Tind*> invalid_index{nullptr};
   p.element_bytes = bytes_per_value;
   p.element_count_per_slice = slice_size;
   p.bytes_per_slice = p.element_bytes * p.element_count_per_slice;
@@ -94,6 +95,8 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
 
   // Compute the element_offset
   auto lambda = [&](ptrdiff_t slice_idx) {
+    if (invalid_index.load(std::memory_order_relaxed)) return;
+
     const size_t batch_idx = onnxruntime::narrow<size_t>(slice_idx / num_slices_per_batch);
     const size_t input_base_offset = batch_idx * SafeInt<size_t>(input_batch_stride);
 
@@ -104,7 +107,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
       const auto upper_limit = input_shape[SafeInt<size_t>(batch_dims_) + dim_idx];
       const auto lower_limit = -upper_limit;
       if (index < lower_limit || index >= upper_limit) {
-        err_index = index;
+        invalid_index.store(&slice_indices[dim_idx], std::memory_order_relaxed);
         break;
       }
       if (index < 0) index += upper_limit;
@@ -123,8 +126,12 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
         }
       });
 
-  return err_index == 0 ? Status::OK()
-                        : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid index found, index = ", err_index);
+  if (const Tind* bad = invalid_index.load(std::memory_order_relaxed); bad != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "invalid index found, index = ", static_cast<int64_t>(*bad));
+  }
+
+  return Status::OK();
 }
 
 template Status GatherNDBase::PrepareForCompute<int32_t>(const TensorShape&,

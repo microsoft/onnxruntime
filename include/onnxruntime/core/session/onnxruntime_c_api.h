@@ -418,6 +418,22 @@ typedef struct OrtAllocator {
    * \since 1.23
    */
   void*(ORT_API_CALL* AllocOnStream)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
+
+  /** \brief Release unused memory held by the allocator back to the system.
+   *
+   * For arena-based allocators, this frees allocation regions that are completely unused.
+   * For mempool-based allocators, this trims the pool to a configured minimum.
+   * For non-arena allocators this is a no-op.
+   *
+   * \param[in] this_ OrtAllocator instance
+   *
+   * \return nullptr on success, or an OrtStatus* on failure.
+   *
+   * \note Implementation of this function is optional and Shrink may be set to a nullptr.
+   *       Callers must check for nullptr before invoking.
+   * \since 1.25
+   */
+  ORT_API2_STATUS(Shrink, _In_ struct OrtAllocator* this_);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -7328,7 +7344,7 @@ struct OrtApi {
 
   /** \brief Get the element data type and shape for an OrtValue that represents a Tensor (scalar, dense, or sparse).
    *
-   * \note This function is an alternative to ::GetTensorTypeAndShape() that does not allocate a new array for
+   * \note This function is an alternative to OrtApi::GetTensorTypeAndShape that does not allocate a new array for
    *       the shape data. The OrtValue instance's internal shape data is returned directly.
    *
    * \note Returns an error if the underlying OrtValue is not a Tensor.
@@ -7395,7 +7411,6 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
 
-  /// @}
   /// \name OrtEnv
   /// @{
 
