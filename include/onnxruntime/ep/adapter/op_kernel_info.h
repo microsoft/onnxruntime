@@ -49,7 +49,8 @@ struct OpKernelInfo {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
       Ort::ConstKernelInfo info{kernel_info};
       ort_ep_ = info.GetEp();
-      ep_impl_ = ort_ep_ != nullptr ? (static_cast<const Ep*>(ort_ep_))->EpImpl() : nullptr;
+      ORT_ENFORCE(ort_ep_ != nullptr, "Plugin EP adapter requires a non-null OrtEp");
+      ep_impl_ = static_cast<const Ep*>(ort_ep_)->EpImpl();
 
       const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);

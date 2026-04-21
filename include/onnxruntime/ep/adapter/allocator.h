@@ -45,6 +45,8 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     // TODO: Replace direct function pointer access once Ort::Allocator exposes AllocOnStream/IsStreamAware.
     if (SupportsAllocOnStream()) {
       OrtAllocator* raw = ort_allocator_;
+      // TODO `static_cast<OrtSyncStream*>(stream)` may cause issues since `Stream` is an internal ORT type.
+      // Find a way to not rely on internal type usage at the shared library boundary.
       return raw->AllocOnStream(raw, size, static_cast<OrtSyncStream*>(stream));
     }
     return Alloc(size);
