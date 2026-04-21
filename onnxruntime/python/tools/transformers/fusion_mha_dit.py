@@ -405,10 +405,27 @@ class FusionMultiHeadAttentionDiT(Fusion):
             # K is natively in BNHS format, add a Transpose to convert to BNSH
             k_bnsh = self.transpose_bnhs_to_bnsh(k_transposed_input)
 
+        # Trace K back through any Cast to find the source tensor's element type.
+        # When K reaches matmul_qk through a casted BNHS tensor (e.g., a Cast FP32→FP16
+        # inserted before the pre-transpose), get_dtype(k_bnsh) returns the Cast output
+        # type rather than the source type. Tracing through the Cast lets us compare the
+        # true source dtype against Q, matching the same pattern used for V above.
+        # Note: we do NOT walk through synthesised Transpose nodes (added by
+        # transpose_bnhs_to_bnsh) for guard purposes — those have no type annotation and
+        # walking through them would make the dtype unresolvable, incorrectly triggering
+        # a bail-out on the normal FP16 test path.
+        k_traced_through_cast = False
+        k_bnsh_for_dtype = k_bnsh
+        if k_bnsh_for_dtype in output_name_to_node:
+            k_producer = output_name_to_node[k_bnsh_for_dtype]
+            if k_producer.op_type == "Cast":
+                k_bnsh_for_dtype = k_producer.input[0]
+                k_traced_through_cast = True
+
         # Verify Q, K, V element types are consistent. MHA's type parameter T binds
         # all three inputs to the same type — mismatches produce invalid graphs.
         q_dtype = self.model.get_dtype(q_bnsh)
-        k_dtype = self.model.get_dtype(k_bnsh)
+        k_dtype = self.model.get_dtype(k_bnsh_for_dtype)
         v_dtype = self.model.get_dtype(v_bnsh)
         if q_dtype is not None and v_dtype is not None and q_dtype != v_dtype:
             logger.debug("fuse_dit_attention: Q/V element type mismatch (%s vs %s), skipping", q_dtype, v_dtype)
@@ -430,6 +447,18 @@ class FusionMultiHeadAttentionDiT(Fusion):
                     v_dtype,
                 )
                 return
+        # Bail out only when K was traced through a Cast (positive evidence of a type
+        # conversion on the K path) AND the source dtype is known AND it differs from Q.
+        # When K's dtype is simply unresolvable (None) with no Cast on its path, we
+        # preserve prior behaviour and do not bail — the dtype-mismatch check above
+        # already handles the case where both sides are known and differ.
+        if k_traced_through_cast and q_dtype is not None and k_dtype is not None and q_dtype != k_dtype:
+            logger.debug(
+                "fuse_dit_attention: K Cast source dtype mismatch with Q (%s vs %s), skipping",
+                k_dtype,
+                q_dtype,
+            )
+            return
 
         # ========================================================================
         # Detect num_heads
@@ -488,6 +517,16 @@ class FusionMultiHeadAttentionDiT(Fusion):
         nodes_to_remove = [matmul_sv, transpose_out, reshape_out]
         if cast_after_softmax is not None:
             nodes_to_remove.append(cast_after_softmax)
+
+        # Guard: bail out if any downstream intermediate has consumers outside the
+        # nodes we are about to remove. The MHA output (reshape_out.output[0]) is the
+        # value that will be produced by the fused node, so it must be kept.
+        if not self.model.is_safe_to_fuse_nodes(
+            nodes_to_remove, [reshape_out.output[0]], input_name_to_nodes, output_name_to_node
+        ):
+            logger.debug("fuse_dit_attention: downstream nodes have external consumers, skipping")
+            return
+
         self.nodes_to_remove.extend(nodes_to_remove)
 
         # Use prune graph to remove remaining unreferenced nodes
