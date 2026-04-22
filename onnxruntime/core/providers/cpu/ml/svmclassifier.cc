@@ -67,7 +67,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   if (vector_count_ > 0) {
     feature_count_ = support_vectors_.size() / vector_count_;  // length of each support vector
     mode_ = SVM_TYPE::SVM_SVC;
-    ORT_ENFORCE(vectors_per_class_.size() == class_count_, "Mismatch between class_labels and vector_per_class dimensions.");
+    ORT_ENFORCE(vectors_per_class_.size() == class_count_, "Mismatch between classlabels_ints/classlabels_strings and vectors_per_class dimensions.");
   } else {
     feature_count_ = coefficients_.size() / class_count_;  // liblinear mode
     mode_ = SVM_TYPE::SVM_LINEAR;
