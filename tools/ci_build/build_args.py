@@ -902,7 +902,7 @@ def parse_arguments() -> argparse.Namespace:
 
         Arguments can also be passed in an argument file prefixed with '@'.
         E.g., `{sys.argv[0]} @arguments.txt`.
-        Argument files may contain comments starting with '#'. They will be ignored.
+        Argument files may contain comment lines starting with '#'. They will be ignored.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
