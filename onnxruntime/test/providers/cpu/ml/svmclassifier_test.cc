@@ -348,7 +348,7 @@ TEST(MLOpTest, SVMClassifierUndersizedProba) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "prob_a attribute size");
 }
 
-TEST(MLOpTest, SVMClassifierLinearUndersizedVectorPerClass) {
+TEST(MLOpTest, SVMClassifierSVCLinearUndersizedVectorPerClass) {
   OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
 
   std::vector<float> coefficients = {0.766398549079895f, 0.0871576070785522f, 0.110420741140842f,
