@@ -1020,6 +1020,48 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
+// Verify that setting session.disable_qdq_constant_folding to "1" preserves DequantizeLinear nodes
+// even when session.disable_quant_qdq is "1" (which normally allows DQ to be constant folded).
+TEST_F(GraphTransformationTests, ConstantFoldingDisableQDQConstantFolding) {
+  auto test_case = [](const ORTCHAR_T* model_uri,
+                      bool use_contrib_qdq,
+                      const logging::Logger& logger) {
+    const char* q_key = use_contrib_qdq ? "com.microsoft.QuantizeLinear" : "QuantizeLinear";
+    const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
+    Graph& graph = model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count[q_key] == 1);
+    ASSERT_TRUE(op_to_count[dq_key] == 3);
+    ASSERT_TRUE(op_to_count["Conv"] == 1);
+
+    // With disable_quant_qdq="1" and disable_qdq_constant_folding="1", DQ nodes should be preserved.
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableQDQConstantFolding, "1"));
+
+    std::unordered_map<std::string, int> expected_op_counts = {{q_key, 1},
+                                                               {dq_key, 3},
+                                                               {"Conv", 1}};
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
+  };
+
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
+            false, *logger_);
+
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16.onnx",
+            false, *logger_);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq_contrib.onnx",
+            true, *logger_);
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16_contrib.onnx",
+            true, *logger_);
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+}
+
 // model with 2 QDQ node units that can be constant folded as they are simple DQ -> Node -> Q where DQ and Node have
 // single consumer and do not produce graph outputs. Node is deterministic.
 // there are also other DQ nodes that should be ignored.
