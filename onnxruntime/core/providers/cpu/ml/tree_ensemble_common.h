@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <limits>
 #include <mutex>
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
