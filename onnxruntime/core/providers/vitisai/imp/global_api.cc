@@ -193,6 +193,10 @@ struct OrtVitisAIEpAPI {
       vitisai_ep_on_run_start = nullptr;
       vitisai_ep_set_ep_dynamic_options = nullptr;
       deinitialize_onnxruntime_vitisai_ep = nullptr;
+      profiler_start = nullptr;
+      profiler_stop = nullptr;
+      profiler_collect = nullptr;
+      profiler_collect_v2 = nullptr;
     }
   }
 
@@ -227,12 +231,14 @@ void profiler_collect(
   }
 }
 
-void profiler_collect_v2(
+bool profiler_collect_v2(
     std::vector<EventInfoV2>& api_events,
     std::vector<EventInfoV2>& kernel_events) {
   if (s_library_vitisaiep.profiler_collect_v2) {
     s_library_vitisaiep.profiler_collect_v2(api_events, kernel_events);
+    return true;
   }
+  return false;
 }
 
 std::string get_compiled_model_compatibility_info(

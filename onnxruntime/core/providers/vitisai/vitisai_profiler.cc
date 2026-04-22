@@ -29,27 +29,31 @@ void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
   // Use the free function wrappers which internally null-check the pointers.
   std::vector<EventInfoV2> api_events_v2;
   std::vector<EventInfoV2> kernel_events_v2;
-  profiler_collect_v2(api_events_v2, kernel_events_v2);
+  const bool v2_available = profiler_collect_v2(api_events_v2, kernel_events_v2);
 
-  if (!api_events_v2.empty() || !kernel_events_v2.empty()) {
+  if (v2_available) {
     for (auto& a : api_events_v2) {
+      auto& src_args = std::get<5>(a);
+      decltype(EventRecord::args) args(src_args.begin(), src_args.end());
       events.emplace_back(EventCategory::API_EVENT,
                           std::get<1>(a),
                           std::get<2>(a),
                           std::get<0>(a),
                           std::get<3>(a) - time_point,
                           std::get<4>(a),
-                          std::get<5>(a));
+                          std::move(args));
     }
 
     for (auto& k : kernel_events_v2) {
+      auto& src_args = std::get<5>(k);
+      decltype(EventRecord::args) args(src_args.begin(), src_args.end());
       events.emplace_back(EventCategory::KERNEL_EVENT,
                           std::get<1>(k),
                           std::get<2>(k),
                           std::get<0>(k),
                           std::get<3>(k) - time_point,
                           std::get<4>(k),
-                          std::get<5>(k));
+                          std::move(args));
     }
   } else {
     // Fall back to v1 API
@@ -57,7 +61,7 @@ void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
     std::vector<EventInfo> kernel_events;
     profiler_collect(api_events, kernel_events);
 
-    std::unordered_map<std::string, std::string> event_args;
+    decltype(EventRecord::args) event_args;
 
     for (auto& a : api_events) {
       events.emplace_back(EventCategory::API_EVENT,

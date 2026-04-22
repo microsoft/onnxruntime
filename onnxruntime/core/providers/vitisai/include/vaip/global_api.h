@@ -32,7 +32,7 @@ int vitisai_ep_set_ep_dynamic_options(
 // The EP can use this to:
 // 1. Calculate relative timestamps (event_ts - base_ts) for the profiling timeline
 // 2. Store the absolute base timestamp if needed for other purposes
-void profiler_start(uint64_t profiling_start_time_ns);
+void profiler_start(uint64_t profiling_start_time_us);
 
 // Notify EP that profiling has stopped
 void profiler_stop();
@@ -66,7 +66,10 @@ using EventInfoV2 = std::tuple<
     >;
 
 // v2 API
-void profiler_collect_v2(
+// Returns true if the v2 collector symbol was present in the loaded VAIP
+// library (i.e. the EP is v2-capable). Returns false if the symbol is not
+// available, in which case callers should fall back to profiler_collect (v1).
+bool profiler_collect_v2(
     std::vector<EventInfoV2>& api_events,
     std::vector<EventInfoV2>& kernel_events);
 
