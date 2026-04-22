@@ -40,6 +40,36 @@ static ONNX_NAMESPACE::TensorProto* GetTensorProto(TensorProtoHolder& holder) {
 #endif
 #endif
 
+template <typename T>
+static bool TryGetScalarTensorAttribute(const OpKernelInfo& info, const std::string& tensor_name,
+                                        const std::string& attr_name, T& value) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // Plugin EP: use Ort C++ API to read tensor attributes.
+  try {
+    Ort::AllocatorWithDefaultOptions allocator;
+    auto tensor_value = info.GetKernelInfo().GetTensorAttribute(tensor_name.c_str(), allocator);
+    if (tensor_value.GetTensorTypeAndShapeInfo().GetElementCount() > 0) {
+      value = *tensor_value.GetTensorData<T>();
+      return true;
+    }
+  } catch (const Ort::Exception&) {
+    // Tensor attribute not present, fall through to the caller's fallback path.
+  }
+#else
+  // Non-plugin shared library EP: use TensorProto to read tensor attributes.
+  auto attr_tensor_holder = CreateTensorProtoHolder();
+  auto* attr_tensor_proto = GetTensorProto(attr_tensor_holder);
+  auto result = info.GetAttr(tensor_name, attr_tensor_proto);
+  if (result.IsOK() && utils::HasDataType(*attr_tensor_proto)) {
+    result = utils::UnpackTensor<T>(*attr_tensor_proto, nullptr, 0, &value, 1);
+    ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", attr_name);
+    return true;
+  }
+#endif  // BUILD_CUDA_EP_AS_PLUGIN
+
+  return false;
+}
+
 // Helper to get attribute as vector from either list attributes or tensor attributes (for opset 4+).
 template <typename T>
 static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::string& name,
@@ -91,31 +121,12 @@ static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::strin
 // Helper to get default value from default_tensor or a named attribute.
 template <typename T>
 static T GetDefaultValue(const OpKernelInfo& info, const std::string& attr_name, const T& backup) {
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  // Plugin EP: use Ort C++ API to read default_tensor.
-  try {
-    Ort::AllocatorWithDefaultOptions allocator;
-    auto tensor_value = info.GetKernelInfo().GetTensorAttribute("default_tensor", allocator);
-    if (tensor_value.GetTensorTypeAndShapeInfo().GetElementCount() > 0) {
-      return *tensor_value.GetTensorData<T>();
-    }
-  } catch (const Ort::Exception&) {
-    // default_tensor not present, fall through to scalar/backup.
-  }
-#else
-  // Non-plugin shared library EP: use TensorProto to read default_tensor.
-  auto attr_tensor_holder = CreateTensorProtoHolder();
-  auto* attr_tensor_proto = GetTensorProto(attr_tensor_holder);
-  auto result = info.GetAttr("default_tensor", attr_tensor_proto);
-  if (result.IsOK() && utils::HasDataType(*attr_tensor_proto)) {
-    T default_value;
-    result = utils::UnpackTensor<T>(*attr_tensor_proto, nullptr, 0, &default_value, 1);
-    ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack default tensor ", attr_name);
+  T default_value;
+  if (TryGetScalarTensorAttribute(info, "default_tensor", attr_name, default_value)) {
     return default_value;
   }
-#endif  // BUILD_CUDA_EP_AS_PLUGIN
+
   if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {
-    T default_value;
     auto attr_result = info.GetAttr<T>(attr_name, &default_value);
     if (attr_result.IsOK()) {
       return default_value;
