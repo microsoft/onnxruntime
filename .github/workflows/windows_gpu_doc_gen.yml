@@ -37,7 +37,6 @@ jobs:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-      DocUpdateNeeded: false
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
     runs-on: [
@@ -152,16 +151,11 @@ jobs:
           }
         shell: pwsh
 
-      - name: Upload OperatorKernels.md
-        if: failure() && env.DocUpdateNeeded == 'true'
+      - name: Upload updated documentation
+        if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: OperatorKernels.md
-          path: ${{ github.workspace }}/docs/OperatorKernels.md
-
-      - name: Upload ContribOperators.md
-        if: failure() && env.DocUpdateNeeded == 'true'
-        uses: actions/upload-artifact@v6
-        with:
-          name: ContribOperators.md
-          path: ${{ github.workspace }}/docs/ContribOperators.md
+          name: updated-docs
+          path: |
+            ${{ github.workspace }}/docs/OperatorKernels.md
+            ${{ github.workspace }}/docs/ContribOperators.md
