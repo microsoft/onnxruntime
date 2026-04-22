@@ -1,0 +1,94 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/providers/common.h"
+#include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/impl/base_op_builder.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/providers/coreml/shape_utils.h"
+#include "core/providers/shared/utils/utils.h"
+
+namespace onnxruntime {
+namespace coreml {
+
+// com.microsoft:QuickGelu is produced by ORT's QuickGeluFusion pass
+// (onnxruntime/core/optimizer/quick_gelu_fusion.cc) at optimization level
+// ORT_ENABLE_EXTENDED and above. The schema in contrib_defs.cc defines it as
+//     Y = X * Sigmoid(alpha * X)    default alpha = 1.702
+// CoreML has no native equivalent, so we decompose to three MIL ops — all
+// primitives are already CoreML-supported. Same approach the QNN EP uses
+// in qnn/builder/opbuilder/quick_gelu_op_builder.cc.
+class QuickGeluOpBuilder : public BaseOpBuilder {
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
+
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                         const logging::Logger& logger) const override;
+
+  bool SupportsMLProgram() const override { return true; }
+};
+
+Status QuickGeluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
+                                                 const Node& node,
+                                                 const logging::Logger& logger) const {
+  NodeAttrHelper helper(node);
+  const float alpha = helper.Get("alpha", 1.702f);
+
+  const auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t elem_type = static_cast<int32_t>(input_dtype);
+  const std::string& x_name = node.InputDefs()[0]->Name();
+
+  std::vector<int64_t> x_shape;
+  ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], x_shape, logger), "Failed to get QuickGelu input shape");
+
+  if (model_builder.CreateMLProgram()) {
+    using namespace CoreML::Specification::MILSpec;
+
+    // 1. alpha_x = mul(x, alpha)
+    auto mul_alpha = model_builder.CreateOperation(node, "mul", "alpha");
+    AddOperationInput(*mul_alpha, "x", x_name);
+    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      AddOperationInput(*mul_alpha, "y", model_builder.AddScalarConstant(mul_alpha->type(), "alpha", alpha));
+    } else {
+      AddOperationInput(*mul_alpha, "y",
+                        model_builder.AddScalarConstant(mul_alpha->type(), "alpha", MLFloat16(alpha)));
+    }
+    const std::string& alpha_x_name = model_builder.GetUniqueName(node, "quick_gelu_alpha_x");
+    AddIntermediateOperationOutput(*mul_alpha, alpha_x_name, elem_type, x_shape);
+
+    // 2. sig = sigmoid(alpha_x)
+    auto sig = model_builder.CreateOperation(node, "sigmoid");
+    AddOperationInput(*sig, "x", alpha_x_name);
+    const std::string& sig_name = model_builder.GetUniqueName(node, "quick_gelu_sigmoid");
+    AddIntermediateOperationOutput(*sig, sig_name, elem_type, x_shape);
+
+    // 3. y = mul(x, sig)
+    auto mul_final = model_builder.CreateOperation(node, "mul", "final");
+    AddOperationInput(*mul_final, "x", x_name);
+    AddOperationInput(*mul_final, "y", sig_name);
+    AddOperationOutput(*mul_final, *node.OutputDefs()[0]);
+
+    model_builder.AddOperation(std::move(mul_alpha));
+    model_builder.AddOperation(std::move(sig));
+    model_builder.AddOperation(std::move(mul_final));
+  }
+
+  return Status::OK();
+}
+
+bool QuickGeluOpBuilder::IsOpSupportedImpl(const Node& /*node*/, const OpBuilderInputParams& input_params,
+                                           const logging::Logger& /*logger*/) const {
+  // Only the MLProgram path is implemented. NeuralNetwork format is deprecated
+  // on Apple Silicon and not worth carrying a second implementation for.
+  return input_params.create_mlprogram;
+}
+
+void CreateQuickGeluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<QuickGeluOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
+}  // namespace coreml
+}  // namespace onnxruntime
