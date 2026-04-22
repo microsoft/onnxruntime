@@ -33,6 +33,13 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    import psutil
+
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 
 def parse_perf_test_output(output: str) -> dict:
     """Parse onnxruntime_perf_test stdout into a dict of metrics."""
@@ -60,18 +67,15 @@ def parse_perf_test_output(output: str) -> dict:
 
 def get_process_memory_info() -> dict:
     """Get current process memory info (Windows)."""
-    try:
-        import psutil
-
-        proc = psutil.Process()
-        mem = proc.memory_info()
-        return {
-            "private_bytes": mem.private,
-            "working_set_bytes": mem.wset,
-            "peak_working_set_bytes": mem.peak_wset,
-        }
-    except ImportError:
+    if not HAS_PSUTIL:
         return {}
+    proc = psutil.Process()
+    mem = proc.memory_info()
+    return {
+        "private_bytes": mem.private,
+        "working_set_bytes": mem.wset,
+        "peak_working_set_bytes": mem.peak_wset,
+    }
 
 
 def run_perf_test(
@@ -104,39 +108,34 @@ def run_perf_test(
 
     cmd.append(model_path)
 
-    if session_only:
+    if session_only and HAS_PSUTIL:
         # Single run: capture both timing (from stdout) and memory (from psutil) simultaneously
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ps = psutil.Process(proc.pid)
+        peak_private = 0
+        peak_ws = 0
         try:
-            import psutil
-
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            ps = psutil.Process(proc.pid)
-            peak_private = 0
-            peak_ws = 0
-            try:
-                while proc.poll() is None:
-                    try:
-                        mem = ps.memory_info()
-                        private = getattr(mem, "private", mem.rss)
-                        ws = getattr(mem, "wset", mem.rss)
-                        peak_private = max(peak_private, private)
-                        peak_ws = max(peak_ws, ws)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        break
-                    time.sleep(0.001)  # 1ms polling for better peak capture
-            except psutil.NoSuchProcess:
-                pass  # process exited during polling, peak already captured
-            stdout, _ = proc.communicate(timeout=30)
-            if proc.returncode != 0:
-                print(f"  ERROR: perf_test failed (exit code {proc.returncode})")
-                return {}
-            metrics = parse_perf_test_output(stdout.decode() if isinstance(stdout, bytes) else stdout)
-            if peak_private > 0:
-                metrics["peak_private_bytes"] = peak_private
-                metrics["peak_working_set_bytes"] = peak_ws
-            return metrics
-        except ImportError:
-            pass  # fall through to non-psutil path
+            while proc.poll() is None:
+                try:
+                    mem = ps.memory_info()
+                    private = getattr(mem, "private", mem.rss)
+                    ws = getattr(mem, "wset", mem.rss)
+                    peak_private = max(peak_private, private)
+                    peak_ws = max(peak_ws, ws)
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    break
+                time.sleep(0.001)  # 1ms polling for better peak capture
+        except psutil.NoSuchProcess:
+            pass  # process exited during polling, peak already captured
+        stdout, _ = proc.communicate(timeout=30)
+        if proc.returncode != 0:
+            print(f"  ERROR: perf_test failed (exit code {proc.returncode})")
+            return {}
+        metrics = parse_perf_test_output(stdout.decode() if isinstance(stdout, bytes) else stdout)
+        if peak_private > 0:
+            metrics["peak_private_bytes"] = peak_private
+            metrics["peak_working_set_bytes"] = peak_ws
+        return metrics
 
     result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)
 
@@ -263,9 +262,7 @@ def run_multi_process_benchmark(
     config_name: str = "",
 ) -> dict:
     """Launch multiple processes loading the same model and measure total system memory."""
-    try:
-        import psutil
-    except ImportError:
+    if not HAS_PSUTIL:
         print("  WARNING: psutil not installed, skipping multi-process benchmark")
         print("  Install with: pip install psutil")
         return {}
