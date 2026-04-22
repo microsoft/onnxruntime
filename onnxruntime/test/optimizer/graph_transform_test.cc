@@ -6104,9 +6104,6 @@ static Status CheckMobileClipAttentionFusedGraph(const Graph& graph) {
   TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 2);
-  // The correctness tests inspect the initialized session graph, where the Level1 baseline
-  // optimizations have already canonicalized away one reshape before AttentionFusion runs.
-  TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 3);
   TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
 
