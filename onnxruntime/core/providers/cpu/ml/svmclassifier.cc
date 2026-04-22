@@ -60,7 +60,7 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
     class_count_ = classlabels_ints_.size();
   }
 
-  ORT_ENFORCE(class_count_ < 65536, "The number of class ", class_count_, " is beyond what this kernel supports (65535).");
+  ORT_ENFORCE(class_count_ < 65536, "The number of classes ", class_count_, " is beyond what this kernel supports (65535).");
   ORT_ENFORCE(proba_.size() == probb_.size(), "proba and probb must have the same size.");
   ORT_ENFORCE(coefficients_.size() > 0, "coefficients are empty.");
 
