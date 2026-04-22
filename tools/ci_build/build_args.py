@@ -882,9 +882,11 @@ def parse_arguments() -> argparse.Namespace:
     class Parser(argparse.ArgumentParser):
         # override argument file line parsing behavior
         # - allow multiple arguments per line and handle quotes
-        # - allow comments starting with '#'
+        # - allow comment lines starting with '#'
         def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
-            return shlex.split(arg_line, comments=True)
+            if arg_line.lstrip().startswith("#"):  # ignore comment lines
+                return []
+            return shlex.split(arg_line)
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
