@@ -328,7 +328,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
             sum += *val1 * *val2;
 
           val1 = &(coefficients_[i_coeff_row_offset + SafeInt<size_t>(start_index_j)]);
-          val2 = &(cur_kernels[onnxruntime::narrow<size_t>(start_index_j)]);
+          val2 = &(cur_kernels[start_index_j]);
 
           for (size_t m = 0; m < class_j_support_count; ++m, ++val1, ++val2)
             sum += *val1 * *val2;
