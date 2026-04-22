@@ -10,6 +10,9 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/data_types_internal.h"
+#include "core/framework/int2.h"
+#include "core/framework/tensor.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -2730,6 +2733,197 @@ TEST(CastOpTest, Float4E2M1x2ToFloat) {
 }
 
 #endif
+
+// Regression tests for sub-byte same-type cast (CopyCpuTensor heap overflow fix).
+// When src and dst types are the same, Cast::Compute calls CopyCpuTensor which must
+// use SizeInBytes() (not shape.Size() * DataType()->Size()) for the memcpy byte count.
+
+TEST(CastOpTest, Int4x2ToInt4x2_SameType) {
+  const std::vector<int64_t> shape{3, 3};  // 9 elements (odd, tests ceil-division)
+  const std::vector<Int4x2> input = {
+      Int4x2(-8, 7),
+      Int4x2(0, -1),
+      Int4x2(3, -5),
+      Int4x2(6, 2),
+      Int4x2(1, 0)  // 9th element in high nibble of 5th byte (padding in low nibble)
+  };
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, UInt4x2ToUInt4x2_SameType) {
+  const std::vector<int64_t> shape{2, 5};  // 10 elements (even)
+  const std::vector<UInt4x2> input = {
+      UInt4x2(0, 15),
+      UInt4x2(1, 14),
+      UInt4x2(7, 8),
+      UInt4x2(3, 6),
+      UInt4x2(9, 11)};
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, Int4x2ToInt4x2_LargeShape) {
+  // Large shape (16464 elements)
+  const std::vector<int64_t> shape{28, 6, 14, 7};
+  const int64_t num_elements = 28 * 6 * 14 * 7;  // 16464
+  const size_t num_storage = static_cast<size_t>((num_elements + 1) / 2);
+
+  std::vector<Int4x2> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = Int4x2(static_cast<int8_t>(i % 8), static_cast<int8_t>(-(static_cast<int8_t>(i % 7))));
+  }
+  const auto& input = input_vec;
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, Int2x4ToInt2x4_SameType) {
+  const std::vector<int64_t> shape{5};  // 5 elements (not multiple of 4, tests ceil-division)
+  const std::vector<Int2x4> input = {
+      Int2x4(-2, 1, 0, -1),
+      Int2x4(1, 0, 0, 0)  // 5th element in first position (padding in positions 2-4)
+  };
+
+  TestCastOpInt2(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, UInt4x2ToUInt4x2_LargeShape) {
+  const std::vector<int64_t> shape{28, 6, 14, 7};
+  const int64_t num_elements = 28 * 6 * 14 * 7;  // 16464
+  const size_t num_storage = static_cast<size_t>((num_elements + 1) / 2);
+
+  std::vector<UInt4x2> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = UInt4x2(static_cast<uint8_t>(i % 16), static_cast<uint8_t>((i + 3) % 16));
+  }
+  const auto& input = input_vec;
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, Int2x4ToInt2x4_LargeShape) {
+  const std::vector<int64_t> shape{100, 100};  // 10000 elements (not multiple of 4)
+  const int64_t num_elements = 100 * 100;
+  const size_t num_storage = static_cast<size_t>((num_elements + 3) / 4);
+
+  std::vector<Int2x4> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = Int2x4(static_cast<int8_t>(i % 2), static_cast<int8_t>(-(static_cast<int8_t>(i % 2))),
+                           static_cast<int8_t>((i + 1) % 2), static_cast<int8_t>(0));
+  }
+  const auto& input = input_vec;
+
+  TestCastOpInt2(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, UInt2x4ToUInt2x4_LargeShape) {
+  const std::vector<int64_t> shape{100, 101};  // 10100 elements (not multiple of 4)
+  const int64_t num_elements = 100 * 101;
+  const size_t num_storage = static_cast<size_t>((num_elements + 3) / 4);
+
+  std::vector<UInt2x4> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = UInt2x4(static_cast<uint8_t>(i % 4), static_cast<uint8_t>((i + 1) % 4),
+                            static_cast<uint8_t>((i + 2) % 4), static_cast<uint8_t>((i + 3) % 4));
+  }
+  const auto& input = input_vec;
+
+  TestCastOpInt2(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+// Direct CopyCpuTensor test with guaranteed distinct buffers to exercise the memcpy path.
+// This bypasses the MayInplace optimization that can alias input/output in OpTester.
+TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
+
+  // Test Int4x2 with odd element count (ceil-division edge case)
+  {
+    const int64_t num_logical_elements = 17;  // odd: requires ceil(17/2) = 9 storage bytes
+    TensorShape shape({num_logical_elements});
+    auto int4_type = DataTypeImpl::GetType<Int4x2>();
+
+    Tensor src(int4_type, shape, cpu_allocator);
+    Tensor dst(int4_type, shape, cpu_allocator);
+
+    // Fill source with known pattern
+    auto* src_data = reinterpret_cast<uint8_t*>(src.MutableDataRaw());
+    size_t byte_count = src.SizeInBytes();
+    ASSERT_EQ(byte_count, static_cast<size_t>(9));  // ceil(17/2) = 9
+    for (size_t i = 0; i < byte_count; ++i) {
+      src_data[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+
+    // Fill destination with different pattern to detect incomplete copy
+    auto* dst_data = reinterpret_cast<uint8_t*>(dst.MutableDataRaw());
+    memset(dst_data, 0xFF, byte_count);
+
+    // Ensure distinct buffers
+    ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
+
+    CopyCpuTensor(&src, &dst);
+
+    // Verify all bytes were copied correctly
+    for (size_t i = 0; i < byte_count; ++i) {
+      EXPECT_EQ(dst_data[i], src_data[i]) << "Mismatch at byte " << i;
+    }
+  }
+
+  // Test UInt4x2 with large even element count
+  {
+    const int64_t num_logical_elements = 16464;  // from PoC: ceil(16464/2) = 8232 bytes
+    TensorShape shape({num_logical_elements});
+    auto uint4_type = DataTypeImpl::GetType<UInt4x2>();
+
+    Tensor src(uint4_type, shape, cpu_allocator);
+    Tensor dst(uint4_type, shape, cpu_allocator);
+
+    auto* src_data = reinterpret_cast<uint8_t*>(src.MutableDataRaw());
+    size_t byte_count = src.SizeInBytes();
+    ASSERT_EQ(byte_count, static_cast<size_t>(8232));
+    for (size_t i = 0; i < byte_count; ++i) {
+      src_data[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    auto* dst_data = reinterpret_cast<uint8_t*>(dst.MutableDataRaw());
+    memset(dst_data, 0xFF, byte_count);
+
+    ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
+
+    CopyCpuTensor(&src, &dst);
+
+    for (size_t i = 0; i < byte_count; ++i) {
+      EXPECT_EQ(dst_data[i], src_data[i]) << "Mismatch at byte " << i;
+    }
+  }
+
+  // Test Int2x4 (4 elements per byte — would be 4x overflow with old code)
+  {
+    const int64_t num_logical_elements = 7;  // ceil(7/4) = 2 storage bytes
+    TensorShape shape({num_logical_elements});
+    auto int2_type = DataTypeImpl::GetType<Int2x4>();
+
+    Tensor src(int2_type, shape, cpu_allocator);
+    Tensor dst(int2_type, shape, cpu_allocator);
+
+    auto* src_data = reinterpret_cast<uint8_t*>(src.MutableDataRaw());
+    size_t byte_count = src.SizeInBytes();
+    ASSERT_EQ(byte_count, static_cast<size_t>(2));
+    src_data[0] = 0xAB;
+    src_data[1] = 0xCD;
+
+    auto* dst_data = reinterpret_cast<uint8_t*>(dst.MutableDataRaw());
+    memset(dst_data, 0xFF, byte_count);
+
+    ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
+
+    CopyCpuTensor(&src, &dst);
+
+    for (size_t i = 0; i < byte_count; ++i) {
+      EXPECT_EQ(dst_data[i], src_data[i]) << "Mismatch at byte " << i;
+    }
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime
