@@ -275,6 +275,38 @@ class CudaPluginPartitioningTest : public ::testing::Test {
 
   std::unique_ptr<ScopedCudaPluginRegistration> registration_;
   Ort::ConstEpDevice cuda_device_{nullptr};
+
+  // Overload that accepts a raw config string for kOrtSessionOptionsResourceCudaPartitioningSettings.
+  // This allows tests to set the config without a budget (e.g., ",") to trigger
+  // accountant creation without an explicit threshold.
+  void LoadAndVerifyPartitioningWithConfig(
+      const std::string& model_bytes,
+      const std::string& partitioning_config,
+      const std::function<void(const Graph&)>& verifier) {
+    OrtSessionOptions ort_options;
+
+    const OrtEpDevice* device_ptr = static_cast<const OrtEpDevice*>(cuda_device_);
+    auto ep_devices_span = gsl::make_span(&device_ptr, 1);
+
+    std::unique_ptr<IExecutionProviderFactory> factory;
+    ASSERT_STATUS_OK(CreateIExecutionProviderFactoryForEpDevices(
+        GetOrtEnv().GetEnvironment(), ep_devices_span, factory));
+
+    ort_options.provider_factories.push_back(std::move(factory));
+
+    if (!partitioning_config.empty()) {
+      ASSERT_STATUS_OK(ort_options.value.config_options.AddConfigEntry(
+          kOrtSessionOptionsResourceCudaPartitioningSettings, partitioning_config.c_str()));
+    }
+
+    InferenceSessionWrapper session(ort_options.value, GetOrtEnv().GetEnvironment());
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+    OrtStatus* status = InitializeSession(&ort_options, session);
+    ASSERT_STATUS_OK(ToStatusAndRelease(status));
+
+    verifier(session.GetGraph());
+  }
 };
 
 // With no resource budget, all CUDA-supported nodes should be assigned to the plugin EP.
@@ -343,6 +375,70 @@ TEST_F(CudaPluginPartitioningTest, TinyBudget_NodesOffloadedToCpu) {
   EXPECT_LT(constrained_plugin_count, baseline_plugin_count)
       << "A 10 KB budget should reduce plugin EP node count from the no-budget baseline ("
       << baseline_plugin_count << " nodes)";
+}
+
+// When the partitioning config specifies no explicit memory limit but does trigger
+// accountant creation (e.g., ","), the plugin EP's GetAvailableResource callback
+// should be invoked to derive the threshold from the device's free memory.
+// This verifies the fix for the missing cudaMemGetInfo fallback in plugin EPs.
+TEST_F(CudaPluginPartitioningTest, NoExplicitLimit_DeviceMemoryUsedAsThreshold) {
+  // Build a model large enough to exercise the budget path meaningfully.
+  // 6 Add nodes, each with a 256-element (1 KB) initializer.
+  const std::string model = BuildAddChainModel(/*num_nodes=*/6, /*weight_elements=*/256);
+
+  // Config ",": empty memory limit (triggers GetAvailableResource), no stats file.
+  // This creates an accountant with no threshold — the host wrapper should
+  // call GetAvailableResource on the plugin EP to get the GPU's free memory.
+  size_t device_threshold_plugin_count = 0;
+  LoadAndVerifyPartitioningWithConfig(model, ",", [&](const Graph& graph) {
+    for (const auto& node : graph.Nodes()) {
+      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+        ++device_threshold_plugin_count;
+      }
+    }
+  });
+
+  // With the device's free memory as the threshold (typically many GB),
+  // a 6-node chain with tiny initializers should all fit.
+  // The key verification is that the session initializes successfully —
+  // i.e., the accountant path doesn't crash or skip all nodes.
+  EXPECT_GT(device_threshold_plugin_count, size_t{0})
+      << "With device-derived threshold, at least some nodes should be assigned to the plugin EP";
+}
+
+// When the config triggers accountant creation with no explicit limit, the outcome
+// should match the no-budget baseline for small models (device memory >> model size).
+TEST_F(CudaPluginPartitioningTest, NoExplicitLimit_MatchesNoBudgetBaseline) {
+  const std::string model = BuildAddChainModel(/*num_nodes=*/6, /*weight_elements=*/256);
+
+  // Baseline: no partitioning config at all (no accountant created).
+  size_t no_budget_count = 0;
+  LoadAndVerifyPartitioning(model, /*budget_kb=*/0, [&](const Graph& graph) {
+    for (const auto& node : graph.Nodes()) {
+      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+        ++no_budget_count;
+      }
+    }
+  });
+  ASSERT_GT(no_budget_count, size_t{0});
+
+  // Device-derived threshold: config "," creates an accountant, GetAvailableResource
+  // returns the device's free memory which should be far larger than the model.
+  size_t device_threshold_count = 0;
+  LoadAndVerifyPartitioningWithConfig(model, ",", [&](const Graph& graph) {
+    for (const auto& node : graph.Nodes()) {
+      if (node.GetExecutionProviderType() == kCudaPluginExecutionProvider) {
+        ++device_threshold_count;
+      }
+    }
+  });
+
+  // For a tiny model on a GPU with gigabytes of free memory, the device-derived
+  // threshold should accept the same nodes as the no-budget path.
+  EXPECT_EQ(device_threshold_count, no_budget_count)
+      << "Device-derived threshold should accept all nodes for a small model "
+      << "(device_threshold=" << device_threshold_count
+      << ", no_budget=" << no_budget_count << ")";
 }
 
 // ---------------------------------------------------------------------------
