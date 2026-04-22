@@ -1,5 +1,10 @@
 trigger: none
 
+# Packaging pipeline for the WebGPU EP plugin. This pipeline only builds
+# and publishes artifacts. Tests that consume those artifacts live in
+# plugin-webgpu-test-pipeline.yml, which is resource-triggered on
+# successful runs of this pipeline.
+
 resources:
   repositories:
   - repository: 1esPipelines

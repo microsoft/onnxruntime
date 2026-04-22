@@ -1,0 +1,53 @@
+trigger: none
+
+# This pipeline runs tests against artifacts produced by the WebGPU
+# plugin packaging pipeline. It is resource-triggered on successful
+# packaging runs and can also be queued manually against any prior
+# packaging run.
+#
+# Split from the packaging pipeline so the test side (Dockerfile, Vulkan
+# configuration, test scripts) can be iterated on without rebuilding
+# Dawn/WebGPU from source.
+
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'WebGPU Plugin EP Packaging Pipeline'
+    trigger:
+      branches:
+        include:
+        - main
+
+parameters:
+- name: test_windows_x64
+  displayName: 'Test Windows x64'
+  type: boolean
+  default: true
+
+# Note: Windows ARM64 is not tested here because the test runs on an x64
+# build agent, which cannot execute ARM64 binaries.
+
+- name: test_linux_x64
+  displayName: 'Test Linux x64'
+  type: boolean
+  default: true
+
+- name: test_macos_arm64
+  displayName: 'Test macOS ARM64'
+  type: boolean
+  default: true
+
+stages:
+  # Windows x64
+  - ${{ if eq(parameters.test_windows_x64, true) }}:
+    - template: stages/plugin-win-webgpu-test-stage.yml
+      parameters:
+        arch: 'x64'
+
+  # Linux x64
+  - ${{ if eq(parameters.test_linux_x64, true) }}:
+    - template: stages/plugin-linux-webgpu-test-stage.yml
+
+  # macOS ARM64
+  - ${{ if eq(parameters.test_macos_arm64, true) }}:
+    - template: stages/plugin-mac-webgpu-test-stage.yml
