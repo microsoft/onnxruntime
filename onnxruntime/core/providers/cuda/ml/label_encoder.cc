@@ -16,6 +16,30 @@
 namespace onnxruntime {
 namespace cuda {
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+#ifdef SHARED_PROVIDER
+using TensorProtoHolder = decltype(ONNX_NAMESPACE::TensorProto::Create());
+
+static TensorProtoHolder CreateTensorProtoHolder() {
+  return ONNX_NAMESPACE::TensorProto::Create();
+}
+
+static ONNX_NAMESPACE::TensorProto* GetTensorProto(TensorProtoHolder& holder) {
+  return holder.get();
+}
+#else
+using TensorProtoHolder = ONNX_NAMESPACE::TensorProto;
+
+static TensorProtoHolder CreateTensorProtoHolder() {
+  return {};
+}
+
+static ONNX_NAMESPACE::TensorProto* GetTensorProto(TensorProtoHolder& holder) {
+  return &holder;
+}
+#endif
+#endif
+
 // Helper to get attribute as vector from either list attributes or tensor attributes (for opset 4+).
 template <typename T>
 static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::string& name,
@@ -44,13 +68,8 @@ static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::strin
   return out;
 #else
   // Non-plugin shared library EP: use TensorProto to read tensor attributes.
-#ifndef SHARED_PROVIDER
-  ONNX_NAMESPACE::TensorProto t_proto;
-  auto* attr_tensor_proto = &t_proto;
-#else
-  auto t_proto = ONNX_NAMESPACE::TensorProto::Create();
-  auto* attr_tensor_proto = t_proto.get();
-#endif
+  auto attr_tensor_holder = CreateTensorProtoHolder();
+  auto* attr_tensor_proto = GetTensorProto(attr_tensor_holder);
   auto result = info.GetAttr(tensor_name, attr_tensor_proto);
   if (name.empty()) {
     ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", tensor_name);
@@ -85,13 +104,8 @@ static T GetDefaultValue(const OpKernelInfo& info, const std::string& attr_name,
   }
 #else
   // Non-plugin shared library EP: use TensorProto to read default_tensor.
-#ifndef SHARED_PROVIDER
-  ONNX_NAMESPACE::TensorProto d_proto;
-  auto* attr_tensor_proto = &d_proto;
-#else
-  auto d_proto = ONNX_NAMESPACE::TensorProto::Create();
-  auto* attr_tensor_proto = d_proto.get();
-#endif
+  auto attr_tensor_holder = CreateTensorProtoHolder();
+  auto* attr_tensor_proto = GetTensorProto(attr_tensor_holder);
   auto result = info.GetAttr("default_tensor", attr_tensor_proto);
   if (result.IsOK() && utils::HasDataType(*attr_tensor_proto)) {
     T default_value;
