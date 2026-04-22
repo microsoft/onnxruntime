@@ -114,14 +114,10 @@ TEST(MLOpTest, LinearRegressorUndersizedCoefficients) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "LinearRegressor: coefficients length (1) must equal targets (1) * features (2)");
 }
 
-TEST(MLOpTest, LinearRegressorOversizedTargets) {
-  if (std::numeric_limits<int64_t>::max() <= std::numeric_limits<std::ptrdiff_t>::max()) {
-    GTEST_SKIP() << "No int64_t value exceeds ptrdiff_t on this platform.";
-  }
-
+TEST(MLOpTest, LinearRegressorInvalidTargets) {
   OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
 
-  test.AddAttribute("targets", std::numeric_limits<int64_t>::max());
+  test.AddAttribute("targets", static_cast<int64_t>(0));
   test.AddAttribute("coefficients", std::vector<float>{1.f});
   test.AddAttribute("intercepts", std::vector<float>{0.f});
 

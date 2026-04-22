@@ -131,6 +131,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(n_heads - 1, 0), head_stride, "max_head_offset", max_head_offset));
   ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_batch_offset, max_seq_offset, "max_block_offset", max_block_offset));
   ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_block_offset, max_head_offset, "max_block_offset", max_block_offset));
+  // Validate that the largest cache lookup offset fits in ptrdiff_t.
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(max_sequence_length - 1, 0), half_rotary_emb_dim,
                                           "max_cache_offset", max_cache_offset));
   static_cast<void>(max_cache_offset);
@@ -161,6 +162,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       if (position_ids_format != 0) {
         b_s_index = static_cast<std::ptrdiff_t>(position_ids[b_s_index]);
       }
+      // This multiplication is safe because position_ids were range-checked against max_sequence_length
+      // and max_cache_offset validation above proves (max_sequence_length - 1) * half_rotary_emb_dim fits.
       const std::ptrdiff_t cache_offset = b_s_index * half_rotary_emb_dim;
       cos_data = cos_cache + cache_offset;
       sin_data = sin_cache + cache_offset;
