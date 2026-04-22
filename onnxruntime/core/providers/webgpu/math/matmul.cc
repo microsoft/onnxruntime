@@ -168,7 +168,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     return intel::ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
   }
 
-  return ComputeMatMul(&context, Activation(), inputs, output_tensor, false);
+  return ComputeMatMul(&context, Activation(), inputs, output_tensor);
 }
 
 Status ComputeMatMul(ComputeContext* context,
@@ -248,11 +248,14 @@ Status ComputeMatMul(ComputeContext* context,
   // Current Split-K implementation relies on atomic operations, which are not deterministic.
   if (!context->KernelContext().GetUseDeterministicCompute()) {
     const SplitKConfig& split_k_config = context->GetSplitKConfig();
-    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, /*is_gemm*/ false, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
+    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
     if (need_split_k) {
       ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
-      ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
-      ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
+      ORT_ENFORCE(is_vec4, "Split-K MatMul requires vec4 packing.");
+
+      if (has_bias) {
+        ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
+      }
 
       // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
       const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp);

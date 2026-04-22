@@ -7,9 +7,11 @@
 // halfToFloat). Plugin builds skip SHARED_PROVIDER entirely, so these thin
 // wrappers ensure the migrated kernel code compiles and links.
 
+#include "provider_api_shims.h"
+
 #include <string>
 #include "core/common/float16.h"
-#include "core/platform/env_var.h"
+#include "core/platform/env_var.h"  // detail::GetEnvironmentVar
 
 namespace onnxruntime {
 

@@ -176,6 +176,11 @@ class IAllocator {
     *stats = {};
   }
 
+  // Returns a pointer to this allocator as an IArena if it is one, nullptr otherwise.
+  // Used by SafeArenaCast to avoid dependency on RTTI.
+  virtual class IArena* AsArena() { return nullptr; }
+  virtual const class IArena* AsArena() const { return nullptr; }
+
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
   }
@@ -364,6 +369,8 @@ class IArena : public IAllocator {
   virtual Status Shrink() = 0;
   // Only implemented when IsStreamAware() returns true
   virtual void ReleaseStreamBuffers(Stream* /*stream*/) {}
+  IArena* AsArena() override { return this; }
+  const IArena* AsArena() const override { return this; }
   static IArena* SafeArenaCast(IAllocator* allocator);
 };
 
