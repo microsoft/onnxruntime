@@ -650,7 +650,8 @@ TEST(NchwcOptimizerTests, PreExistingFusedConvWithNchwcSumInput) {
     auto* sum_arg = helper.MakeIntermediate();
     auto* output_arg = helper.MakeOutput();
 
-    helper.AddConvNode(input_arg, sum_arg, {32, 32, 3, 3});
+    auto& sum_node = helper.AddConvNode(input_arg, sum_arg, {32, 32, 3, 3});
+    sum_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
     auto* weights_arg = helper.MakeInitializer({32, 32, 3, 3});
     auto* bias_arg = helper.MakeInitializer({32});
