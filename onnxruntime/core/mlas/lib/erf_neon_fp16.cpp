@@ -34,7 +34,7 @@ float_to_fp16(float f)
 {
     __fp16 tmp = (__fp16)f;
     uint16_t h;
-    memcpy(&h, &tmp, sizeof(h));
+    std::memcpy(&h, &tmp, sizeof(h));
     return h;
 }
 
