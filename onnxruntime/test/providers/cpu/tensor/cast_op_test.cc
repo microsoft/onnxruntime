@@ -2632,7 +2632,8 @@ TEST(CastOpTest, Float8E4M3FNToInt2x4_OddShape) {
 template <typename F4>
 void CastOpTestFloatFloat4(std::vector<int64_t> shape,
                            std::vector<float> float_data,
-                           bool is_fp4_input = false) {
+                           bool is_fp4_input = false,
+                           int opset = 23) {
   int num_pairs = static_cast<int>(float_data.size()) / 2;
   int num_fp4_elements = static_cast<int>((float_data.size() + 1) / 2);
   bool is_odd_count = (float_data.size() % 2 != 0);
@@ -2650,7 +2651,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
 
   if (!is_fp4_input) {
     TestCastOp<float, F4>(gsl::make_span(float_data), gsl::make_span(fp4_data), shape,
-                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
+                          OpTester::ExpectResult::kExpectSuccess, "", opset, Saturate::None, true);
 
   } else {
     std::vector<float> casted_back_float;
@@ -2665,7 +2666,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
     }
 
     TestCastOp<F4, float>(gsl::make_span(fp4_data), gsl::make_span(casted_back_float), shape,
-                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
+                          OpTester::ExpectResult::kExpectSuccess, "", opset, Saturate::None, true);
   }
 }
 
@@ -2729,7 +2730,184 @@ TEST(CastOpTest, Float4E2M1x2ToFloat) {
   }
 }
 
+// Opset 25 tests for Float4 types on CUDA
+TEST(CastOpTest, FloatToFloat4E2M1x2_Opset25) {
+  CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
+                                      {std::numeric_limits<float>::infinity(),
+                                       -std::numeric_limits<float>::infinity(),
+                                       7.f, -7.f,
+                                       0.5f, -0.5f,
+                                       std::numeric_limits<float>::quiet_NaN(),
+                                       -std::numeric_limits<float>::quiet_NaN()},
+                                      false, 25);
+
+  CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+                                      {0.256f, 0.987f, 43.8f},
+                                      false, 25);
+}
+
+TEST(CastOpTest, Float4E2M1x2ToFloat_Opset25) {
+  CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
+                                      {0.5f, 7.34f,
+                                       1.f, 1.5f,
+                                       2.f, 3.f,
+                                       4.f, 6.f},
+                                      true, 25);
+
+  CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+                                      {0.256f, 0.987f, 43.8f},
+                                      true, 25);
+}
+
 #endif
+
+// Opset 25 tests for standard types on CUDA.
+// Verifies CUDA Cast kernel registration at opset 25 works for common type conversions.
+#if defined(USE_CUDA)
+
+TEST(CastOpTest, StandardTypes_Opset25_Cuda) {
+  const std::vector<int64_t> shape{2, 3};
+
+  // float -> double
+  {
+    const std::vector<float> input = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    const std::vector<double> expected = {1.0, 2.5, -3.0, 0.0, 100.0, -0.5};
+    TestCastOp<float, double>(gsl::make_span(input), gsl::make_span(expected), shape,
+                              OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // double -> float
+  {
+    const std::vector<double> input = {1.0, 2.5, -3.0, 0.0, 100.0, -0.5};
+    const std::vector<float> expected = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    TestCastOp<double, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                              OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // float -> int32_t
+  {
+    const std::vector<float> input = {1.0f, 2.9f, -3.0f, 0.0f, 100.0f, -0.5f};
+    const std::vector<int32_t> expected = {1, 2, -3, 0, 100, 0};
+    TestCastOp<float, int32_t>(gsl::make_span(input), gsl::make_span(expected), shape,
+                               OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // int32_t -> float
+  {
+    const std::vector<int32_t> input = {1, 2, -3, 0, 100, -7};
+    const std::vector<float> expected = {1.0f, 2.0f, -3.0f, 0.0f, 100.0f, -7.0f};
+    TestCastOp<int32_t, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                               OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // float -> MLFloat16
+  if (HasCudaEnvironment(530)) {
+    const std::vector<float> input = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    const std::vector<MLFloat16> expected = CastedValues<float, MLFloat16>(gsl::make_span(input));
+    TestCastOp<float, MLFloat16>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // MLFloat16 -> float
+  if (HasCudaEnvironment(530)) {
+    const std::vector<MLFloat16> input = CastedValues<float, MLFloat16>(
+        gsl::make_span(std::vector<float>{1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f}));
+    const std::vector<float> expected = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    TestCastOp<MLFloat16, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // BFloat16 -> float
+  if (HasCudaEnvironment(800)) {
+    const std::vector<BFloat16> input = CastedValues<float, BFloat16>(
+        gsl::make_span(std::vector<float>{1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f}));
+    const std::vector<float> expected = CastedValues<BFloat16, float>(gsl::make_span(input));
+    TestCastOp<BFloat16, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // bool -> float
+  {
+    const bool input[] = {true, false, true, true, false, false};
+    const gsl::span<const bool> input_span(input);
+    const std::vector<float> expected = {1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f};
+    TestCastOp<bool, float>(input_span, gsl::make_span(expected), shape,
+                            OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+TEST(CastOpTest, Float8_Opset25_Cuda) {
+  constexpr int min_cuda_architecture = 11080;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    return;
+  }
+
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<float> float_input = {NAN, -1.f, 0.0391877927f, 0.296140194f,
+                                          -0.120196559f, 5.0f,
+                                          -std::numeric_limits<float>::infinity(),
+                                          std::numeric_limits<float>::infinity()};
+
+  // Float8E4M3FN: float -> Float8E4M3FN at opset 25
+  {
+    std::vector<Float8E4M3FN> output;
+    output.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      output.emplace_back(Float8E4M3FN(float_input[i], true));
+    }
+    TestCastOp<float, Float8E4M3FN>(gsl::make_span(float_input), gsl::make_span(output), shape,
+                                    OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::True, /*cuda_only=*/true);
+  }
+
+  // Float8E5M2: float -> Float8E5M2 at opset 25
+  {
+    std::vector<Float8E5M2> output;
+    output.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      output.emplace_back(Float8E5M2(float_input[i], true));
+    }
+    TestCastOp<float, Float8E5M2>(gsl::make_span(float_input), gsl::make_span(output), shape,
+                                  OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::True, /*cuda_only=*/true);
+  }
+
+  // Float8E4M3FN -> float at opset 25
+  {
+    std::vector<Float8E4M3FN> input;
+    input.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      input.emplace_back(Float8E4M3FN(float_input[i], true));
+    }
+    std::vector<float> expected;
+    expected.reserve(input.size());
+    for (const auto& v : input) {
+      expected.push_back(v.ToFloat());
+    }
+    TestCastOp<Float8E4M3FN, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                    OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // Float8E5M2 -> float at opset 25
+  {
+    std::vector<Float8E5M2> input;
+    input.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      input.emplace_back(Float8E5M2(float_input[i], true));
+    }
+    std::vector<float> expected;
+    expected.reserve(input.size());
+    for (const auto& v : input) {
+      expected.push_back(v.ToFloat());
+    }
+    TestCastOp<Float8E5M2, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                  OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+}
+
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+#endif  // defined(USE_CUDA)
 
 }  // namespace test
 }  // namespace onnxruntime
