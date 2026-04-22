@@ -2912,31 +2912,44 @@ TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
     }
   };
 
-  ONNX_NAMESPACE::GraphProto output_graph_proto;
-  ASSERT_STATUS_OK(graph.ToGraphProtoWithCustomInitializerHandling(InlineAllHandler::Func, nullptr, output_graph_proto));
+  // Use Model::ToGraphProtoWithCustomInitializerHandling which is the real code path that triggers the bug.
+  // It first copies model_proto_ (which contains the stale _ORT_MEM_ADDR_ initializers from
+  // ConvertInitializersIntoOrtValues) into the output ModelProto, then calls the Graph-level function
+  // on the pre-populated graph. Without the fix, the stale initializers remain alongside the newly
+  // added ones, producing duplicates with _ORT_MEM_ADDR_ markers.
+  ONNX_NAMESPACE::ModelProto output_model_proto;
+  ASSERT_STATUS_OK(model->ToGraphProtoWithCustomInitializerHandling(InlineAllHandler::Func, nullptr,
+                                                                    output_model_proto));
 
-  // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers.
-  ASSERT_EQ(output_graph_proto.initializer_size(), 2) << "Expected both initializers in output";
+  const auto& output_graph = output_model_proto.graph();
 
-  for (const auto& init : output_graph_proto.initializer()) {
+  // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers,
+  // and there should be no duplicates.
+  ASSERT_EQ(output_graph.initializer_size(), 2) << "Expected both initializers in output without duplication";
+
+  size_t large_init_count = 0;
+  size_t small_init_count = 0;
+  for (const auto& init : output_graph.initializer()) {
+    if (init.name() == "large_init") {
+      ++large_init_count;
+    } else if (init.name() == "small_init") {
+      ++small_init_count;
+    }
     EXPECT_FALSE(utils::HasExternalData(init))
         << "Initializer '" << init.name() << "' should be inline, not external (no _ORT_MEM_ADDR_)";
     EXPECT_TRUE(init.has_raw_data() || init.int64_data_size() > 0)
         << "Initializer '" << init.name() << "' should have data";
   }
+  EXPECT_EQ(large_init_count, 1u) << "large_init should appear exactly once";
+  EXPECT_EQ(small_init_count, 1u) << "small_init should appear exactly once";
 
   // Verify the large initializer data was correctly serialized.
-  auto it = std::find_if(output_graph_proto.initializer().begin(), output_graph_proto.initializer().end(),
+  auto it = std::find_if(output_graph.initializer().begin(), output_graph.initializer().end(),
                          [](const TensorProto& tp) { return tp.name() == "large_init"; });
-  ASSERT_NE(it, output_graph_proto.initializer().end());
+  ASSERT_NE(it, output_graph.initializer().end());
   // The data should be in raw_data (SetRawDataInTensorProto writes to raw_data).
   ASSERT_GT(it->raw_data().size(), 0u) << "large_init should have raw_data after inlining";
   ASSERT_EQ(it->raw_data().size(), 32 * sizeof(int64_t));
-
-  // Verify small initializer.
-  auto it2 = std::find_if(output_graph_proto.initializer().begin(), output_graph_proto.initializer().end(),
-                          [](const TensorProto& tp) { return tp.name() == "small_init"; });
-  ASSERT_NE(it2, output_graph_proto.initializer().end());
 }
 
 }  // namespace test
