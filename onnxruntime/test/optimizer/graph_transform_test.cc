@@ -5099,33 +5099,29 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
+    Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
-    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
-    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
-    return Status::OK();
-  };
-
-  auto post_graph_checker = [get_op_count](Graph& graph) {
-    const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
-    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
+    ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
+    ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
+    ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
 
     for (const auto& node : graph.Nodes()) {
       if (node.OpType() == "SpaceToDepth") {
         const auto* blocksize_attr = graph_utils::GetNodeAttribute(node, "blocksize");
-        TEST_RETURN_IF_NOT(blocksize_attr != nullptr && utils::HasInt(*blocksize_attr) && blocksize_attr->i() == 2);
+        ASSERT_TRUE(blocksize_attr != nullptr && utils::HasInt(*blocksize_attr) && blocksize_attr->i() == 2);
       }
     }
-
-    return Status::OK();
   };
 
-  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNodesTest) {
@@ -5178,26 +5174,22 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNode
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
+    Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
-    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
-    TEST_RETURN_IF_NOT(op_to_count.at("Constant") == 7);
-    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
-    return Status::OK();
+    ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
+    ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
+    ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
   };
 
-  auto post_graph_checker = [get_op_count](Graph& graph) {
-    const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
-    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
-    return Status::OK();
-  };
-
-  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBlockOrderTest) {
@@ -5234,27 +5226,23 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBloc
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
+    Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
-    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
-    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
-    TEST_RETURN_IF(get_op_count(op_to_count, "Gather") != 0);
-    return Status::OK();
+    ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
+    ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
+    ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
+    ASSERT_EQ(get_op_count(op_to_count, "Gather"), 1);
   };
 
-  auto post_graph_checker = [get_op_count](Graph& graph) {
-    const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
-    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "Gather") == 1);
-    return Status::OK();
-  };
-
-  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForDynamicChannelPermutedBlockOrderTest) {
@@ -6180,6 +6168,14 @@ static Status CheckMobileClipAttentionFusedGraphOnProvider(Graph& graph, const c
   return Status::OK();
 }
 
+static void CheckMobileClipAttentionFusedSession(InferenceSessionWrapper& session) {
+  ASSERT_STATUS_OK(CheckMobileClipAttentionFusedGraph(session.GetGraph()));
+}
+
+static void CheckMobileClipAttentionFusedCudaSession(InferenceSessionWrapper& session) {
+  ASSERT_STATUS_OK(CheckMobileClipAttentionFusedGraphOnProvider(session.GetGraph(), kCudaExecutionProvider));
+}
+
 static Status CheckMobileClipAttentionUnfusedProjectionGemmGraph(Graph& graph) {
   auto op_to_count = CountOpsInGraph(graph);
   TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 0);
@@ -6230,8 +6226,14 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
   };
 
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>());
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
@@ -6239,52 +6241,60 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest)
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
   };
 
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>());
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCudaEpTest) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
   };
 
-  auto pre_graph_checker = [](Graph& graph) {
-    for (Node& node : graph.Nodes()) {
-      node.SetExecutionProviderType(kCudaExecutionProvider);
-    }
-
-    return Status::OK();
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
-      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedCudaSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+                    {},
+                    {},
+                    std::move(cuda_ep));
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmCudaEpTest) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
   };
 
-  auto pre_graph_checker = [](Graph& graph) {
-    for (Node& node : graph.Nodes()) {
-      node.SetExecutionProviderType(kCudaExecutionProvider);
-    }
-
-    return Status::OK();
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
-      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedCudaSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+                    {},
+                    {},
+                    std::move(cuda_ep));
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaInvalidQkvWeightShapeTest) {
