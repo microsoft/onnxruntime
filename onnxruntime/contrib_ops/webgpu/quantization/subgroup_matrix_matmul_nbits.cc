@@ -58,22 +58,25 @@ struct SupportedSubgroupMatrixConfig {
 };
 
 static const SupportedSubgroupMatrixConfig supported_subgroup_matrix_configs[] = {
-    // 16x16x16 config with 128x128 tiles (NVIDIA Blackwell, subgroup size 32) - highest priority
+    // 16x16x16 config with 128x128 tiles (NVIDIA Blackwell, subgroup size 32)
     {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 16, 16, 16, 32, 32, true},
-    // 8x16x16 configs
     // 8x16x16 config (Intel Xe2/Xe3, subgroup size 16-32)
     {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 16, 32, true},
-    // 8x16x16 config (subgroup size 32)
-    {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 16, 16, 32, 32, true},
     // 8x8x8 config (Apple M-series, etc.)
     {wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::F16, 8, 8, 8, 32, 32, false},
+    {wgpu::SubgroupMatrixComponentType::F32, wgpu::SubgroupMatrixComponentType::F32, 8, 8, 8, 32, 32, false},
 };
 
-bool IsSubgroupMatrixConfigSupported(onnxruntime::webgpu::ComputeContext& context, int32_t& config_index) {
+bool IsSubgroupMatrixConfigSupported(onnxruntime::webgpu::ComputeContext& context, bool is_fp16, int32_t& config_index) {
   const wgpu::AdapterInfo& adapter_info = context.AdapterInfo();
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& subgroup_matrix_configs = context.SubgroupMatrixConfigs();
   int32_t index = 0;
   for (const auto& supported_config : supported_subgroup_matrix_configs) {
+    // F16 configs require FP16 output; skip them when output is F32.
+    if (supported_config.componentType == wgpu::SubgroupMatrixComponentType::F16 && !is_fp16) {
+      index++;
+      continue;
+    }
     for (size_t i = 0; i < subgroup_matrix_configs.configCount; i++) {
       const auto& device_config = subgroup_matrix_configs.configs[i];
       if (device_config.componentType == supported_config.componentType &&
@@ -81,8 +84,8 @@ bool IsSubgroupMatrixConfigSupported(onnxruntime::webgpu::ComputeContext& contex
           device_config.M == supported_config.M &&
           device_config.N == supported_config.N &&
           device_config.K == supported_config.K &&
-          adapter_info.subgroupMinSize >= supported_config.subgroupMinSize &&
-          adapter_info.subgroupMaxSize >= supported_config.subgroupMaxSize) {
+          adapter_info.subgroupMinSize == supported_config.subgroupMinSize &&
+          adapter_info.subgroupMaxSize == supported_config.subgroupMaxSize) {
         config_index = index;
         return true;
       }
@@ -322,12 +325,14 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
   bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   if (has_subgroup_matrix) {
     // Check if the adapter reports a subgroup matrix config we support.
-    has_subgroup_matrix = IsSubgroupMatrixConfigSupported(context, config_index);
+    has_subgroup_matrix = IsSubgroupMatrixConfigSupported(context, is_fp16, config_index);
     if (has_subgroup_matrix) {
-      const auto& config = supported_subgroup_matrix_configs[config_index];
-      // F16 component type requires FP16 output and accuracy level 4 (FP16 precision).
-      if (config.componentType == wgpu::SubgroupMatrixComponentType::F16) {
-        has_subgroup_matrix = is_fp16 && accuracy_level == 4;
+      if (context.AdapterInfo().vendor == std::string_view{"apple"}) {
+        // For now SubgroupMatrixMatMulNBits is only supported for accuracy level 4, because with Fp16 there are
+        // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
+        // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
+        // FP32 is around 7s.
+        has_subgroup_matrix = accuracy_level == 4;
       }
     }
   }
