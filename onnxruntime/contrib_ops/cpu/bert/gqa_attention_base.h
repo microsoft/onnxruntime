@@ -206,9 +206,9 @@ class GQAAttentionBase {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
-        const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
+        const size_t total_seqlen = SafeInt<size_t>(seqlens_k[batch_index]) + 1;
         const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
-        const size_t past_chunk_length = past_seqlen * head_size;
+        const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
         U* output = attention_probs + output_offset;
@@ -270,7 +270,7 @@ class GQAAttentionBase {
                    static_cast<int>(present_buffer_sequence_length),
                    MLFloat16(alpha).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
         } else {
-          size_t bytes = head_size * (sequence_length + total_seqlen) * sizeof(float);
+          size_t bytes = SafeInt<size_t>(head_size) * (sequence_length + total_seqlen) * sizeof(float);
           auto q_k_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
 
@@ -291,7 +291,7 @@ class GQAAttentionBase {
           if constexpr (!std::is_same_v<U, T>) {
             static_assert(std::is_same_v<U, float> && std::is_same_v<T, MLFloat16>);
 
-            size_t bytes = attention_total_seqlen * sizeof(float);
+            size_t bytes = SafeInt<size_t>(attention_total_seqlen) * sizeof(float);
             attention_bias_thread_fp32 = static_cast<float*>(allocator->Alloc(bytes));
           }
         }
@@ -440,9 +440,9 @@ class GQAAttentionBase {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
-        const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
+        const size_t total_seqlen = SafeInt<size_t>(seqlens_k[batch_index]) + 1;
         const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
-        const size_t past_chunk_length = past_seqlen * head_size;
+        const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const T* v;
         if (packed_qkv) {
@@ -472,7 +472,7 @@ class GQAAttentionBase {
                    v, static_cast<int>(head_size), output_current, static_cast<int>(hidden_size),
                    MLFloat16(1.0f).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
         } else {
-          size_t bytes = head_size * total_seqlen * sizeof(float);
+          size_t bytes = SafeInt<size_t>(head_size) * total_seqlen * sizeof(float);
           auto v_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(v_fp32, BufferDeleter(allocator));
 

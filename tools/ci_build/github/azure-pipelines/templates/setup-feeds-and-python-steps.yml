@@ -78,7 +78,9 @@ steps:
   condition: ne('${{ parameters.architecture }}', 'aarch64')
   inputs:
     versionSpec: ${{ parameters.versionSpec }}
-    ${{ if ne(parameters.architecture, '') }}:
+    ${{ if eq(parameters.architecture, 'x86_64') }}:
+      architecture: 'x64'
+    ${{ elseif ne(parameters.architecture, '') }}:
       architecture: ${{ parameters.architecture }}
 
 - task: PowerShell@2
