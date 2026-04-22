@@ -98,6 +98,15 @@ jobs:
       - name: Enable GPU persistence mode
         run: sudo nvidia-smi -pm 1
 
+      # Verify the GPU is accessible inside Docker before running the full test suite.
+      # If the NVIDIA Container Toolkit fails to expose /dev/nvidia* devices,
+      # tests will fail with "CUDA failure 100" and waste 10+ minutes.
+      - name: Verify GPU access in Docker
+        run: |
+          docker run --rm --gpus all \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            nvidia-smi
+
       # Run docker directly (instead of run-build-script-in-docker action) so we can pass
       # --ipc=host. cuDNN 9.x requires adequate shared memory for handle creation; Docker's
       # default 64 MB /dev/shm causes CUDNN_STATUS_INTERNAL_ERROR when multiple test
