@@ -372,6 +372,15 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
   } else {
     const auto* fbs_raw_data = fbs_tensor.raw_data();
     if (fbs_raw_data) {
+      size_t expected_num_bytes = 0;
+      ORT_RETURN_IF_ERROR(GetSizeInBytesFromFbsTensor(fbs_tensor, expected_num_bytes));
+      const char* tensor_name = initializer.has_name() ? initializer.name().c_str() : "<unnamed>";
+      ORT_RETURN_IF(
+          fbs_raw_data->size() != expected_num_bytes,
+          "Initializer raw data size mismatch for tensor '", tensor_name,
+          "'. Expected ", expected_num_bytes, " bytes but found ", fbs_raw_data->size(),
+          ". Invalid ORT format model.");
+
       if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
         static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
         const void* data_offset = fbs_raw_data->Data();
