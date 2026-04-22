@@ -27,6 +27,7 @@
   - [No OrtEnv for Context Creation](#no-ortenv-for-context-creation)
   - [Partial Match Is Not an Error](#partial-match-is-not-an-error)
   - [NULL Criteria Means "Single-Variant Package"](#null-criteria-means-single-variant-package)
+  - [Policy Criteria Picks One EP Globally, Then Falls Through to Normal Matching](#policy-criteria-picks-one-ep-globally-then-falls-through-to-normal-matching)
   - [Per-File EP Compatibility List](#per-file-ep-compatibility-list)
   - [`ep: null` for Neutral/CPU Files](#ep-null-for-neutralcpu-files)
   - [Variant Score Is the File-Score Average](#variant-score-is-the-file-score-average)
@@ -41,6 +42,7 @@
   - [4. Shared Weights / External Data Files](#4-shared-weights--external-data-files)
   - [5. Cross-Component Consistency](#5-cross-component-consistency)
   - [6. JIT Compilation Caching](#6-jit-compilation-caching)
+  - [7. Final Shape of `OrtModelPackageSelectionCriteria`](#7-final-shape-of-ortmodelpackageselectioncriteria)
 - [Appendix A: ORT-GenAI Integration](#appendix-a-ort-genai-integration)
   - [GenAI Session Creation Flow](#genai-session-creation-flow)
   - [What Changes in GenAI](#what-changes-in-genai)
@@ -79,10 +81,28 @@ Real-world models require:
 ```c
 // EP selection criteria for variant filtering.
 // Passed at context creation to filter variants across all components.
+//
+// Three modes, mutually exclusive (in order of precedence):
+//   1. Explicit EP: ep_name is set — match variants against this EP.
+//   2. Policy:      ep_name is NULL and ep_policy is set (or a delegate is provided) —
+//                   ORT consults the policy against available OrtEpDevices and walks
+//                   the resulting ordered EP list (see Variant Selection Algorithm).
+//   3. Single:      everything NULL — valid only if every component has exactly one
+//                   variant; that variant is selected regardless of its declared EPs.
+//
+// NOTE: The exact shape of this struct is still under discussion with the ORT team.
+//       The current form is a placeholder covering the three modes above.
 struct OrtModelPackageSelectionCriteria {
-    const char* ep_name;         // e.g., "QNNExecutionProvider", NULL = CPU/no preference
-    const char* device_type;     // e.g., "npu", "gpu", "cpu", NULL = no preference
-    // Future: compatibility_info for device-specific checks
+    // Mode 1: explicit EP.
+    const char* ep_name;                             // e.g., "QNNExecutionProvider"
+    const char* device_type;                         // e.g., "npu", "gpu", "cpu"
+    // Future: compatibility_info for device-specific checks.
+
+    // Mode 2: policy-driven EP selection (consulted iff ep_name == NULL).
+    // Mirrors the existing auto-EP selection surface on OrtSessionOptions.
+    OrtExecutionProviderDevicePolicy ep_policy;      // e.g., PREFER_GPU, MAX_PERFORMANCE
+    EpSelectionDelegate ep_policy_delegate;          // optional custom delegate
+    void* ep_policy_delegate_state;                  // delegate state
 };
 
 // Parse a model package directory and select variants matching the criteria.
@@ -92,13 +112,17 @@ struct OrtModelPackageSelectionCriteria {
 // The context is immutable after creation.
 //
 // Behavior:
-//   - Single-variant components: criteria may be NULL — the only variant is selected.
-//   - Multi-variant components: criteria must have at least ep_name.
+//   - Explicit-EP mode:  standard per-variant matching (see algorithm below).
+//   - Policy mode:       ORT resolves the EP via env's OrtEpDevice registry and the
+//                        supplied policy/delegate; requires env != NULL.
+//   - Single mode:       NULL criteria; requires every component to be single-variant,
+//                        otherwise returns an ambiguity error.
 //   - If a component has no matching variant, it is excluded from the context
 //     (not returned by GetComponentNames). This is not an error — the package
 //     may contain components for EPs the consumer is not using.
 //
 ORT_API_STATUS(CreateModelPackageContext,
+    _In_opt_ const OrtEnv* env,                      // required iff policy mode
     _In_ const ORTCHAR_T* package_path,
     _In_opt_ const OrtModelPackageSelectionCriteria* criteria,
     _Outptr_ OrtModelPackageContext** context);
@@ -106,7 +130,7 @@ ORT_API_STATUS(CreateModelPackageContext,
 ORT_API(void, ReleaseModelPackageContext, _Frees_ptr_ OrtModelPackageContext* context);
 ```
 
-Context creation is pure parsing — read manifest, read metadata, match variants. It does not need `OrtEnv` because no runtime state (EP registry, logging, allocators) is involved. `OrtEnv` is only needed at session creation time.
+Context creation is almost pure parsing — read manifest, read metadata, match variants. The explicit-EP and single modes don't need `OrtEnv` because no runtime state is consulted. The policy mode is the one exception: it needs `OrtEnv` to enumerate registered `OrtEpDevice`s so the policy/delegate can rank them. Even so, context creation never instantiates EP factories or creates sessions — that's still deferred to `CreateSession`.
 
 ### 2. Query APIs
 
@@ -449,13 +473,13 @@ A matching entry's score is computed from:
 
 | Criteria | Behavior |
 |---|---|
-| NULL | "I don't know or care about the EP." Each component is resolved by count: if the component has exactly one variant, that variant is selected regardless of its EP requirements. If the component has more than one variant, context creation fails with an ambiguity error — the consumer must supply `ep_name` to disambiguate. Intended for cases like the legacy flat ORT-GenAI directory where the EP is already implied by the on-disk contents. |
-| `ep_name` = "CPUExecutionProvider" | Variants where every file has either a `CPUExecutionProvider` entry or a null entry are candidates. |
-| `ep_name` = any other EP | Variants where every file has either a matching entry or a null entry are candidates. |
+| Explicit `ep_name` set | Standard per-variant matching against that EP (see rules above). |
+| Policy set, `ep_name` NULL | ORT consults the policy/delegate against the `OrtEnv`'s `OrtEpDevice` registry to produce an ordered list of candidate EPs, then runs the two-pass walk described in *Policy-Based Selection* below. |
+| Everything NULL | "I don't know or care about the EP." Each component is resolved by count: if the component has exactly one variant, that variant is selected regardless of its EP requirements. If the component has more than one variant, context creation fails with an ambiguity error — the consumer must supply `ep_name` or a policy. Intended for cases like the legacy flat ORT-GenAI directory where the EP is already implied by the on-disk contents. |
 
 Note: `ep: null` entries in a file's `ep_compatibility` list (CPU-resident files in a mixed variant) are independent of NULL *criteria*. The former is a per-file declaration in metadata; the latter is a per-call statement from the consumer.
 
-**Worked example** — package with three variants (`cpu`, `gpu`, `qnn-npu`) from the schema above:
+**Worked example (explicit `ep_name`)** — package with three variants (`cpu`, `gpu`, `qnn-npu`) from the schema above:
 
 - Criteria `{ ep_name: "CUDAExecutionProvider" }`:
   - `cpu`: `decoder` file's `ep_compatibility` lists only CPU (no null entry) → rejected.
@@ -470,10 +494,44 @@ Note: `ep: null` entries in a file's `ep_compatibility` list (CPU-resident files
   - `qnn-npu`: `embeddings` null (0), `context` QNN (1), `iterator` QNN (1), `lm_head` null (0). Variant score = 0.5. ✅
   - `cpu`, `gpu`: rejected.
   - Winner: `qnn-npu`. Selected EP per file: `null` (CPU), QNN, QNN, `null` (CPU). The null-EP files still contribute their own session options to their CPU sessions.
-- Criteria NULL:
-  - Each component is resolved by variant count, not by scoring.
-  - If a component has a single variant, it is selected regardless of the EPs declared in its files (this is the "flat directory" case — the consumer trusts what's on disk).
-  - If any component has more than one variant, `CreateModelPackageContext` fails with an ambiguity error and the consumer must retry with an `ep_name`.
+
+#### Policy-Based Selection
+
+When the criteria supplies a policy instead of an explicit `ep_name`, ORT resolves the EP at context-creation time and then runs the normal matching algorithm against the resolved EP. The steps:
+
+1. **Consult the policy.** ORT enumerates the `OrtEpDevice`s registered with `env` and invokes the policy (or user-supplied delegate). Output: an ordered list of candidate EPs, highest-preferred first. This mirrors the existing auto-EP selection flow used in `SessionOptionsSetEpSelectionPolicy`.
+2. **Pass 1 — strict walk.** For each EP in policy order:
+   - Attempt to match each component's variants against this EP, but **exclude variants that rely solely on null/neutral entries** (a variant qualifies only if at least one file has a non-null `ep_compatibility` entry for this EP; other files in the variant may still resolve via null entries).
+   - Stop at the first EP where **at least one component has a qualifying variant**. That EP is committed globally.
+3. **Pass 2 — permissive fallback.** If Pass 1 yielded no match across all policy-ranked EPs, walk the list again with null entries allowed as standalone matches. Stop at the first EP that produces a match.
+4. **Commit phase.** Once an EP is chosen, match every component against it using the normal per-variant algorithm (null entries fully allowed). Components with no matching variant are excluded as usual.
+
+**Why two passes?** Consider policy `[TRT, CUDA]` and a package with a CUDA-optimized variant *plus* a neutral-only JIT variant. Without the strict pass, the neutral variant would match TRT (score 0), TRT would win, and the consumer would silently run the generic JIT file on TRT instead of the purpose-built CUDA variant. The strict pass prevents null entries from hijacking the top-ranked EP when a real EP-specific variant exists further down the list.
+
+**"At least one component" criterion.** The walk commits to an EP as soon as one component has a qualifying variant. Other components may end up excluded if they have no matching variant for that EP — same partial-match semantics as the explicit-EP path. The policy's ordering is authoritative; ORT does not re-score across EPs to maximize component coverage. A consumer who wants "best coverage" semantics can supply a custom delegate.
+
+**Worked examples (policy)** — policy resolved to `[CUDAExecutionProvider, WebGpuExecutionProvider, CPUExecutionProvider]` over the three-variant schema above:
+
+- Pass 1 CUDA: `gpu` qualifies (real CUDA entry). CUDA wins. Commit phase selects `gpu`. ✅
+- Pass 1 WebGpu / CPU: not reached.
+
+Over a package with only a QNN variant and a neutral JIT variant:
+
+- Pass 1 CUDA / WebGpu: no qualifying strict matches.
+- Pass 1 CPU: no qualifying strict matches either (the neutral variant has no CPU-specific entry).
+- Pass 2 CUDA: neutral variant's null entry matches → CUDA wins → neutral variant selected.
+
+Over a package with QNN-specific *and* CUDA-specific variants:
+
+- Pass 1 CUDA: CUDA variant qualifies → CUDA wins. The QNN variant is ignored — consistent with the policy's `CUDA > QNN` preference even though both would run.
+
+#### NULL Criteria (No EP, No Policy)
+
+When everything in the criteria is NULL:
+
+- Each component is resolved by variant count, not by scoring.
+- If a component has a single variant, it is selected regardless of the EPs declared in its files (this is the "flat directory" case — the consumer trusts what's on disk).
+- If any component has more than one variant, `CreateModelPackageContext` fails with an ambiguity error and the consumer must retry with an `ep_name` or a policy.
 
 Filtering is at the variant level, not the file level. Once a variant is selected, **all** files in that variant are visible via the query APIs — including files running on CPU via a null entry. The consumer sees the complete set of files needed to run the component.
 
@@ -701,9 +759,19 @@ One exception: when the consumer passes **NULL criteria** and any component has 
 NULL criteria is for consumers that don't know or don't want to specify an EP — for example, a legacy ORT-GenAI flat directory that's been repackaged, where the EP is already implied by what's on disk. In that case, each component is resolved purely by variant count:
 
 - Exactly one variant → selected, regardless of the EPs it declares.
-- More than one variant → ambiguity error at `CreateModelPackageContext`; the consumer must supply an `ep_name`.
+- More than one variant → ambiguity error at `CreateModelPackageContext`; the consumer must supply an `ep_name` or a policy.
 
 This keeps the NULL path predictable (no silent EP guessing) while preserving the single-variant ergonomics needed for the flat-directory migration case. It also means NULL criteria is a *package-level* precondition — if even one component is multi-variant, the consumer can't use NULL and must disambiguate.
+
+### Policy Criteria Picks One EP Globally, Then Falls Through to Normal Matching
+
+When the consumer doesn't know the exact EP but does have a device preference (e.g., `PREFER_GPU`, `MAX_PERFORMANCE`), the criteria carries a policy instead of an `ep_name`. ORT resolves the policy against the registered `OrtEpDevice`s to get an ordered list of candidate EPs, then walks the list in two passes — strict first (only EP-specific matches count), permissive second (null/neutral entries count as matches). The first EP with at least one matching component wins and is committed globally; per-component matching then runs as usual against that single EP.
+
+Two design choices deserve calling out:
+
+- **Policy belongs in the criteria, not the session options.** Session options configure session creation; the package context is created earlier and needs its own EP input. Putting policy on the criteria keeps the two concerns cleanly separated and means `CreateSession` doesn't need to cross-reference anything.
+- **The two-pass strict/permissive walk.** A single-pass walk with null entries always allowed would let a generic JIT variant hijack the top-ranked EP (e.g., policy `[TRT, CUDA]` would match TRT via a neutral variant, ignoring a real CUDA variant further down). The strict pass prevents this: neutral variants only win when nothing EP-specific matches anywhere.
+- **No cross-EP coordination.** Once an EP is chosen, ORT does *not* revisit the decision to maximize component coverage. If component A matches CUDA but component B doesn't, the consumer gets A and loses B — same partial-match semantics as explicit-EP criteria. This keeps the algorithm predictable and sidesteps hard ranking questions ("is three components on QNN better than two on CUDA?"). Consumers who need that logic can supply a custom delegate.
 
 ### Per-File EP Compatibility List
 
@@ -757,8 +825,8 @@ Within Phase 1, the workstreams are designed so that, after a short shared found
 **WS0. Schema types & internal data model**
 - [ ] Internal C++ structs mirroring the metadata schema: `ModelPackage`, `Component`, `Variant`, `FileEntry`, `EpCompatibilityEntry`.
 - [ ] Public opaque handle `OrtModelPackageContext`.
-- [ ] Public `OrtModelPackageSelectionCriteria` struct (including `device_type`).
-- [ ] Error codes and status messages for malformed packages.
+- [ ] Public `OrtModelPackageSelectionCriteria` struct (explicit-EP + device_type fields, policy fields, delegate fields). Final shape pending dev discussion — see [Open Questions](#open-questions).
+- [ ] Error codes and status messages for malformed packages and for NULL-criteria ambiguity.
 - [ ] Headers published so other workstreams can compile against them.
 
 Everyone else depends on WS0. Once its header lands, the remaining workstreams below can proceed in parallel on separate PRs.
@@ -776,13 +844,15 @@ Everyone else depends on WS0. Once its header lands, the remaining workstreams b
 - [ ] Per-file scoring per [Variant Selection Algorithm](#variant-selection-algorithm): EP match, `ep: null` neutral entries, device filter + bonus.
 - [ ] Variant-level rejection when any file has no matching entry and no null fallback.
 - [ ] Variant score = arithmetic mean of file scores.
-- [ ] NULL criteria path (all-null-files variants only).
+- [ ] NULL criteria path (single-variant-per-component requirement; ambiguity error otherwise).
+- [ ] Policy criteria path (two-pass walk: strict first, permissive fallback; commit one EP globally).
 - [ ] Deterministic tie-break (insertion order).
-- [ ] Pure function over WS0 structs — no I/O, no ORT runtime deps.
-- [ ] Unit tests: single-EP variants, multi-EP files, mixed neutral+EP variants, all-rejected case, NULL criteria, ties, device-type filter.
+- [ ] Pure function over WS0 structs — no I/O, no ORT runtime deps (policy EP resolution is injected by WS-C; the algorithm receives an already-ordered EP list).
+- [ ] Unit tests: single-EP variants, multi-EP files, mixed neutral+EP variants, all-rejected case, NULL criteria, policy two-pass (including strict-pass anti-hijack case), ties, device-type filter.
 
 **WS-C. Public C API — context & queries** *(Dev 3)*
-- [ ] `CreateModelPackageContext` (calls WS-A loader + WS-B selector; returns opaque handle).
+- [ ] `CreateModelPackageContext` (calls WS-A loader + WS-B selector; returns opaque handle). Accepts optional `OrtEnv*` (required for policy criteria).
+- [ ] Policy-mode EP resolution: consult `OrtEnv`'s `OrtEpDevice` registry, invoke the policy/delegate, produce the ordered EP list for WS-B.
 - [ ] `ReleaseModelPackageContext`.
 - [ ] `GetComponentNames`, `GetSelectedVariantName`.
 - [ ] `GetFileCount`, `GetFileIdentifiers`, `GetFilePath`.
@@ -790,14 +860,16 @@ Everyone else depends on WS0. Once its header lands, the remaining workstreams b
 - [ ] `GetFileSessionOptions`, `GetFileProviderOptions`.
 - [ ] `GetConsumerMetadata`.
 - [ ] Memory ownership, release semantics, thread-safety notes documented in the headers.
-- [ ] C API smoke tests.
+- [ ] C API smoke tests (explicit EP, policy, NULL criteria paths).
 
 **WS-D. Session creation integration** *(Dev 4)*
 - [ ] `CreateSession` overload taking `OrtModelPackageContext*`, `component_name`, `file_identifier`, optional `OrtSessionOptions*`.
 - [ ] Session options precedence: NULL caller options → ORT builds options from metadata; non-NULL → caller's options used as-is.
-- [ ] ORT-side applier for per-file `session_options` (generic passthrough + dispatch for known setters — see [Appendix B](#appendix-b-session-options-reference)).
+- [ ] ORT-side applier for per-file `session_options` — generic passthrough via `AddConfigEntry`.
+- [ ] Known-setter dispatch for session-option keys that require dedicated setters (e.g., `intra_op_num_threads`, `graph_optimization_level`) — fixed mapping from key name → setter. See [Appendix B](#appendix-b-session-options-reference) and [Open Question #3](#3-known-session-options-setters).
 - [ ] ORT-side applier for per-file `provider_options` — wire `AppendExecutionProvider` for the selected EP.
-- [ ] Integration tests that go from a sample package on disk to a runnable session.
+- [ ] Policy-mode session integration: when the context was created via policy, register the resolved EP on the session automatically so the consumer doesn't have to re-run EP selection.
+- [ ] Integration tests that go from a sample package on disk to a runnable session (explicit-EP and policy paths).
 - [ ] This workstream depends on A/B/C landing; can develop against stubs in parallel.
 
 #### Post-integration (serial, once A–D are merged)
@@ -811,8 +883,9 @@ Everyone else depends on WS0. Once its header lands, the remaining workstreams b
 - [ ] Fixture package: single-file CPU.
 - [ ] Fixture package: multi-EP single-file (CUDA + WebGPU).
 - [ ] Fixture package: multi-file QNN pipeline with CPU-resident files.
+- [ ] Fixture package: neutral-only JIT variant (exercises policy Pass 2 fallback).
 - [ ] Fixture package: no matching variant (negative case).
-- [ ] E2E tests driving the public API across all fixtures.
+- [ ] E2E tests driving the public API across all fixtures, covering explicit-EP, policy, and NULL criteria paths.
 - [ ] Some of this can start in parallel with WS-A/B using hand-written fixtures; the bulk lands after WS-D.
 
 #### Dependency graph (Phase 1)
@@ -906,6 +979,15 @@ When selecting variants for multiple components independently, how do we ensure 
 ### 6. JIT Compilation Caching
 
 Deferred. After compilation, ORT saves artifacts into the package and updates variant metadata.
+
+### 7. Final Shape of `OrtModelPackageSelectionCriteria`
+
+The current struct lumps three mutually exclusive modes (explicit EP, policy, NULL) into one. Ongoing discussion with the ORT team on whether to:
+- Keep a single struct with mode discriminator (status quo, simplest).
+- Split into distinct criteria types + a tagged union.
+- Keep explicit-EP on the struct and move policy to a separate `CreateModelPackageContextWithPolicy` overload that directly takes `OrtExecutionProviderDevicePolicy` / delegate parameters.
+
+The algorithm and semantics are settled; the open question is purely about the C API surface. Track as a WS0/WS-C decision point before those workstreams freeze headers.
 
 ---
 
