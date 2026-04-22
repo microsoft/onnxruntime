@@ -311,9 +311,10 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
         << "const kSplitK = " << split_dim_inner << ";\n"
         << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n";
     if (nullptr != batch_dims) {
-      // With Split-K and batch (in MatMul and Conv2D|MatMul), `logical_global_id.z` encodes both
-      // the batch index and the Split-K index: logical_global_id.z = splits_per_batch * batch_size
-      // We decompose them as:
+      // With Split-K and batch (in MatMul and Conv2D|MatMul), `dispatch_z` is
+      // `splits_per_batch * batch_size`, and `logical_global_id.z` encodes both the
+      // batch index and the Split-K index within that range.
+      // We decompose it as:
       //   split_index = logical_global_id.z % splits_per_batch
       //   batch       = logical_global_id.z / splits_per_batch
       shader.MainFunctionBody()

@@ -643,9 +643,6 @@ TEST(MathOpTest, MatMulBatchedSplitK) {
   test.AddInput<float>("B", B_shape, B_data);
   test.AddOutput<float>("Y", Y_shape, expected);
 
-  // Split-K uses atomics which are non-deterministic, so allow a small tolerance.
-  test.SetOutputRelErr("Y", 1e-3f);
-
   // Exclude providers that don't support this configuration.
   test.ConfigExcludeEps({kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider})
       .RunWithConfig();
