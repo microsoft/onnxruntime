@@ -6639,6 +6639,19 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     }
   }
 
+  // Sanity bound: the slot count must not wildly exceed the number of actual entries.
+  // A legitimate model has max_node_index close to the number of nodes. Allow a reasonable
+  // multiplier to tolerate sparse index ranges, but reject buffers where a single node entry
+  // with a huge index would cause a multi-gigabyte allocation.
+  const size_t total_entries = (fbs_nodes != nullptr ? fbs_nodes->size() : 0U) +
+                               (fbs_node_edges != nullptr ? fbs_node_edges->size() : 0U);
+  constexpr size_t kMinSlotCap = 1024;  // allow small models without penalty
+  const size_t slot_cap = std::max(kMinSlotCap, total_entries * 2U);
+  ORT_RETURN_IF(required_node_slot_count > slot_cap,
+                "Node index ", required_node_slot_count - 1,
+                " is unreasonably large relative to the number of entries (",
+                total_entries, "). Invalid ORT format model.");
+
   ORT_RETURN_IF(fbs_graph.max_node_index() < required_node_slot_count,
                 "Serialized max node index is smaller than the required node slot count. Invalid ORT format model.");
   nodes_.resize(required_node_slot_count);

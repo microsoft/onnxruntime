@@ -174,6 +174,20 @@ TEST(OrtModelTest, RejectsDanglingNodeEdge) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("references missing node"));
 }
 
+TEST(OrtModelTest, RejectsAdversarialLargeNodeIndex) {
+  // A single node with a huge index should be rejected to prevent memory amplification.
+  const uint32_t huge_index = 100'000'000;
+  const auto buffer = BuildOrtModelBuffer([huge_index](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n", "", "", 1, huge_index, "Identity")};
+    return fbs::CreateGraphDirect(builder, nullptr, nullptr, &nodes, huge_index + 1);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("unreasonably large"));
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 // Keep the CompareTypeProtos in case we need debug the difference
 /*

@@ -374,7 +374,8 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
     if (fbs_raw_data) {
       size_t expected_num_bytes = 0;
       ORT_RETURN_IF_ERROR(GetSizeInBytesFromFbsTensor(fbs_tensor, expected_num_bytes));
-      const char* tensor_name = initializer.has_name() ? initializer.name().c_str() : "<unnamed>";
+      const auto* fbs_name = fbs_tensor.name();
+      const char* tensor_name = fbs_name ? fbs_name->c_str() : "<unnamed>";
       ORT_RETURN_IF(
           fbs_raw_data->size() != expected_num_bytes,
           "Initializer raw data size mismatch for tensor '", tensor_name,
