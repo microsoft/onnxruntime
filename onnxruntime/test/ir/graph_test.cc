@@ -2832,6 +2832,33 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   ASSERT_TRUE(second_resolve.IsOK()) << "Second resolve failed: " << second_resolve.ErrorMessage();
 }
 
+// Targeted test for the TensorToTensorProto defense-in-depth: calling with a string tensor
+// and use_tensor_buffer=true must produce a TensorProto with string_data (not external data).
+TEST_F(GraphTest, TensorToTensorProtoStringTensorDefenseInDepth) {
+  const int num_strings = 20;
+  TensorShape shape({num_strings});
+  Tensor string_tensor(DataTypeImpl::GetType<std::string>(), shape, CPUAllocator::DefaultInstance());
+  auto* data = string_tensor.MutableData<std::string>();
+  for (int i = 0; i < num_strings; ++i) {
+    data[i] = "test_value_" + std::to_string(i);
+  }
+
+  // Verify the tensor is large enough to normally trigger the external data path.
+  ASSERT_GT(string_tensor.SizeInBytes(), utils::kSmallTensorExternalDataThreshold);
+
+  // Call with use_tensor_buffer=true — defense-in-depth should still produce string_data.
+  auto tensor_proto = utils::TensorToTensorProto(string_tensor, "string_test", /*use_tensor_buffer=*/true);
+
+  ASSERT_EQ(tensor_proto.string_data_size(), num_strings)
+      << "TensorToTensorProto should populate string_data for string tensors even with use_tensor_buffer=true";
+  ASSERT_FALSE(utils::HasExternalDataInMemory(tensor_proto))
+      << "String tensor should not use external data in memory";
+
+  for (int i = 0; i < num_strings; ++i) {
+    EXPECT_EQ(tensor_proto.string_data(i), "test_value_" + std::to_string(i));
+  }
+}
+
 // Regression test: ConvertInitializersIntoOrtValues must skip string tensors because their
 // raw buffer contains std::string objects (with internal pointers), not serializable data.
 // Without the fix, string initializer data was lost when the TensorProto was replaced with
@@ -2845,7 +2872,8 @@ TEST_F(GraphTest, ConvertInitializersIntoOrtValuesSkipsStringTensors) {
   graph_proto->set_name("test_string_initializer_conversion");
 
   // Create a string initializer with enough elements to exceed kSmallTensorExternalDataThreshold (127 bytes).
-  // sizeof(std::string) is typically 32 bytes, so 5+ elements will exceed 127 bytes.
+  // sizeof(std::string) is typically 32 bytes (MSVC/libstdc++) or 24 bytes (libc++), so 20 elements
+  // will exceed 127 bytes on all major platforms (20 * 24 = 480 > 127).
   const int num_strings = 20;
   auto* string_initializer = graph_proto->add_initializer();
   string_initializer->set_name("string_data");
