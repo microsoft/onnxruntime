@@ -6,6 +6,7 @@
 #include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_q4.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/activation/activations.h"
@@ -94,6 +95,20 @@ bool CanUseMlasQ4Gemm(int64_t expert_weight_bits, int64_t block_size,
   return expected_size > 0;
 }
 
+bool CanUseMlasLutGemm(int64_t expert_weight_bits, int64_t block_size,
+                       int64_t rows, int64_t cols) {
+  if (expert_weight_bits != 2 || block_size <= 0) {
+    return false;
+  }
+
+  if ((cols % block_size) != 0) {
+    return false;
+  }
+
+  return MlasIsLutGemmAvailable(static_cast<size_t>(rows), static_cast<size_t>(cols),
+                                static_cast<size_t>(expert_weight_bits), static_cast<size_t>(block_size));
+}
+
 }  // namespace
 
 namespace onnxruntime {
@@ -175,6 +190,107 @@ Status DirectQ4Gemm(const float* A,
   params.OutputProcessor = nullptr;
 
   MlasQ4GemmBatch(qtype, static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &params, thread_pool);
+  return Status::OK();
+}
+
+template <typename TScale>
+const float* GetFloatScaleData(const TScale* scales_data,
+                               size_t scale_count,
+                               float* converted_scales) {
+  if constexpr (std::is_same_v<TScale, float>) {
+    ORT_UNUSED_PARAMETER(scale_count);
+    ORT_UNUSED_PARAMETER(converted_scales);
+    return scales_data;
+  } else {
+    ORT_ENFORCE(converted_scales != nullptr, "converted_scales buffer must be provided for non-float scale data.");
+    MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(scales_data), converted_scales, scale_count);
+    return converted_scales;
+  }
+}
+
+template <typename TScale>
+bool TryRunLutGemm(const float* activations,
+                   float* output,
+                   const uint8_t* weights_data,
+                   const void* direct_lut_cache_ptr,
+                   const TScale* scales_ptr,
+                   const uint8_t* zp_ptr,
+                   int64_t expert_idx,
+                   int64_t rows,
+                   int64_t cols,
+                   int64_t packed_cols,
+                   int64_t block_size,
+                   int64_t blocks_per_row,
+                   std::byte* thread_lut_packed_buffer,
+                   float* thread_lut_scale_buffer,
+                   int64_t num_expert_tokens,
+                   MLAS_THREADPOOL* thread_pool) {
+  if (direct_lut_cache_ptr == nullptr && weights_data == nullptr) {
+    return false;
+  }
+
+  const void* packed_lut_b = direct_lut_cache_ptr;
+  if (packed_lut_b == nullptr) {
+    ORT_ENFORCE(thread_lut_packed_buffer != nullptr, "Thread-local LUT packed buffer is required.");
+    const size_t scale_count = static_cast<size_t>(rows * blocks_per_row);
+    const float* scales_fp32 = GetFloatScaleData(scales_ptr, scale_count, thread_lut_scale_buffer);
+    MlasInitLutGemmKernelConfig(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
+                                static_cast<size_t>(block_size), zp_ptr != nullptr);
+    MlasLutGemmPack(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
+                    static_cast<size_t>(block_size), zp_ptr != nullptr,
+                    reinterpret_cast<const std::byte*>(weights_data + expert_idx * rows * packed_cols),
+                    scales_fp32, zp_ptr, thread_lut_packed_buffer, thread_pool);
+    packed_lut_b = thread_lut_packed_buffer;
+  }
+
+  MlasLutGemm(activations, static_cast<size_t>(block_size), packed_lut_b, output,
+              static_cast<size_t>(cols), static_cast<size_t>(num_expert_tokens),
+              static_cast<size_t>(rows), zp_ptr != nullptr, thread_pool);
+  return true;
+}
+
+template <typename TScale>
+Status BuildDirectLutPackedBCache(const uint8_t* quantized_data,
+                                  const TScale* scales_data,
+                                  const uint8_t* zero_points,
+                                  int64_t num_experts,
+                                  int64_t rows,
+                                  int64_t cols,
+                                  int64_t block_size,
+                                  int64_t blocks_per_row,
+                                  AllocatorPtr allocator,
+                                  IAllocatorUniquePtr<void>& packed_b) {
+  ORT_RETURN_IF_NOT(CanUseMlasLutGemm(2, block_size, rows, cols),
+                    "LUT GEMM is not supported for rows=", rows, ", cols=", cols, ", block_size=", block_size, ".");
+
+  const bool has_zero_points = (zero_points != nullptr);
+  MlasInitLutGemmKernelConfig(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
+                              static_cast<size_t>(block_size), has_zero_points);
+  const size_t packed_size_per_expert = MlasLutGemmPackedSize(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
+                                                              static_cast<size_t>(block_size), has_zero_points);
+  ORT_RETURN_IF(packed_size_per_expert == 0, "Failed to compute LUT GEMM packed size.");
+
+  const int64_t packed_cols = cols / 4;
+  const size_t quantized_stride = static_cast<size_t>(rows * packed_cols);
+  const size_t scales_stride = static_cast<size_t>(rows * blocks_per_row);
+  const size_t zp_stride = has_zero_points ? static_cast<size_t>(rows * ((blocks_per_row + 3) / 4)) : 0;
+  const size_t total_packed_size = packed_size_per_expert * static_cast<size_t>(num_experts);
+
+  packed_b = IAllocator::MakeUniquePtr<void>(allocator, total_packed_size, true);
+  auto* packed_b_ptr = static_cast<std::byte*>(packed_b.get());
+  std::vector<float> scales_fp32(scales_stride);
+
+  for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+    const uint8_t* expert_quantized = quantized_data + static_cast<size_t>(expert_idx) * quantized_stride;
+    const TScale* expert_scales = scales_data + static_cast<size_t>(expert_idx) * scales_stride;
+    const uint8_t* expert_zero_points = has_zero_points ? zero_points + static_cast<size_t>(expert_idx) * zp_stride : nullptr;
+    const float* expert_scales_fp32 = GetFloatScaleData(expert_scales, scales_stride, scales_fp32.data());
+
+    MlasLutGemmPack(static_cast<size_t>(rows), static_cast<size_t>(cols), 2, static_cast<size_t>(block_size),
+                    has_zero_points, reinterpret_cast<const std::byte*>(expert_quantized), expert_scales_fp32,
+                    expert_zero_points, packed_b_ptr + static_cast<size_t>(expert_idx) * packed_size_per_expert, nullptr);
+  }
+
   return Status::OK();
 }
 
@@ -487,9 +603,10 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
     return Status::OK();
   }
 
-  // Only support PrePack for FC1 (2) and FC2 (5) weights
-  // and only if expert_weight_bits_ == 4 (since we unpack to uint8)
-  if (expert_weight_bits_ != 4) {
+  // Only support PrePack for FC1 (2) and FC2 (5) weights.
+  // 4-bit uses the existing unpacked-transposed/Q4 cache path.
+  // 2-bit block-wise uses a direct LUT GEMM packed cache when supported.
+  if (expert_weight_bits_ != 4 && expert_weight_bits_ != 2) {
     return Status::OK();
   }
 
@@ -498,7 +615,77 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
     const int64_t num_experts = shape[0];
     const int64_t rows = shape[1];
     const int64_t cols_packed = shape[2];
-    const int64_t cols = cols_packed * 2;
+    const int64_t pack_size = 8 / expert_weight_bits_;
+    const int64_t cols = cols_packed * pack_size;
+
+    if (input_idx == 2) {
+      fc1_shape_ = shape;
+    } else if (input_idx == 5) {
+      fc2_shape_ = shape;
+    }
+
+    if (expert_weight_bits_ == 2) {
+      if (block_size_ <= 0 || (cols % block_size_) != 0 || !prepacked_weights) {
+        return Status::OK();
+      }
+
+      const int scales_idx = (input_idx == 2) ? 3 : 6;
+      const int zp_idx = (input_idx == 2) ? 11 : 12;
+      const Tensor* scales_tensor = nullptr;
+      if (!Info().TryGetConstantInput(scales_idx, &scales_tensor) || scales_tensor == nullptr) {
+        return Status::OK();
+      }
+
+      const auto& scales_dims = scales_tensor->Shape().GetDims();
+      if (scales_dims.size() != 3 || scales_dims[2] <= 1) {
+        return Status::OK();
+      }
+
+      const bool has_zp_input = zp_idx < static_cast<int>(Info().node().InputDefs().size()) &&
+                                Info().node().InputDefs()[zp_idx]->Exists();
+      const Tensor* zp_tensor = nullptr;
+      if (has_zp_input && !Info().TryGetConstantInput(zp_idx, &zp_tensor)) {
+        return Status::OK();
+      }
+
+      if (!CanUseMlasLutGemm(expert_weight_bits_, block_size_, rows, cols)) {
+        return Status::OK();
+      }
+
+      IAllocatorUniquePtr<void> lut_cache_buffer;
+      const uint8_t* zp_data = zp_tensor ? zp_tensor->Data<uint8_t>() : nullptr;
+      ORT_RETURN_IF_ERROR(BuildDirectLutPackedBCache(static_cast<const uint8_t*>(tensor.DataRaw()),
+                                                     scales_tensor->Data<T>(),
+                                                     zp_data,
+                                                     num_experts,
+                                                     rows,
+                                                     cols,
+                                                     block_size_,
+                                                     scales_dims[2],
+                                                     alloc,
+                                                     lut_cache_buffer));
+
+      const size_t cache_size = MlasLutGemmPackedSize(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
+                                                      static_cast<size_t>(block_size_), zp_data != nullptr) *
+                                static_cast<size_t>(num_experts);
+      prepacked_weights->buffers_.push_back(std::move(lut_cache_buffer));
+      prepacked_weights->buffer_sizes_.push_back(cache_size);
+      is_packed = true;
+
+      auto dims = shape.GetDims();
+      size_t rank_bytes = sizeof(int64_t);
+      size_t dims_bytes = dims.size() * sizeof(int64_t);
+      size_t shape_size = rank_bytes + dims_bytes;
+
+      auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
+      int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
+      *buffer_data = static_cast<int64_t>(dims.size());
+      memcpy(buffer_data + 1, dims.data(), dims_bytes);
+
+      prepacked_weights->buffers_.push_back(std::move(shape_buffer));
+      prepacked_weights->buffer_sizes_.push_back(shape_size);
+      return Status::OK();
+    }
 
     size_t packed_size = static_cast<size_t>(num_experts * rows * cols);
     auto packed_buffer = IAllocator::MakeUniquePtr<void>(alloc, packed_size, true);
@@ -517,12 +704,6 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
           dst[c * rows + r] = val;
         }
       }
-    }
-
-    if (input_idx == 2) {
-      fc1_shape_ = shape;
-    } else if (input_idx == 5) {
-      fc2_shape_ = shape;
     }
 
     if (prepacked_weights) {
@@ -594,6 +775,32 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
                                              /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
+  if (expert_weight_bits_ == 2) {
+    if ((input_idx == 2 || input_idx == 5) && !prepacked_buffers.empty()) {
+      auto parse_shape = [&](TensorShape& shape) {
+        if (prepacked_buffers.size() > 1) {
+          int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
+          int64_t rank = buffer_data[0];
+          std::vector<int64_t> dims(static_cast<size_t>(rank));
+          memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
+          shape = TensorShape(dims);
+        }
+      };
+
+      if (input_idx == 2) {
+        packed_fc1_lut_cache_ = std::move(prepacked_buffers[0]);
+        parse_shape(fc1_shape_);
+      } else {
+        packed_fc2_lut_cache_ = std::move(prepacked_buffers[0]);
+        parse_shape(fc2_shape_);
+      }
+
+      used_shared_buffers = true;
+    }
+
+    return Status::OK();
+  }
+
   if (expert_weight_bits_ != 4) {
     return Status::OK();
   }
@@ -658,39 +865,61 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
 
 template <typename T>
 Status QMoECPU<T>::Compute(OpKernelContext* context) const {
-  const auto* input = context->Input<Tensor>(0);
-  const auto* router_probs = context->Input<Tensor>(1);
-  const auto* fc1_experts_weights = packed_fc1_ ? nullptr : context->Input<Tensor>(2);
-  const auto* fc1_scales = context->Input<Tensor>(3);
-  const auto* fc1_experts_bias = context->Input<Tensor>(4);
-  const auto* fc2_experts_weights = packed_fc2_ ? nullptr : context->Input<Tensor>(5);
-  const auto* fc2_scales = context->Input<Tensor>(6);
-  const auto* fc2_experts_bias = context->Input<Tensor>(7);
-  const auto* fc3_experts_weights = context->Input<Tensor>(8);
-  const auto* fc3_scales = context->Input<Tensor>(9);
-  const auto* fc3_experts_bias = context->Input<Tensor>(10);
-  const auto* fc1_zero_points = context->Input<Tensor>(11);
-  const auto* fc2_zero_points = context->Input<Tensor>(12);
-  const auto* fc3_zero_points = context->Input<Tensor>(13);
-  const auto* router_weights = context->Input<Tensor>(14);
+  const ComputeInputs inputs{
+      context->Input<Tensor>(0),
+      context->Input<Tensor>(1),
+      ((packed_fc1_ != nullptr) || (packed_fc1_lut_cache_ != nullptr)) ? nullptr : context->Input<Tensor>(2),
+      context->Input<Tensor>(3),
+      context->Input<Tensor>(4),
+      ((packed_fc2_ != nullptr) || (packed_fc2_lut_cache_ != nullptr)) ? nullptr : context->Input<Tensor>(5),
+      context->Input<Tensor>(6),
+      context->Input<Tensor>(7),
+      context->Input<Tensor>(8),
+      context->Input<Tensor>(9),
+      context->Input<Tensor>(10),
+      context->Input<Tensor>(11),
+      context->Input<Tensor>(12),
+      context->Input<Tensor>(13),
+      context->Input<Tensor>(14),
+  };
 
-  const TensorShape* fc1_shape_ptr = packed_fc1_ ? &fc1_shape_ : (fc1_experts_weights ? &fc1_experts_weights->Shape() : nullptr);
-  const TensorShape* fc2_shape_ptr = packed_fc2_ ? &fc2_shape_ : (fc2_experts_weights ? &fc2_experts_weights->Shape() : nullptr);
-  const TensorShape* fc3_shape_ptr = fc3_experts_weights ? &fc3_experts_weights->Shape() : nullptr;
+  const bool has_fc1_prepacked = (packed_fc1_ != nullptr) || (packed_fc1_lut_cache_ != nullptr);
+  const bool has_fc2_prepacked = (packed_fc2_ != nullptr) || (packed_fc2_lut_cache_ != nullptr);
+
+  const TensorShape* fc1_shape_ptr = has_fc1_prepacked ? &fc1_shape_ : (inputs.fc1_experts_weights ? &inputs.fc1_experts_weights->Shape() : nullptr);
+  const TensorShape* fc2_shape_ptr = has_fc2_prepacked ? &fc2_shape_ : (inputs.fc2_experts_weights ? &inputs.fc2_experts_weights->Shape() : nullptr);
+  const TensorShape* fc3_shape_ptr = inputs.fc3_experts_weights ? &inputs.fc3_experts_weights->Shape() : nullptr;
 
   MoEParameters moe_params;
   ORT_RETURN_IF_ERROR(moe_helper::CheckInputs<Tensor>(
-      moe_params, input, router_probs,
-      fc1_shape_ptr, fc1_experts_bias, fc1_scales, fc1_zero_points,
-      fc2_shape_ptr, fc2_experts_bias, fc2_scales, fc2_zero_points,
-      fc3_shape_ptr, fc3_experts_bias, fc3_scales, fc3_zero_points,
+      moe_params, inputs.input, inputs.router_probs,
+      fc1_shape_ptr, inputs.fc1_experts_bias, inputs.fc1_scales, inputs.fc1_zero_points,
+      fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
+      fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
       8 / expert_weight_bits_,
       activation_type_ == ActivationType::SwiGLU,
       block_size_));
 
-  if (fc3_shape_ptr || fc3_experts_bias || fc3_scales || fc3_zero_points) {
+  if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
   }
+
+  return ComputeCommon(context, inputs, moe_params);
+}
+
+template <typename T>
+Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& inputs, const MoEParameters& moe_params) const {
+  const auto* input = inputs.input;
+  const auto* router_probs = inputs.router_probs;
+  const auto* fc1_experts_weights = inputs.fc1_experts_weights;
+  const auto* fc1_scales = inputs.fc1_scales;
+  const auto* fc1_experts_bias = inputs.fc1_experts_bias;
+  const auto* fc2_experts_weights = inputs.fc2_experts_weights;
+  const auto* fc2_scales = inputs.fc2_scales;
+  const auto* fc2_experts_bias = inputs.fc2_experts_bias;
+  const auto* fc1_zero_points = inputs.fc1_zero_points;
+  const auto* fc2_zero_points = inputs.fc2_zero_points;
+  const auto* router_weights = inputs.router_weights;
 
   const auto& input_shape = input->Shape();
   const int64_t num_tokens = moe_params.num_rows;
@@ -707,18 +936,18 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   const size_t output_buffer_size = static_cast<size_t>(output->Shape().Size());
 
-  const T* input_data = input->Data<T>();
+  const T* input_data = input->template Data<T>();
 
   IAllocatorUniquePtr<float> router_logits_float_buffer;
   const float* router_logits_float;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     router_logits_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * num_experts));
     router_logits_float = router_logits_float_buffer.get();
-    MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_probs->Data<T>()),
+    MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_probs->template Data<T>()),
                                  const_cast<float*>(router_logits_float),
                                  static_cast<size_t>(num_tokens * num_experts));
   } else {
-    router_logits_float = reinterpret_cast<const float*>(router_probs->Data<T>());
+    router_logits_float = reinterpret_cast<const float*>(router_probs->template Data<T>());
   }
 
   // Handle optional router_weights input for separate selection/aggregation tensors
@@ -735,11 +964,11 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     if constexpr (std::is_same_v<T, MLFloat16>) {
       router_weights_float_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_tokens * num_experts));
       router_weights_float = router_weights_float_buffer.get();
-      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_weights->Data<T>()),
+      MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(router_weights->template Data<T>()),
                                    const_cast<float*>(router_weights_float),
                                    static_cast<size_t>(num_tokens * num_experts));
     } else {
-      router_weights_float = reinterpret_cast<const float*>(router_weights->Data<T>());
+      router_weights_float = reinterpret_cast<const float*>(router_weights->template Data<T>());
     }
   }
 
@@ -911,12 +1140,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   const uint8_t* fc1_weights_data = (packed_fc1_ != nullptr) ? nullptr : fc1_experts_weights->template Data<uint8_t>();
   const uint8_t* fc2_weights_data = (packed_fc2_ != nullptr) ? nullptr : fc2_experts_weights->template Data<uint8_t>();
-  const T* fc1_scales_data = fc1_scales->Data<T>();
-  const T* fc2_scales_data = fc2_scales->Data<T>();
-  const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->Data<T>() : nullptr;
-  const T* fc2_bias_data = fc2_experts_bias ? fc2_experts_bias->Data<T>() : nullptr;
-  const uint8_t* fc1_zp_data = fc1_zero_points ? fc1_zero_points->Data<uint8_t>() : nullptr;
-  const uint8_t* fc2_zp_data = fc2_zero_points ? fc2_zero_points->Data<uint8_t>() : nullptr;
+  const T* fc1_scales_data = fc1_scales->template Data<T>();
+  const T* fc2_scales_data = fc2_scales->template Data<T>();
+  const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->template Data<T>() : nullptr;
+  const T* fc2_bias_data = fc2_experts_bias ? fc2_experts_bias->template Data<T>() : nullptr;
+  const uint8_t* fc1_zp_data = fc1_zero_points ? fc1_zero_points->template Data<uint8_t>() : nullptr;
+  const uint8_t* fc2_zp_data = fc2_zero_points ? fc2_zero_points->template Data<uint8_t>() : nullptr;
 
   // Known loss-prone case from parity testing: 4-bit symmetric path (row-wise and block-wise).
   const bool known_accuracy_loss_case = (expert_weight_bits_ == 4) &&
@@ -924,6 +1153,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const bool use_mlas_q4_gemm_effective = use_mlas_q4_gemm_overridden_
                                               ? use_mlas_q4_gemm_
                                               : (use_mlas_q4_gemm_ && !known_accuracy_loss_case);
+  const bool use_mlas_lut_gemm_effective = (expert_weight_bits_ == 2);
 
   const int64_t pack_unit = (8 / expert_weight_bits_);
   const int64_t fc1_packed_cols = (hidden_size + pack_unit - 1) / pack_unit;
@@ -954,6 +1184,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
 
   MLAS_BLK_QUANT_TYPE fc1_direct_qtype = BlkQ4Sym;
   MLAS_BLK_QUANT_TYPE fc2_direct_qtype = BlkQ4Sym;
+  const bool can_use_fc1_lut_gemm = use_mlas_lut_gemm_effective &&
+                                    is_fc1_block_wise &&
+                                    CanUseMlasLutGemm(expert_weight_bits_, block_size_, fc1_out_features, hidden_size);
+  const bool can_use_fc2_lut_gemm = use_mlas_lut_gemm_effective &&
+                                    is_fc2_block_wise &&
+                                    CanUseMlasLutGemm(expert_weight_bits_, block_size_, hidden_size, inter_size);
 
   // Use pre-packed MLAS cache if available
   const void* fc1_direct_q4_cache_ptr = nullptr;
@@ -966,6 +1202,45 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   if (use_mlas_q4_gemm_effective && packed_fc2_mlas_cache_ && fc2_zp_data == nullptr &&
       CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0, hidden_size, inter_size, fc2_direct_qtype)) {
     fc2_direct_q4_cache_ptr = packed_fc2_mlas_cache_.get();
+  }
+
+  const void* fc1_direct_lut_cache_ptr = can_use_fc1_lut_gemm ? packed_fc1_lut_cache_.get() : nullptr;
+  const void* fc2_direct_lut_cache_ptr = can_use_fc2_lut_gemm ? packed_fc2_lut_cache_.get() : nullptr;
+  const size_t fc1_lut_packed_size = (can_use_fc1_lut_gemm && fc1_direct_lut_cache_ptr == nullptr)
+                                         ? MlasLutGemmPackedSize(static_cast<size_t>(fc1_out_features),
+                                                                 static_cast<size_t>(hidden_size),
+                                                                 2,
+                                                                 static_cast<size_t>(block_size_),
+                                                                 fc1_zp_data != nullptr)
+                                         : 0;
+  const size_t fc2_lut_packed_size = (can_use_fc2_lut_gemm && fc2_direct_lut_cache_ptr == nullptr)
+                                         ? MlasLutGemmPackedSize(static_cast<size_t>(hidden_size),
+                                                                 static_cast<size_t>(inter_size),
+                                                                 2,
+                                                                 static_cast<size_t>(block_size_),
+                                                                 fc2_zp_data != nullptr)
+                                         : 0;
+  const size_t lut_packed_scratch_size_per_thread = std::max(fc1_lut_packed_size, fc2_lut_packed_size);
+  IAllocatorUniquePtr<std::byte> lut_packed_buffers_ptr;
+  std::byte* lut_packed_buffers = nullptr;
+  if (lut_packed_scratch_size_per_thread > 0) {
+    lut_packed_buffers_ptr = IAllocator::MakeUniquePtr<std::byte>(allocator,
+                                                                  static_cast<size_t>(num_expert_threads) * lut_packed_scratch_size_per_thread,
+                                                                  true);
+    lut_packed_buffers = lut_packed_buffers_ptr.get();
+  }
+
+  const size_t lut_scale_count_per_thread = std::max(static_cast<size_t>(is_fc1_block_wise ? fc1_out_features * fc1_scales_dims[2] : 0),
+                                                     static_cast<size_t>(is_fc2_block_wise ? hidden_size * fc2_scales_dims[2] : 0));
+  IAllocatorUniquePtr<float> lut_scale_conversion_buffers_ptr;
+  float* lut_scale_conversion_buffers = nullptr;
+  if constexpr (!std::is_same_v<T, float>) {
+    if (lut_scale_count_per_thread > 0) {
+      lut_scale_conversion_buffers_ptr = IAllocator::MakeUniquePtr<float>(allocator,
+                                                                          static_cast<size_t>(num_expert_threads) * lut_scale_count_per_thread,
+                                                                          true);
+      lut_scale_conversion_buffers = lut_scale_conversion_buffers_ptr.get();
+    }
   }
 
   std::vector<std::pair<int64_t, size_t>> expert_workload;
@@ -1002,6 +1277,12 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     const auto& expert_batch = expert_batches[static_cast<size_t>(thread_id)];
 
     float* thread_workspace = workspace + static_cast<size_t>(thread_id) * workspace_elements_per_thread;
+    std::byte* thread_lut_packed_buffer = (lut_packed_buffers == nullptr)
+                                              ? nullptr
+                                              : (lut_packed_buffers + static_cast<size_t>(thread_id) * lut_packed_scratch_size_per_thread);
+    float* thread_lut_scale_buffer = (lut_scale_conversion_buffers == nullptr)
+                                         ? nullptr
+                                         : (lut_scale_conversion_buffers + static_cast<size_t>(thread_id) * lut_scale_count_per_thread);
 
     float* thread_bias1_buffer = bias_conversion_buffers + static_cast<size_t>(thread_id) * (static_cast<size_t>(fc1_out_features) + static_cast<size_t>(hidden_size));
     float* thread_bias2_buffer = thread_bias1_buffer + static_cast<size_t>(fc1_out_features);
@@ -1086,6 +1367,16 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                                  ((packed_fc1_ == nullptr) && (fc1_zp_data == nullptr) &&
                                   CanUseMlasQ4Gemm(expert_weight_bits_, is_fc1_block_wise ? block_size_ : 0,
                                                    fc1_out_features, hidden_size, q_type)));
+
+      if (can_use_fc1_lut_gemm &&
+          TryRunLutGemm(A1, C1, fc1_weights_data, fc1_direct_lut_cache_ptr,
+                        fc1_scales_ptr, fc1_zp_ptr, expert_idx,
+                        fc1_out_features, hidden_size, fc1_packed_cols,
+                        block_size_, fc1_scales_dims[2],
+                        thread_lut_packed_buffer, thread_lut_scale_buffer,
+                        num_expert_tokens, tp)) {
+        goto fc1_bias_handling;
+      }
 
       if (packed_fc1_ != nullptr) {
         if (use_mlas_q4_gemm_effective && fc1_zp_data == nullptr &&
@@ -1315,6 +1606,16 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
                                      ((packed_fc2_ == nullptr) && (fc2_zp_data == nullptr) &&
                                       CanUseMlasQ4Gemm(expert_weight_bits_, is_fc2_block_wise ? block_size_ : 0,
                                                        hidden_size, inter_size, q_type2)));
+
+      if (can_use_fc2_lut_gemm &&
+          TryRunLutGemm(A2, C2, fc2_weights_data, fc2_direct_lut_cache_ptr,
+                        fc2_scales_ptr, fc2_zp_ptr, expert_idx,
+                        hidden_size, inter_size, fc2_packed_cols,
+                        block_size_, fc2_scales_dims[2],
+                        thread_lut_packed_buffer, thread_lut_scale_buffer,
+                        num_expert_tokens, tp)) {
+        goto fc2_gemm_done;
+      }
 
       if (packed_fc2_ != nullptr) {
         if (use_mlas_q4_gemm_effective && fc2_zp_data == nullptr &&
@@ -1567,10 +1868,10 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
     accumulate(final_output_float);
 
     MlasConvertFloatToHalfBuffer(final_output_float,
-                                 reinterpret_cast<MLFloat16*>(output->MutableData<T>()),
+                                 reinterpret_cast<MLFloat16*>(output->template MutableData<T>()),
                                  static_cast<size_t>(output_buffer_size));
   } else {
-    accumulate(output->MutableData<T>());
+    accumulate(output->template MutableData<T>());
   }
 
   return Status::OK();

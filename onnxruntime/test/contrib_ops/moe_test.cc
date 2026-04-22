@@ -1594,6 +1594,90 @@ TEST(MoETest, QMoETest_CPU_Int2_NonZeroOutput) {
 #endif
 }
 
+TEST(MoETest, QMoETest_CPU_Int2_BlockWiseLutIdentity) {
+#ifdef USE_MLAS
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
+
+  constexpr int64_t num_rows = 1;
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 128;
+  constexpr int64_t inter_size = 128;
+  constexpr int64_t block_size = 32;
+  constexpr int64_t expert_weight_bits = 2;
+  constexpr int64_t pack_size = 8 / expert_weight_bits;
+  constexpr int64_t blocks_per_row = hidden_size / block_size;
+  auto pack_2bit = [](uint8_t v0, uint8_t v1, uint8_t v2, uint8_t v3) -> uint8_t {
+    return static_cast<uint8_t>((v0 & 0x03u) |
+                                ((v1 & 0x03u) << 2) |
+                                ((v2 & 0x03u) << 4) |
+                                ((v3 & 0x03u) << 6));
+  };
+
+  std::vector<float> input(static_cast<size_t>(hidden_size));
+  for (int64_t i = 0; i < hidden_size; ++i) {
+    input[static_cast<size_t>(i)] = static_cast<float>((i % 11) - 5) * 0.25f;
+  }
+
+  const std::vector<float> router_probs = {1.0f};
+  std::vector<uint8_t> fc1_experts_weights(static_cast<size_t>(num_experts * inter_size * (hidden_size / pack_size)), pack_2bit(2, 2, 2, 2));
+  std::vector<uint8_t> fc2_experts_weights(static_cast<size_t>(num_experts * hidden_size * (inter_size / pack_size)), pack_2bit(2, 2, 2, 2));
+  std::vector<float> fc1_scales(static_cast<size_t>(num_experts * inter_size * blocks_per_row), 1.0f);
+  std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size * blocks_per_row), 1.0f);
+
+  for (int64_t row = 0; row < inter_size; ++row) {
+    const int64_t col = row;
+    const int64_t packed_col = col / pack_size;
+    const int64_t lane = col % pack_size;
+    const uint8_t one_storage_value = static_cast<uint8_t>(3u << (lane * expert_weight_bits));
+    const uint8_t clear_mask = static_cast<uint8_t>(0x03u << (lane * expert_weight_bits));
+    const size_t offset = static_cast<size_t>(row * (hidden_size / pack_size) + packed_col);
+    fc1_experts_weights[offset] = static_cast<uint8_t>((fc1_experts_weights[offset] & ~clear_mask) | one_storage_value);
+    fc2_experts_weights[offset] = static_cast<uint8_t>((fc2_experts_weights[offset] & ~clear_mask) | one_storage_value);
+  }
+
+  OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+  cpu_tester.AddAttribute<int64_t>("k", 1);
+  cpu_tester.AddAttribute<std::string>("activation_type", "identity");
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", expert_weight_bits);
+  cpu_tester.AddAttribute<int64_t>("block_size", block_size);
+
+  const std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  const std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  const std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size, hidden_size / pack_size};
+  const std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size / pack_size};
+  const std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size, blocks_per_row};
+  const std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size, blocks_per_row};
+  const std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();
+  cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();
+  cpu_tester.AddOptionalInputEdge<uint8_t>();
+  cpu_tester.AddOptionalInputEdge<float>();
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();
+  cpu_tester.AddOptionalInputEdge<uint8_t>();
+  cpu_tester.AddOptionalInputEdge<uint8_t>();
+  cpu_tester.AddOptionalInputEdge<uint8_t>();
+  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(input));
+  cpu_tester.SetOutputTolerance(0.001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+  cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+  cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
+}
+
 TEST(MoETest, QMoETest_CPU_Int2_InvalidHiddenSize) {
 #ifdef USE_MLAS
   auto cpu_ep = DefaultCpuExecutionProvider();
