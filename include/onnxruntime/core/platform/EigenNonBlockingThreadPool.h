@@ -37,6 +37,7 @@
 #pragma warning(disable : 4127)
 #pragma warning(disable : 4805)
 #endif
+#include <chrono>
 #include <memory>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
@@ -864,12 +865,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   typedef RunQueue<CallbackPolicy, Tag, 1024> Queue;
 
-  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
-                  const ThreadOptions& thread_options)
+  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, int spin_duration_us,
+                  Environment& env, const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
-        allow_spinning_(allow_spinning),
+        spin_count_(ComputeSpinCount(spin_duration_us)),
+        steal_interval_(std::max(spin_count_ / 100, 1)),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         callback_policy_(thread_options),
         worker_data_(num_threads),
@@ -1598,9 +1600,30 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     std::condition_variable cv;
   };
 
+  // Measure the average duration of a single SpinPause() call in nanoseconds.
+  // Runs exactly once per process (thread-safe via function-local static init).
+  // The result is used to convert a user-specified spin duration in microseconds
+  // into an iteration count, avoiding clock reads in the hot spin loop.
+  static int CalibrateSpinPauseNs() {
+    return onnxruntime::concurrency::CalibrateSpinPauseNs();
+  }
+
+  // Convert spin_duration_us into an iteration count for the spin loop.
+  //   -1 (default): use the original fixed iteration count (1 << 20).
+  //    0: no spinning.
+  //   >0: calibrate SpinPause() latency and compute the corresponding count.
+  static int ComputeSpinCount(int spin_duration_us) {
+    if (spin_duration_us == 0) return 0;
+    if (spin_duration_us < 0) return 1 << 20;  // ~1M iterations (original default)
+    int ns_per_iter = CalibrateSpinPauseNs();
+    auto count = static_cast<int64_t>(spin_duration_us) * 1000 / ns_per_iter;
+    return static_cast<int>(std::min<int64_t>(count, 1 << 30));
+  }
+
   Environment& env_;
   const unsigned num_threads_;
-  const bool allow_spinning_;
+  const int spin_count_;      // Number of SpinPause iterations before blocking (0 = no spin)
+  const int steal_interval_;  // Attempt work steal every steal_interval_ iterations
   const bool set_denormal_as_zero_;
   CallbackPolicy callback_policy_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
@@ -1642,25 +1665,26 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    constexpr int log2_spin = 20;
-    const int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
-    const int steal_count = spin_count / 100;
-
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
     while (!should_exit) {
       Work w = q.PopFront();
       if (!w) {
-        // Spin waiting for work.
-        for (int i = 0; i < spin_count && !done_; i++) {
-          if (((i + 1) % steal_count == 0)) {
+        // Spin waiting for work. spin_count_ is determined at construction:
+        //   default (-1): 1<<20 iterations (original behavior)
+        //   0: no spinning (skip loop entirely)
+        //   >0 us: iteration count derived from one-time SpinPause() calibration
+        // steal_interval_ = max(spin_count_/100, 1), yielding ~100 steal attempts per spin window.
+        int steal_countdown = steal_interval_;
+        for (int i = 0; i < spin_count_ && !done_; i++) {
+          if (--steal_countdown == 0) {
             w = Steal(StealAttemptKind::TRY_ONE);
+            steal_countdown = steal_interval_;
           } else {
             w = q.PopFront();
           }
           if (w) break;
-
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }

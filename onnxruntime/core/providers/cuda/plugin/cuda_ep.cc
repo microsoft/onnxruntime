@@ -11,11 +11,14 @@
 #include "ep/get_capability_utils.h"
 
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+
+#include "core/graph/constants.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -128,6 +131,9 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   ReplayGraph = ReplayGraphImpl;
   GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
 
+  // Resource accounting — allows ORT to query available device memory for budget enforcement
+  GetAvailableResource = GetAvailableResourceImpl;
+
   const OrtApi& ort_api = factory_.GetOrtApi();
   Ort::Status log_status(ort_api.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_INFO,
                                                    "CUDA Plugin EP created",
@@ -227,12 +233,15 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
       cpu_preferred_nodes));
 
   // Phase 3: Add final supported nodes (tentative minus CPU-preferred).
+  // Resource budget enforcement is handled by the host after GetCapability returns.
+
   for (const OrtNode* ort_node : candidate_nodes) {
-    if (cpu_preferred_nodes.count(ort_node) == 0) {
-      Ort::ConstNode node{ort_node};
-      RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
-          graph_support_info, node));
+    if (cpu_preferred_nodes.count(ort_node) != 0) {
+      continue;
     }
+
+    RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
+        graph_support_info, ort_node));
   }
 
   return nullptr;
@@ -591,6 +600,55 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
 OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL CudaEp::GetGraphCaptureNodeAssignmentPolicyImpl(
     const OrtEp* /*this_ptr*/) noexcept {
   return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::GetAvailableResourceImpl(
+    const OrtEp* this_ptr, OrtResourceCount* available) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  if (available == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`available` must not be null");
+  }
+
+  auto* ep = static_cast<const CudaEp*>(this_ptr);
+  int current_device = 0;
+  auto cuda_err = cudaGetDevice(&current_device);
+  if (cuda_err != cudaSuccess) {
+    return Ort::GetApi().CreateStatus(
+        ORT_RUNTIME_EXCEPTION,
+        (std::string("cudaGetDevice failed: ") + cudaGetErrorString(cuda_err)).c_str());
+  }
+
+  // Switch to the EP's configured device if needed
+  if (current_device != ep->config_.device_id) {
+    cuda_err = cudaSetDevice(ep->config_.device_id);
+    if (cuda_err != cudaSuccess) {
+      return Ort::GetApi().CreateStatus(
+          ORT_RUNTIME_EXCEPTION,
+          (std::string("cudaSetDevice failed: ") + cudaGetErrorString(cuda_err)).c_str());
+    }
+  }
+
+  size_t free_memory = 0;
+  size_t total_memory = 0;
+  cuda_err = cudaMemGetInfo(&free_memory, &total_memory);
+
+  // Restore the original device
+  if (current_device != ep->config_.device_id) {
+    cudaSetDevice(current_device);  // best-effort restore
+  }
+
+  if (cuda_err != cudaSuccess) {
+    return Ort::GetApi().CreateStatus(
+        ORT_RUNTIME_EXCEPTION,
+        (std::string("cudaMemGetInfo failed: ") + cudaGetErrorString(cuda_err)).c_str());
+  }
+
+  *available = OrtResourceCount::FromTotalBytes(static_cast<uint64_t>(free_memory));
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
 }
 
 }  // namespace cuda_plugin

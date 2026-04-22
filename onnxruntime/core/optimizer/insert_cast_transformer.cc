@@ -350,10 +350,13 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         //     - it's for non-numeric type casting.
         //     - if the casts are for (high precision -> low precision -> high precision),
         //       since there is actual loss of precision.
+        //     - if the first cast loses precision and a downstream cast targets bool,
+        //       since removing it changes zero/non-zero semantics (e.g., float->int truncation
+        //       before a bool cast). See https://github.com/microsoft/onnxruntime/issues/28089
         // Other cases are OK for this optimization, including below two cases,
         // which are not actual loss of precision:
-        //     - (low precision -> high precision ->low precision)
-        //     - (high precision -> low precision -> lower precision)
+        //     - (low precision -> high precision -> low precision)
+        //     - (high precision -> low precision -> lower precision) when not targeting bool
         // It's possible that there are more than one casts following the first cast,
         // the first cast can be removed only when:
         //     - not providing graph output, and
@@ -434,7 +437,13 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         // If all the child nodes are either removed or another Cast node and we're not providing graph output,
         // we can remove this node. Connect those remaining child Cast nodes to current Cast node's input.
         //
-        // However, we must NOT do this if any kept Cast child is on a different EP than the current node.
+        // However, we must NOT do this if the first cast loses precision AND any kept child casts to bool.
+        // Bool conversion (non-zero → true, zero → false) interacts badly with lossy intermediate casts
+        // that can map non-zero values to zero, changing the semantics.
+        // For example, Cast(float->int32) -> Cast(int32->bool) must not become Cast(float->bool)
+        // because float->int32 truncates (e.g. -0.1 -> 0 -> false), whereas float->bool would give true.
+        //
+        // We also must NOT do this if any kept Cast child is on a different EP than the current node.
         // Fusing across EP boundaries can produce a node whose input type is not supported by its EP.
         // For example, Cast(int64->float, CPU) -> Cast(float->float16, WebGPU) would become
         // Cast(int64->float16, WebGPU), but WebGPU doesn't support int64 inputs.
@@ -456,13 +465,30 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
           }
 
           if (!cross_ep) {
-            for (auto& n : cast_nodes_to_keep) {
-              Node& cast_node_to_keep = n;
-              graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
+            // Check if any kept child Cast targets bool when the first cast is lossy.
+            // Bool conversion tests for zero/non-zero, so any lossy intermediate cast
+            // that maps non-zero values to zero (e.g. float truncation) changes the result.
+            bool is_loss_cast_and_child_cast_to_bool = false;
+            if (loss_precision_cast) {
+              for (const auto& n : cast_nodes_to_keep) {
+                const Node& kept_node = n;
+                auto kept_dst_type = kept_node.OutputDefs()[0]->Type();
+                if (kept_dst_type != nullptr && GetTypeGroup(kept_dst_type) == Bool) {
+                  is_loss_cast_and_child_cast_to_bool = true;
+                  break;
+                }
+              }
             }
 
-            removed = graph_utils::RemoveNode(graph, node);
-            modified = true;
+            if (!is_loss_cast_and_child_cast_to_bool) {
+              for (auto& n : cast_nodes_to_keep) {
+                Node& cast_node_to_keep = n;
+                graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
+              }
+
+              removed = graph_utils::RemoveNode(graph, node);
+              modified = true;
+            }
           }
         }
       }

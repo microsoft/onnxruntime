@@ -19,6 +19,7 @@ std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
   os << " thread_pool_size: " << params.thread_pool_size;
   os << " auto_set_affinity: " << params.auto_set_affinity;
   os << " allow_spinning: " << params.allow_spinning;
+  os << " spin_duration_us: " << params.spin_duration_us;
   os << " dynamic_block_base_: " << params.dynamic_block_base_;
   os << " stack_size: " << params.stack_size;
   os << " affinity_str: " << params.affinity_str;
@@ -162,8 +163,9 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   }
 #endif
 
-  return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                      options.allow_spinning);
+  // Clamp so that invalid negatives (e.g. -5) are treated as the default (-1).
+  const int spin_us = options.allow_spinning ? std::max(options.spin_duration_us, -1) : 0;
+  return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size, spin_us);
 }
 
 std::unique_ptr<ThreadPool>

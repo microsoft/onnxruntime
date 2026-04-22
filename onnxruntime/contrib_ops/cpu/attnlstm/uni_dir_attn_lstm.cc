@@ -9,6 +9,8 @@
 
 #include "uni_dir_attn_lstm.h"
 
+#include "core/common/safeint.h"
+
 #include <thread>
 
 #ifdef _MSC_VER
@@ -25,6 +27,26 @@ namespace onnxruntime {
 namespace contrib {
 namespace rnn {
 namespace detail {
+
+namespace {
+
+size_t CheckedToSizeT(int value) {
+  return static_cast<size_t>(SafeInt<size_t>(value));
+}
+
+int CheckedMulToInt(int lhs, int rhs) {
+  return static_cast<int>(SafeInt<int>(lhs) * rhs);
+}
+
+size_t CheckedMulToSizeT(size_t lhs, size_t rhs) {
+  return static_cast<size_t>(SafeInt<size_t>(lhs) * rhs);
+}
+
+size_t CheckedMulToSizeT(int lhs, int rhs) {
+  return CheckedMulToSizeT(CheckedToSizeT(lhs), CheckedToSizeT(rhs));
+}
+
+}  // namespace
 
 // #define DUMP_MATRIXES to provide lots of diagnostic output
 #if defined(DUMP_MATRIXES)
@@ -96,39 +118,49 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
 
 template <typename T>
 void UniDirectionalAttnLstm<T>::AllocateBuffers() {
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
+  const size_t batch_size = CheckedToSizeT(batch_size_);
+  const size_t seq_length = CheckedToSizeT(seq_length_);
+  const size_t input_size = CheckedToSizeT(input_size_);
+  const size_t batch_hidden_size = CheckedMulToSizeT(batch_size, hidden_size);
+  const size_t output_iofc_size = CheckedMulToSizeT(CheckedMulToSizeT(hidden_size, size_t{4}),
+                                                    CheckedMulToSizeT(batch_size, seq_length));
+
   // allocate and fill with 0's.
   constexpr bool fill = true;
-  hidden0_ = Allocate(allocator_, hidden_size_, hidden0_ptr_, fill);
-  internal_memory_prev_ = Allocate(allocator_, hidden_size_, internal_memory_prev_ptr_, fill);
-  internal_memory_cur_ = Allocate(allocator_, hidden_size_, internal_memory_cur_ptr_, fill);
-  batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_, fill);
+  hidden0_ = Allocate(allocator_, hidden_size, hidden0_ptr_, fill);
+  internal_memory_prev_ = Allocate(allocator_, hidden_size, internal_memory_prev_ptr_, fill);
+  internal_memory_cur_ = Allocate(allocator_, hidden_size, internal_memory_cur_ptr_, fill);
+  batched_hidden0_ = Allocate(allocator_, batch_hidden_size, batched_hidden0_ptr_, fill);
 
-  batched_internal_memory_prev_ = Allocate(allocator_, batch_size_ * hidden_size_,
+  batched_internal_memory_prev_ = Allocate(allocator_, batch_hidden_size,
                                            batched_internal_memory_prev_ptr_, fill);
-  batched_internal_memory_cur_ = Allocate(allocator_, batch_size_ * hidden_size_,
+  batched_internal_memory_cur_ = Allocate(allocator_, batch_hidden_size,
                                           batched_internal_memory_cur_ptr_, fill);
-  batched_internal_memory_clipped_ = Allocate(allocator_, batch_size_ * hidden_size_,
+  batched_internal_memory_clipped_ = Allocate(allocator_, batch_hidden_size,
                                               batched_internal_memory_clipped_ptr_, fill);
 
-  output_iofc_ = Allocate(allocator_, hidden_size_ * 4 * batch_size_ * seq_length_, output_iofc_ptr_, fill);
+  output_iofc_ = Allocate(allocator_, output_iofc_size, output_iofc_ptr_, fill);
 
   if (use_bias_) {
-    bias_WRi_ = Allocate(allocator_, hidden_size_, bias_WRi_ptr_);
-    bias_WRf_ = Allocate(allocator_, hidden_size_, bias_WRf_ptr_);
-    bias_WRo_ = Allocate(allocator_, hidden_size_, bias_WRo_ptr_);
-    bias_WRc_ = Allocate(allocator_, hidden_size_, bias_WRc_ptr_);
+    bias_WRi_ = Allocate(allocator_, hidden_size, bias_WRi_ptr_);
+    bias_WRf_ = Allocate(allocator_, hidden_size, bias_WRf_ptr_);
+    bias_WRo_ = Allocate(allocator_, hidden_size, bias_WRo_ptr_);
+    bias_WRc_ = Allocate(allocator_, hidden_size, bias_WRc_ptr_);
   }
 
   if (direction_ == kReverse) {
-    inputs_reverse_ = Allocate(allocator_, seq_length_ * batch_size_ * input_size_, inputs_reverse_ptr_);
-    outputs_reverse_ = Allocate(allocator_, seq_length_ * batch_size_ * hidden_size_, outputs_reverse_ptr_);
+    const size_t reversed_input_size = CheckedMulToSizeT(CheckedMulToSizeT(seq_length, batch_size), input_size);
+    const size_t reversed_output_size = CheckedMulToSizeT(CheckedMulToSizeT(seq_length, batch_size), hidden_size);
+    inputs_reverse_ = Allocate(allocator_, reversed_input_size, inputs_reverse_ptr_);
+    outputs_reverse_ = Allocate(allocator_, reversed_output_size, outputs_reverse_ptr_);
   }
 
 #if !defined(LSTM_NO_PEEPHOLE_COPY)
   if (use_peepholes_) {
-    peephole_i_ = Allocate(allocator_, hidden_size_, peephole_i_ptr_);
-    peephole_f_ = Allocate(allocator_, hidden_size_, peephole_f_ptr_);
-    peephole_o_ = Allocate(allocator_, hidden_size_, peephole_o_ptr_);
+    peephole_i_ = Allocate(allocator_, hidden_size, peephole_i_ptr_);
+    peephole_f_ = Allocate(allocator_, hidden_size, peephole_f_ptr_);
+    peephole_o_ = Allocate(allocator_, hidden_size, peephole_o_ptr_);
   }
 #endif
 }
@@ -183,20 +215,24 @@ void UniDirectionalAttnLstm<T>::LoadPeepholeWeights(const gsl::span<const T>& pe
 
 template <typename T>
 void UniDirectionalAttnLstm<T>::LoadBias(const gsl::span<const T>& WbRb_values) {
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
+  const size_t Wb_to_Rb_offset = CheckedMulToSizeT(hidden_size_, 4);
+
   // add Wb and Rb
-  auto copy_fused_bias = [this, &WbRb_values](int offset, gsl::span<T>& out) {
-    // gap between Wb and Wb value for an entry
-    const int Wb_to_Rb_offset = 4 * hidden_size_;
-    for (int j = 0; j < hidden_size_; ++j) {
+  auto copy_fused_bias = [&WbRb_values, hidden_size, Wb_to_Rb_offset](size_t offset, gsl::span<T>& out) {
+    for (size_t j = 0; j < hidden_size; ++j) {
       out[j] = WbRb_values[j + offset] + WbRb_values[j + offset + Wb_to_Rb_offset];
     }
   };
 
-  int i = 0;
-  copy_fused_bias((i++) * hidden_size_, bias_WRi_);
-  copy_fused_bias((i++) * hidden_size_, bias_WRo_);
-  copy_fused_bias((i++) * hidden_size_, bias_WRf_);
-  copy_fused_bias((i++) * hidden_size_, bias_WRc_);
+  size_t offset = 0;
+  copy_fused_bias(offset, bias_WRi_);
+  offset += hidden_size;
+  copy_fused_bias(offset, bias_WRo_);
+  offset += hidden_size;
+  copy_fused_bias(offset, bias_WRf_);
+  offset += hidden_size;
+  copy_fused_bias(offset, bias_WRc_);
 }
 
 template <typename T>
@@ -223,7 +259,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   gsl::span<T> batched_internal_state_prev_one_step = batched_internal_memory_prev_;
   gsl::span<T> batched_internal_state_clipped_one_step = batched_internal_memory_clipped_;
 
-  int output_step_length = batch_size_ * hidden_size_;
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
+  const int batch_hidden_size = CheckedMulToInt(batch_size_, hidden_size_);
+  int output_step_length = batch_hidden_size;
 
   // The bidirectional LSTM wrapper wraps this LSTM class and produces bi-directional output
   // the output has layout [seq,num_direction,batch,neurons].
@@ -233,7 +271,10 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   // additional memcpy. Note that if direction is kReverse, we write to output_reverse buffer
   // which is then copied to output buffer, and ReverseSequence method handles the step length.
   if (direction_ == Direction::kForward && num_directions == 2)
-    output_step_length = 2 * batch_size_ * hidden_size_;
+    output_step_length = CheckedMulToInt(batch_hidden_size, 2);
+
+  const size_t output_step_length_size = CheckedToSizeT(output_step_length);
+  const size_t batch_hidden_size_size = CheckedToSizeT(batch_hidden_size);
 
   gsl::span<T> original_outputs = outputs;
   const bool output_sequence = !outputs.empty();
@@ -252,8 +293,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                                                                         sequence_lengths.end()));
 
   ///**************************LSTM Calculations****************************/
-  const int hidden_size_x4 = 4 * hidden_size_;
-  const int total_rows = max_sequence_length * batch_size_;
+  const int hidden_size_x4 = CheckedMulToInt(hidden_size_, 4);
+  const int total_rows = CheckedMulToInt(max_sequence_length, batch_size_);
+  const size_t step_iofc_stride = CheckedMulToSizeT(batch_size_, hidden_size_x4);
 
   // apply the weights to all the inputs and save to output_IOFC
   ComputeGemm(total_rows, hidden_size_x4, input_size_, T{1.0},
@@ -288,7 +330,9 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
       DumpMatrix("previous_state" + seqno_str, &*previous_state, batch_size_, hidden_size_);
 
-      span_T_iter step_out_IOFC = output_iofc_.begin() + (step * batch_size_) * hidden_size_x4;
+      const size_t step_out_iofc_offset = CheckedMulToSizeT(CheckedToSizeT(step), step_iofc_stride);
+      span_T_iter step_out_IOFC = output_iofc_.begin() + step_out_iofc_offset;
+      span_T_iter step_out_IOFC_end = step_out_IOFC + step_iofc_stride;
 
       // shape is [ attention_size_ ]
       const gsl::span<const T> attention = attention_wrapper_.GetAttnStates();
@@ -299,7 +343,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   attention_size_,
                   input_weights.begin() + input_size_, input_weights.end(),  // WA[iofc]
                   input_size_ + attention_size_, T{1.0},
-                  step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                  step_out_IOFC, step_out_IOFC_end,  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, ttp_, mlas_backend_kernel_selector_config_);
 
       // calculate Xt*(W[iofc]^T) + Ht-1*R[iofc]
@@ -308,30 +352,30 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   hidden_size_,
                   recurrent_weights.begin(), recurrent_weights.end(),  // R[iofc]
                   hidden_size_, T{1.0},
-                  step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
+                  step_out_IOFC, step_out_IOFC_end,  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4, ttp_, mlas_backend_kernel_selector_config_);
 
       span_T_iter batched_output, batched_output_end;
       if (output_sequence) {
-        batched_output = outputs.begin() + step * output_step_length;
+        batched_output = outputs.begin() + CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size);
         batched_output_end = outputs.end();
       } else {
         batched_output = final_hidden_state.begin();
         batched_output_end = final_hidden_state.end();
       }
 
-      span_T_iter step_out_IOFC_end = step_out_IOFC + batch_size_ * hidden_size_x4;
       GateComputations(step_out_IOFC, step_out_IOFC_end,
                        c_prev, C_prev_end,
                        c_prev_clipped, C_prev_clipped_end,
                        batched_output, batched_output_end,
-                       sequence_lengths, min_sequence_length, step, 0, batch_size_, output_sequence);
+                       sequence_lengths, hidden_size_x4, min_sequence_length, step, 0, batch_size_, output_sequence);
 
       // copy last row to final_cell_state
       for (int lrow = 0; lrow < batch_size_; lrow++) {
         if ((step + 1) == sequence_lengths[lrow]) {
-          auto src = batched_internal_memory_prev_.subspan(lrow * hidden_size_, hidden_size_);
-          auto dst = final_cell_state.subspan(lrow * hidden_size_, hidden_size_);
+          const size_t row_offset = CheckedMulToSizeT(CheckedToSizeT(lrow), hidden_size);
+          auto src = batched_internal_memory_prev_.subspan(row_offset, hidden_size);
+          auto dst = final_cell_state.subspan(row_offset, hidden_size);
           gsl::copy(src, dst);
         }
       }
@@ -340,8 +384,10 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
         // set to 0 if step >= sequence_length
         for (int lrow = 0; lrow < batch_size_; lrow++) {
           if (step >= min_sequence_length && step >= sequence_lengths[lrow]) {
-            auto dst = outputs.data() + step * output_step_length + lrow * hidden_size_;
-            std::fill_n(dst, hidden_size_, T{});
+            const size_t row_offset = CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size) +
+                                      CheckedMulToSizeT(CheckedToSizeT(lrow), hidden_size);
+            auto dst = outputs.data() + row_offset;
+            std::fill_n(dst, hidden_size, T{});
           }
         }
       }
@@ -349,7 +395,12 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       previous_state = batched_output;
       previous_state_end = batched_output_end;
 
-      attention_wrapper_.ProcessOutput(outputs.subspan(step * output_step_length, batch_size_ * hidden_size_));
+      if (output_sequence) {
+        attention_wrapper_.ProcessOutput(outputs.subspan(CheckedMulToSizeT(CheckedToSizeT(step), output_step_length_size),
+                                                         batch_hidden_size_size));
+      } else {
+        attention_wrapper_.ProcessOutput(final_hidden_state);
+      }
     }
   }
 
@@ -357,8 +408,11 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
     // copy last output to final_hidden_state
     for (int i = 0; i < batch_size_; i++) {
       const int seq_len = sequence_lengths[i];
-      auto src = outputs.subspan((seq_len - 1) * output_step_length + i * hidden_size_, hidden_size_);
-      auto dest = final_hidden_state.subspan(i * hidden_size_, hidden_size_);
+      const size_t src_offset = CheckedMulToSizeT(CheckedToSizeT(seq_len - 1), output_step_length_size) +
+                                CheckedMulToSizeT(CheckedToSizeT(i), hidden_size);
+      const size_t dst_offset = CheckedMulToSizeT(CheckedToSizeT(i), hidden_size);
+      auto src = outputs.subspan(src_offset, hidden_size);
+      auto dest = final_hidden_state.subspan(dst_offset, hidden_size);
       gsl::copy(src, dest);
     }
 
@@ -374,19 +428,21 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
                                                  span_T_iter& C_prev_clipped, span_T_iter& C_prev_clipped_end,
                                                  span_T_iter& batched_output, span_T_iter& batched_output_end,
                                                  const gsl::span<const int>& seq_lengths,
+                                                 const int hidden_size_x4,
                                                  const int min_sequence_length,
                                                  const int step,
                                                  const int row,
                                                  const int local_fused_hidden_rows,
                                                  bool output_sequence) {
-  int hidden_size_x4 = 4 * hidden_size_;
+  const size_t hidden_size = CheckedToSizeT(hidden_size_);
 
   // Activation gates.
   for (int b = 0; b < local_fused_hidden_rows; b++) {
+    const size_t gate_row_offset = CheckedMulToSizeT(CheckedToSizeT(b), hidden_size);
     if (step >= min_sequence_length && step >= seq_lengths[row + b]) {
       if (output_sequence) {
-        auto fill_output = batched_output + (row + b) * hidden_size_;
-        std::fill(fill_output, fill_output + hidden_size_, T{});
+        auto fill_output = batched_output + CheckedMulToSizeT(CheckedToSizeT(row + b), hidden_size);
+        std::fill(fill_output, fill_output + hidden_size, T{});
       }
 
       continue;
@@ -395,12 +451,12 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
     std::string row_str = " row[" + std::to_string(row + b) + "]";
 
     // check that we have hidden_size_x4 left starting at cur_out + b * hidden_size_x4, and get a raw pointer to that
-    float* pi = SafeRawPointer<T>(out + b * hidden_size_x4, out_end, hidden_size_x4);
+    float* pi = SafeRawPointer<T>(out + CheckedMulToSizeT(b, hidden_size_x4), out_end, hidden_size_x4);
     float* po = pi + hidden_size_;
     float* pf = po + hidden_size_;
     float* pc = pf + hidden_size_;
 
-    float* pCprev_hidden_size = SafeRawPointer<T>(C_prev + b * hidden_size_, C_prev_end, hidden_size_);
+    float* pCprev_hidden_size = SafeRawPointer<T>(C_prev + gate_row_offset, C_prev_end, hidden_size);
 
     // Input Gate
     if (use_peepholes_) {
@@ -451,14 +507,15 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
     // DumpMatrix("o" + row_str, po, 1, hidden_size_);
 
     // calculate 'Ht'
-    float* pH = SafeRawPointer<T>(batched_output + row * hidden_size_ + b * hidden_size_,
-                                  batched_output_end, hidden_size_);
+    const size_t output_row_offset = CheckedMulToSizeT(CheckedToSizeT(row + b), hidden_size);
+    float* pH = SafeRawPointer<T>(batched_output + output_row_offset,
+                                  batched_output_end, hidden_size);
 
     // the C_prev_clipped location is not actually used as input - it's temporary storage for writing
     // the clipped Ct value to, before calling h(). As such a) it could just be a local variable
     // of std::vector<float> with size of hidden_size_, b) the previous version wasn't 'broken' by never
     // incrementing what C_prev_clipped pointed to.
-    float* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped + b * hidden_size_, C_prev_clipped_end, hidden_size_);
+    float* pC_prev_clipped = SafeRawPointer<T>(C_prev_clipped + gate_row_offset, C_prev_clipped_end, hidden_size);
 
     activation_h_.func(pC_cur, pC_prev_clipped, po, pH, hidden_size_, activation_h_.alpha, activation_h_.beta);
   }

@@ -56,6 +56,11 @@ jobs:
   - checkout: self
     clean: true
     submodules: none
+
+  - template: templates/setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: ${{ parameters.arch }}
+
   - download: build   # pipeline resource identifier.
     artifact: 'linux_gpu_wheel_${{ parameters.arch }}'
 
