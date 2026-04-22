@@ -151,13 +151,17 @@ stages:
       displayName: 'Build Python wheel'
 
   # Python package test job
+  #
+  # This job runs against a software Vulkan implementation (Mesa lavapipe)
+  # baked into the Docker image. It does not require a GPU agent, so it
+  # uses the standard CPU pool. See the Dockerfile for VK_ICD_FILENAMES.
   - job: Linux_plugin_webgpu_x64_Python_Test
     dependsOn: Linux_plugin_webgpu_x64_Python_Package
     timeoutInMinutes: 60
     workspace:
       clean: all
     pool:
-      name: ${{ parameters.gpu_machine_pool }}
+      name: ${{ parameters.machine_pool }}
       os: linux
     steps:
     - checkout: self
@@ -181,35 +185,26 @@ stages:
 
     - script: |
         set -e -x
-        docker run --rm --gpus all \
+        # Pin Vulkan to Mesa lavapipe (software Vulkan) so the test does not
+        # require a GPU agent. Keeping these env vars at `docker run` time
+        # (rather than baking them into the image) leaves the image reusable
+        # for a potential future real-GPU test job.
+        lavapipe_icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        docker run --rm \
           --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
           --volume "$(Build.BinariesDirectory):/build" \
           --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+          --env "VK_ICD_FILENAMES=${lavapipe_icd}" \
+          --env "VK_DRIVER_FILES=${lavapipe_icd}" \
           onnxruntimewebgpuplugin \
           /bin/bash -c "
             set -e -x
             # --- DIAGNOSTICS (remove once WebGPU EP test is stable) ---
-            echo '=== NVIDIA driver capabilities / visible devices ==='
-            echo \"NVIDIA_DRIVER_CAPABILITIES=\${NVIDIA_DRIVER_CAPABILITIES:-<unset>}\"
-            echo \"NVIDIA_VISIBLE_DEVICES=\${NVIDIA_VISIBLE_DEVICES:-<unset>}\"
-            echo '=== nvidia-smi ==='
-            nvidia-smi || echo 'nvidia-smi failed'
-            echo '=== Vulkan ICD search paths ==='
+            echo '=== Vulkan ICD configuration ==='
+            echo \"VK_ICD_FILENAMES=\${VK_ICD_FILENAMES:-<unset>}\"
             ls -la /usr/share/vulkan/icd.d/ 2>/dev/null || echo '  (no /usr/share/vulkan/icd.d/)'
-            ls -la /etc/vulkan/icd.d/        2>/dev/null || echo '  (no /etc/vulkan/icd.d/)'
-            ls -la /etc/glvnd/egl_vendor.d/  2>/dev/null || echo '  (no /etc/glvnd/egl_vendor.d/)'
-            echo '=== any *_icd.json on the filesystem ==='
-            find / -name '*_icd.json' 2>/dev/null || true
-            echo '=== NVIDIA libs (libGLX_nvidia / libnvidia*) ==='
-            find / \( -name 'libGLX_nvidia*' -o -name 'libnvidia-*' \) 2>/dev/null | head -30 || true
-            echo '=== libvulkan ==='
-            ldconfig -p | grep -i vulkan || echo '  (no libvulkan in ldconfig cache)'
-            echo '=== vulkaninfo (if present) ==='
-            if command -v vulkaninfo >/dev/null 2>&1; then
-              VK_LOADER_DEBUG=error,warn vulkaninfo --summary 2>&1 | head -60 || true
-            else
-              echo '  (vulkaninfo not installed)'
-            fi
+            echo '=== vulkaninfo --summary (lavapipe expected) ==='
+            VK_LOADER_DEBUG=error,warn vulkaninfo --summary 2>&1 | head -60 || true
             echo '=== END DIAGNOSTICS ==='
             # --- END DIAGNOSTICS ---
 
