@@ -236,30 +236,16 @@ struct OrtModelPackageApi {
                   _In_ size_t index,
                   _Outptr_ const char** out_name);
 
-  /** \brief Number of variants declared for the component model at `component_index`. */
-  ORT_API2_STATUS(ModelPackageContext_GetModelVariantCount,
+  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileCount,
                   _In_ const OrtModelPackageContext* ctx,
-                  _In_ size_t component_index,
+                  _In_ const char* component_name,
                   _Out_ size_t* out_count);
 
-  /** \brief Get descriptive info for a given variant (ep/device/architecture/path). */
-  ORT_API2_STATUS(ModelPackageContext_GetModelVariantInfo,
+  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileIdentifier,
                   _In_ const OrtModelPackageContext* ctx,
-                  _In_ size_t component_index,
-                  _In_ size_t variant_index,
-                  _Outptr_ const OrtModelVariantInfo** out_info);
-
-  /** \brief Path of the variant selected for component model `component_index`.
-   *
-   * Two-call idiom: pass `path_buf=NULL` first to get `*required_size` in ORTCHARs.
-   * Returns an error if no variant was selectable for the given EP selection.
-   */
-  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantPath,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ size_t component_index,
-                  _Out_writes_opt_(path_buf_size) ORTCHAR_T* path_buf,
-                  _In_ size_t path_buf_size,
-                  _Out_ size_t* required_size);
+                  _In_ const char* component_name,
+                  _In_ size_t index,
+                  _Outptr_ const char** out_file_identifier);
 };
 
 struct OrtApi {
