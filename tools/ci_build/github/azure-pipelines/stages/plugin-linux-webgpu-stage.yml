@@ -22,7 +22,7 @@ parameters:
 
 - name: docker_base_image
   type: string
-  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1'
 
 stages:
 - stage: Linux_plugin_webgpu_x64_Build
@@ -57,8 +57,8 @@ stages:
 
       - template: ../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
           DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimewebgpuplugin
 
@@ -132,8 +132,8 @@ stages:
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
         DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimewebgpuplugin
 
@@ -168,8 +168,8 @@ stages:
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
         DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimewebgpuplugin
 
