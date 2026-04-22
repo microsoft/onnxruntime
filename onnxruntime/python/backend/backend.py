@@ -184,13 +184,14 @@ class OnnxRuntimeBackend(Backend):
         :param device: requested device for the computation,
             None means the default one which depends on
             the compilation settings
-        :param kwargs: accepted keys are the union of ``_ALLOWED_SESSION_OPTIONS``
-            (defined in this module) and ``_ALLOWED_RUN_OPTIONS`` (see ``backend_rep.py``).
-            Kwargs are passed directly to both ``prepare()`` and ``rep.run()``; each
-            validates against its own allowlist and raises ``RuntimeError`` for blocked
-            attributes. Logging-related kwargs (``log_severity_level``,
-            ``log_verbosity_level``, ``logid``) appear in both allowlists and will be
-            applied to both ``SessionOptions`` and ``RunOptions``.
+        :param kwargs: ``run_model()`` forwards kwargs to both ``prepare()`` and ``rep.run()``.
+            ``prepare()`` validates and applies ``_ALLOWED_SESSION_OPTIONS`` only when creating
+            a new session from a model path or bytes; if ``model`` is already an
+            ``InferenceSession`` or ``OnnxRuntimeBackendRep``, session-option kwargs are
+            silently ignored. ``rep.run()`` always validates against ``_ALLOWED_RUN_OPTIONS``
+            and raises ``RuntimeError`` for known-but-blocked run attributes.
+            Logging-related kwargs (``log_severity_level``, ``log_verbosity_level``, ``logid``)
+            appear in both allowlists.
         :return: predictions
         """
         rep = cls.prepare(model, device, **kwargs)
