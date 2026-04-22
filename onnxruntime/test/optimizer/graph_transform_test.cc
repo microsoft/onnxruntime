@@ -5100,7 +5100,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
   };
 
   auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
-    Graph& graph = session.GetGraph();
+    const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
     ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
@@ -5175,7 +5175,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNode
   };
 
   auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
-    Graph& graph = session.GetGraph();
+    const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
     ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
@@ -5227,7 +5227,7 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBloc
   };
 
   auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
-    Graph& graph = session.GetGraph();
+    const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
     ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
     ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
@@ -6095,7 +6095,7 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
   builder.AddNode("Add", std::vector<NodeArg*>{input_skip, layer_scale_out}, std::vector<NodeArg*>{output});
 }
 
-static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
+static Status CheckMobileClipAttentionFusedGraph(const Graph& graph) {
   auto op_to_count = CountOpsInGraph(graph);
   TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
@@ -6111,7 +6111,7 @@ static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
   int mha_nodes = 0;
   int gemm_nodes = 0;
   int split_nodes = 0;
-  for (Node& node : graph.Nodes()) {
+  for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
       ++mha_nodes;
       TEST_RETURN_IF_NOT(node.GetAttributes().at("num_heads").i() == 16);
@@ -6158,10 +6158,10 @@ static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
   return Status::OK();
 }
 
-static Status CheckMobileClipAttentionFusedGraphOnProvider(Graph& graph, const char* provider) {
+static Status CheckMobileClipAttentionFusedGraphOnProvider(const Graph& graph, const char* provider) {
   ORT_RETURN_IF_ERROR(CheckMobileClipAttentionFusedGraph(graph));
 
-  for (Node& node : graph.Nodes()) {
+  for (const Node& node : graph.Nodes()) {
     TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == provider);
   }
 
