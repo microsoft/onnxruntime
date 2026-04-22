@@ -3958,7 +3958,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModelBytes,
   }
 
   ONNX_NAMESPACE::ModelProto model_proto;
-  auto status = Model::LoadFromBytes(static_cast<int>(model_data_length), model_data, model_proto);
+  auto status = Model::LoadFromBytes(narrow<int32_t>(model_data_length), model_data, model_proto);
   if (!status.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, status.ErrorMessage().c_str());
   }

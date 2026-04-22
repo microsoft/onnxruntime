@@ -482,6 +482,91 @@ TEST(ConvTest, Conv2D_3) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape, true);
 }
 
+TEST(ConvTest, Conv2D_4) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{1, 2, 3, 1},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<int64_t> X_shape = {1, 4, 3, 3};
+  vector<float> X(36, 1.f);
+
+  vector<int64_t> W_shape = {2, 4, 2, 2};
+  vector<float> W(32, 1.f);
+
+  vector<int64_t> Y_shape = {1, 2, 6, 5};
+
+  auto Y = {
+      0.f, 4.f, 8.f, 8.f, 4.f,
+      0.f, 8.f, 16.f, 16.f, 8.f,
+      0.f, 8.f, 16.f, 16.f, 8.f,
+      0.f, 4.f, 8.f, 8.f, 4.f,
+      0.f, 0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f,
+
+      0.f, 4.f, 8.f, 8.f, 4.f,
+      0.f, 8.f, 16.f, 16.f, 8.f,
+      0.f, 8.f, 16.f, 16.f, 8.f,
+      0.f, 4.f, 8.f, 8.f, 4.f,
+      0.f, 0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f};
+
+  // TODO: remove the excluding after fix https://github.com/microsoft/onnxruntime/issues/27805
+  attrs.excluded_providers.insert(kNnapiExecutionProvider);
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape, true);
+}
+
+TEST(ConvTest, Conv2D_5) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{1, 2, 3, 1},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<int64_t> X_shape = {1, 6, 3, 3};
+  vector<float> X(54);
+  for (int i = 0; i < 54; ++i) {
+    X[i] = static_cast<float>(i + 1);
+  }
+
+  vector<int64_t> W_shape = {2, 6, 2, 2};
+  vector<float> W(48, 1.f);
+
+  vector<int64_t> Y_shape = {1, 2, 6, 5};
+
+  auto Y = {
+      0.f, 141.f, 288.f, 300.f, 153.f,
+      0.f, 300.f, 612.f, 636.f, 324.f,
+      0.f, 336.f, 684.f, 708.f, 360.f,
+      0.f, 177.f, 360.f, 372.f, 189.f,
+      0.f, 0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f,
+
+      0.f, 141.f, 288.f, 300.f, 153.f,
+      0.f, 300.f, 612.f, 636.f, 324.f,
+      0.f, 336.f, 684.f, 708.f, 360.f,
+      0.f, 177.f, 360.f, 372.f, 189.f,
+      0.f, 0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f};
+
+  // TODO: remove the excluding after fix https://github.com/microsoft/onnxruntime/issues/27805
+  attrs.excluded_providers.insert(kNnapiExecutionProvider);
+
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape);
+  TestConvOp(attrs, {X, W}, {X_shape, W_shape}, Y, Y_shape, true);
+}
+
 TEST(ConvTest, Conv2D_Bias_1) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
