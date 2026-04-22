@@ -5104,6 +5104,16 @@ Status Graph::ToGraphProtoWithCustomInitializerHandlingImpl(
     for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
       gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
       gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
+
+      // Clear pre-existing initializers from the subgraph proto. The subgraph proto was populated by
+      // Node::ToProto -> Graph::ToGraphProto() const, which already inlined in-memory data.
+      // The recursive Impl call below will re-add all initializers via the custom handler, so we must
+      // clear to avoid duplicates.
+      subgraph_proto->clear_initializer();
+#if !defined(DISABLE_SPARSE_TENSORS)
+      subgraph_proto->clear_sparse_initializer();
+#endif
+
       ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithCustomInitializerHandlingImpl(handle_initializer_func,
                                                                                   state, *subgraph_proto));
     }
@@ -5195,6 +5205,16 @@ Status Graph::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocatio
                                                         void* state,
                                                         /*out*/ ONNX_NAMESPACE::GraphProto& graph_proto) const {
   ToGraphProtoInternal(graph_proto);
+
+  // Clear any pre-existing initializers from graph_proto. ToGraphProtoInternal populates nodes, inputs,
+  // outputs, and value_info but does not touch initializers. The Impl function below re-adds all
+  // initializers via the custom handler. Without clearing, stale initializers (including in-memory-only
+  // _ORT_MEM_ADDR_ references from ConvertInitializersIntoOrtValues) would remain and produce duplicates.
+  graph_proto.clear_initializer();
+#if !defined(DISABLE_SPARSE_TENSORS)
+  graph_proto.clear_sparse_initializer();
+#endif
+
   ORT_RETURN_IF_ERROR(ToGraphProtoWithCustomInitializerHandlingImpl(handle_initializer_func, state, graph_proto));
   return Status::OK();
 }
