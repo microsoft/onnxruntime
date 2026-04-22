@@ -188,6 +188,31 @@ stages:
           onnxruntimewebgpuplugin \
           /bin/bash -c "
             set -e -x
+            # --- DIAGNOSTICS (remove once WebGPU EP test is stable) ---
+            echo '=== NVIDIA driver capabilities / visible devices ==='
+            echo \"NVIDIA_DRIVER_CAPABILITIES=\${NVIDIA_DRIVER_CAPABILITIES:-<unset>}\"
+            echo \"NVIDIA_VISIBLE_DEVICES=\${NVIDIA_VISIBLE_DEVICES:-<unset>}\"
+            echo '=== nvidia-smi ==='
+            nvidia-smi || echo 'nvidia-smi failed'
+            echo '=== Vulkan ICD search paths ==='
+            ls -la /usr/share/vulkan/icd.d/ 2>/dev/null || echo '  (no /usr/share/vulkan/icd.d/)'
+            ls -la /etc/vulkan/icd.d/        2>/dev/null || echo '  (no /etc/vulkan/icd.d/)'
+            ls -la /etc/glvnd/egl_vendor.d/  2>/dev/null || echo '  (no /etc/glvnd/egl_vendor.d/)'
+            echo '=== any *_icd.json on the filesystem ==='
+            find / -name '*_icd.json' 2>/dev/null || true
+            echo '=== NVIDIA libs (libGLX_nvidia / libnvidia*) ==='
+            find / \( -name 'libGLX_nvidia*' -o -name 'libnvidia-*' \) 2>/dev/null | head -30 || true
+            echo '=== libvulkan ==='
+            ldconfig -p | grep -i vulkan || echo '  (no libvulkan in ldconfig cache)'
+            echo '=== vulkaninfo (if present) ==='
+            if command -v vulkaninfo >/dev/null 2>&1; then
+              VK_LOADER_DEBUG=error,warn vulkaninfo --summary 2>&1 | head -60 || true
+            else
+              echo '  (vulkaninfo not installed)'
+            fi
+            echo '=== END DIAGNOSTICS ==='
+            # --- END DIAGNOSTICS ---
+
             python3 -m venv /build/test_venv
             source /build/test_venv/bin/activate
             python3 -m pip install onnxruntime onnx numpy
