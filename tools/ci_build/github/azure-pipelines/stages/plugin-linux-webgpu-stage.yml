@@ -149,3 +149,77 @@ stages:
           -i onnxruntimewebgpuplugin \
           -v "$(PluginPythonPackageVersion)"
       displayName: 'Build Python wheel'
+
+# TESTING - temporarily put the test stage here to see if it works.
+- stage: Linux_plugin_webgpu_x64_Test
+  dependsOn: [Linux_plugin_webgpu_x64_Build]
+  jobs:
+  - job: Linux_plugin_webgpu_x64_Python_Test
+    timeoutInMinutes: 60
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/setup-feeds-and-python-steps.yml
+
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
+        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimewebgpuplugin
+
+    # Download the Python wheel produced by the Python package job in this
+    # same pipeline run. (In the separate test pipeline this uses
+    # `download: build` against the pipelines resource; here the artifact
+    # comes from `current`.)
+    - download: current
+      artifact: webgpu_plugin_python_linux_x64
+      displayName: 'Download Python wheel'
+
+    - script: |
+        set -e -x
+        mkdir -p "$(Build.BinariesDirectory)/python_wheel"
+        cp -R "$(Pipeline.Workspace)/webgpu_plugin_python_linux_x64/"* "$(Build.BinariesDirectory)/python_wheel/"
+      displayName: 'Stage Python wheel for test container'
+
+    - script: |
+        set -e -x
+        # Pin Vulkan to SwiftShader (software Vulkan, built from source in
+        # the Docker image) so the test does not require a GPU agent.
+        # Keeping these env vars at `docker run` time (rather than baking
+        # them into the image) leaves the image reusable for a potential
+        # future real-GPU test job.
+        swiftshader_icd=/opt/swiftshader/vk_swiftshader_icd.json
+        docker run --rm \
+          --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
+          --volume "$(Build.BinariesDirectory):/build" \
+          --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+          --env "VK_ICD_FILENAMES=${swiftshader_icd}" \
+          --env "VK_DRIVER_FILES=${swiftshader_icd}" \
+          onnxruntimewebgpuplugin \
+          /bin/bash -c "
+            set -e -x
+            # --- DIAGNOSTICS (remove once WebGPU EP test is stable) ---
+            echo '=== Vulkan ICD configuration ==='
+            echo \"VK_ICD_FILENAMES=\${VK_ICD_FILENAMES:-<unset>}\"
+            ls -la /opt/swiftshader/ 2>/dev/null || echo '  (no /opt/swiftshader/)'
+            echo '=== vulkaninfo --summary (SwiftShader expected) ==='
+            VK_LOADER_DEBUG=error,warn vulkaninfo --summary 2>&1 | head -60 || true
+            echo '=== END DIAGNOSTICS ==='
+            # --- END DIAGNOSTICS ---
+
+            python3 -m venv /build/test_venv
+            source /build/test_venv/bin/activate
+            python3 -m pip install onnxruntime onnx numpy
+            wheel=\$(find /build/python_wheel -name 'onnxruntime_ep_webgpu-*.whl' | head -1)
+            python3 -m pip install \"\$wheel\"
+            python3 -u /onnxruntime_src/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py
+          "
+      displayName: 'Install and test Python package'
