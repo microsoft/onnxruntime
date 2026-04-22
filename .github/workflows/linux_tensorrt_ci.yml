@@ -93,6 +93,13 @@ jobs:
           fi
 
       # --- Run Tests using the downloaded build ---
+      # Enable NVIDIA GPU persistence mode so the driver stays loaded between test
+      # processes. Without this, the GPU can become invisible after the C++ test
+      # binary exits, causing "CUDA failure 100: no CUDA-capable device" in
+      # subsequent Python tests.
+      - name: Enable GPU persistence mode
+        run: sudo nvidia-smi -pm 1
+
       # Run docker directly (instead of run-build-script-in-docker action) so we can pass
       # --ipc=host. cuDNN 9.x requires adequate shared memory for handle creation; Docker's
       # default 64 MB /dev/shm causes CUDNN_STATUS_INTERNAL_ERROR when multiple test
