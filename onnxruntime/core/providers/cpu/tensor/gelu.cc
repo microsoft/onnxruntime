@@ -107,8 +107,6 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported approximation_algorithm: ", approximation_algorithm_);
 }
 
-#include <algorithm>  // for std::min
-
 template <>
 Status Gelu<MLFloat16>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
