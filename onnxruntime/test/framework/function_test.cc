@@ -387,6 +387,40 @@ TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
 }
 
+TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
+  // A local function that calls itself inside an If subgraph (then_branch).
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.recursive_if (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        recursive_if (lx) => (ly) {
+            cond = Constant <value = bool {1}> ()
+            ly = If (cond) <
+                then_branch: graph then_graph () => (then_out) {
+                    then_out = local.recursive_if (lx)
+                },
+                else_branch: graph else_graph () => (else_out) {
+                    else_out = Identity (lx)
+                }
+            >
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
 // Test use of attibute references, especially where source/target attribute
 // names are not the same. In this example, the "start : int = @s" attribute-reference
 // binds the attribute named "start" of the Shape op to the attribute named "s"
