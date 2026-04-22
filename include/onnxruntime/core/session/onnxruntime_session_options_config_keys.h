@@ -47,6 +47,19 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "0" unless the DirectML execution provider is registered, in which case it defaults to "1".
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
+// This controls whether to prevent constant folding from folding DequantizeLinear nodes:
+// "0": (default) DequantizeLinear constant folding is determined solely by session.disable_quant_qdq.
+// "1": DequantizeLinear nodes are never individually constant folded.
+// When session.disable_quant_qdq is "0" (default), DequantizeLinear nodes are already protected from
+// constant folding to preserve QDQ node units for downstream QDQ fusion optimizers.
+// When session.disable_quant_qdq is "1", then DequantizeLinear nodes are normally allowed to be
+// constant folded, but setting this option to "1" still preserves DequantizeLinear nodes.
+// This is useful for execution providers like WebNN that disable QDQ fusion, but which
+// still need the original DQ/Q nodes to be preserved for their own quantization handling.
+
+static const char* const kOrtSessionOptionsDisableQDQConstantFolding =
+    "session.disable_qdq_constant_folding";
+
 // It controls whether to enable Double QDQ remover and Identical Children Consolidation
 // "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
 // "1": disable. ORT doesn't remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
@@ -153,6 +166,22 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 // Thread spinning is disabled by default for client/on-device workloads to reduce cpu utilization and improve power efficiency.
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
+
+// Configure the duration in microseconds that threads spin waiting for work before blocking.
+// This setting is subordinate to the allow_spinning flags (session.intra_op.allow_spinning /
+// session.inter_op.allow_spinning). When allow_spinning is "0", spinning is disabled and
+// the spin duration is forced to 0 regardless of this setting.
+// By default (when this option is not set), the thread pool uses an iteration-count-based spin loop
+// whose wall-clock duration varies by CPU architecture and pause instruction latency. This provides
+// the best throughput but may result in high CPU utilization.
+// Setting a positive value switches to calibrated iteration-based spinning that targets
+// the specified duration. The actual spin time is a best-effort approximation based on a
+// one-time measurement of the pause instruction latency; it may vary with CPU frequency
+// changes. Recommended for power-sensitive or client/on-device workloads.
+// Common values: 500-2000 (0.5-2ms).
+// Setting to "0" with spinning enabled effectively disables spinning (equivalent to allow_spinning = false).
+static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
+static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
 
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,

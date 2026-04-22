@@ -56,10 +56,10 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
     if (dynamic_block_base > 0) {
       onnxruntime::ThreadOptions thread_options;
       thread_options.dynamic_block_base_ = dynamic_block_base;
-      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, true, mock_hybrid);
+      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, onnxruntime::concurrency::kSpinDurationDefault, mock_hybrid);
       test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
     } else {
-      auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true, mock_hybrid);
+      auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, onnxruntime::concurrency::kSpinDurationDefault, mock_hybrid);
       test_body(tp_constant_block_size.get());  // test thread pool with constant block size
     }
   } else {
@@ -172,7 +172,7 @@ void TestPoolCreation(const std::string&, int iter) {
                                            onnxruntime::ThreadOptions(),
                                            nullptr,
                                            num_threads,
-                                           true);
+                                           onnxruntime::concurrency::kSpinDurationDefault);
     ThreadPool::TryParallelFor(tp.get(), per_iter, 0.0,
                                [&](std::ptrdiff_t s, std::ptrdiff_t e) {
                                  ctr += e - s;
@@ -519,7 +519,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   // For ARM, x86 and x64 machines, the default stack size is 1 MB
   // We change it to a different value to see if the setting works
   to.stack_size = 8 * 1024 * 1024;
-  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, true);
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, onnxruntime::concurrency::kSpinDurationDefault);
   typedef void(WINAPI * FnGetCurrentThreadStackLimits)(_Out_ PULONG_PTR LowLimit, _Out_ PULONG_PTR HighLimit);
 
   Notification n;
@@ -728,7 +728,7 @@ void CreateThreadPoolWithCallbacksAndTest(
                                          thread_options,
                                          nullptr,
                                          num_threads,
-                                         true);
+                                         onnxruntime::concurrency::kSpinDurationDefault);
   test_body(tp.get());
 }
 
@@ -914,7 +914,7 @@ TEST(ThreadPoolTest, TestWorkCallbacks_EnqueueReturnsNull) {
                                          thread_options,
                                          nullptr,
                                          4,
-                                         true);
+                                         onnxruntime::concurrency::kSpinDurationDefault);
 
   for (int i = 0; i < num_tasks; i++) {
     ThreadPool::Schedule(tp.get(), [&]() { tasks_completed++; });
@@ -955,7 +955,7 @@ TEST(ThreadPoolTest, TestWorkCallbacks_NoEnqueueWithStartStop) {
                                          thread_options,
                                          nullptr,
                                          4,
-                                         true);
+                                         onnxruntime::concurrency::kSpinDurationDefault);
 
   for (int i = 0; i < num_tasks; i++) {
     ThreadPool::Schedule(tp.get(), [&]() { tasks_completed++; });
@@ -969,5 +969,43 @@ TEST(ThreadPoolTest, TestWorkCallbacks_NoEnqueueWithStartStop) {
 }
 
 #endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+
+// -------------------------------------------------------------------
+// Tests for the three spin_duration_us modes (-1/0/>0)
+// -------------------------------------------------------------------
+
+// Helper: create a thread pool with the given spin_duration_us, run a parallel
+// workload, and verify correctness.
+void TestSpinDurationMode(int spin_duration_us) {
+  constexpr int num_threads = 4;
+  constexpr std::ptrdiff_t num_tasks = 1024;
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         num_threads,
+                                         spin_duration_us);
+  std::atomic<std::ptrdiff_t> ctr{0};
+  ThreadPool::TryParallelFor(tp.get(), num_tasks, 0.0,
+                             [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                               ctr += e - s;
+                             });
+  ASSERT_EQ(ctr.load(), num_tasks);
+}
+
+// Default (-1): iteration-count-based spinning (original behavior).
+TEST(ThreadPoolTest, SpinDurationDefault) {
+  TestSpinDurationMode(onnxruntime::concurrency::kSpinDurationDefault);
+}
+
+// Zero: no spinning — threads block immediately when idle.
+TEST(ThreadPoolTest, SpinDurationZero_NoSpinning) {
+  TestSpinDurationMode(0);
+}
+
+// Positive: time-based spinning with a short duration.
+TEST(ThreadPoolTest, SpinDurationPositive_TimeBased) {
+  TestSpinDurationMode(100);   // 100us
+  TestSpinDurationMode(1000);  // 1ms
+}
 
 }  // namespace onnxruntime

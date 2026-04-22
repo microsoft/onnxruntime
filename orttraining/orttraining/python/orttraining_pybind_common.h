@@ -16,7 +16,6 @@ namespace py = pybind11;
 using namespace onnxruntime::logging;
 
 using ExecutionProviderMap = std::unordered_map<std::string, std::shared_ptr<IExecutionProvider>>;
-using ExecutionProviderLibInfoMap = std::unordered_map<std::string, std::pair<std::string, ProviderOptions>>;
 
 class ORTTrainingPythonEnv {
  public:
@@ -32,13 +31,7 @@ class ORTTrainingPythonEnv {
                             size_t hash,
                             std::unique_ptr<IExecutionProvider> execution_provider);
 
-  void RegisterExtExecutionProviderInfo(const std::string& provider_type,
-                                        const std::string& provider_lib_path,
-                                        const ProviderOptions& default_options);
-
   const std::vector<std::string>& GetAvailableTrainingExecutionProviderTypes();
-
-  ExecutionProviderLibInfoMap ext_execution_provider_info_map_;
 
   void ClearExecutionProviderInstances();
 
