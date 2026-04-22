@@ -2,11 +2,15 @@
 	let description =
 		'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
 	let keywords =
-		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.23, onnx runtime 1.23.2, onnx runtime 1.24.0, onnx runtime 1.24';
-	// Added release metadata variables
-	const previousRelease = { version: '1.23.2', date: 'Oct 2025' };
-	const inProgressRelease = { version: 'None', date: '' };
-	const nextRelease = { version: '1.24', date: 'Jan 2026' };
+		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.25, onnx runtime 1.25.0, onnx runtime 1.26';
+	// Release metadata
+	const previousRelease = { version: '1.25.0', date: 'Apr 2026' };
+	const inProgressRelease = { version: '', date: '' };
+	const nextRelease = { version: '1.26', date: 'May 2026' };
+
+	// Visibility flags — flip to true when content is ready
+	const showInProgressRelease = false;
+	const showNextReleaseRoadmap = false;
 </script>
 
 <svelte:head>
@@ -23,7 +27,7 @@
 <div class="container mx-auto px-8">
 	<h1 class="text-3xl">ONNX Runtime Release Roadmap</h1>
 	<p>
-		ONNX Runtime is released on a quarterly basis. Patch releases are published between major
+		ONNX Runtime is released on a monthly basis. Patch releases are published between major
 		releases as necessary.
 	</p>
 	<div class="flex justify-center my-4">
@@ -48,7 +52,7 @@
 				<div class="stat-desc">Release date: {previousRelease.date}</div>
 			</div>
 
-			{#if inProgressRelease.version && inProgressRelease.version !== 'None'}
+			{#if showInProgressRelease}
 			<div class="stat">
 				<div class="stat-figure text-secondary">
 					<svg
@@ -165,7 +169,7 @@
 	</p>
 	<div class="divider" />
 	
-	{#if nextRelease.version && nextRelease.version !== 'None'}
+	{#if showNextReleaseRoadmap}
 	<h2 class="text-xl font-bold mt-2">ONNX Runtime {nextRelease.version}</h2>
 	<p class="font-thin">
 		<strong>Tentative release date:</strong> {nextRelease.date}
@@ -174,75 +178,60 @@
 	<div class="join join-vertical w-full p-2">
 		<!-- Key Stories Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="key-stories-124" />
+			<input type="checkbox" name="key-stories-126" />
 			<div class="collapse-title text-xl font-bold">Key Stories</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Feature complete Plugin EP</li>
-					<li>Memory Optimization</li>
-					<li>Low-bit Precision</li>
 				</ul>
 			</div>
 		</div>
 
 		<!-- Core Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="core-124" />
+			<input type="checkbox" name="core-126" />
 			<div class="collapse-title text-xl font-bold">Core</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>DirectX Inter-operability</li>
-					<li>ARM Improvements</li>
-					<li>2-bit precision</li>
-					<li>Weightless EP Context</li>
-					<li>Graph partitioning improvements</li>
 				</ul>
 			</div>
 		</div>
 
 		<!-- Plugin EP Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="plugin-ep-124" />
+			<input type="checkbox" name="plugin-ep-126" />
 			<div class="collapse-title text-xl font-bold">Plugin EP</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Offline Compilation</li>
-					<li>Kernel Registry EP</li>
-					<li>Language Bindings</li>
-					<li>Testsuite and tooling</li>
 				</ul>
 			</div>
 		</div>
 
 		<!-- EP Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="ep-124" />
+			<input type="checkbox" name="ep-126" />
 			<div class="collapse-title text-xl font-bold">EP</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>WebGPU Improvements</li>
 				</ul>
 			</div>
 		</div>
 
 		<!-- TRT EP Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="trt-ep-124" />
+			<input type="checkbox" name="trt-ep-126" />
 			<div class="collapse-title text-xl font-bold">TRT EP</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Update TRT version used by the TRT EP</li>
 				</ul>
 			</div>
 		</div>
 
 		<!-- ONNX Section -->
 		<div class="collapse collapse-arrow join-item border-base-300 border">
-			<input type="checkbox" name="onnx-124" />
+			<input type="checkbox" name="onnx-126" />
 			<div class="collapse-title text-xl font-bold">ONNX</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Update ONNXruntime support for ONNX Opset/IR (TBD)</li>
 				</ul>
 			</div>
 		</div>
