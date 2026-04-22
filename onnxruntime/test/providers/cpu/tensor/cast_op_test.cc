@@ -2745,7 +2745,7 @@ TEST(CastOpTest, Int4x2ToInt4x2_SameType) {
       Int4x2(0, -1),
       Int4x2(3, -5),
       Int4x2(6, 2),
-      Int4x2(1, 0)  // 9th element in high nibble of 5th byte (padding in low nibble)
+      Int4x2(1, 0)  // 9th element in low nibble of 5th byte (padding in high nibble)
   };
 
   TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
@@ -2810,7 +2810,7 @@ TEST(CastOpTest, Int2x4ToInt2x4_LargeShape) {
   std::vector<Int2x4> input_vec(num_storage);
   for (size_t i = 0; i < num_storage; ++i) {
     input_vec[i] = Int2x4(static_cast<int8_t>(i % 2), static_cast<int8_t>(-(static_cast<int8_t>(i % 2))),
-                           static_cast<int8_t>((i + 1) % 2), static_cast<int8_t>(0));
+                          static_cast<int8_t>((i + 1) % 2), static_cast<int8_t>(0));
   }
   const auto& input = input_vec;
 
@@ -2825,7 +2825,7 @@ TEST(CastOpTest, UInt2x4ToUInt2x4_LargeShape) {
   std::vector<UInt2x4> input_vec(num_storage);
   for (size_t i = 0; i < num_storage; ++i) {
     input_vec[i] = UInt2x4(static_cast<uint8_t>(i % 4), static_cast<uint8_t>((i + 1) % 4),
-                            static_cast<uint8_t>((i + 2) % 4), static_cast<uint8_t>((i + 3) % 4));
+                           static_cast<uint8_t>((i + 2) % 4), static_cast<uint8_t>((i + 3) % 4));
   }
   const auto& input = input_vec;
 
