@@ -697,9 +697,23 @@ class HQQWeightOnlyQuantizer:
             return [node]  # only care about constant weight
 
         b_array = onnx.numpy_helper.to_array(b_pb)
-        if len(b_array.shape) != 2:
-            logger.info("MatMul weight is not 2D. Skip to quantize")
-            return [node]  # can only process 2-D matrix
+        b_original_shape = b_array.shape
+        if len(b_original_shape) != 2:
+            if len(b_original_shape) < 2:
+                logger.info("MatMul weight has fewer than 2 dimensions. Skip to quantize.")
+                return [node]
+            leading = b_original_shape[:-2]
+            if any(d != 1 for d in leading):
+                logger.info(
+                    "MatMul weight has non-unit batch dims %s; N-D batched quantization not supported. "
+                    "Skip to quantize.",
+                    list(leading),
+                )
+                return [node]
+            # Squeeze all unit leading dims to obtain a 2-D weight [K, N]
+            b_array = b_array.reshape(b_original_shape[-2], b_original_shape[-1])
+        else:
+            b_original_shape = None  # already 2-D, no reshape needed
         b_array_torch = torch.from_numpy(b_array)
         if torch.cuda.is_available():
             b_array_torch = b_array_torch.cuda()
@@ -755,18 +769,37 @@ class HQQWeightOnlyQuantizer:
         kwargs["bits"] = bits
         kwargs["block_size"] = self.config.block_size
 
+        matmul_q_output = node.output[0] if b_original_shape is None else node.output[0] + "_pre_reshape"
         matmul_q_node = onnx.helper.make_node(
             "MatMulNBits",
             inputs=input_names,
-            outputs=[node.output[0]],
+            outputs=[matmul_q_output],
             name=node.name + "_Q" + str(bits) if node.name else "",
             domain="com.microsoft",
             **kwargs,
         )
 
+        output_nodes = [matmul_q_node]
+        if b_original_shape is not None:
+            # Restore the batch leading dims on the MatMul output.
+            # MatMulNBits output shape: [...batch_A, N]; we need [...batch_A, *leading, N]
+            # Since all leading dims of B are 1, the output is equivalent in value.
+            # We append a Reshape that re-introduces the unit dims: output shape [-1, *leading, N]
+            target_shape = [*b_original_shape[:-2], -1, b_original_shape[-1]]
+            shape_init_name = b_pb.name + "_reshape_shape_Q" + str(bits)
+            shape_init = onnx.numpy_helper.from_array(np.array(target_shape, dtype=np.int64), name=shape_init_name)
+            bs_graph.initializer.append(shape_init)
+            reshape_node = onnx.helper.make_node(
+                "Reshape",
+                inputs=[matmul_q_output, shape_init_name],
+                outputs=[node.output[0]],
+                name=(node.name + "_Q" + str(bits) + "_reshape") if node.name else "",
+            )
+            output_nodes.append(reshape_node)
+
         logger.info(f"complete quantization of {node.name} ...")
 
-        return [matmul_q_node]
+        return output_nodes
 
 
 def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
@@ -869,9 +902,23 @@ class DefaultWeightOnlyQuantizer:
             return [node]  # only care about constant weight
 
         b_ndarray = ir.from_proto(b_tensor).numpy()
-        if len(b_ndarray.shape) != 2:
-            logger.info("MatMul weight is not 2D. Skip to quantize")
-            return [node]  # can only process 2-D matrix
+        b_original_shape = b_ndarray.shape
+        if len(b_original_shape) != 2:
+            if len(b_original_shape) < 2:
+                logger.info("MatMul weight has fewer than 2 dimensions. Skip to quantize.")
+                return [node]
+            leading = b_original_shape[:-2]
+            if any(d != 1 for d in leading):
+                logger.info(
+                    "MatMul weight has non-unit batch dims %s; N-D batched quantization not supported. "
+                    "Skip to quantize.",
+                    list(leading),
+                )
+                return [node]
+            # Squeeze all unit leading dims to obtain a 2-D weight [K, N]
+            b_ndarray = b_ndarray.reshape(b_original_shape[-2], b_original_shape[-1])
+        else:
+            b_original_shape = None  # already 2-D, no reshape needed
 
         bfloat16 = b_ndarray.dtype == "bfloat16"
         if bfloat16:
@@ -931,16 +978,29 @@ class DefaultWeightOnlyQuantizer:
             if self.config.accuracy_level:
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
+            qop_output = node.output[0] if b_original_shape is None else node.output[0] + "_pre_reshape"
             matmul_qbit_node = onnx.helper.make_node(
                 "MatMulNBits",
                 inputs=input_names,
-                outputs=[node.output[0]],
+                outputs=[qop_output],
                 name=node.name + f"_Q{bits}" if node.name else "",
                 domain="com.microsoft",
                 **kwargs,
             )
 
             output_nodes.append(matmul_qbit_node)
+            if b_original_shape is not None:
+                target_shape = [*b_original_shape[:-2], -1, b_original_shape[-1]]
+                shape_init_name = b_tensor.name + f"_reshape_shape_Q{bits}"
+                shape_init = onnx.numpy_helper.from_array(np.array(target_shape, dtype=np.int64), name=shape_init_name)
+                b_graph.initializer.append(shape_init)
+                reshape_node = onnx.helper.make_node(
+                    "Reshape",
+                    inputs=[qop_output, shape_init_name],
+                    outputs=[node.output[0]],
+                    name=(node.name + f"_Q{bits}_reshape") if node.name else "",
+                )
+                output_nodes.append(reshape_node)
         else:
             dq_input_names = [b_quant.name, scales_tensor.name]
             dq_output_names = [b_quant.name + "_output"]
@@ -950,7 +1010,8 @@ class DefaultWeightOnlyQuantizer:
                 node.input[0],
                 tp_output_names[0] if qdq_opt_for_intel_npu_enabled else dq_output_names[0],
             ]
-            matmul_output_names = [node.output[0]]
+            qdq_matmul_out = node.output[0] if b_original_shape is None else node.output[0] + "_pre_reshape"
+            matmul_output_names = [qdq_matmul_out]
             if not self.config.is_symmetric:
                 zp_tensor = onnx.helper.make_tensor(
                     b_tensor.name + "_DQ_zero_points", qtype, scales.shape, zero_points.tobytes(), True
@@ -985,6 +1046,18 @@ class DefaultWeightOnlyQuantizer:
                 output_nodes.extend([dq_node, tp_node, matmul_node])
             else:
                 output_nodes.extend([dq_node, matmul_node])
+            if b_original_shape is not None:
+                target_shape = [*b_original_shape[:-2], -1, b_original_shape[-1]]
+                shape_init_name = b_tensor.name + f"_DQ_reshape_shape_Q{bits}"
+                shape_init = onnx.numpy_helper.from_array(np.array(target_shape, dtype=np.int64), name=shape_init_name)
+                b_graph.initializer.append(shape_init)
+                reshape_node = onnx.helper.make_node(
+                    "Reshape",
+                    inputs=[qdq_matmul_out, shape_init_name],
+                    outputs=[node.output[0]],
+                    name=(node.name + f"_Q{bits}_qdq_reshape") if node.name else "",
+                )
+                output_nodes.append(reshape_node)
 
         return output_nodes
 

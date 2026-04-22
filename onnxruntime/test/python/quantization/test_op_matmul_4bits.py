@@ -187,6 +187,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         quant_axes: tuple[tuple[str, int], ...] = (("MatMul", 0), ("Gather", 1)),
         rtol: float = 0.01,
         atol: float = 0.05,
+        extra_quant_nodes: dict | None = None,
     ):
         use_qdq = quant_format == quant_utils.QuantFormat.QDQ
         name_prefix = "QDQ" if use_qdq else "QOperator"
@@ -213,6 +214,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
             quant_nodes = {"GatherBlockQuantized": 1}
         else:
             quant_nodes = {"DequantizeLinear": 1, "MatMul": 1} if use_qdq else {"MatMulNBits": 1}
+        if extra_quant_nodes:
+            quant_nodes.update(extra_quant_nodes)
         check_op_type_count(self, model_int4_path, **quant_nodes)
 
         if use_qdq:
@@ -254,6 +257,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         data_reader: TestDataFeeds,
         block_size: int,
         is_symmetric: bool,
+        extra_quant_nodes: dict | None = None,
     ):
         model_int4_path = str(
             Path(self._tmp_model_dir.name).joinpath(f"MatMulNBits_{block_size}_{is_symmetric}.onnx").absolute()
@@ -282,6 +286,8 @@ class TestOpMatMul4Bits(unittest.TestCase):
         quant.model.save_model_to_file(model_int4_path, False)
 
         quant_nodes = {"MatMulNBits": 1}
+        if extra_quant_nodes:
+            quant_nodes.update(extra_quant_nodes)
         check_op_type_count(self, model_int4_path, **quant_nodes)
 
         data_reader.rewind()
@@ -366,6 +372,74 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_matmul(model_fp32_path, symmetric=False)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False)
+
+    def construct_model_matmul_3d(self, output_model_path: str, symmetric: bool, weight_shape: tuple) -> None:
+        #      (input)
+        #         |
+        #       MatMul  (weight has shape [1, K, N] -- unit leading dim)
+        #         |
+        #      (output)
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+
+        weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(weight_data, name="linear1.weight"))
+        matmul_node = onnx.helper.make_node(
+            "MatMul",
+            [input_name, "linear1.weight"],
+            [output_name],
+            "MatMul_0",
+        )
+
+        # weight_shape = (b1, ..., K, N) -> input shape (-1, K),
+        # ONNX MatMul output shape = [b1, ..., -1, N] (leading batch dims of B come first)
+        k = weight_shape[-2]
+        n = weight_shape[-1]
+        leading = list(weight_shape[:-2])
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [-1, k])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [*leading, -1, n])
+        graph = helper.make_graph(
+            [matmul_node],
+            "matmul_4bits_3d_test",
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.save(model, output_model_path)
+
+    def test_quantize_matmul_int4_3d_weight_default(self):
+        """Test that Default quantizer handles weight with unit leading dim, e.g. shape [1, K, N]."""
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)  # unit leading dim
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_default.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes={"Reshape": 1})
+
+    def test_quantize_matmul_int4_3d_weight_default_qdq(self):
+        """Test QDQ format with unit leading dim 3D weight."""
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_default_qdq.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(
+            model_fp32_path, data_reader, 32, True, quant_utils.QuantFormat.QDQ, extra_quant_nodes={"Reshape": 1}
+        )
+
+    def test_quantize_matmul_int4_3d_weight_hqq(self):
+        """Test that HQQ quantizer handles weight with unit leading dim, e.g. shape [1, K, N]."""
+        if not find_spec("torch"):
+            self.skipTest("skip test since torch is not installed")
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_hqq.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=False, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False, extra_quant_nodes={"Reshape": 1})
 
 
 if __name__ == "__main__":
