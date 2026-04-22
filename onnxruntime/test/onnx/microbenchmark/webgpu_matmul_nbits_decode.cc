@@ -4,6 +4,7 @@
 #include <benchmark/benchmark.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <cmath>
@@ -121,6 +122,36 @@ struct DecodeTrafficStats {
 
 struct MlpTrafficStats {
   double input_bytes;
+  double packed_weight_bytes;
+  double scale_bytes;
+  double intermediate_bytes;
+  double output_bytes;
+  double total_bytes;
+};
+
+struct QkvDecodeBenchConfig {
+  int64_t q_n;
+  int64_t kv_n;
+  int64_t k;
+  int64_t bits;
+  int64_t block_size;
+  int64_t accuracy_level;
+};
+
+enum class QkvDecodeBenchmarkVariant {
+  kUnfused,
+  kFused,
+};
+
+enum class QkvNormKind {
+  kSimplified,
+  kSkipSimplified,
+};
+
+struct QkvTrafficStats {
+  double input_bytes;
+  double skip_input_bytes;
+  double norm_scale_bytes;
   double packed_weight_bytes;
   double scale_bytes;
   double intermediate_bytes;
@@ -319,28 +350,61 @@ DecodeTrafficStats CalculateDecodeTrafficStats(const DecodeBenchConfig& config) 
   };
 }
 
-    MlpTrafficStats CalculateMlpTrafficStats(const MlpDecodeBenchConfig& config, MlpDecodeBenchmarkVariant variant) {
-      const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
-      const int64_t blob_size = (config.block_size * config.bits) / 8;
+MlpTrafficStats CalculateMlpTrafficStats(const MlpDecodeBenchConfig& config, MlpDecodeBenchmarkVariant variant) {
+  const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
+  const int64_t blob_size = (config.block_size * config.bits) / 8;
 
-      const double input_reads = variant == MlpDecodeBenchmarkVariant::kFused ? 1.0 : 2.0;
-      const double intermediate_bytes =
-        variant == MlpDecodeBenchmarkVariant::kFused ? 0.0 : 4.0 * static_cast<double>(config.n) * sizeof(Ort::Float16_t);
-      const double input_bytes = input_reads * static_cast<double>(config.k) * sizeof(Ort::Float16_t);
-      const double packed_weight_bytes =
-        2.0 * static_cast<double>(config.n) * static_cast<double>(k_blocks) * static_cast<double>(blob_size);
-      const double scale_bytes = 2.0 * static_cast<double>(config.n) * static_cast<double>(k_blocks) * sizeof(Ort::Float16_t);
-      const double output_bytes = static_cast<double>(config.n) * sizeof(Ort::Float16_t);
+  const double input_reads = variant == MlpDecodeBenchmarkVariant::kFused ? 1.0 : 2.0;
+  const double intermediate_bytes =
+      variant == MlpDecodeBenchmarkVariant::kFused ? 0.0 : 4.0 * static_cast<double>(config.n) * sizeof(Ort::Float16_t);
+  const double input_bytes = input_reads * static_cast<double>(config.k) * sizeof(Ort::Float16_t);
+  const double packed_weight_bytes =
+      2.0 * static_cast<double>(config.n) * static_cast<double>(k_blocks) * static_cast<double>(blob_size);
+  const double scale_bytes = 2.0 * static_cast<double>(config.n) * static_cast<double>(k_blocks) * sizeof(Ort::Float16_t);
+  const double output_bytes = static_cast<double>(config.n) * sizeof(Ort::Float16_t);
 
-      return {
-        input_bytes,
-        packed_weight_bytes,
-        scale_bytes,
-        intermediate_bytes,
-        output_bytes,
-        input_bytes + packed_weight_bytes + scale_bytes + intermediate_bytes + output_bytes,
-      };
-    }
+  return {
+      input_bytes,
+      packed_weight_bytes,
+      scale_bytes,
+      intermediate_bytes,
+      output_bytes,
+      input_bytes + packed_weight_bytes + scale_bytes + intermediate_bytes + output_bytes,
+  };
+}
+
+QkvTrafficStats CalculateQkvTrafficStats(const QkvDecodeBenchConfig& config,
+                     QkvDecodeBenchmarkVariant variant,
+                     QkvNormKind norm_kind) {
+  const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
+  const int64_t blob_size = (config.block_size * config.bits) / 8;
+
+  const double input_bytes = static_cast<double>(config.k) * sizeof(Ort::Float16_t);
+  const double skip_input_bytes = norm_kind == QkvNormKind::kSkipSimplified
+                    ? static_cast<double>(config.k) * sizeof(Ort::Float16_t)
+                    : 0.0;
+  const double norm_scale_bytes = static_cast<double>(config.k) * sizeof(Ort::Float16_t);
+  const double packed_weight_bytes =
+      static_cast<double>(config.q_n + 2 * config.kv_n) * static_cast<double>(k_blocks) * static_cast<double>(blob_size);
+  const double scale_bytes =
+      static_cast<double>(config.q_n + 2 * config.kv_n) * static_cast<double>(k_blocks) * sizeof(Ort::Float16_t);
+  const double intermediate_bytes =
+    variant == QkvDecodeBenchmarkVariant::kUnfused ? static_cast<double>(config.k) * sizeof(Ort::Float16_t) : 0.0;
+  const double output_bytes =
+    static_cast<double>(config.q_n + 2 * config.kv_n + (norm_kind == QkvNormKind::kSkipSimplified ? config.k : 0)) *
+    sizeof(Ort::Float16_t);
+
+  return {
+      input_bytes,
+    skip_input_bytes,
+      norm_scale_bytes,
+      packed_weight_bytes,
+      scale_bytes,
+      intermediate_bytes,
+      output_bytes,
+    input_bytes + skip_input_bytes + norm_scale_bytes + packed_weight_bytes + scale_bytes + intermediate_bytes + output_bytes,
+  };
+}
 
 AdapterSelectionConfig GetAdapterSelectionConfig() {
   if (GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kT1000) {
@@ -585,11 +649,16 @@ std::vector<DecodeBenchConfig> GetDecodeBenchConfigs() {
 }
 
 std::vector<MlpDecodeBenchConfig> GetMlpDecodeBenchConfigs() {
-  // Each entry is {N, K, bits, block_size, accuracy_level} for a decode-style M=1 MLP run.
+  // Qwen3-1.7B MLP gate/up decode geometry: hidden=2048, intermediate=6144.
   return {
       {6144, 2048, 4, 32, 4},
-      {8192, 3072, 4, 32, 4},
-      {11008, 4096, 4, 32, 4},
+  };
+}
+
+std::vector<QkvDecodeBenchConfig> GetQkvDecodeBenchConfigs() {
+  // Qwen3-1.7B attention projection geometry: hidden=2048, q=2048, kv=1024.
+  return {
+      {2048, 1024, 2048, 4, 32, 4},
   };
 }
 
@@ -693,6 +762,78 @@ void AddMatMulNBitsSiluMulNode(ONNX_NAMESPACE::GraphProto& graph,
   attr_accuracy->set_i(accuracy_level);
 }
 
+void AddMatMulNBitsQKVSimplifiedLayerNormNode(ONNX_NAMESPACE::GraphProto& graph,
+                                              const std::string& node_name,
+                                              const std::string& input_name,
+                                              const std::string& skip_input_name,
+                                              const std::string& norm_scale_name,
+                                              const std::string& q_weight_name,
+                                              const std::string& q_scale_name,
+                                              const std::string& k_weight_name,
+                                              const std::string& k_scale_name,
+                                              const std::string& v_weight_name,
+                                              const std::string& v_scale_name,
+                                              const std::string& q_output_name,
+                                              const std::string& k_output_name,
+                                              const std::string& v_output_name,
+                                              const std::string& skip_sum_output_name,
+                                              int64_t k,
+                                              int64_t q_n,
+                                              int64_t kv_n,
+                                              int64_t bits,
+                                              int64_t block_size,
+                                              int64_t accuracy_level,
+                                              float epsilon) {
+  auto* node = graph.add_node();
+  node->set_name(node_name);
+  node->set_op_type("MatMulNBitsQKVSimplifiedLayerNorm");
+  node->set_domain("com.microsoft");
+  node->add_input(input_name);
+  node->add_input(skip_input_name);
+  node->add_input(norm_scale_name);
+  node->add_input(q_weight_name);
+  node->add_input(q_scale_name);
+  node->add_input(k_weight_name);
+  node->add_input(k_scale_name);
+  node->add_input(v_weight_name);
+  node->add_input(v_scale_name);
+  node->add_output(q_output_name);
+  node->add_output(k_output_name);
+  node->add_output(v_output_name);
+  if (!skip_sum_output_name.empty()) {
+    node->add_output(skip_sum_output_name);
+  }
+
+  auto* attr_k = node->add_attribute();
+  attr_k->set_name("K");
+  attr_k->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_k->set_i(k);
+  auto* attr_qn = node->add_attribute();
+  attr_qn->set_name("Nq");
+  attr_qn->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_qn->set_i(q_n);
+  auto* attr_kvn = node->add_attribute();
+  attr_kvn->set_name("Nkv");
+  attr_kvn->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_kvn->set_i(kv_n);
+  auto* attr_bits = node->add_attribute();
+  attr_bits->set_name("bits");
+  attr_bits->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_bits->set_i(bits);
+  auto* attr_block = node->add_attribute();
+  attr_block->set_name("block_size");
+  attr_block->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_block->set_i(block_size);
+  auto* attr_accuracy = node->add_attribute();
+  attr_accuracy->set_name("accuracy_level");
+  attr_accuracy->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_accuracy->set_i(accuracy_level);
+  auto* attr_epsilon = node->add_attribute();
+  attr_epsilon->set_name("epsilon");
+  attr_epsilon->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+  attr_epsilon->set_f(epsilon);
+}
+
 std::vector<uint8_t> SerializeMatMulNBitsModel(const DecodeBenchConfig& config) {
   const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
   const int64_t blob_size = (config.block_size * config.bits) / 8;
@@ -753,6 +894,24 @@ std::string GetMlpVariantLabel(MlpDecodeBenchmarkVariant variant) {
 std::string GetMlpDecodeBenchmarkLabel(MlpDecodeBenchmarkVariant variant) {
   std::ostringstream stream;
   stream << "fp16_mlp_decode_" << GetMlpVariantLabel(variant) << '_'
+         << (IsDecodeBenchmarkPerfMode() ? "perf" : "correctness") << '_'
+         << (GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kRtx5060Ti ? "rtx" : "t") << '_'
+         << (IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off") << '_'
+         << (IsGraphCaptureBenchmarkEnabled() ? "graph_on" : "graph_off");
+  return stream.str();
+}
+
+std::string GetQkvVariantLabel(QkvDecodeBenchmarkVariant variant) {
+  return variant == QkvDecodeBenchmarkVariant::kFused ? "fused" : "unfused";
+}
+
+std::string GetQkvNormKindLabel(QkvNormKind norm_kind) {
+  return norm_kind == QkvNormKind::kSkipSimplified ? "skip_simplified" : "simplified";
+}
+
+std::string GetQkvDecodeBenchmarkLabel(QkvDecodeBenchmarkVariant variant, QkvNormKind norm_kind) {
+  std::ostringstream stream;
+  stream << "fp16_qkv_norm_" << GetQkvNormKindLabel(norm_kind) << '_' << GetQkvVariantLabel(variant) << '_'
          << (IsDecodeBenchmarkPerfMode() ? "perf" : "correctness") << '_'
          << (GetDecodeBenchmarkGpu() == DecodeBenchmarkGpu::kRtx5060Ti ? "rtx" : "t") << '_'
          << (IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off") << '_'
@@ -867,6 +1026,128 @@ std::vector<uint8_t> SerializeMatMulNBitsMlpModel(const MlpDecodeBenchConfig& co
     output_mul->add_input("gate_silu");
     output_mul->add_input("up_mm");
     output_mul->add_output("Y");
+  }
+
+  const auto serialized = model.SerializeAsString();
+  return std::vector<uint8_t>(serialized.begin(), serialized.end());
+}
+
+std::vector<uint8_t> SerializeMatMulNBitsQkvModel(const QkvDecodeBenchConfig& config,
+                                                  QkvDecodeBenchmarkVariant variant,
+                                                  QkvNormKind norm_kind) {
+  const int64_t k_blocks = (config.k + config.block_size - 1) / config.block_size;
+  const int64_t blob_size = (config.block_size * config.bits) / 8;
+
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(10);
+
+  auto* onnx_opset = model.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(21);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name(variant == QkvDecodeBenchmarkVariant::kFused
+                      ? (norm_kind == QkvNormKind::kSkipSimplified ? "WebGpuMatMulNBitsQkvSkipNormFused" : "WebGpuMatMulNBitsQkvSimplifiedNormFused")
+                      : (norm_kind == QkvNormKind::kSkipSimplified ? "WebGpuMatMulNBitsQkvSkipNormUnfused" : "WebGpuMatMulNBitsQkvSimplifiedNormUnfused"));
+
+  auto* input = graph->add_input();
+  input->set_name("A");
+  input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  input->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  input->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(config.k);
+
+  if (norm_kind == QkvNormKind::kSkipSimplified) {
+    auto* skip_input = graph->add_input();
+    skip_input->set_name("Skip");
+    skip_input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    skip_input->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    skip_input->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(config.k);
+  }
+
+  auto add_output = [&](const std::string& name, int64_t n) {
+    auto* output = graph->add_output();
+    output->set_name(name);
+    output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    output->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+    output->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(n);
+  };
+  add_output("Q", config.q_n);
+  add_output("K", config.kv_n);
+  add_output("V", config.kv_n);
+  if (norm_kind == QkvNormKind::kSkipSimplified) {
+    add_output("SkipSum", config.k);
+  }
+
+  std::vector<Ort::Float16_t> norm_scale(static_cast<size_t>(config.k), Ort::Float16_t(1.0f));
+  std::vector<uint8_t> q_b(static_cast<size_t>(config.q_n * k_blocks * blob_size), uint8_t{0x11});
+  std::vector<uint8_t> k_b(static_cast<size_t>(config.kv_n * k_blocks * blob_size), uint8_t{0x33});
+  std::vector<uint8_t> v_b(static_cast<size_t>(config.kv_n * k_blocks * blob_size), uint8_t{0x77});
+  std::vector<Ort::Float16_t> q_scales(static_cast<size_t>(config.q_n * k_blocks), Ort::Float16_t(0.03125f));
+  std::vector<Ort::Float16_t> k_scales(static_cast<size_t>(config.kv_n * k_blocks), Ort::Float16_t(0.03125f));
+  std::vector<Ort::Float16_t> v_scales(static_cast<size_t>(config.kv_n * k_blocks), Ort::Float16_t(0.0625f));
+
+  AddTensorInitializer(*graph, "norm_scale", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {config.k}, norm_scale);
+  AddTensorInitializer(*graph, "q_B", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {config.q_n, k_blocks, blob_size}, q_b);
+  AddTensorInitializer(*graph, "q_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {config.q_n, k_blocks}, q_scales);
+  AddTensorInitializer(*graph, "k_B", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {config.kv_n, k_blocks, blob_size}, k_b);
+  AddTensorInitializer(*graph, "k_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {config.kv_n, k_blocks}, k_scales);
+  AddTensorInitializer(*graph, "v_B", ONNX_NAMESPACE::TensorProto_DataType_UINT8, {config.kv_n, k_blocks, blob_size}, v_b);
+  AddTensorInitializer(*graph, "v_scales", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {config.kv_n, k_blocks}, v_scales);
+
+  if (variant == QkvDecodeBenchmarkVariant::kFused) {
+    AddMatMulNBitsQKVSimplifiedLayerNormNode(*graph,
+                                             "MatMulNBitsQKVSimplifiedLayerNormDecode",
+                                             "A",
+                                             norm_kind == QkvNormKind::kSkipSimplified ? "Skip" : "",
+                                             "norm_scale",
+                                             "q_B",
+                                             "q_scales",
+                                             "k_B",
+                                             "k_scales",
+                                             "v_B",
+                                             "v_scales",
+                                             "Q",
+                                             "K",
+                                             "V",
+                                             norm_kind == QkvNormKind::kSkipSimplified ? "SkipSum" : "",
+                                             config.k,
+                                             config.q_n,
+                                             config.kv_n,
+                                             config.bits,
+                                             config.block_size,
+                                             config.accuracy_level,
+                                             1e-6f);
+  } else {
+    AddTensorValueInfo(*graph, "A_norm", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, config.k});
+    auto* norm = graph->add_node();
+    norm->set_name(norm_kind == QkvNormKind::kSkipSimplified ? "InputSkipSimplifiedLayerNorm" : "InputSimplifiedLayerNorm");
+    norm->set_op_type(norm_kind == QkvNormKind::kSkipSimplified ? "SkipSimplifiedLayerNormalization" : "SimplifiedLayerNormalization");
+    if (norm_kind == QkvNormKind::kSkipSimplified) {
+      AddTensorValueInfo(*graph, "SkipSum", ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, config.k});
+      norm->set_domain("com.microsoft");
+      norm->add_input("A");
+      norm->add_input("Skip");
+      norm->add_input("norm_scale");
+      norm->add_output("A_norm");
+      norm->add_output("");
+      norm->add_output("");
+      norm->add_output("SkipSum");
+    } else {
+      norm->add_input("A");
+      norm->add_input("norm_scale");
+      norm->add_output("A_norm");
+    }
+    auto* attr_epsilon = norm->add_attribute();
+    attr_epsilon->set_name("epsilon");
+    attr_epsilon->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+    attr_epsilon->set_f(1e-6f);
+
+    AddMatMulNBitsNode(*graph, "QMatMulNBitsDecode", "A_norm", "q_B", "q_scales", "Q", config.k, config.q_n, config.bits, config.block_size, config.accuracy_level);
+    AddMatMulNBitsNode(*graph, "KMatMulNBitsDecode", "A_norm", "k_B", "k_scales", "K", config.k, config.kv_n, config.bits, config.block_size, config.accuracy_level);
+    AddMatMulNBitsNode(*graph, "VMatMulNBitsDecode", "A_norm", "v_B", "v_scales", "V", config.k, config.kv_n, config.bits, config.block_size, config.accuracy_level);
   }
 
   const auto serialized = model.SerializeAsString();
@@ -1004,7 +1285,47 @@ void ValidateMlpDecodeOutputs(const std::vector<uint8_t>& unfused_model_data,
             << " at index " << max_abs_diff_index << std::endl;
 }
 
-static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
+void ValidateQkvDecodeOutputs(const std::vector<uint8_t>& unfused_model_data,
+                              const std::vector<uint8_t>& fused_model_data,
+                              const std::unordered_map<std::string, std::string>& provider_options,
+                              const char* const* input_names,
+                              const Ort::Value* input_tensors,
+                              size_t input_count,
+                              const char* const* output_names,
+                              size_t output_count) {
+  Ort::Session unfused_session = CreateSessionFromModelData(unfused_model_data, &provider_options, GraphOptimizationLevel::ORT_DISABLE_ALL);
+  Ort::Session fused_session = CreateSessionFromModelData(fused_model_data, &provider_options, GraphOptimizationLevel::ORT_DISABLE_ALL);
+
+  auto unfused_outputs = unfused_session.Run(Ort::RunOptions{nullptr}, input_names, input_tensors, input_count, output_names, output_count);
+  auto fused_outputs = fused_session.Run(Ort::RunOptions{nullptr}, input_names, input_tensors, input_count, output_names, output_count);
+
+  for (size_t output_index = 0; output_index < output_count; ++output_index) {
+    const size_t element_count = unfused_outputs[output_index].GetTensorTypeAndShapeInfo().GetElementCount();
+    const auto* unfused_data = unfused_outputs[output_index].GetTensorData<Ort::Float16_t>();
+    const auto* fused_data = fused_outputs[output_index].GetTensorData<Ort::Float16_t>();
+    for (size_t i = 0; i < element_count; ++i) {
+      const float unfused_value = unfused_data[i].ToFloat();
+      const float fused_value = fused_data[i].ToFloat();
+      const float abs_diff = std::abs(unfused_value - fused_value);
+      const float allowed_diff = kDecodeCorrectnessAbsTolerance +
+                                 kDecodeCorrectnessRelTolerance * std::max(std::abs(unfused_value), std::abs(fused_value));
+      if (abs_diff > allowed_diff) {
+        std::ostringstream stream;
+        stream << "QKV decode correctness check failed on output " << output_index
+               << " at index " << i
+               << ": unfused=" << unfused_value
+               << ", fused=" << fused_value
+               << ", abs_diff=" << abs_diff
+               << ", allowed_diff=" << allowed_diff;
+        throw std::runtime_error(stream.str());
+      }
+    }
+  }
+
+  std::cout << "QKV decode correctness check passed." << std::endl;
+}
+
+[[maybe_unused]] static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
   try {
     const DecodeBenchConfig config{
         state.range(0),
@@ -1081,6 +1402,112 @@ static void BM_WebGpuMatMulNBitsDecode(benchmark::State& state) {
     state.counters["Input_MB"] = benchmark::Counter(traffic.input_bytes / 1.0e6);
     state.counters["PackedW_MB"] = benchmark::Counter(traffic.packed_weight_bytes / 1.0e6);
     state.counters["Scales_MB"] = benchmark::Counter(traffic.scale_bytes / 1.0e6);
+    state.counters["Output_MB"] = benchmark::Counter(traffic.output_bytes / 1.0e6);
+    state.counters["GraphReplay"] = benchmark::Counter(IsGraphCaptureBenchmarkEnabled() ? 1.0 : 0.0);
+  } catch (const std::exception& ex) {
+    state.SkipWithError(ex.what());
+  }
+}
+
+void BenchmarkWebGpuMatMulNBitsQkvDecode(benchmark::State& state, QkvDecodeBenchmarkVariant variant, QkvNormKind norm_kind) {
+  try {
+    const QkvDecodeBenchConfig config{
+        state.range(0),
+        state.range(1),
+        state.range(2),
+        state.range(3),
+        state.range(4),
+        state.range(5),
+    };
+
+    if (config.k % config.block_size != 0) {
+      state.SkipWithError("K must be divisible by block_size for this benchmark skeleton.");
+      return;
+    }
+
+    const QkvTrafficStats traffic = CalculateQkvTrafficStats(config, variant, norm_kind);
+    std::vector<uint8_t> model_data = SerializeMatMulNBitsQkvModel(config, variant, norm_kind);
+    const SelectedWebGpuContext& selected_context = GetSelectedWebGpuContext();
+    Ort::Session session = CreateSessionFromModelData(model_data,
+                                                      &selected_context.provider_options,
+                                                      GraphOptimizationLevel::ORT_DISABLE_ALL);
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    std::vector<int64_t> input_shape{1, config.k};
+    std::vector<Ort::Float16_t> activation(static_cast<size_t>(config.k));
+    std::vector<Ort::Float16_t> skip_activation(static_cast<size_t>(config.k));
+
+    std::mt19937 rng(123);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    for (auto& value : activation) {
+      value = Ort::Float16_t(dist(rng));
+    }
+    for (auto& value : skip_activation) {
+      value = Ort::Float16_t(dist(rng));
+    }
+
+    const char* simplified_input_names[] = {"A"};
+    const char* skip_input_names[] = {"A", "Skip"};
+    const char* simplified_output_names[] = {"Q", "K", "V"};
+    const char* skip_output_names[] = {"Q", "K", "V", "SkipSum"};
+    const char* const* input_names = norm_kind == QkvNormKind::kSkipSimplified ? skip_input_names : simplified_input_names;
+    const char* const* output_names = norm_kind == QkvNormKind::kSkipSimplified ? skip_output_names : simplified_output_names;
+    const size_t input_count = norm_kind == QkvNormKind::kSkipSimplified ? 2u : 1u;
+    const size_t output_count = norm_kind == QkvNormKind::kSkipSimplified ? 4u : 3u;
+
+    std::array<Ort::Value, 2> input_tensors = {
+        Ort::Value::CreateTensor<Ort::Float16_t>(memory_info,
+                                                 activation.data(),
+                                                 activation.size(),
+                                                 input_shape.data(),
+                                                 input_shape.size()),
+        Ort::Value::CreateTensor<Ort::Float16_t>(memory_info,
+                                                 skip_activation.data(),
+                                                 skip_activation.size(),
+                                                 input_shape.data(),
+                                                 input_shape.size())};
+    Ort::RunOptions run_options = CreateBenchmarkRunOptions();
+
+    if (!IsDecodeBenchmarkPerfMode() && variant == QkvDecodeBenchmarkVariant::kFused) {
+      ValidateQkvDecodeOutputs(SerializeMatMulNBitsQkvModel(config, QkvDecodeBenchmarkVariant::kUnfused, norm_kind),
+                               model_data,
+                               selected_context.provider_options,
+                               input_names,
+                               input_tensors.data(),
+                               input_count,
+                               output_names,
+                               output_count);
+    }
+
+    for (int i = 0; i < kDecodeWarmupRuns; ++i) {
+      auto warmup_outputs = session.Run(run_options, input_names, input_tensors.data(), input_count, output_names, output_count);
+      benchmark::DoNotOptimize(warmup_outputs);
+    }
+
+    double total_kernel_seconds = 0.0;
+    for (auto _ : state) {
+      const auto kernel_start = std::chrono::steady_clock::now();
+      auto outputs = session.Run(run_options, input_names, input_tensors.data(), input_count, output_names, output_count);
+      const auto kernel_end = std::chrono::steady_clock::now();
+      total_kernel_seconds += std::chrono::duration<double>(kernel_end - kernel_start).count();
+      benchmark::DoNotOptimize(outputs);
+    }
+
+    const double total_flops = 2.0 * static_cast<double>(config.k) * static_cast<double>(config.q_n + 2 * config.kv_n);
+    const double achieved_bandwidth_bytes_per_second =
+        total_kernel_seconds > 0.0
+            ? traffic.total_bytes * static_cast<double>(state.iterations()) / total_kernel_seconds
+            : 0.0;
+
+    state.SetLabel(GetQkvDecodeBenchmarkLabel(variant, norm_kind));
+    state.counters["TFLOPS"] = benchmark::Counter(total_flops, benchmark::Counter::kIsIterationInvariantRate);
+    state.counters["ApproxMemBW_GBps"] = benchmark::Counter(achieved_bandwidth_bytes_per_second / 1.0e9);
+    state.counters["ApproxTraffic_MB"] = benchmark::Counter(traffic.total_bytes / 1.0e6);
+    state.counters["Input_MB"] = benchmark::Counter(traffic.input_bytes / 1.0e6);
+    state.counters["SkipInput_MB"] = benchmark::Counter(traffic.skip_input_bytes / 1.0e6);
+    state.counters["NormScale_MB"] = benchmark::Counter(traffic.norm_scale_bytes / 1.0e6);
+    state.counters["PackedW_MB"] = benchmark::Counter(traffic.packed_weight_bytes / 1.0e6);
+    state.counters["Scales_MB"] = benchmark::Counter(traffic.scale_bytes / 1.0e6);
+    state.counters["Intermediate_MB"] = benchmark::Counter(traffic.intermediate_bytes / 1.0e6);
     state.counters["Output_MB"] = benchmark::Counter(traffic.output_bytes / 1.0e6);
     state.counters["GraphReplay"] = benchmark::Counter(IsGraphCaptureBenchmarkEnabled() ? 1.0 : 0.0);
   } catch (const std::exception& ex) {
@@ -1186,7 +1613,23 @@ static void BM_WebGpuMatMulNBitsMlpDecodeFused(benchmark::State& state) {
   BenchmarkWebGpuMatMulNBitsMlpDecode(state, MlpDecodeBenchmarkVariant::kFused);
 }
 
-void ApplyWebGpuMatMulNBitsDecodeArgs(benchmark::internal::Benchmark* benchmark) {
+static void BM_WebGpuMatMulNBitsQkvDecodeUnfused(benchmark::State& state) {
+  BenchmarkWebGpuMatMulNBitsQkvDecode(state, QkvDecodeBenchmarkVariant::kUnfused, QkvNormKind::kSimplified);
+}
+
+static void BM_WebGpuMatMulNBitsQkvDecodeFused(benchmark::State& state) {
+  BenchmarkWebGpuMatMulNBitsQkvDecode(state, QkvDecodeBenchmarkVariant::kFused, QkvNormKind::kSimplified);
+}
+
+static void BM_WebGpuMatMulNBitsQkvSkipDecodeUnfused(benchmark::State& state) {
+  BenchmarkWebGpuMatMulNBitsQkvDecode(state, QkvDecodeBenchmarkVariant::kUnfused, QkvNormKind::kSkipSimplified);
+}
+
+static void BM_WebGpuMatMulNBitsQkvSkipDecodeFused(benchmark::State& state) {
+  BenchmarkWebGpuMatMulNBitsQkvDecode(state, QkvDecodeBenchmarkVariant::kFused, QkvNormKind::kSkipSimplified);
+}
+
+[[maybe_unused]] void ApplyWebGpuMatMulNBitsDecodeArgs(benchmark::internal::Benchmark* benchmark) {
   for (const auto& config : GetDecodeBenchConfigs()) {
     benchmark->Args({config.n, config.k, config.bits, config.block_size, config.accuracy_level});
   }
@@ -1198,12 +1641,18 @@ void ApplyWebGpuMatMulNBitsMlpDecodeArgs(benchmark::internal::Benchmark* benchma
   }
 }
 
-BENCHMARK(BM_WebGpuMatMulNBitsDecode)
-    ->Apply(ApplyWebGpuMatMulNBitsDecodeArgs)
-  ->Repetitions(5)
-  ->ReportAggregatesOnly()
-    ->UseRealTime()
-    ->Unit(benchmark::TimeUnit::kMicrosecond);
+void ApplyWebGpuMatMulNBitsQkvDecodeArgs(benchmark::internal::Benchmark* benchmark) {
+  for (const auto& config : GetQkvDecodeBenchConfigs()) {
+    benchmark->Args({config.q_n, config.kv_n, config.k, config.bits, config.block_size, config.accuracy_level});
+  }
+}
+
+// BENCHMARK(BM_WebGpuMatMulNBitsDecode)
+//     ->Apply(ApplyWebGpuMatMulNBitsDecodeArgs)
+//   ->Repetitions(5)
+//   ->ReportAggregatesOnly()
+//     ->UseRealTime()
+//     ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 BENCHMARK(BM_WebGpuMatMulNBitsMlpDecodeUnfused)
   ->Apply(ApplyWebGpuMatMulNBitsMlpDecodeArgs)
@@ -1214,6 +1663,34 @@ BENCHMARK(BM_WebGpuMatMulNBitsMlpDecodeUnfused)
 
 BENCHMARK(BM_WebGpuMatMulNBitsMlpDecodeFused)
   ->Apply(ApplyWebGpuMatMulNBitsMlpDecodeArgs)
+  ->Repetitions(5)
+  ->ReportAggregatesOnly()
+  ->UseRealTime()
+  ->Unit(benchmark::TimeUnit::kMicrosecond);
+
+BENCHMARK(BM_WebGpuMatMulNBitsQkvDecodeUnfused)
+  ->Apply(ApplyWebGpuMatMulNBitsQkvDecodeArgs)
+  ->Repetitions(5)
+  ->ReportAggregatesOnly()
+  ->UseRealTime()
+  ->Unit(benchmark::TimeUnit::kMicrosecond);
+
+BENCHMARK(BM_WebGpuMatMulNBitsQkvDecodeFused)
+  ->Apply(ApplyWebGpuMatMulNBitsQkvDecodeArgs)
+  ->Repetitions(5)
+  ->ReportAggregatesOnly()
+  ->UseRealTime()
+  ->Unit(benchmark::TimeUnit::kMicrosecond);
+
+BENCHMARK(BM_WebGpuMatMulNBitsQkvSkipDecodeUnfused)
+  ->Apply(ApplyWebGpuMatMulNBitsQkvDecodeArgs)
+  ->Repetitions(5)
+  ->ReportAggregatesOnly()
+  ->UseRealTime()
+  ->Unit(benchmark::TimeUnit::kMicrosecond);
+
+BENCHMARK(BM_WebGpuMatMulNBitsQkvSkipDecodeFused)
+  ->Apply(ApplyWebGpuMatMulNBitsQkvDecodeArgs)
   ->Repetitions(5)
   ->ReportAggregatesOnly()
   ->UseRealTime()

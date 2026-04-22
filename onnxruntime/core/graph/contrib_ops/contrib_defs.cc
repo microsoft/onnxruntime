@@ -3677,6 +3677,85 @@ derived from the runtime shape of A and the shared attributes K and N.
         }
       });
 
+  static const char* MatMulNBitsQKVSimplifiedLayerNorm_ver1_doc = R"DOC(
+MatMulNBitsQKVSimplifiedLayerNorm fuses either SimplifiedLayerNormalization (RMSNorm)
+or SkipSimplifiedLayerNormalization with three MatMulNBits projections that share the
+same normalized activation.
+
+  A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
+  Q = MatMulNBits(A_norm, q_weight)
+  K = MatMulNBits(A_norm, k_weight)
+  V = MatMulNBits(A_norm, v_weight)
+
+If skip is provided, the operator computes the SkipSimplifiedLayerNormalization variant
+and may also return the input+skip residual sum as output 3.
+
+This operator is intended as a decode-oriented QKV fusion primitive.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQKVSimplifiedLayerNorm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulNBitsQKVSimplifiedLayerNorm_ver1_doc)
+      .Attr("K", "Input feature dimension shared by the normalized input and all projection weights.", AttributeProto::INT)
+      .Attr("Nq", "Output feature dimension of the Q projection.", AttributeProto::INT)
+      .Attr("Nkv", "Output feature dimension shared by the K and V projections.", AttributeProto::INT)
+      .Attr("bits", "Bit-width used to quantize all weight matrices (valid range: 2~8)", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("block_size",
+            "Size of each quantization block along the K dimension. Must be a power of two and >= 16.",
+            AttributeProto::INT)
+      .Attr("accuracy_level",
+            "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("epsilon", "Epsilon used by the simplified layer norm reduction.", AttributeProto::FLOAT, 1e-6f)
+      .Input(0, "A", "The shared input tensor.", "T1")
+      .Input(1, "skip", "Optional residual input for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(2, "norm_scale", "Scale input for the simplified layer norm with shape [K].", "T1")
+      .Input(3, "q_B", "Packed uint8 tensor for the Q projection weights.", "T2")
+      .Input(4, "q_scales", "Per-block scaling factors for the Q projection.", "T1")
+      .Input(5, "k_B", "Packed uint8 tensor for the K projection weights.", "T2")
+      .Input(6, "k_scales", "Per-block scaling factors for the K projection.", "T1")
+      .Input(7, "v_B", "Packed uint8 tensor for the V projection weights.", "T2")
+      .Input(8, "v_scales", "Per-block scaling factors for the V projection.", "T1")
+      .Output(0, "Q", "The Q projection output tensor.", "T1")
+      .Output(1, "K", "The K projection output tensor.", "T1")
+      .Output(2, "V", "The V projection output tensor.", "T1")
+      .Output(3, "input_skip_bias_sum", "Optional residual-sum output for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        for (int output_index = 0; output_index < ctx.getNumOutputs(); ++output_index) {
+          propagateElemTypeFromInputToOutput(ctx, 0, output_index);
+        }
+
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+
+        const auto& input_shape = getInputShape(ctx, 0);
+        if (input_shape.dim_size() == 0) {
+          fail_shape_inference("A must have rank >= 1");
+        }
+
+        const int64_t q_out_features = getAttribute(ctx, "Nq", -1);
+        const int64_t kv_out_features = getAttribute(ctx, "Nkv", -1);
+
+        auto set_output_shape = [&](int output_index, int64_t out_features) {
+          auto* output_shape = getOutputShape(ctx, output_index);
+          *output_shape = input_shape;
+          output_shape->mutable_dim(output_shape->dim_size() - 1)->set_dim_value(out_features);
+        };
+
+        set_output_shape(0, q_out_features);
+        set_output_shape(1, kv_out_features);
+        set_output_shape(2, kv_out_features);
+        if (ctx.getNumOutputs() > 3) {
+          auto* output_shape = getOutputShape(ctx, 3);
+          *output_shape = input_shape;
+        }
+      });
+
   static const char* MatMulBnb4_ver1_doc = R"DOC(
 MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4 data type (https://arxiv.org/pdf/2305.14314.pdf). It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
   1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.

@@ -5,6 +5,8 @@
 #param component_a
 #param component_b
 #param elements_in_value_b
+#param has_full_k_tiles
+#param has_full_n_tiles
 #param single_scale_weights
 #param sub_tile_count
 #param tile_size_k_vec
@@ -12,6 +14,7 @@
 #param tile_size
 #param has_gate_bias
 #param has_up_bias
+#param k_unroll_tiles
 
 #use .getByOffset .setByOffset
 
@@ -24,11 +27,127 @@ const default_zero_point = output_element_t(8);
 fn loadSHMA(batch: u32, kidx: u32, col: u32)
 {
     let k_offset = kidx / component_a + col;
-    if (batch < uniforms.batch_count && k_offset < uniforms.K_of_a) {
+#if has_full_k_tiles
+  tile_A[col] = a.getByOffset(batch * uniforms.K_of_a + k_offset);
+#else
+  if (k_offset < uniforms.K_of_a) {
         tile_A[col] = a.getByOffset(batch * uniforms.K_of_a + k_offset);
     } else {
         tile_A[col] = input_a_value_t(0);
     }
+#endif
+}
+
+fn compute_gate_up_sums(b_global: u32, kidx: u32, idx: u32, k_offset: u32) -> vec2<output_element_t> {
+#if !single_scale_weights
+  let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
+  let gate_scale_b = gate_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
+  let up_scale_b = up_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
+#endif
+  let gate_b_value = gate_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+  let up_b_value = up_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+
+  var gate_sum = output_element_t(0);
+  var up_sum = output_element_t(0);
+  var a_offset = idx * (8 / component_a) * component_b;
+#if component_b == 1
+  let gate_b_value_lower = vec4<output_element_t>(unpack4xU8(gate_b_value & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+  let gate_b_value_upper = vec4<output_element_t>(unpack4xU8((gate_b_value >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+  let gate_b0 = vec4<output_element_t>(gate_b_value_lower[0], gate_b_value_upper[0], gate_b_value_lower[1], gate_b_value_upper[1]) * gate_scale_b;
+  let gate_b1 = vec4<output_element_t>(gate_b_value_lower[2], gate_b_value_upper[2], gate_b_value_lower[3], gate_b_value_upper[3]) * gate_scale_b;
+  let up_b_value_lower = vec4<output_element_t>(unpack4xU8(up_b_value & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+  let up_b_value_upper = vec4<output_element_t>(unpack4xU8((up_b_value >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+  let up_b0 = vec4<output_element_t>(up_b_value_lower[0], up_b_value_upper[0], up_b_value_lower[1], up_b_value_upper[1]) * up_scale_b;
+  let up_b1 = vec4<output_element_t>(up_b_value_lower[2], up_b_value_upper[2], up_b_value_lower[3], up_b_value_upper[3]) * up_scale_b;
+#if component_a == 1
+  let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]);
+  let a1 = vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]);
+  gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
+  up_sum += dot(a0, up_b0) + dot(a1, up_b1);
+#elif component_a == 2
+  let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]);
+  let a1 = vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]);
+  gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
+  up_sum += dot(a0, up_b0) + dot(a1, up_b1);
+#elif component_a == 4
+  let a0 = tile_A[a_offset];
+  let a1 = tile_A[a_offset + 1];
+  gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
+  up_sum += dot(a0, up_b0) + dot(a1, up_b1);
+#endif
+#else
+  for (var i = 0u; i < component_b; i++) {
+      let gate_b_value_lower = vec4<output_element_t>(unpack4xU8(gate_b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+      let gate_b_value_upper = vec4<output_element_t>(unpack4xU8((gate_b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+      let gate_b0 = vec4<output_element_t>(gate_b_value_lower[0], gate_b_value_upper[0], gate_b_value_lower[1], gate_b_value_upper[1]) * gate_scale_b;
+      let gate_b1 = vec4<output_element_t>(gate_b_value_lower[2], gate_b_value_upper[2], gate_b_value_lower[3], gate_b_value_upper[3]) * gate_scale_b;
+      let up_b_value_lower = vec4<output_element_t>(unpack4xU8(up_b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+      let up_b_value_upper = vec4<output_element_t>(unpack4xU8((up_b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
+      let up_b0 = vec4<output_element_t>(up_b_value_lower[0], up_b_value_upper[0], up_b_value_lower[1], up_b_value_upper[1]) * up_scale_b;
+      let up_b1 = vec4<output_element_t>(up_b_value_lower[2], up_b_value_upper[2], up_b_value_lower[3], up_b_value_upper[3]) * up_scale_b;
+#if component_a == 1
+      let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]);
+      let a1 = vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]);
+      gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
+      up_sum += dot(a0, up_b0) + dot(a1, up_b1);
+      a_offset += 8;
+#elif component_a == 2
+      let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]);
+      let a1 = vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]);
+      gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
+      up_sum += dot(a0, up_b0) + dot(a1, up_b1);
+      a_offset += 4;
+#elif component_a == 4
+      let a0 = tile_A[a_offset];
+      let a1 = tile_A[a_offset + 1];
+      gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
+      up_sum += dot(a0, up_b0) + dot(a1, up_b1);
+      a_offset += 2;
+#endif
+  }
+#endif
+
+  return vec2<output_element_t>(gate_sum, up_sum);
+}
+
+fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy: u32, kidx: u32) {
+  for (var id = thread_idx; id < a_length_per_tile; id += workgroup_size_x)
+  {
+    loadSHMA(batch, kidx, id);
+  }
+  workgroupBarrier();
+
+  for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count)
+  {
+    let b_global = b_global_base + local_row_offset + idy;
+    let k_offset = kidx / elements_in_value_b + idx;
+#if has_full_n_tiles
+#if !has_full_k_tiles
+    if (k_offset < uniforms.K_of_b) {
+#endif
+#else
+#if has_full_k_tiles
+    if (b_global < uniforms.N) {
+#else
+    if (b_global < uniforms.N && k_offset < uniforms.K_of_b) {
+#endif
+#endif
+      let sums = compute_gate_up_sums(b_global, kidx, idx, k_offset);
+      gate_inter_results[local_row_offset + idy][idx] += sums[0];
+      up_inter_results[local_row_offset + idy][idx] += sums[1];
+#if has_full_n_tiles
+#if !has_full_k_tiles
+    }
+#endif
+#else
+#if has_full_k_tiles
+    }
+#else
+    }
+#endif
+#endif
+  }
+  workgroupBarrier();
 }
 
 $MAIN {
@@ -52,94 +171,33 @@ $MAIN {
   let block_idx = 0u;
 #endif
 
-  for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k)
-  {
-    for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
-    {
-      loadSHMA(batch, kidx, id);
-    }
-    workgroupBarrier();
-
-    for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count)
-    {
-      let b_global = b_global_base + local_row_offset + idy;
-      let k_offset = kidx / elements_in_value_b + idx;
-      if (b_global < uniforms.N && k_offset < uniforms.K_of_b)
-      {
-#if !single_scale_weights
-        let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
-        let gate_scale_b = gate_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
-        let up_scale_b = up_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
-#endif
-        let gate_b_value = gate_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
-        let up_b_value = up_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
-
-        var gate_sum = output_element_t(0);
-        var up_sum = output_element_t(0);
-        var a_offset = idx * (8 / component_a) * component_b;
-#if component_b == 1
-        let gate_b_value_lower = vec4<output_element_t>(unpack4xU8(gate_b_value & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-        let gate_b_value_upper = vec4<output_element_t>(unpack4xU8((gate_b_value >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-        let gate_b0 = vec4<output_element_t>(gate_b_value_lower[0], gate_b_value_upper[0], gate_b_value_lower[1], gate_b_value_upper[1]) * gate_scale_b;
-        let gate_b1 = vec4<output_element_t>(gate_b_value_lower[2], gate_b_value_upper[2], gate_b_value_lower[3], gate_b_value_upper[3]) * gate_scale_b;
-        let up_b_value_lower = vec4<output_element_t>(unpack4xU8(up_b_value & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-        let up_b_value_upper = vec4<output_element_t>(unpack4xU8((up_b_value >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-        let up_b0 = vec4<output_element_t>(up_b_value_lower[0], up_b_value_upper[0], up_b_value_lower[1], up_b_value_upper[1]) * up_scale_b;
-        let up_b1 = vec4<output_element_t>(up_b_value_lower[2], up_b_value_upper[2], up_b_value_lower[3], up_b_value_upper[3]) * up_scale_b;
-#if component_a == 1
-        let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]);
-        let a1 = vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]);
-        gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
-        up_sum += dot(a0, up_b0) + dot(a1, up_b1);
-#elif component_a == 2
-        let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]);
-        let a1 = vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]);
-        gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
-        up_sum += dot(a0, up_b0) + dot(a1, up_b1);
-#elif component_a == 4
-        let a0 = tile_A[a_offset];
-        let a1 = tile_A[a_offset + 1];
-        gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
-        up_sum += dot(a0, up_b0) + dot(a1, up_b1);
-#endif
-#else
-        for (var i = 0u; i < component_b; i++) {
-            let gate_b_value_lower = vec4<output_element_t>(unpack4xU8(gate_b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-            let gate_b_value_upper = vec4<output_element_t>(unpack4xU8((gate_b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-            let gate_b0 = vec4<output_element_t>(gate_b_value_lower[0], gate_b_value_upper[0], gate_b_value_lower[1], gate_b_value_upper[1]) * gate_scale_b;
-            let gate_b1 = vec4<output_element_t>(gate_b_value_lower[2], gate_b_value_upper[2], gate_b_value_lower[3], gate_b_value_upper[3]) * gate_scale_b;
-            let up_b_value_lower = vec4<output_element_t>(unpack4xU8(up_b_value[i] & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-            let up_b_value_upper = vec4<output_element_t>(unpack4xU8((up_b_value[i] >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(default_zero_point);
-            let up_b0 = vec4<output_element_t>(up_b_value_lower[0], up_b_value_upper[0], up_b_value_lower[1], up_b_value_upper[1]) * up_scale_b;
-            let up_b1 = vec4<output_element_t>(up_b_value_lower[2], up_b_value_upper[2], up_b_value_lower[3], up_b_value_upper[3]) * up_scale_b;
-#if component_a == 1
-            let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1], tile_A[a_offset + 2], tile_A[a_offset + 3]);
-            let a1 = vec4<output_element_t>(tile_A[a_offset + 4], tile_A[a_offset + 5], tile_A[a_offset + 6], tile_A[a_offset + 7]);
-            gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
-            up_sum += dot(a0, up_b0) + dot(a1, up_b1);
-            a_offset += 8;
-#elif component_a == 2
-            let a0 = vec4<output_element_t>(tile_A[a_offset], tile_A[a_offset + 1]);
-            let a1 = vec4<output_element_t>(tile_A[a_offset + 2], tile_A[a_offset + 3]);
-            gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
-            up_sum += dot(a0, up_b0) + dot(a1, up_b1);
-            a_offset += 4;
-#elif component_a == 4
-            let a0 = tile_A[a_offset];
-            let a1 = tile_A[a_offset + 1];
-            gate_sum += dot(a0, gate_b0) + dot(a1, gate_b1);
-            up_sum += dot(a0, up_b0) + dot(a1, up_b1);
-            a_offset += 2;
-#endif
-        }
-#endif
-
-        gate_inter_results[local_row_offset + idy][idx] += gate_sum;
-        up_inter_results[local_row_offset + idy][idx] += up_sum;
-      }
-    }
-    workgroupBarrier();
+#if k_unroll_tiles == 1
+  for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
   }
+#elif k_unroll_tiles == 2
+  let unrolled_k_step = tile_size_k * 2u;
+  let unrolled_k_limit = uniforms.K - (uniforms.K % unrolled_k_step);
+  for (var kidx = 0u; kidx < unrolled_k_limit; kidx += unrolled_k_step) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k);
+  }
+  for (var kidx = unrolled_k_limit; kidx < uniforms.K; kidx += tile_size_k) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
+  }
+#elif k_unroll_tiles == 4
+  let unrolled_k_step = tile_size_k * 4u;
+  let unrolled_k_limit = uniforms.K - (uniforms.K % unrolled_k_step);
+  for (var kidx = 0u; kidx < unrolled_k_limit; kidx += unrolled_k_step) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 2u);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 3u);
+  }
+  for (var kidx = unrolled_k_limit; kidx < uniforms.K; kidx += tile_size_k) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
+  }
+#endif
 
   if (batch >= uniforms.batch_count) {
     return;
@@ -154,7 +212,11 @@ $MAIN {
     }
     let b_global = b_global_base + local_idx;
     let output_idx = batch * uniforms.N + b_global;
+#if has_full_n_tiles
+    {
+#else
     if (b_global < uniforms.N) {
+#endif
 #if has_gate_bias
       gate_output_value += gate_bias[b_global];
 #endif

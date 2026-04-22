@@ -1,0 +1,310 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param a_length_per_tile
+#param component_a
+#param component_b
+#param elements_in_value_b
+#param has_full_k_tiles
+#param has_full_kv_tiles
+#param has_full_q_tiles
+#param has_skip_input
+#param has_skip_output
+#param k_unroll_tiles
+#param single_scale_weights
+#param sub_tile_count
+#param tile_size_k_vec
+#param tile_size_k
+#param tile_size
+
+#use .getByOffset .setByOffset
+
+var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
+var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
+var<workgroup> q_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
+var<workgroup> k_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
+var<workgroup> v_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
+
+const default_zero_point = vec4<q_output_element_t>(q_output_element_t(8));
+
+fn unpack_nibble_values(word: u32) -> vec4<q_output_element_t> {
+  let unpacked = unpack4xU8(word);
+  return vec4<q_output_element_t>(q_output_element_t(unpacked[0]),
+                                  q_output_element_t(unpacked[1]),
+                                  q_output_element_t(unpacked[2]),
+                                  q_output_element_t(unpacked[3]));
+}
+
+fn load_merged_input(input_offset: u32) -> input_a_value_t {
+  var value = a.getByOffset(input_offset);
+#if has_skip_input
+  let skip_offset = input_offset % (uniforms.skip_size / component_a);
+  value += input_a_value_t(skip.getByOffset(skip_offset));
+#endif
+  return value;
+}
+
+#if component_a == 1
+fn load_a_vec4(a_offset: u32) -> vec4<q_output_element_t> {
+  return vec4<q_output_element_t>(q_output_element_t(tile_A[a_offset]),
+                                  q_output_element_t(tile_A[a_offset + 1]),
+                                  q_output_element_t(tile_A[a_offset + 2]),
+                                  q_output_element_t(tile_A[a_offset + 3]));
+}
+#elif component_a == 2
+fn load_a_vec4(a_offset: u32) -> vec4<q_output_element_t> {
+  let a0 = tile_A[a_offset];
+  let a1 = tile_A[a_offset + 1];
+  return vec4<q_output_element_t>(q_output_element_t(a0[0]),
+                                  q_output_element_t(a0[1]),
+                                  q_output_element_t(a1[0]),
+                                  q_output_element_t(a1[1]));
+}
+#elif component_a == 4
+fn load_a_vec4(a_offset: u32) -> vec4<q_output_element_t> {
+  let a = tile_A[a_offset];
+  return vec4<q_output_element_t>(q_output_element_t(a[0]),
+                                  q_output_element_t(a[1]),
+                                  q_output_element_t(a[2]),
+                                  q_output_element_t(a[3]));
+}
+#endif
+
+fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32) {
+  let k_offset = kidx / component_a + col;
+  let input_offset = batch * uniforms.K_of_a + k_offset;
+#if has_full_k_tiles
+  let merged_value = load_merged_input(input_offset);
+#if has_skip_output
+  if (b_global_base == 0u) {
+    input_skip_bias_sum.setByOffset(input_offset, input_skip_bias_sum_value_t(merged_value));
+  }
+#endif
+  tile_A[col] = merged_value * input_a_value_t(input_a_element_t(inv_std)) * norm_scale.getByOffset(k_offset);
+#else
+  if (k_offset < uniforms.K_of_a) {
+    let merged_value = load_merged_input(input_offset);
+#if has_skip_output
+    if (b_global_base == 0u) {
+      input_skip_bias_sum.setByOffset(input_offset, input_skip_bias_sum_value_t(merged_value));
+    }
+#endif
+    tile_A[col] = merged_value * input_a_value_t(input_a_element_t(inv_std)) * norm_scale.getByOffset(k_offset);
+  } else {
+    tile_A[col] = input_a_value_t(0);
+  }
+#endif
+}
+
+fn compute_projection_sum(weight: q_b_value_t,
+                          scale: q_output_element_t,
+                          idx: u32) -> q_output_element_t {
+  var sum = q_output_element_t(0);
+  var a_offset = idx * (8 / component_a) * component_b;
+#if component_b == 1
+  let weight_lower = unpack_nibble_values(weight & 0x0F0F0F0Fu) - default_zero_point;
+  let weight_upper = unpack_nibble_values((weight >> 4) & 0x0F0F0F0Fu) - default_zero_point;
+  let w0 = vec4<q_output_element_t>(q_output_element_t(weight_lower[0]), q_output_element_t(weight_upper[0]), q_output_element_t(weight_lower[1]), q_output_element_t(weight_upper[1])) * scale;
+  let w1 = vec4<q_output_element_t>(q_output_element_t(weight_lower[2]), q_output_element_t(weight_upper[2]), q_output_element_t(weight_lower[3]), q_output_element_t(weight_upper[3])) * scale;
+#if component_a == 1
+  let a0 = load_a_vec4(a_offset);
+  let a1 = load_a_vec4(a_offset + 4);
+  sum += dot(a0, w0) + dot(a1, w1);
+#elif component_a == 2
+  let a0 = load_a_vec4(a_offset);
+  let a1 = load_a_vec4(a_offset + 2);
+  sum += dot(a0, w0) + dot(a1, w1);
+#elif component_a == 4
+  let a0 = load_a_vec4(a_offset);
+  let a1 = load_a_vec4(a_offset + 1);
+  sum += dot(a0, w0) + dot(a1, w1);
+#endif
+#else
+  for (var i = 0u; i < component_b; i++) {
+    let weight_lower = unpack_nibble_values(weight[i] & 0x0F0F0F0Fu) - default_zero_point;
+    let weight_upper = unpack_nibble_values((weight[i] >> 4) & 0x0F0F0F0Fu) - default_zero_point;
+    let w0 = vec4<q_output_element_t>(q_output_element_t(weight_lower[0]), q_output_element_t(weight_upper[0]), q_output_element_t(weight_lower[1]), q_output_element_t(weight_upper[1])) * scale;
+    let w1 = vec4<q_output_element_t>(q_output_element_t(weight_lower[2]), q_output_element_t(weight_upper[2]), q_output_element_t(weight_lower[3]), q_output_element_t(weight_upper[3])) * scale;
+#if component_a == 1
+  let a0 = load_a_vec4(a_offset);
+  let a1 = load_a_vec4(a_offset + 4);
+    sum += dot(a0, w0) + dot(a1, w1);
+    a_offset += 8;
+#elif component_a == 2
+  let a0 = load_a_vec4(a_offset);
+  let a1 = load_a_vec4(a_offset + 2);
+    sum += dot(a0, w0) + dot(a1, w1);
+    a_offset += 4;
+#elif component_a == 4
+  let a0 = load_a_vec4(a_offset);
+  let a1 = load_a_vec4(a_offset + 1);
+    sum += dot(a0, w0) + dot(a1, w1);
+    a_offset += 2;
+#endif
+  }
+#endif
+  return sum;
+}
+
+fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy: u32, kidx: u32, inv_std: f32) {
+  for (var id = thread_idx; id < a_length_per_tile; id += workgroup_size_x) {
+      loadSHMA(batch, b_global_base, kidx, id, inv_std);
+  }
+  workgroupBarrier();
+
+  for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count) {
+    let b_global = b_global_base + local_row_offset + idy;
+    let k_offset = kidx / elements_in_value_b + idx;
+  #if !single_scale_weights
+    let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
+  #endif
+  #if has_full_k_tiles
+    {
+  #else
+    if (k_offset < uniforms.K_of_b) {
+  #endif
+  #if has_full_q_tiles
+  #if !single_scale_weights
+      let q_scale_b = q_output_element_t(q_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
+  #endif
+      let q_weight = q_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+      q_inter_results[local_row_offset + idy][idx] += compute_projection_sum(q_weight, q_scale_b, idx);
+  #else
+      if (b_global < uniforms.Nq) {
+  #if !single_scale_weights
+        let q_scale_b = q_output_element_t(q_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
+  #endif
+      let q_weight = q_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+      q_inter_results[local_row_offset + idy][idx] += compute_projection_sum(q_weight, q_scale_b, idx);
+    }
+  #endif
+  #if has_full_kv_tiles
+  #if !single_scale_weights
+    let k_scale_b = q_output_element_t(k_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
+    let v_scale_b = q_output_element_t(v_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
+  #endif
+    let k_weight = k_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+    let v_weight = v_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+    k_inter_results[local_row_offset + idy][idx] += compute_projection_sum(k_weight, k_scale_b, idx);
+    v_inter_results[local_row_offset + idy][idx] += compute_projection_sum(v_weight, v_scale_b, idx);
+  #else
+    if (b_global < uniforms.Nkv) {
+  #if !single_scale_weights
+      let k_scale_b = q_output_element_t(k_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
+      let v_scale_b = q_output_element_t(v_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
+  #endif
+      let k_weight = k_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+      let v_weight = v_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+      k_inter_results[local_row_offset + idy][idx] += compute_projection_sum(k_weight, k_scale_b, idx);
+      v_inter_results[local_row_offset + idy][idx] += compute_projection_sum(v_weight, v_scale_b, idx);
+    }
+  #endif
+    }
+  }
+  workgroupBarrier();
+  }
+
+$MAIN {
+  let batch = workgroup_idx / uniforms.num_N_tile;
+  let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+
+  let idx = local_idx % tile_size_k_vec;
+  let idy = local_idx / tile_size_k_vec;
+
+  if (local_idx < tile_size) {
+    for (var b = 0u; b < tile_size_k_vec; b++) {
+      q_inter_results[local_idx][b] = q_output_element_t(0);
+      k_inter_results[local_idx][b] = q_output_element_t(0);
+      v_inter_results[local_idx][b] = q_output_element_t(0);
+    }
+  }
+
+  var sum_squared_local = 0.0;
+  for (var a_idx = local_idx; a_idx < uniforms.K_of_a; a_idx += workgroup_size_x) {
+    let a_value = load_merged_input(batch * uniforms.K_of_a + a_idx);
+#if component_a == 1
+    let a_f32 = f32(a_value);
+    sum_squared_local += a_f32 * a_f32;
+#elif component_a == 2
+    let a_f32 = vec2<f32>(a_value);
+    sum_squared_local += dot(a_f32, a_f32);
+#elif component_a == 4
+    let a_f32 = vec4<f32>(a_value);
+    sum_squared_local += dot(a_f32, a_f32);
+#endif
+  }
+  sum_squared_shared[local_idx] = sum_squared_local;
+  workgroupBarrier();
+
+  var reduce_size : u32 = workgroup_size_x;
+  for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {
+    reduce_size = curr_size + (reduce_size & 1u);
+    if (local_idx < curr_size) {
+      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];
+    }
+    workgroupBarrier();
+  }
+
+  let inv_std = inverseSqrt(sum_squared_shared[0] / f32(uniforms.K) + uniforms.epsilon);
+
+#if single_scale_weights
+  let q_scale_b = q_output_element_t(q_scales_b.getByOffset(0));
+  let k_scale_b = q_output_element_t(k_scales_b.getByOffset(0));
+  let v_scale_b = q_output_element_t(v_scales_b.getByOffset(0));
+#endif
+
+#if k_unroll_tiles == 1
+  for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
+  }
+#elif k_unroll_tiles == 2
+  let unrolled_k_step = tile_size_k * 2u;
+  let unrolled_k_limit = uniforms.K - (uniforms.K % unrolled_k_step);
+  for (var kidx = 0u; kidx < unrolled_k_limit; kidx += unrolled_k_step) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k, inv_std);
+  }
+  for (var kidx = unrolled_k_limit; kidx < uniforms.K; kidx += tile_size_k) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
+  }
+#elif k_unroll_tiles == 4
+  let unrolled_k_step = tile_size_k * 4u;
+  let unrolled_k_limit = uniforms.K - (uniforms.K % unrolled_k_step);
+  for (var kidx = 0u; kidx < unrolled_k_limit; kidx += unrolled_k_step) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 2u, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 3u, inv_std);
+  }
+  for (var kidx = unrolled_k_limit; kidx < uniforms.K; kidx += tile_size_k) {
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
+  }
+#endif
+
+  if (local_idx < tile_size) {
+    let b_global = b_global_base + local_idx;
+    var q_output_value = q_output_element_t(0);
+    var k_output_value = q_output_element_t(0);
+    var v_output_value = q_output_element_t(0);
+    for (var b = 0u; b < tile_size_k_vec; b++) {
+      q_output_value += q_inter_results[local_idx][b];
+      k_output_value += k_inter_results[local_idx][b];
+      v_output_value += v_inter_results[local_idx][b];
+    }
+#if has_full_q_tiles
+    {
+#else
+    if (b_global < uniforms.Nq) {
+#endif
+      q_output.setByOffset(batch * uniforms.Nq + b_global, q_output_value_t(q_output_value));
+    }
+#if has_full_kv_tiles
+    {
+#else
+    if (b_global < uniforms.Nkv) {
+#endif
+      k_output.setByOffset(batch * uniforms.Nkv + b_global, k_output_value_t(k_output_value));
+      v_output.setByOffset(batch * uniforms.Nkv + b_global, v_output_value_t(v_output_value));
+    }
+  }
+}

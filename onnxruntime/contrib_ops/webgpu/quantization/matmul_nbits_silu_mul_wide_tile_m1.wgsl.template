@@ -1,0 +1,127 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_gate_bias
+#param has_up_bias
+#param outputs_per_thread
+
+#use .getByOffset .setByOffset
+
+const KAVecSizeForBlock32 = 8u;
+const kTileN : u32 = workgroup_size_x * outputs_per_thread;
+const kDefaultZeroPoint = output_element_t(8);
+
+var<workgroup> a_data_tile : array<input_a_value_t, KAVecSizeForBlock32>;
+
+fn load_a(batch : u32, col : u32) -> input_a_value_t {
+  if (batch < uniforms.batch_count && col < uniforms.K_of_a) {
+    let offset = batch * uniforms.K_of_a + col;
+    return a.getByOffset(offset);
+  }
+
+  return input_a_value_t();
+}
+
+fn load_gate_b(row : u32, block_idx : u32) -> vec4<u32> {
+  if (row < uniforms.N && block_idx < uniforms.K_of_b) {
+    let offset = row * uniforms.K_of_b + block_idx;
+    return gate_b.getByOffset(offset);
+  }
+
+  return vec4<u32>();
+}
+
+fn load_up_b(row : u32, block_idx : u32) -> vec4<u32> {
+  if (row < uniforms.N && block_idx < uniforms.K_of_b) {
+    let offset = row * uniforms.K_of_b + block_idx;
+    return up_b.getByOffset(offset);
+  }
+
+  return vec4<u32>();
+}
+
+fn dequantize_u4_block(packed_data : u32,
+                       scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower : vec4<u32> = unpack4xU8(packed_data & 0x0F0F0F0Fu);
+  let upper : vec4<u32> = unpack4xU8((packed_data >> 4u) & 0x0F0F0F0Fu);
+
+  let zero_matrix : mat2x4<output_element_t> = mat2x4<output_element_t>(
+      kDefaultZeroPoint, kDefaultZeroPoint, kDefaultZeroPoint, kDefaultZeroPoint,
+      kDefaultZeroPoint, kDefaultZeroPoint, kDefaultZeroPoint, kDefaultZeroPoint);
+
+  var dequantized_values : mat2x4<output_element_t> = mat2x4<output_element_t>(
+      output_element_t(lower[0]), output_element_t(upper[0]),
+      output_element_t(lower[1]), output_element_t(upper[1]),
+      output_element_t(lower[2]), output_element_t(upper[2]),
+      output_element_t(lower[3]), output_element_t(upper[3]));
+
+  dequantized_values = (dequantized_values - zero_matrix) * scale;
+  return dequantized_values;
+}
+
+$MAIN {
+  let batch = workgroup_id.z;
+  let col_base = workgroup_id.x * kTileN + local_idx;
+
+  var gate_results : array<output_element_t, outputs_per_thread>;
+  var up_results : array<output_element_t, outputs_per_thread>;
+  for (var output_idx = 0u; output_idx < outputs_per_thread; output_idx++) {
+    gate_results[output_idx] = output_element_t(0);
+    up_results[output_idx] = output_element_t(0);
+  }
+
+  for (var block_idx = 0u; block_idx < uniforms.n_blocks_per_col; block_idx++) {
+    if (local_idx < KAVecSizeForBlock32) {
+      a_data_tile[local_idx] = load_a(batch, block_idx * KAVecSizeForBlock32 + local_idx);
+    }
+    workgroupBarrier();
+
+    for (var output_idx = 0u; output_idx < outputs_per_thread; output_idx++) {
+      let col = col_base + output_idx * workgroup_size_x;
+      if (col < uniforms.N) {
+        let gate_scale = gate_scales_b.getByOffset(col * uniforms.n_blocks_per_col + block_idx);
+        let up_scale = up_scales_b.getByOffset(col * uniforms.n_blocks_per_col + block_idx);
+        let gate_b_data = load_gate_b(col, block_idx);
+        let up_b_data = load_up_b(col, block_idx);
+
+        for (var b_idx = 0u; b_idx < 4u; b_idx++) {
+          let gate_dequantized = dequantize_u4_block(gate_b_data[b_idx], gate_scale);
+          let up_dequantized = dequantize_u4_block(up_b_data[b_idx], up_scale);
+          let a_data0 = a_data_tile[b_idx * 2u];
+          let a_data1 = a_data_tile[b_idx * 2u + 1u];
+
+          gate_results[output_idx] += dot(a_data0, gate_dequantized[0]) +
+                                      dot(a_data1, gate_dequantized[1]);
+          up_results[output_idx] += dot(a_data0, up_dequantized[0]) +
+                                    dot(a_data1, up_dequantized[1]);
+        }
+      }
+    }
+
+    workgroupBarrier();
+  }
+
+  if (batch >= uniforms.batch_count) {
+    return;
+  }
+
+  for (var output_idx = 0u; output_idx < outputs_per_thread; output_idx++) {
+    let col = col_base + output_idx * workgroup_size_x;
+    if (col >= uniforms.N) {
+      continue;
+    }
+
+    var gate_result = gate_results[output_idx];
+    var up_result = up_results[output_idx];
+#if has_gate_bias
+    gate_result += gate_bias[col];
+#endif
+#if has_up_bias
+    up_result += up_bias[col];
+#endif
+
+    let one = output_element_t(1.0);
+    let silu_value = gate_result * (one / (one + exp(-gate_result)));
+    output.setByOffset(batch * uniforms.N + col, silu_value * up_result);
+  }
+}  // MAIN
