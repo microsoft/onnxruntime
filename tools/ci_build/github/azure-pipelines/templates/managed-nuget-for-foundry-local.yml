@@ -60,7 +60,7 @@ stages:
       displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
-        platform: 'Any CPU'
+        platform: 'AnyCPU'
         configuration: RelWithDebInfo
         msbuildArguments: '-t:restore -p:OrtPackageId=Microsoft.ML.OnnxRuntime -p:IncludeMobileTargets=false'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
@@ -69,7 +69,7 @@ stages:
       displayName: 'Build C# bindings'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
-        platform: 'Any CPU'
+        platform: 'AnyCPU'
         configuration: RelWithDebInfo
         msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:PackageVersion=$(OnnxRuntimeVersion) -p:IncludeMobileTargets=false'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
@@ -84,7 +84,7 @@ stages:
       displayName: 'Build Nuget Packages'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
-        platform: 'Any CPU'
+        platform: 'AnyCPU'
         configuration: RelWithDebInfo
         msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentTime=$(BuildTime) -p:CurrentDate=$(BuildDate)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
