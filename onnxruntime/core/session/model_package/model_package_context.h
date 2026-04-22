@@ -34,16 +34,41 @@ struct VariantSelectionEpInfo {
   ProviderOptions ep_options{};
 };
 
+class ModelPackageOptions;  // forward declaration
+
 class ModelPackageContext {
  public:
-  ModelPackageContext(const std::filesystem::path& package_root);
+  // New primary ctor: package is opened using EP selection captured on `options`.
+  ModelPackageContext(const std::filesystem::path& package_root, const ModelPackageOptions& options);
 
-  const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept {
-    return model_variant_infos_;
-  }
+  // Existing ctor kept for tests that don't need EP selection.
+  explicit ModelPackageContext(const std::filesystem::path& package_root);
+
+  // Parses variants (if not already) and runs variant selection using options_->EpInfos().
+  Status ResolveVariants();
+
+  // Accessors used by the query APIs:
+  size_t GetComponentModelCount() const noexcept;
+  Status GetComponentModelName(size_t component_index, const std::string*& out_name) const;
+  Status GetSelectedVariant(const std::string& component_name,
+                            const ModelVariantInfo*& out_variant) const;
+  Status GetSelectedVariantFiles(const std::string& component_name,
+                                 gsl::span<const std::string>& out_file_identifiers) const;
+  Status ResolveSelectedVariantFile(const std::string& component_name,
+                                    const char* file_identifier /*may be null*/,
+                                    std::filesystem::path& out_path) const;
+
+  const ModelPackageOptions* Options() const noexcept { return options_; }
+  const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept { return model_variant_infos_; }
 
  private:
   std::vector<ModelVariantInfo> model_variant_infos_;
+  const ModelPackageOptions* options_{};  // non-owning
+
+  // TODO: per-component grouping + selected-variant cache for the query APIs.
+  // This depends on extending the descriptor parser to surface
+  //   - the list of component models, and
+  //   - the list of file identifiers (logical names) within each variant.
 };
 
 class ModelVariantSelector {
