@@ -10,11 +10,11 @@ parameters:
 stages:
 # Test stage.
 #
-# This stage runs against a software Vulkan implementation (Mesa lavapipe)
-# installed in the Docker image. It does not require a GPU agent, so it
-# uses the standard CPU pool. The ICD selection is pinned at `docker run`
-# time via VK_ICD_FILENAMES / VK_DRIVER_FILES (see below) so the image
-# remains reusable for a potential future real-GPU test job.
+# This stage runs against a software Vulkan implementation (SwiftShader,
+# built from source in the Docker image). It does not require a GPU agent,
+# so it uses the standard CPU pool. The ICD selection is pinned at
+# `docker run` time via VK_ICD_FILENAMES / VK_DRIVER_FILES (see below) so
+# the image remains reusable for a potential future real-GPU test job.
 - stage: Linux_plugin_webgpu_x64_Test
   dependsOn: []
   jobs:
@@ -53,25 +53,26 @@ stages:
 
     - script: |
         set -e -x
-        # Pin Vulkan to Mesa lavapipe (software Vulkan) so the test does not
-        # require a GPU agent. Keeping these env vars at `docker run` time
-        # (rather than baking them into the image) leaves the image reusable
-        # for a potential future real-GPU test job.
-        lavapipe_icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        # Pin Vulkan to SwiftShader (software Vulkan, built from source in
+        # the Docker image) so the test does not require a GPU agent.
+        # Keeping these env vars at `docker run` time (rather than baking
+        # them into the image) leaves the image reusable for a potential
+        # future real-GPU test job.
+        swiftshader_icd=/opt/swiftshader/vk_swiftshader_icd.json
         docker run --rm \
           --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
           --volume "$(Build.BinariesDirectory):/build" \
           --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
-          --env "VK_ICD_FILENAMES=${lavapipe_icd}" \
-          --env "VK_DRIVER_FILES=${lavapipe_icd}" \
+          --env "VK_ICD_FILENAMES=${swiftshader_icd}" \
+          --env "VK_DRIVER_FILES=${swiftshader_icd}" \
           onnxruntimewebgpuplugin \
           /bin/bash -c "
             set -e -x
             # --- DIAGNOSTICS (remove once WebGPU EP test is stable) ---
             echo '=== Vulkan ICD configuration ==='
             echo \"VK_ICD_FILENAMES=\${VK_ICD_FILENAMES:-<unset>}\"
-            ls -la /usr/share/vulkan/icd.d/ 2>/dev/null || echo '  (no /usr/share/vulkan/icd.d/)'
-            echo '=== vulkaninfo --summary (lavapipe expected) ==='
+            ls -la /opt/swiftshader/ 2>/dev/null || echo '  (no /opt/swiftshader/)'
+            echo '=== vulkaninfo --summary (SwiftShader expected) ==='
             VK_LOADER_DEBUG=error,warn vulkaninfo --summary 2>&1 | head -60 || true
             echo '=== END DIAGNOSTICS ==='
             # --- END DIAGNOSTICS ---
