@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/pool.h"
+#include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -1963,8 +1964,11 @@ TEST(PoolTest, MaxPool_ZeroDilation) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
-// DML EP has its own stride/dilation validation in OperatorHelper.cpp via ML_CHECK_VALID_ARGUMENT.
-// These tests verify that DML's validation also rejects invalid values.
+// DML EP validates stride/dilation in OperatorHelper.cpp (KernelHelper constructor) via
+// ML_CHECK_VALID_ARGUMENT_MSG, but the descriptive message is lost when the exception crosses
+// the COM/HRESULT boundary (CATCH_RETURN strips the message, THROW_IF_FAILED re-throws with
+// just E_INVALIDARG). We still verify that DML rejects the invalid values by matching the
+// Win32 text for E_INVALIDARG (0x80070057).
 TEST(PoolTest, MaxPool_ZeroStride_Dml) {
   if (DefaultDmlExecutionProvider().get() == nullptr) {
     GTEST_SKIP() << "DML EP not available";
@@ -1983,7 +1987,7 @@ TEST(PoolTest, MaxPool_ZeroStride_Dml) {
   test.AddOutput<float>("Y", {0}, {});
 
   test.ConfigEp(DefaultDmlExecutionProvider())
-      .Config(OpTester::ExpectResult::kExpectFailure, "All stride values must be positive")
+      .Config(OpTester::ExpectResult::kExpectFailure, "The parameter is incorrect")
       .RunWithConfig();
 }
 
@@ -2006,7 +2010,7 @@ TEST(PoolTest, MaxPool_ZeroDilation_Dml) {
   test.AddOutput<float>("Y", {0}, {});
 
   test.ConfigEp(DefaultDmlExecutionProvider())
-      .Config(OpTester::ExpectResult::kExpectFailure, "All dilation values must be positive")
+      .Config(OpTester::ExpectResult::kExpectFailure, "The parameter is incorrect")
       .RunWithConfig();
 }
 
