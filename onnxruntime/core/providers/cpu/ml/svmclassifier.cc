@@ -210,7 +210,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   const ptrdiff_t num_batches = SafeInt<ptrdiff_t>(input_rank == 1 ? 1 : x_shape[0]);
   const ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0])
                                                  : narrow<ptrdiff_t>(x_shape[1]);
-  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0,
+  ORT_RETURN_IF_NOT(num_features == static_cast<ptrdiff_t>(feature_count_) && num_features >= 0 && num_batches >= 0,
                     "Invalid input for SVMClassifier: expected feature_count=", feature_count_,
                     ", actual num_features=", num_features,
                     ", input_rank=", input_rank,
@@ -365,12 +365,12 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
 
           double sum = 0;
 
-          const float* val1 = coefficients_.data() + j_coeff_row_offset + SafeInt<size_t>(start_index_i);
+          const float* val1 = coefficients_.data() + (j_coeff_row_offset + start_index_i);
           const float* val2 = cur_kernels.data() + start_index_i;
           for (size_t m = 0; m < class_i_support_count; ++m, ++val1, ++val2)
             sum += *val1 * *val2;
 
-          val1 = coefficients_.data() + i_coeff_row_offset + SafeInt<size_t>(start_index_j);
+          val1 = coefficients_.data() + (i_coeff_row_offset + start_index_j);
           val2 = cur_kernels.data() + start_index_j;
 
           for (size_t m = 0; m < class_j_support_count; ++m, ++val1, ++val2)
