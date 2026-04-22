@@ -13,11 +13,11 @@ project(onnxruntime C CXX ASM)
 # Set C/C++ standard versions
 if (NOT CMAKE_C_STANDARD)
   # Needed for Java
-  set(CMAKE_C_STANDARD 99)
+  set(CMAKE_C_STANDARD 99 CACHE STRING "The C standard whose features are requested." )
 endif()
 
 if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
+  set( CMAKE_CXX_STANDARD 20 CACHE STRING "The C++ standard whose features are requested." )
 endif()
 
 # We don't use C++20 modules yet.
