@@ -220,6 +220,15 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
       test.ConfigEps(std::move(execution_providers));
       test.RunWithConfig();
     }
+  } else if constexpr (std::is_same<T1, MLFloat16>::value) {
+    // accuracy_level=4 maps to HQNBIT_CompInt8, others map to HQNBIT_CompFp16
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type =
+        (opts.accuracy_level == 4) ? HQNBIT_CompInt8 : HQNBIT_CompFp16;
+    if (MlasIsQNBitGemmAvailable(8, 32, compute_type)) {
+      execution_providers.emplace_back(DefaultCpuExecutionProvider());
+      test.ConfigEps(std::move(execution_providers));
+      test.RunWithConfig();
+    }
   }
 #endif
 }
@@ -379,6 +388,100 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
 
   // Test case where K (260) is divisible by 16 but not by the block size (32).
   TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 4>(abs_error, rel_error);
+}
+#endif
+
+// ARM64 fp16 native GEMM path (HQNBIT_CompFp16) for 8-bit weights.
+// accuracy_level=2 maps to HQNBIT_CompFp16 on ARM64.
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+TEST(MatMulNBits, Float16_8b_ARM_CompFp16) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+  TestMatMul8BitsTyped<MLFloat16, 1, 1, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 2, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 64, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 40, 576, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1234, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 1, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 2, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 288, 1024, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 40, 576, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 1, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 2, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 32, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 16, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 192, 64, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 32, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 128, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1234, 16, 2>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 2>(abs_error, rel_error);
+
+  // K not divisible by block_size
+  TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 2>(abs_error, rel_error);
+}
+
+// ARM64 fp16 int8 quantized GEMM path (HQNBIT_CompInt8) for 8-bit weights.
+// accuracy_level=4 maps to HQNBIT_CompInt8 on ARM64.
+TEST(MatMulNBits, Float16_8b_ARM_CompInt8) {
+  constexpr float abs_error = 0.1f * 1.02f;
+  constexpr float rel_error = 0.02f * 1.02f;
+  TestMatMul8BitsTyped<MLFloat16, 1, 1, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 2, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 32, 16, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 4, 64, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1024, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 40, 576, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 93, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 288, 1234, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 1, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 2, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 288, 1024, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 2, 40, 576, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 1, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 2, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 32, 16, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 16, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1024, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 192, 64, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 93, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 288, 1234, 16, 4>(abs_error, rel_error);
+
+  // K not divisible by block_size
+  TestMatMul8BitsTyped<MLFloat16, 32, 64, 260, 32, 4>(abs_error, rel_error);
+
+  // Large N and K
+  TestMatMul8BitsTyped<MLFloat16, 2, 5120, 3072, 32, 4>(abs_error, rel_error);
 }
 #endif
 

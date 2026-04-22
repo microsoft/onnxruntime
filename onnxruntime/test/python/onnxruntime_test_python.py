@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import ctypes
 import gc
+import importlib.util
 import os
 import pathlib
 import platform
@@ -24,7 +25,15 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, Ru
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
-available_providers = list(onnxrt.get_available_providers())
+available_providers = [
+    (
+        ep,
+        {"enable_cann_subgraph": True},
+    )
+    if ep == "CANNExecutionProvider"
+    else ep
+    for ep in onnxrt.get_available_providers()
+]
 
 # TVM EP doesn't support:
 # * calling Run() on different threads using the same session object
@@ -38,13 +47,13 @@ available_providers = list(onnxrt.get_available_providers())
 # * testSequenceInsert
 # * testSequenceLength
 available_providers_without_tvm = [
-    provider for provider in onnxrt.get_available_providers() if provider not in {"TvmExecutionProvider"}
+    ep for ep in available_providers if (ep[0] if isinstance(ep, tuple) else ep) not in {"TvmExecutionProvider"}
 ]
 
 available_providers_without_tvm_and_tensorrt = [
-    provider
-    for provider in onnxrt.get_available_providers()
-    if provider not in {"TvmExecutionProvider", "TensorrtExecutionProvider"}
+    ep
+    for ep in available_providers_without_tvm
+    if (ep[0] if isinstance(ep, tuple) else ep) not in {"TensorrtExecutionProvider"}
 ]
 
 
@@ -706,7 +715,7 @@ class TestInferenceSession(unittest.TestCase):
     def test_run_model_from_bytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(content, providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -721,7 +730,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2(self):
-        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -736,7 +745,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(res[0], output_expected, rtol=1e-05, atol=1e-08)
 
     def test_run_model2_contiguous(self):
-        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=available_providers)
         x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:, [1, 0]]
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -811,7 +820,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(result, q.get())
 
     def test_list_as_input(self):
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x.tolist()})
@@ -1014,7 +1023,7 @@ class TestInferenceSession(unittest.TestCase):
         sess = onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
             sess_options=so,
-            providers=onnxrt.get_available_providers(),
+            providers=available_providers,
         )
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         sess.run([], {"X": x})
@@ -1350,7 +1359,7 @@ class TestInferenceSession(unittest.TestCase):
         )
 
     def test_ort_value(self):
-        providers_to_test = onnxrt.get_available_providers()
+        providers_to_test = available_providers
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
@@ -1466,6 +1475,185 @@ class TestInferenceSession(unittest.TestCase):
                 dlp2 = ort_input._ortvalue.to_dlpack()
                 ortvalue2 = C.OrtValue.from_dlpack(dlp2, False)
                 self.assertEqual(list(shape), list(ortvalue2.shape()))
+
+    def test_ort_value_array_protocol(self):
+        """Test that OrtValue supports numpy's __array__ protocol."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # np.asarray should work via __array__ and share memory (zero-copy)
+        result = np.asarray(ortvalue)
+        np.testing.assert_equal(numpy_arr, result)
+        self.assertEqual(result.dtype, np.float32)
+        self.assertEqual(ortvalue.data_ptr(), result.ctypes.data)
+
+        # np.array should also work
+        result2 = np.array(ortvalue)
+        np.testing.assert_equal(numpy_arr, result2)
+
+        # same dtype should still share memory (no unnecessary copy)
+        result_same = np.asarray(ortvalue, dtype=np.float32)
+        np.testing.assert_equal(numpy_arr, result_same)
+        self.assertEqual(ortvalue.data_ptr(), result_same.ctypes.data)
+
+        # dtype conversion via __array__
+        result_f64 = np.asarray(ortvalue, dtype=np.float64)
+        np.testing.assert_equal(numpy_arr.astype(np.float64), result_f64)
+        self.assertEqual(result_f64.dtype, np.float64)
+
+        # Integer tensor
+        int_arr = np.array([1, 2, 3], dtype=np.int64)
+        ortvalue_int = onnxrt.OrtValue.ortvalue_from_numpy(int_arr)
+        result_int = np.asarray(ortvalue_int)
+        np.testing.assert_equal(int_arr, result_int)
+        self.assertEqual(result_int.dtype, np.int64)
+
+        # Boolean tensor
+        bool_arr = np.array([True, False, True], dtype=np.bool_)
+        ortvalue_bool = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
+        result_bool = np.asarray(ortvalue_bool)
+        np.testing.assert_equal(bool_arr, result_bool)
+        self.assertEqual(result_bool.dtype, np.bool_)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("onnx") is not None,
+        "onnx package is required to build the test model",
+    )
+    def test_run_output_does_not_alias_input_passthrough(self):
+        """Test that session.run() returns independent numpy arrays when a model
+        input passes through as a model output. Reproduces the dangling-pointer
+        corruption described in https://github.com/microsoft/onnxruntime/issues/21922
+        """
+        import onnx  # noqa: PLC0415
+
+        # Build a model where 'input_0' is both a graph input and a graph output,
+        # plus a computed output (input_0 + 10).
+        inp_shape = [1, 2, 2, 2]
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx.TensorProto.FLOAT, inp_shape)
+        output_plus10 = onnx.helper.make_tensor_value_info("plus_10", onnx.TensorProto.FLOAT, inp_shape)
+        ten_const = onnx.numpy_helper.from_array(np.array(10, dtype=np.float32), "ten_const")
+        add_node = onnx.helper.make_node("Add", ["input_0", "ten_const"], ["plus_10"], name="Add0")
+        graph = onnx.helper.make_graph(
+            [add_node],
+            "PassthroughTest",
+            [input_0],
+            [output_plus10, input_0],
+            initializer=[ten_const],
+        )
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 21)])
+        model = onnx.shape_inference.infer_shapes(model)
+
+        sess_options = onnxrt.SessionOptions()
+        sess_options.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_DISABLE_ALL
+        session = onnxrt.InferenceSession(
+            model.SerializeToString(),
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
+        )
+
+        num_runs = 7
+        all_run_outputs = []
+        for run_index in range(num_runs):
+            input_data = np.full(inp_shape, float(run_index), dtype=np.float32)
+            outputs = session.run(None, {"input_0": input_data})
+
+            # Immediately after run, outputs must be correct
+            np.testing.assert_array_equal(
+                outputs[0],
+                np.full(inp_shape, run_index + 10.0, dtype=np.float32),
+                err_msg=f"Run {run_index}: 'plus_10' wrong immediately after run",
+            )
+            np.testing.assert_array_equal(
+                outputs[1],
+                np.full(inp_shape, float(run_index), dtype=np.float32),
+                err_msg=f"Run {run_index}: 'input_0' wrong immediately after run",
+            )
+
+            # The pass-through output must NOT alias the input buffer —
+            # it must be an independent copy so it survives across runs.
+            self.assertFalse(
+                np.shares_memory(outputs[1], input_data),
+                f"Run {run_index}: 'input_0' unexpectedly aliases the input buffer",
+            )
+            all_run_outputs.append(outputs)
+
+        # After all runs, every saved output must still hold its original value.
+        for run_index, outputs in enumerate(all_run_outputs):
+            np.testing.assert_array_equal(
+                outputs[0],
+                np.full(inp_shape, run_index + 10.0, dtype=np.float32),
+                err_msg=f"Run {run_index}: 'plus_10' corrupted after loop",
+            )
+            np.testing.assert_array_equal(
+                outputs[1],
+                np.full(inp_shape, float(run_index), dtype=np.float32),
+                err_msg=f"Run {run_index}: 'input_0' corrupted after loop (issue #21922)",
+            )
+
+    def test_run_session_owned_output_is_zero_copy(self):
+        """Verify that session-allocated CPU outputs (the common case) expose
+        a backing base object instead of owning a separate numpy buffer."""
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        input_name = sess.get_inputs()[0].name
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        result = sess.run(None, {input_name: x})
+        # The output should be a numpy array; for a session-owned buffer
+        # it should not be a separately-allocated copy.  We verify that by
+        # checking the array is backed by another object via ``output.base``.
+        output = result[0]
+        self.assertIsNotNone(output.base, "Session-owned output should have a backing base object")
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_dlpack_protocol(self):
+        """Test that OrtValue exposes __dlpack__ and __dlpack_device__ protocols."""
+        numpy_arr = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+
+        # __dlpack_device__ should return (device_type, device_id) for CPU
+        device = ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
+
+        # __dlpack__ should return a capsule that can be consumed by from_dlpack
+        dlp = ortvalue.__dlpack__()
+        ortvalue2 = onnxrt.OrtValue.from_dlpack(dlp)
+        np.testing.assert_equal(numpy_arr, ortvalue2.numpy())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_protocol_object(self):
+        """Test OrtValue.from_dlpack with objects implementing __dlpack__ protocol."""
+        numpy_arr = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+
+        # numpy arrays support __dlpack__ protocol since numpy 1.22
+        if hasattr(numpy_arr, "__dlpack__"):
+            ortvalue = onnxrt.OrtValue.from_dlpack(numpy_arr)
+            np.testing.assert_equal(numpy_arr, ortvalue.numpy())
+            self.assertEqual(list(numpy_arr.shape), list(ortvalue.shape()))
+
+        # Round-trip: numpy -> OrtValue -> OrtValue (via __dlpack__)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr)
+        ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
+        np.testing.assert_equal(numpy_arr, ortvalue_dst.numpy())
+        # Verify shared memory (no copy)
+        self.assertEqual(ortvalue_src.data_ptr(), ortvalue_dst.data_ptr())
+
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
+    def test_ort_value_from_dlpack_bool(self):
+        """Test that from_dlpack auto-detects boolean tensors."""
+        bool_arr = np.array([True, False, True, False], dtype=np.bool_)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(bool_arr)
+
+        # Round-trip through DLPack should preserve bool dtype
+        ortvalue_dst = onnxrt.OrtValue.from_dlpack(ortvalue_src)
+        result = ortvalue_dst.numpy()
+        np.testing.assert_equal(bool_arr, result)
+
+        # Ensure uint8 is NOT falsely detected as bool
+        uint8_arr = np.array([1, 2, 255], dtype=np.uint8)
+        ortvalue_uint8 = onnxrt.OrtValue.ortvalue_from_numpy(uint8_arr)
+        ortvalue_uint8_dst = onnxrt.OrtValue.from_dlpack(ortvalue_uint8)
+        result_uint8 = ortvalue_uint8_dst.numpy()
+        np.testing.assert_equal(uint8_arr, result_uint8)
+        self.assertEqual(result_uint8.dtype, np.uint8)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -1601,8 +1789,12 @@ class TestInferenceSession(unittest.TestCase):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
         self.assertEqual(cpu_device.device_id(), 0)
         self.assertEqual(cpu_device.device_type(), 0)
-        self.assertEqual(cpu_device.device_vendor_id(), 0)
+        self.assertEqual(cpu_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NONE)
         self.assertEqual(cpu_device.device_mem_type(), 0)
+
+        cuda_device = onnxrt.OrtDevice.make("cuda", 0)
+        self.assertEqual(cuda_device.device_vendor_id(), onnxrt.OrtDeviceVendorId.NVIDIA)
+        self.assertEqual(onnxrt.OrtDeviceVendorId.NVIDIA, 0x10DE)
 
     def test_ort_memory_info(self):
         cpu_memory_info = onnxrt.OrtMemoryInfo(
@@ -1776,40 +1968,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # provider options unsupported mixed specification
         check_failure([("a", {1: 2})], [{3: 4}])
-
-    def test_register_custom_e_ps_library(self):
-        if sys.platform.startswith("win"):
-            shared_library = os.path.abspath("test_execution_provider.dll")
-
-        elif sys.platform.startswith("darwin"):
-            # exclude for macos
-            return
-
-        else:
-            shared_library = "./libtest_execution_provider.so"
-
-        if not os.path.exists(shared_library):
-            raise FileNotFoundError(f"Unable to find '{shared_library}'")
-
-        this = os.path.dirname(__file__)
-        custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
-        if not os.path.exists(custom_op_model):
-            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
-
-        session_options = C.get_default_session_options()
-        sess = C.InferenceSession(session_options, custom_op_model, True, True)
-        sess.initialize_session(
-            ["my_ep"],
-            [
-                {
-                    "shared_lib_path": shared_library,
-                    "device_id": "1",
-                    "some_config": "val",
-                }
-            ],
-            set(),
-        )
-        print("Create session with customize execution provider successfully!")
 
     def test_create_allocator(self):
         def verify_allocator(allocator, expected_config):

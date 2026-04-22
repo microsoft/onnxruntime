@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/platform/device_discovery.h"
+#include "core/platform/linux/pci_device_discovery.h"
 
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <optional>
 #include <regex>
+#include <string>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -21,14 +23,14 @@ namespace onnxruntime {
 
 namespace {
 
-Status ErrorCodeToStatus(const std::error_code& ec) {
+Status ErrorCodeToStatus(const std::error_code& ec, const std::filesystem::path& path, const std::string_view context) {
   if (!ec) {
     return Status::OK();
   }
 
   return Status{common::StatusCategory::ONNXRUNTIME, common::StatusCode::FAIL,
                 MakeString("Error: std::error_code with category name: ", ec.category().name(),
-                           ", value: ", ec.value(), ", message: ", ec.message())};
+                           ", value: ", ec.value(), ", message: ", ec.message(), ", filesystem path: ", path, ", context: ", context)};
 }
 
 struct GpuSysfsPathInfo {
@@ -40,7 +42,7 @@ Status DetectGpuSysfsPaths(std::vector<GpuSysfsPathInfo>& gpu_sysfs_paths_out) {
   std::error_code error_code{};
   const fs::path sysfs_class_drm_path = "/sys/class/drm";
   const bool sysfs_class_drm_path_exists = fs::exists(sysfs_class_drm_path, error_code);
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_class_drm_path, "Checking existence of DRM sysfs path"));
 
   if (!sysfs_class_drm_path_exists) {
     gpu_sysfs_paths_out = std::vector<GpuSysfsPathInfo>{};
@@ -69,7 +71,7 @@ Status DetectGpuSysfsPaths(std::vector<GpuSysfsPathInfo>& gpu_sysfs_paths_out) {
   std::vector<GpuSysfsPathInfo> gpu_sysfs_paths{};
 
   auto dir_iterator = fs::directory_iterator{sysfs_class_drm_path, error_code};
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_class_drm_path, "Iterating over DRM sysfs devices"));
 
   for (const auto& dir_item : dir_iterator) {
     const auto& dir_item_path = dir_item.path();
@@ -121,7 +123,7 @@ Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::s
 
   std::error_code error_code;
   auto pci_bus_id_path = std::filesystem::canonical(sysfs_path / "device", error_code);  // resolves symlink to PCI bus id, e.g. 0000:65:00.0
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_path / "device", "Getting PCI bus id from DRM device by resolving symlink"));
 
   auto pci_bus_id_filename = pci_bus_id_path.filename();
   if (std::regex_match(pci_bus_id_filename.string(), pci_bus_id_regex)) {
@@ -130,9 +132,9 @@ Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::s
     pci_bus_id = {};
     LOGS_DEFAULT(WARNING) << MakeString("Skipping pci_bus_id for PCI path at \"",
                                         pci_bus_id_path.string(),
-                                        "\" because filename \"", pci_bus_id_filename, "\" dit not match expected pattern of ",
+                                        "\" because filename ", pci_bus_id_filename, " did not match expected pattern of ",
                                         regex_pattern);
-  };
+  }
 
   return Status::OK();
 }
@@ -175,6 +177,99 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   return Status::OK();
 }
 
+}  // namespace
+
+// PCI bus-based GPU detection as a fallback for environments where DRM sysfs entries
+// are not available (e.g., AKS/Kubernetes containers where the nvidia-drm kernel module
+// is not loaded but GPU PCI devices are still exposed via sysfs).
+
+namespace pci_device_discovery {
+
+Status DetectGpuPciPaths(const fs::path& sysfs_pci_devices_path,
+                         std::vector<GpuPciPathInfo>& gpu_pci_paths_out) {
+  std::error_code error_code{};
+  const bool path_exists = fs::exists(sysfs_pci_devices_path, error_code);
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_pci_devices_path, "Checking path exists"));
+
+  if (!path_exists) {
+    gpu_pci_paths_out = {};
+    return Status::OK();
+  }
+
+  std::vector<GpuPciPathInfo> gpu_pci_paths{};
+
+  auto dir_iterator = fs::directory_iterator{sysfs_pci_devices_path, error_code};
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_pci_devices_path, "Getting directory_iterator"));
+
+  for (const auto& dir_item : dir_iterator) {
+    const auto& device_path = dir_item.path();
+
+    // Read PCI class code to identify GPU devices.
+    // The class file contains a 24-bit value: 0xCCSSpp (class/subclass/prog-if).
+    uint32_t pci_class{};
+    if (auto status = ReadValueFromFile(device_path / "class", pci_class); !status.IsOK()) {
+      continue;
+    }
+
+    // Check for GPU/display controller PCI class codes:
+    //   Base class 0x03 = Display controller
+    //   Sub-class 0x00 = VGA compatible controller
+    //   Sub-class 0x02 = 3D controller (common for NVIDIA data center/compute GPUs)
+    // Reference: PCI Code and ID Assignment Specification
+    //   https://pcisig.com/pci-code-and-id-assignment-specification-agreement
+    //   See section on base class 03h.
+    const uint8_t base_class = static_cast<uint8_t>((pci_class >> 16) & 0xFF);
+    const uint8_t sub_class = static_cast<uint8_t>((pci_class >> 8) & 0xFF);
+    if (base_class != 0x03 || (sub_class != 0x00 && sub_class != 0x02)) {
+      continue;
+    }
+
+    GpuPciPathInfo path_info{};
+    path_info.path = device_path;
+    path_info.pci_bus_id = device_path.filename().string();
+    gpu_pci_paths.emplace_back(std::move(path_info));
+  }
+
+  gpu_pci_paths_out = std::move(gpu_pci_paths);
+  return Status::OK();
+}
+
+Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, OrtHardwareDevice& gpu_device_out) {
+  OrtHardwareDevice gpu_device{};
+  const auto& pci_path = path_info.path;
+
+  // vendor id - directly under PCI device path
+  uint16_t vendor_id{};
+  ORT_RETURN_IF_ERROR(ReadValueFromFile(pci_path / "vendor", vendor_id));
+  gpu_device.vendor_id = vendor_id;
+
+  // device id - directly under PCI device path
+  uint16_t device_id{};
+  ORT_RETURN_IF_ERROR(ReadValueFromFile(pci_path / "device", device_id));
+  gpu_device.device_id = device_id;
+
+  // metadata
+  if (const auto is_gpu_discrete = IsGpuDiscrete(vendor_id, device_id);
+      is_gpu_discrete.has_value()) {
+    gpu_device.metadata.Add("Discrete", (*is_gpu_discrete ? "1" : "0"));
+  }
+
+  if (!path_info.pci_bus_id.empty()) {
+    gpu_device.metadata.Add("pci_bus_id", path_info.pci_bus_id);
+  }
+
+  gpu_device.type = OrtHardwareDeviceType_GPU;
+
+  gpu_device_out = std::move(gpu_device);
+  return Status::OK();
+}
+
+}  // namespace pci_device_discovery
+
+namespace {
+
+constexpr const char* kSysfsPciDevicesPath = "/sys/bus/pci/devices";
+
 Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   std::vector<GpuSysfsPathInfo> gpu_sysfs_path_infos{};
   ORT_RETURN_IF_ERROR(DetectGpuSysfsPaths(gpu_sysfs_path_infos));
@@ -184,8 +279,34 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
 
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
     OrtHardwareDevice gpu_device{};
-    ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
+    if (auto status = GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device); !status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << MakeString("Failed to detect devices under ", gpu_sysfs_path_info.path, ": ", status.ErrorMessage());
+      continue;
+    }
     gpu_devices.emplace_back(std::move(gpu_device));
+  }
+
+  // If DRM-based detection found no GPUs, fall back to PCI bus scanning.
+  // This handles containerized environments (e.g., AKS/Kubernetes) where the DRM
+  // subsystem (nvidia-drm) may not be available but GPU PCI devices are still
+  // exposed via /sys/bus/pci/devices/.
+  if (gpu_devices.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "No GPUs found via /sys/class/drm. "
+                          << "Falling back to PCI bus scanning via " << kSysfsPciDevicesPath << ".";
+
+    std::vector<pci_device_discovery::GpuPciPathInfo> gpu_pci_path_infos{};
+    ORT_RETURN_IF_ERROR(pci_device_discovery::DetectGpuPciPaths(kSysfsPciDevicesPath, gpu_pci_path_infos));
+
+    gpu_devices.reserve(gpu_pci_path_infos.size());
+
+    for (const auto& gpu_pci_path_info : gpu_pci_path_infos) {
+      OrtHardwareDevice gpu_device{};
+      if (auto status = pci_device_discovery::GetGpuDeviceFromPci(gpu_pci_path_info, gpu_device); !status.IsOK()) {
+        LOGS_DEFAULT(WARNING) << MakeString("Failed to detect devices under ", gpu_pci_path_info.path, ": ", status.ErrorMessage());
+        continue;
+      }
+      gpu_devices.emplace_back(std::move(gpu_device));
+    }
   }
 
   gpu_devices_out = std::move(gpu_devices);

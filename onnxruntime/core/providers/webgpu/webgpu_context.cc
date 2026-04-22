@@ -86,7 +86,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 #endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
-      if (required_features.size() > 0) {
+      if (!required_features.empty()) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
@@ -95,11 +95,15 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 
       // TODO: revise temporary error handling
       device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, wgpu::StringView message) {
-        LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
+        if (logging::LoggingManager::HasDefaultLogger()) {
+          LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
+        }
       });
       // TODO: revise temporary device lost handling
       device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) {
-        LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
+        if (logging::LoggingManager::HasDefaultLogger()) {
+          LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
+        }
       });
 
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
@@ -120,6 +124,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     device_queue_ = device_.GetQueue();
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
+    // buffer segment offsets are always properly aligned for WebGPU bind group creation.
+    if (device_limits_.minStorageBufferOffsetAlignment > 0) {
+      device_limits_.maxStorageBufferBindingSize -=
+          (device_limits_.maxStorageBufferBindingSize % device_limits_.minStorageBufferOffsetAlignment);
+    }
     // cache device features
     wgpu::SupportedFeatures supported_features;
     Device().GetFeatures(&supported_features);
@@ -178,7 +188,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
-  if (outputs.size() == 0) {
+  if (outputs.empty()) {
     return Status::OK();
   }
 
@@ -625,7 +635,7 @@ void WebGpuContext::StartProfiling() {
   }
 }
 
-void WebGpuContext::CollectProfilingData() {
+void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
@@ -672,7 +682,7 @@ void WebGpuContext::CollectProfilingData() {
                                      static_cast<int64_t>(std::round(start_time / 1000.0)),
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
-        events_.emplace_back(std::move(event));
+        events.emplace_back(std::move(event));
       }
 
       query_read_buffer.Unmap();
@@ -683,6 +693,10 @@ void WebGpuContext::CollectProfilingData() {
   }
 
   is_profiling_ = false;
+}
+
+void WebGpuContext::CollectProfilingData() {
+  CollectProfilingData(events_);
 }
 
 void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) {
@@ -696,7 +710,6 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) 
     events.insert(events.end(),
                   std::make_move_iterator(events_.begin()),
                   std::make_move_iterator(events_.end()));
-
     events_.clear();
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
@@ -924,10 +937,11 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInf
   }
 }
 
-std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
 std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
-wgpu::Instance WebGpuContextFactory::default_instance_;
+
+std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
+WGPUInstance WebGpuContextFactory::default_instance_ = nullptr;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;
@@ -960,18 +974,13 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
 
   std::lock_guard<std::mutex> lock(mutex_);
 
-  // Lazy-allocate the contexts map on first use (heap-allocated to avoid static destruction crash).
-  if (contexts_ == nullptr) {
-    contexts_ = new std::unordered_map<int32_t, WebGpuContextInfo>();
-  }
-
   if (default_instance_ == nullptr) {
     // Create wgpu::Instance
     wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
-    default_instance_ = wgpu::CreateInstance(&instance_desc);
+    default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
   }
@@ -981,11 +990,16 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     ORT_ENFORCE(instance == nullptr && device == nullptr,
                 "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
-    instance = default_instance_.Get();
+    instance = default_instance_;
   } else {
     // for context ID > 0, user must provide custom WebGPU instance and device.
     ORT_ENFORCE(instance != nullptr && device != nullptr,
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
+  }
+
+  // Lazy-allocate the contexts map on first use (heap-allocated to avoid static destruction crash).
+  if (contexts_ == nullptr) {
+    contexts_ = new std::unordered_map<int32_t, WebGpuContextInfo>();
   }
 
   auto it = contexts_->find(context_id);
@@ -1034,9 +1048,16 @@ void WebGpuContextFactory::ReleaseContext(int context_id) {
 
 void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
-  delete contexts_;
-  contexts_ = nullptr;
-  default_instance_ = nullptr;
+
+  if (contexts_ != nullptr) {
+    delete contexts_;
+    contexts_ = nullptr;
+  }
+
+  if (default_instance_ != nullptr) {
+    wgpuInstanceRelease(default_instance_);
+    default_instance_ = nullptr;
+  }
 }
 
 WebGpuContext& WebGpuContextFactory::DefaultContext() {

@@ -277,46 +277,6 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 using PadsVector = PadBase::PadsVector;
 
-Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
-  switch (mode) {
-    case Mode::Constant: {
-      // default behavior is fine
-      break;
-    }
-    case Mode::Edge: {
-      // match numpy behavior of failing if mode is 'edge' and there's an attempt to pad a dimension with value of 0
-      for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
-        if (input_shape[i] == 0 && output_shape[i] > 0) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:",
-                                 input_shape);
-        }
-      }
-      break;
-    }
-    case Mode::Reflect: {
-      // match numpy behavior of failing if mode is 'reflect' and there's an attempt to pad a dimension with value of 0
-      for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
-        if (input_shape[i] == 0 && output_shape[i] > 0) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
-                                 input_shape);
-        }
-      }
-      break;
-    }
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode of ", static_cast<int>(mode));
-  }
-
-  return Status::OK();
-}
-
-void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
-                          PadsVector& pads) {
-  ComputePadsImpl(ctx, data_rank, pads_data, pads);
-}
-
 // Flatten no padding inner most Axis, so one memcpy cover multiple Axis.
 // For example, for a shape of [1,224,224,3] with padding [0,3,3,0,0,3,3,0], can be flatten as
 // [1,224,224*3] with padding [0,3,3*3,0,3,3*3].
@@ -535,9 +495,8 @@ static Status PadImpl(OpKernelContext* ctx,
   }
 
   // Special case for Reflect mode: ensure all extents >= 2 after slicing
-  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
-  // implies that this would be wrong as the start and end positions should be distinct
-  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  // otherwise reflection is not possible. Also validate that pads do not
+  // exceed extent - 1 on each side, as required by the ONNX spec.
   if (mode == Mode::Reflect) {
     for (size_t i = 0; i < new_dims_count; ++i) {
       const int64_t extent = effective_input_extents[i];  // length after slicing
@@ -547,6 +506,19 @@ static Status PadImpl(OpKernelContext* ctx,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Pad reflect requires axis length >= 2 after slicing. Input shape:",
                                orig_input_shape);
+      }
+      // ONNX spec: reflect pads must not exceed extent - 1 on each side
+      if (reshaped_pad[i] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: pre-pad (", reshaped_pad[i],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", orig_input_shape);
+      }
+      if (reshaped_pad[i + new_dims_count] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: post-pad (", reshaped_pad[i + new_dims_count],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", orig_input_shape);
       }
     }
   }

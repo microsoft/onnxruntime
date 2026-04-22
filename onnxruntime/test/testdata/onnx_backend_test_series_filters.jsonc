@@ -41,15 +41,13 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
-        // TODO: support the following tests in Attention-cuda (softcap, softmax precision and qk_matmul_mode)
-        "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_3d_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
-        "test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
-        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_4d_softcap_cuda",  // softcap not supported in Attention-cuda
-        "^test_attention_4d_with_qk_matmul_softcap_cuda", // softcap not supported in Attention-cuda
+        // TODO: support qk_matmul_output modes beyond kQK in Attention-cuda (see issue #27712)
+        // Tests combining qk_matmul with softcap need unfused-path softcap support (deferred).
+        "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // qk_matmul + softcap needs unfused softcap
+        "^test_attention_4d_with_qk_matmul_softcap_cuda", // qk_matmul + softcap needs unfused softcap
+        // softcap + diff head sizes (head_size != v_head_size) blocks Flash, falls to unfused which lacks softcap
+        "^test_attention_3d_diff_heads_sizes_softcap_cuda",  // diff head sizes forces unfused, no softcap
+        "^test_attention_4d_diff_heads_sizes_softcap_cuda",  // diff head sizes forces unfused, no softcap
         "^test_attention_4d_attn_mask_bool_cuda", // bool mask not supported in Attention-cuda
         "^test_attention_4d_attn_mask_bool_4d_cuda", // bool mask not supported in Attention-cuda
         "^test_attention_3d_with_past_and_present_qk_matmul_bias_cuda",  // QK matmul + bias not supported in Attention-cuda
@@ -379,7 +377,16 @@
         "^test_quantizelinear_int4",
         "^test_quantizelinear_uint4",
         // topk uint64 is not implemented in ORT yet.
-        "^test_top_k_uint64"
+        "^test_top_k_uint64",
+        // ORT DFT kernel does not implement IRFFT (inverse real FFT) — it always outputs
+        // complex (last dim=2) which is wrong for IRFFT. These ONNX backend tests were
+        // added in onnx commit ee910d0e4 for DFT-20 spec clarification.
+        "^test_dft_rfft",
+        "^test_dft_irfft",
+        "^test_dft_rfft_opset19",
+        "^test_dft_irfft_opset19",
+        // ORT BitCast kernel does not support bool type.
+        "^test_bitcast_bool_to_uint8"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",

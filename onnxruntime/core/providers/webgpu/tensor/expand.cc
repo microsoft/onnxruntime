@@ -21,7 +21,7 @@ Status ExpandProgram::GenerateShaderCode(ShaderHelper& shader) const {
       // The last dims of input shape and output shape are all divisible by 4.
       shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "  let input_offset = " << input_indices.BroadcastedIndicesToOffset("output_indices", output_indices) << ";\n"
-                                << output.SetByOffset("global_idx", input.GetByOffset("input_offset"));
+                                << output.SetByOffset("global_idx", input.GetByOffset("input_offset / 4"));
     } else if (output_last_dim_divisible_by_4_) {
       // The last dim of output shape is divisible by 4, and the last dim of input shape is 1.
       shader.MainFunctionBody() << "  let output_indices = " << output_indices.OffsetToIndices("global_idx * 4") << ";\n"
@@ -108,7 +108,7 @@ template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
-  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Expand>(info);
     return Status::OK();
   };
@@ -129,7 +129,7 @@ template <int SinceVersion>
 KernelCreateInfo CreateExpandKernelInfo(bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, true);
 
-  KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Expand>(info);
     return Status::OK();
   };

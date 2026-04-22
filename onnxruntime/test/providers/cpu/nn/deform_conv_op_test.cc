@@ -1,0 +1,1114 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Unit tests for DeformConv (CPU and Cuda), aligned with PyTorch Vision deform_conv2d tests.
+// Reference: https://github.com/pytorch/vision/blob/main/test/test_ops.py (TestDeformConv)
+
+// No CI test for CUDA int64 index path: needs huge shapes to exceed INT32_MAX (often OOM/slow).
+
+#include "gtest/gtest.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/testdata/deform_conv_test_data.inc"
+#include "test/unittest_util/conversion.h"
+#include <type_traits>
+
+#if defined(USE_CUDA)
+#include "test/common/cuda_op_test_utils.h"
+#endif
+
+namespace onnxruntime {
+namespace test {
+
+namespace {
+
+// Parameters similar to PyTorch TestDeformConv::get_fn_args (smaller for speed).
+struct DeformConvTestParams {
+  int64_t batch_sz;
+  int64_t n_in_channels;
+  int64_t n_out_channels;
+  int64_t n_weight_grps;
+  int64_t n_offset_grps;
+  std::vector<int64_t> kernel_shape;  // {kH, kW}
+  std::vector<int64_t> stride;
+  std::vector<int64_t> pad;
+  std::vector<int64_t> dilation;
+  int64_t in_h;
+  int64_t in_w;
+};
+
+// Traits for type-specific DeformConv test behavior.
+template <typename T>
+struct DeformConvTestTraits;
+
+template <>
+struct DeformConvTestTraits<float> {
+  static std::vector<float> Convert(const std::vector<float>& v) { return v; }
+  static std::unordered_set<std::string> ExcludedProviders() {
+    return {kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kOpenVINOExecutionProvider,
+            kQnnExecutionProvider};
+  }
+  static constexpr float DefaultRtol() { return 1e-5f; }
+  static constexpr float DefaultAtol() { return 1e-5f; }
+};
+
+template <>
+struct DeformConvTestTraits<MLFloat16> {
+  static std::vector<MLFloat16> Convert(const std::vector<float>& v) { return FloatsToMLFloat16s(v); }
+  static std::unordered_set<std::string> ExcludedProviders() {
+    return {kCpuExecutionProvider, kNvTensorRTRTXExecutionProvider, kTensorrtExecutionProvider,
+            kOpenVINOExecutionProvider, kQnnExecutionProvider};
+  }
+  static constexpr float DefaultRtol() { return 1e-2f; }
+  static constexpr float DefaultAtol() { return 1e-2f; }
+};
+
+template <>
+struct DeformConvTestTraits<double> {
+  static std::vector<double> Convert(const std::vector<float>& v) {
+    return std::vector<double>(v.begin(), v.end());
+  }
+  static std::unordered_set<std::string> ExcludedProviders() {
+    return {kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kOpenVINOExecutionProvider,
+            kQnnExecutionProvider};
+  }
+  static constexpr double DefaultRtol() { return 1e-8; }
+  static constexpr double DefaultAtol() { return 1e-8; }
+};
+
+#if defined(USE_CUDA)
+template <>
+struct DeformConvTestTraits<BFloat16> {
+  static std::vector<BFloat16> Convert(const std::vector<float>& v) { return FloatsToBFloat16s(v); }
+  static std::unordered_set<std::string> ExcludedProviders() {
+    return {kCpuExecutionProvider, kNvTensorRTRTXExecutionProvider, kTensorrtExecutionProvider,
+            kOpenVINOExecutionProvider, kQnnExecutionProvider};
+  }
+  static constexpr float DefaultRtol() { return 1e-2f; }
+  static constexpr float DefaultAtol() { return 1e-2f; }
+};
+#endif
+
+template <typename T>
+void RunDeformConvTest(const DeformConvTestParams& params,
+                       const std::vector<float>& X,
+                       const std::vector<float>& W,
+                       const std::vector<float>& offset,
+                       const std::vector<float>& B,
+                       const std::vector<float>* mask,
+                       const std::vector<float>& expected_Y,
+                       int opset = 19,
+                       decltype(DeformConvTestTraits<T>::DefaultRtol()) rtol = DeformConvTestTraits<T>::DefaultRtol(),
+                       decltype(DeformConvTestTraits<T>::DefaultAtol()) atol = DeformConvTestTraits<T>::DefaultAtol(),
+                       bool omit_bias = false) {
+  const int64_t kH = params.kernel_shape[0];
+  const int64_t kW = params.kernel_shape[1];
+  // ONNX pads format: [pad_top, pad_left, pad_bottom, pad_right] = [pad[0], pad[1], pad[2], pad[3]]
+  const int64_t out_h = (params.in_h + params.pad[0] + params.pad[2] -
+                         params.dilation[0] * (kH - 1) - 1) /
+                            params.stride[0] +
+                        1;
+  const int64_t out_w = (params.in_w + params.pad[1] + params.pad[3] -
+                         params.dilation[1] * (kW - 1) - 1) /
+                            params.stride[1] +
+                        1;
+
+  const std::vector<int64_t> X_shape = {params.batch_sz, params.n_in_channels, params.in_h, params.in_w};
+  const std::vector<int64_t> W_shape = {params.n_out_channels, params.n_in_channels / params.n_weight_grps, kH, kW};
+  const std::vector<int64_t> offset_shape = {params.batch_sz, params.n_offset_grps * 2 * kH * kW, out_h, out_w};
+  const std::vector<int64_t> Y_shape = {params.batch_sz, params.n_out_channels, out_h, out_w};
+
+  auto X_t = DeformConvTestTraits<T>::Convert(X);
+  auto W_t = DeformConvTestTraits<T>::Convert(W);
+  auto offset_t = DeformConvTestTraits<T>::Convert(offset);
+  auto expected_Y_t = DeformConvTestTraits<T>::Convert(expected_Y);
+
+  const float rtol_f = static_cast<float>(rtol);
+  const float atol_f = static_cast<float>(atol);
+  auto run_once = [&](bool force_cuda) {
+    OpTester test("DeformConv", opset);
+    test.AddAttribute("kernel_shape", params.kernel_shape);
+    test.AddAttribute("strides", params.stride);
+    test.AddAttribute("pads", params.pad);
+    test.AddAttribute("dilations", params.dilation);
+    test.AddAttribute("group", params.n_weight_grps);
+    test.AddAttribute("offset_group", params.n_offset_grps);
+
+    test.AddInput<T>("X", X_shape, X_t);
+    test.AddInput<T>("W", W_shape, W_t);
+    test.AddInput<T>("offset", offset_shape, offset_t);
+    if (omit_bias) {
+      test.AddOptionalInputEdge<T>();
+    } else {
+      auto B_t = DeformConvTestTraits<T>::Convert(B);
+      test.AddInput<T>("B", {params.n_out_channels}, B_t);
+    }
+    if (mask != nullptr) {
+      const std::vector<int64_t> mask_shape = {params.batch_sz, params.n_offset_grps * kH * kW, out_h, out_w};
+      test.AddInput<T>("mask", mask_shape, DeformConvTestTraits<T>::Convert(*mask));
+    } else {
+      test.AddOptionalInputEdge<T>();
+    }
+    test.AddOutput<T>("Y", Y_shape, expected_Y_t, false, rtol_f, atol_f);
+
+    if (!force_cuda) {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", DeformConvTestTraits<T>::ExcludedProviders());
+      return;
+    }
+
+#if defined(USE_CUDA)
+    auto cuda_ep = DefaultCudaExecutionProvider();
+    if (cuda_ep) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.emplace_back(std::move(cuda_ep));
+      test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+    }
+#endif
+  };
+
+  // Keep existing behavior first (typically CPU for float/double, CUDA for half/bfloat16).
+  run_once(false);
+
+#if defined(USE_CUDA)
+  // For types supported by both CPU and CUDA, additionally force a CUDA-only run.
+  if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+    run_once(true);
+  }
+#endif
+}
+
+// MinimalBilinear test: 1x1 kernel, 2x2 input, one output position with fractional offset (bilinear).
+// At (0,0) offset (0.5, 0.5) samples center of [1,2;3,4] -> 2.5.
+template <typename T>
+void RunMinimalBilinearTest(int opset = 19, int min_cuda_arch = 0, bool omit_bias = false) {
+#if defined(USE_CUDA)
+  if (min_cuda_arch > 0 && !HasCudaEnvironment(min_cuda_arch)) {
+    return;
+  }
+#else
+  (void)min_cuda_arch;
+#endif
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 2;
+  p.in_w = 2;
+  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> W = {1.f};
+  // offset shape [N, 2*kH*kW, out_h, out_w] = [1, 2, 2, 2]: ch0=offset_h, ch1=offset_w (for kernel pt 0)
+  // Layout: offset[n,c,oh,ow]. Flattened (NCHW): [ch0@00, ch0@01, ch0@10, ch0@11, ch1@00, ch1@01, ch1@10, ch1@11]
+  // (0,0): (0.5, 0.5)->center of [1,2;3,4]->2.5; (0,1): (0,-1)->(0,0)->1; (1,0): (0,0)->3; (1,1): (0,0)->4
+  std::vector<float> offset = {0.5f, 0.f, 0.f, 0.f, 0.5f, -1.0f, 0.f, 0.f};
+  std::vector<float> B = {0.f};
+  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
+  std::vector<float> expected_Y = {2.5f, 1.f, 3.f, 4.f};
+  if (omit_bias) {
+    RunDeformConvTest<T>(p, X, W, offset, {} /* B unused */, &mask, expected_Y, opset,
+                         DeformConvTestTraits<T>::DefaultRtol(), DeformConvTestTraits<T>::DefaultAtol(), true);
+  } else {
+    RunDeformConvTest<T>(p, X, W, offset, B, &mask, expected_Y, opset,
+                         DeformConvTestTraits<T>::DefaultRtol(), DeformConvTestTraits<T>::DefaultAtol(), false);
+  }
+}
+
+void RunChunkTailGroupedIdentityTest(int64_t n, int64_t group1_base) {
+  DeformConvTestParams p = {};
+  p.batch_sz = n;
+  p.n_in_channels = 2;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 2;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 1;
+  p.in_w = 1;
+
+  std::vector<float> X(static_cast<size_t>(n * p.n_in_channels), 0.f);
+  for (int64_t i = 0; i < n; ++i) {
+    X[static_cast<size_t>(i * 2)] = static_cast<float>(i + 1);                // group 0 input
+    X[static_cast<size_t>(i * 2 + 1)] = static_cast<float>(group1_base + i);  // group 1 input
+  }
+
+  std::vector<float> W = {1.f, 1.f};  // identity mapping per group
+  std::vector<float> offset(static_cast<size_t>(n * 2), 0.f);
+
+  std::vector<float> expected_Y(static_cast<size_t>(n * p.n_out_channels), 0.f);
+  for (int64_t i = 0; i < n; ++i) {
+    expected_Y[static_cast<size_t>(i * 2)] = static_cast<float>(i + 1);
+    expected_Y[static_cast<size_t>(i * 2 + 1)] = static_cast<float>(group1_base + i);
+  }
+
+  RunDeformConvTest<float>(p, X, W, offset, {} /* B unused */, nullptr, expected_Y, 19, 1e-5f, 1e-5f, true);
+}
+}  // namespace
+
+// Minimal case: 1x1 kernel, 2x2 input, one output position with fractional offset (bilinear).
+TEST(DeformConvTest, MinimalBilinear) {
+  RunMinimalBilinearTest<float>();
+}
+
+// Optional bias omitted: same as MinimalBilinear but B is not provided; output must match B=0.
+TEST(DeformConvTest, OptionalBiasOmitted) {
+  RunMinimalBilinearTest<float>(19, 0, true);
+}
+
+// Minimal case FP16: Same as MinimalBilinear but in FP16 (CUDA-only).
+#if defined(USE_CUDA)
+TEST(DeformConvTest, MinimalBilinearFP16) {
+  RunMinimalBilinearTest<MLFloat16>(19, 530);
+}
+
+// Minimal case BFloat16: Same as MinimalBilinear but in BFloat16 (CUDA-only, opset 22).
+TEST(DeformConvTest, MinimalBilinearBFloat16) {
+  RunMinimalBilinearTest<BFloat16>(22, 800);
+}
+#endif  // defined(USE_CUDA)
+
+// Minimal case Double (FP64): Same as MinimalBilinear in double precision.
+TEST(DeformConvTest, MinimalBilinearDouble) {
+  RunMinimalBilinearTest<double>();
+}
+
+// Forward with mask and bias FP16 (CUDA-only; skip when CUDA not available).
+#if defined(USE_CUDA)
+TEST(DeformConvTest, ForwardWithMaskAndBiasFP16) {
+  int min_cuda_architecture = 530;  // FP16 requires SM 5.3+
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "DeformConv FP16: CUDA not available, skipping.";
+    return;
+  }
+
+  DeformConvTestParams p = {};
+  p.batch_sz = 2;
+  p.n_in_channels = 4;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 2;
+  p.n_offset_grps = 2;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  const size_t x_size = static_cast<size_t>(p.batch_sz * p.n_in_channels * p.in_h * p.in_w);
+  const size_t w_size = static_cast<size_t>(p.n_out_channels * (p.n_in_channels / p.n_weight_grps) * 2 * 2);
+  const size_t offset_size = static_cast<size_t>(p.batch_sz * p.n_offset_grps * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(p.batch_sz * p.n_offset_grps * 2 * 2 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.5f, -0.5f};
+
+  const size_t y_size = static_cast<size_t>(p.batch_sz * p.n_out_channels * out_h * out_w);
+  std::vector<float> expected_Y(y_size);
+  for (int64_t b = 0; b < p.batch_sz; ++b) {
+    for (int64_t c = 0; c < p.n_out_channels; ++c) {
+      float val = (c % 2 == 0) ? 0.58f : -0.42f;
+      for (int64_t i = 0; i < out_h * out_w; ++i) {
+        expected_Y[b * p.n_out_channels * out_h * out_w + c * out_h * out_w + i] = val;
+      }
+    }
+  }
+
+  RunDeformConvTest<MLFloat16>(p, X, W, offset, B, &mask, expected_Y);
+}
+#endif  // defined(USE_CUDA)
+
+// With offset=0 and mask=1, Y = Conv(X,W) + B. Use small inputs and compute expected.
+TEST(DeformConvTest, ForwardWithMaskAndBias) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 2;
+  p.n_in_channels = 4;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 2;
+  p.n_offset_grps = 2;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  const size_t x_size = static_cast<size_t>(p.batch_sz * p.n_in_channels * p.in_h * p.in_w);
+  const size_t w_size = static_cast<size_t>(p.n_out_channels * (p.n_in_channels / p.n_weight_grps) * 2 * 2);
+  const size_t offset_size = static_cast<size_t>(p.batch_sz * p.n_offset_grps * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(p.batch_sz * p.n_offset_grps * 2 * 2 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);  // zero offset -> regular grid sampling
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.5f, -0.5f};
+
+  // With offset=0, mask=1: deform_conv equals grouped conv. Per ONNX, group 0 -> output ch 0, group 1 -> ch 1.
+  // Uniform X=0.1, W=0.1, 2x2 kernel -> 0.08 + B per channel; Y[:,0,:,:]=0.58, Y[:,1,:,:]=-0.42.
+  const size_t y_size = static_cast<size_t>(p.batch_sz * p.n_out_channels * out_h * out_w);
+  std::vector<float> expected_Y(y_size);
+  for (int64_t b = 0; b < p.batch_sz; ++b) {
+    for (int64_t c = 0; c < p.n_out_channels; ++c) {
+      float val = (c % 2 == 0) ? 0.58f : -0.42f;
+      for (int64_t i = 0; i < out_h * out_w; ++i) {
+        expected_Y[b * p.n_out_channels * out_h * out_w + c * out_h * out_w + i] = val;
+      }
+    }
+  }
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y, 19, 1e-4f, 1e-4f);
+}
+
+// No mask (optional): same as above but mask omitted; compare to run with ones mask via tolerance.
+TEST(DeformConvTest, ForwardNoMask) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 2;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  const size_t x_size = 1 * 2 * 3 * 3;
+  const size_t w_size = 2 * 2 * 2 * 2;
+  const size_t offset_size = 1 * 2 * 2 * 2 * out_h * out_w;
+  const size_t y_size = 1 * 2 * out_h * out_w;
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> B(2, 0.f);
+  // No mask => mask=1. Zero offset => same as conv. Y = 4*2*0.1*0.1 = 0.08 per position.
+  std::vector<float> expected_Y(y_size, 0.08f);
+
+  OpTester test("DeformConv", 19);
+  test.AddAttribute("kernel_shape", p.kernel_shape);
+  test.AddAttribute("strides", p.stride);
+  test.AddAttribute("pads", p.pad);
+  test.AddAttribute("dilations", p.dilation);
+  test.AddAttribute("group", p.n_weight_grps);
+  test.AddAttribute("offset_group", p.n_offset_grps);
+  const std::vector<int64_t> X_shape = {p.batch_sz, p.n_in_channels, p.in_h, p.in_w};
+  const std::vector<int64_t> W_shape = {p.n_out_channels, p.n_in_channels / p.n_weight_grps, 2, 2};
+  const std::vector<int64_t> offset_shape = {p.batch_sz, p.n_offset_grps * 2 * 2 * 2, out_h, out_w};
+  const std::vector<int64_t> Y_shape = {p.batch_sz, p.n_out_channels, out_h, out_w};
+
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W);
+  test.AddInput<float>("offset", offset_shape, offset);
+  test.AddInput<float>("B", {p.n_out_channels}, B);
+  test.AddOptionalInputEdge<float>();  // no mask
+  test.AddOutput<float>("Y", Y_shape, expected_Y, false, 1e-4f, 1e-4f);
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider,
+                                              kOpenVINOExecutionProvider, kQnnExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+}
+
+// Empty batch (N=0): allowed, same as Conv/ConvTranspose/Pool — output shape [0, oC, oH, oW].
+TEST(DeformConvTest, EmptyBatch) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 0;
+  p.n_in_channels = 2;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  std::vector<float> X;
+  std::vector<float> W = std::vector<float>(2 * 2 * 2 * 2, 0.1f);
+  std::vector<float> offset;
+  std::vector<float> B(2, 0.f);
+  std::vector<float> expected_Y;
+
+  OpTester test("DeformConv", 19);
+  test.AddAttribute("kernel_shape", p.kernel_shape);
+  test.AddAttribute("strides", p.stride);
+  test.AddAttribute("pads", p.pad);
+  test.AddAttribute("dilations", p.dilation);
+  test.AddAttribute("group", p.n_weight_grps);
+  test.AddAttribute("offset_group", p.n_offset_grps);
+  const std::vector<int64_t> X_shape = {0, p.n_in_channels, p.in_h, p.in_w};
+  const std::vector<int64_t> W_shape = {p.n_out_channels, p.n_in_channels / p.n_weight_grps, 2, 2};
+  const std::vector<int64_t> offset_shape = {0, p.n_offset_grps * 2 * 2 * 2, out_h, out_w};
+  const std::vector<int64_t> Y_shape = {0, p.n_out_channels, out_h, out_w};
+
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W);
+  test.AddInput<float>("offset", offset_shape, offset);
+  test.AddInput<float>("B", {p.n_out_channels}, B);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", Y_shape, expected_Y);
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider,
+                                              kOpenVINOExecutionProvider, kQnnExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+}
+
+// Wrong offset channel count -> expect failure (like PyTorch test_wrong_sizes).
+TEST(DeformConvTest, WrongOffsetShape) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 2;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  std::vector<float> X(1 * 2 * 3 * 3, 0.1f);
+  std::vector<float> W(2 * 2 * 2 * 2, 0.1f);
+  std::vector<float> wrong_offset(1 * 2 * out_h * out_w);  // wrong: only 2 channels instead of 8
+  std::vector<float> B(2, 0.f);
+  std::vector<float> expected_Y(1 * 2 * out_h * out_w, 0.f);
+
+  const std::vector<int64_t> offset_shape_wrong = {1, 2, out_h, out_w};
+  const std::vector<int64_t> Y_shape_wrong = {1, 2, out_h, out_w};
+
+  OpTester test("DeformConv", 19);
+  test.AddAttribute("kernel_shape", p.kernel_shape);
+  test.AddAttribute("strides", p.stride);
+  test.AddAttribute("pads", p.pad);
+  test.AddAttribute("dilations", p.dilation);
+  test.AddAttribute("group", p.n_weight_grps);
+  test.AddAttribute("offset_group", p.n_offset_grps);
+  test.AddInput<float>("X", {1, 2, 3, 3}, X);
+  test.AddInput<float>("W", {2, 2, 2, 2}, W);
+  test.AddInput<float>("offset", offset_shape_wrong, wrong_offset);  // invalid channels
+  test.AddInput<float>("B", {2}, B);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", Y_shape_wrong, expected_Y);
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Offset channel count must be offset_group * 2 * kH * kW", excluded);
+}
+
+// Wrong mask channel count -> expect failure.
+TEST(DeformConvTest, WrongMaskShape) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 2;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  std::vector<float> X(1 * 2 * 3 * 3, 0.1f);
+  std::vector<float> W(2 * 2 * 2 * 2, 0.1f);
+  const size_t offset_size = static_cast<size_t>(
+      p.batch_sz * p.n_offset_grps * 2 * p.kernel_shape[0] * p.kernel_shape[1] * out_h * out_w);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> B(2, 0.f);
+  std::vector<float> wrong_mask(1 * 2 * out_h * out_w);  // wrong: 2 instead of 4
+  std::vector<float> expected_Y(1 * 2 * out_h * out_w, 0.f);
+
+  const std::vector<int64_t> mask_shape_wrong = {1, 2, out_h, out_w};
+  const std::vector<int64_t> Y_shape_mask = {1, 2, out_h, out_w};
+
+  OpTester test("DeformConv", 19);
+  test.AddAttribute("kernel_shape", p.kernel_shape);
+  test.AddAttribute("strides", p.stride);
+  test.AddAttribute("pads", p.pad);
+  test.AddAttribute("dilations", p.dilation);
+  test.AddAttribute("group", p.n_weight_grps);
+  test.AddAttribute("offset_group", p.n_offset_grps);
+  test.AddInput<float>("X", {1, 2, 3, 3}, X);
+  test.AddInput<float>("W", {2, 2, 2, 2}, W);
+  test.AddInput<float>("offset", {1, 8, out_h, out_w}, offset);
+  test.AddInput<float>("B", {2}, B);
+  test.AddInput<float>("mask", mask_shape_wrong, wrong_mask);
+  test.AddOutput<float>("Y", Y_shape_mask, expected_Y);
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Mask channel count", excluded);
+}
+
+// Opset 22 (same behavior, different opset).
+TEST(DeformConvTest, Opset22) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 2;
+  p.in_w = 2;
+
+  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> W = {1.f};
+  std::vector<float> offset = {0.5f, 0.f, 0.f, 0.f, 0.5f, 0.f, 0.f, 0.f};
+  std::vector<float> B = {0.f};
+  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
+  std::vector<float> expected_Y = {2.5f, 2.f, 3.f, 4.f};
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y, 22);
+}
+
+// Non-square kernel (kH != kW): 2x3 kernel, zero offset -> same as standard conv.
+TEST(DeformConvTest, NonSquareKernel) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 3};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 4;
+  p.in_w = 5;
+  // ONNX output size: out_h = (4 - 1*(2-1) - 1)/1 + 1 = 3, out_w = (5 - 1*(3-1) - 1)/1 + 1 = 3
+  const int64_t out_h = 3;
+  const int64_t out_w = 3;
+
+  const size_t x_size = static_cast<size_t>(1 * 1 * 4 * 5);
+  const size_t w_size = static_cast<size_t>(1 * 1 * 2 * 3);
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 2 * 3 * out_h * out_w);  // n_offset_grps * 2 * kH * kW * out_h * out_w
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 2 * 3 * out_h * out_w);        // n_offset_grps * kH * kW * out_h * out_w
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  // With offset=0, mask=1: each output = 6 * 0.1 * 0.1 = 0.06 (9 positions)
+  std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), 0.06f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Asymmetric stride (stride_h != stride_w): stride=(2,1), zero offset.
+TEST(DeformConvTest, AsymmetricStride) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {2, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 5;
+  p.in_w = 4;
+  // out_h = (5 - 1*(2-1) - 1) / 2 + 1 = 2, out_w = (4 - 1*(2-1) - 1) / 1 + 1 = 3
+  const int64_t out_h = 2;
+  const int64_t out_w = 3;
+
+  const size_t x_size = static_cast<size_t>(1 * 1 * 5 * 4);
+  const size_t w_size = static_cast<size_t>(1 * 1 * 2 * 2);
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 2 * 2 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), 0.04f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// groups > 0 and non-zero offset; expected from deform_conv_expected_gen.py (seed=123).
+TEST(DeformConvTest, GroupsWithNonZeroOffset) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 4;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 2;
+  p.n_offset_grps = 2;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+
+  std::vector<float> X = {0.296112f, 0.516562f, 0.251671f, 0.688557f, 0.073972f, 0.866522f, 0.136580f, 0.102479f, 0.184056f, 0.726447f, 0.315254f, 0.687107f, 0.075635f, 0.196638f, 0.316412f, 0.401740f, 0.118568f, 0.827395f, 0.382084f, 0.660494f, 0.853572f, 0.593153f, 0.636725f, 0.982629f, 0.274495f, 0.658376f, 0.277542f, 0.857325f, 0.899328f, 0.039014f, 0.926823f, 0.738757f, 0.717884f, 0.705837f, 0.915650f, 0.433980f};
+  std::vector<float> W = {-1.182045f, -0.287745f, -0.604301f, 0.600237f, -1.420473f, -0.223828f, 0.430555f, -0.898857f, -0.017858f, 0.426403f, -0.765741f, -0.054514f, -0.732053f, 1.234742f, 1.186221f, -0.220099f};
+  std::vector<float> offset = {-0.388483f, -0.934346f, -0.499144f, -1.086653f, 0.962421f, 0.249208f, -0.484502f, -2.092915f, 0.098284f, -0.093507f, 0.266215f, -0.585035f, -0.343038f, -0.682148f, -0.988689f, -1.701830f, -1.220290f, 1.313853f, 1.053300f, 0.138805f, -0.204445f, -2.268529f, -0.913328f, -0.420363f, -0.659559f, -0.797928f, 0.183831f, 0.229347f, 0.617743f, -0.287578f, 0.821824f, 0.151178f, -0.044382f, 1.623557f, -2.322871f, 1.087831f, -0.063545f, -0.448641f, -1.278470f, -1.144004f, -0.152640f, 0.116741f, 0.440260f, -1.446546f, -0.558082f, -0.051696f, -0.908273f, 0.350683f, -0.394809f, 0.489227f, -0.216815f, -1.747165f, 1.722842f, 0.773806f, 0.404630f, -1.646126f, -0.595084f, -0.711218f, 0.622965f, -1.372881f, -0.128065f, -1.283835f, -0.290120f, 1.276741f};
+  std::vector<float> B = {0.983955f, 0.204512f};
+  std::vector<float> mask = {-0.031861f, -0.478956f, 0.766809f, 0.027468f, 0.047470f, -0.923866f, -1.060737f, -2.324446f, -2.062818f, 0.006375f, -0.989555f, 0.701609f, -0.982238f, 0.277031f, 0.645495f, -0.895681f, 0.492753f, -0.014078f, -0.274663f, -0.764091f, -0.587157f, 1.195165f, -1.209575f, -0.556008f, -0.077105f, 1.277377f, -1.459629f, -2.159528f, -0.706709f, -0.922245f, 3.895372f, -0.602697f};
+  std::vector<float> expected_Y = {0.971546f, 1.139858f, 0.452817f, 1.863882f, -0.565266f, 1.423187f, -2.462833f, -0.104923f};
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y, 19, 1e-4f, 1e-4f);
+}
+
+// Sampling out of bounds: offset pushes sampling to (-5,-5), BilinearInterpolate returns 0.
+TEST(DeformConvTest, OutOfBoundsSampling) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 2;
+  p.in_w = 2;
+
+  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> W = {1.f};
+  // out_h=out_w=2 (2x2 output), offset shape [1, 2, 2, 2] = 8 values. All (-5,-5) -> OOB -> 0
+  std::vector<float> offset = {-5.f, -5.f, -5.f, -5.f, -5.f, -5.f, -5.f, -5.f};
+  std::vector<float> B = {0.f};
+  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
+  std::vector<float> expected_Y = {0.f, 0.f, 0.f, 0.f};
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Dilation > 1: 2x2 kernel with dilation (2,2), zero offset -> 4 sample points with stride 2.
+TEST(DeformConvTest, DilationGt1) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {2, 2};
+  p.in_h = 5;
+  p.in_w = 5;
+  // out_h = (5 - 2*(2-1) - 1)/1 + 1 = 3, out_w = 3
+  const int64_t out_h = 3;
+  const int64_t out_w = 3;
+
+  const size_t x_size = 25;
+  const size_t w_size = 4;
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 2 * 2 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  // Each output: 4 samples at (0,0),(0,2),(2,0),(2,2) -> 4 * 0.1 * 0.1 = 0.04
+  std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), 0.04f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Decoupled groups: group=2, offset_group=1 (one offset map shared by all input channels).
+TEST(DeformConvTest, DecoupledGroups) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 4;
+  p.n_out_channels = 2;
+  p.n_weight_grps = 2;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  const size_t x_size = static_cast<size_t>(1 * 4 * 3 * 3);
+  const size_t w_size = static_cast<size_t>(2 * 2 * 2 * 2);
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 2 * 2 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f, 0.f};
+  // Zero offset -> grouped conv. Per output ch: 2 in_ch * 4 kernel * 0.01 = 0.08
+  std::vector<float> expected_Y(static_cast<size_t>(1 * 2 * out_h * out_w), 0.08f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Asymmetric padding: pads [top=1, left=0, bottom=0, right=1]; output 3x3, some positions have OOB samples.
+TEST(DeformConvTest, AsymmetricPadding) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {1, 0, 0, 1};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  // out_h = (3+1+0-1*(2-1)-1)/1+1 = 3, out_w = (3+0+1-1-1)/1+1 = 3
+  const int64_t out_h = 3;
+  const int64_t out_w = 3;
+
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 2 * 2 * out_h * out_w);
+
+  std::vector<float> X(1 * 1 * 3 * 3, 0.1f);
+  std::vector<float> W(1 * 1 * 2 * 2, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  // Row 0: (0,0),(0,1) 2 valid -> 0.02; (0,2) only (0,2) in, (0,3) OOB -> 1 valid -> 0.01. Row 1/2: as before.
+  std::vector<float> expected_Y = {0.02f, 0.02f, 0.01f, 0.04f, 0.04f, 0.02f, 0.04f, 0.04f, 0.02f};
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Tiny offset (near zero): offset (1e-6, 1e-6), sample ~(0,0) -> bilinear ≈ X[0,0]. Use 1x1 input for 1 output.
+TEST(DeformConvTest, TinyOffset) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 1;
+  p.in_w = 1;
+
+  std::vector<float> X = {1.f};
+  std::vector<float> W = {1.f};
+  std::vector<float> offset = {1e-6f, 1e-6f};
+  std::vector<float> B = {0.f};
+  std::vector<float> mask = {1.f};
+  std::vector<float> expected_Y = {1.f};  // bilinear at (1e-6, 1e-6) ≈ 1
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y, 19, 1e-4f, 1e-4f);
+}
+
+// Offset (0.5, 0.5) at each kernel point: sampling at (i+0.5, j+0.5) -> (0.5,0.5),(0.5,1.5),(1.5,0.5),(1.5,1.5).
+// Only (0.5,0.5) is fully in-bounds for 2x2 input; others hit boundary (OOB gives 0). Result = 1.6875.
+TEST(DeformConvTest, OffsetAtPixelCenters) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 2;
+  p.in_w = 2;
+
+  std::vector<float> X = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> W = {0.25f, 0.25f, 0.25f, 0.25f};
+  std::vector<float> offset = {
+      0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f};
+  std::vector<float> B = {0.f};
+  std::vector<float> mask = {1.f, 1.f, 1.f, 1.f};
+  std::vector<float> expected_Y = {1.6875f};  // op output: one center sample 2.5 + boundary samples
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Large batch (N=64) to trigger CUDA ComputeInternal chunking loop (b += n_parallel_imgs).
+TEST(DeformConvTest, LargeBatchSize) {
+  const int64_t N = 64;
+  DeformConvTestParams p = {};
+  p.batch_sz = N;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  const size_t x_size = static_cast<size_t>(N * 1 * 3 * 3);
+  const size_t offset_size = static_cast<size_t>(N * 1 * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(N * 1 * 2 * 2 * out_h * out_w);
+  const size_t y_size = static_cast<size_t>(N * 1 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(1 * 1 * 2 * 2, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  std::vector<float> expected_Y(y_size, 0.04f);  // 4 * 0.1 * 0.1 per position
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// output_image_size = 3*3 = 9 (not a multiple of 8): exercises AoSoA tail path in FillColRowFromSamplingPlanImpl (CPU).
+TEST(DeformConvTest, OutputPixelsNotMultipleOf8_AoSoATail) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 1};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 3;
+  const int64_t out_w = 3;
+
+  std::vector<float> X(1 * 1 * 3 * 3, 0.1f);
+  std::vector<float> W(1 * 1 * 1 * 1, 0.1f);
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 1 * 1 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 1 * 1 * out_h * out_w);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), 0.01f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Prime batch N=7: uneven last chunk vs fixed chunk size on CUDA (GetDeformConvParallelChunkSize path).
+TEST(DeformConvTest, PrimeBatchSizeSeven) {
+  const int64_t N = 7;
+  DeformConvTestParams p = {};
+  p.batch_sz = N;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  const size_t x_size = static_cast<size_t>(N * 1 * 3 * 3);
+  const size_t offset_size = static_cast<size_t>(N * 1 * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(N * 1 * 2 * 2 * out_h * out_w);
+  const size_t y_size = static_cast<size_t>(N * 1 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(1 * 1 * 2 * 2, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  std::vector<float> expected_Y(y_size, 0.04f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// CUDA chunking regression guard:
+// - Keep bytes_per_image tiny so target_parallel_imgs hits kMaxParallelImgs(32) on all CUDA devices.
+// - N=993 -> balanced chunk size k=32 and final tail chunk size 1 (after many 32-sized chunks).
+// - group=2 exercises cur_parallel==1 grouped GEMM path where per-group col stride must use cur_out_size.
+TEST(DeformConvTest, ChunkTailOneWithGroups) {
+  RunChunkTailGroupedIdentityTest(/*n=*/993, /*group1_base=*/1000);
+}
+
+// CUDA chunking regression guard for partial tail chunk:
+// - Keep bytes_per_image tiny so target_parallel_imgs hits kMaxParallelImgs(32) on all CUDA devices.
+// - N=33 -> balanced chunk size k=17 and final tail chunk size 16 (1 < cur_parallel < n_parallel_imgs).
+// - group=2 exercises grouped path where each group's col base must use current cur_out_size.
+TEST(DeformConvTest, ChunkTailPartialWithGroups) {
+  RunChunkTailGroupedIdentityTest(/*n=*/33, /*group1_base=*/2000);
+}
+
+// 7x7 kernel with 9x9 input -> 3x3 output: exercises compile-time kH=kW=7 CUDA im2col specialization.
+TEST(DeformConvTest, Kernel7x7) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {7, 7};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 9;
+  p.in_w = 9;
+  const int64_t out_h = 3;
+  const int64_t out_w = 3;
+
+  std::vector<float> X(1 * 1 * 9 * 9, 0.1f);
+  std::vector<float> W(1 * 1 * 7 * 7, 0.1f);
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 7 * 7 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 7 * 7 * out_h * out_w);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  const float expected_val = 49.f * 0.1f * 0.1f;  // 7x7 dot with uniform 0.1 * 0.1
+  std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), expected_val);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// group=1, offset_group=2: weights not grouped, offset/mask grouped.
+TEST(DeformConvTest, Group1OffsetGroup2) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 4;  // C must be divisible by offset_group
+  p.n_out_channels = 2;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 2;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  const size_t x_size = static_cast<size_t>(1 * 4 * 3 * 3);
+  const size_t w_size = static_cast<size_t>(2 * 4 * 2 * 2);
+  const size_t offset_size = static_cast<size_t>(1 * 2 * 2 * 2 * 2 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 2 * 2 * 2 * out_h * out_w);
+
+  std::vector<float> X(x_size, 0.1f);
+  std::vector<float> W(w_size, 0.1f);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f, 0.f};
+  // group=1: full conv. Each output: 4 in_ch * 4 kernel = 16 * 0.01 = 0.16 per channel, 2 out ch -> 0.16 each
+  std::vector<float> expected_Y(static_cast<size_t>(1 * 2 * out_h * out_w), 0.16f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Mask with zeros: verifies zero mask suppresses sampled values (val * mask == 0).
+TEST(DeformConvTest, MaskWithZeros) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {2, 2};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 3;
+  p.in_w = 3;
+  const int64_t out_h = 2;
+  const int64_t out_w = 2;
+
+  std::vector<float> X(1 * 1 * 3 * 3, 0.1f);
+  std::vector<float> W(1 * 1 * 2 * 2, 0.1f);
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 2 * 2 * out_h * out_w);
+  std::vector<float> offset(offset_size, 0.f);
+  // mask: (1, 4, 2, 2). Set all to 0 -> output should be 0.
+  std::vector<float> mask(static_cast<size_t>(1 * 1 * 2 * 2 * out_h * out_w), 0.f);
+  std::vector<float> B = {0.f};
+  std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), 0.f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// Extreme aspect ratio (1x100): thin horizontal strip to verify coordinate indexing.
+TEST(DeformConvTest, ExtremeAspectRatio) {
+  DeformConvTestParams p = {};
+  p.batch_sz = 1;
+  p.n_in_channels = 1;
+  p.n_out_channels = 1;
+  p.n_weight_grps = 1;
+  p.n_offset_grps = 1;
+  p.kernel_shape = {1, 3};
+  p.stride = {1, 1};
+  p.pad = {0, 0, 0, 0};
+  p.dilation = {1, 1};
+  p.in_h = 1;
+  p.in_w = 100;
+  // out_h = 1, out_w = (100 - 1*(3-1) - 1)/1 + 1 = 98
+  const int64_t out_h = 1;
+  const int64_t out_w = 98;
+
+  std::vector<float> X(100, 0.1f);
+  std::vector<float> W(1 * 1 * 1 * 3, 0.1f);
+  const size_t offset_size = static_cast<size_t>(1 * 1 * 2 * 1 * 3 * out_h * out_w);
+  const size_t mask_size = static_cast<size_t>(1 * 1 * 1 * 3 * out_h * out_w);
+  std::vector<float> offset(offset_size, 0.f);
+  std::vector<float> mask(mask_size, 1.f);
+  std::vector<float> B = {0.f};
+  // Each output: 3 * 0.1 * 0.1 = 0.03
+  std::vector<float> expected_Y(static_cast<size_t>(out_h * out_w), 0.03f);
+
+  RunDeformConvTest<float>(p, X, W, offset, B, &mask, expected_Y);
+}
+
+// ONNX model data test: deform_conv_test_gen.py builds the ONNX model (via onnx.helper)
+// and generates fixed inputs from torchvision (seed=123). This test is a model-loading/
+// integration smoke test that uses ORT-generated outputs from deform_conv_test.onnx as the reference.
+TEST(DeformConvTest, OnnxModelTest) {
+  OpTester test("DeformConv", 19);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("group", static_cast<int64_t>(2));
+  test.AddAttribute("offset_group", static_cast<int64_t>(2));
+
+  test.AddInput<float>("X", {1, 4, 3, 3}, kDeformConvOnnxTest_X);
+  test.AddInput<float>("W", {2, 2, 2, 2}, kDeformConvOnnxTest_W);
+  test.AddInput<float>("offset", {1, 16, 2, 2}, kDeformConvOnnxTest_offset);
+  test.AddInput<float>("B", {2}, kDeformConvOnnxTest_B);
+  test.AddInput<float>("mask", {1, 8, 2, 2}, kDeformConvOnnxTest_mask);
+  test.AddReferenceOutputs("testdata/deform_conv_test.onnx", 1e-4f);
+
+  std::unordered_set<std::string> excluded = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
+                                              kQnnExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded);
+}
+
+}  // namespace test
+}  // namespace onnxruntime
