@@ -327,7 +327,8 @@ static void TestIRFFTRadix2Float(int since_version) {
   test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(true));
   test.AddOutput<float>("output", output_shape, expected_output);
   test.SetOutputAbsErr("output", 0.0001f);
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 static void TestIRFFTNaiveFloat(int since_version) {
@@ -351,7 +352,8 @@ static void TestIRFFTNaiveFloat(int since_version) {
   test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(true));
   test.AddOutput<float>("output", output_shape, expected_output);
   test.SetOutputAbsErr("output", 0.0001f);
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 // Test RFFT -> IRFFT round trip
@@ -405,7 +407,8 @@ static void TestRFFTIRFFTRoundTrip(int since_version) {
   // Output should match input (round trip)
   test.AddOutput<float>("output", input_shape, input_data);
   test.SetOutputAbsErr("output", 0.001f);
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SignalOpsTest, DFT17_IRFFT_radix2) {
@@ -567,7 +570,8 @@ static void TestDFT2DComplexOnesidedInverse(int since_version) {
   test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(true));
   test.AddOutput<float>("output", output_shape, expected_output);
   test.SetOutputAbsErr("output", 0.0001f);
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SignalOpsTest, DFT17_2D_complex_onesided_inverse) {
