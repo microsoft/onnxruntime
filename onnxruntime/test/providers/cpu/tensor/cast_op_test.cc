@@ -2834,67 +2834,89 @@ TEST(CastOpTest, UInt2x4ToUInt2x4_LargeShape) {
 
 // Direct CopyCpuTensor test with guaranteed distinct buffers to exercise the memcpy path.
 // This bypasses the MayInplace optimization that can alias input/output in OpTester.
+// Uses guard bytes after the valid buffer region to detect overflow deterministically
+// without relying on ASan — the pre-fix code would overwrite these sentinel bytes.
 TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
-  auto cpu_allocator = std::make_shared<CPUAllocator>();
+  constexpr uint8_t kGuardByte = 0xCD;
+  constexpr size_t kGuardSize = 64;
+
+  // Helper: allocate a buffer of `valid_bytes` + guard region, fill guard with sentinel,
+  // then construct a non-owning Tensor over the valid portion.
+  auto make_guarded_tensor = [&](MLDataType dtype, const TensorShape& shape,
+                                 size_t valid_bytes, std::vector<uint8_t>& backing) {
+    backing.resize(valid_bytes + kGuardSize);
+    std::memset(backing.data() + valid_bytes, kGuardByte, kGuardSize);
+    return Tensor(dtype, shape, backing.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  };
+
+  auto check_guard = [&](const std::vector<uint8_t>& backing, size_t valid_bytes,
+                         const char* label) {
+    for (size_t i = 0; i < kGuardSize; ++i) {
+      EXPECT_EQ(backing[valid_bytes + i], kGuardByte)
+          << label << ": guard byte at offset " << i << " was overwritten (heap overflow detected)";
+    }
+  };
 
   // Test Int4x2 with odd element count (ceil-division edge case)
   {
     const int64_t num_logical_elements = 17;  // odd: requires ceil(17/2) = 9 storage bytes
     TensorShape shape({num_logical_elements});
     auto int4_type = DataTypeImpl::GetType<Int4x2>();
+    constexpr size_t expected_bytes = 9;
 
-    Tensor src(int4_type, shape, cpu_allocator);
-    Tensor dst(int4_type, shape, cpu_allocator);
+    std::vector<uint8_t> src_backing, dst_backing;
+    Tensor src = make_guarded_tensor(int4_type, shape, expected_bytes, src_backing);
+    Tensor dst = make_guarded_tensor(int4_type, shape, expected_bytes, dst_backing);
+
+    ASSERT_EQ(src.SizeInBytes(), expected_bytes);
 
     // Fill source with known pattern
-    auto* src_data = reinterpret_cast<uint8_t*>(src.MutableDataRaw());
-    size_t byte_count = src.SizeInBytes();
-    ASSERT_EQ(byte_count, static_cast<size_t>(9));  // ceil(17/2) = 9
-    for (size_t i = 0; i < byte_count; ++i) {
-      src_data[i] = static_cast<uint8_t>(0xA0 + i);
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      src_backing[i] = static_cast<uint8_t>(0xA0 + i);
     }
+    // Fill destination valid region with different pattern
+    std::memset(dst_backing.data(), 0xFF, expected_bytes);
 
-    // Fill destination with different pattern to detect incomplete copy
-    auto* dst_data = reinterpret_cast<uint8_t*>(dst.MutableDataRaw());
-    memset(dst_data, 0xFF, byte_count);
-
-    // Ensure distinct buffers
     ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
 
     CopyCpuTensor(&src, &dst);
 
-    // Verify all bytes were copied correctly
-    for (size_t i = 0; i < byte_count; ++i) {
-      EXPECT_EQ(dst_data[i], src_data[i]) << "Mismatch at byte " << i;
+    // Verify copy correctness
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      EXPECT_EQ(dst_backing[i], src_backing[i]) << "Int4x2: mismatch at byte " << i;
     }
+    // Verify no overflow past the valid region
+    check_guard(src_backing, expected_bytes, "Int4x2 src");
+    check_guard(dst_backing, expected_bytes, "Int4x2 dst");
   }
 
-  // Test UInt4x2 with large even element count
+  // Test UInt4x2 with large even element count (matches PoC shape)
   {
     const int64_t num_logical_elements = 16464;  // from PoC: ceil(16464/2) = 8232 bytes
     TensorShape shape({num_logical_elements});
     auto uint4_type = DataTypeImpl::GetType<UInt4x2>();
+    constexpr size_t expected_bytes = 8232;
 
-    Tensor src(uint4_type, shape, cpu_allocator);
-    Tensor dst(uint4_type, shape, cpu_allocator);
+    std::vector<uint8_t> src_backing, dst_backing;
+    Tensor src = make_guarded_tensor(uint4_type, shape, expected_bytes, src_backing);
+    Tensor dst = make_guarded_tensor(uint4_type, shape, expected_bytes, dst_backing);
 
-    auto* src_data = reinterpret_cast<uint8_t*>(src.MutableDataRaw());
-    size_t byte_count = src.SizeInBytes();
-    ASSERT_EQ(byte_count, static_cast<size_t>(8232));
-    for (size_t i = 0; i < byte_count; ++i) {
-      src_data[i] = static_cast<uint8_t>(i & 0xFF);
+    ASSERT_EQ(src.SizeInBytes(), expected_bytes);
+
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      src_backing[i] = static_cast<uint8_t>(i & 0xFF);
     }
-
-    auto* dst_data = reinterpret_cast<uint8_t*>(dst.MutableDataRaw());
-    memset(dst_data, 0xFF, byte_count);
+    std::memset(dst_backing.data(), 0xFF, expected_bytes);
 
     ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
 
     CopyCpuTensor(&src, &dst);
 
-    for (size_t i = 0; i < byte_count; ++i) {
-      EXPECT_EQ(dst_data[i], src_data[i]) << "Mismatch at byte " << i;
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      EXPECT_EQ(dst_backing[i], src_backing[i]) << "UInt4x2: mismatch at byte " << i;
     }
+    check_guard(src_backing, expected_bytes, "UInt4x2 src");
+    check_guard(dst_backing, expected_bytes, "UInt4x2 dst");
   }
 
   // Test Int2x4 (4 elements per byte — would be 4x overflow with old code)
@@ -2902,26 +2924,27 @@ TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
     const int64_t num_logical_elements = 7;  // ceil(7/4) = 2 storage bytes
     TensorShape shape({num_logical_elements});
     auto int2_type = DataTypeImpl::GetType<Int2x4>();
+    constexpr size_t expected_bytes = 2;
 
-    Tensor src(int2_type, shape, cpu_allocator);
-    Tensor dst(int2_type, shape, cpu_allocator);
+    std::vector<uint8_t> src_backing, dst_backing;
+    Tensor src = make_guarded_tensor(int2_type, shape, expected_bytes, src_backing);
+    Tensor dst = make_guarded_tensor(int2_type, shape, expected_bytes, dst_backing);
 
-    auto* src_data = reinterpret_cast<uint8_t*>(src.MutableDataRaw());
-    size_t byte_count = src.SizeInBytes();
-    ASSERT_EQ(byte_count, static_cast<size_t>(2));
-    src_data[0] = 0xAB;
-    src_data[1] = 0xCD;
+    ASSERT_EQ(src.SizeInBytes(), expected_bytes);
 
-    auto* dst_data = reinterpret_cast<uint8_t*>(dst.MutableDataRaw());
-    memset(dst_data, 0xFF, byte_count);
+    src_backing[0] = 0xAB;
+    src_backing[1] = 0xCD;
+    std::memset(dst_backing.data(), 0xFF, expected_bytes);
 
     ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
 
     CopyCpuTensor(&src, &dst);
 
-    for (size_t i = 0; i < byte_count; ++i) {
-      EXPECT_EQ(dst_data[i], src_data[i]) << "Mismatch at byte " << i;
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      EXPECT_EQ(dst_backing[i], src_backing[i]) << "Int2x4: mismatch at byte " << i;
     }
+    check_guard(src_backing, expected_bytes, "Int2x4 src");
+    check_guard(dst_backing, expected_bytes, "Int2x4 dst");
   }
 }
 
