@@ -24,6 +24,20 @@
 #include <numeric>
 
 namespace {
+inline uint8_t GetPackedZeroPointValue(int64_t num_bits, uint8_t zero_point) {
+  ORT_ENFORCE(num_bits > 0 && num_bits <= 8 && (8 % num_bits) == 0,
+              "num_bits must be a positive divisor of 8, got ", num_bits);
+  const int64_t pack_size = 8 / num_bits;
+  const uint8_t mask = static_cast<uint8_t>((1u << num_bits) - 1u);
+  uint8_t packed_value = 0;
+
+  for (int64_t i = 0; i < pack_size; ++i) {
+    packed_value |= static_cast<uint8_t>((zero_point & mask) << (i * num_bits));
+  }
+
+  return packed_value;
+}
+
 inline int64_t GetOptimalBlockSize(int64_t total_elements, int num_threads) {
   if (total_elements <= 0 || num_threads <= 0) return 64;
   const int64_t l1_cache_elements = 8192;  // ~32KB / 4 bytes per float
@@ -176,12 +190,11 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              MLAS_THREADPOOL* thread_pool) {
   ORT_UNUSED_PARAMETER(thread_pool);
   const float default_zp_8bit = 128.0f;
-  const float default_zp_4bit = 8.0f;
-  const uint8_t default_zp_4bit_packed = 0x88;
-  const int64_t zp_pack_size = (num_bits == 4) ? 2 : 1;
+  const int64_t zp_pack_size = 8 / num_bits;
 
   if (CanUseMlasQ4Dequant(num_bits) && zero_points == nullptr) {
     // Use optimized symmetric 4-bit dequantization
+    const float default_zp_4bit = 8.0f;
     const int64_t packed_cols = (cols + 1) / 2;
     const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
 
@@ -300,9 +313,12 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
         }
       }
     }
-  } else if (num_bits == 4) {
-    // 4-bit, asymmetric (symmetric path is handled by CanUseMlasQ4Dequant above)
-    const int64_t packed_cols = (cols + 1) / 2;
+  } else if (num_bits == 2 || num_bits == 4) {
+    const uint8_t value_mask = static_cast<uint8_t>((1u << num_bits) - 1u);
+    const uint8_t default_zero_point = static_cast<uint8_t>(1u << (num_bits - 1));
+    const uint8_t default_zp_packed = GetPackedZeroPointValue(num_bits, default_zero_point);
+    const int64_t pack_size = 8 / num_bits;
+    const int64_t packed_cols = (cols + pack_size - 1) / pack_size;
     const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
     const int64_t blocks_per_row_packed = (blocks_per_row + zp_pack_size - 1) / zp_pack_size;
 
@@ -311,7 +327,6 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
       float* row_output = dequantized_data + r * cols;
 
       if (block_size > 0) {
-        // 4-bit, block-wise, asymmetric
         const uint8_t* row_zp_data = (zero_points == nullptr) ? nullptr : zero_points + r * blocks_per_row_packed;
         for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
           const int64_t block_end = std::min(block_start + block_size, cols);
@@ -319,35 +334,28 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
           const int64_t scale_idx = r * blocks_per_row + block_idx;
           const float scale = static_cast<float>(scales[scale_idx]);
 
-          const uint8_t packed_zp = (row_zp_data == nullptr) ? default_zp_4bit_packed : row_zp_data[block_idx / 2];
-          const float zp = (block_idx % 2 == 0) ? static_cast<float>(packed_zp & 0x0F) : static_cast<float>(packed_zp >> 4);
+          const uint8_t packed_zp = (row_zp_data == nullptr) ? default_zp_packed : row_zp_data[block_idx / zp_pack_size];
+          const int zp_shift = static_cast<int>((block_idx % zp_pack_size) * num_bits);
+          const float zp = static_cast<float>((packed_zp >> zp_shift) & value_mask);
 
-          for (int64_t c = block_start; c < block_end; c += 2) {
-            const uint8_t packed_val = row_data[c / 2];
-            const uint8_t val0 = packed_val & 0x0F;
-            const uint8_t val1 = packed_val >> 4;
-
-            row_output[c] = scale * (static_cast<float>(val0) - zp);
-            if (c + 1 < block_end) {
-              row_output[c + 1] = scale * (static_cast<float>(val1) - zp);
-            }
+          for (int64_t c = block_start; c < block_end; ++c) {
+            const uint8_t packed_val = row_data[c / pack_size];
+            const int shift = static_cast<int>((c % pack_size) * num_bits);
+            const uint8_t value = static_cast<uint8_t>((packed_val >> shift) & value_mask);
+            row_output[c] = scale * (static_cast<float>(value) - zp);
           }
         }
       } else {
-        // 4-bit, row-wise, asymmetric
-        const uint8_t packed_zp = (zero_points == nullptr) ? default_zp_4bit_packed : zero_points[r / 2];
-        const float zp = (r % 2 == 0) ? static_cast<float>(packed_zp & 0x0F) : static_cast<float>(packed_zp >> 4);
+        const uint8_t packed_zp = (zero_points == nullptr) ? default_zp_packed : zero_points[r / zp_pack_size];
+        const int zp_shift = static_cast<int>((r % zp_pack_size) * num_bits);
+        const float zp = static_cast<float>((packed_zp >> zp_shift) & value_mask);
         const float scale = static_cast<float>(scales[r]);
 
-        for (int64_t c = 0; c < cols; c += 2) {
-          const uint8_t packed_val = row_data[c / 2];
-          const uint8_t val0 = packed_val & 0x0F;
-          const uint8_t val1 = packed_val >> 4;
-
-          row_output[c] = scale * (static_cast<float>(val0) - zp);
-          if (c + 1 < cols) {
-            row_output[c + 1] = scale * (static_cast<float>(val1) - zp);
-          }
+        for (int64_t c = 0; c < cols; ++c) {
+          const uint8_t packed_val = row_data[c / pack_size];
+          const int shift = static_cast<int>((c % pack_size) * num_bits);
+          const uint8_t value = static_cast<uint8_t>((packed_val >> shift) & value_mask);
+          row_output[c] = scale * (static_cast<float>(value) - zp);
         }
       }
     }
@@ -376,6 +384,8 @@ void DequantizePrePacked(const uint8_t* prepacked_data,
                          int64_t cols,
                          float* dequantized_data,
                          const gsl::span<const int64_t>& scale_dims) {
+  // TODO(tlwu): Generalize this helper if we add prepacked 2-bit QMoE support.
+  // The current prepack path is intentionally 4-bit-only.
   // prepacked_data is [cols, rows] (transposed, unpacked)
   // dequantized_data is [cols, rows] (transposed)
   // scales, zero_points correspond to original [rows, cols] layout
@@ -625,8 +635,8 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
               "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-  ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
-              "Attribute 'expert_weight_bits' must be 4 or 8.");
+  ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
+              "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
   ORT_ENFORCE(block_size_ >= 0);
 
@@ -674,7 +684,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc1_shape_ptr, fc1_experts_bias, fc1_scales, fc1_zero_points,
       fc2_shape_ptr, fc2_experts_bias, fc2_scales, fc2_zero_points,
       fc3_shape_ptr, fc3_experts_bias, fc3_scales, fc3_zero_points,
-      expert_weight_bits_ == 4 ? 2 : 1,
+      8 / expert_weight_bits_,
       activation_type_ == ActivationType::SwiGLU,
       block_size_));
 
@@ -922,7 +932,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const bool has_fc2_bias = (fc2_bias_data != nullptr);
 
   // Calculate strides for zero-point tensors
-  const int64_t zp_pack_size = (expert_weight_bits_ == 4) ? 2 : 1;
+  const int64_t zp_pack_size = 8 / expert_weight_bits_;
   int64_t fc1_zp_expert_stride = 0;
   int64_t fc2_zp_expert_stride = 0;
 

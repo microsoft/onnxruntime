@@ -13,6 +13,7 @@
 # QMoE quantization implementation notes:
 #
 # Both CPU and CUDA implementations use symmetric quantization centered around 0:
+# - 2-bit: range [-2, 1] with no zero-point (symmetric around 0)
 # - 4-bit: range [-8, 7] with no zero-point (symmetric around 0)
 # - 8-bit: range [-128, 127] with no zero-point (symmetric around 0)
 #
@@ -101,7 +102,7 @@ ort_dtype_name_map = {
 }
 
 
-def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool = False):
+def quant_dequant(weights, quant_bits: int = 4, asymmetric: bool = False):
     """
     Quantize and dequantize weights for testing purposes.
     Supports symmetric (default) and asymmetric quantization.
@@ -110,14 +111,22 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
         scale, quantized_storage, dequantized, zero_point_storage
     """
     rows, cols = weights.shape
+    assert quant_bits in (2, 4, 8), f"Unsupported quant_bits={quant_bits}"
+
+    pack_size = 8 // quant_bits
+    is_packed = quant_bits < 8
+    storage_qmin, storage_qmax = (0, (1 << quant_bits) - 1)
+    qmin_val, qmax_val = (0, storage_qmax) if asymmetric else (-(1 << (quant_bits - 1)), (1 << (quant_bits - 1)) - 1)
+    sym_zp_offset = 1 << (quant_bits - 1)
+    value_mask = (1 << quant_bits) - 1
 
     # Handle edge case of all-zero weights tensor
     if torch.all(weights == 0):
         scale = torch.zeros((rows), dtype=torch.float32, device=weights.device)
-        if is_4_bit_quantization:
-            packed_size = (cols + 1) // 2
+        if is_packed:
+            packed_size = (cols + pack_size - 1) // pack_size
             quantized_storage = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
-            zp_packed_size = (rows + 1) // 2
+            zp_packed_size = (rows + pack_size - 1) // pack_size
             zero_point_storage = (
                 torch.zeros(zp_packed_size, dtype=torch.uint8, device=weights.device) if asymmetric else None
             )
@@ -126,14 +135,6 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
             zero_point_storage = torch.zeros((rows), dtype=torch.uint8, device=weights.device) if asymmetric else None
 
         return scale, quantized_storage, torch.zeros_like(weights), zero_point_storage
-
-    if is_4_bit_quantization:
-        qmin_val, qmax_val = (0, 15) if asymmetric else (-8, 7)
-        storage_qmin, storage_qmax = (0, 15)
-    else:
-        qmin_val, qmax_val = (0, 255) if asymmetric else (-128, 127)
-        storage_qmin, storage_qmax = (0, 255)
-
     # Calculate scale and zero point
     if asymmetric:
         min_val = weights.min(dim=-1, keepdim=True)[0]
@@ -148,10 +149,7 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
         abs_max = weights.abs().max(dim=-1, keepdim=True)[0]
         scale = abs_max / qmax_val
         scale = torch.clamp(scale, min=1e-8)
-        # Symmetric zero point (storage offset)
-        zero_point_int = torch.full_like(
-            scale, (storage_qmax + 1) // 2, dtype=torch.int32
-        )  # 8 for 4-bit, 128 for 8-bit
+        zero_point_int = torch.full_like(scale, sym_zp_offset, dtype=torch.int32)
 
     # Quantize
     quantized_float = weights.double() / scale.double()
@@ -171,38 +169,46 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
         dequantized = signed_vals * scale.float()
 
     # Pack quantized weights and zero points
-    if is_4_bit_quantization:
-        # Pack weights
-        packed_size = (cols + 1) // 2
+    if is_packed:
+        packed_size = (cols + pack_size - 1) // pack_size
         quantized_storage = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
-        for i in range(0, cols, 2):
-            val1 = clamped_quantized[..., i]
-            val2 = clamped_quantized[..., i + 1] if i + 1 < cols else torch.zeros_like(val1)
-            quantized_storage[..., i // 2] = (val1 & 0xF) | ((val2 & 0xF) << 4)
+        for i in range(0, cols, pack_size):
+            packed_vals = torch.zeros((rows,), dtype=torch.uint8, device=weights.device)
+            for packed_idx in range(pack_size):
+                src_idx = i + packed_idx
+                if src_idx < cols:
+                    value = clamped_quantized[..., src_idx]
+                else:
+                    fill_value = storage_qmin if asymmetric else sym_zp_offset
+                    value = torch.full((rows,), fill_value, dtype=torch.uint8, device=weights.device)
+                packed_vals |= ((value & value_mask) << (packed_idx * quant_bits)).to(torch.uint8)
+            quantized_storage[..., i // pack_size] = packed_vals
 
-        # Pack zero points (if asymmetric)
         if asymmetric:
-            zp_vals = zero_point_int.squeeze(-1).to(torch.uint8)  # Shape [rows]
-            zp_packed_size = (rows + 1) // 2
+            zp_vals = zero_point_int.squeeze(-1).to(torch.uint8)
+            zp_packed_size = (rows + pack_size - 1) // pack_size
             zero_point_storage = torch.zeros(zp_packed_size, dtype=torch.uint8, device=weights.device)
-            for i in range(0, rows, 2):
-                val1 = zp_vals[i] & 0x0F
-                val2 = (zp_vals[i + 1] & 0x0F) << 4 if i + 1 < rows else 0
-                zero_point_storage[i // 2] = val1 | val2
+            for i in range(0, rows, pack_size):
+                packed_zp = 0
+                for packed_idx in range(pack_size):
+                    src_idx = i + packed_idx
+                    value = int(zp_vals[src_idx]) if src_idx < rows else 0
+                    packed_zp |= (value & value_mask) << (packed_idx * quant_bits)
+                zero_point_storage[i // pack_size] = packed_zp
         else:
-            zero_point_storage = None  # Symmetric, no ZP tensor
+            zero_point_storage = None
 
-    else:  # 8-bit
+    else:
         quantized_storage = clamped_quantized
         if asymmetric:
-            zero_point_storage = zero_point_int.squeeze(-1).to(torch.uint8)  # Shape [rows]
+            zero_point_storage = zero_point_int.squeeze(-1).to(torch.uint8)
         else:
-            zero_point_storage = None  # Symmetric, no ZP tensor
+            zero_point_storage = None
 
     return scale.squeeze(-1).to(torch.float32), quantized_storage, dequantized, zero_point_storage
 
 
-def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = True, asymmetric: bool = False):
+def quant_dequant_blockwise(weights, block_size, quant_bits: int = 4, asymmetric: bool = False):
     """
     Block-wise quantization and dequantization for testing purposes.
     Supports symmetric (default) and asymmetric quantization.
@@ -210,7 +216,7 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     Args:
         weights: Input tensor of shape [rows, cols]
         block_size: Size of each quantization block
-        is_4_bit_quantization: Whether to use 4-bit (True) or 8-bit (False) quantization
+        quant_bits: Quantization bit-width. Supported values: 2, 4, 8
         asymmetric: Whether to use asymmetric (True) or symmetric (False) quantization
 
     Returns:
@@ -221,15 +227,23 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     """
     rows, cols = weights.shape
     num_blocks = (cols + block_size - 1) // block_size
+    assert quant_bits in (2, 4, 8), f"Unsupported quant_bits={quant_bits}"
+
+    pack_size = 8 // quant_bits
+    is_packed = quant_bits < 8
+    storage_qmin, storage_qmax = (0, (1 << quant_bits) - 1)
+    qmin_val, qmax_val = (0, storage_qmax) if asymmetric else (-(1 << (quant_bits - 1)), (1 << (quant_bits - 1)) - 1)
+    sym_zp_offset = 1 << (quant_bits - 1)
+    value_mask = (1 << quant_bits) - 1
 
     # Handle edge case of all-zero weights tensor
     if torch.all(weights == 0):
         scales = torch.zeros((rows, num_blocks), dtype=torch.float32, device=weights.device)
         dequantized = torch.zeros_like(weights)
-        if is_4_bit_quantization:
-            packed_size = (cols + 1) // 2
+        if is_packed:
+            packed_size = (cols + pack_size - 1) // pack_size
             quantized = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
-            zp_packed_size = (num_blocks + 1) // 2
+            zp_packed_size = (num_blocks + pack_size - 1) // pack_size
             zero_points_storage = (
                 torch.zeros((rows, zp_packed_size), dtype=torch.uint8, device=weights.device) if asymmetric else None
             )
@@ -247,17 +261,10 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     )
     dequantized = torch.zeros_like(weights)
 
-    # Quantization ranges
-    if is_4_bit_quantization:
-        qmin_val, qmax_val = (0, 15) if asymmetric else (-8, 7)
-        storage_qmin, storage_qmax = (0, 15)
-        sym_zp_offset = 8
-        packed_size = (cols + 1) // 2
+    if is_packed:
+        packed_size = (cols + pack_size - 1) // pack_size
         quantized = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
     else:
-        qmin_val, qmax_val = (0, 255) if asymmetric else (-128, 127)
-        storage_qmin, storage_qmax = (0, 255)
-        sym_zp_offset = 128
         quantized = torch.zeros((rows, cols), dtype=torch.uint8, device=weights.device)
 
     # Process each block
@@ -313,21 +320,22 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
                     dequantized[row, start_col:end_col] = quantized_block_signed.float() * scale.float()
 
             # Pack quantized data
-            if is_4_bit_quantization:
-                for i in range(0, end_col - start_col, 2):
+            if is_packed:
+                for i in range(0, end_col - start_col, pack_size):
                     col_idx = start_col + i
-                    packed_idx = col_idx // 2
+                    packed_idx = col_idx // pack_size
 
-                    val1 = int(quantized_block_uint8[i])
-                    val2 = (
-                        int(quantized_block_uint8[i + 1])
-                        if i + 1 < len(quantized_block_uint8)
-                        else storage_qmin
-                        if asymmetric
-                        else sym_zp_offset
-                    )
-
-                    packed_val = (val1 & 0xF) | ((val2 & 0xF) << 4)
+                    packed_val = 0
+                    for packed_offset in range(pack_size):
+                        src_idx = i + packed_offset
+                        value = (
+                            int(quantized_block_uint8[src_idx])
+                            if src_idx < len(quantized_block_uint8)
+                            else storage_qmin
+                            if asymmetric
+                            else sym_zp_offset
+                        )
+                        packed_val |= (value & value_mask) << (packed_offset * quant_bits)
                     quantized[row, packed_idx] = packed_val
             else:
                 quantized[row, start_col:end_col] = quantized_block_uint8
@@ -335,15 +343,21 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     # Pack zero points
     zero_points_storage = None
     if asymmetric:
-        if is_4_bit_quantization:
-            zp_packed_size = (num_blocks + 1) // 2
+        if is_packed:
+            zp_packed_size = (num_blocks + pack_size - 1) // pack_size
             zero_points_storage = torch.zeros((rows, zp_packed_size), dtype=torch.uint8, device=weights.device)
             zp_vals_uint8 = zero_points_tensor.to(torch.uint8)
-            for j in range(0, num_blocks, 2):
-                val1 = zp_vals_uint8[:, j] & 0x0F
-                val2 = (zp_vals_uint8[:, j + 1] & 0x0F) << 4 if j + 1 < num_blocks else 0
-                zero_points_storage[:, j // 2] = val1 | val2
-        else:  # 8-bit
+            for j in range(0, num_blocks, pack_size):
+                packed_zp = torch.zeros((rows,), dtype=torch.uint8, device=weights.device)
+                for packed_idx in range(pack_size):
+                    src_idx = j + packed_idx
+                    if src_idx < num_blocks:
+                        value = zp_vals_uint8[:, src_idx]
+                    else:
+                        value = torch.zeros((rows,), dtype=torch.uint8, device=weights.device)
+                    packed_zp |= ((value & value_mask) << (packed_idx * quant_bits)).to(torch.uint8)
+                zero_points_storage[:, j // pack_size] = packed_zp
+        else:
             zero_points_storage = zero_points_tensor.to(torch.uint8)
 
     return scales, quantized, dequantized, zero_points_storage
@@ -899,7 +913,6 @@ class SparseMoeBlockORTHelper(nn.Module):
         w1_scale_list, w2_scale_list = [], []
         w1_zp_list, w2_zp_list = [], []
 
-        is_4_bit = self.quant_bits == 4
         for i in range(self.num_experts):
             if hasattr(self.experts[i], "w3"):
                 w1, w3 = self.experts[i].w1.weight, self.experts[i].w3.weight
@@ -914,17 +927,17 @@ class SparseMoeBlockORTHelper(nn.Module):
 
                 if self.block_size > 0:
                     w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant_blockwise(
-                        w1_combined, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w1_combined, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant_blockwise(
-                        w2, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w2, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                 else:
                     w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant(
-                        w1_combined, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w1_combined, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant(
-                        w2, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w2, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
 
                 if w1_bias is not None and w3_bias is not None:
@@ -942,17 +955,17 @@ class SparseMoeBlockORTHelper(nn.Module):
 
                 if self.block_size > 0:
                     w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant_blockwise(
-                        w1, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w1, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant_blockwise(
-                        w2, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w2, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                 else:
                     w1_scale, pre_qweight1, w1_qdq, w1_zp = quant_dequant(
-                        w1, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w1, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     w2_scale, pre_qweight2, w2_qdq, w2_zp = quant_dequant(
-                        w2, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        w2, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                 if w1_bias is not None:
                     w1_bias_list.append(w1_bias.detach().cpu())
@@ -1099,8 +1112,10 @@ class SparseMoeBlockORTHelper(nn.Module):
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (5e-2, 1e-3),
+            "FP16:2": (0.12, 0.02),
             "FP16:4": (0.05, 0.01),
             "FP16:8": (0.02, 0.01),
+            "FP32:2": (0.20, 0.02),
             "FP32:4": (0.11, 0.01),
             "FP32:8": (0.11, 0.01),
         }
@@ -1215,21 +1230,19 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
                 fc1_w_list.append(expert.w1.weight)
                 fc2_w_list.append(expert.w2.weight)
             else:
-                is_4_bit = self.quant_bits == 4
-
                 if self.block_size > 0:
                     scale1, pre_qweight1, w1_qdq, zp1 = quant_dequant_blockwise(
-                        expert.w1.weight, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w1.weight, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     scale2, pre_qweight2, w2_qdq, zp2 = quant_dequant_blockwise(
-                        expert.w2.weight, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w2.weight, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                 else:
                     scale1, pre_qweight1, w1_qdq, zp1 = quant_dequant(
-                        expert.w1.weight, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w1.weight, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     scale2, pre_qweight2, w2_qdq, zp2 = quant_dequant(
-                        expert.w2.weight, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w2.weight, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
 
                 expert.w1.weight.data = w1_qdq
@@ -1319,21 +1332,19 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                 fc1_w_list.append(expert.w1.weight)
                 fc2_w_list.append(expert.w2.weight)
             else:
-                is_4_bit = self.quant_bits == 4
-
                 if self.block_size > 0:
                     scale1, pre_qweight1, w1_qdq, zp1 = quant_dequant_blockwise(
-                        expert.w1.weight, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w1.weight, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     scale2, pre_qweight2, w2_qdq, zp2 = quant_dequant_blockwise(
-                        expert.w2.weight, self.block_size, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w2.weight, self.block_size, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                 else:
                     scale1, pre_qweight1, w1_qdq, zp1 = quant_dequant(
-                        expert.w1.weight, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w1.weight, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
                     scale2, pre_qweight2, w2_qdq, zp2 = quant_dequant(
-                        expert.w2.weight, is_4_bit, asymmetric=self.use_asymmetric_quant
+                        expert.w2.weight, self.quant_bits, asymmetric=self.use_asymmetric_quant
                     )
 
                 expert.w1.weight.data = w1_qdq
@@ -1424,16 +1435,20 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 
 # Define test cases for different MoE types
 phi3_test_cases = [
+    (1, 32, 2),
     (1, 32, 4),
     (1, 32, 8),
+    (2, 16, 2),
     (2, 16, 4),
     (2, 16, 8),
 ]
 
 # Define test cases for block-wise quantization
 phi3_blockwise_test_cases = [
+    (1, 32, 2, 32),
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 8, 64),
+    (2, 16, 2, 32),
     (2, 16, 4, 32),
     (2, 16, 8, 64),
 ]
@@ -1562,16 +1577,20 @@ class TestPhiQMoECPU(unittest.TestCase):
 
 
 swiglu_test_cases = [
+    (1, 32, 2),
     (1, 32, 4),
     (1, 32, 8),
+    (2, 16, 2),
     (2, 16, 4),
     (2, 16, 8),
 ]
 
 # Define test cases for block-wise quantization
 swiglu_blockwise_test_cases = [
+    (1, 32, 2, 32),
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 8, 64),
+    (2, 16, 2, 32),
     (2, 16, 4, 32),
     (2, 16, 8, 64),
 ]
