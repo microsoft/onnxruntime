@@ -526,7 +526,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
                             ThresholdType score1, unsigned char has_score1) const {
     ThresholdType pos_weight = has_score1 ? score1 : (has_score0 ? score0 : 0);  // only 1 class
     if (binary_case_) {
-      if (weights_are_all_positive_) {
+      if (weights_are_all_positive_ && this->post_transform_ != POST_EVAL_TRANSFORM::LOGISTIC) {
         if (pos_weight > 0.5) {
           write_additional_scores = 0;
           return class_labels_[1];  // positive label

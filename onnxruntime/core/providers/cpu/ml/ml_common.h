@@ -366,14 +366,15 @@ static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_tra
     } else {
       switch (add_second_class) {
         case 0:  // 0=all positive weights, winning class is positive
-          scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  // put opposite score in positive slot
-          *Z = static_cast<T>(scores[0]);
-          *(Z + 1) = static_cast<T>(scores[1]);
-          break;
-        case 1:  // 1 = all positive weights, winning class is negative
-          scores.push_back(scores[0]);
-          scores[0] = 1 - scores[0];  // put opposite score in positive slot
+        case 1:  // 1=all positive weights, winning class is negative
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            scores.resize(2);
+            scores[1] = static_cast<T>(ComputeLogistic(static_cast<float>(scores[0])));
+            scores[0] = static_cast<T>(ComputeLogistic(static_cast<float>(-scores[0])));
+          } else {
+            scores.push_back(scores[0]);
+            scores[0] = 1 - scores[0];  // put opposite score in positive slot
+          }
           *Z = static_cast<T>(scores[0]);
           *(Z + 1) = static_cast<T>(scores[1]);
           break;
@@ -503,10 +504,17 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
       switch (add_second_class) {
         case 0:
         case 1:
-          update_scores = [](const float score, float* output) {
-            *output++ = 1.f - score;
-            *output = score;
-          };
+          if (post_transform == POST_EVAL_TRANSFORM::LOGISTIC) {
+            update_scores = [](const float score, float* output) {
+              *output++ = ComputeLogistic(-score);
+              *output = ComputeLogistic(score);
+            };
+          } else {
+            update_scores = [](const float score, float* output) {
+              *output++ = 1.f - score;
+              *output = score;
+            };
+          }
           break;
 
         case 2:  // 2 = mixed weights, winning class is positive
