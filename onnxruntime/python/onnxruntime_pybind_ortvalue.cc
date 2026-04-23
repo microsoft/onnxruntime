@@ -399,23 +399,32 @@ void addOrtValueMethods(pybind11::module& m) {
         switch (device.Vendor()) {
 #ifdef USE_CUDA
           case OrtDevice::VendorIds::NVIDIA:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device));
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device),
+                                      /*zero_copy_non_owning=*/true);
 #endif
 #ifdef USE_CANN
           case OrtDevice::VendorIds::HUAWEI:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction(),
+                                      /*zero_copy_non_owning=*/true);
 #endif
 
 #ifdef USE_DML
           case OrtDevice::VendorIds::MICROSOFT:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction(device));
+            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction(device),
+                                      /*zero_copy_non_owning=*/true);
 #endif
 #ifdef USE_MIGRAPHX
           case OrtDevice::VendorIds::AMD:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction(device));
+            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction(device),
+                                      /*zero_copy_non_owning=*/true);
 #endif
           default:
-            return GetPyObjFromTensor(*ml_value, nullptr, nullptr);
+            // OrtValue.numpy() is called by the user who explicitly holds the OrtValue
+            // Python object, so the backing memory lifetime is managed externally.
+            // zero_copy_non_owning=true is safe here (and required to preserve the
+            // zero-copy semantics that OrtValue.numpy() / __array__ rely on).
+            return GetPyObjFromTensor(*ml_value, nullptr, nullptr,
+                                      /*zero_copy_non_owning=*/true);
         }
 #ifdef _MSC_VER
 #pragma warning(pop)

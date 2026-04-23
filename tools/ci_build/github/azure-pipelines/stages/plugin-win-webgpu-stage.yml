@@ -89,33 +89,6 @@ stages:
         env:
           TMPDIR: "$(Agent.TempDirectory)"
 
-      - task: PowerShell@2
-        displayName: '[WebGPU] Create .npmrc for WebGPU build'
-        inputs:
-          targetType: 'inline'
-          pwsh: true
-          script: |
-            $npmrcPath = Join-Path "$(Build.SourcesDirectory)" "onnxruntime/core/providers/webgpu/wgsl_templates/.npmrc"
-            $npmrcDir = Split-Path -Parent $npmrcPath
-            $packageJsonPath = Join-Path $npmrcDir "package.json"
-
-            # Check if package.json exists
-            if (-not (Test-Path $packageJsonPath)) {
-              Write-Error "package.json not found at: $packageJsonPath"
-              throw "package.json does not exist in $npmrcDir"
-            }
-
-            # Create .npmrc file with required content
-            $npmrcContent = "registry=${{ parameters.npm_registry_url }}`n`nalways-auth=true"
-
-            Set-Content -Path $npmrcPath -Value $npmrcContent -Encoding UTF8
-            Write-Host "Created .npmrc at: $npmrcPath"
-
-      - task: npmAuthenticate@0
-        displayName: '[WebGPU] Authenticate npm for WebGPU build'
-        inputs:
-          workingFile: '$(Build.SourcesDirectory)/onnxruntime/core/providers/webgpu/wgsl_templates/.npmrc'
-
       - ${{ if eq(parameters.arch, 'arm64') }}:
         - task: DownloadPipelineArtifact@2
           displayName: 'Download WebGPU build tools from x64 build'

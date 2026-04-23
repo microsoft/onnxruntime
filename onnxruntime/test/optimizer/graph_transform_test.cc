@@ -844,6 +844,99 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
   ASSERT_TRUE(op_to_count["Reshape"] == 1);
 }
 
+TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalOutputs) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInitializer<int64_t>(
+        {6}, {5, 5, 5, 10, 10, 20});
+
+    auto* unique_values = builder.MakeOutput<int64_t>(std::nullopt);
+    auto* unique_counts = builder.MakeOutput<int64_t>(std::nullopt);
+
+    auto* missing_indices = builder.MakeEmptyInput();
+    auto* missing_inverse_indices = builder.MakeEmptyInput();
+
+    builder.AddNode(
+        "Unique",
+        {input},
+        {unique_values, missing_indices, missing_inverse_indices, unique_counts});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const auto ops = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(ops.count("Unique") == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto ops = CountOpsInGraph(graph);
+
+    TEST_RETURN_IF(ops.find("Unique") != ops.end());
+
+    const auto& outputs = graph.GetOutputs();
+    TEST_RETURN_IF_NOT(outputs.size() == 2U);
+
+    const auto& init_tensors = graph.GetAllInitializedTensors();
+
+    bool saw_values = false;
+    bool saw_counts = false;
+
+    for (const NodeArg* out : outputs) {
+      auto it = init_tensors.find(out->Name());
+      TEST_RETURN_IF(it == init_tensors.end());
+
+      onnxruntime::Initializer init{
+          graph,
+          *it->second,
+          graph.ModelPath()};
+
+      TEST_RETURN_IF_NOT(init.size() == 3U);
+
+      const int64_t* data = init.data<int64_t>();
+
+      if (data[0] == 5 && data[1] == 10 && data[2] == 20) {
+        if (saw_values) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Duplicate values output detected");
+        }
+        saw_values = true;
+
+      } else if (data[0] == 3 && data[1] == 2 && data[2] == 1) {
+        if (saw_counts) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Duplicate counts output detected");
+        }
+        saw_counts = true;
+
+      } else {
+        return Status(common::ONNXRUNTIME, common::FAIL,
+                      "Unexpected tensor content after constant folding");
+      }
+    }
+
+    TEST_RETURN_IF_NOT(saw_values);
+    TEST_RETURN_IF_NOT(saw_counts);
+
+    return Status::OK();
+  };
+
+  const ConfigOptions empty_config_options;
+  auto cpu_ep =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case,
+      13,
+      *logger_,
+      std::make_unique<ConstantFolding>(
+          *cpu_ep,
+          false,
+          empty_config_options),
+      TransformerLevel::Level1,
+      1,
+      pre_graph_checker,
+      post_graph_checker));
+}
+
 static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<std::string, int>& expected_op_count,
                                                       Graph& graph,
                                                       SessionOptions& session_options,
@@ -922,6 +1015,48 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithDequantizeLinear) {
   test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq_contrib.onnx",
             true, *logger_);
   // Test with 16-bit contrib QDQ ops
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16_contrib.onnx",
+            true, *logger_);
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+}
+
+// Verify that setting session.disable_qdq_constant_folding to "1" preserves DequantizeLinear nodes
+// even when session.disable_quant_qdq is "1" (which normally allows DQ to be constant folded).
+TEST_F(GraphTransformationTests, ConstantFoldingDisableQDQConstantFolding) {
+  auto test_case = [](const ORTCHAR_T* model_uri,
+                      bool use_contrib_qdq,
+                      const logging::Logger& logger) {
+    const char* q_key = use_contrib_qdq ? "com.microsoft.QuantizeLinear" : "QuantizeLinear";
+    const char* dq_key = use_contrib_qdq ? "com.microsoft.DequantizeLinear" : "DequantizeLinear";
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, logger));
+    Graph& graph = model->MainGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count[q_key] == 1);
+    ASSERT_TRUE(op_to_count[dq_key] == 3);
+    ASSERT_TRUE(op_to_count["Conv"] == 1);
+
+    // With disable_quant_qdq="1" and disable_qdq_constant_folding="1", DQ nodes should be preserved.
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsDisableQDQConstantFolding, "1"));
+
+    std::unordered_map<std::string, int> expected_op_counts = {{q_key, 1},
+                                                               {dq_key, 3},
+                                                               {"Conv", 1}};
+    VerifyConstantFoldingWithDequantizeLinear(expected_op_counts, graph, session_options, logger);
+  };
+
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.onnx",
+            false, *logger_);
+
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16.onnx",
+            false, *logger_);
+#if !defined(DISABLE_CONTRIB_OPS)
+  test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq_contrib.onnx",
+            true, *logger_);
   test_case(MODEL_FOLDER "fusion/constant_folding_dequantizelinear.qdq16_contrib.onnx",
             true, *logger_);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
@@ -7847,6 +7982,24 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
          const std::map<std::string, int>& original_op_counts,
          const std::map<std::string, int>& transformed_op_counts) {
         EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {kCpuExecutionProvider});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionDoubleType) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_double.onnx", *logger_,
+      [](Graph& graph) {
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCpuExecutionProvider);
+        }
+      },
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 0);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
       },
       {kCpuExecutionProvider});
 }

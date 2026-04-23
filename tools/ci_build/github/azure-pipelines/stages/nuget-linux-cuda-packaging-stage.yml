@@ -150,6 +150,10 @@ stages:
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
 
+    - script: |
+        mkdir -p "$(Build.SourcesDirectory)/.config"
+        cp -R "$(Build.SourcesDirectory)/onnxruntime/.config/." "$(Build.SourcesDirectory)/.config/"
+      displayName: 'Copy compliance config to workspace root'
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:

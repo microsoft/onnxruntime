@@ -77,14 +77,24 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   // out-of-bounds reads from crafted models.
   if (mode_ == SVM_TYPE::SVM_SVC) {
     // SVC mode: coefficients layout is [class_count - 1, vector_count]
-    const size_t expected_coefficients = static_cast<size_t>(class_count_ - 1) * static_cast<size_t>(vector_count_);
+    size_t expected_coefficients = 0;
+    if (!SafeMultiply(static_cast<size_t>(class_count_ - 1), static_cast<size_t>(vector_count_),
+                      expected_coefficients)) {
+      ORT_THROW("class_count - 1 (", class_count_ - 1, ") * vector_count (", vector_count_,
+                ") overflows size_t");
+    }
     ORT_ENFORCE(coefficients_.size() >= expected_coefficients,
                 "coefficients attribute size (", coefficients_.size(),
                 ") is smaller than expected (", expected_coefficients,
                 ") for the given class_count and vector_count.");
 
     // rho needs one entry per classifier pair: class_count * (class_count - 1) / 2
-    const size_t num_classifiers = static_cast<size_t>(class_count_) * static_cast<size_t>(class_count_ - 1) / 2;
+    size_t num_classifiers = 0;
+    if (!SafeMultiply(static_cast<size_t>(class_count_), static_cast<size_t>(class_count_ - 1), num_classifiers)) {
+      ORT_THROW("class_count (", class_count_, ") * (class_count - 1) (", class_count_ - 1,
+                ") overflows size_t");
+    }
+    num_classifiers /= 2;
     ORT_ENFORCE(rho_.size() >= num_classifiers,
                 "rho attribute size (", rho_.size(),
                 ") is smaller than expected (", num_classifiers,
@@ -193,7 +203,40 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
                                   gsl::span<const float> x_data, const TensorShape& x_shape) const {
   concurrency::ThreadPool* threadpool = ctx.GetOperatorThreadPool();
 
-  const auto num_batches = SafeInt<int32_t>(x_shape.NumDimensions() == 1 ? 1 : x_shape[0]);
+  const auto input_rank = x_shape.NumDimensions();
+  ORT_RETURN_IF_NOT(input_rank > 0 && input_rank <= 2, "Input shape must have 1 or 2 dimensions. Dims=", input_rank);
+
+  const ptrdiff_t num_batches = SafeInt<ptrdiff_t>(input_rank == 1 ? 1 : x_shape[0]);
+  const ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0])
+                                                 : narrow<ptrdiff_t>(x_shape[1]);
+  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0,
+                    "Invalid input for SVMClassifier: expected feature_count=", feature_count_,
+                    ", actual num_features=", num_features,
+                    ", input_rank=", input_rank,
+                    ", num_batches=", num_batches);
+  if (mode_ == SVM_TYPE::SVM_LINEAR) {
+    size_t expected_linear_size = 0;
+    if (!SafeMultiply(static_cast<size_t>(class_count_), static_cast<size_t>(num_features),
+                      expected_linear_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "class_count (", class_count_, ") * num_features (", num_features,
+                             ") overflows size_t");
+    }
+    ORT_RETURN_IF_NOT(coefficients_.size() >= expected_linear_size,
+                      "coefficients size (", coefficients_.size(), ") is less than class_count (", class_count_,
+                      ") * num_features (", num_features, ")");
+  } else {
+    size_t expected_sv_size = 0;
+    if (!SafeMultiply(static_cast<size_t>(vector_count_), static_cast<size_t>(num_features),
+                      expected_sv_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "vector_count (", vector_count_, ") * num_features (", num_features,
+                             ") overflows size_t");
+    }
+    ORT_RETURN_IF_NOT(support_vectors_.size() >= expected_sv_size,
+                      "support_vectors size (", support_vectors_.size(), ") is less than vector_count (", vector_count_,
+                      ") * num_features (", num_features, ")");
+  }
 
   // Total number of classifiers comparing pairs between the classes
   // e.g. if you have A, B C and D classes, the number of classifiers to compare between each pair is 6
@@ -229,7 +272,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
   std::vector<float> probsp2_data;
 
   if (mode_ == SVM_TYPE::SVM_SVC && have_proba) {
-    probsp2_data.resize(num_batches * class_count_squared, 0.f);
+    probsp2_data.resize(SafeInt<size_t>(num_batches) * class_count_squared, 0.f);
   }
 
   int write_additional_scores = -1;
@@ -261,7 +304,7 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     if (have_proba) {
       // we will write num_batches * num_classifiers scores first, and transform those to num_batches * class_count_,
       // so need to use a separate buffer for the first scoring.
-      classifier_scores_data.resize(num_batches * num_classifiers);
+      classifier_scores_data.resize(SafeInt<size_t>(num_batches) * num_classifiers);
       classifier_scores = gsl::make_span<float>(classifier_scores_data.data(), classifier_scores_data.size());
     } else {
       // we will write directly to the final scores buffer
