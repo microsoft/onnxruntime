@@ -10,15 +10,7 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX ASM)
 
-# Set C/C++ standard versions
-if (NOT CMAKE_C_STANDARD)
-  # Needed for Java
-  set(CMAKE_C_STANDARD 99)
-endif()
-
-if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
-endif()
+include(onnxruntime_language_standard_versions.cmake)
 
 # We don't use C++20 modules yet.
 # There are some known issues to address first:
@@ -1243,6 +1235,11 @@ function(onnxruntime_configure_target target_name)
     target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>")
   endif()
 
+  # Add compile features for minimum required language standard versions.
+  # Wrap in $<BUILD_INTERFACE:...> so the requirement is not exported to consumers of installed ORT targets.
+  target_compile_features(${target_name} PUBLIC
+                          $<BUILD_INTERFACE:${onnxruntime_c_std_compile_feature}>
+                          $<BUILD_INTERFACE:${onnxruntime_cxx_std_compile_feature}>)
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
