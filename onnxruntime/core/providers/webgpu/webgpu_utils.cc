@@ -43,10 +43,10 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
-      configs_per_dim_inner_range_.emplace_back(768, 52.0f);
-      configs_per_dim_inner_range_.emplace_back(2304, 35.0f);
-      configs_per_dim_inner_range_.emplace_back(3072, 21.5f);
-      configs_per_dim_inner_range_.emplace_back(4096, 16.0f);
+      configs_per_dim_inner_range_.emplace_back(768, 52.0);
+      configs_per_dim_inner_range_.emplace_back(2304, 35.0);
+      configs_per_dim_inner_range_.emplace_back(3072, 21.5);
+      configs_per_dim_inner_range_.emplace_back(4096, 16.0);
     } else {
       // Below are the default thresholds on newer Intel GPUs. These values are chosen on
       // Intel "gen-12lp" GPU with 32EUs.
@@ -56,15 +56,15 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
-      configs_per_dim_inner_range_.emplace_back(768, 20.0f);
-      configs_per_dim_inner_range_.emplace_back(1792, 13.0f);
-      configs_per_dim_inner_range_.emplace_back(3072, 8.0f);
-      configs_per_dim_inner_range_.emplace_back(4096, 6.0f);
+      configs_per_dim_inner_range_.emplace_back(768, 20.0);
+      configs_per_dim_inner_range_.emplace_back(1792, 13.0);
+      configs_per_dim_inner_range_.emplace_back(3072, 8.0);
+      configs_per_dim_inner_range_.emplace_back(4096, 6.0);
     }
   }
 }
 
-SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, float rate)
+SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, double rate)
     : max_dim_inner_with_rate(max_dim_inner), max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner(rate) {}
 
 uint32_t SplitKConfig::GetMaxDimInnerWithSplitK() const {
@@ -111,7 +111,7 @@ bool SplitKConfig::UseSplitK(
     return false;
   }
 
-  const float rate = dim_a_outer * dim_b_outer * batch_size * 1.0f / dim_inner;
+  const double rate = static_cast<double>(dim_a_outer) * static_cast<double>(dim_b_outer) * static_cast<double>(batch_size) / static_cast<double>(dim_inner);
   for (const auto& config_at_range : configs_per_dim_inner_range_) {
     if (dim_inner <= config_at_range.max_dim_inner_with_rate) {
       return rate <= config_at_range.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner;

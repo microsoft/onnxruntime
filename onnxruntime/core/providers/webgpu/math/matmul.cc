@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/matmul.h"
+
+#include <limits>
+
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -314,8 +317,13 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
   const uint32_t dim_b_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 1]);
 
   // Fill one value per invocation across all batches.
-  const uint32_t total_outputs = batch_size * dim_a_outer * dim_b_outer;
-  const uint32_t dispatch_x = (total_outputs + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+  const uint64_t total_outputs = static_cast<uint64_t>(batch_size) *
+                                 static_cast<uint64_t>(dim_a_outer) *
+                                 static_cast<uint64_t>(dim_b_outer);
+  const uint64_t dispatch_x_u64 = CeilDiv(total_outputs, static_cast<uint64_t>(WORKGROUP_SIZE));
+  ORT_ENFORCE(dispatch_x_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+              "dispatch_x exceeds uint32_t range: ", dispatch_x_u64);
+  const uint32_t dispatch_x = narrow<uint32_t>(dispatch_x_u64);
 
   const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
   program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
