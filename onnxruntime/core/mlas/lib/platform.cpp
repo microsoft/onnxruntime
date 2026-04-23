@@ -810,15 +810,6 @@ Return Value:
 
 #endif // MLAS_TARGET_LARCH64
 
-#if defined(MLAS_TARGET_RISCV64)
-    // RISC-V: use scalar fallback kernels.
-    // GemmFloatKernel is not used (sgemm.cpp falls through to
-    // MlasSgemmKernelZero/MlasSgemmKernelAdd directly), but set defaults
-    // for any code path that accesses the platform struct unconditionally.
-    this->GemmFloatKernel = nullptr;  // sgemm.cpp #else path handles this
-    this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
-#endif // MLAS_TARGET_RISCV64
-
 }
 
 size_t
