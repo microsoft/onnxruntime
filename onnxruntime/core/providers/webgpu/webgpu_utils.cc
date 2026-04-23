@@ -36,7 +36,7 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
     } else if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
                adapter_info.architecture == std::string_view{"xe-2hpg"} ||
                adapter_info.architecture == std::string_view{"gen-12hp"}) {
-      // Below thresholds are only verified on Intel discreate GPUs and Lunar Lake iGPUs.
+      // Below thresholds are only verified on Intel discrete GPUs and Lunar Lake iGPUs.
       enable_split_k_ = true;
 
       max_batch_size_ = 8;
