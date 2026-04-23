@@ -3,6 +3,7 @@
 
 #include <algorithm>
 
+#include "core/flatbuffers/ort_format_version.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
@@ -66,7 +67,8 @@ std::vector<uint8_t> BuildOrtModelBuffer(
       fbs::CreateOperatorSetIdDirect(builder, "", 18)};
   const auto model = fbs::CreateModelDirect(builder, 8, &opset_imports, "ort-model-test", "1", "",
                                             1, "", graph, "");
-  const auto session = fbs::CreateInferenceSessionDirect(builder, ORT_VERSION, model);
+  const auto session = fbs::CreateInferenceSessionDirect(builder,
+                                                          std::to_string(kOrtModelVersion).c_str(), model);
   fbs::FinishInferenceSessionBuffer(builder, session);
 
   return std::vector<uint8_t>(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
@@ -176,8 +178,8 @@ TEST(OrtModelTest, RejectsDanglingNodeEdge) {
 
 TEST(OrtModelTest, RejectsAdversarialLargeNodeIndex) {
   // A single node with a huge index should be rejected to prevent memory amplification.
-  const uint32_t huge_index = 100'000'000;
-  const auto buffer = BuildOrtModelBuffer([huge_index](flatbuffers::FlatBufferBuilder& builder) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    const uint32_t huge_index = 100'000'000;
     std::vector<flatbuffers::Offset<fbs::Node>> nodes{
         fbs::CreateNodeDirect(builder, "n", "", "", 1, huge_index, "Identity")};
     return fbs::CreateGraphDirect(builder, nullptr, nullptr, &nodes, huge_index + 1);
