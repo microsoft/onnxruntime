@@ -62,6 +62,31 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
     }
   }
 
+  // Validate position_ids values are within cos/sin cache bounds.
+  const positionIdsData = positionIds.getBigInt64Array();
+  if (positionIdsData.length === 1) {
+    // Format 0: single base offset. Effective positions are [base_pos, base_pos + sequence_length - 1].
+    const basePos = positionIdsData[0];
+    const maxValidBase = BigInt(maxSequenceLength) - BigInt(sequenceLength);
+    if (basePos < 0n || basePos > maxValidBase) {
+      throw new Error(
+        `position_ids base value ${basePos} with sequence_length ${sequenceLength}` +
+          ` exceeds cos/sin cache range [0, ${maxSequenceLength})`,
+      );
+    }
+  } else {
+    // Format 1: 2D array (batch_size, sequence_length). Each value must be in [0, max_sequence_length).
+    const maxSeqBigInt = BigInt(maxSequenceLength);
+    for (let i = 0; i < positionIdsData.length; i++) {
+      const pos = positionIdsData[i];
+      if (pos < 0n || pos >= maxSeqBigInt) {
+        throw new Error(
+          `position_ids value ${pos} at index ${i} is out of range [0, ${maxSequenceLength})`,
+        );
+      }
+    }
+  }
+
   if (headSize / 2 !== cosCache.dims[1] && rotaryEmbeddingDim / 2 !== cosCache.dims[1]) {
     throw new Error(
       `Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2, got ${

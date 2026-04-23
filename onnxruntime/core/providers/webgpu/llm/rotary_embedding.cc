@@ -16,7 +16,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>())
+        .InputMemoryType(OrtMemTypeCPUInput, 3),  // position_ids on CPU for bounds validation
     RotaryEmbedding);
 
 RotaryEmbedding::RotaryEmbedding(const OpKernelInfo& info) : WebGpuKernel(info) {
@@ -83,6 +84,19 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
 
   if (position_ids != nullptr) {
     // position_ids provided: cos/sin cache is 2D (max_pos, D/2)
+    // Validate position_ids values are within cache bounds (position_ids kept on CPU via InputMemoryType).
+    const auto max_sequence_length = static_cast<int64_t>(cos_cache->Shape()[0]);
+    const auto* pos_ids_data = position_ids->Data<int64_t>();
+    const auto pos_ids_size = position_ids->Shape().Size();
+    for (int64_t i = 0; i < pos_ids_size; ++i) {
+      int64_t pos = pos_ids_data[i];
+      if (pos < 0 || pos >= max_sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "position_ids value ", pos, " at index ", i,
+                               " is out of range [0, ", max_sequence_length, ")");
+      }
+    }
+
     contrib::webgpu::RotaryEmbeddingProgram program{interleaved_};
     program
         .CacheHint(interleaved_)
