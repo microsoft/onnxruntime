@@ -528,8 +528,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // GQA guarantees head_size == v_head_size; use H_v for the Y output buffer
     // so the allocation stays correct if a distinct v_head_size is ever exposed.
     const size_t H_v = (parameters.v_head_size > 0)
-        ? static_cast<size_t>(parameters.v_head_size)
-        : H;
+                           ? static_cast<size_t>(parameters.v_head_size)
+                           : H;
     const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
 
     auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {

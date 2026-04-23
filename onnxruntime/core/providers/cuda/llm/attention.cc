@@ -1108,6 +1108,9 @@ Status Attention<T>::RunGqaUnfusedAttention(
     ORT_ENFORCE(past_value != nullptr, "past_key requires past_value.");
     ORT_ENFORCE(present_key != nullptr && present_value != nullptr,
                 "present_key/value outputs are required when past_key is provided.");
+    // LaunchConcatNewToPastKV uses a single head_size for both K and V caches.
+    ORT_RETURN_IF(H != H_v,
+                  "RunGqaUnfusedAttention: past_key with H != H_v not supported");
     auto past_seqlens_buffer = GetScratchBuffer<int>(B, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(LaunchFillInt32(past_seqlens_buffer.get(),
                                         parameters.past_sequence_length, B,
