@@ -11,6 +11,8 @@
 #include "core/optimizer/utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/common/parse_string.h"
 
 using namespace onnxruntime::common;
 
@@ -144,6 +146,18 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   bool have_updated_nodes = false;
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
+
+  // Read the optional size threshold for constant folding. A value of 0 (the default) means no limit.
+  size_t node_weight_size_threshold = 0;
+  {
+    const std::string threshold_str = config_options_.GetConfigOrDefault(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "0");
+    if (!TryParseStringWithClassicLocale(threshold_str, node_weight_size_threshold)) {
+      LOGS(logger, WARNING) << "Failed to parse constant folding size threshold from config value '"
+                            << threshold_str << "'. Using no threshold.";
+      node_weight_size_threshold = 0;
+    }
+  }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   std::function<bool(const std::string&)> is_sparse_initializer_check = [&graph](const std::string& name) -> bool {
@@ -333,6 +347,24 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                              << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
           converted_to_constant = false;
           break;
+        }
+      }
+
+      // If a size threshold was configured, check whether any output tensor exceeds it.
+      // Skipping large outputs prevents the optimized model from having a much larger
+      // memory footprint than the original model.
+      if (converted_to_constant && node_weight_size_threshold > 0) {
+        for (const OrtValue& ort_value : fetches) {
+          if (ort_value.IsTensor()) {
+            const size_t tensor_size = ort_value.Get<Tensor>().SizeInBytes();
+            if (tensor_size > node_weight_size_threshold) {
+              LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
+                                 << " node '" << node->Name() << "': output size " << tensor_size
+                                 << " bytes exceeds the threshold of " << node_weight_size_threshold << " bytes.";
+              converted_to_constant = false;
+              break;
+            }
+          }
         }
       }
 

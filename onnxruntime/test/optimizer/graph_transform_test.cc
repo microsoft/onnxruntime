@@ -601,6 +601,50 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+// Test that constant folding respects the size threshold config option.
+// With a threshold of 1 byte, no Unsqueeze node should be constant folded because the outputs are larger.
+// With no threshold (default "0"), all Unsqueeze nodes should be folded.
+TEST_F(GraphTransformationTests, ConstantFoldingWithSizeThreshold) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  // First, verify that without a threshold all Unsqueeze nodes are folded.
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 2);
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    const ConfigOptions empty_config_options;
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 0);
+  }
+
+  // Now verify that with a threshold of 1 byte, no Unsqueeze node is constant folded.
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 2);
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ConfigOptions config_options_with_threshold;
+    ASSERT_STATUS_OK(config_options_with_threshold.AddConfigEntry(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "1"));
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, config_options_with_threshold),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    // The Unsqueeze outputs are larger than 1 byte, so no folding should happen.
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 2);
+  }
+}
+
 TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
