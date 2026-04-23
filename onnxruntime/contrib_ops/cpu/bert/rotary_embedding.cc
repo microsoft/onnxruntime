@@ -14,8 +14,8 @@
 using onnxruntime::concurrency::ThreadPool;
 using namespace onnxruntime::contrib::rotary_embedding_helper;
 using onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff;
+
 using onnxruntime::rotary_embedding_int32_utils::CheckedPtrdiffMulToPtrdiff;
-using onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff;
 
 namespace onnxruntime {
 namespace contrib {
