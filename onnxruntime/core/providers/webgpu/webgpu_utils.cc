@@ -65,7 +65,7 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
 }
 
 SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, double rate)
-    : max_dim_inner_with_rate(max_dim_inner), max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner(rate) {}
+    : max_dim_inner_with_rate(max_dim_inner), max_dim_a_outer_x_dim_b_outer_x_batch_size_divides_dim_inner(rate) {}
 
 uint32_t SplitKConfig::GetMaxDimInnerWithSplitK() const {
   assert(!configs_per_dim_inner_range_.empty());
@@ -102,8 +102,8 @@ bool SplitKConfig::UseSplitK(
   use_split_k &= is_channels_last;
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
-  // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer)` and
-  // `dim_inner)` as the metric to decide whether to use Split-K or not.
+  // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer * batch_size)`
+  // and `dim_inner` as the metric to decide whether to use Split-K or not.
   use_split_k &= dim_inner >= min_dim_inner_with_split_k_;
   use_split_k &= dim_inner <= GetMaxDimInnerWithSplitK();
 
@@ -114,7 +114,7 @@ bool SplitKConfig::UseSplitK(
   const double rate = static_cast<double>(dim_a_outer) * static_cast<double>(dim_b_outer) * static_cast<double>(batch_size) / static_cast<double>(dim_inner);
   for (const auto& config_at_range : configs_per_dim_inner_range_) {
     if (dim_inner <= config_at_range.max_dim_inner_with_rate) {
-      return rate <= config_at_range.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner;
+      return rate <= config_at_range.max_dim_a_outer_x_dim_b_outer_x_batch_size_divides_dim_inner;
     }
   }
   return false;

@@ -122,7 +122,7 @@ class SplitKConfig {
   struct ConfigAtRange {
     ConfigAtRange(uint32_t max_dim_inner, double rate);
     uint32_t max_dim_inner_with_rate = 0;
-    double max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner = 0.0;
+    double max_dim_a_outer_x_dim_b_outer_x_batch_size_divides_dim_inner = 0.0;
   };
   std::vector<ConfigAtRange> configs_per_dim_inner_range_;
 };

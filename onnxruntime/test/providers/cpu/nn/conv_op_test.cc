@@ -803,7 +803,7 @@ TEST(ConvTest, Conv2D_MatMul_SplitK_With_Bias) {
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
-TEST(ConvTest, Conv2D_MatMul_SplitK_Batched_No_Bias) {
+TEST(ConvTest, Conv2D_MatMul_Batched_No_Bias) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
@@ -847,7 +847,7 @@ TEST(ConvTest, Conv2D_MatMul_SplitK_Batched_No_Bias) {
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
-TEST(ConvTest, Conv2D_MatMul_SplitK_Batched_With_Bias) {
+TEST(ConvTest, Conv2D_MatMul_Batched_With_Bias) {
   ConvOpAndTestAttributes attrs = {
       "",                           // auto_pad
       vector<int64_t>{1, 1},        // dilations
