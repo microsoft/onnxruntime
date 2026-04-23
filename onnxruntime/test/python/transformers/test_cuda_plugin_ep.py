@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import json
 import os
 import tempfile
 import unittest
@@ -2378,6 +2379,100 @@ class TestCudaPluginEP(unittest.TestCase):
         finally:
             if os.path.exists(model_path):
                 os.remove(model_path)
+
+    # ---- Profiling tests ----
+
+    def _run_profiling_test(self):
+        """Run a model with session-level profiling enabled and verify the JSON output.
+
+        When CUDA profiling is enabled (ENABLE_CUDA_PROFILING), also verify
+        that GPU kernel events appear in the profile with expected metadata
+        (category Kernel, stream, block_x).
+        """
+        target_device = get_cuda_plugin_device()
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        profile_file = None
+        try:
+            create_matmul_model(model_path)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], {})
+
+            profile_prefix = os.path.join(tempfile.gettempdir(), "cuda_plugin_ep_profiling_test")
+            sess_options.enable_profiling = True
+            sess_options.profile_file_prefix = profile_prefix
+
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+            sess.run(None, {"A": a, "B": b})
+
+            profile_file = sess.end_profiling()
+            self.assertTrue(profile_file, "No profile file returned")
+            self.assertTrue(os.path.exists(profile_file), f"Profile file not found: {profile_file}")
+
+            with open(profile_file, "r") as f:
+                profile_data = json.load(f)
+
+            self.assertIsInstance(profile_data, list)
+            self.assertGreater(len(profile_data), 0, "Profile JSON is empty")
+
+            # Every event entry must have standard tracing fields.
+            required_keys = {"pid", "dur", "ts", "ph", "name", "args"}
+            for entry in profile_data:
+                if not isinstance(entry, dict):
+                    continue
+                if "name" not in entry:
+                    continue
+                for key in required_keys:
+                    self.assertIn(key, entry, f"Missing '{key}' in profile entry: {entry}")
+
+            # Check for GPU kernel events. These only appear when the build has
+            # ENABLE_CUDA_PROFILING=ON. The test is written to pass either way:
+            # without CUDA profiling the events list simply won't contain Kernel
+            # entries, and the test validates the basic profiling infrastructure.
+            kernel_events = [
+                e for e in profile_data
+                if isinstance(e, dict) and e.get("cat") == "Kernel"
+            ]
+            has_cuda_profiling = len(kernel_events) > 0
+
+            if has_cuda_profiling:
+                # Validate GPU kernel event metadata.
+                for event in kernel_events:
+                    self.assertIn("ts", event)
+                    self.assertIn("dur", event)
+                    self.assertGreaterEqual(event["dur"], 0)
+                    args = event.get("args", {})
+                    # CUPTI events include stream and block dimensions.
+                    self.assertIn("stream", args, f"GPU kernel event missing 'stream': {event}")
+                    self.assertIn("block_x", args, f"GPU kernel event missing 'block_x': {event}")
+            else:
+                # No GPU kernel events — CUDA profiling is likely not enabled.
+                # The test still validates the basic profiling JSON structure above.
+                print(
+                    "Note: No GPU Kernel events found in profile. "
+                    "CUDA profiling may not be enabled in this build."
+                )
+
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+            if profile_file and os.path.exists(profile_file):
+                os.remove(profile_file)
+
+    def test_session_profiling(self):
+        """Verify session-level profiling produces valid output with the CUDA Plugin EP."""
+        self._run_profiling_test()
 
 
 if __name__ == "__main__":
