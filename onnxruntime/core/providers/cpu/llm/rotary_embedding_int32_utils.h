@@ -49,6 +49,20 @@ inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdi
   return Status::OK();
 }
 
+inline Status CheckedMulToPtrdiff(std::ptrdiff_t lhs, int rhs, const char* name, std::ptrdiff_t& output) {
+  if (lhs < 0 || rhs < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " must be non-negative");
+  }
+  if (rhs != 0 && lhs > std::numeric_limits<std::ptrdiff_t>::max() / rhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = lhs * rhs;
+  return Status::OK();
+}
+
 inline Status CheckedAddToPtrdiff(std::ptrdiff_t lhs, std::ptrdiff_t rhs, const char* name, std::ptrdiff_t& output) {
   if (lhs < 0 || rhs < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
