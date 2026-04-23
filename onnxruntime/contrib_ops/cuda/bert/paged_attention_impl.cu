@@ -237,6 +237,84 @@ Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* valu
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Gather paged KV into packed-varlen [total_kv_tokens, num_heads, head_size], expanding GQA heads.
+template <typename T>
+__global__ void GatherAndExpandPagedKVCache(const T* __restrict__ key_cache,
+                                            const T* __restrict__ value_cache,
+                                            T* __restrict__ gathered_key,
+                                            T* __restrict__ gathered_value,
+                                            const int* __restrict__ block_table,
+                                            const int* __restrict__ cumulative_seqlens_kv,
+                                            const int batch_size,
+                                            const int num_heads,
+                                            const int kv_num_heads,
+                                            const int head_size,
+                                            const int block_size,
+                                            const int max_num_blocks_per_seq,
+                                            const int total_kv_tokens) {
+  const int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  const int total_elems = total_kv_tokens * num_heads * head_size;
+  if (tid >= total_elems) {
+    return;
+  }
+
+  const int h = tid % head_size;
+  const int head_id = (tid / head_size) % num_heads;
+  const int token_id = tid / (num_heads * head_size);
+
+  // Linear scan over batch_size to locate which batch this token belongs to.
+  // batch_size is small (typically <= 256) so a loop is cheap and avoids requiring
+  // a precomputed token->batch map.
+  int batch_id = 0;
+  for (int i = 0; i < batch_size; ++i) {
+    if (token_id < cumulative_seqlens_kv[i + 1]) {
+      batch_id = i;
+      break;
+    }
+  }
+
+  const int pos = token_id - cumulative_seqlens_kv[batch_id];
+  const int block_idx_in_seq = pos / block_size;
+  const int block_offset = pos % block_size;
+  const int block_id = block_table[batch_id * max_num_blocks_per_seq + block_idx_in_seq];
+
+  // GQA expansion: each output head maps to kv_head_id = head_id / (num_heads / kv_num_heads).
+  // For MHA (num_heads == kv_num_heads) this is the identity.
+  const int q_kv_head_ratio = num_heads / kv_num_heads;
+  const int kv_head_id = head_id / q_kv_head_ratio;
+
+  const int paged_idx = block_id * block_size * kv_num_heads * head_size +
+                        block_offset * kv_num_heads * head_size +
+                        kv_head_id * head_size +
+                        h;
+
+  gathered_key[tid] = key_cache[paged_idx];
+  gathered_value[tid] = value_cache[paged_idx];
+}
+
+template <typename T>
+Status LaunchGatherAndExpandPagedKVCache(const T* key_cache, const T* value_cache,
+                                         T* gathered_key, T* gathered_value,
+                                         const int* block_table, const int* cumulative_seqlens_kv,
+                                         const int batch_size, const int num_heads,
+                                         const int kv_num_heads, const int head_size,
+                                         const int block_size, const int max_num_blocks_per_seq,
+                                         const int total_kv_tokens, cudaStream_t stream,
+                                         const int max_threads_per_block) {
+  const int total_elems = total_kv_tokens * num_heads * head_size;
+  if (total_elems == 0) {
+    return Status::OK();
+  }
+  const int threads = std::min(total_elems, max_threads_per_block);
+  const int blocks = (total_elems + threads - 1) / threads;
+  GatherAndExpandPagedKVCache<T><<<blocks, threads, 0, stream>>>(
+      key_cache, value_cache, gathered_key, gathered_value,
+      block_table, cumulative_seqlens_kv,
+      batch_size, num_heads, kv_num_heads, head_size,
+      block_size, max_num_blocks_per_seq, total_kv_tokens);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 ////////// Launch Kernels
 
 #if USE_FLASH_ATTENTION

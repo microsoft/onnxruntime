@@ -225,11 +225,18 @@ struct PagedAttentionData {
   // Fused op buffers
   T* workspace_buffer = nullptr;
 
+  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
+  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
+  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
 };
 
 }  // namespace cuda
