@@ -287,26 +287,33 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         continue;
       }
 
-      // If a size threshold is configured, try to estimate the output size from type/shape info
-      // before performing the (potentially expensive) computation.
+      // If a size threshold is configured, estimate the net memory impact before computation.
+      // The net increase is the total estimated output size minus the sizes of constant inputs
+      // that will be freed (i.e., inputs exclusively consumed by this node). Only skip when
+      // the net increase exceeds the threshold.
       if (output_size_threshold > 0) {
-        bool exceeds_threshold = false;
+        // Step 1: sum up the estimated output sizes. If any output has an unknown shape,
+        // we skip the threshold check entirely and proceed with the folding.
+        size_t total_estimated_output_size = 0;
+        bool all_output_sizes_known = true;
         for (size_t output_idx : fetch_to_output_idx) {
           const auto* node_out = node->OutputDefs()[output_idx];
           const auto* type_proto = node_out->TypeAsProto();
           if (type_proto == nullptr || !utils::HasTensorType(*type_proto)) {
-            continue;
+            all_output_sizes_known = false;
+            break;
           }
           const auto& tensor_type = type_proto->tensor_type();
           if (!utils::HasElemType(tensor_type) || !utils::HasShape(tensor_type)) {
-            continue;
+            all_output_sizes_known = false;
+            break;
           }
           const auto elem_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_type.elem_type());
           const size_t elem_size = utils::GetElementSizeOfTensor(elem_type);
           if (elem_size == 0) {
-            continue;
+            all_output_sizes_known = false;
+            break;
           }
-          // Compute num_elements; skip if any dim is unknown.
           const auto& shape = tensor_type.shape();
           size_t num_elements = 1;
           bool all_dims_known = true;
@@ -318,20 +325,48 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
             num_elements *= static_cast<size_t>(dim.dim_value());
           }
           if (!all_dims_known) {
-            continue;
-          }
-          const size_t estimated_size = num_elements * elem_size;
-          if (estimated_size > output_size_threshold) {
-            LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
-                               << " node '" << node->Name() << "': estimated output size "
-                               << estimated_size << " bytes exceeds the threshold of "
-                               << output_size_threshold << " bytes.";
-            exceeds_threshold = true;
+            all_output_sizes_known = false;
             break;
           }
+          total_estimated_output_size += num_elements * elem_size;
         }
-        if (exceeds_threshold) {
-          continue;
+
+        if (all_output_sizes_known) {
+          // Step 2: compute the sizes of constant inputs that will be freed after folding.
+          // An input is freed only if this is its sole consumer.
+          size_t freed_input_size = 0;
+          for (const auto& [inp_name, tensor_proto] : constant_inputs) {
+            if (graph.GetConsumerNodes(inp_name).size() == 1) {
+              const size_t inp_elem_size = utils::GetElementSizeOfTensor(
+                  static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto->data_type()));
+              if (inp_elem_size > 0) {
+                size_t num_inp_elements = 1;
+                bool valid = true;
+                for (int64_t d : tensor_proto->dims()) {
+                  if (d < 0) {
+                    valid = false;
+                    break;
+                  }
+                  num_inp_elements *= static_cast<size_t>(d);
+                }
+                if (valid) {
+                  freed_input_size += num_inp_elements * inp_elem_size;
+                }
+              }
+            }
+          }
+
+          // The net memory increase is outputs added minus inputs freed (floor at 0).
+          const size_t net_increase = (total_estimated_output_size > freed_input_size)
+                                          ? total_estimated_output_size - freed_input_size
+                                          : 0;
+          if (net_increase > output_size_threshold) {
+            LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
+                               << " node '" << node->Name()
+                               << "': estimated net memory increase " << net_increase
+                               << " bytes exceeds the threshold of " << output_size_threshold << " bytes.";
+            continue;
+          }
         }
       }
 
