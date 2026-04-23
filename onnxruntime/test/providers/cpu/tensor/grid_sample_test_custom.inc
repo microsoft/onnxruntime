@@ -71,3 +71,37 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_mixed_bound
   test.AddOutput<TypeParam>("Y", Y_shape, Y_data);
   RunTests(test, GetExecutionProviders());
 }
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_extreme_coords) {
+  // Regression test: large grid coordinates previously produced wild indices in the
+  // reflection branch of PixelAtGrid. The internal division-and-int-cast inside
+  // GsReflect now uses int64_t, and PixelAtGrid clamps the resulting index back into
+  // the image range, so sampling stays in bounds. Using "nearest" mode keeps the test
+  // focused on the reflection index path (no bilinear weight arithmetic), and using a
+  // constant-valued input makes the expected output deterministic regardless of which
+  // in-range pixel is hit.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(1.0f),
+                                          TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  // 1e+10 exceeds INT_MAX, so the pre-fix `int n = static_cast<int>(dx / range)`
+  // inside GsReflect would invoke undefined behavior; 1e+10 still fits comfortably
+  // in int64_t. For MLFloat16 the value overflows to +/-Inf, exercising the same
+  // safety-clamp fallback in PixelAtGrid.
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+10f), TypeParam(1.0e+10f),
+      TypeParam(-1.0e+10f), TypeParam(-1.0e+10f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunTests(test, GetExecutionProviders());
+}

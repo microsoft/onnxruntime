@@ -65,7 +65,9 @@ T GsReflect(T x, T x_min, T x_max) {
   T range = x_max - x_min;
   if (fx < x_min) {
     dx = x_min - fx;
-    int n = static_cast<int>(dx / range);
+    // Use int64_t rather than int: for extreme (but finite) inputs, dx / range can exceed
+    // INT_MAX, making a float->int cast undefined behavior.
+    int64_t n = static_cast<int64_t>(dx / range);
     T r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_min + r;
@@ -74,7 +76,7 @@ T GsReflect(T x, T x_min, T x_max) {
     }
   } else if (fx > x_max) {
     dx = fx - x_max;
-    int n = static_cast<int>(dx / range);
+    int64_t n = static_cast<int64_t>(dx / range);
     T r = dx - n * range;
     if (n % 2 == 0) {
       fx = x_max - r;
@@ -124,6 +126,11 @@ T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, in
   } else {  // (padding_mode_ == Reflection)
     c = static_cast<int64_t>(GsReflect(static_cast<T>(c), border[0], border[2]));
     r = static_cast<int64_t>(GsReflect(static_cast<T>(r), border[1], border[3]));
+    // Safety clamp: GsReflect is computed in floating point and casts back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the image range before indexing.
+    c = std::clamp<int64_t>(c, 0, W - 1);
+    r = std::clamp<int64_t>(r, 0, H - 1);
     pixel = image[r * W + c];
   }
   return pixel;
@@ -145,6 +152,12 @@ T GridSample<T>::PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, 
     w = static_cast<int64_t>(GsReflect(static_cast<T>(w), border[0], border[3]));
     h = static_cast<int64_t>(GsReflect(static_cast<T>(h), border[1], border[4]));
     d = static_cast<int64_t>(GsReflect(static_cast<T>(d), border[2], border[5]));
+    // Safety clamp: GsReflect is computed in floating point and casts back to int64_t.
+    // Extreme grid coordinates can overflow that cast, so clamp the resulting indices
+    // back into the image range before indexing.
+    w = std::clamp<int64_t>(w, 0, W - 1);
+    h = std::clamp<int64_t>(h, 0, H - 1);
+    d = std::clamp<int64_t>(d, 0, D - 1);
     pixel = image[d * H * W + h * W + w];
   }
   return pixel;
