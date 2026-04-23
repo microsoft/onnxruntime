@@ -17,8 +17,8 @@
 
 using namespace onnxruntime;
 
-#define RETURN_NOT_IMPL_IN_MINIMAL_BUILD()                                                  \
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,                                         \
+#define RETURN_NOT_IMPL_IN_MINIMAL_BUILD()          \
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, \
                                "Model package API is not supported in this build")
 
 ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageOptions,
@@ -151,12 +151,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetComponentModelNam
   API_IMPL_END
 }
 
-// ModelPackageContext_GetSelectedVariantInfo,
-// GetSelectedVariantFileCount, GetSelectedVariantFileIdentifier all follow the
-// same pattern: validate args, forward to the ModelPackageContext method,
-// map onnxruntime::Status to OrtStatus*. (Omitted here for brevity — straight
-// mechanical expansions of the pattern above.)
-
 ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageContext* ctx,
@@ -180,7 +174,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
   // 1) Resolve the physical file to load (variant was already selected by CreateModelPackageContext).
   std::filesystem::path selected_model_path;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-    mp_ctx.ResolveSelectedVariantFile(component_name, file_identifier, selected_model_path));
+      mp_ctx.ResolveSelectedVariantFile(component_name, file_identifier, selected_model_path));
 
   // 2) Pick the OrtSessionOptions per precedence rules on OrtApi::CreateSessionFromModelPackage:
   //    - session_options == nullptr (default path): use the options captured on the context,
@@ -195,7 +189,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
     effective_options = *session_options;
   }
 
-  // 3) Create session with the resolved file and effective session options. 
+  // 3) Create session with the resolved file and effective session options.
   //    Note: provider list already resolved and owned by the model package context.
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   ORT_API_RETURN_IF_ERROR(onnxruntime::CreateSessionForResolvedModelPackage(

@@ -997,5 +997,3 @@ OrtStatus* CreateSessionForResolvedModelPackage(
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }  // namespace onnxruntime
-
-

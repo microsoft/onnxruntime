@@ -44,7 +44,6 @@ class ModelPackageOptions;  // forward declaration
 
 class ModelPackageContext {
  public:
-
   explicit ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root);
 
   ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root,

@@ -26,7 +26,7 @@ class ModelPackageOptions {
   const OrtSessionOptions& SessionOptions() const noexcept { return session_options_; }
 
  private:
-  OrtSessionOptions session_options_; // owned snapshot of caller-provided session options
+  OrtSessionOptions session_options_;  // owned snapshot of caller-provided session options
 };
 
 }  // namespace onnxruntime
