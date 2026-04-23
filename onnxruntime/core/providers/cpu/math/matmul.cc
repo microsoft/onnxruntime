@@ -134,6 +134,57 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
+
+Status MatMul<double>::Compute(OpKernelContext* ctx) const {
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
+
+  const auto* a = ctx->Input<Tensor>(0);
+  const auto* b = ctx->Input<Tensor>(1);
+
+  // match CUDA kernel implementation, ignore transpose for vectors
+  const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
+  const bool trans_b = trans_b_attr_ && b->Shape().NumDimensions() != 1;
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape(), trans_a, trans_b, trans_batch_a_, trans_batch_b_));
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
+
+  if (helper.K() == 0) {
+    EigenMatrixMapRowMajor<double> dest(y->MutableData<double>(),
+                                        narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
+    dest.setZero();
+    return Status::OK();
+  }
+
+  const auto* a_data = a->Data<double>();
+  const auto* b_data = b->Data<double>();
+  auto* y_data = y->MutableData<double>();
+
+  const size_t max_len = helper.OutputOffsets().size();
+  const size_t lda = helper.Lda(trans_a);
+  const size_t ldb = helper.Ldb(trans_b);
+
+  for (size_t i = 0; i < max_len; i++) {
+    math::GemmEx<double, concurrency::ThreadPool>(
+        trans_a ? CblasTrans : CblasNoTrans,
+        trans_b ? CblasTrans : CblasNoTrans,
+        helper.M(), helper.N(), helper.K(),
+        static_cast<double>(alpha_attr_),
+        a_data + helper.LeftOffsets()[i], static_cast<int>(lda),
+        b_data + helper.RightOffsets()[i], static_cast<int>(ldb),
+        0.0,
+        y_data + helper.OutputOffsets()[i], helper.Ldc(),
+        thread_pool,
+        nullptr);
+  }
+
+  return Status::OK();
+}
+
 #if defined(__aarch64__) && defined(__linux__)
 bool GemmPackBBfloat16(AllocatorPtr& alloc,
                        const Tensor& tensor_b,

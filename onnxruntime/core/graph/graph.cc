@@ -3775,6 +3775,13 @@ Status Graph::ConvertInitializersIntoOrtValues() {
         continue;
       }
 
+      // String tensors cannot use the raw buffer in-memory optimization because their raw data
+      // contains std::string objects (with internal pointers), not serializable content.
+      // They are kept as regular TensorProtos and deserialized normally during inference.
+      if (utils::HasString(tensor_proto)) {
+        continue;
+      }
+
       size_t size_in_bytes = 0;
       ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &size_in_bytes));
       if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
@@ -4092,7 +4099,10 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
     OrtValue ort_value;
     TensorProto tensor_proto;
     constexpr const bool use_tensor_buffer_true = true;
-    if (user_tensor.SizeInBytes() > utils::kSmallTensorExternalDataThreshold) {
+    // String tensors cannot use the raw buffer in-memory optimization because their raw data
+    // contains std::string objects (with internal pointers), not serializable content.
+    if (!user_tensor.IsDataTypeString() &&
+        user_tensor.SizeInBytes() > utils::kSmallTensorExternalDataThreshold) {
       if (user_tensor.OwnsBuffer()) {
         // If the user tensor has its own memory, we avoid copying
         tensor_proto = utils::TensorToTensorProto(user_tensor, name, use_tensor_buffer_true);
