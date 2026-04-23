@@ -12,7 +12,7 @@ parameters:
 - name: build_linux_aarch64
   displayName: 'Build Linux aarch64'
   type: boolean
-  default: true
+  default: false
 
 - name: cuda_version
   type: string
