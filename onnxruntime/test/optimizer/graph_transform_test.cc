@@ -7986,6 +7986,24 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       {kCpuExecutionProvider});
 }
 
+TEST_F(GraphTransformationTests, MatMulScaleFusionDoubleType) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_double.onnx", *logger_,
+      [](Graph& graph) {
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCpuExecutionProvider);
+        }
+      },
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 0);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
+      },
+      {kCpuExecutionProvider});
+}
+
 TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
   TestMatMulScaleFusion(
       MODEL_FOLDER "fusion/matmul_scale_with_scale_input.onnx", *logger_,
