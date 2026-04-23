@@ -104,9 +104,9 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
                            "num_targets (", num_targets_, ") * num_features (", num_features,
                            ") overflows size_t");
   }
-  ORT_RETURN_IF_NOT(coefficients_.size() == expected_coefficients_size,
+  ORT_RETURN_IF_NOT(coefficients_.size() >= expected_coefficients_size,
                     "LinearRegressor: coefficients length (", coefficients_.size(),
-                    ") must equal targets (", num_targets_, ") * features (", num_features, ")");
+                    ") must be at least targets (", num_targets_, ") * features (", num_features, ")");
 
   Tensor& Y = *ctx->Output(0, {num_batches, num_targets_});
   concurrency::ThreadPool* tp = ctx->GetOperatorThreadPool();

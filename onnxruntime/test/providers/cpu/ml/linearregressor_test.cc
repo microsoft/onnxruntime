@@ -111,7 +111,20 @@ TEST(MLOpTest, LinearRegressorUndersizedCoefficients) {
   test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "LinearRegressor: coefficients length (1) must equal targets (1) * features (2)");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "LinearRegressor: coefficients length (1) must be at least targets (1) * features (2)");
+}
+
+TEST(MLOpTest, LinearRegressorExtraCoefficientsAreIgnored) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f, 99.f, 100.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 2}, {3.f, 4.f});
+  test.AddOutput<float>("Y", {1, 1}, {11.f});
+
+  test.Run();
 }
 
 TEST(MLOpTest, LinearRegressorInvalidTargets) {

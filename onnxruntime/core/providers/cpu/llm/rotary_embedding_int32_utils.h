@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <limits>
 
 #include "core/common/common.h"
@@ -32,6 +33,50 @@ inline Status CheckedMulToInt32(int lhs, int rhs, const char* name, int& output)
 
   const int64_t product = static_cast<int64_t>(lhs) * static_cast<int64_t>(rhs);
   return NarrowNonNegativeToInt32Impl(product, name, " overflows int32", output);
+}
+
+inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdiff_t& output) {
+  if (lhs < 0 || rhs < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " must be non-negative");
+  }
+  if (lhs != 0 && rhs > std::numeric_limits<std::ptrdiff_t>::max() / lhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = static_cast<std::ptrdiff_t>(lhs) * rhs;
+  return Status::OK();
+}
+
+inline Status CheckedAddToPtrdiff(std::ptrdiff_t lhs, std::ptrdiff_t rhs, const char* name, std::ptrdiff_t& output) {
+  if (lhs < 0 || rhs < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " must be non-negative");
+  }
+  if (lhs > std::numeric_limits<std::ptrdiff_t>::max() - rhs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = lhs + rhs;
+  return Status::OK();
+}
+
+inline Status CheckedMulToPtrdiff(int lhs, int rhs, int third, const char* name, std::ptrdiff_t& output) {
+  std::ptrdiff_t intermediate = 0;
+  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(lhs, rhs, name, intermediate));
+  if (third < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " must be non-negative");
+  }
+  if (intermediate != 0 && third > std::numeric_limits<std::ptrdiff_t>::max() / intermediate) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "RotaryEmbedding: ", name, " overflows ptrdiff_t");
+  }
+
+  output = intermediate * third;
+  return Status::OK();
 }
 
 }  // namespace rotary_embedding_int32_utils
