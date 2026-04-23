@@ -1394,5 +1394,41 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_InBatch_WebGPU) {
            {}, nullptr, &execution_providers);
 }
 
+// Test that format-0 (single position_id) OOB is rejected on WebGPU.
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_Format0_OOB_WebGPU) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(batch_size * sequence_length * hidden_size, 1.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // Format 0: single value. Effective positions = [7, 8] — position 8 is out of range [0, 8).
+  test.AddInput<int64_t>("position_ids", {1}, {7});
+
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "position_ids base value 7 with sequence_length 2 exceeds cos/sin cache range",
+           {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
