@@ -9,11 +9,15 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_descriptor_parser.h"
+#include "core/session/ort_env.h"
+#include "core/session/provider_policy_context.h"
+#include "core/session/utils.h"
 
 namespace onnxruntime {
 namespace {
@@ -212,15 +216,15 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
     return Status::OK();
   }
 
-  // Only one SelectionEpInfo in `ep_infos` is supported for now.
-  if (ep_infos.empty()) {
-    return Status::OK();
-  }
+  const VariantSelectionEpInfo* selected_ep_info = nullptr;
   if (ep_infos.size() > 1) {
     LOGS_DEFAULT(WARNING) << "Multiple EP info provided for model variant selection, but only the first one with ep name '"
                           << ep_infos[0].ep_name << "' will be used.";
   }
-  const auto& ep_info = ep_infos[0];
+
+  if (!ep_infos.empty()) {
+    selected_ep_info = &ep_infos[0];
+  }
 
   std::unordered_set<size_t> candidate_indices_set;
 
@@ -232,14 +236,16 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
     }
   }
 
-  // 2) Check all variants that match the EP info.
-  for (size_t i = 0, end = variants.size(); i < end; ++i) {
-    if (candidate_indices_set.count(i) > 0) {
-      continue;
-    }
-    auto& c = variants[i];
-    if (MatchesVariant(c, ep_info)) {
-      candidate_indices_set.insert(i);
+  // 2) If EP info exists, check all variants that match the EP info.
+  if (selected_ep_info != nullptr) {
+    for (size_t i = 0, end = variants.size(); i < end; ++i) {
+      if (candidate_indices_set.count(i) > 0) {
+        continue;
+      }
+      auto& c = variants[i];
+      if (MatchesVariant(c, *selected_ep_info)) {
+        candidate_indices_set.insert(i);
+      }
     }
   }
 
@@ -285,13 +291,103 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
   }
 
   selected_variant_path = variants[best_index].model_path;
+  return Status::OK();
+}
+
+ModelPackageContext::ModelPackageContext(const onnxruntime::Environment& env,
+                                         const std::filesystem::path& package_root) : env_(env) {
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, model_variant_infos_));
+  BuildComponentModelCache();
+}
+
+ModelPackageContext::ModelPackageContext(const onnxruntime::Environment& env,
+                                         const std::filesystem::path& package_root,
+                                         const ModelPackageOptions& options) : env_(env), options_(&options) {
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  ORT_THROW_IF_ERROR(parser.ParseVariantsFromPackageRoot(package_root, model_variant_infos_));
+  BuildComponentModelCache();
+}
+
+Status ModelPackageContext::GetEpInfosAndResolveVariant() {
+  ORT_RETURN_IF(options_ == nullptr, "ModelPackageContext has no associated ModelPackageOptions.");
+
+  const OrtSessionOptions& session_options = options_->SessionOptions();
+  const bool has_provider_factories = !session_options.provider_factories.empty();
+  from_policy_ = !has_provider_factories && session_options.value.ep_selection_policy.enable;
+
+  provider_list_.clear();
+  execution_devices_.clear();
+  devices_selected_.clear();
+  ep_infos_.clear();
+  selected_variant_path_.reset();
+
+  if (has_provider_factories) {
+    const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
+    for (auto& factory : session_options.provider_factories) {
+      provider_list_.push_back(factory->CreateProvider(session_options, logger));
+    }
+  } else if (from_policy_) {
+    OrtKeyValuePairs model_metadata;
+    ProviderPolicyContext provider_policy_context;
+    OrtSessionOptions mutable_session_options = session_options;
+    ORT_RETURN_IF_ERROR(provider_policy_context.SelectEpsForModelPackage(
+        env_, mutable_session_options, model_metadata,
+        execution_devices_, devices_selected_, provider_list_));
+  }
+
+  ORT_RETURN_IF_ERROR(GetVariantSelectionEpInfo(&session_options, provider_list_, ep_infos_));
+  ORT_RETURN_IF_ERROR(PrintAvailableAndSelectedEpInfos(env_, ep_infos_));
+
+  ModelVariantSelector selector;
+  ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos_, selected_variant_path_));
+
+  ORT_RETURN_IF(!selected_variant_path_.has_value(),
+                "No suitable model variant found for the configured execution providers.");
 
   return Status::OK();
 }
 
-ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, model_variant_infos_));
+size_t ModelPackageContext::GetComponentModelCount() const noexcept {
+  return component_model_names_.size();
+}
+
+Status ModelPackageContext::GetComponentModelName(size_t component_index, const std::string*& out_name) const {
+  out_name = nullptr;
+
+  if (component_index >= component_model_names_.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "component_index out of range: ", component_index,
+                           ", component count: ", component_model_names_.size());
+  }
+
+  out_name = &component_model_names_[component_index];
+  return Status::OK();
+}
+
+void ModelPackageContext::BuildComponentModelCache() {
+  component_model_names_.clear();
+  component_to_variant_indices_.clear();
+
+  constexpr const char* kFallbackComponentName = "__default_component__";
+
+  for (size_t i = 0; i < model_variant_infos_.size(); ++i) {
+    const auto& variant = model_variant_infos_[i];
+
+    std::string component_name = kFallbackComponentName;
+    if (auto it = variant.metadata.find(kComponentModelNameInMetadataKey);
+        it != variant.metadata.end() && !it->second.empty()) {
+      component_name = it->second;
+    }
+
+    auto [map_it, inserted] =
+        component_to_variant_indices_.try_emplace(component_name, std::vector<size_t>{});
+    if (inserted) {
+      component_model_names_.push_back(component_name);
+    }
+
+    map_it->second.push_back(i);
+  }
 }
 
 }  // namespace onnxruntime

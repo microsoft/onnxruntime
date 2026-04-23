@@ -8,7 +8,13 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/model_package/model_package_options.h"
+#include "core/framework/execution_provider.h"
 #include "core/common/common.h"
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
@@ -38,16 +44,18 @@ class ModelPackageOptions;  // forward declaration
 
 class ModelPackageContext {
  public:
-  // New primary ctor: package is opened using EP selection captured on `options`.
-  ModelPackageContext(const std::filesystem::path& package_root, const ModelPackageOptions& options);
 
-  // Existing ctor kept for tests that don't need EP selection.
-  explicit ModelPackageContext(const std::filesystem::path& package_root);
+  explicit ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root);
 
-  // Parses variants (if not already) and runs variant selection using options_->EpInfos().
-  Status ResolveVariants();
+  ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root,
+                      const ModelPackageOptions& options);
 
-  // Accessors used by the query APIs:
+  Status GetEpInfosAndResolveVariant();
+
+  const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept {
+    return model_variant_infos_;
+  }
+
   size_t GetComponentModelCount() const noexcept;
   Status GetComponentModelName(size_t component_index, const std::string*& out_name) const;
   Status GetSelectedVariant(const std::string& component_name,
@@ -59,16 +67,34 @@ class ModelPackageContext {
                                     std::filesystem::path& out_path) const;
 
   const ModelPackageOptions* Options() const noexcept { return options_; }
-  const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept { return model_variant_infos_; }
+
+  // Resolved EP state (taken from ModelPackageOptions at ResolveVariants time).
+  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() noexcept { return provider_list_; }
+  const std::vector<const OrtEpDevice*>& ExecutionDevices() const noexcept { return execution_devices_; }
+  const std::vector<const OrtEpDevice*>& DevicesSelected() const noexcept { return devices_selected_; }
+  bool IsFromPolicy() const noexcept { return from_policy_; }
+  const std::optional<std::filesystem::path>& GetSelectedVariantPath() const noexcept {
+    return selected_variant_path_;
+  }
 
  private:
+  const onnxruntime::Environment& env_;
   std::vector<ModelVariantInfo> model_variant_infos_;
-  const ModelPackageOptions* options_{};  // non-owning
+  const ModelPackageOptions* options_{};  // non-owning, immutable config source
 
-  // TODO: per-component grouping + selected-variant cache for the query APIs.
-  // This depends on extending the descriptor parser to surface
-  //   - the list of component models, and
-  //   - the list of file identifiers (logical names) within each variant.
+  // Cached component model info for query APIs.
+  std::vector<std::string> component_model_names_{};
+  std::unordered_map<std::string, std::vector<size_t>> component_to_variant_indices_{};
+
+  // Resolved EP state owned by context
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
+  std::vector<VariantSelectionEpInfo> ep_infos_{};
+  std::vector<const OrtEpDevice*> execution_devices_{};
+  std::vector<const OrtEpDevice*> devices_selected_{};
+  bool from_policy_{false};
+  std::optional<std::filesystem::path> selected_variant_path_{};
+
+  void BuildComponentModelCache();
 };
 
 class ModelVariantSelector {

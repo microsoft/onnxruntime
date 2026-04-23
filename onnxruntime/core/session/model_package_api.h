@@ -11,7 +11,6 @@ ORT_API(const OrtModelPackageApi*, GetModelPackageApi);
 
 ORT_API(void, ReleaseModelPackageOptions, _Frees_ptr_opt_ OrtModelPackageOptions*);
 ORT_API_STATUS_IMPL(CreateModelPackageOptionsFromSessionOptions,
-                    _In_ const OrtEnv* env,
                     _In_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtModelPackageOptions** out);
 
@@ -41,7 +40,7 @@ ORT_API_STATUS_IMPL(ModelPackageContext_GetSelectedVariantFileIdentifier,
 
 ORT_API_STATUS_IMPL(CreateSession,
                     _In_ const OrtEnv* env,
-                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _In_opt_ const char* file_identifier,
                     _In_opt_ const OrtSessionOptions* session_options,

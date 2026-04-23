@@ -77,8 +77,8 @@ void from_json(const json& j, ManifestSchema& m) {
 }
 
 void from_json(const json& j, MetadataSchema& m) {
-  if (j.contains("component_model_name") && j["component_model_name"].is_string()) {
-    m.component_model_name = j["component_model_name"].get<std::string>();
+  if (j.contains(kComponentModelNameInMetadataKey) && j[kComponentModelNameInMetadataKey].is_string()) {
+    m.component_model_name = j[kComponentModelNameInMetadataKey].get<std::string>();
   }
   m.model_variants = j.at(kModelVariantsKey).get<std::unordered_map<std::string, VariantSchema>>();  // required
 }
@@ -192,10 +192,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
                                                            /*out*/ std::vector<ModelVariantInfo>& variants) const {
   variants.clear();
 
-  // package_root could be either a component model root (contains metadata.json) or a model package root (contains manifest.json).
-
-  // Mode 1: package_root is a component model root (contains metadata.json).
-  // In this mode metadata.json is the source of truth and manifest.json is ignored.
+  // Mode 1: component root (metadata.json at root)
   const auto component_metadata_path = package_root / kComponentModelMetadataFileName;
   if (std::filesystem::exists(component_metadata_path) &&
       std::filesystem::is_regular_file(component_metadata_path)) {
@@ -230,7 +227,6 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
             ? *metadata_schema.component_model_name
             : package_root.filename().string();
 
-    // component-root mode
     ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
                                                    package_root,
                                                    &metadata_doc[kModelVariantsKey],
@@ -245,167 +241,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
     return Status::OK();
   }
 
-  // Mode 2: package_root is a model package root, resolve via manifest.json.
-  const auto manifest_path = package_root / kModelPackageManifestFileName;
-  if (!std::filesystem::exists(manifest_path)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "No manifest.json found at ", manifest_path.string());
-  }
-
-  std::ifstream f(manifest_path, std::ios::binary);
-  if (!f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to open manifest.json at ", manifest_path.string());
-  }
-
-  json doc;
-  ORT_TRY {
-    doc = json::parse(f);
-  }
-  ORT_CATCH(const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json is not valid JSON: ", ex.what());
-  }
-
-  ManifestSchema manifest_schema;
-  ORT_TRY {
-    manifest_schema = doc.get<ManifestSchema>();
-  }
-  ORT_CATCH(const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json has invalid schema: ", ex.what());
-  }
-
-  if (manifest_schema.model_name.empty()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "The \"model_name\" field in the manifest.json is missing or empty");
-  }
-
-  // Locate component models.
-  const bool has_component_models = manifest_schema.component_models.has_value();
-  std::vector<std::string> component_model_names;
-  std::unordered_map<std::string, json> discovered_metadata_docs;
-
-  if (has_component_models) {
-    component_model_names = *manifest_schema.component_models;
-  } else {
-    // Fallback: discover component models under package_root/models where a metadata.json exists.
-    const auto models_dir = package_root / "models";
-    if (!std::filesystem::exists(models_dir) || !std::filesystem::is_directory(models_dir)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "manifest.json missing \"component_models\" and no discoverable models directory at ",
-                             models_dir.string());
-    }
-
-    for (const auto& entry : std::filesystem::directory_iterator(models_dir)) {
-      if (!entry.is_directory()) {
-        continue;
-      }
-
-      const auto component_model_name = entry.path().filename().string();
-      const auto metadata_path = entry.path() / kComponentModelMetadataFileName;
-      if (!std::filesystem::exists(metadata_path)) {
-        continue;  // only folders with metadata.json count as component models
-      }
-
-      std::ifstream mf(metadata_path, std::ios::binary);
-      if (!mf) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Failed to open metadata.json at ", metadata_path.string());
-      }
-
-      json metadata_doc;
-      ORT_TRY {
-        metadata_doc = json::parse(mf);
-      }
-      ORT_CATCH(const std::exception& ex) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "metadata.json at ", metadata_path.string(),
-                               " is not valid JSON: ", ex.what());
-      }
-
-      ORT_TRY {
-        (void)metadata_doc.get<MetadataSchema>();
-      }
-      ORT_CATCH(const std::exception& ex) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "metadata.json at ", metadata_path.string(),
-                               " has invalid schema: ", ex.what());
-      }
-
-      discovered_metadata_docs.emplace(component_model_name, std::move(metadata_doc));
-      component_model_names.push_back(component_model_name);
-    }
-
-    if (component_model_names.empty()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "manifest.json missing \"component_models\" and no component model folders with metadata.json were found under ",
-                             models_dir.string());
-    }
-  }
-
-  if (component_model_names.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json should contain exactly one component model name in \"component_models\" array "
-                           "or the models directory should contain exactly one component model.");
-  }
-
-  for (const auto& component_model_name : component_model_names) {
-    const auto component_model_root = package_root / "models" / component_model_name;
-
-    // If component model is listed in manifest.json but corresponding directory is missing, warn and skip.
-    if (has_component_models &&
-        (!std::filesystem::exists(component_model_root) || !std::filesystem::is_directory(component_model_root))) {
-      LOGS(logger_, WARNING) << "Component model '" << component_model_name
-                             << "' is listed in manifest.json but directory does not exist: "
-                             << component_model_root.string()
-                             << ". Skipping this component model.";
-      continue;
-    }
-
-    // Load metadata.json (if present) for this component model.
-    json metadata_doc;
-    const json* metadata_variants_obj = nullptr;
-    const auto metadata_path = component_model_root / kComponentModelMetadataFileName;
-
-    if (!has_component_models) {
-      auto it_meta = discovered_metadata_docs.find(component_model_name);
-      if (it_meta != discovered_metadata_docs.end()) {
-        metadata_doc = it_meta->second;
-        metadata_variants_obj = &metadata_doc[kModelVariantsKey];
-      }
-    } else if (std::filesystem::exists(metadata_path)) {
-      std::ifstream mf(metadata_path, std::ios::binary);
-      if (mf) {
-        ORT_TRY {
-          metadata_doc = json::parse(mf);
-          (void)metadata_doc.get<MetadataSchema>();  // typed schema validation
-          metadata_variants_obj = &metadata_doc[kModelVariantsKey];
-        }
-        ORT_CATCH(const std::exception&) {
-          // Ignore metadata parse/schema errors; fall back to metadata-absent handling below.
-        }
-      }
-    }
-
-    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
-                                                   component_model_root,
-                                                   metadata_variants_obj,
-                                                   variants));
-  }
-
-  if (variants.empty()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "No valid component models were found under ", (package_root / "models").string());
-  }
-
-  for (const auto& v : variants) {
-    LOGS(logger_, INFO) << "model variant: file='" << v.model_path.string()
-                        << "' ep='" << v.ep << "' device='" << v.device
-                        << "' arch='" << v.architecture << "'";
-  }
-
-  return Status::OK();
+  // Mode 2: package root (manifest.json)
+  return ParseVariantsFromPackageRoot(package_root, variants);
 }
 
 Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
@@ -471,12 +308,169 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
       ApplyVariantConstraints(*variant_schema.constraints, variant);
     }
 
+    variant.metadata[kComponentModelNameInMetadataKey] = component_model_name;
+    variant.metadata[kVariantNameKey] = variant_name;
     variants.push_back(std::move(variant));
   }
 
   return Status::OK();
 }
 
-}  // namespace onnxruntime
+Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
+    const std::filesystem::path& package_root,
+    /*out*/ std::vector<ModelVariantInfo>& variants) const {
+  variants.clear();
+
+  const auto manifest_path = package_root / kModelPackageManifestFileName;
+  if (!std::filesystem::exists(manifest_path)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "No manifest.json found at ", manifest_path.string());
+  }
+
+  std::ifstream f(manifest_path, std::ios::binary);
+  if (!f) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Failed to open manifest.json at ", manifest_path.string());
+  }
+
+  json doc;
+  ORT_TRY {
+    doc = json::parse(f);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "manifest.json is not valid JSON: ", ex.what());
+  }
+
+  ManifestSchema manifest_schema;
+  ORT_TRY {
+    manifest_schema = doc.get<ManifestSchema>();
+  }
+  ORT_CATCH(const std::exception& ex) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "manifest.json has invalid schema: ", ex.what());
+  }
+
+  if (manifest_schema.model_name.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "The \"model_name\" field in the manifest.json is missing or empty");
+  }
+
+  const bool has_component_models = manifest_schema.component_models.has_value();
+  std::vector<std::string> component_model_names;
+  std::unordered_map<std::string, json> discovered_metadata_docs;
+
+  if (has_component_models) {
+    component_model_names = *manifest_schema.component_models;
+  } else {
+    const auto models_dir = package_root / "models";
+    if (!std::filesystem::exists(models_dir) || !std::filesystem::is_directory(models_dir)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "manifest.json missing \"component_models\" and no discoverable models directory at ",
+                             models_dir.string());
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator(models_dir)) {
+      if (!entry.is_directory()) {
+        continue;
+      }
+
+      const auto component_model_name = entry.path().filename().string();
+      const auto metadata_path = entry.path() / kComponentModelMetadataFileName;
+      if (!std::filesystem::exists(metadata_path)) {
+        continue;
+      }
+
+      std::ifstream mf(metadata_path, std::ios::binary);
+      if (!mf) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to open metadata.json at ", metadata_path.string());
+      }
+
+      json metadata_doc;
+      ORT_TRY {
+        metadata_doc = json::parse(mf);
+      }
+      ORT_CATCH(const std::exception& ex) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "metadata.json at ", metadata_path.string(),
+                               " is not valid JSON: ", ex.what());
+      }
+
+      ORT_TRY {
+        (void)metadata_doc.get<MetadataSchema>();
+      }
+      ORT_CATCH(const std::exception& ex) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "metadata.json at ", metadata_path.string(),
+                               " has invalid schema: ", ex.what());
+      }
+
+      discovered_metadata_docs.emplace(component_model_name, std::move(metadata_doc));
+      component_model_names.push_back(component_model_name);
+    }
+
+    if (component_model_names.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "manifest.json missing \"component_models\" and no component model folders with metadata.json were found under ",
+                             models_dir.string());
+    }
+  }
+
+  for (const auto& component_model_name : component_model_names) {
+    const auto component_model_root = package_root / "models" / component_model_name;
+
+    if (has_component_models &&
+        (!std::filesystem::exists(component_model_root) || !std::filesystem::is_directory(component_model_root))) {
+      LOGS(logger_, WARNING) << "Component model '" << component_model_name
+                             << "' is listed in manifest.json but directory does not exist: "
+                             << component_model_root.string()
+                             << ". Skipping this component model.";
+      continue;
+    }
+
+    json metadata_doc;
+    const json* metadata_variants_obj = nullptr;
+    const auto metadata_path = component_model_root / kComponentModelMetadataFileName;
+
+    if (!has_component_models) {
+      auto it_meta = discovered_metadata_docs.find(component_model_name);
+      if (it_meta != discovered_metadata_docs.end()) {
+        metadata_doc = it_meta->second;
+        metadata_variants_obj = &metadata_doc[kModelVariantsKey];
+      }
+    } else if (std::filesystem::exists(metadata_path)) {
+      std::ifstream mf(metadata_path, std::ios::binary);
+      if (mf) {
+        ORT_TRY {
+          metadata_doc = json::parse(mf);
+          (void)metadata_doc.get<MetadataSchema>();
+          metadata_variants_obj = &metadata_doc[kModelVariantsKey];
+        }
+        ORT_CATCH(const std::exception&) {
+          // Ignore metadata parse/schema errors; fall back below.
+        }
+      }
+    }
+
+    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
+                                                   component_model_root,
+                                                   metadata_variants_obj,
+                                                   variants));
+  }
+
+  if (variants.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "No valid component models were found under ", (package_root / "models").string());
+  }
+
+  for (const auto& v : variants) {
+    LOGS(logger_, INFO) << "model variant: file='" << v.model_path.string()
+                        << "' ep='" << v.ep << "' device='" << v.device
+                        << "' arch='" << v.architecture << "'";
+  }
+
+  return Status::OK();
+}
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

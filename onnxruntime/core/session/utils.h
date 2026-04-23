@@ -25,8 +25,10 @@ namespace onnxruntime {
 class Environment;
 class EpLibrary;
 class EpFactoryInternal;
+class IExecutionProvider;
 struct IExecutionProviderFactory;
 struct SessionOptions;
+struct VariantSelectionEpInfo;
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -74,6 +76,32 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
 // Adss EP specific custom domains to the OrtSessionOptions configuration.
 Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
                                           OrtSessionOptions& ort_session_options);
+
+// Builds VariantSelectionEpInfo entries from already-created IExecutionProvider instances.
+// Same logic used by the standard CreateSession path for model package workflows; exposed so
+// the model package API can pre-resolve EP selection (see ModelPackageOptions::ResolveEpSelection).
+//
+/// Constraints (matching the standard path):
+//   - Only one EP is selected (CPU EP is skipped in favor of the first non-CPU EP if available).
+//   - All devices are expected to be supported by the same EP.
+Status GetVariantSelectionEpInfo(const OrtSessionOptions* session_options,
+                                 std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
+                                 std::vector<VariantSelectionEpInfo>& ep_infos);
+
+// Logs available environment EP devices and the ones selected for variant selection. Informational only.
+Status PrintAvailableAndSelectedEpInfos(const Environment& env,
+                                        std::vector<VariantSelectionEpInfo>& ep_infos);
+
+// Shared tail of the model-package session-creation flow.
+OrtStatus* CreateSessionForResolvedModelPackage(
+    _In_ const OrtSessionOptions* options,
+    const onnxruntime::Environment& env,
+    const std::filesystem::path& selected_model_path,
+    std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>>& provider_list,
+    const std::vector<const OrtEpDevice*>& execution_devices,
+    const std::vector<const OrtEpDevice*>& devices_selected,
+    bool from_policy,
+    std::unique_ptr<onnxruntime::InferenceSession>& sess);
 
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

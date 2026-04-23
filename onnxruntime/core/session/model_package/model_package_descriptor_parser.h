@@ -16,6 +16,7 @@ static constexpr const char* kModelPackageManifestFileName = "manifest.json";
 static constexpr const char* kModelNameKey = "model_name";
 static constexpr const char* kModelVersionKey = "model_version";
 static constexpr const char* kComponentModelsKey = "component_models";
+static constexpr const char* kComponentModelNameInMetadataKey = "component_model_name";
 static constexpr const char* kComponentModelMetadataFileName = "metadata.json";
 static constexpr const char* kModelVariantsKey = "model_variants";
 static constexpr const char* kVariantNameKey = "variant_name";
@@ -32,8 +33,15 @@ class ModelPackageDescriptorParser {
  public:
   explicit ModelPackageDescriptorParser(const logging::Logger& logger) : logger_(logger) {}
 
+  // Legacy mixed-mode API:
+  // - component root if metadata.json exists at root
+  // - package root otherwise
   Status ParseVariantsFromRoot(const std::filesystem::path& package_root,
                                /*out*/ std::vector<ModelVariantInfo>& components) const;
+
+  // Explicit package-root API (Mode 2).
+  Status ParseVariantsFromPackageRoot(const std::filesystem::path& package_root,
+                                      /*out*/ std::vector<ModelVariantInfo>& variants) const;
 
  private:
   Status ParseVariantsFromComponent(const std::string& component_model_name,
