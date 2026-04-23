@@ -1100,6 +1100,8 @@ Status UnfusedGqaAttention(
   p.num_heads = num_heads;
   p.kv_num_heads = kv_num_heads;
   p.head_size = head_size;
+  ORT_ENFORCE(head_size == parameters.v_head_size || parameters.v_head_size == 0,
+              "UnfusedGqaAttention requires head_size == v_head_size");
   p.v_head_size = head_size;  // GQA op has head_size == v_head_size
   p.q_sequence_length = sequence_length;
   // For the decode/prompt, data.total_seq_lens[b] <= seqlen_present_kv_cache.

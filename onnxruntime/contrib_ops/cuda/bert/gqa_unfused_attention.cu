@@ -25,7 +25,7 @@ namespace {
 
 constexpr size_t kAlign = 256;
 
-inline size_t AlignTo(size_t a, size_t b) { return ((a + b - 1) / b) * b; }
+inline SafeInt<size_t> AlignTo(SafeInt<size_t> a, size_t b) { return ((a + (b - 1)) / b) * b; }
 
 // Device helper: convert T to float. Specialised for __half and __nv_bfloat16
 // to keep conversions consistent with the rest of the codebase.

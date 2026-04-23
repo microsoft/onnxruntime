@@ -525,13 +525,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const size_t N_q = static_cast<size_t>(parameters.num_heads);
     const size_t S_q = static_cast<size_t>(parameters.sequence_length);
     const size_t H = static_cast<size_t>(parameters.head_size);
+    // GQA guarantees head_size == v_head_size; use H_v for the Y output buffer
+    // so the allocation stays correct if a distinct v_head_size is ever exposed.
+    const size_t H_v = (parameters.v_head_size > 0)
+        ? static_cast<size_t>(parameters.v_head_size)
+        : H;
     const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
 
     auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
       return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
     };
     const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
-    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H_v * sizeof(T));
     const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
         onnxruntime::contrib::cuda::GetGqaUnfusedAttentionWorkspaceSize(
             static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
