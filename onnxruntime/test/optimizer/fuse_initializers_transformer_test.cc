@@ -7,9 +7,12 @@
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/common/path_utils.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/fuse_initializers_transformer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -449,6 +452,82 @@ TEST(TransformerTest, FuseFp16InitializersWithFp32Node_with_graph_optimizations_
   test_graph_structure_after_session_init_with_graph_optimization_loop(session.GetGraph());
   ASSERT_STATUS_OK(session.Run(inputs, output_names, &outputs));
 }  // FuseFp16InitializersWithFp32Node_with_graph_optimizations_loop_level_set_to_2
+
+TEST(TransformerTest, SimplifiedLayerNormWithFp16ConstantDoesNotRevisitLevel3AtDefaultLoopLevel) {
+  // Build a minimal SimplifiedLayerNorm pattern where the Pow exponent comes from a float16 Constant node.
+  // InsertCast will add a Cast between the Constant and Pow (to run Pow in fp32 on CPU). When Level 3 reruns
+  // after InsertCast (old behavior), SimplifiedLayerNormFusion would crash while fusing because the extra Cast
+  // input name is not present in the replacement node. With the default loop level (1), L2/L3 run only once,
+  // before InsertCast, so initialization must succeed.
+
+  constexpr int opset = 14;
+  const onnxruntime::logging::Logger& logger = logging::LoggingManager::DefaultLogger();
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, opset}};
+  Model model("SimplifiedLayerNormFp16Const", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  // Inputs and initializers
+  std::vector<MLFloat16> x_data(24, MLFloat16(0.5f));
+  auto* x = builder.MakeInput<MLFloat16>({1, 2, 3, 4}, x_data);
+  auto* add_initializer = builder.MakeInitializer<float>({}, {1e-5f});
+  auto* weight_initializer =
+      builder.MakeInitializer<MLFloat16>({4}, std::vector<MLFloat16>(4, MLFloat16(1.0f)));
+
+  // Intermediate values
+  auto* reduce_mean_out = builder.MakeIntermediate();
+  auto* sub_out = builder.MakeIntermediate();
+  auto* cast_out = builder.MakeIntermediate();
+  auto* pow_const = builder.MakeIntermediate<MLFloat16>({});
+  auto* pow_out = builder.MakeIntermediate();
+  auto* reduce_mean_out_2 = builder.MakeIntermediate();
+  auto* add_out = builder.MakeIntermediate();
+  auto* sqrt_out = builder.MakeIntermediate();
+  auto* div_out = builder.MakeIntermediate();
+  auto* cast_back_fp16 = builder.MakeIntermediate();
+  auto* mul_out = builder.MakeOutput();
+
+  // Build graph
+  builder.AddNode("ReduceMean", std::vector<NodeArg*>{x}, std::vector<NodeArg*>{reduce_mean_out})
+      .AddAttribute("axes", std::vector<int64_t>{-1});
+  builder.AddNode("Sub", std::vector<NodeArg*>{x, reduce_mean_out}, std::vector<NodeArg*>{sub_out});
+  builder.AddNode("Cast", std::vector<NodeArg*>{sub_out}, std::vector<NodeArg*>{cast_out})
+      .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  // float16 Constant (value 2.0) feeding Pow exponent
+  ONNX_NAMESPACE::TensorProto pow_two_tensor;
+  pow_two_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  pow_two_tensor.add_dims(1);
+  const MLFloat16 fp16_two(2.0f);
+  pow_two_tensor.set_raw_data(&fp16_two, sizeof(fp16_two));
+  builder.AddNode("Constant", std::vector<NodeArg*>{}, std::vector<NodeArg*>{pow_const}).AddAttribute("value", pow_two_tensor);
+
+  builder.AddNode("Pow", std::vector<NodeArg*>{cast_out, pow_const}, std::vector<NodeArg*>{pow_out});
+  builder.AddNode("ReduceMean", std::vector<NodeArg*>{pow_out}, std::vector<NodeArg*>{reduce_mean_out_2})
+      .AddAttribute("axes", std::vector<int64_t>{-1});
+  builder.AddNode("Add", std::vector<NodeArg*>{reduce_mean_out_2, add_initializer}, std::vector<NodeArg*>{add_out});
+  builder.AddNode("Sqrt", std::vector<NodeArg*>{add_out}, std::vector<NodeArg*>{sqrt_out});
+  builder.AddNode("Div", std::vector<NodeArg*>{cast_out, sqrt_out}, std::vector<NodeArg*>{div_out});
+  builder.AddNode("Cast", std::vector<NodeArg*>{div_out}, std::vector<NodeArg*>{cast_back_fp16})
+      .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+  builder.AddNode("Mul", std::vector<NodeArg*>{cast_back_fp16, weight_initializer}, std::vector<NodeArg*>{mul_out});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Save model to a temp directory.
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("simplified_layer_norm_fp16_const")};
+  PathString model_path = ConcatPathComponent(tmp_dir.Path(), ORT_TSTR("model.onnx"));
+  ASSERT_STATUS_OK(Model::Save(model, model_path));
+
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::MaxLevel;  // enables Level2/3 and InsertCast/Level4 path
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_path));
+  // Should not crash during Initialize with default graph_optimizations_loop_level (=1).
+  ASSERT_STATUS_OK(session.Initialize());
+}
 
 TEST(TransformerTest, FuseFp16InitializersWithGraphOutputs) {
   if (MlasFp16AccelerationSupported()) {
