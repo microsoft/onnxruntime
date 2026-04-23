@@ -44,7 +44,7 @@ class Attention final : public CudaKernel {
   //   - GQA (q_num_heads != kv_num_heads) without K/V head replication.
   //   - fp16/bf16 with large head_size (FP32 QK accumulation, fixes #28195).
   //   - past_key+past_value, attn_mask (bool/float), nonpad_kv_seqlen.
-  // Does not support: output_qk, softcap beyond the new kernel's range
+  // Does not support: output_qk
   // (output_qk modes other than kNone are rejected upstream).
   Status RunGqaUnfusedAttention(
       OpKernelContext* context,

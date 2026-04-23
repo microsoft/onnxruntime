@@ -1343,5 +1343,98 @@ class TestONNXAttentionGQAFloatMask(unittest.TestCase):
         numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
+# #################################################################################################
+#  Large Head Size Unfused GQA Tests (head_size=512, fixes #28195)
+#
+#  Flash Attention and Memory-Efficient Attention cap at head_size=256.  For head_size=512 the
+#  op falls through to RunGqaUnfusedAttention which writes Q*K^T to an FP32 scratch buffer,
+#  eliminating fp16/bf16 overflow that caused NaNs (e.g. Gemma 4 global-attention layers).
+#
+#  These tests deliberately disable both Flash and MEA to make the unfused fallback explicit
+#  and to guard against future changes that might inadvertently route large-head configs
+#  away from the FP32-scratch path.
+# #################################################################################################
+
+
+def gqa_large_head_unfused_test_cases():
+    """Test cases for GQA with head_size=512 (unfused FP32-QK path, fixes #28195)."""
+    # prompt phase
+    for b, sq in [(1, 16), (2, 64)]:
+        for softcap in [0.0, 50.0]:
+            config = AttentionConfig(
+                batch_size=b,
+                q_sequence_length=sq,
+                kv_sequence_length=sq,
+                past_kv_sequence_length=0,
+                q_num_heads=8,
+                kv_num_heads=4,
+                head_size=512,
+                is_causal=1,
+                softcap=softcap,
+            )
+            yield f"prompt_b{b}_sq{sq}_sc{softcap}", config
+
+    # decode phase (past KV cache)
+    for b, past in [(1, 32), (2, 128)]:
+        config = AttentionConfig(
+            batch_size=b,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=past,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            is_causal=1,
+            softcap=0.0,
+        )
+        yield f"decode_b{b}_past{past}", config
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping large head unfused tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"})
+class TestONNXAttentionGQALargeHeadUnfused(unittest.TestCase):
+    """
+    Regression tests for GQA with head_size=512 via the unfused FP32-QK path (issue #28195).
+
+    Flash Attention and MEA both cap at head_size=256.  With both disabled the op routes
+    to RunGqaUnfusedAttention, which writes Q*K^T to an FP32 scratch buffer to avoid
+    fp16/bf16 overflow that produced NaNs for Gemma 4 global-attention layers.
+
+    Validates: no NaNs, numerical parity vs. PyTorch SDPA reference, for fp16 and bf16.
+    """
+
+    @parameterized.expand(gqa_large_head_unfused_test_cases())
+    def test_gqa_large_head_unfused_fp16(self, name, config):
+        func = parity_check_gqa_past if "decode" in name else parity_check_gqa_prompt
+        kwargs = dict(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+        func(**kwargs)
+
+    @parameterized.expand(gqa_large_head_unfused_test_cases())
+    def test_gqa_large_head_unfused_bf16(self, name, config):
+        if not torch.cuda.is_bf16_supported():
+            self.skipTest("BFloat16 not supported on this device")
+        func = parity_check_gqa_past if "decode" in name else parity_check_gqa_prompt
+        kwargs = dict(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.bfloat16,
+            ort_type=TensorProto.BFLOAT16,
+            causal=True,
+            rtol=rtol["bf16"],
+            atol=atol["bf16"],
+        )
+        func(**kwargs)
+
+
 if __name__ == "__main__":
     unittest.main()

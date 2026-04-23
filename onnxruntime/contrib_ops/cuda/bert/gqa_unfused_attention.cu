@@ -27,6 +27,17 @@ constexpr size_t kAlign = 256;
 
 inline size_t AlignTo(size_t a, size_t b) { return ((a + b - 1) / b) * b; }
 
+// Device helper: convert T to float. Specialised for __half and __nv_bfloat16
+// to keep conversions consistent with the rest of the codebase.
+template <typename T>
+__device__ __forceinline__ float ToFloat(T v);
+template <>
+__device__ __forceinline__ float ToFloat<float>(float v) { return v; }
+template <>
+__device__ __forceinline__ float ToFloat<__half>(__half v) { return __half2float(v); }
+template <>
+__device__ __forceinline__ float ToFloat<__nv_bfloat16>(__nv_bfloat16 v) { return __bfloat162float(v); }
+
 inline size_t QkElementCount(int batch_size, int num_heads, int q_seq, int total_kv) {
   return SafeInt<size_t>(batch_size) * num_heads * q_seq * total_kv;
 }
@@ -119,7 +130,7 @@ __global__ void GqaUnfusedSoftmaxKernel(
       x = softcap * tanhf(x / softcap);
     }
     if (has_bias) {
-      x += static_cast<float>(attn_bias[bias_row_offset + i]);
+      x += ToFloat(attn_bias[bias_row_offset + i]);
     }
     if (x > thread_max) thread_max = x;
   }
@@ -144,7 +155,7 @@ __global__ void GqaUnfusedSoftmaxKernel(
       x = softcap * tanhf(x / softcap);
     }
     if (has_bias) {
-      x += static_cast<float>(attn_bias[bias_row_offset + i]);
+      x += ToFloat(attn_bias[bias_row_offset + i]);
     }
     thread_sum += expf(x - s_max);
   }
@@ -161,7 +172,7 @@ __global__ void GqaUnfusedSoftmaxKernel(
         x = softcap * tanhf(x / softcap);
       }
       if (has_bias) {
-        x += static_cast<float>(attn_bias[bias_row_offset + i]);
+        x += ToFloat(attn_bias[bias_row_offset + i]);
       }
       y = expf(x - s_max) * s_inv_sum;
     }
@@ -372,7 +383,7 @@ common::Status LaunchGqaUnfusedAttention(
 
   const size_t elems = QkElementCount(params.batch_size, params.num_heads,
                                       params.q_sequence_length, params.total_kv_length);
-  const size_t qk_bytes = AlignTo(elems * sizeof(float), kAlign);
+  const size_t qk_bytes = AlignTo(SafeInt<size_t>(elems) * sizeof(float), kAlign);
 
   auto* qk_fp32 = reinterpret_cast<float*>(workspace);
   auto* softmax_T = reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(workspace) + qk_bytes);

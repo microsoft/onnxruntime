@@ -527,18 +527,22 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const size_t H = static_cast<size_t>(parameters.head_size);
     const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
 
-    auto align = [](size_t v) { return (v + 255) / 256 * 256; };
-    const size_t q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
-    const size_t y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
-    const size_t ws_bytes = onnxruntime::contrib::cuda::GetGqaUnfusedAttentionWorkspaceSize(
-        static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv));
+    auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
+      return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
+    };
+    const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
+        onnxruntime::contrib::cuda::GetGqaUnfusedAttentionWorkspaceSize(
+            static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
+    const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
 
-    unfused_scratch = GetScratchBuffer<void>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes,
+    unfused_scratch = GetScratchBuffer<void>(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
                                              GetComputeStream(context));
     auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
     data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
-    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + q_bnsh_bytes);
-    data.unfused_workspace = reinterpret_cast<void*>(base + q_bnsh_bytes + y_bnsh_bytes);
+    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
+    data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
   }
 
   if (kernel_options_->AllowDebugInfo()) {
