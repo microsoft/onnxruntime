@@ -474,3 +474,4 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+}

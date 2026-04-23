@@ -8627,7 +8627,7 @@ struct OrtModelPackageApi {
    */
   ORT_API2_STATUS(CreateSession,
                   _In_ const OrtEnv* env,
-                  _In_ const OrtModelPackageContext* context,
+                  _In_ OrtModelPackageContext* context,
                   _In_ const char* component_name,
                   _In_opt_ const char* file_identifier,
                   _In_opt_ const OrtSessionOptions* session_options,

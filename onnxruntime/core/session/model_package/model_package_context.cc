@@ -390,6 +390,69 @@ void ModelPackageContext::BuildComponentModelCache() {
   }
 }
 
-}  // namespace onnxruntime
+Status ModelPackageContext::GetSelectedVariant(const std::string& component_name,
+                                               const ModelVariantInfo*& out_variant) const {
+  out_variant = nullptr;
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+  const auto it = component_to_variant_indices_.find(component_name);
+  if (it == component_to_variant_indices_.end() || it->second.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
+  }
+
+  if (selected_variant_path_.has_value()) {
+    for (size_t idx : it->second) {
+      if (idx < model_variant_infos_.size() &&
+          model_variant_infos_[idx].model_path == *selected_variant_path_) {
+        out_variant = &model_variant_infos_[idx];
+        return Status::OK();
+      }
+    }
+  }
+
+  out_variant = &model_variant_infos_[it->second.front()];
+  return Status::OK();
+}
+
+Status ModelPackageContext::GetSelectedVariantFiles(const std::string& component_name,
+                                                    gsl::span<const std::string>& out_file_identifiers) const {
+  out_file_identifiers = gsl::span<const std::string>{};
+
+  const ModelVariantInfo* selected_variant = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariant(component_name, selected_variant));
+  ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_name);
+
+  selected_variant_file_identifiers_cache_.clear();
+  selected_variant_file_identifiers_cache_.push_back(selected_variant->model_path.filename().string());
+
+  out_file_identifiers = gsl::span<const std::string>(
+      selected_variant_file_identifiers_cache_.data(),
+      selected_variant_file_identifiers_cache_.size());
+  return Status::OK();
+}
+
+Status ModelPackageContext::ResolveSelectedVariantFile(const std::string& component_name,
+                                                       const char* file_identifier,
+                                                       std::filesystem::path& out_path) const {
+  out_path.clear();
+
+  const ModelVariantInfo* selected_variant = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariant(component_name, selected_variant));
+  ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_name);
+
+  const std::string expected_id = selected_variant->model_path.filename().string();
+
+  if (file_identifier == nullptr || std::string_view(file_identifier).empty()) {
+    out_path = selected_variant->model_path;
+    return Status::OK();
+  }
+
+  if (std::string_view(file_identifier) != expected_id) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Unknown file_identifier '", file_identifier,
+                           "' for component '", component_name,
+                           "'. Expected: '", expected_id, "'.");
+  }
+
+  out_path = selected_variant->model_path;
+  return Status::OK();
+}

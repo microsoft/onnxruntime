@@ -136,7 +136,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetComponentModelNam
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentModelName(component_index, component_name));
 
-  if (component_name != nullptr) {
+  if (component_name == nullptr) {
     return OrtApis::CreateStatus(ORT_FAIL, "Component model name lookup returned null.");
   }
 
@@ -146,6 +146,65 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetComponentModelNam
   ORT_UNUSED_PARAMETER(ctx);
   ORT_UNUSED_PARAMETER(component_index);
   ORT_UNUSED_PARAMETER(out_name);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileCount,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _Out_ size_t* out_count) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || out_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, and out_count must be non-null");
+  }
+
+  gsl::span<const std::string> file_ids;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetSelectedVariantFiles(component_name, file_ids));
+
+  *out_count = file_ids.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(out_count);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileIdentifier,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ size_t index,
+                    _Outptr_ const char** out_file_identifier) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || out_file_identifier == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, and out_file_identifier must be non-null");
+  }
+
+  gsl::span<const std::string> file_ids;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetSelectedVariantFiles(component_name, file_ids));
+
+  if (index >= file_ids.size()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "index out of range for selected variant files");
+  }
+
+  *out_file_identifier = file_ids[index].c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(index);
+  ORT_UNUSED_PARAMETER(out_file_identifier);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END

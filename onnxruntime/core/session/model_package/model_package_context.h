@@ -85,6 +85,9 @@ class ModelPackageContext {
   std::vector<std::string> component_model_names_{};
   std::unordered_map<std::string, std::vector<size_t>> component_to_variant_indices_{};
 
+  // Cached file identifiers for the currently selected variant (for query APIs).
+  mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
+
   // Resolved EP state owned by context
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
   std::vector<VariantSelectionEpInfo> ep_infos_{};
