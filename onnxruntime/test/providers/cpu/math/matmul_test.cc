@@ -182,6 +182,38 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        })});
 
   test_cases.push_back(
+      {"test 3D tensors with batchA = 3, M = 2, N = 3",
+       {3, 2, 8},
+       {1, 8, 3},
+       {3, 2, 3},
+       real_expected_vals({
+           // clang-format off
+              420, 448, 476,
+              1092, 1184, 1276,
+              1764, 1920, 2076,
+              2436, 2656, 2876,
+              3108, 3392, 3676,
+              3780, 4128, 4476,
+           // clang-format on
+       })});
+
+  test_cases.push_back(
+      {"test 3D tensors with batchA = 3, M = 2, N = 4",
+       {3, 2, 8},
+       {1, 8, 4},
+       {3, 2, 4},
+       real_expected_vals({
+           // clang-format off
+              560, 588, 616, 644,
+              1456, 1548, 1640, 1732,
+              2352, 2508, 2664, 2820,
+              3248, 3468, 3688, 3908,
+              4144, 4428, 4712, 4996,
+              5040, 5388, 5736, 6084,
+           // clang-format on
+       })});
+
+  test_cases.push_back(
       {"test 4D tensors with M = 1",
        {2, 3, 1, 8},
        {1, 1, 8, 3},
