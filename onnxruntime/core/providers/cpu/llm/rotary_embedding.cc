@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/llm/rotary_embedding.h"
 #include "core/providers/cpu/llm/rotary_embedding_helper.h"
+#include "core/providers/cpu/llm/rotary_embedding_int32_utils.h"
 
 #include <algorithm>
 #include <limits>
@@ -12,50 +13,10 @@
 
 using onnxruntime::concurrency::ThreadPool;
 using namespace onnxruntime::rotary_embedding_helper;
+using onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff;
+using onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff;
 
 namespace onnxruntime {
-
-namespace {
-
-inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdiff_t& output) {
-  if (lhs < 0 || rhs < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " must be non-negative");
-  }
-  if (lhs != 0 && rhs > std::numeric_limits<std::ptrdiff_t>::max() / lhs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
-  }
-
-  output = static_cast<std::ptrdiff_t>(lhs) * rhs;
-  return Status::OK();
-}
-
-inline Status CheckedAddToPtrdiff(std::ptrdiff_t lhs, std::ptrdiff_t rhs, const char* name, std::ptrdiff_t& output) {
-  if (lhs < 0 || rhs < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " must be non-negative");
-  }
-  if (lhs > std::numeric_limits<std::ptrdiff_t>::max() - rhs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
-  }
-
-  output = lhs + rhs;
-  return Status::OK();
-}
-
-inline Status CheckedMulToPtrdiff(int lhs, int rhs, int third, const char* name, std::ptrdiff_t& output) {
-  std::ptrdiff_t intermediate = 0;
-  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(lhs, rhs, name, intermediate));
-  if (third < 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " must be non-negative");
-  }
-  if (intermediate != 0 && third > std::numeric_limits<std::ptrdiff_t>::max() / intermediate) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RotaryEmbedding: ", name, " overflows ptrdiff_t");
-  }
-
-  output = intermediate * third;
-  return Status::OK();
-}
-
-}  // namespace
 
 #define REGISTER_ONNX_KERNEL_TYPED(T)                                   \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                       \
@@ -125,16 +86,14 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   std::ptrdiff_t max_seq_offset = 0;
   std::ptrdiff_t max_head_offset = 0;
   std::ptrdiff_t max_block_offset = 0;
-  std::ptrdiff_t max_cache_offset = 0;
+  [[maybe_unused]] std::ptrdiff_t max_cache_offset = 0;
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(batch_size - 1, 0), batch_stride, "max_batch_offset", max_batch_offset));
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(sequence_length - 1, 0), seq_stride, "max_seq_offset", max_seq_offset));
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(n_heads - 1, 0), head_stride, "max_head_offset", max_head_offset));
   ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_batch_offset, max_seq_offset, "max_block_offset", max_block_offset));
   ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_block_offset, max_head_offset, "max_block_offset", max_block_offset));
-  // Validate that the largest cache lookup offset fits in ptrdiff_t.
   ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(max_sequence_length - 1, 0), half_rotary_emb_dim,
                                           "max_cache_offset", max_cache_offset));
-  static_cast<void>(max_cache_offset);
 
   // The cost is calculated as:
   //   - head_size * sizeof(T) for reading input
@@ -162,8 +121,6 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       if (position_ids_format != 0) {
         b_s_index = static_cast<std::ptrdiff_t>(position_ids[b_s_index]);
       }
-      // This multiplication is safe because position_ids were range-checked against max_sequence_length
-      // and max_cache_offset validation above proves (max_sequence_length - 1) * half_rotary_emb_dim fits.
       const std::ptrdiff_t cache_offset = b_s_index * half_rotary_emb_dim;
       cos_data = cos_cache + cache_offset;
       sin_data = sin_cache + cache_offset;
