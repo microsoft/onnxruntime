@@ -63,10 +63,11 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
   }
 
   // Validate position_ids values are within cos/sin cache bounds.
-  const positionIdsData = positionIds.getBigInt64Array();
-  if (positionIdsData.length === 1) {
+  const positionIdsElementCount = ShapeUtil.size(positionIds.dims);
+  const positionIdsBigInt = positionIds.getBigInt64Array();
+  if (positionIdsElementCount === 1) {
     // Format 0: single base offset. Effective positions are [base_pos, base_pos + sequence_length - 1].
-    const basePos = positionIdsData[0];
+    const basePos = positionIdsBigInt[0];
     const maxValidBase = BigInt(maxSequenceLength) - BigInt(sequenceLength);
     if (basePos < 0n || basePos > maxValidBase) {
       throw new Error(
@@ -77,8 +78,8 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
   } else {
     // Format 1: 2D array (batch_size, sequence_length). Each value must be in [0, max_sequence_length).
     const maxSeqBigInt = BigInt(maxSequenceLength);
-    for (let i = 0; i < positionIdsData.length; i++) {
-      const pos = positionIdsData[i];
+    for (let i = 0; i < positionIdsElementCount; i++) {
+      const pos = positionIdsBigInt[i];
       if (pos < 0n || pos >= maxSeqBigInt) {
         throw new Error(`position_ids value ${pos} at index ${i} is out of range [0, ${maxSequenceLength})`);
       }
