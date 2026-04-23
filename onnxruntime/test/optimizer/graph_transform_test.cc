@@ -651,7 +651,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithSizeThreshold) {
   //   tile_repeats: int64[1]    = {200}  →  8 bytes (exclusively consumed)
   //   Tile output:  float32[200]         → 800 bytes
   //   Net increase = 800 - 4 - 8 = 788 bytes.
-  auto build_tile_graph = [&](Graph& graph) {
+  auto build_tile_graph = [](Graph& graph) {
     // Add initializers
     TensorProto tile_input_tp;
     tile_input_tp.set_name("tile_input");
