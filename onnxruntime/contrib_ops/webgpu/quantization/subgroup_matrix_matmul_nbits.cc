@@ -73,7 +73,9 @@ bool IsSubgroupMatrixConfigSupported(onnxruntime::webgpu::ComputeContext& contex
   int32_t index = 0;
   for (const auto& supported_config : supported_subgroup_matrix_configs) {
     // F16 configs require FP16 output; skip them when output is F32.
-    if (supported_config.componentType == wgpu::SubgroupMatrixComponentType::F16 && !is_fp16) {
+    // F32 configs require FP32 output; skip them when output is FP16.
+    if ((supported_config.componentType == wgpu::SubgroupMatrixComponentType::F16 && !is_fp16) ||
+        (supported_config.componentType == wgpu::SubgroupMatrixComponentType::F32 && is_fp16)) {
       index++;
       continue;
     }

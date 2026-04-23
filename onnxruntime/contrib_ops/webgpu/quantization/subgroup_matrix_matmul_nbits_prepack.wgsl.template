@@ -7,8 +7,9 @@
 //
 // The prepack buffer is padded to the workgroup tile size (which may exceed M).
 // Fully OOB blocks (row_base >= M) are skipped entirely, and partial blocks
-// only copy in-bounds rows. The padding region is left uninitialized since the
-// matmul shader bounds-checks (r < M) before storing any output.
+// only copy in-bounds rows. Padding corresponding to rows >= M may therefore
+// remain uninitialized, so downstream shaders must not rely on it unless they
+// handle edge tiles explicitly.
 
 #param sg_mat_k
 #param sg_mat_m
