@@ -978,6 +978,15 @@ def update_opset_version(model: ModelProto, weight_type: QuantType) -> ModelProt
         )
         target_opset_version = 19
 
+    elif opset_version < 21 and weight_quant_type in (onnx.TensorProto.UINT16, onnx.TensorProto.INT16):
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support 16-bit integer "
+            "quantization with native ONNX QuantizeLinear/DequantizeLinear. "
+            "Please update the model to opset >= 21. Automatically update the model to opset 21. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 21
+
     elif opset_version == 10:
         logging.warning(
             f"The original model opset version is {opset_version}, which does not support node fusions. "
