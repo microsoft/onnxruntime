@@ -17,8 +17,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>())
-        .InputMemoryType(OrtMemTypeCPUInput, 1),  // position_ids on CPU for bounds validation
+        .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()),
     RotaryEmbedding);
 
 Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -157,32 +156,11 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
   const auto hidden_size = batch_stride / sequence_length;
   const auto half_rotary_embedding_dim = onnxruntime::narrow<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = rotary_embedding_dim_ == 0 ? half_rotary_embedding_dim * 2 : hidden_size / num_heads_;
-  const auto max_sequence_length = static_cast<int64_t>(cos_cache->Shape()[0]);
 
-  // Validate position_ids values are within cos/sin cache bounds (position_ids kept on CPU via InputMemoryType).
-  const auto* pos_ids_data = position_ids->Data<int64_t>();
-  const auto pos_ids_size = position_ids->Shape().Size();
-  if (pos_ids_size == 1) {
-    // Format 0: single base offset. Effective positions are [base_pos, base_pos + sequence_length - 1].
-    int64_t base_pos = pos_ids_data[0];
-    int64_t max_valid_base = max_sequence_length - static_cast<int64_t>(sequence_length);
-    if (base_pos < 0 || base_pos > max_valid_base) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "position_ids base value ", base_pos,
-                             " with sequence_length ", sequence_length,
-                             " exceeds cos/sin cache range [0, ", max_sequence_length, ")");
-    }
-  } else {
-    // Format 1: 2D array (batch_size, sequence_length). Each value must be in [0, max_sequence_length).
-    for (int64_t i = 0; i < pos_ids_size; ++i) {
-      int64_t pos = pos_ids_data[i];
-      if (pos < 0 || pos >= max_sequence_length) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "position_ids value ", pos, " at index ", i,
-                               " is out of range [0, ", max_sequence_length, ")");
-      }
-    }
-  }
+  // position_ids bounds validation is handled by shader-side defense-in-depth checks
+  // (OOB position_ids → pass-through input unchanged). Host-side value scanning is not possible
+  // because WebGPU program inputs must be GPU buffers (InputMemoryType(OrtMemTypeCPUInput) is
+  // incompatible with AddInputs).
 
   // Rotary embeddings will be calculated in a pair-wise fashion. In accordance, use the shape
   // [batch size, sequence length, num of heads, num of pairs to rotate + num of dims to copy]

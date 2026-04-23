@@ -44,6 +44,7 @@ class TensorViewImpl implements TensorView {
     }
     // BigInt64Array requires the byte offset to be a multiple of 8. WASM allocators may return
     // offsets that are not 8-byte aligned, so fall back to copying bytes into an aligned buffer.
+    // Note: the returned array is a read-only copy when unaligned (mutations won't propagate to WASM heap).
     if (this.data % 8 === 0) {
       return new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
     }

@@ -63,6 +63,10 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
   }
 
   // Validate position_ids values are within cos/sin cache bounds.
+  if (sequenceLength > maxSequenceLength) {
+    throw new Error('Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported');
+  }
+
   const positionIdsElementCount = ShapeUtil.size(positionIds.dims);
   const positionIdsBigInt = positionIds.getBigInt64Array();
   if (positionIdsElementCount === 1) {
@@ -92,10 +96,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
         cosCache.dims[1]
       }`,
     );
-  }
-
-  if (sequenceLength > maxSequenceLength) {
-    throw new Error('Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported');
   }
 };
 
