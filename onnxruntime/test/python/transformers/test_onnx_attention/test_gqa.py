@@ -1389,6 +1389,34 @@ def gqa_large_head_unfused_test_cases():
         )
         yield f"decode_b{b}_past{past}", config
 
+    # prompt with boolean attn_mask (exercises ConvertAttnMaskToBias + unfused bias path)
+    config = AttentionConfig(
+        batch_size=2,
+        q_sequence_length=32,
+        kv_sequence_length=32,
+        past_kv_sequence_length=0,
+        q_num_heads=8,
+        kv_num_heads=4,
+        head_size=512,
+        is_causal=1,
+        has_attn_mask=True,
+    )
+    yield "prompt_attn_mask", config
+
+    # prompt with nonpad_kv_seqlen (opset 24, exercises seqlens_k path in unfused kernel)
+    config = AttentionConfig(
+        batch_size=2,
+        q_sequence_length=32,
+        kv_sequence_length=32,
+        past_kv_sequence_length=0,
+        q_num_heads=8,
+        kv_num_heads=4,
+        head_size=512,
+        is_causal=1,
+        has_nonpad_kv_seqlen=True,
+    )
+    yield "prompt_nonpad_seqlen", config
+
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping large head unfused tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"})

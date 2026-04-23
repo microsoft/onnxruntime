@@ -1127,13 +1127,14 @@ Status UnfusedGqaAttention(
       data.unfused_workspace)));
 
   // Step 4: transpose output BNSH → BSNH into data.output.
+  // Use p.v_head_size (== head_size per ORT_ENFORCE) for semantic correctness.
   if constexpr (std::is_same<T, __half>::value) {
-    ORT_RETURN_IF_ERROR((Transpose_BNSH_to_BSNH(batch_size, sequence_length, num_heads, head_size,
+    ORT_RETURN_IF_ERROR((Transpose_BNSH_to_BSNH(batch_size, sequence_length, num_heads, p.v_head_size,
                                                 reinterpret_cast<const half*>(data.unfused_y_bnsh),
                                                 reinterpret_cast<half*>(data.output),
                                                 stream, max_threads_per_block)));
   } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
-    ORT_RETURN_IF_ERROR((Transpose_BNSH_to_BSNH(batch_size, sequence_length, num_heads, head_size,
+    ORT_RETURN_IF_ERROR((Transpose_BNSH_to_BSNH(batch_size, sequence_length, num_heads, p.v_head_size,
                                                 reinterpret_cast<const onnxruntime::BFloat16*>(data.unfused_y_bnsh),
                                                 reinterpret_cast<onnxruntime::BFloat16*>(data.output),
                                                 stream, max_threads_per_block)));

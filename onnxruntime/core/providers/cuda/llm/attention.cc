@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention.h"
 #include "core/providers/cpu/llm/attention_helper.h"
@@ -1080,7 +1081,7 @@ Status Attention<T>::RunGqaUnfusedAttention(
   const NativeCudaT* q_bnsh = nullptr;
   IAllocatorUniquePtr<void> q_bnsh_buffer;
   if (is_bsnh) {
-    const size_t q_bytes = static_cast<size_t>(B) * S_q * N_q * H * sizeof(T);
+    const size_t q_bytes = SafeInt<size_t>(B) * S_q * N_q * H * sizeof(T);
     q_bnsh_buffer = GetScratchBuffer<void>(q_bytes, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, S_q, N_q, H,
                                                Q->Data<T>(), q_bnsh_buffer.get(),
@@ -1116,8 +1117,8 @@ Status Attention<T>::RunGqaUnfusedAttention(
     const T* k_new_bsnh = K->Data<T>();
     const T* v_new_bsnh = V->Data<T>();
     if (!is_bsnh) {
-      const size_t kn_bytes = static_cast<size_t>(B) * parameters.kv_sequence_length * N_kv * H * sizeof(T);
-      const size_t vn_bytes = static_cast<size_t>(B) * parameters.kv_sequence_length * N_kv * H_v * sizeof(T);
+      const size_t kn_bytes = SafeInt<size_t>(B) * parameters.kv_sequence_length * N_kv * H * sizeof(T);
+      const size_t vn_bytes = SafeInt<size_t>(B) * parameters.kv_sequence_length * N_kv * H_v * sizeof(T);
       k_bnsh_buffer = GetScratchBuffer<void>(kn_bytes, GetComputeStream(context));
       v_bnsh_buffer = GetScratchBuffer<void>(vn_bytes, GetComputeStream(context));
       ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(B, parameters.kv_sequence_length, N_kv, H,
@@ -1159,8 +1160,8 @@ Status Attention<T>::RunGqaUnfusedAttention(
       v_cache = reinterpret_cast<const NativeCudaT*>(present_value->Data<T>());
       present_already_populated = true;
     } else {
-      const size_t k_bytes = static_cast<size_t>(B) * total_kv * N_kv * H * sizeof(T);
-      const size_t v_bytes = static_cast<size_t>(B) * total_kv * N_kv * H_v * sizeof(T);
+      const size_t k_bytes = SafeInt<size_t>(B) * total_kv * N_kv * H * sizeof(T);
+      const size_t v_bytes = SafeInt<size_t>(B) * total_kv * N_kv * H_v * sizeof(T);
       k_bnsh_buffer = GetScratchBuffer<void>(k_bytes, GetComputeStream(context));
       v_bnsh_buffer = GetScratchBuffer<void>(v_bytes, GetComputeStream(context));
       ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, total_kv, N_kv, H,
@@ -1204,7 +1205,7 @@ Status Attention<T>::RunGqaUnfusedAttention(
   NativeCudaT* out_bnsh = reinterpret_cast<NativeCudaT*>(Y->MutableData<T>());
   IAllocatorUniquePtr<void> out_bnsh_buffer;
   if (is_bsnh) {
-    const size_t out_bytes = static_cast<size_t>(B) * S_q * N_q * H_v * sizeof(T);
+    const size_t out_bytes = SafeInt<size_t>(B) * S_q * N_q * H_v * sizeof(T);
     out_bnsh_buffer = GetScratchBuffer<void>(out_bytes, GetComputeStream(context));
     out_bnsh = reinterpret_cast<NativeCudaT*>(out_bnsh_buffer.get());
   }
@@ -1431,6 +1432,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const bool needs_fp32_qk_scratch = is_half_or_bf16 && parameters.head_size > 128;
   if ((is_gqa || needs_fp32_qk_scratch) &&
       qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone) {
+    LOGS_DEFAULT(VERBOSE) << "Attention: using GQA unfused fallback (is_gqa=" << is_gqa
+                          << ", needs_fp32_qk_scratch=" << needs_fp32_qk_scratch
+                          << ", head_size=" << parameters.head_size
+                          << ", softcap=" << parameters.softcap << ")";
     return RunGqaUnfusedAttention(context, Q, K, V, attn_mask, past_key, past_value,
                                   nonpad_kv_seqlen, Y, present_key, present_value, parameters);
   }
@@ -1445,6 +1450,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Fallback: unfused MHA attention (legacy runner).
   // Softcap is not implemented in the legacy unfused path — it requires Flash or MEA
   // (or the new GQA unfused path above, which supports softcap for fp16/bf16/fp32).
+  // NOTE: keep this guard even if future PRs add softcap to more fused paths — this
+  // legacy unfused runner does NOT apply softcap and would silently produce wrong results.
   if (parameters.softcap > 0.0f) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "softcap requires flash attention or memory efficient attention, "
