@@ -80,9 +80,7 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
     for (let i = 0; i < positionIdsData.length; i++) {
       const pos = positionIdsData[i];
       if (pos < 0n || pos >= maxSeqBigInt) {
-        throw new Error(
-          `position_ids value ${pos} at index ${i} is out of range [0, ${maxSequenceLength})`,
-        );
+        throw new Error(`position_ids value ${pos} at index ${i} is out of range [0, ${maxSequenceLength})`);
       }
     }
   }
