@@ -404,15 +404,18 @@ TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
         domain: "local"
         >
         recursive_if (lx) => (ly) {
+            temp = Identity (lx)
             cond = Constant <value = bool {1}> ()
             ly = If (cond) <
-                then_branch: graph then_graph () => (then_out) {
-                    then_out = local.recursive_if (lx)
+                then_branch = then_graph () => (float[N] then_out)
+                {
+                    then_out = local.recursive_if (temp)
                 },
-                else_branch: graph else_graph () => (else_out) {
-                    else_out = Identity (lx)
+                else_branch = else_graph () => (float[N] else_out)
+                {
+                    else_out = Identity (temp)
                 }
-            >
+                >
         }
         )";
 
