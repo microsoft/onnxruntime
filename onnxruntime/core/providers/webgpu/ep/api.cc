@@ -39,7 +39,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
                                            const OrtLogger* default_logger,
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) noexcept {
   {
-    // Note: We can't use the EXCEPTION_TO_RETURNED_STATUS_BEGIN/EXCEPTION_TO_RETURNED_STATUS_END macros before the
+    // Note: We can't use the EXCEPTION_TO_RETURNED_STATUS_BEGIN/EXCEPTION_TO_RETURNED_STATUS_END macros around the
     // call to `onnxruntime::ep::ApiInit()` because they depend on the API to create `OrtStatus`. We need to create an
     // `OrtStatus` more conservatively.
 
@@ -55,7 +55,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
         }
       }
 
-      fprintf(stderr, "Error: %s\nUnable to create an OrtStatus. Aborting.\n", message);
+      fprintf(stderr, "Error: %s\nUnable to use OrtApi::CreateStatus() to create an OrtStatus. Aborting.\n", message);
       std::abort();
     };
 
