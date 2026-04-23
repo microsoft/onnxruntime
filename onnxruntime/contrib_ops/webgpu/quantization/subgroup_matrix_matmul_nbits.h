@@ -5,7 +5,6 @@
 
 #if !defined(__wasm__)
 
-#include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"

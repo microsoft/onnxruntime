@@ -333,9 +333,11 @@ $MAIN {
 
     // Helper macro: store one coopmat tile via stage, add bias, write to output
     // Process all 16 tiles (4 rows x 4 cols)
+    // No workgroupBarrier needed: subgroupMatrixStore and scalar reads are within the same
+    // subgroup (lockstep execution), and each subgroup uses its own non-overlapping stage_base.
+
     // Row 0
     subgroupMatrixStore(&coopmat_stage, stage_base, c00, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -344,10 +346,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c01, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -356,10 +356,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c02, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -368,10 +366,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c03, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -380,11 +376,9 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     // Row 1
     subgroupMatrixStore(&coopmat_stage, stage_base, c10, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -393,10 +387,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c11, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -405,10 +397,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c12, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -417,10 +407,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c13, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -429,11 +417,9 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     // Row 2
     subgroupMatrixStore(&coopmat_stage, stage_base, c20, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -442,10 +428,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c21, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -454,10 +438,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c22, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -466,10 +448,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c23, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -478,11 +458,9 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     // Row 3
     subgroupMatrixStore(&coopmat_stage, stage_base, c30, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -491,10 +469,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c31, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -503,10 +479,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c32, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -515,10 +489,8 @@ $MAIN {
             output.setByOffset(r * stride + c, val);
         }
     }
-    workgroupBarrier();
 
     subgroupMatrixStore(&coopmat_stage, stage_base, c33, false, kSgMatN);
-    workgroupBarrier();
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -553,11 +525,12 @@ $MAIN {
         subgroupMatrixStore(&output, base + 48u * stride + 48u, c33, false, stride);
     } else {
         // Edge tile: store via coopmat_stage with bounds checking
+        // No workgroupBarrier needed: subgroupMatrixStore and scalar reads are within the same
+        // subgroup (lockstep execution), and each subgroup uses its own non-overlapping stage_base.
         let stage_base = sg_idx * kSgMatM * kSgMatN;
 
         // Row 0
         subgroupMatrixStore(&coopmat_stage, stage_base, c00, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -565,10 +538,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c01, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -576,10 +547,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c02, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -587,10 +556,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c03, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;
@@ -598,11 +565,9 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         // Row 1
         subgroupMatrixStore(&coopmat_stage, stage_base, c10, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -610,10 +575,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c11, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -621,10 +584,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c12, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -632,10 +593,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c13, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;
@@ -643,11 +602,9 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         // Row 2
         subgroupMatrixStore(&coopmat_stage, stage_base, c20, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -655,10 +612,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c21, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -666,10 +621,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c22, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -677,10 +630,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c23, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;
@@ -688,11 +639,9 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         // Row 3
         subgroupMatrixStore(&coopmat_stage, stage_base, c30, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -700,10 +649,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c31, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -711,10 +658,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c32, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -722,10 +667,8 @@ $MAIN {
                 output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
             }
         }
-        workgroupBarrier();
 
         subgroupMatrixStore(&coopmat_stage, stage_base, c33, false, kSgMatN);
-        workgroupBarrier();
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;
