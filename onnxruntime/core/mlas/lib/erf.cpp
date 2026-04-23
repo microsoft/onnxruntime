@@ -21,9 +21,6 @@ Abstract:
 
 --*/
 
-#include "core/util/math.h"
-#include "core/mlas/inc/mlas.h"
-
 #include "mlasi.h"
 //
 // Bundles the constants for use by kernels written in assembly.
