@@ -386,6 +386,8 @@ TEST(MathOpTest, MatMulFloat16) {
 
 TEST(MathOpTest, MatMulDoubleType) {
   RunMatMulTest<double>(7);
+  RunMatMulTest<double>(9);
+  RunMatMulTest<double>(13);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
@@ -443,6 +445,10 @@ TEST(MathOpTest, MatMulZeroKInt32Type) {
     GTEST_SKIP() << "Skipping because of the following error: Webgpu does not support zero-sized tensor";
   }
   RunMatMulZeroKTest<int32_t>();
+}
+
+TEST(MathOpTest, MatMulZeroKDoubleType) {
+  RunMatMulZeroKTest<double>();
 }
 
 #if defined(USE_CUDA) || defined(USE_COREML) || defined(USE_XNNPACK)
