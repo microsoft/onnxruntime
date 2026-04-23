@@ -49,7 +49,7 @@ inline Status CheckedMulToPtrdiff(int lhs, int rhs, const char* name, std::ptrdi
   return Status::OK();
 }
 
-inline Status CheckedMulToPtrdiff(std::ptrdiff_t lhs, int rhs, const char* name, std::ptrdiff_t& output) {
+inline Status CheckedPtrdiffMulToPtrdiff(std::ptrdiff_t lhs, int rhs, const char* name, std::ptrdiff_t& output) {
   if (lhs < 0 || rhs < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "RotaryEmbedding: ", name, " must be non-negative");

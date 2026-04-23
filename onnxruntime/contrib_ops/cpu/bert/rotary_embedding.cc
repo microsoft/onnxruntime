@@ -14,6 +14,7 @@
 using onnxruntime::concurrency::ThreadPool;
 using namespace onnxruntime::contrib::rotary_embedding_helper;
 using onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff;
+using onnxruntime::rotary_embedding_int32_utils::CheckedPtrdiffMulToPtrdiff;
 using onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff;
 
 namespace onnxruntime {
@@ -122,8 +123,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   } else {
     max_b_s_index = std::max(max_sequence_length - 1, 0);
   }
-  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(max_b_s_index, half_rotary_emb_dim,
-                                          "max_cache_offset", max_cache_offset));
+  ORT_RETURN_IF_ERROR(CheckedPtrdiffMulToPtrdiff(max_b_s_index, half_rotary_emb_dim,
+                                                 "max_cache_offset", max_cache_offset));
 
   // The cost is calculated as:
   //   - head_size * sizeof(T) for reading input
