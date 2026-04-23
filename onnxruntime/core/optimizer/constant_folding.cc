@@ -148,14 +148,14 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
   // Read the optional size threshold for constant folding. A value of 0 (the default) means no limit.
-  size_t node_weight_size_threshold = 0;
+  size_t output_size_threshold = 0;
   {
     const std::string threshold_str = config_options_.GetConfigOrDefault(
         kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "0");
-    if (!TryParseStringWithClassicLocale(threshold_str, node_weight_size_threshold)) {
+    if (!TryParseStringWithClassicLocale(threshold_str, output_size_threshold)) {
       LOGS(logger, WARNING) << "Failed to parse constant folding size threshold from config value '"
                             << threshold_str << "'. Using no threshold.";
-      node_weight_size_threshold = 0;
+      output_size_threshold = 0;
     }
   }
 
@@ -353,14 +353,14 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // If a size threshold was configured, check whether any output tensor exceeds it.
       // Skipping large outputs prevents the optimized model from having a much larger
       // memory footprint than the original model.
-      if (converted_to_constant && node_weight_size_threshold > 0) {
+      if (converted_to_constant && output_size_threshold > 0) {
         for (const OrtValue& ort_value : fetches) {
           if (ort_value.IsTensor()) {
             const size_t tensor_size = ort_value.Get<Tensor>().SizeInBytes();
-            if (tensor_size > node_weight_size_threshold) {
+            if (tensor_size > output_size_threshold) {
               LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
                                  << " node '" << node->Name() << "': output size " << tensor_size
-                                 << " bytes exceeds the threshold of " << node_weight_size_threshold << " bytes.";
+                                 << " bytes exceeds the threshold of " << output_size_threshold << " bytes.";
               converted_to_constant = false;
               break;
             }
