@@ -272,7 +272,10 @@ Status ComputeMatMul(ComputeContext* context,
       // both the split-k index and the batch index: dispatch_z = splits_per_batch * batch_size.
       split_dim_inner = split_k_config.GetSplitDimInner();
       splits_per_batch = (dim_inner + split_dim_inner - 1) / split_dim_inner;
-      dispatch_z = narrow<uint32_t>(batch_size) * splits_per_batch;
+      const uint64_t dispatch_z_u64 = static_cast<uint64_t>(batch_size) * static_cast<uint64_t>(splits_per_batch);
+      ORT_ENFORCE(dispatch_z_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                  "dispatch_z exceeds uint32_t range: ", dispatch_z_u64);
+      dispatch_z = narrow<uint32_t>(dispatch_z_u64);
 
       // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
       // built-in functions.

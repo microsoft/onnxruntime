@@ -645,6 +645,7 @@ TEST(MathOpTest, MatMulBatchedSplitK) {
 
   // Exclude providers that don't support this configuration.
   test.ConfigExcludeEps({kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider})
+      .Config(run_with_tunable_op)
       .RunWithConfig();
 }
 
