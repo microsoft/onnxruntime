@@ -449,4 +449,6 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryLogisticAllPositiveWeights) {
   }
 }
 
+}  // namespace test
+}  // namespace onnxruntime
 
