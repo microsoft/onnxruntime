@@ -1,4 +1,4 @@
 flatbuffers
-numpy >= 1.21.6
+numpy >= 1.24.4
 packaging
 protobuf
