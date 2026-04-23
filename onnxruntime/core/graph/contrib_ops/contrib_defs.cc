@@ -3623,9 +3623,23 @@ MatMulNBitsSiluMul fuses two MatMulNBits projections that share the same input a
 
 where SiLU(x) = x * sigmoid(x).
 
+It can also optionally fuse SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization before the
+two projections:
+
+  A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
+  Y = SiLU(MatMulNBits(A_norm, gate_weight) + gate_bias) * (MatMulNBits(A_norm, up_weight) + up_bias)
+
+  A_norm = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
+  Y = SiLU(MatMulNBits(A_norm, gate_weight) + gate_bias) * (MatMulNBits(A_norm, up_weight) + up_bias)
+
 This operator is intended for decoder MLP patterns such as Qwen-style gate and up projections, but it remains
 semantically valid for both prefill and decode because the output shape is the standard MatMul result shape
 derived from the runtime shape of A and the shared attributes K and N.
+
+When fused from SkipSimplifiedLayerNormalization, the optional residual-sum output may also be materialized:
+
+  A_norm, input_skip_bias_sum = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
+  Y = SiLU(MatMulNBits(A_norm, gate_weight) + gate_bias) * (MatMulNBits(A_norm, up_weight) + up_bias)
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsSiluMul)
@@ -3642,24 +3656,60 @@ derived from the runtime shape of A and the shared attributes K and N.
             "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The shared input tensor.", "T1")
-      .Input(1, "gate_B", "Packed uint8 tensor for the gate projection weights.", "T2")
-      .Input(2, "gate_scales", "Per-block scaling factors for the gate projection.", "T1")
-      .Input(3, "gate_bias", "Optional bias for the gate projection with shape [N].", "T1", OpSchema::Optional)
-      .Input(4, "up_B", "Packed uint8 tensor for the up projection weights.", "T2")
-      .Input(5, "up_scales", "Per-block scaling factors for the up projection.", "T1")
-      .Input(6, "up_bias", "Optional bias for the up projection with shape [N].", "T1", OpSchema::Optional)
+      .Input(1, "skip", "Optional skip input used by SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(2, "norm_scale", "Optional RMSNorm scale with shape [K] used by SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(3, "gate_B", "Packed uint8 tensor for the gate projection weights.", "T2")
+      .Input(4, "gate_scales", "Per-block scaling factors for the gate projection.", "T1")
+      .Input(5, "gate_bias", "Optional bias for the gate projection with shape [N].", "T1", OpSchema::Optional)
+      .Input(6, "up_B", "Packed uint8 tensor for the up projection weights.", "T2")
+      .Input(7, "up_scales", "Per-block scaling factors for the up projection.", "T1")
+      .Input(8, "up_bias", "Optional bias for the up projection with shape [N].", "T1", OpSchema::Optional)
       .Output(0, "Y", "The fused SiLU-multiply output tensor.", "T1")
+      .Output(1, "input_skip_bias_sum", "Optional residual-sum output for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                       "Constrain input and output types to float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        }
 
         const int64_t in_features = getAttribute(ctx, "K", -1);
         const int64_t out_features = getAttribute(ctx, "N", -1);
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, true);
 
-        for (size_t bias_input_index : {3U, 6U}) {
+        if (ctx.hasInput(1) && !ctx.hasInput(2)) {
+          fail_shape_inference("norm_scale input must be present when skip input is provided");
+        }
+
+        if (ctx.hasOutput(1)) {
+          if (!ctx.hasInput(1)) {
+            fail_shape_inference("skip input must be present when input_skip_bias_sum output is requested");
+          }
+
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+
+          auto* skip_sum_shape = getOutputShape(ctx, 1);
+          *skip_sum_shape = getInputShape(ctx, 0);
+        }
+
+        if (ctx.hasInput(2)) {
+          if (!hasInputShape(ctx, 2)) {
+            fail_shape_inference("norm_scale shape must be known");
+          }
+
+          const auto& norm_scale_shape = getInputShape(ctx, 2);
+          if (norm_scale_shape.dim_size() != 1 ||
+              !norm_scale_shape.dim(0).has_dim_value() ||
+              norm_scale_shape.dim(0).dim_value() != in_features) {
+            fail_shape_inference("norm_scale shape must be [K] where K = ", in_features);
+          }
+        }
+
+        for (size_t bias_input_index : {5U, 8U}) {
           if (!ctx.hasInput(static_cast<int>(bias_input_index))) {
             continue;
           }

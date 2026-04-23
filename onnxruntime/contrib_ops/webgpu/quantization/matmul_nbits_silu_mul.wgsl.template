@@ -9,6 +9,9 @@
 #param has_full_n_tiles
 #param single_scale_weights
 #param sub_tile_count
+#param has_norm_input
+#param has_skip_input
+#param has_skip_output
 #param tile_size_k_vec
 #param tile_size_k
 #param tile_size
@@ -18,20 +21,53 @@
 
 #use .getByOffset .setByOffset
 
+#if has_norm_input
+var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
+#endif
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
 var<workgroup> gate_inter_results : array<array<output_element_t, tile_size_k_vec + 1>, tile_size>;
 var<workgroup> up_inter_results : array<array<output_element_t, tile_size_k_vec + 1>, tile_size>;
 
 const default_zero_point = output_element_t(8);
 
-fn loadSHMA(batch: u32, kidx: u32, col: u32)
+fn load_merged_input(input_offset: u32) -> input_a_value_t {
+#if has_skip_input
+    let skip_offset = input_offset % (uniforms.skip_size / component_a);
+    return a.getByOffset(input_offset) + input_a_value_t(skip.getByOffset(skip_offset));
+#else
+    return a.getByOffset(input_offset);
+#endif
+}
+
+fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32)
 {
     let k_offset = kidx / component_a + col;
+    let input_offset = batch * uniforms.K_of_a + k_offset;
 #if has_full_k_tiles
-  tile_A[col] = a.getByOffset(batch * uniforms.K_of_a + k_offset);
+  let merged_value = load_merged_input(input_offset);
+#if has_skip_output
+  if (b_global_base == 0u) {
+    input_skip_bias_sum.setByOffset(input_offset, input_skip_bias_sum_value_t(merged_value));
+  }
+#endif
+#if has_norm_input
+  tile_A[col] = merged_value * input_a_value_t(input_a_element_t(inv_std)) * norm_scale.getByOffset(k_offset);
+#else
+  tile_A[col] = merged_value;
+#endif
 #else
   if (k_offset < uniforms.K_of_a) {
-        tile_A[col] = a.getByOffset(batch * uniforms.K_of_a + k_offset);
+        let merged_value = load_merged_input(input_offset);
+#if has_skip_output
+        if (b_global_base == 0u) {
+          input_skip_bias_sum.setByOffset(input_offset, input_skip_bias_sum_value_t(merged_value));
+        }
+#endif
+#if has_norm_input
+        tile_A[col] = merged_value * input_a_value_t(input_a_element_t(inv_std)) * norm_scale.getByOffset(k_offset);
+#else
+        tile_A[col] = merged_value;
+#endif
     } else {
         tile_A[col] = input_a_value_t(0);
     }
@@ -110,10 +146,10 @@ fn compute_gate_up_sums(b_global: u32, kidx: u32, idx: u32, k_offset: u32) -> ve
   return vec2<output_element_t>(gate_sum, up_sum);
 }
 
-fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy: u32, kidx: u32) {
+fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy: u32, kidx: u32, inv_std: f32) {
   for (var id = thread_idx; id < a_length_per_tile; id += workgroup_size_x)
   {
-    loadSHMA(batch, kidx, id);
+    loadSHMA(batch, b_global_base, kidx, id, inv_std);
   }
   workgroupBarrier();
 
@@ -165,6 +201,38 @@ $MAIN {
   }
   workgroupBarrier();
 
+#if has_norm_input
+  var sum_squared_local = 0.0;
+  for (var a_idx = local_idx; a_idx < uniforms.K_of_a; a_idx += workgroup_size_x) {
+    let a_value = load_merged_input(batch * uniforms.K_of_a + a_idx);
+#if component_a == 1
+    let a_f32 = f32(a_value);
+    sum_squared_local += a_f32 * a_f32;
+#elif component_a == 2
+    let a_f32 = vec2<f32>(a_value);
+    sum_squared_local += dot(a_f32, a_f32);
+#elif component_a == 4
+    let a_f32 = vec4<f32>(a_value);
+    sum_squared_local += dot(a_f32, a_f32);
+#endif
+  }
+  sum_squared_shared[local_idx] = sum_squared_local;
+  workgroupBarrier();
+
+  var reduce_size : u32 = workgroup_size_x;
+  for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {
+    reduce_size = curr_size + (reduce_size & 1u);
+    if (local_idx < curr_size) {
+      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];
+    }
+    workgroupBarrier();
+  }
+
+  let inv_std = inverseSqrt(sum_squared_shared[0] / f32(uniforms.K) + uniforms.epsilon);
+#else
+  let inv_std = 1.0;
+#endif
+
 #if single_scale_weights
   let gate_scale_b = gate_scales_b.getByOffset(0);
   let up_scale_b = up_scales_b.getByOffset(0);
@@ -173,29 +241,29 @@ $MAIN {
 
 #if k_unroll_tiles == 1
   for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k) {
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
   }
 #elif k_unroll_tiles == 2
   let unrolled_k_step = tile_size_k * 2u;
   let unrolled_k_limit = uniforms.K - (uniforms.K % unrolled_k_step);
   for (var kidx = 0u; kidx < unrolled_k_limit; kidx += unrolled_k_step) {
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k, inv_std);
   }
   for (var kidx = unrolled_k_limit; kidx < uniforms.K; kidx += tile_size_k) {
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
   }
 #elif k_unroll_tiles == 4
   let unrolled_k_step = tile_size_k * 4u;
   let unrolled_k_limit = uniforms.K - (uniforms.K % unrolled_k_step);
   for (var kidx = 0u; kidx < unrolled_k_limit; kidx += unrolled_k_step) {
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k);
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 2u);
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 3u);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 2u, inv_std);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx + tile_size_k * 3u, inv_std);
   }
   for (var kidx = unrolled_k_limit; kidx < uniforms.K; kidx += tile_size_k) {
-    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx);
+    process_k_tile(batch, b_global_base, local_idx, idx, idy, kidx, inv_std);
   }
 #endif
 

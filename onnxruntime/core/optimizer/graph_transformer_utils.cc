@@ -110,12 +110,12 @@ constexpr const char* kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar =
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool IsMatMulNBitsSiluFusionEnabled() {
-  return ParseEnvironmentVariableWithDefault<int>(kOrtEnableMatMulNBitsSiluFusionEnvVar, 1) == 1;
+  return ParseEnvironmentVariableWithDefault<int>(kOrtEnableMatMulNBitsSiluFusionEnvVar, 0) == 1;
   //return true;
 }
 
 bool IsMatMulNBitsQKVSimplifiedLayerNormFusionEnabled() {
-  return ParseEnvironmentVariableWithDefault<int>(kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar, 1) == 1;
+  return ParseEnvironmentVariableWithDefault<int>(kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar, 0) == 1;
   //return true;
 }
 #endif

@@ -3,6 +3,7 @@
 
 #include "core/optimizer/matmul_nbits_silu_fusion.h"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "core/graph/graph_utils.h"
@@ -30,6 +31,51 @@ bool IsSupportedSigmoid(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13});
 }
 
+bool IsSupportedSimplifiedLayerNormalization(const Node& node) {
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SimplifiedLayerNormalization", {1});
+}
+
+bool IsSupportedSkipSimplifiedLayerNormalization(const Node& node) {
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SkipSimplifiedLayerNormalization", {1}, kMSDomain);
+}
+
+bool IsSupportedSiluNormAnchor(const Node& node) {
+  return IsSupportedSimplifiedLayerNormalization(node) || IsSupportedSkipSimplifiedLayerNormalization(node);
+}
+
+bool HasProducedOutput(const Node& node, size_t index) {
+  return index < node.OutputDefs().size() && node.OutputDefs()[index] != nullptr && !node.OutputDefs()[index]->Name().empty();
+}
+
+bool ProducesOnlyOptionalSkipOutputAsGraphOutput(const Graph& graph, const Node& node) {
+  const auto graph_outputs = graph.GetNodeOutputsInGraphOutputs(node);
+  return std::all_of(graph_outputs.begin(), graph_outputs.end(), [](int output_idx) { return output_idx == 3; });
+}
+
+size_t ExpectedNormConsumerEdgeCount(const Node& node) {
+  return 2u + ((IsSupportedSkipSimplifiedLayerNormalization(node) && HasProducedOutput(node, 3)) ? 1u : 0u);
+}
+
+bool HasExpectedNormConsumers(const Graph& graph, const Node& node) {
+  const auto graph_outputs = graph.GetNodeOutputsInGraphOutputs(node);
+  const size_t expected_output_edges = ExpectedNormConsumerEdgeCount(node) - graph_outputs.size();
+  if (node.GetOutputEdgesCount() != expected_output_edges) {
+    return false;
+  }
+
+  // Match optimizer_utils::CheckOutputEdges safety check while allowing output 3 to be a graph output.
+  for (auto output_edge_it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); output_edge_it != end; ++output_edge_it) {
+    const auto& output_node = output_edge_it->GetNode();
+    const auto output_node_input_arg_idx = static_cast<size_t>(output_edge_it->GetDstArgIndex());
+    const bool is_implicit_input_to_output_node = output_node_input_arg_idx >= output_node.InputDefs().size();
+    if (is_implicit_input_to_output_node) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool IsMatMulNBitsWithoutZeroPointOrGroupIdx(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBits", {1}, kMSDomain) &&
          !HasInput(node, 3) && !HasInput(node, 4);
@@ -47,6 +93,40 @@ int64_t GetIntAttr(const Node& node, const char* name, int64_t default_value, bo
 
 bool HasSingleNonGraphConsumer(const Graph& graph, const Node& node) {
   return !graph.NodeProducesGraphOutput(node) && optimizer_utils::CheckOutputEdges(graph, node, 1);
+}
+
+const Node* GetOptionalNormProducer(const Graph& graph,
+                                    const Node& gate_matmul,
+                                    const Node& up_matmul) {
+  if (gate_matmul.InputDefs().empty() || up_matmul.InputDefs().empty() ||
+      gate_matmul.InputDefs()[0] != up_matmul.InputDefs()[0]) {
+    return nullptr;
+  }
+
+  const Node* gate_input = GetInputNode(graph, gate_matmul, 0);
+  const Node* up_input = GetInputNode(graph, up_matmul, 0);
+  if (gate_input == nullptr || gate_input != up_input || !IsSupportedSiluNormAnchor(*gate_input)) {
+    return nullptr;
+  }
+
+  if (!HasProducedOutput(*gate_input, 0)) {
+    return nullptr;
+  }
+
+  if (graph.NodeProducesGraphOutput(*gate_input) && !ProducesOnlyOptionalSkipOutputAsGraphOutput(graph, *gate_input)) {
+    return nullptr;
+  }
+
+  if (!HasExpectedNormConsumers(graph, *gate_input)) {
+    return nullptr;
+  }
+
+  const size_t min_norm_inputs = IsSupportedSkipSimplifiedLayerNormalization(*gate_input) ? 3u : 2u;
+  if (gate_input->InputDefs().size() < min_norm_inputs) {
+    return nullptr;
+  }
+
+  return gate_input;
 }
 
 bool IsFuseCandidate(const Graph& graph,
@@ -196,6 +276,12 @@ Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       continue;
     }
 
+    const Node* norm = GetOptionalNormProducer(graph, *gate_matmul, *up_matmul);
+    if (norm != nullptr &&
+        !norm->GetExecutionProviderType().empty() && norm->GetExecutionProviderType() != kWebGpuExecutionProvider) {
+      continue;
+    }
+
     NodeAttributes attrs;
     utils::SetNodeAttribute(utils::MakeAttribute("K", GetIntAttr(*gate_matmul, "K", -1, true)), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("N", GetIntAttr(*gate_matmul, "N", -1, true)), attrs);
@@ -204,9 +290,12 @@ Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", GetIntAttr(*gate_matmul, "accuracy_level", 0)), attrs);
 
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
+    const bool is_skip_sln = norm != nullptr && IsSupportedSkipSimplifiedLayerNormalization(*norm);
 
     InlinedVector<NodeArg*> fused_inputs{
-        const_cast<NodeArg*>(gate_matmul->InputDefs()[0]),
+      const_cast<NodeArg*>(norm != nullptr ? norm->InputDefs()[0] : gate_matmul->InputDefs()[0]),
+      is_skip_sln ? const_cast<NodeArg*>(norm->InputDefs()[1]) : &empty_arg,
+      norm != nullptr ? const_cast<NodeArg*>(norm->InputDefs()[is_skip_sln ? 2 : 1]) : &empty_arg,
         const_cast<NodeArg*>(gate_matmul->InputDefs()[1]),
         const_cast<NodeArg*>(gate_matmul->InputDefs()[2]),
         HasInput(*gate_matmul, 5) ? const_cast<NodeArg*>(gate_matmul->InputDefs()[5]) : &empty_arg,
@@ -215,25 +304,91 @@ Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
         HasInput(*up_matmul, 5) ? const_cast<NodeArg*>(up_matmul->InputDefs()[5]) : &empty_arg,
     };
 
+    InlinedVector<NodeArg*> fused_outputs{const_cast<NodeArg*>(node.OutputDefs()[0])};
+    const bool preserve_skip_output = is_skip_sln && norm != nullptr && HasProducedOutput(*norm, 3);
+    if (preserve_skip_output) {
+      fused_outputs.push_back(const_cast<NodeArg*>(norm->OutputDefs()[3]));
+    }
+
+    const auto norm_input_edges = norm != nullptr ? graph_utils::GraphEdge::GetNodeInputEdges(*norm)
+                                                  : std::vector<graph_utils::GraphEdge>{};
+    const auto gate_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*gate_matmul);
+    const auto up_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*up_matmul);
+    const auto final_mul_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node);
+    const auto norm_output_edges = preserve_skip_output ? graph_utils::GraphEdge::GetNodeOutputEdges(*norm)
+                                                        : std::vector<graph_utils::GraphEdge>{};
+
+    if (norm != nullptr) {
+      graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*norm));
+      graph.RemoveNode(norm->Index());
+    }
+    graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*gate_matmul));
+    graph.RemoveNode(gate_matmul->Index());
+    graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*up_matmul));
+    graph.RemoveNode(up_matmul->Index());
+    graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*sigmoid));
+    graph.RemoveNode(sigmoid->Index());
+    graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*silu_mul));
+    graph.RemoveNode(silu_mul->Index());
+    graph_utils::RemoveNodeOutputEdges(graph, node);
+    graph.RemoveNode(node.Index());
+
     Node& fused_node = graph.AddNode(graph.GenerateNodeName("MatMulNBitsSiluMul"),
                                      "MatMulNBitsSiluMul",
                                      "fused MatMulNBits gate/up projections with SiLU multiply",
                                      fused_inputs,
-                                     {},
+                                     fused_outputs,
                                      &attrs,
                                      kMSDomain);
     fused_node.SetExecutionProviderType(kWebGpuExecutionProvider);
 
     LOGS(logger, INFO) << "MatMulNBitsSiluFusion: created fused node '" << fused_node.Name()
-               << "' from final_mul='" << node.Name() << "'";
+                       << "' from final_mul='" << node.Name() << "'";
 
-    graph_utils::FinalizeNodeFusion(graph,
-                                    {std::ref(const_cast<Node&>(*gate_matmul)),
-                                     std::ref(const_cast<Node&>(*up_matmul)),
-                                     std::ref(const_cast<Node&>(*sigmoid)),
-                                     std::ref(const_cast<Node&>(*silu_mul)),
-                                     std::ref(node)},
-                                    fused_node);
+    if (norm != nullptr) {
+      for (const auto& input_edge : norm_input_edges) {
+        int fused_input_index = input_edge.dst_arg_index;
+        if (!is_skip_sln && input_edge.dst_arg_index == 1) {
+          fused_input_index = 2;
+        }
+
+        graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, fused_input_index);
+      }
+    } else {
+      for (const auto& input_edge : gate_input_edges) {
+        if (input_edge.dst_arg_index == 0) {
+          graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, 0);
+        }
+      }
+    }
+
+    auto add_input_edge_if_present = [&](const std::vector<graph_utils::GraphEdge>& edges,
+                                         int source_input_index,
+                                         int fused_input_index) {
+      for (const auto& input_edge : edges) {
+        if (input_edge.dst_arg_index == source_input_index) {
+          graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, fused_input_index);
+        }
+      }
+    };
+
+    add_input_edge_if_present(gate_input_edges, 1, 3);
+    add_input_edge_if_present(gate_input_edges, 2, 4);
+    add_input_edge_if_present(gate_input_edges, 5, 5);
+    add_input_edge_if_present(up_input_edges, 1, 6);
+    add_input_edge_if_present(up_input_edges, 2, 7);
+    add_input_edge_if_present(up_input_edges, 5, 8);
+
+    for (const auto& output_edge : final_mul_output_edges) {
+      graph.AddEdge(fused_node.Index(), output_edge.dst_node, 0, output_edge.dst_arg_index);
+    }
+    if (preserve_skip_output) {
+      for (const auto& output_edge : norm_output_edges) {
+        if (output_edge.src_arg_index == 3) {
+          graph.AddEdge(fused_node.Index(), output_edge.dst_node, 1, output_edge.dst_arg_index);
+        }
+      }
+    }
 
     modified = true;
   }
