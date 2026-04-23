@@ -455,6 +455,11 @@ Status UnfusedAttention(
   int* cumulative_seqlens_q = const_cast<int*>(data.cumulative_seqlens_q);
   int* past_seqlens = const_cast<int*>(data.past_seqlens);
   int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
+  // Mirrors FlashAttention: compute cumulative_seqlens_kv in-place on the provided buffer.
+  // Phase 3 will lift this out of both FA and MEA paths into paged_attention.cc so the host
+  // can also read total_kv_tokens from the last element for tight scratch allocation.
+  ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens,
+                                                   batch_size, stream));
 
   if (parameters.do_rotary) {
     auto q_buffer = data.workspace_buffer;
