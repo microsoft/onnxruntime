@@ -47,9 +47,12 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
     auto report_error = [](const OrtApiBase* ort_api_base, const char* message) -> OrtStatus* {
       if (ort_api_base != nullptr) {
         // Note: `OrtApi::CreateStatus` has been around since the v1 API, so we'll try to obtain it with the v1 API.
-        // We assume that `CreateStatus` has the same offset in the `OrtApi` struct in v1 and the current version.
-        // `OrtApiBase::GetApi()` could theoretically return `OrtApi` structs with different layouts for different
-        // versions, but `CreateStatus` has maintained the same offset across all versions so far.
+        // The `static_assert` ensures that `CreateStatus` has the same offset in the `OrtApi` struct in v1 and the
+        // current version. `OrtApiBase::GetApi()` could theoretically return `OrtApi` structs with different layouts
+        // for different versions, but `CreateStatus` has maintained the same offset across all versions so far.
+        constexpr size_t kCreateStatusOffsetInV1Api = 0;
+        static_assert(offsetof(OrtApi, CreateStatus) / sizeof(void*) == kCreateStatusOffsetInV1Api,
+                      "OrtApi::CreateStatus is not at the same offset as it was in the v1 OrtApi.");
         if (const OrtApi* ort_api_v1 = ort_api_base->GetApi(1); ort_api_v1 != nullptr) {
           return ort_api_v1->CreateStatus(OrtErrorCode::ORT_FAIL, message);
         }
