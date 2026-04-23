@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
@@ -13,6 +14,7 @@
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
+#include "contrib_ops/cuda/bert/gqa_unfused_attention.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
@@ -505,6 +507,38 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (buffer_req.qkv_buffer_bytes > 0) {
     unpacked_qkv_buffer = GetScratchBuffer<void>(buffer_req.qkv_buffer_bytes, GetComputeStream(context));
     data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+  }
+
+  // ---------------------------------------------------------------------
+  // GQA-capable unfused fallback (issue #28195).
+  // Activates when Flash / MEA / XQA are all ineligible and KV is not quantized.
+  // Supports any head_size (FP32 QK accumulation), GQA, sliding window, softcap.
+  // See LaunchGqaUnfusedAttention in contrib_ops/cuda/bert/gqa_unfused_attention.h.
+  // ---------------------------------------------------------------------
+  IAllocatorUniquePtr<void> unfused_scratch;
+  if (!data.use_xqa && !data.use_flash_attention && !data.use_memory_efficient_attention &&
+      !is_inputs_quantized && !parameters.use_smooth_softmax && head_sink == nullptr &&
+      parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+    data.use_unfused = true;
+
+    const size_t B = static_cast<size_t>(parameters.batch_size);
+    const size_t N_q = static_cast<size_t>(parameters.num_heads);
+    const size_t S_q = static_cast<size_t>(parameters.sequence_length);
+    const size_t H = static_cast<size_t>(parameters.head_size);
+    const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
+
+    auto align = [](size_t v) { return (v + 255) / 256 * 256; };
+    const size_t q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const size_t y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const size_t ws_bytes = onnxruntime::contrib::cuda::GetGqaUnfusedAttentionWorkspaceSize(
+        static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv));
+
+    unfused_scratch = GetScratchBuffer<void>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes,
+                                             GetComputeStream(context));
+    auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
+    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
+    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + q_bnsh_bytes);
+    data.unfused_workspace = reinterpret_cast<void*>(base + q_bnsh_bytes + y_bnsh_bytes);
   }
 
   if (kernel_options_->AllowDebugInfo()) {
