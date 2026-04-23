@@ -53,6 +53,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_build_x64_RelWithDebInfo_${{ matrix.vcpkg_option }}_${{ matrix.wgsl_template }}
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
@@ -74,7 +75,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
@@ -107,29 +108,31 @@ jobs:
 
       - name: Build and Test
         shell: pwsh
+        env:
+          wgsl_template: ${{ matrix.wgsl_template }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
-            --config RelWithDebInfo `
-            --build_dir ${{ github.workspace }} `
-            --skip_submodule_sync `
+          python.exe "${env:GITHUB_WORKSPACE}\tools\ci_build\build.py" `
             --build_csharp `
-            --parallel `
-            --use_binskim_compliant_compile_flags `
-            --cmake_generator "Visual Studio 17 2022" `
-            --build_shared_lib `
-            --enable_onnx_tests `
-            --build_nodejs `
+            --build_dir "${env:GITHUB_WORKSPACE}" `
             --build_java `
+            --build_nodejs `
+            --build_shared_lib `
+            --cmake_extra_defines onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --enable_onnx_tests `
+            --parallel `
+            --skip_submodule_sync `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
             --use_webgpu `
-            --wgsl_template ${{ matrix.wgsl_template }} `
-            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
-            --cmake_extra_defines `
-            onnxruntime_BUILD_UNIT_TESTS=ON `
-            onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON
+            --wgsl_template "${env:wgsl_template}" `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+          Remove-Item "${env:GITHUB_WORKSPACE}\RelWithDebInfo" -Include "*.obj" -Recurse
 
       - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
         shell: pwsh
@@ -137,17 +140,17 @@ jobs:
           $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
           .\onnxruntime_test_all.exe 2> .\onnxruntime_test_stderr.log
           .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
       - name: Check log file
         shell: cmd
         run: |
-          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
+          dir ${{ github.workspace }}\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate shader keys
         uses: ./.github/actions/webgpu-validate-shader-key
         with:
-          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
+          log_file_path: ${{ github.workspace }}\RelWithDebInfo\onnxruntime_test_stderr.log
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
@@ -186,6 +189,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_plugin_build_x64_RelWithDebInfo
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
@@ -212,7 +216,7 @@ jobs:
             --skip_submodule_sync `
             --parallel `
             --use_binskim_compliant_compile_flags `
-            --cmake_generator "Visual Studio 17 2022" `
+            --cmake_generator "Ninja" `
             --enable_onnx_tests `
             --use_webgpu shared_lib `
             --wgsl_template static `
@@ -259,31 +263,60 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_external_dawn_build_x64_RelWithDebInfo
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
         shell: cmd
         working-directory: ${{ github.workspace }}
 
-      - name: Generate onnxruntime.sln
+      - name: Generate build files
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build_dir ${env:GITHUB_WORKSPACE} `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --parallel `
+            --skip_submodule_sync `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test `
+            --update `
+            --use_cache `
+            --use_external_dawn `
+            --use_webgpu
 
       - name: Build
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test
+          ccache --zero-stats
+
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build `
+            --build_dir ${env:GITHUB_WORKSPACE} `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --parallel `
+            --skip_submodule_sync `
+            --skip_tests `
+            --target onnxruntime_webgpu_external_dawn_test `
+            --use_cache `
+            --use_external_dawn `
+            --use_webgpu
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test)
         run: onnxruntime_webgpu_external_dawn_test.exe
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
       - name: Run tests (onnxruntime_webgpu_external_dawn_test) - no_proc_table
         run: onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
         shell: cmd
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ github.workspace }}\RelWithDebInfo
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
     runs-on: [
@@ -316,6 +349,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_webgpu.yml | webgpu_minimal_build_edge_build_x64_RelWithDebInfo
 
       - name: Install python modules
         run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
@@ -337,7 +371,7 @@ jobs:
       - name: API Documentation Check and generate
         run: |
           set ORT_DOXY_SRC=${{ github.workspace }}
-          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
+          set ORT_DOXY_OUT=${{ github.workspace }}\RelWithDebInfo
           mkdir %ORT_DOXY_SRC%
           mkdir %ORT_DOXY_OUT%
           "C:\Program Files\doxygen\bin\doxygen.exe" ${{ github.workspace }}\tools\ci_build\github\Doxyfile_csharp.cfg
@@ -365,11 +399,32 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build --build_shared_lib --disable_exceptions --disable_rtti --enable_msvc_static_runtime --enable_reduced_operator_type_support --skip_tests --use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_DISABLE_SPARSE_TENSORS=ON onnxruntime_DISABLE_OPTIONAL_TYPE=ON --minimal_build extended --use_webgpu
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build `
+            --build_csharp `
+            --build_dir ${env:GITHUB_WORKSPACE} `
+            --build_shared_lib `
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF `
+            --cmake_extra_defines onnxruntime_DISABLE_OPTIONAL_TYPE=ON `
+            --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --disable_exceptions `
+            --disable_rtti `
+            --enable_msvc_static_runtime `
+            --enable_reduced_operator_type_support `
+            --minimal_build extended `
+            --parallel `
+            --skip_submodule_sync `
+            --skip_tests `
+            --update `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            --use_webgpu
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
-          Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
+          Remove-Item "${env:GITHUB_WORKSPACE}\RelWithDebInfo" -Include "*.obj" -Recurse
 
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py

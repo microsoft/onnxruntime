@@ -724,7 +724,12 @@ def generate_build_tree(
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
-        cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
+        if is_windows():
+            # be explicit and use the entire filename name
+            cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc.exe")
+        else:
+            cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
+
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
@@ -1747,7 +1752,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_reduced_ops_build(args) or args.minimal_build is not None:
                 return
 
-            if is_windows():
+            if is_windows() and args.cmake_generator != "Ninja":
                 cwd = os.path.join(cwd, config)
 
             if not args.skip_pip_install and args.enable_transformers_tool_test and not args.disable_contrib_ops:

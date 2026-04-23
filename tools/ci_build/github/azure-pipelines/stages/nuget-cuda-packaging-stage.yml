@@ -142,19 +142,19 @@ stages:
       displayName: 'Add TensorRT header file to the native nuGet package'
       inputs:
         filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_nuget_with_native_headers.bat
-        workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
+        workingFolder: $(Build.BinariesDirectory)\RelWithDebInfo
 
     - task: CopyFiles@2
       displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         Contents: '*.snupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: CopyFiles@2
       displayName: 'Copy nuget packages to: $(Build.ArtifactStagingDirectory)'
       inputs:
-        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
         Contents: '*.nupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
