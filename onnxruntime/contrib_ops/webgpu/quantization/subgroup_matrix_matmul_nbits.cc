@@ -238,44 +238,11 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       Tensor* y,
                                       const uint32_t weight_index,
                                       const Tensor* weight_index_indirect) {
-  // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
-  Tensor a_prepack;
+  // Determine tile sizes first (needed for prepack padding).
   const auto& config = supported_subgroup_matrix_configs[config_index];
-  if (config.needsPrepack) {
-    const auto m = config.M;
-    const auto k = config.K;
-
-    // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
-    PrepackProgram prepack_program{m, k};
-    constexpr uint32_t kSubgroupSize = 32;
-    prepack_program.SetWorkgroupSize(kSubgroupSize);
-
-    const auto dispatch_group_size_x = (M + m - 1) / m;
-    ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
-    const auto dispatch_group_size_y = K / k;
-    // Each workgroup will process one subgroup matrix of size m x k.
-    prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
-
-    TensorShape a_prepack_shape{dispatch_group_size_x * m, K};
-    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
-    prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
-        .AddUniformVariables({{M}, {K}})
-        .CacheHint(m, k);
-    ORT_RETURN_IF_ERROR(context.RunProgram(prepack_program));
-    a = &a_prepack;
-  }
-
   uint32_t tile_size_a = 32;
   uint32_t tile_size_b = 64;
   uint32_t work_group_size = 128;
-  constexpr uint32_t kU32Components = 4;
-  TensorShape y_shape{1, M, N};
-  const bool has_zero_points = zero_points != nullptr;
-  const bool has_bias = bias != nullptr;
-  const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
-  const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
   if (config.M == 8 && config.N == 16 && config.K == 16) {
     // 8x16x16 config: 8 subgroups, 256 threads, 64x64 tiles
     tile_size_a = 64;
@@ -286,6 +253,43 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     tile_size_b = 128;
     work_group_size = 128;
   }
+
+  // If applicable, layout optimization of input matrix A(MxK) can be used for SubgroupMatrixLoad.
+  Tensor a_prepack;
+  if (config.needsPrepack) {
+    const auto m = config.M;
+    const auto k = config.K;
+
+    // Optimize the layout of input matrix A(MxK) for SubgroupMatrixLoad.
+    PrepackProgram prepack_program{m, k};
+    constexpr uint32_t kSubgroupSize = 32;
+    prepack_program.SetWorkgroupSize(kSubgroupSize);
+
+    // Pad M to workgroup tile size so all subgroups read valid prepacked data.
+    const uint32_t padded_M = ((M + tile_size_a - 1) / tile_size_a) * tile_size_a;
+    const auto dispatch_group_size_x = padded_M / m;
+    ORT_ENFORCE(K % k == 0, "K must be a multiple of ", k);
+    const auto dispatch_group_size_y = K / k;
+    // Each workgroup will process one subgroup matrix of size m x k.
+    prepack_program.SetDispatchGroupSize(dispatch_group_size_x, dispatch_group_size_y, 1);
+
+    TensorShape a_prepack_shape{padded_M, K};
+    a_prepack = context.CreateGPUTensor(a->DataType(), a_prepack_shape);
+    prepack_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+        .AddOutputs({{&a_prepack, ProgramTensorMetadataDependency::Rank, a_prepack.Shape(), 1}})
+        .AddUniformVariables({{M}, {K}})
+        .CacheHint(m, k);
+    ORT_RETURN_IF_ERROR(context.RunProgram(prepack_program));
+    a = &a_prepack;
+  }
+
+  constexpr uint32_t kU32Components = 4;
+  TensorShape y_shape{1, M, N};
+  const bool has_zero_points = zero_points != nullptr;
+  const bool has_bias = bias != nullptr;
+  const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
+  const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
   mul_program.SetWorkgroupSize(work_group_size);
   mul_program.SetDispatchGroupSize(
       (N + tile_size_b - 1) / tile_size_b,

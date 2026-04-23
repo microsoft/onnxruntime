@@ -4,7 +4,11 @@
 // SubgroupMatrix prepack kernel
 // Rearranges input matrix A(MxK) so that each subgroup matrix (sg_mat_m x sg_mat_k)
 // has its elements laid out contiguously in memory for subgroupMatrixLoad.
-// OOB rows (beyond M) are zero-filled to avoid undefined behavior.
+//
+// The prepack buffer is padded to the workgroup tile size (which may exceed M).
+// Fully OOB blocks (row_base >= M) are skipped entirely, and partial blocks
+// only copy in-bounds rows. The padding region is left uninitialized since the
+// matmul shader bounds-checks (r < M) before storing any output.
 
 #param sg_mat_k
 #param sg_mat_m
@@ -24,16 +28,15 @@ $MAIN {
         var mat: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
             subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(&input_a, in_offset, false, K);
         subgroupMatrixStore(&output_a, out_offset, mat, false, kSgMatK);
-    } else {
-        // Partial block: some rows are OOB. Use scalar copy with zero-fill.
+    } else if (row_base < M) {
+        // Partial block: some rows are OOB. Use scalar copy for in-bounds rows only.
         for (var r: u32 = local_idx; r < kSgMatM * kSgMatK; r += workgroup_size_x) {
             let row = r / kSgMatK;
             let col = r % kSgMatK;
             if (row_base + row < M) {
                 output_a[out_offset + r] = input_a[in_offset + row * K + col];
-            } else {
-                output_a[out_offset + r] = f16(0.0);
             }
         }
     }
+    // Fully OOB blocks (row_base >= M): skip entirely.
 }  // MAIN
