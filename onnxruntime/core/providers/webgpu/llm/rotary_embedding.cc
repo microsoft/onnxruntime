@@ -84,6 +84,7 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
 
   if (position_ids != nullptr) {
     // position_ids provided: cos/sin cache is 2D (max_pos, D/2)
+    // ONNX RotaryEmbedding always uses explicit position_ids (no format 0 base-offset mode).
     // Validate position_ids values are within cache bounds (position_ids kept on CPU via InputMemoryType).
     const auto max_sequence_length = static_cast<int64_t>(cos_cache->Shape()[0]);
     const auto* pos_ids_data = position_ids->Data<int64_t>();

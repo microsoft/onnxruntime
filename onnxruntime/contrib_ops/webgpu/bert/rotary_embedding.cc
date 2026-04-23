@@ -90,6 +90,7 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "    let seqlen = u32(seqlen_i);\n"
       << "    let total_seqlen = seqlen + 1u;\n"
       << "    let past_seqlen = total_seqlen - uniforms.q_global_shape[1];\n"
+      // position_id is derived from past_seqlen + sequence_idx (always non-negative).
       << "    let position_id = past_seqlen + sequence_idx;\n"
       << "    let qi = dot(bsnh, uniforms.q_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
       << "    let qj = qi + select(half_rotary_dim, 1u, " << interleaved_str << ");\n"
