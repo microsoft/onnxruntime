@@ -72,7 +72,6 @@ Abstract:
 #elif defined(__wasm_simd128__)
 #define MLAS_TARGET_WASM_SIMD
 #else
-#define MLAS_TARGET_WASM_SCALAR
 #endif
 #endif
 
@@ -82,7 +81,6 @@ Abstract:
 
 #if defined(__riscv) && (__riscv_xlen == 64)
 #define MLAS_TARGET_RISCV64
-#define MLAS_TARGET_WASM_SCALAR
 #endif
 //
 // Define the support levels for the target architecture.
