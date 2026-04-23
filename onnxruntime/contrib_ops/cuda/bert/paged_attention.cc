@@ -199,7 +199,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Populate cumulative_seqlens_kv for both backends. The MEA path additionally needs
   // the last element on the host to size the tight gather buffers, so we D->H sync below.
-  cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
+  cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
       cumulative_seqlens_kv_ptr,
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
