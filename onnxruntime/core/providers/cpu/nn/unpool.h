@@ -37,6 +37,9 @@ class MaxUnpool : public OpKernel {
     }
 
     ORT_ENFORCE(strides_.size() == kernel_shape_.size());
+    for (size_t dim = 0; dim < strides_.size(); ++dim) {
+      ORT_ENFORCE(strides_[dim] > 0, "All stride values must be positive, got: ", strides_[dim]);
+    }
   }
 
   ~MaxUnpool() override = default;

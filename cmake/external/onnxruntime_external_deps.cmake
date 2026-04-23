@@ -274,6 +274,8 @@ onnxruntime_fetchcontent_declare(
   URL ${DEP_URL_date}
   URL_HASH SHA1=${DEP_SHA1_date}
   EXCLUDE_FROM_ALL
+  PATCH_COMMAND
+    ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/date/date.patch
   FIND_PACKAGE_ARGS 3...<4 NAMES date
 )
 onnxruntime_fetchcontent_makeavailable(date)

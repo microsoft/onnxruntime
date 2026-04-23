@@ -228,11 +228,42 @@ TEST(FusedMatMulOpTest, FloatTypeNoTranspose) {
   RunFusedMatMulTest<float>("FusedMatMul", 1);
 }
 
-#if defined(USE_CUDA)  // double support only implemented in CUDA kernel
 TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
   RunFusedMatMulTest<double>("FusedMatMul", 1);
 }
-#endif
+
+TEST(FusedMatMulOpTest, DoubleTypeTransposeA) {
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, false);
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeTransposeB) {
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, true);
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeTransposeAB) {
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, true);
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeScale) {
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, false, false, false, 0.5f);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, false, false, false, 2.0f);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, true, false, false, 4.0f);
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeTransposeBatch) {
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, false, true, false);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, false, false, true);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, false, true, true, 0.5f);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, false, true, false);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, false, false, true);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, false, true, true);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, true, true, false);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, true, false, true);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, false, true, true, true);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, true, true, false, 2.0f);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, true, false, true);
+  RunFusedMatMulTest<double>("FusedMatMul", 1, true, true, true, true);
+}
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeA) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, false);
@@ -385,6 +416,103 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
   }
 }
 #endif  //  USE_CUDA USE_RCOM USE_DNNL
+
+// Validation tests: verify that invalid inputs are properly rejected
+TEST(FusedMatMulOpTest, DoubleTypeDimensionMismatch) {
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  // A is [2,3], B is [4,2] — K dimension mismatch (3 != 4)
+  test.AddInput<double>("A", {2, 3}, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
+  test.AddInput<double>("B", {4, 2}, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0});
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddOutput<double>("Y", {2, 2}, {0.0, 0.0, 0.0, 0.0});
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Incompatible dimensions for matrix multiplication");
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeTransposeBatchRankMismatch) {
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  // transBatchA=1 requires rank >= 3 and equal rank on both inputs
+  // A is [2,3,4] (rank 3), B is [4,5] (rank 2) — rank mismatch
+  std::vector<double> a_vals(24, 1.0);
+  std::vector<double> b_vals(20, 1.0);
+  test.AddInput<double>("A", {2, 3, 4}, a_vals);
+  test.AddInput<double>("B", {4, 5}, b_vals);
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("transBatchA", static_cast<int64_t>(1));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddOutput<double>("Y", {2, 3, 5}, std::vector<double>(30, 0.0));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "ShapeInferenceError");
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeTransposeBatchRankTooLow) {
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  // transBatchA=1 requires rank >= 3, but inputs are 2D
+  test.AddInput<double>("A", {3, 4}, std::vector<double>(12, 1.0));
+  test.AddInput<double>("B", {4, 5}, std::vector<double>(20, 1.0));
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("transBatchA", static_cast<int64_t>(1));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddOutput<double>("Y", {3, 5}, std::vector<double>(15, 0.0));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Two inputs should have same rank and rank >= 3");
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeBroadcastIncompatible) {
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  // Batch dims [2,3,4] vs [3,4,2] — batch dim 0 is 2 vs 3, not
+  // broadcastable
+  std::vector<double> a_vals(24, 1.0);
+  std::vector<double> b_vals(24, 1.0);
+  test.AddInput<double>("A", {2, 3, 4}, a_vals);
+  test.AddInput<double>("B", {3, 4, 2}, b_vals);
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddOutput<double>("Y", {3, 3, 2}, std::vector<double>(18, 0.0));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Incompatible dimensions");
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeAlphaZero) {
+  // alpha=0 should produce all-zero output
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  test.AddInput<double>("A", {2, 3}, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
+  test.AddInput<double>("B", {3, 2}, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 0.0f);
+  test.AddOutput<double>("Y", {2, 2}, {0.0, 0.0, 0.0, 0.0});
+  test.Run();
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeEmptyInput) {
+  // Empty input — M=0 case
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  test.AddInput<double>("A", {0, 3}, std::vector<double>{});
+  test.AddInput<double>("B", {3, 4}, std::vector<double>(12, 1.0));
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddOutput<double>("Y", {0, 4}, std::vector<double>{});
+  test.Run();
+}
+
+TEST(FusedMatMulOpTest, DoubleTypeEmptyKDim) {
+  // K=0 case — output should be zeros
+  OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+  test.AddInput<double>("A", {2, 0}, std::vector<double>{});
+  test.AddInput<double>("B", {0, 3}, std::vector<double>{});
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddOutput<double>("Y", {2, 3}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+  test.Run();
+}
 
 }  // namespace transpose_matmul
 }  // namespace test

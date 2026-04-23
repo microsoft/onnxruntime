@@ -467,6 +467,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 0>();
 }
 
 TEST(MatMulNBits, Float16_4b_Accuracy4) {
@@ -497,6 +499,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 4>();
 
   // See PR #27412 for details on the following test case,
   // which is added to cover a specific failure case in the past.
