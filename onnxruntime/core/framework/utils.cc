@@ -67,9 +67,13 @@ bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt) {
     return true;
   }
 
-  // Alignment 0 means "unspecified" — treat as compatible with any alignment requirement.
-  const bool is_alignment_satisfied = src.GetAlignment() == 0 || tgt.GetAlignment() == 0 ||
+  // Alignment 0 means "unspecified" — treat tgt as compatible with any alignment requirement.
+  const bool is_alignment_satisfied = tgt.GetAlignment() == 0 ||
                                       src.GetAlignment() >= tgt.GetAlignment();
+
+  const bool is_same_physical_device = src.Type() == tgt.Type() &&
+                                       src.Vendor() == tgt.Vendor() &&
+                                       src.Id() == tgt.Id();
 
   // Both are CPU-accessible (CPU type or HOST_ACCESSIBLE memory).
   if (src_is_cpu_mem && tgt_is_cpu_mem) {
@@ -78,20 +82,15 @@ bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt) {
       return is_alignment_satisfied;
     }
     // Both are HOST_ACCESSIBLE on some device: require the same physical device.
-    return src.Type() == tgt.Type() &&
-           src.Vendor() == tgt.Vendor() &&
-           src.Id() == tgt.Id() && is_alignment_satisfied;
+    return is_same_physical_device && is_alignment_satisfied;
   }
 
   // HOST_ACCESSIBLE source can serve a DEFAULT target on the same physical device —
   // the device can DMA from HOST_ACCESSIBLE memory directly.
   // The reverse (DEFAULT → HOST_ACCESSIBLE) is unsafe: HOST_ACCESSIBLE implies CPU consumers,
   // and DEFAULT memory is device-only so the CPU cannot read it.
-  if (src_is_cpu_mem && !tgt_is_cpu_mem &&
-      src.Type() == tgt.Type() &&
-      src.Vendor() == tgt.Vendor() &&
-      src.Id() == tgt.Id()) {
-    return is_alignment_satisfied;
+  if (src_is_cpu_mem && !tgt_is_cpu_mem) {
+    return is_same_physical_device && is_alignment_satisfied;
   }
 
   return false;

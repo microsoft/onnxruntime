@@ -38,7 +38,6 @@ TEST(CanSourceSatisfyTargetTest, BothHostAccessibleSameDevice) {
   EXPECT_TRUE(utils::CanSourceSatisfyTarget(dev, dev));
 }
 
-// Branch 3: both HOST_ACCESSIBLE, different physical device
 TEST(CanSourceSatisfyTargetTest, BothHostAccessibleDifferentId) {
   EXPECT_FALSE(utils::CanSourceSatisfyTarget(
       HostAccessible(kTestVendor1, 0), HostAccessible(kTestVendor1, 1)));
@@ -49,13 +48,6 @@ TEST(CanSourceSatisfyTargetTest, BothHostAccessibleDifferentVendor) {
       HostAccessible(kTestVendor1, 0), HostAccessible(kTestVendor2, 0)));
 }
 
-TEST(CanSourceSatisfyTargetTest, BothHostAccessibleDifferentAlignment) {
-  // Different alignment => OrtDevice::operator== returns false
-  EXPECT_FALSE(utils::CanSourceSatisfyTarget(
-      HostAccessible(kTestVendor1, 0, 16), HostAccessible(kTestVendor1, 0, 32)));
-}
-
-// Branch 4: HOST_ACCESSIBLE (src) -> DEFAULT (tgt), same physical device
 TEST(CanSourceSatisfyTargetTest, HostAccessibleToDefaultSameDevice) {
   EXPECT_TRUE(utils::CanSourceSatisfyTarget(
       HostAccessible(kTestVendor1, 0), Default(kTestVendor1, 0)));
@@ -74,8 +66,7 @@ TEST(CanSourceSatisfyTargetTest, HostAccessibleToDefaultAlignmentInsufficient) {
 }
 
 TEST(CanSourceSatisfyTargetTest, HostAccessibleToDefaultSrcAlignmentZero) {
-  // 0 = unspecified, treated as wildcard
-  EXPECT_TRUE(utils::CanSourceSatisfyTarget(
+  EXPECT_FALSE(utils::CanSourceSatisfyTarget(
       HostAccessible(kTestVendor1, 0, 0), Default(kTestVendor1, 0, 64)));
 }
 
@@ -90,8 +81,6 @@ TEST(CanSourceSatisfyTargetTest, HostAccessibleToDefaultDifferentDeviceId) {
       HostAccessible(kTestVendor1, 0), Default(kTestVendor1, 1)));
 }
 
-// Branch 5: incompatible cases
-
 TEST(CanSourceSatisfyTargetTest, DefaultToHostAccessibleRejected) {
   // Reversed direction: CPU cannot read DEFAULT (device-only) memory
   EXPECT_FALSE(utils::CanSourceSatisfyTarget(
@@ -101,6 +90,39 @@ TEST(CanSourceSatisfyTargetTest, DefaultToHostAccessibleRejected) {
 TEST(CanSourceSatisfyTargetTest, DefaultToDefaultRejected) {
   EXPECT_FALSE(utils::CanSourceSatisfyTarget(
       Default(kTestVendor1, 0), Default(kTestVendor2, 0)));
+}
+
+// Early return: identical CPU devices are always compatible.
+TEST(CanSourceSatisfyTargetTest, CpuToCpuIdentical) {
+  EXPECT_TRUE(utils::CanSourceSatisfyTarget(Cpu(), Cpu()));
+}
+
+// Early return: identical DEFAULT devices on the same physical device are compatible.
+TEST(CanSourceSatisfyTargetTest, DefaultToDefaultSameDevice) {
+  EXPECT_TRUE(utils::CanSourceSatisfyTarget(Default(kTestVendor1, 0), Default(kTestVendor1, 0)));
+}
+
+// Both HOST_ACCESSIBLE, same physical device — alignment variations (not the early-return path
+// because src and tgt differ in alignment, so src != tgt).
+TEST(CanSourceSatisfyTargetTest, BothHostAccessibleSameDeviceAlignmentSatisfied) {
+  EXPECT_TRUE(utils::CanSourceSatisfyTarget(
+      HostAccessible(kTestVendor1, 0, 64), HostAccessible(kTestVendor1, 0, 32)));
+}
+
+TEST(CanSourceSatisfyTargetTest, BothHostAccessibleSameDeviceAlignmentInsufficient) {
+  EXPECT_FALSE(utils::CanSourceSatisfyTarget(
+      HostAccessible(kTestVendor1, 0, 16), HostAccessible(kTestVendor1, 0, 32)));
+}
+
+TEST(CanSourceSatisfyTargetTest, BothHostAccessibleSameDeviceSrcAlignmentZero) {
+  EXPECT_FALSE(utils::CanSourceSatisfyTarget(
+      HostAccessible(kTestVendor1, 0, 0), HostAccessible(kTestVendor1, 0, 32)));
+}
+
+// HOST_ACCESSIBLE → DEFAULT: same device id but different vendor fails is_same_physical_device.
+TEST(CanSourceSatisfyTargetTest, HostAccessibleToDefaultDifferentVendor) {
+  EXPECT_FALSE(utils::CanSourceSatisfyTarget(
+      HostAccessible(kTestVendor1, 0), Default(kTestVendor2, 0)));
 }
 
 }  // namespace test
