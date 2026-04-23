@@ -287,6 +287,54 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         continue;
       }
 
+      // If a size threshold is configured, try to estimate the output size from type/shape info
+      // before performing the (potentially expensive) computation.
+      if (output_size_threshold > 0) {
+        bool exceeds_threshold = false;
+        for (size_t output_idx : fetch_to_output_idx) {
+          const auto* node_out = node->OutputDefs()[output_idx];
+          const auto* type_proto = node_out->TypeAsProto();
+          if (type_proto == nullptr || !utils::HasTensorType(*type_proto)) {
+            continue;
+          }
+          const auto& tensor_type = type_proto->tensor_type();
+          if (!utils::HasElemType(tensor_type) || !utils::HasShape(tensor_type)) {
+            continue;
+          }
+          const auto elem_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_type.elem_type());
+          const size_t elem_size = utils::GetElementSizeOfTensor(elem_type);
+          if (elem_size == 0) {
+            continue;
+          }
+          // Compute num_elements; skip if any dim is unknown.
+          const auto& shape = tensor_type.shape();
+          size_t num_elements = 1;
+          bool all_dims_known = true;
+          for (const auto& dim : shape.dim()) {
+            if (!utils::HasDimValue(dim) || dim.dim_value() < 0) {
+              all_dims_known = false;
+              break;
+            }
+            num_elements *= static_cast<size_t>(dim.dim_value());
+          }
+          if (!all_dims_known) {
+            continue;
+          }
+          const size_t estimated_size = num_elements * elem_size;
+          if (estimated_size > output_size_threshold) {
+            LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
+                               << " node '" << node->Name() << "': estimated output size "
+                               << estimated_size << " bytes exceeds the threshold of "
+                               << output_size_threshold << " bytes.";
+            exceeds_threshold = true;
+            break;
+          }
+        }
+        if (exceeds_threshold) {
+          continue;
+        }
+      }
+
       const bool node_on_cpu_ep = node->GetExecutionProviderType() == kCpuExecutionProvider;
 
       std::unique_ptr<const OpKernel> kernel;
@@ -347,24 +395,6 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                              << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
           converted_to_constant = false;
           break;
-        }
-      }
-
-      // If a size threshold was configured, check whether any output tensor exceeds it.
-      // Skipping large outputs prevents the optimized model from having a much larger
-      // memory footprint than the original model.
-      if (converted_to_constant && output_size_threshold > 0) {
-        for (const OrtValue& ort_value : fetches) {
-          if (ort_value.IsTensor()) {
-            const size_t tensor_size = ort_value.Get<Tensor>().SizeInBytes();
-            if (tensor_size > output_size_threshold) {
-              LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
-                                 << " node '" << node->Name() << "': output size " << tensor_size
-                                 << " bytes exceeds the threshold of " << output_size_threshold << " bytes.";
-              converted_to_constant = false;
-              break;
-            }
-          }
         }
       }
 
