@@ -1289,6 +1289,109 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsRank3HiddenSizeNotDivisibleByNu
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "hidden_size=5 must be divisible by num_heads=2 for rank-3 input", {}, nullptr, &execution_providers);
+// Test that OOB position_ids are rejected on WebGPU (host-side validation).
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_WebGPU) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  int batch_size = 1;
+  int sequence_length = 1;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(hidden_size, 1.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // position_id = 2048 exceeds max_sequence_length = 8
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {2048});
+
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "position_ids value 2048 at index 0 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
+// Test that negative position_ids are rejected on WebGPU.
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_Negative_WebGPU) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  int batch_size = 1;
+  int sequence_length = 1;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(hidden_size, 1.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // position_id = -1 is negative
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {-1});
+
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "position_ids value -1 at index 0 is out of range",
+           {}, nullptr, &execution_providers);
+}
+
+// Test that OOB position_ids in a batch are rejected on WebGPU.
+TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_InBatch_WebGPU) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  int batch_size = 2;
+  int sequence_length = 2;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(batch_size * sequence_length * hidden_size, 1.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+  // Second batch has position_id = 100 which exceeds max_sequence_length = 8
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {0, 1, 2, 100});
+
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "position_ids value 100 at index 3 is out of range",
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
