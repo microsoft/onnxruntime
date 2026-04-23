@@ -230,6 +230,8 @@ struct PagedAttentionData {
   T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
   T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
   T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
+  int total_kv_tokens = 0;
 
   // Output Tensors
   T* output = nullptr;

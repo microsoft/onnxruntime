@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
@@ -413,6 +414,121 @@ Status FlashAttention(
 }
 #endif
 
+#if USE_MEMORY_EFFICIENT_ATTENTION
+// Fallback when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION=1).
+// Mirrors the FlashAttention preprocessing (rotary, unpack, ReshapeAndCache), then gathers
+// the paged KV cache into a packed-varlen [total_kv_tokens, num_heads, head_size] buffer and
+// dispatches to CUTLASS memory-efficient attention via its seqstart_q / seqstart_k varlen ABI.
+// Caller must populate data.gathered_key / data.gathered_value / data.total_kv_tokens.
+template <typename T>
+Status UnfusedAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T>& data,
+    float scale) {
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+  const int batch_size = parameters.batch_size;
+  const int token_count = parameters.token_count;
+  const int q_hidden_size = parameters.hidden_size;
+  const int kv_hidden_size = parameters.kv_hidden_size;
+  const int num_heads = parameters.num_heads;
+  const int kv_num_heads = parameters.kv_num_heads;
+  const int head_size = parameters.head_size;
+  const int block_size = parameters.block_size;
+  const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
+  const int local_window_size = parameters.local_window_size;
+  const int total_kv_tokens = data.total_kv_tokens;
+  const int max_query_len = token_count - batch_size + 1;
+
+  T* query = const_cast<T*>(data.query);
+  T* key;
+  T* value;
+  if (!parameters.is_packed_qkv) {
+    key = const_cast<T*>(data.key);
+    value = const_cast<T*>(data.value);
+  } else {
+    key = reinterpret_cast<T*>(query) + static_cast<size_t>(num_heads * head_size);
+    value = reinterpret_cast<T*>(key) + static_cast<size_t>(kv_num_heads * head_size);
+  }
+
+  int* cumulative_seqlens_q = const_cast<int*>(data.cumulative_seqlens_q);
+  int* past_seqlens = const_cast<int*>(data.past_seqlens);
+  int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
+
+  if (parameters.do_rotary) {
+    auto q_buffer = data.workspace_buffer;
+    auto k_buffer = data.workspace_buffer + token_count * num_heads * head_size;
+    const int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
+        stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
+        max_query_len, num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
+        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
+        max_query_len, kv_num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
+    query = q_buffer;
+    key = k_buffer;
+  } else if (parameters.is_packed_qkv) {
+    auto q_buffer = data.workspace_buffer;
+    const int packed_seq_stride = q_hidden_size + 2 * kv_hidden_size;
+    ORT_RETURN_IF_ERROR(LaunchUnpackCumulative<T>(
+        query, q_buffer, token_count, q_hidden_size, packed_seq_stride, stream, max_threads_per_block));
+    query = q_buffer;
+  }
+
+  int* block_table = const_cast<int*>(data.block_table);
+  const int key_stride = parameters.is_packed_qkv && !parameters.do_rotary ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
+  const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
+  ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, block_table, past_seqlens,
+                                               cumulative_seqlens_q, batch_size, max_num_blocks_per_seq, token_count,
+                                               kv_hidden_size, block_size, key_stride, value_stride, stream,
+                                               max_threads_per_block));
+
+  ORT_RETURN_IF_ERROR(LaunchGatherAndExpandPagedKVCache<T>(
+      data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
+      block_table, cumulative_seqlens_kv, batch_size, num_heads, kv_num_heads,
+      head_size, block_size, max_num_blocks_per_seq, total_kv_tokens, stream, max_threads_per_block));
+
+  MemoryEfficientAttentionParams p;
+  p.sm = device_prop.major * 10 + device_prop.minor;
+  p.is_bf16 = std::is_same<T, BFloat16>::value;
+  p.is_half = !p.is_bf16 && (sizeof(T) == 2);
+  p.batch_size = batch_size;
+  p.num_heads = num_heads;
+  p.sequence_length = max_query_len;
+  p.kv_sequence_length = total_kv_tokens;
+  p.max_sequence_length = total_kv_tokens;
+  p.qk_head_size = head_size;
+  p.v_head_size = head_size;
+  p.causal = true;
+  p.scale = scale;
+  p.softcap = parameters.softcap;
+  p.local_window_size = local_window_size;
+  p.seqstart_q_ptr = cumulative_seqlens_q;
+  p.seqstart_k_ptr = cumulative_seqlens_kv;
+  p.seqlen_k_ptr = nullptr;
+  p.query = query;
+  p.key = data.gathered_key;
+  p.value = data.gathered_value;
+  p.attn_bias = nullptr;
+  p.is_kv_bsnh = true;
+  p.has_custom_right_padding = false;
+  p.output = data.output;
+  p.workspace = MemoryEfficientAttentionParams::need_workspace(head_size, sizeof(T) == sizeof(float))
+                    ? data.fmha_buffer
+                    : nullptr;
+  p.stream = stream;
+  run_memory_efficient_attention(p);
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("mea paged attention output", data.output, token_count, num_heads, head_size);
+
+  return Status::OK();
+}
+#endif
+
 ////////// API Functions
 
 template <typename T>
@@ -428,6 +544,12 @@ Status QkvToContext(
 #if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
     return FlashAttention(device_prop, stream, parameters, data, scale);
+  }
+#endif
+
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  if (data.use_memory_efficient_attention) {
+    return UnfusedAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
 
