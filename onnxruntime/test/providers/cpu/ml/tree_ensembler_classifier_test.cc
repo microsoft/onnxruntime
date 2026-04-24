@@ -532,4 +532,3 @@ TEST(MLOpTest, TreeEnsembleClassifierMismatchedNodeArrays) {
 
 }  // namespace test
 }  // namespace onnxruntime
-
