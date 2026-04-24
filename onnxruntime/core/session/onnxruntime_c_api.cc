@@ -446,6 +446,33 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
   auto values_size = narrow<size_t>(values_t_shape.Size());
   auto indices_span = gsl::make_span(indices_data, indices_num);
 
+  const auto& dense_shape = sparse_tensor.DenseShape();
+  if (values_size > 0 && indices_num > 0) {
+    if (indices_num == values_size) {
+      const auto dense_size = dense_shape.Size();
+      for (size_t i = 0; i < indices_num; ++i) {
+        ORT_RETURN_IF_NOT(indices_data[i] >= 0 && indices_data[i] < dense_size,
+                          "COO linear index out of bounds: ", indices_data[i],
+                          " must be in [0, ", dense_size, ")");
+      }
+    } else if (indices_num / 2 == values_size && indices_num % 2 == 0) {
+      ORT_RETURN_IF_NOT(dense_shape.NumDimensions() == 2,
+                        "COO 2D indices require dense shape of 2 dimensions");
+      const auto rows = dense_shape.GetDims()[0];
+      const auto cols = dense_shape.GetDims()[1];
+      size_t tuple_idx = 0;
+      for (size_t i = 0; i < values_size; ++i, tuple_idx += 2) {
+        auto r = indices_data[tuple_idx];
+        auto c = indices_data[tuple_idx + 1];
+        ORT_RETURN_IF_NOT(r >= 0 && r < rows && c >= 0 && c < cols,
+                          "COO 2D index out of bounds: (", r, ", ", c,
+                          ") must be in [0, ", rows, ") x [0, ", cols, ")");
+      }
+    } else {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "COO indices count must be equal to or twice the values count.");
+    }
+  }
+
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
     ORT_THROW_IF_ERROR(sparse_tensor.MakeCooStrings(values_size, conv.strings, indices_span));
@@ -481,6 +508,26 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
 
   auto inner_indices_span = gsl::make_span(inner_indices_data, inner_indices_num);
   auto outer_indices_span = gsl::make_span(outer_indices_data, outer_indices_num);
+
+  const auto& dense_shape = sparse_tensor.DenseShape();
+  if (dense_shape.NumDimensions() == 2 && inner_indices_num > 0) {
+    const auto cols = dense_shape.GetDims()[1];
+    for (size_t i = 0; i < inner_indices_num; ++i) {
+      ORT_RETURN_IF_NOT(inner_indices_data[i] >= 0 && inner_indices_data[i] < cols,
+                        "CSR inner index out of bounds: ", inner_indices_data[i],
+                        " must be in [0, ", cols, ")");
+    }
+  }
+  if (outer_indices_num > 0) {
+    int64_t prev = 0;
+    for (size_t i = 0; i < outer_indices_num; ++i) {
+      auto val = outer_indices_data[i];
+      ORT_RETURN_IF_NOT(val >= prev && val <= static_cast<int64_t>(inner_indices_num),
+                        "CSR outer index out of bounds or not monotonically non-decreasing: ", val);
+      prev = val;
+    }
+  }
+
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
     ORT_THROW_IF_ERROR(sparse_tensor.MakeCsrStrings(values_size, conv.strings, inner_indices_span, outer_indices_span));
@@ -592,6 +639,34 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
                           ? gsl::span<int64_t>()
                           : gsl::make_span(indices_data, indices_num);
 
+  const auto values_size = sparse_tensor.NumValues();
+  const auto& dense_shape = sparse_tensor.DenseShape();
+  if (values_size > 0 && indices_num > 0) {
+    if (indices_num == values_size) {
+      const auto dense_size = dense_shape.Size();
+      for (size_t i = 0; i < indices_num; ++i) {
+        ORT_RETURN_IF_NOT(indices_data[i] >= 0 && indices_data[i] < dense_size,
+                          "COO linear index out of bounds: ", indices_data[i],
+                          " must be in [0, ", dense_size, ")");
+      }
+    } else if (indices_num / 2 == values_size && indices_num % 2 == 0) {
+      ORT_RETURN_IF_NOT(dense_shape.NumDimensions() == 2,
+                        "COO 2D indices require dense shape of 2 dimensions");
+      const auto rows = dense_shape.GetDims()[0];
+      const auto cols = dense_shape.GetDims()[1];
+      size_t tuple_idx = 0;
+      for (size_t i = 0; i < values_size; ++i, tuple_idx += 2) {
+        auto r = indices_data[tuple_idx];
+        auto c = indices_data[tuple_idx + 1];
+        ORT_RETURN_IF_NOT(r >= 0 && r < rows && c >= 0 && c < cols,
+                          "COO 2D index out of bounds: (", r, ", ", c,
+                          ") must be in [0, ", rows, ") x [0, ", cols, ")");
+      }
+    } else {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "COO indices count must be equal to or twice the values count.");
+    }
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCooIndices(indices_span));
   return nullptr;
 #else
@@ -616,6 +691,26 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
   auto outer_span = (outer_num == 0 || outer_data == nullptr)
                         ? gsl::span<int64_t>()
                         : gsl::make_span(outer_data, outer_num);
+
+  const auto& dense_shape = sparse_tensor.DenseShape();
+  if (dense_shape.NumDimensions() == 2 && inner_num > 0) {
+    const auto cols = dense_shape.GetDims()[1];
+    for (size_t i = 0; i < inner_num; ++i) {
+      ORT_RETURN_IF_NOT(inner_data[i] >= 0 && inner_data[i] < cols,
+                        "CSR inner index out of bounds: ", inner_data[i],
+                        " must be in [0, ", cols, ")");
+    }
+  }
+  if (outer_num > 0) {
+    int64_t prev = 0;
+    for (size_t i = 0; i < outer_num; ++i) {
+      auto val = outer_data[i];
+      ORT_RETURN_IF_NOT(val >= prev && val <= static_cast<int64_t>(inner_num),
+                        "CSR outer index out of bounds or not monotonically non-decreasing: ", val);
+      prev = val;
+    }
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCsrIndices(inner_span, outer_span));
   return nullptr;
 #else

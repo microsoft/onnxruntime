@@ -7,6 +7,7 @@
 
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensor.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/data_transfer_manager.h"
@@ -264,7 +265,9 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
       for (int64_t cnt = 0; cnt < row_size; ++cnt, ++inner_idx) {
         assert(inner_idx < inner_span.size());
         auto col = inner_span[inner_idx];
-        auto dst_idx = (out_i - 1) * cols + col;
+        // The indices bounds are already validated at the C API boundary.
+        // Use SafeInt to prevent overflow during index calculation.
+        int64_t dst_idx = SafeInt<int64_t>(out_i - 1) * cols + col;
         copy_func(output, values, dst_idx, src_idx);
       }
     }
@@ -355,16 +358,17 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
     // Linear index
     if (num_indices == num_values) {
       for (int64_t src_idx = 0; src_idx < num_values; ++src_idx) {
+        // The indices bounds are already validated at the C API boundary.
         auto dst_idx = indices[src_idx];
-        ORT_RETURN_IF_NOT(dst_idx < dense_size, "Invalid index: ", dst_idx, " > dense_size: ", dense_size);
         copy_func(output, values, dst_idx, src_idx);
       }
     } else {
       const auto cols = src_dims[1];
       for (int64_t src_idx = 0; src_idx < num_values; ++src_idx) {
         auto tuple_idx = src_idx * 2;
-        auto dst_idx = indices[tuple_idx] * cols + indices[tuple_idx + 1];
-        ORT_RETURN_IF_NOT(dst_idx < dense_size, "Invalid index: ", dst_idx, " > dense_size: ", dense_size);
+        // The indices bounds are already validated at the C API boundary.
+        // Use SafeInt to prevent overflow during index calculation.
+        int64_t dst_idx = SafeInt<int64_t>(indices[tuple_idx]) * cols + indices[tuple_idx + 1];
         copy_func(output, values, dst_idx, src_idx);
       }
     }
