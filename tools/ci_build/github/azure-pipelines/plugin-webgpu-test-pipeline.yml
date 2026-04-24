@@ -1,5 +1,3 @@
-trigger: none
-
 # This pipeline runs tests against artifacts produced by the WebGPU
 # plugin packaging pipeline. It is resource-triggered on successful
 # packaging runs and can also be queued manually against any prior
@@ -8,6 +6,16 @@ trigger: none
 # Split from the packaging pipeline so the test side (Dockerfile, Vulkan
 # configuration, test scripts) can be iterated on without rebuilding
 # Dawn/WebGPU from source.
+
+trigger: none
+
+variables:
+- name: DisableDockerDetector
+  value: true
+- name: skipNugetSecurityAnalysis
+  value: true
+- name: Codeql.SkipTaskAutoInjection
+  value: true
 
 resources:
   pipelines:
