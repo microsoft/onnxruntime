@@ -2,8 +2,18 @@
 # variable based on the build type (nightly, official, or dev).
 
 parameters:
+# The package version type: 'release', 'RC', or 'dev'. Controls how the final version
+# string is derived from the contents of the version_file.
 - name: package_version
   type: string
+  values:
+  - release
+  - RC
+  - dev
+
+# Path, relative to the repository root, of the file containing the base version number
+# (e.g. "plugin-ep-webgpu/VERSION_NUMBER"). The file should contain a single semver-like
+# version string (e.g. "1.2.3").
 - name: version_file
   type: string
 
