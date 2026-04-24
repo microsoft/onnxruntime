@@ -1463,6 +1463,74 @@ class TestONNXAttentionGQALargeHeadUnfused(unittest.TestCase):
         )
         func(**kwargs)
 
+    def test_gqa_large_head_unfused_softcap_additive_mask_poison_fp16(self):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=3,
+            past_kv_sequence_length=0,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            is_causal=0,
+            softcap=1.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        device = "cuda"
+        torch_type = torch.float16
+        q = torch.zeros(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        k = torch.zeros(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        v = torch.full_like(k, 0.2)
+        v[:, 1, :, :] = 1000.0
+
+        attn_mask = torch.zeros(
+            config.batch_size,
+            config.q_num_heads,
+            config.q_sequence_length,
+            config.kv_sequence_length,
+            device=device,
+            dtype=torch_type,
+        )
+        attn_mask[:, :, :, 1] = float("-inf")
+
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+
+        out = out_ort.reshape(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+        )
+        expected = torch.full_like(out, 0.2)
+        torch.testing.assert_close(out, expected, rtol=0, atol=2e-2)
+        self.assertLess(out.float().max().item(), 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
