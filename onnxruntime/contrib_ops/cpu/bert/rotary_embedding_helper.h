@@ -93,7 +93,7 @@ Status CheckInputs(const T* input,
   if (input_dims.size() == 4) {
     // input is [batch, num_heads, seq, head_size]
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[2], "sequence_length", sequence_length));
-      ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "num_heads", num_heads));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "num_heads", num_heads));
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[3], "head_size", head_size));
       ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_size, "hidden_size", hidden_size));
     transposed = true;
