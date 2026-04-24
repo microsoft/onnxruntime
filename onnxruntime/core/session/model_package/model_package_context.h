@@ -21,14 +21,30 @@ using json = nlohmann::json;
 
 namespace onnxruntime {
 
-struct ModelVariantInfo {
-  std::string ep{};
-  std::string device{};
-  std::string architecture{};
-  std::string compatibility_info{};
-  std::unordered_map<std::string, std::string> metadata{};
+struct VariantEpCompatibilityInfo {
+  std::optional<std::string> ep;
+  std::optional<std::string> device_type;
+  std::optional<std::string> compatibility_info;
+  std::optional<json> session_options;
+  std::optional<json> provider_options;
   OrtCompiledModelCompatibility compiled_model_compatibility{};
-  std::filesystem::path model_path{};
+};
+
+struct VariantModelInfo {
+  std::string identifier;
+  std::filesystem::path model_file_path;
+  std::vector<VariantEpCompatibilityInfo> ep_compatibility;
+
+  // Selected ep_compatibility entry index after variant matching.
+  std::optional<size_t> selected_ep_compatibility_index{};
+};
+
+// Represents a specific variant of a component model which is the finest granularity for variant selection.
+struct ModelVariantInfo {
+  std::string component_model_name;
+  std::string variant_name;
+  std::vector<VariantModelInfo> model_info;
+  std::optional<json> consumer_metadata;
 };
 
 struct VariantSelectionEpInfo {
@@ -57,8 +73,9 @@ class ModelPackageContext {
 
   size_t GetComponentModelCount() const noexcept;
   Status GetComponentModelName(size_t component_index, const std::string*& out_name) const;
-  Status GetSelectedVariant(const std::string& component_name,
-                            const ModelVariantInfo*& out_variant) const;
+  Status GetSelectedVariantModelInfo(const std::string& component_name,
+                                     const char* file_identifier /*may be null*/,
+                                     const VariantModelInfo*& out_model_info) const;
   Status GetSelectedVariantFiles(const std::string& component_name,
                                  gsl::span<const std::string>& out_file_identifiers) const;
   Status ResolveSelectedVariantFile(const std::string& component_name,
@@ -85,6 +102,9 @@ class ModelPackageContext {
   std::vector<std::string> component_model_names_{};
   std::unordered_map<std::string, std::vector<size_t>> component_to_variant_indices_{};
 
+  // Selected variant index per component model.
+  std::unordered_map<std::string, size_t> selected_variant_index_by_component_{};
+
   // Cached file identifiers for the currently selected variant (for query APIs).
   mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
 
@@ -94,20 +114,24 @@ class ModelPackageContext {
   std::vector<const OrtEpDevice*> execution_devices_{};
   std::vector<const OrtEpDevice*> devices_selected_{};
   bool from_policy_{false};
+
   std::optional<std::filesystem::path> selected_variant_path_{};
+  std::optional<VariantModelInfo> selected_model_info_{};
 
   void BuildComponentModelCache();
+
+  Status GetSelectedVariantForComponent(const std::string& component_name,
+                                        const ModelVariantInfo*& out_variant) const;
 };
 
 class ModelVariantSelector {
  public:
   ModelVariantSelector() = default;
 
-  // Select model variants that match the provided EP/device info. If multiple
-  // variants match, the one with the highest variant score is chosen.
+  // Select model variant (finest granularity) and return the selected model_info entry.
   Status SelectVariant(const ModelPackageContext& context,
                        gsl::span<VariantSelectionEpInfo> ep_infos,
-                       std::optional<std::filesystem::path>& selected_variant_path) const;
+                       std::optional<VariantModelInfo>& selected_model_info) const;
 
  private:
   // Compute a score for a variant

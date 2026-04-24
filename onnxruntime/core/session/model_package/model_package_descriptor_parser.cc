@@ -18,18 +18,23 @@
 namespace onnxruntime {
 namespace {
 
-struct VariantConstraintsSchema {
-  std::optional<std::string> ep;
-  std::optional<std::string> device;
-  std::optional<std::string> architecture;
-  std::optional<std::string> ep_compatibility_info;
+struct EpCompatibilitySchema {
+  std::optional<std::string> ep;  // nullable in schema
+  std::optional<std::string> device_type;
+  std::optional<std::string> compatibility_info;
+  std::optional<json> session_options;
+  std::optional<json> provider_options;
+};
+
+struct ModelInfoSchema {
+  std::string model_file;                         // required
+  std::string identifier;                         // required
+  std::vector<EpCompatibilitySchema> ep_compatibility;  // required, non-empty
 };
 
 struct VariantSchema {
-  std::optional<std::string> model_type;
-  std::optional<std::string> model_file;
-  std::optional<std::string> model_id;
-  std::optional<VariantConstraintsSchema> constraints;
+  std::vector<ModelInfoSchema> model_info;  // required, non-empty
+  std::optional<json> consumer_metadata;
 };
 
 struct ManifestSchema {
@@ -40,24 +45,34 @@ struct ManifestSchema {
 
 struct MetadataSchema {
   std::optional<std::string> component_model_name;
-  std::unordered_map<std::string, VariantSchema> model_variants;
+  std::unordered_map<std::string, VariantSchema> model_variants;  // required
 };
 
-void from_json(const json& j, VariantConstraintsSchema& c) {
-  if (j.contains(kEpKey) && j[kEpKey].is_string()) c.ep = j[kEpKey].get<std::string>();
-  if (j.contains(kDeviceKey) && j[kDeviceKey].is_string()) c.device = j[kDeviceKey].get<std::string>();
-  if (j.contains(kArchitectureKey) && j[kArchitectureKey].is_string()) c.architecture = j[kArchitectureKey].get<std::string>();
-  if (j.contains(kEpCompatibilityInfoKey) && j[kEpCompatibilityInfoKey].is_string()) {
-    c.ep_compatibility_info = j[kEpCompatibilityInfoKey].get<std::string>();
+void from_json(const json& j, EpCompatibilitySchema& c) {
+  if (j.contains(kEpKey) && !j[kEpKey].is_null()) c.ep = j[kEpKey].get<std::string>();
+  if (j.contains(kDeviceTypeKey) && j[kDeviceTypeKey].is_string()) c.device_type = j[kDeviceTypeKey].get<std::string>();
+  if (j.contains(kCompatibilityInfoKey) && j[kCompatibilityInfoKey].is_string()) c.compatibility_info = j[kCompatibilityInfoKey].get<std::string>();
+
+  if (j.contains(kSessionOptionsKey) && j[kSessionOptionsKey].is_object()) c.session_options = j[kSessionOptionsKey];
+  if (j.contains(kProviderOptionsKey) && j[kProviderOptionsKey].is_object()) c.provider_options = j[kProviderOptionsKey];
+}
+
+void from_json(const json& j, ModelInfoSchema& m) {
+  m.model_file = j.at(kModelFileKey).get<std::string>();
+  m.identifier = j.at(kIdentifierKey).get<std::string>();
+  m.ep_compatibility = j.at(kEpCompatibilityKey).get<std::vector<EpCompatibilitySchema>>();
+  if (m.ep_compatibility.empty()) {
+    throw std::invalid_argument("\"ep_compatibility\" must contain at least one entry");
   }
 }
 
 void from_json(const json& j, VariantSchema& v) {
-  if (j.contains(kModelTypeKey) && j[kModelTypeKey].is_string()) v.model_type = j[kModelTypeKey].get<std::string>();
-  if (j.contains(kModelFileKey) && j[kModelFileKey].is_string()) v.model_file = j[kModelFileKey].get<std::string>();
-  if (j.contains(kModelIdKey) && j[kModelIdKey].is_string()) v.model_id = j[kModelIdKey].get<std::string>();
-  if (j.contains(kConstraintsKey) && j[kConstraintsKey].is_object()) {
-    v.constraints = j[kConstraintsKey].get<VariantConstraintsSchema>();
+  v.model_info = j.at(kModelInfoKey).get<std::vector<ModelInfoSchema>>();
+  if (v.model_info.empty()) {
+    throw std::invalid_argument("\"model_info\" must contain at least one entry");
+  }
+  if (j.contains(kConsumerMetadataKey) && j[kConsumerMetadataKey].is_object()) {
+    v.consumer_metadata = j[kConsumerMetadataKey];
   }
 }
 
@@ -114,13 +129,6 @@ Status FindSingleOnnxFile(const std::filesystem::path& search_dir,
   return Status::OK();
 };
 
-void ApplyVariantConstraints(const VariantConstraintsSchema& c, ModelVariantInfo& variant) {
-  if (c.ep.has_value()) variant.ep = *c.ep;
-  if (c.device.has_value()) variant.device = *c.device;
-  if (c.architecture.has_value()) variant.architecture = *c.architecture;
-  if (c.ep_compatibility_info.has_value()) variant.compatibility_info = *c.ep_compatibility_info;
-}
-
 std::string SanitizeModelIdForPath(std::string model_id) {
   for (char& ch : model_id) {
     switch (ch) {
@@ -156,12 +164,12 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 //
 // A manifest.json may look like this:
 //
-// {
-//     "model_name" : <logical_model_name>,
-//     "model_version": "1.0",
-//     "component_models" : [<component_model_name_1>,
-//                           <component_model_name_2>]
-// }
+//{
+//    "model_name" : <logical_model_name>,
+//    "model_version": "1.0",
+//    "component_models" : [<component_model_name_1>,
+//                          <component_model_name_2>]
+//}
 //
 // A metadata.json for the component model may look like this:
 //
@@ -176,6 +184,10 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 //                "device" : <device_type>,
 //                "ep_compatibility_info" : <ep_compatibility_info_1>
 //            }
+//
+//            // Optional, mergesessionoptions and provider_options JSON blobs
+//            "session_options" : {<options>},
+//            "provider_options" : {<options>}
 //        },
 //        <variant_name_2> : {
 //             "model_type": "onnx",
@@ -185,6 +197,10 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 //                 "device" : <device_type>,
 //                 "ep_compatibility_info" : <ep_compatibility_info_1>
 //             }
+//
+//             // Optional, mergesessionoptions and provider_options JSON blobs
+//             "session_options" : {<options>},
+//             "provider_options" : {<options>}
 //         }
 //     }
 // }
@@ -233,9 +249,12 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
                                                    variants));
 
     for (const auto& v : variants) {
-      LOGS(logger_, INFO) << "model variant: file='" << v.model_path.string()
-                          << "' ep='" << v.ep << "' device='" << v.device
-                          << "' arch='" << v.architecture << "'";
+      const std::string representative_file =
+          v.model_files.empty() ? "(none)" : v.model_files.begin()->second.string();
+
+      LOGS(logger_, INFO) << "model variant: component='" << v.component_model_name
+                          << "' variant='" << v.variant_name
+                          << "' model_info_count=" << v.model_info.size();
     }
 
     return Status::OK();
@@ -271,45 +290,56 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
     const VariantSchema& variant_schema = kv.second;
 
     ModelVariantInfo variant{};
-    std::filesystem::path model_dir = component_model_root / variant_name;
+    variant.component_model_name = component_model_name;
+    variant.variant_name = variant_name;
+    variant.consumer_metadata = variant_schema.consumer_metadata;
 
-    if (variant_schema.model_id.has_value() && !variant_schema.model_id->empty()) {
-      model_dir = component_model_root / SanitizeModelIdForPath(*variant_schema.model_id);
-    }
+    const std::filesystem::path variant_root = component_model_root / variant_name;
+    std::unordered_set<std::string> identifiers_seen;
 
-    std::filesystem::path resolved_model_path;
-
-    if (variant_schema.model_file.has_value()) {
-      const std::filesystem::path candidate_path = model_dir / *variant_schema.model_file;
-
-      if (!std::filesystem::exists(candidate_path)) {
+    for (const auto& model_info_schema : variant_schema.model_info) {
+      if (!identifiers_seen.insert(model_info_schema.identifier).second) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Variant '", variant_name, "' file path does not exist: ",
-                               candidate_path.string());
+                               "Duplicate identifier '", model_info_schema.identifier,
+                               "' in variant '", variant_name, "'.");
       }
 
+      const std::filesystem::path candidate_path = variant_root / model_info_schema.model_file;
+      if (!std::filesystem::exists(candidate_path)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Variant '", variant_name, "', identifier '", model_info_schema.identifier,
+                               "' path does not exist: ", candidate_path.string());
+      }
+
+      std::filesystem::path resolved_model_path;
       if (std::filesystem::is_regular_file(candidate_path)) {
         resolved_model_path = candidate_path;
       } else if (std::filesystem::is_directory(candidate_path)) {
         ORT_RETURN_IF_ERROR(FindSingleOnnxFile(candidate_path, resolved_model_path));
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Variant '", variant_name,
-                               "' file path is neither a file nor a directory: ",
-                               candidate_path.string());
+                               "Variant '", variant_name, "', identifier '", model_info_schema.identifier,
+                               "' path is neither a file nor directory: ", candidate_path.string());
       }
-    } else {
-      ORT_RETURN_IF_ERROR(FindSingleOnnxFile(model_dir, resolved_model_path));
+
+      VariantModelInfo model_info{};
+      model_info.identifier = model_info_schema.identifier;
+      model_info.model_file_path = std::move(resolved_model_path);
+
+      for (const auto& ec_schema : model_info_schema.ep_compatibility) {
+        VariantEpCompatibilityInfo ec{};
+        ec.ep = ec_schema.ep;
+        ec.device_type = ec_schema.device_type;
+        ec.compatibility_info = ec_schema.compatibility_info;
+        ec.session_options = ec_schema.session_options;
+        ec.provider_options = ec_schema.provider_options;
+        ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        model_info.ep_compatibility.push_back(std::move(ec));
+      }
+
+      variant.model_info.push_back(std::move(model_info));
     }
 
-    variant.model_path = std::move(resolved_model_path);
-
-    if (variant_schema.constraints.has_value()) {
-      ApplyVariantConstraints(*variant_schema.constraints, variant);
-    }
-
-    variant.metadata[kComponentModelNameInMetadataKey] = component_model_name;
-    variant.metadata[kVariantNameKey] = variant_name;
     variants.push_back(std::move(variant));
   }
 
@@ -465,7 +495,10 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
   }
 
   for (const auto& v : variants) {
-    LOGS(logger_, INFO) << "model variant: file='" << v.model_path.string()
+    const std::string representative_file =
+        v.model_files.empty() ? "(none)" : v.model_files.begin()->second.string();
+
+    LOGS(logger_, INFO) << "model variant: file='" << representative_file
                         << "' ep='" << v.ep << "' device='" << v.device
                         << "' arch='" << v.architecture << "'";
   }
@@ -474,4 +507,4 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
-}
+}  // namespace onnxruntime

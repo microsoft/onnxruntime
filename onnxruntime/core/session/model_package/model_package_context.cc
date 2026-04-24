@@ -21,6 +21,13 @@
 
 namespace onnxruntime {
 namespace {
+
+struct VariantMatchResult {
+  bool matched{false};
+  int score{std::numeric_limits<int>::min()};
+  std::optional<VariantModelInfo> selected_model_info{};
+};
+
 std::string ToLower(std::string_view s) {
   std::string result(s);
   std::transform(result.begin(), result.end(), result.begin(),
@@ -86,91 +93,158 @@ Status ValidateCompiledModelCompatibilityInfo(const VariantSelectionEpInfo& ep_i
   return Status::OK();
 }
 
-bool MatchesVariant(ModelVariantInfo& variant, const VariantSelectionEpInfo& ep_info) {
-  LOGS_DEFAULT(INFO) << "Checking model variant with EP constraint '" << variant.ep
-                     << "', device constraint '" << variant.device
-                     << "' and compatibility info constraint '" << variant.compatibility_info
-                     << "' against EP '" << ep_info.ep_name << "' with supported devices: "
-                     << [&ep_info]() {
-                          std::string devices_str;
-                          for (const auto* hd : ep_info.hardware_devices) {
-                            if (!devices_str.empty()) {
-                              devices_str += ", ";
-                            }
-                            devices_str += hd->vendor + " " + std::to_string(hd->device_id);
-                          }
-                          return devices_str.empty() ? "none" : devices_str;
-                        }();
-
-  // 1) Check EP constraint
-  if (!variant.ep.empty() && variant.ep != ep_info.ep_name) {
-    LOGS_DEFAULT(INFO) << "Variant EP constraint '" << variant.ep << "' does not match EP name '"
-                       << ep_info.ep_name << "'. Skip this variant.";
-    return false;
+int ScoreEpCompatibility(const VariantEpCompatibilityInfo& ec) {
+  int score = 0;
+  if (ec.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL) {
+    score += 100;
+  } else if (ec.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION) {
+    score += 50;
   }
 
-  // 2) Check device constraint
-  bool device_ok = variant.device.empty();
-
-  // For EPs that don't implement the OrtEpFactory interface, ep_info.hardware_devices will be empty and ORT won't
-  // have the supported device information for those EPs.
-  // In that case, we will skip the device constraint validation for those EPs.
-  if (ep_info.hardware_devices.empty()) {
-    device_ok = true;
+  if (ec.ep.has_value() && !ec.ep->empty()) {
+    score += 10;
   }
 
-  // The constraint_devices is the target device(s) and will be passed to ValidateCompiledModelCompatibilityInfo
-  // for compatibility validation.
-  std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
+  return score;
+}
 
-  if (!device_ok) {
-    if (const auto* matched = FindMatchingHardwareDevice(variant.device, ep_info.hardware_devices)) {
+bool IsUnconstrainedEpCompatibility(const VariantEpCompatibilityInfo& ec) {
+  const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
+  const bool no_device = !ec.device_type.has_value() || ec.device_type->empty();
+  const bool no_compat = !ec.compatibility_info.has_value() || ec.compatibility_info->empty();
+  return no_ep && no_device && no_compat;
+}
+
+bool TryMatchModelInfoForEp(VariantModelInfo& model_info,
+                            const VariantSelectionEpInfo& ep_info,
+                            int& best_score_for_model_info) {
+  model_info.selected_ep_compatibility_index.reset();
+  best_score_for_model_info = std::numeric_limits<int>::min();
+  bool matched = false;
+
+  for (size_t ec_idx = 0; ec_idx < model_info.ep_compatibility.size(); ++ec_idx) {
+    auto& ec = model_info.ep_compatibility[ec_idx];
+
+    if (ec.ep.has_value() && !ec.ep->empty() && *ec.ep != ep_info.ep_name) {
+      continue;
+    }
+
+    bool device_ok = !ec.device_type.has_value() || ec.device_type->empty();
+    std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
+
+    if (ep_info.hardware_devices.empty()) {
       device_ok = true;
-      constraint_devices = {matched};
+    } else if (!device_ok) {
+      if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device_type, ep_info.hardware_devices)) {
+        device_ok = true;
+        constraint_devices = {matched_hd};
+      }
+    }
+
+    if (!device_ok) {
+      continue;
+    }
+
+    ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    auto st = ValidateCompiledModelCompatibilityInfo(ep_info,
+                                                     ec.compatibility_info.value_or(""),
+                                                     constraint_devices,
+                                                     &ec.compiled_model_compatibility);
+    if (!st.IsOK()) {
+      ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    }
+
+    if (ec.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_UNSUPPORTED) {
+      continue;
+    }
+
+    const int score = ScoreEpCompatibility(ec);
+    if (!matched || score > best_score_for_model_info) {
+      matched = true;
+      best_score_for_model_info = score;
+      model_info.selected_ep_compatibility_index = ec_idx;
     }
   }
 
-  if (!device_ok) {
-    LOGS_DEFAULT(INFO) << "Variant device constraint '" << variant.device
-                       << "' does not match any device supported by EP '"
-                       << ep_info.ep_name << "'. Skip this variant.";
-    return false;
-  }
-
-  // 3) Check ep_compatibility_info constraint
-  //
-  // ORT does not directly evaluate the architecture constraint. Instead, it relies on
-  // the ep_compatibility_info constraint, which may encode architecture information
-  // if needed.
-  //
-  // The ep_compatibility_info value is expected to match the EP compatibility string
-  // stored in the EPContext model metadata.
-  // (See OrtEp::GetCompiledModelCompatibilityInfo() for how this string is generated.)
-  //
-  // The EP implementation of EpFactory::ValidateCompiledModelCompatibilityInfo()
-  // is responsible for validating the compatibility string against the target device
-  // (i.e. OrtHardwareDevice), and returning the compatibility result.
-  auto status = ValidateCompiledModelCompatibilityInfo(ep_info, variant.compatibility_info,
-                                                       constraint_devices, &variant.compiled_model_compatibility);
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << "Failed to validate compatibility info for variant with EP constraint '"
-                          << variant.ep << "': " << status.ToString()
-                          << ". Simply skip this compatibility validation.";
-
-    variant.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
-  }
-
-  if (variant.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_UNSUPPORTED) {
-    LOGS_DEFAULT(INFO) << "Variant compatibility info indicates unsupported model for EP '" << ep_info.ep_name
-                       << "'. Compatibility info: '" << variant.compatibility_info
-                       << "'. Skip this variant.";
-    return false;
-  }
-
-  LOGS_DEFAULT(INFO) << "This model variant is selected and could be used for EP '" << ep_info.ep_name << "'.";
-
-  return true;
+  return matched;
 }
+
+VariantMatchResult MatchVariantForEp(ModelVariantInfo& variant, const VariantSelectionEpInfo& ep_info) {
+  VariantMatchResult result{};
+  if (variant.model_info.empty()) {
+    return result;
+  }
+
+  int total_score = 0;
+  int best_model_info_score = std::numeric_limits<int>::min();
+  size_t best_model_info_idx = 0;
+
+  // ALL model_info must match for variant to match.
+  for (size_t mi_idx = 0; mi_idx < variant.model_info.size(); ++mi_idx) {
+    auto& mi = variant.model_info[mi_idx];
+    int best_score_for_mi = std::numeric_limits<int>::min();
+
+    if (!TryMatchModelInfoForEp(mi, ep_info, best_score_for_mi)) {
+      return result;  // variant does not match
+    }
+
+    total_score += best_score_for_mi;
+    if (best_score_for_mi > best_model_info_score) {
+      best_model_info_score = best_score_for_mi;
+      best_model_info_idx = mi_idx;
+    }
+  }
+
+  // Normalize score by model_info count.
+  const int n = static_cast<int>(variant.model_info.size());
+  const int normalized_score = (total_score + n / 2) / n;
+
+  result.matched = true;
+  result.score = normalized_score;
+  result.selected_model_info = variant.model_info[best_model_info_idx];
+  return result;
+}
+
+VariantMatchResult MatchUnconstrainedVariant(const ModelVariantInfo& variant) {
+  VariantMatchResult result{};
+
+  if (variant.model_info.empty()) {
+    return result;
+  }
+
+  for (const auto& mi : variant.model_info) {
+    std::optional<size_t> unconstrained_ec_index;
+
+    for (size_t ec_idx = 0; ec_idx < mi.ep_compatibility.size(); ++ec_idx) {
+      const auto& ec = mi.ep_compatibility[ec_idx];
+      const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
+      const bool no_device = !ec.device_type.has_value() || ec.device_type->empty();
+      const bool no_compat = !ec.compatibility_info.has_value() || ec.compatibility_info->empty();
+
+      if (no_ep && no_device && no_compat) {
+        unconstrained_ec_index = ec_idx;
+        break;
+      }
+    }
+
+    // All model_info entries must have an unconstrained ep_compatibility.
+    if (!unconstrained_ec_index.has_value()) {
+      return result;
+    }
+
+    // Pick a deterministic selected_model_info for APIs that need one.
+    if (!result.selected_model_info.has_value()) {
+      VariantModelInfo selected = mi;
+      selected.selected_ep_compatibility_index = unconstrained_ec_index;
+      result.selected_model_info = std::move(selected);
+    }
+  }
+
+  result.matched = true;
+  result.score = 0;
+  return result;
+}
+
 }  // namespace
 
 // Calculate a score for the model variant based on its constraints and metadata.
@@ -186,32 +260,30 @@ bool MatchesVariant(ModelVariantInfo& variant, const VariantSelectionEpInfo& ep_
 // the former will have a higher score and thus be selected.
 //
 int ModelVariantSelector::CalculateVariantScore(const ModelVariantInfo& variant) const {
-  int score = 0;
+  int total = 0;
 
-  if (variant.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL) {
-    score += 100;
-  } else if (variant.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION) {
-    score += 50;
+  for (const auto& mi : variant.model_info) {
+    int best_for_mi = std::numeric_limits<int>::min();
+    for (const auto& ec : mi.ep_compatibility) {
+      best_for_mi = std::max(best_for_mi, ScoreEpCompatibility(ec));
+    }
+
+    if (best_for_mi == std::numeric_limits<int>::min()) {
+      return std::numeric_limits<int>::min();
+    }
+
+    total += best_for_mi;
   }
 
-  // The base model with no constraints (meaning any EP can run it) gets a base score of 0.
-  // Other model variants with EP constraint get a higher score, so that they will be preferred over the base model.
-  if (!variant.ep.empty()) {
-    score += 10;
-  }
-
-  return score;
+  return total;
 }
 
 Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
                                            gsl::span<VariantSelectionEpInfo> ep_infos,
-                                           std::optional<std::filesystem::path>& selected_variant_path) const {
-  selected_variant_path.reset();
+                                           std::optional<VariantModelInfo>& selected_model_info) const {
+  selected_model_info.reset();
 
-  // explicit local copy as this function will be modifying the variant info
-  // (e.g. setting compatibility validation result) during the selection process.
   std::vector<ModelVariantInfo> variants = context.GetModelVariantInfos();
-
   if (variants.empty()) {
     return Status::OK();
   }
@@ -221,76 +293,57 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
     LOGS_DEFAULT(WARNING) << "Multiple EP info provided for model variant selection, but only the first one with ep name '"
                           << ep_infos[0].ep_name << "' will be used.";
   }
-
   if (!ep_infos.empty()) {
     selected_ep_info = &ep_infos[0];
   }
 
   std::unordered_set<size_t> candidate_indices_set;
+  std::unordered_map<size_t, VariantMatchResult> candidate_matches;
 
-  // 1) Check unconstrained variants.
+  // 1) Unconstrained variants (all model_info unconstrained).
   for (size_t i = 0, end = variants.size(); i < end; ++i) {
-    const auto& c = variants[i];
-    if (c.ep.empty() && c.device.empty() && c.architecture.empty() && c.compatibility_info.empty()) {
+    VariantMatchResult m = MatchUnconstrainedVariant(variants[i]);
+    if (m.matched) {
       candidate_indices_set.insert(i);
+      candidate_matches[i] = std::move(m);
     }
   }
 
-  // 2) If EP info exists, check all variants that match the EP info.
+  // 2) EP/device compatibility: all model_info must match.
   if (selected_ep_info != nullptr) {
     for (size_t i = 0, end = variants.size(); i < end; ++i) {
-      if (candidate_indices_set.count(i) > 0) {
-        continue;
-      }
-      auto& c = variants[i];
-      if (MatchesVariant(c, *selected_ep_info)) {
+      VariantMatchResult m = MatchVariantForEp(variants[i], *selected_ep_info);
+      if (m.matched) {
         candidate_indices_set.insert(i);
+        auto it = candidate_matches.find(i);
+        if (it == candidate_matches.end() || m.score > it->second.score) {
+          candidate_matches[i] = std::move(m);
+        }
       }
     }
-  }
-
-  // Log all matched candidates.
-  {
-    std::ostringstream oss;
-    oss << candidate_indices_set.size() << " Model variant(s) matched constraints: ";
-    size_t i = 0;
-    for (size_t idx : candidate_indices_set) {
-      const auto& path = variants[idx].model_path;
-      oss << path.string();
-      if (i + 1 < candidate_indices_set.size()) {
-        oss << "; ";
-      }
-      ++i;
-    }
-    LOGS_DEFAULT(INFO) << oss.str();
   }
 
   if (candidate_indices_set.empty()) {
     return Status::OK();
   }
 
-  // 3) If only one candidate, select it.
-  if (candidate_indices_set.size() == 1) {
-    selected_variant_path = variants[*candidate_indices_set.begin()].model_path;
-    return Status::OK();
-  }
-
-  // 4) If there are multiple candidates, choose the highest-score model variant among them.
+  // choose best
   int best_score = std::numeric_limits<int>::min();
   size_t best_index = *candidate_indices_set.begin();
 
   for (size_t idx : candidate_indices_set) {
-    const auto& v = variants[idx];
-    int variant_best_score = std::numeric_limits<int>::min();
-    variant_best_score = std::max(variant_best_score, CalculateVariantScore(v));
-
-    if (variant_best_score > best_score) {
-      best_score = variant_best_score;
+    const int score = candidate_matches[idx].score;
+    if (score > best_score) {
+      best_score = score;
       best_index = idx;
     }
   }
 
-  selected_variant_path = variants[best_index].model_path;
+  const auto& best_match = candidate_matches[best_index];
+  ORT_RETURN_IF(!best_match.selected_model_info.has_value(),
+                "Selected variant has no selected model info.");
+
+  selected_model_info = best_match.selected_model_info;
   return Status::OK();
 }
 
@@ -321,6 +374,7 @@ Status ModelPackageContext::GetEpInfosAndResolveVariant() {
   devices_selected_.clear();
   ep_infos_.clear();
   selected_variant_path_.reset();
+  selected_model_info_.reset();
 
   if (has_provider_factories) {
     const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
@@ -340,10 +394,30 @@ Status ModelPackageContext::GetEpInfosAndResolveVariant() {
   ORT_RETURN_IF_ERROR(PrintAvailableAndSelectedEpInfos(env_, ep_infos_));
 
   ModelVariantSelector selector;
-  ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos_, selected_variant_path_));
+  ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos_, selected_model_info_));
 
-  ORT_RETURN_IF(!selected_variant_path_.has_value(),
+  ORT_RETURN_IF(!selected_model_info_.has_value(),
                 "No suitable model variant found for the configured execution providers.");
+
+  selected_variant_path_ = selected_model_info_->model_file_path;
+
+  // Update selected variant cache for the component that owns this selected model_info.
+  size_t matched_variants = 0;
+  for (size_t i = 0; i < model_variant_infos_.size(); ++i) {
+    const auto& variant = model_variant_infos_[i];
+    for (const auto& mi : variant.model_info) {
+      if (mi.identifier == selected_model_info_->identifier &&
+          mi.model_file_path == selected_model_info_->model_file_path) {
+        selected_variant_index_by_component_[variant.component_model_name] = i;
+        ++matched_variants;
+      }
+    }
+  }
+
+  ORT_RETURN_IF(matched_variants == 0,
+                "Selected model_info was not found in model package context.");
+  ORT_RETURN_IF(matched_variants > 1,
+                "Selected model_info matched multiple variants; selection is ambiguous.");
 
   return Status::OK();
 }
@@ -368,49 +442,75 @@ Status ModelPackageContext::GetComponentModelName(size_t component_index, const 
 void ModelPackageContext::BuildComponentModelCache() {
   component_model_names_.clear();
   component_to_variant_indices_.clear();
-
-  constexpr const char* kFallbackComponentName = "__default_component__";
+  selected_variant_index_by_component_.clear();
 
   for (size_t i = 0; i < model_variant_infos_.size(); ++i) {
     const auto& variant = model_variant_infos_[i];
-
-    std::string component_name = kFallbackComponentName;
-    if (auto it = variant.metadata.find(kComponentModelNameInMetadataKey);
-        it != variant.metadata.end() && !it->second.empty()) {
-      component_name = it->second;
-    }
+    const std::string& component_name = variant.component_model_name;
 
     auto [map_it, inserted] =
         component_to_variant_indices_.try_emplace(component_name, std::vector<size_t>{});
     if (inserted) {
       component_model_names_.push_back(component_name);
+      selected_variant_index_by_component_[component_name] = i;  // default selection
     }
 
     map_it->second.push_back(i);
   }
 }
 
-Status ModelPackageContext::GetSelectedVariant(const std::string& component_name,
-                                               const ModelVariantInfo*& out_variant) const {
+Status ModelPackageContext::GetSelectedVariantForComponent(const std::string& component_name,
+                                                           const ModelVariantInfo*& out_variant) const {
   out_variant = nullptr;
 
-  const auto it = component_to_variant_indices_.find(component_name);
-  if (it == component_to_variant_indices_.end() || it->second.empty()) {
+  const auto it_component = component_to_variant_indices_.find(component_name);
+  if (it_component == component_to_variant_indices_.end() || it_component->second.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
   }
 
-  if (selected_variant_path_.has_value()) {
-    for (size_t idx : it->second) {
-      if (idx < model_variant_infos_.size() &&
-          model_variant_infos_[idx].model_path == *selected_variant_path_) {
-        out_variant = &model_variant_infos_[idx];
-        return Status::OK();
-      }
+  const auto it_selected = selected_variant_index_by_component_.find(component_name);
+  if (it_selected == selected_variant_index_by_component_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "No selected variant index for component: ", component_name);
+  }
+
+  const size_t variant_idx = it_selected->second;
+  if (variant_idx >= model_variant_infos_.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Selected variant index out of range for component: ", component_name);
+  }
+
+  out_variant = &model_variant_infos_[variant_idx];
+  return Status::OK();
+}
+
+Status ModelPackageContext::GetSelectedVariantModelInfo(const std::string& component_name,
+                                                        const char* file_identifier,
+                                                        const VariantModelInfo*& out_model_info) const {
+  out_model_info = nullptr;
+
+  const ModelVariantInfo* selected_variant = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantForComponent(component_name, selected_variant));
+  ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_name);
+
+  if (file_identifier == nullptr || std::string_view(file_identifier).empty()) {
+    if (selected_variant->model_info.size() == 1) {
+      out_model_info = &selected_variant->model_info.front();
+      return Status::OK();
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "file_identifier is required when selected variant has multiple model_info entries.");
+  }
+
+  for (const auto& mi : selected_variant->model_info) {
+    if (mi.identifier == file_identifier) {
+      out_model_info = &mi;
+      return Status::OK();
     }
   }
 
-  out_variant = &model_variant_infos_[it->second.front()];
-  return Status::OK();
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Unknown file_identifier '", file_identifier,
+                         "' for component '", component_name, "'.");
 }
 
 Status ModelPackageContext::GetSelectedVariantFiles(const std::string& component_name,
@@ -418,15 +518,21 @@ Status ModelPackageContext::GetSelectedVariantFiles(const std::string& component
   out_file_identifiers = gsl::span<const std::string>{};
 
   const ModelVariantInfo* selected_variant = nullptr;
-  ORT_RETURN_IF_ERROR(GetSelectedVariant(component_name, selected_variant));
+  ORT_RETURN_IF_ERROR(GetSelectedVariantForComponent(component_name, selected_variant));
   ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_name);
 
   selected_variant_file_identifiers_cache_.clear();
-  selected_variant_file_identifiers_cache_.push_back(selected_variant->model_path.filename().string());
+  selected_variant_file_identifiers_cache_.reserve(selected_variant->model_info.size());
+
+  // Preserve schema order (do not sort).
+  for (const auto& mi : selected_variant->model_info) {
+    selected_variant_file_identifiers_cache_.push_back(mi.identifier);
+  }
 
   out_file_identifiers = gsl::span<const std::string>(
       selected_variant_file_identifiers_cache_.data(),
       selected_variant_file_identifiers_cache_.size());
+
   return Status::OK();
 }
 
@@ -435,24 +541,33 @@ Status ModelPackageContext::ResolveSelectedVariantFile(const std::string& compon
                                                        std::filesystem::path& out_path) const {
   out_path.clear();
 
-  const ModelVariantInfo* selected_variant = nullptr;
-  ORT_RETURN_IF_ERROR(GetSelectedVariant(component_name, selected_variant));
-  ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_name);
+  const VariantModelInfo* selected_model_info = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, selected_model_info));
+  ORT_RETURN_IF(selected_model_info == nullptr,
+                "Selected model info is null for component: ", component_name);
 
-  const std::string expected_id = selected_variant->model_path.filename().string();
-
-  if (file_identifier == nullptr || std::string_view(file_identifier).empty()) {
-    out_path = selected_variant->model_path;
-    return Status::OK();
-  }
-
-  if (std::string_view(file_identifier) != expected_id) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Unknown file_identifier '", file_identifier,
-                           "' for component '", component_name,
-                           "'. Expected: '", expected_id, "'.");
-  }
-
-  out_path = selected_variant->model_path;
+  out_path = selected_model_info->model_file_path;
   return Status::OK();
+}
+
+namespace {
+
+bool IsUnconstrainedVariant(const ModelVariantInfo& variant) {
+  for (const auto& model_info : variant.model_info) {
+    for (const auto& ec : model_info.ep_compatibility) {
+      const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
+      const bool no_device = !ec.device_type.has_value() || ec.device_type->empty();
+      const bool no_compat = !ec.compatibility_info.has_value() || ec.compatibility_info->empty();
+      if (no_ep && no_device && no_compat) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+}  // namespace
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }
