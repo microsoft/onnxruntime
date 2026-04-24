@@ -93,33 +93,36 @@ Status CheckInputs(const T* input,
   if (input_dims.size() == 4) {
     // input is [batch, num_heads, seq, head_size]
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[2], "sequence_length", sequence_length));
-      ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "num_heads", num_heads));
+    ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[1], "num_heads", num_heads));
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(input_dims[3], "head_size", head_size));
-      ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_size, "hidden_size", hidden_size));
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(num_heads, head_size, "hidden_size", hidden_size));
     transposed = true;
+  } else if (num_heads > 0) {
+    if (hidden_size % num_heads != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: hidden_size=", hidden_size,
+                             " must be divisible by num_heads=", num_heads,
+                             " for rank-3 input");
+    }
+    head_size = static_cast<int>(hidden_size / num_heads);
+    if (batch_size > 0 && sequence_length > 0 && hidden_size > 0 && head_size <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: head_size must be greater than 0 for non-empty rank-3 input");
+    }
   }
   int max_sequence_length = 0;
   ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[0], "max_sequence_length", max_sequence_length));
   if (rotary_embedding_dim == 0) {
     int cache_width = 0;
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[1], "cache_width", cache_width));
-    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
+    if (head_size == 0) {
+      ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
+    }
   } else {
     if (!transposed) {
       if (num_heads <= 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "RotaryEmbedding: num_heads must be greater than 0 for rank-3 input");
-      }
-      if (hidden_size % num_heads != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "RotaryEmbedding: hidden_size=", hidden_size,
-                               " must be divisible by num_heads=", num_heads,
-                               " for rank-3 input");
-      }
-      head_size = static_cast<int>(hidden_size / num_heads);
-      if (batch_size > 0 && sequence_length > 0 && hidden_size > 0 && head_size <= 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "RotaryEmbedding: head_size must be greater than 0 for non-empty rank-3 input");
       }
     }
   }

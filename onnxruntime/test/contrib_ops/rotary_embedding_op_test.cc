@@ -1019,5 +1019,40 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank3HiddenSizeNotDivisi
            "hidden_size=5 must be divisible by num_heads=2 for rank-3 input", {}, nullptr, &execution_providers);
 }
 
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank3MalformedCacheWidthWithNumHeads) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {1, 1, 8}, std::vector<float>(8, 1.0f));
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 8}, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("sin_cache", {1, 8}, std::vector<float>(8, 0.0f));
+  test.AddOutput<float>("output", {1, 1, 8}, std::vector<float>(8, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2, got 8",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank4MalformedCacheWidth) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {1, 2, 1, 4}, std::vector<float>(8, 1.0f));
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 8}, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("sin_cache", {1, 8}, std::vector<float>(8, 0.0f));
+  test.AddOutput<float>("output", {1, 2, 1, 4}, std::vector<float>(8, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2, got 8",
+           {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
