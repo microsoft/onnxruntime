@@ -32,8 +32,35 @@ typedef svfloat32_t MLAS_SVFLOAT32;
 typedef svint32_t MLAS_SVINT32;
 typedef svuint32_t MLAS_SVUINT32;
 typedef svbool_t MLAS_SVBOOL;
+typedef svfloat16_t MLAS_SVFLOAT16;
+typedef svuint16_t MLAS_SVUINT16;
 
-// function decarations
+void
+MLASCALL
+MlasSveErfFP16Kernel(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+void 
+MLASCALL 
+MlasSveTanhFP16Kernel(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+void 
+MLASCALL 
+MlasSveGeluFP16Kernel(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    MLAS_FP16* Temp,
+    size_t N,
+    MLAS_GELU_ALGORITHM Algo
+);
+// function declarations
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveComputeExpVector(
