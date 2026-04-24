@@ -39,12 +39,22 @@ struct VariantModelInfo {
   std::optional<size_t> selected_ep_compatibility_index{};
 };
 
-// Represents a specific variant of a component model which is the finest granularity for variant selection.
+// The finest granularity for variant selection.
 struct ModelVariantInfo {
   std::string component_model_name;
   std::string variant_name;
   std::vector<VariantModelInfo> model_info;
   std::optional<json> consumer_metadata;
+};
+
+struct ComponentModelInfo {
+  std::string component_model_name{};
+  std::vector<ModelVariantInfo> model_variants{};
+  std::optional<size_t> selected_variant_index{};  // index into model_variants
+};
+
+struct ModelPackageInfo {
+  std::vector<ComponentModelInfo> component_models{};
 };
 
 struct VariantSelectionEpInfo {
@@ -89,8 +99,9 @@ class ModelPackageContext {
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const noexcept { return execution_devices_; }
   const std::vector<const OrtEpDevice*>& DevicesSelected() const noexcept { return devices_selected_; }
   bool IsFromPolicy() const noexcept { return from_policy_; }
-  const std::optional<std::filesystem::path>& GetSelectedVariantPath() const noexcept {
-    return selected_variant_path_;
+
+  const ModelPackageInfo& GetModelPackageInfo() const noexcept {
+    return model_package_info_;
   }
 
  private:
@@ -98,12 +109,9 @@ class ModelPackageContext {
   std::vector<ModelVariantInfo> model_variant_infos_;
   const ModelPackageOptions* options_{};  // non-owning, immutable config source
 
-  // Cached component model info for query APIs.
-  std::vector<std::string> component_model_names_{};
-  std::unordered_map<std::string, std::vector<size_t>> component_to_variant_indices_{};
-
-  // Selected variant index per component model.
-  std::unordered_map<std::string, size_t> selected_variant_index_by_component_{};
+  // Hierarchical package/component/variant cache used by query APIs.
+  ModelPackageInfo model_package_info_{};
+  std::unordered_map<std::string, size_t> component_name_to_index_{};
 
   // Cached file identifiers for the currently selected variant (for query APIs).
   mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
@@ -114,9 +122,6 @@ class ModelPackageContext {
   std::vector<const OrtEpDevice*> execution_devices_{};
   std::vector<const OrtEpDevice*> devices_selected_{};
   bool from_policy_{false};
-
-  std::optional<std::filesystem::path> selected_variant_path_{};
-  std::optional<VariantModelInfo> selected_model_info_{};
 
   void BuildComponentModelCache();
 

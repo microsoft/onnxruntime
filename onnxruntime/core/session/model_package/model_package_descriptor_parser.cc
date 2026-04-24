@@ -27,8 +27,8 @@ struct EpCompatibilitySchema {
 };
 
 struct ModelInfoSchema {
-  std::string model_file;                         // required
-  std::string identifier;                         // required
+  std::string model_file;                               // required
+  std::string identifier;                               // required
   std::vector<EpCompatibilitySchema> ep_compatibility;  // required, non-empty
 };
 
@@ -150,6 +150,37 @@ std::string SanitizeModelIdForPath(std::string model_id) {
   return model_id;
 }
 
+std::string BuildModelInfoLogString(const ModelVariantInfo& variant) {
+  std::ostringstream oss;
+  oss << "component='" << variant.component_model_name
+      << "' variant='" << variant.variant_name
+      << "' model_info_count=" << variant.model_info.size();
+
+  if (!variant.model_info.empty()) {
+    oss << " [";
+    for (size_t i = 0; i < variant.model_info.size(); ++i) {
+      const auto& mi = variant.model_info[i];
+      oss << "{id='" << mi.identifier
+          << "', file='" << mi.model_file_path.string()
+          << "', ep_compat_count=" << mi.ep_compatibility.size()
+          << "}";
+      if (i + 1 < variant.model_info.size()) {
+        oss << ", ";
+      }
+    }
+    oss << "]";
+  }
+
+  return oss.str();
+}
+
+void LogParsedVariants(const logging::Logger& logger,
+                       const std::vector<ModelVariantInfo>& variants) {
+  for (const auto& v : variants) {
+    LOGS(logger, INFO) << "model variant: " << BuildModelInfoLogString(v);
+  }
+}
+
 }  // namespace
 
 // The package_root could be either a component model root (contains metadata.json) or a model package root (contains
@@ -248,14 +279,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
                                                    &metadata_doc[kModelVariantsKey],
                                                    variants));
 
-    for (const auto& v : variants) {
-      const std::string representative_file =
-          v.model_files.empty() ? "(none)" : v.model_files.begin()->second.string();
-
-      LOGS(logger_, INFO) << "model variant: component='" << v.component_model_name
-                          << "' variant='" << v.variant_name
-                          << "' model_info_count=" << v.model_info.size();
-    }
+    LogParsedVariants(logger_, variants);
 
     return Status::OK();
   }
@@ -494,14 +518,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
                            "No valid component models were found under ", (package_root / "models").string());
   }
 
-  for (const auto& v : variants) {
-    const std::string representative_file =
-        v.model_files.empty() ? "(none)" : v.model_files.begin()->second.string();
-
-    LOGS(logger_, INFO) << "model variant: file='" << representative_file
-                        << "' ep='" << v.ep << "' device='" << v.device
-                        << "' arch='" << v.architecture << "'";
-  }
+  LogParsedVariants(logger_, variants);
 
   return Status::OK();
 }
