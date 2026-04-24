@@ -3,7 +3,11 @@ from .calibrate import (  # noqa: F401
     CalibrationDataReader,
     CalibrationMethod,
     MinMaxCalibrater,
+    TensorData,
+    TensorsData,
     create_calibrator,
+    load_tensors_data,
+    save_tensors_data,
 )
 from .qdq_quantizer import QDQQuantizer  # noqa: F401
 from .quant_utils import QuantFormat, QuantType, write_calibration_table  # noqa: F401
