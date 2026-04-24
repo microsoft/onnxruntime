@@ -1164,6 +1164,138 @@ TEST(CoreMLExecutionProviderTest, QuickGeluTestFp16) {
 #endif
 }
 
+namespace {
+// Build a single-node com.microsoft:FusedConv model for the tests below.
+// Input X is {1, 2, 4, 4}, weight W is {3, 2, 2, 2} (constant initializer, set
+// to a simple pattern), no bias. stride=1, pad=0. Output is {1, 3, 3, 3}.
+ONNX_NAMESPACE::ModelProto MakeFusedConvModel(const std::string& activation,
+                                              const std::vector<float>& activation_params) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(13);
+  auto* ms_opset = model_proto.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("fused_conv_test");
+
+  auto add_tensor_value = [&](auto* proto, const char* name, const std::vector<int64_t>& shape) {
+    proto->set_name(name);
+    auto* tt = proto->mutable_type()->mutable_tensor_type();
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int64_t d : shape) tt->mutable_shape()->add_dim()->set_dim_value(d);
+  };
+  add_tensor_value(graph_proto->add_input(), "X", {1, 2, 4, 4});
+  add_tensor_value(graph_proto->add_output(), "Y", {1, 3, 3, 3});
+
+  // Weight initializer: {3, 2, 2, 2} = 24 floats, deterministic pattern.
+  auto* w_init = graph_proto->add_initializer();
+  w_init->set_name("W");
+  w_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (int64_t d : {3, 2, 2, 2}) w_init->add_dims(d);
+  for (int i = 0; i < 3 * 2 * 2 * 2; ++i) {
+    w_init->add_float_data(static_cast<float>(i) * 0.05f - 0.4f);
+  }
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("FusedConv");
+  node->set_domain("com.microsoft");
+  node->add_input("X");
+  node->add_input("W");
+  node->add_output("Y");
+
+  // Set pads explicitly since the CoreML conv builder's VALID-pad branch
+  // omits the 'pad' input that the MIL op requires. Conv attrs otherwise
+  // default: strides=[1,1].
+  auto* pads_attr = node->add_attribute();
+  pads_attr->set_name("pads");
+  pads_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+  for (int64_t v : {0, 0, 0, 0}) pads_attr->add_ints(v);
+
+  auto* act_attr = node->add_attribute();
+  act_attr->set_name("activation");
+  act_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  act_attr->set_s(activation);
+
+  if (!activation_params.empty()) {
+    auto* act_params_attr = node->add_attribute();
+    act_params_attr->set_name("activation_params");
+    act_params_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOATS);
+    for (float v : activation_params) act_params_attr->add_floats(v);
+  }
+
+  return model_proto;
+}
+
+void RunFusedConvTest(const std::string& activation,
+                      const std::vector<float>& activation_params,
+                      std::string_view log_id) {
+  auto model_proto = MakeFusedConvModel(activation, activation_params);
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<float> x_data(1 * 2 * 4 * 4);
+  for (size_t i = 0; i < x_data.size(); ++i) x_data[i] = static_cast<float>(i) * 0.1f - 1.5f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, {1, 2, 4, 4}, x_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_span, std::string(log_id),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+}  // namespace
+
+TEST(CoreMLExecutionProviderTest, FusedConvTestRelu) {
+  // Param-less activation. Exercises the Conv → activation wiring with no
+  // `activation_params` attribute.
+  RunFusedConvTest("Relu", {}, "FusedConvTestRelu_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, FusedConvTestHardSigmoid) {
+  // Two-param activation (alpha, beta) with non-default values — catches any
+  // activation_params-wiring bug. Depends on the HardSigmoid CoreML builder
+  // landed in #28182.
+  RunFusedConvTest("HardSigmoid", {0.15f, 0.55f}, "FusedConvTestHardSigmoid_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, FusedConvTestClip) {
+  // Two-param activation where params map to alpha=min, beta=max in CoreML's
+  // clip op. Covers the remaining parametric activation.
+  RunFusedConvTest("Clip", {-0.5f, 0.5f}, "FusedConvTestClip_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, FusedConvTestLeakyRelu) {
+  // Single-param activation (alpha). Heavily used by YOLOv3 — a CPU-optimized
+  // YOLOv3 graph contains 72 Conv→LeakyRelu fusions, all of which would
+  // otherwise fall back to CPU and fragment the CoreML partition.
+  RunFusedConvTest("LeakyRelu", {0.1f}, "FusedConvTestLeakyRelu_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, FusedConvTestSigmoid) {
+  // Param-less Sigmoid activation. Distinct from the Relu test only in the
+  // emitted MIL op (`sigmoid` vs `relu`); guards against regressions in
+  // op-name dispatch.
+  RunFusedConvTest("Sigmoid", {}, "FusedConvTestSigmoid_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, FusedConvTestTanh) {
+  // Param-less Tanh activation; same rationale as the Sigmoid test for the
+  // remaining elementwise activation.
+  RunFusedConvTest("Tanh", {}, "FusedConvTestTanh_MLProgram");
+}
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
