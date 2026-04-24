@@ -1,0 +1,210 @@
+parameters:
+- name: package_version
+  type: string
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: python_version
+  type: string
+  default: '3.12'
+
+- name: cuda_version
+  type: string
+  default: '12.8'
+
+- name: cmake_cuda_archs
+  type: string
+  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+
+stages:
+  - stage: Win_plugin_cuda_x64_Build
+    dependsOn: []
+    jobs:
+    - job: Win_plugin_cuda_x64_Build
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      templateContext:
+        sdl:
+          codeSignValidation:
+            enabled: true
+            break: true
+          psscriptanalyzer:
+            enabled: true
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: cuda_plugin_win_x64
+      variables:
+      - template: ../templates/common-variables.yml
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: ${{ parameters.python_version }}
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+
+      - script: |
+          python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
+        displayName: 'Install Python build dependencies'
+        env:
+          TMPDIR: "$(Agent.TempDirectory)"
+
+      - powershell: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }}" "$(Agent.TempDirectory)"
+        displayName: 'Download CUDA SDK v${{ parameters.cuda_version }}'
+        env:
+          AZCOPY_AUTO_LOGIN_TYPE: MSI
+          AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+
+      - powershell: |
+          Write-Host "Adding CUDA to PATH"
+          Write-Host "CUDA Path: $(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
+        displayName: 'Add CUDA to PATH'
+
+      # Download cuDNN separately for CUDA 13.0
+      - ${{ if eq(parameters.cuda_version, '13.0') }}:
+        - powershell: |
+            azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_9/9.14.0.64_cuda13" "$(Agent.TempDirectory)"
+          displayName: 'Download cuDNN for CUDA 13.0'
+          env:
+            AZCOPY_AUTO_LOGIN_TYPE: MSI
+            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+
+      # CUDA 12.x build (no separate cuDNN)
+      - ${{ if ne(parameters.cuda_version, '13.0') }}:
+        - task: PythonScript@0
+          displayName: 'Build CUDA Plugin (CUDA ${{ parameters.cuda_version }})'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: >-
+              --config ${{ parameters.cmake_build_type }}
+              --build_dir $(Build.BinariesDirectory)
+              --skip_submodule_sync
+              --cmake_generator "$(VSGenerator)"
+              --parallel
+              --nvcc_threads 1
+              --use_vcpkg
+              --use_vcpkg_ms_internal_asset_cache
+              --use_binskim_compliant_compile_flags
+              --update
+              --build
+              --use_cuda
+              --cuda_home="$(Agent.TempDirectory)\v${{ parameters.cuda_version }}"
+              --skip_tests
+              --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
+              --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+              --cmake_extra_defines $(PluginEpVersionDefine)
+              $(TelemetryOption)
+            workingDirectory: '$(Build.BinariesDirectory)'
+          env:
+            AZCOPY_AUTO_LOGIN_TYPE: MSI
+            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+
+      # CUDA 13.0 build (separate cuDNN folder)
+      - ${{ if eq(parameters.cuda_version, '13.0') }}:
+        - task: PythonScript@0
+          displayName: 'Build CUDA Plugin (CUDA ${{ parameters.cuda_version }})'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: >-
+              --config ${{ parameters.cmake_build_type }}
+              --build_dir $(Build.BinariesDirectory)
+              --skip_submodule_sync
+              --cmake_generator "$(VSGenerator)"
+              --parallel
+              --nvcc_threads 1
+              --use_vcpkg
+              --use_vcpkg_ms_internal_asset_cache
+              --use_binskim_compliant_compile_flags
+              --update
+              --build
+              --use_cuda
+              --cuda_home="$(Agent.TempDirectory)\v${{ parameters.cuda_version }}"
+              --cudnn_home="$(Agent.TempDirectory)\9.14.0.64_cuda13"
+              --skip_tests
+              --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
+              --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+              --cmake_extra_defines $(PluginEpVersionDefine)
+              $(TelemetryOption)
+            workingDirectory: '$(Build.BinariesDirectory)'
+          env:
+            AZCOPY_AUTO_LOGIN_TYPE: MSI
+            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+
+      # Esrp signing
+      - template: ../templates/win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: true
+          Pattern: '*.dll'
+
+      - powershell: |
+          $pluginPath = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_cuda_plugin.dll"
+          if (-not (Test-Path $pluginPath)) {
+            Write-Error "Expected plugin binary not found at '$pluginPath'. Failing build to avoid publishing an invalid package."
+            exit 1
+          }
+          Write-Host "Verified plugin binary exists at: $pluginPath"
+        displayName: 'Verify plugin binary exists'
+
+      - task: CopyFiles@2
+        displayName: 'Copy plugin binaries to staging directory'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          Contents: |
+            onnxruntime_providers_cuda_plugin.dll
+            onnxruntime_providers_cuda_plugin.pdb
+          TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
+
+      - script: |
+          mkdir "$(Build.ArtifactStagingDirectory)\version"
+          type nul > "$(Build.ArtifactStagingDirectory)\version\$(PluginPackageVersion)"
+        displayName: 'Create version marker file'
+
+      - task: CopyFiles@2
+        displayName: 'Stage binaries for universal package'
+        inputs:
+          SourceFolder: '$(Build.ArtifactStagingDirectory)\bin'
+          Contents: '**'
+          TargetFolder: '$(Build.BinariesDirectory)\universal_package'
+
+      - task: UniversalPackages@0
+        displayName: 'Publish universal package'
+        inputs:
+          command: publish
+          publishDirectory: '$(Build.BinariesDirectory)\universal_package'
+          vstsFeedPublish: 'PublicPackages/ORT-Nightly'
+          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-win-x64'
+          versionOption: custom
+          versionPublish: '$(PluginUniversalPackageVersion)'
