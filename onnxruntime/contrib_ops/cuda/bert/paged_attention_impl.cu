@@ -239,6 +239,9 @@ Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* valu
 }
 
 // Gather paged KV into packed-varlen [total_kv_tokens, num_heads, head_size], expanding GQA heads.
+// total_elems = total_kv_tokens * num_heads * head_size can exceed INT32_MAX for realistic
+// large-context GQA configs (e.g., 2M tokens * 64 * 128 = 16.4B), so the linear index is int64_t
+// and the kernel uses a grid-stride loop instead of a single (tid >= total_elems) early-exit.
 template <typename T>
 __global__ void GatherAndExpandPagedKVCache(const T* __restrict__ key_cache,
                                             const T* __restrict__ value_cache,
@@ -252,52 +255,54 @@ __global__ void GatherAndExpandPagedKVCache(const T* __restrict__ key_cache,
                                             const int head_size,
                                             const int block_size,
                                             const int max_num_blocks_per_seq,
-                                            const int total_kv_tokens) {
-  const int tid = threadIdx.x + blockIdx.x * blockDim.x;
-  const int total_elems = total_kv_tokens * num_heads * head_size;
-  if (tid >= total_elems) {
-    return;
-  }
-
-  const int h = tid % head_size;
-  const int head_id = (tid / head_size) % num_heads;
-  const int token_id = tid / (num_heads * head_size);
-
-  // cumulative_seqlens_kv is a prefix sum of non-negative per-batch KV lengths
-  // (past_seqlens[i] + new_tokens[i]), so it is monotonically non-decreasing for
-  // any valid op input — the same assumption the previous linear scan made.
-  // Binary-search for the batch this token belongs to: log2(batch_size) is strictly
-  // better than the linear scan, which ran once per (token, head, h) element and
-  // multiplied its cost by num_heads * head_size.
-  int left = 0;
-  int right = batch_size;
-  while (left < right) {
-    const int mid = left + (right - left) / 2;
-    if (token_id < cumulative_seqlens_kv[mid + 1]) {
-      right = mid;
-    } else {
-      left = mid + 1;
-    }
-  }
-  const int batch_id = left;
-
-  const int pos = token_id - cumulative_seqlens_kv[batch_id];
-  const int block_idx_in_seq = pos / block_size;
-  const int block_offset = pos % block_size;
-  const int block_id = block_table[batch_id * max_num_blocks_per_seq + block_idx_in_seq];
-
-  // GQA expansion: each output head maps to kv_head_id = head_id / (num_heads / kv_num_heads).
-  // For MHA (num_heads == kv_num_heads) this is the identity.
+                                            const int64_t total_elems) {
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  const int64_t num_heads_times_head = static_cast<int64_t>(num_heads) * head_size;
   const int q_kv_head_ratio = num_heads / kv_num_heads;
-  const int kv_head_id = head_id / q_kv_head_ratio;
+  const int64_t page_stride = static_cast<int64_t>(block_size) * kv_num_heads * head_size;
 
-  const int paged_idx = block_id * block_size * kv_num_heads * head_size +
-                        block_offset * kv_num_heads * head_size +
-                        kv_head_id * head_size +
-                        h;
+  for (int64_t tid = threadIdx.x + static_cast<int64_t>(blockIdx.x) * blockDim.x;
+       tid < total_elems;
+       tid += stride) {
+    const int h = static_cast<int>(tid % head_size);
+    const int head_id = static_cast<int>((tid / head_size) % num_heads);
+    const int token_id = static_cast<int>(tid / num_heads_times_head);
 
-  gathered_key[tid] = key_cache[paged_idx];
-  gathered_value[tid] = value_cache[paged_idx];
+    // cumulative_seqlens_kv is a prefix sum of non-negative per-batch KV lengths
+    // (past_seqlens[i] + new_tokens[i]), so it is monotonically non-decreasing for
+    // any valid op input — the same assumption the previous linear scan made.
+    // Binary-search for the batch this token belongs to: log2(batch_size) is strictly
+    // better than the linear scan, which ran once per (token, head, h) element and
+    // multiplied its cost by num_heads * head_size.
+    int left = 0;
+    int right = batch_size;
+    while (left < right) {
+      const int mid = left + (right - left) / 2;
+      if (token_id < cumulative_seqlens_kv[mid + 1]) {
+        right = mid;
+      } else {
+        left = mid + 1;
+      }
+    }
+    const int batch_id = left;
+
+    const int pos = token_id - cumulative_seqlens_kv[batch_id];
+    const int block_idx_in_seq = pos / block_size;
+    const int block_offset = pos % block_size;
+    const int block_id = block_table[batch_id * max_num_blocks_per_seq + block_idx_in_seq];
+
+    // GQA expansion: each output head maps to kv_head_id = head_id / (num_heads / kv_num_heads).
+    // For MHA (num_heads == kv_num_heads) this is the identity.
+    const int kv_head_id = head_id / q_kv_head_ratio;
+
+    const int64_t paged_idx = static_cast<int64_t>(block_id) * page_stride +
+                              static_cast<int64_t>(block_offset) * kv_num_heads * head_size +
+                              kv_head_id * head_size +
+                              h;
+
+    gathered_key[tid] = key_cache[paged_idx];
+    gathered_value[tid] = value_cache[paged_idx];
+  }
 }
 
 template <typename T>
@@ -309,17 +314,22 @@ Status LaunchGatherAndExpandPagedKVCache(const T* key_cache, const T* value_cach
                                          const int block_size, const int max_num_blocks_per_seq,
                                          const int total_kv_tokens, cudaStream_t stream,
                                          const int max_threads_per_block) {
-  const int total_elems = total_kv_tokens * num_heads * head_size;
+  const int64_t total_elems = static_cast<int64_t>(total_kv_tokens) * num_heads * head_size;
   if (total_elems == 0) {
     return Status::OK();
   }
-  const int threads = std::min(total_elems, max_threads_per_block);
-  const int blocks = (total_elems + threads - 1) / threads;
+  // With the op's batch_size <= 256 precondition (paged_attention.cc) and MEA's
+  // head_size <= 1024 cap, blocks_needed = ceil(total_elems / threads) stays comfortably
+  // within int range for any realistic input, so no explicit clamp is needed. The kernel
+  // uses a grid-stride loop so launching fewer blocks than total_elems / threads would
+  // also be correct — we don't need an artificial "keep SMs busy" cap.
+  const int threads = static_cast<int>(std::min<int64_t>(max_threads_per_block, total_elems));
+  const int blocks = static_cast<int>((total_elems + threads - 1) / threads);
   GatherAndExpandPagedKVCache<T><<<blocks, threads, 0, stream>>>(
       key_cache, value_cache, gathered_key, gathered_value,
       block_table, cumulative_seqlens_kv,
       batch_size, num_heads, kv_num_heads, head_size,
-      block_size, max_num_blocks_per_seq, total_kv_tokens);
+      block_size, max_num_blocks_per_seq, total_elems);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -445,7 +455,11 @@ Status EfficientAttention(
   const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
   const int local_window_size = parameters.local_window_size;
   const int total_kv_tokens = data.total_kv_tokens;
-  const int max_query_len = token_count - batch_size + 1;
+  // Use the caller-computed actual max of per-batch new-query lengths, not the
+  // `token_count - batch_size + 1` heuristic: the heuristic assumes >=1 new token per batch
+  // and underestimates otherwise, which would silently drop query tokens from the
+  // rotary grid and from MEA's `grid_x = ceil_div(sequence_length, kQueriesPerBlock)`.
+  const int max_query_len = data.max_query_len;
 
   T* query = const_cast<T*>(data.query);
   T* key;

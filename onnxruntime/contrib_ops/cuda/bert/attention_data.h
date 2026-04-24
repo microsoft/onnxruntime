@@ -233,6 +233,13 @@ struct PagedAttentionData {
   // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
   int total_kv_tokens = 0;
 
+  // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
+  // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's
+  // grid_x (ceil_div(sequence_length, kQueriesPerBlock)) cover every query token. The previous
+  // heuristic `token_count - batch_size + 1` underestimates when any batch has 0 new tokens,
+  // producing silent per-token dropout in MEA and rotary.
+  int max_query_len = 0;
+
   // Output Tensors
   T* output = nullptr;
 

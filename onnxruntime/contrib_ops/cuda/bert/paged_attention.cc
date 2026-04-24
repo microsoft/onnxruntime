@@ -221,18 +221,38 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.batch_size, cuda_stream));
 
   int total_kv_tokens = 0;
+  int max_query_len = 0;
   IAllocatorUniquePtr<void> gathered_key_buffer;
   IAllocatorUniquePtr<void> gathered_value_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (use_memory_efficient_attention) {
-    auto total_kv_pinned = this->AllocateBufferOnCPUPinned<int>(1);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(total_kv_pinned.get(),
-                                         cumulative_seqlens_kv_ptr + parameters.batch_size,
-                                         sizeof(int), cudaMemcpyDeviceToHost, cuda_stream));
+    // MEA needs two host-side quantities:
+    //   - total_kv_tokens (= cumulative_seqlens_kv[batch_size]) to size tight gather buffers.
+    //   - max_query_len (= max per-batch new-query length) to size the rotary and MEA grids
+    //     correctly. The heuristic `token_count - batch_size + 1` underestimates when any
+    //     batch has 0 new tokens (valid input), silently dropping query-tokens from those
+    //     larger-than-average batches.
+    // Both come from cumulative_seqlens_q / cumulative_seqlens_kv, which are tiny (batch+1
+    // ints each), so one D->H copy of the full arrays is cheaper than issuing an extra
+    // reduction kernel and avoids a second sync.
+    const int kCumulativeCount = parameters.batch_size + 1;
+    auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
+    auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
+                                         reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
+                                         sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
+                                         sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-    total_kv_tokens = total_kv_pinned.get()[0];
+    total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
+    for (int i = 0; i < parameters.batch_size; ++i) {
+      const int q_len_i = cum_q_pinned.get()[i + 1] - cum_q_pinned.get()[i];
+      if (q_len_i > max_query_len) {
+        max_query_len = q_len_i;
+      }
+    }
     if (total_kv_tokens == 0) {
       // Legal empty-input case: token_count == 0 and all past_seqlens == 0 — nothing to do.
       // The paged key/value caches are alias-outputs already bound to the input caches
@@ -305,6 +325,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
     }
     data.total_kv_tokens = total_kv_tokens;
+    data.max_query_len = max_query_len;
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
