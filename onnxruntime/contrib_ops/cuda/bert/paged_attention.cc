@@ -143,6 +143,12 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                            "value_cache and value_cache_out must be the same buffer");
   }
 
+  // Empty query input: output is already shaped [0, hidden_size], and the cache outputs
+  // alias the input caches (verified above), so no backend kernel or cache update is needed.
+  if (parameters.token_count == 0) {
+    return Status::OK();
+  }
+
   // Kernel backend selection — FlashAttention preferred, fall back to MemoryEfficientAttention.
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
@@ -254,12 +260,6 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       }
     }
     if (total_kv_tokens == 0) {
-      // Legal empty-input case: token_count == 0 and all past_seqlens == 0 — nothing to do.
-      // The paged key/value caches are alias-outputs already bound to the input caches
-      // (verified above), and the op's output is [0, hidden_size]; no kernel launches needed.
-      if (parameters.token_count == 0) {
-        return Status::OK();
-      }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "PagedAttention MEA fallback: total_kv_tokens is zero for non-empty input.");
     }
