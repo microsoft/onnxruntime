@@ -113,7 +113,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   std::ptrdiff_t max_block_offset = 0;
   std::ptrdiff_t max_b_s_index = 0;
   [[maybe_unused]] std::ptrdiff_t max_cache_offset = 0;
-    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
       std::max(batch_size - 1, 0), batch_stride, "max_batch_offset", max_batch_offset));
     ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
       std::max(sequence_length - 1, 0), seq_stride, "max_seq_offset", max_seq_offset));
