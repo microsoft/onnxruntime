@@ -205,6 +205,6 @@ stages:
           command: publish
           publishDirectory: '$(Build.BinariesDirectory)\universal_package'
           vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-win-x64'
+          vstsFeedPackagePublish: "onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-win-x64"
           versionOption: custom
           versionPublish: '$(PluginUniversalPackageVersion)'
