@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
@@ -46,31 +48,44 @@ Status QuickGeluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
-    // 1. alpha_x = mul(x, alpha)
-    auto mul_alpha = model_builder.CreateOperation(node, "mul", "alpha");
-    AddOperationInput(*mul_alpha, "x", x_name);
-    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      AddOperationInput(*mul_alpha, "y", model_builder.AddScalarConstant(mul_alpha->type(), "alpha", alpha));
-    } else {
-      AddOperationInput(*mul_alpha, "y",
-                        model_builder.AddScalarConstant(mul_alpha->type(), "alpha", MLFloat16(alpha)));
-    }
-    const std::string& alpha_x_name = model_builder.GetUniqueName(node, "quick_gelu_alpha_x");
-    AddIntermediateOperationOutput(*mul_alpha, alpha_x_name, elem_type, x_shape);
+    // When alpha ≈ 1.0 (e.g. CLIP's approximate GELU, `x * sigmoid(x)`), skip
+    // the leading mul and feed x straight into sigmoid. Saves one op and
+    // avoids the rounding it would introduce. Mirrors QNN's builder at
+    // qnn/builder/opbuilder/quick_gelu_op_builder.cc:42-49.
+    constexpr float kAlphaEpsilon = 1e-6f;
+    const bool skip_alpha_mul = std::abs(alpha - 1.0f) < kAlphaEpsilon;
 
-    // 2. sig = sigmoid(alpha_x)
+    std::string sigmoid_input_name = x_name;
+    std::unique_ptr<Operation> mul_alpha;
+    if (!skip_alpha_mul) {
+      // alpha_x = mul(x, alpha)
+      mul_alpha = model_builder.CreateOperation(node, "mul", "alpha");
+      AddOperationInput(*mul_alpha, "x", x_name);
+      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        AddOperationInput(*mul_alpha, "y", model_builder.AddScalarConstant(mul_alpha->type(), "alpha", alpha));
+      } else {
+        AddOperationInput(*mul_alpha, "y",
+                          model_builder.AddScalarConstant(mul_alpha->type(), "alpha", MLFloat16(alpha)));
+      }
+      sigmoid_input_name = model_builder.GetUniqueName(node, "quick_gelu_alpha_x");
+      AddIntermediateOperationOutput(*mul_alpha, sigmoid_input_name, elem_type, x_shape);
+    }
+
+    // sig = sigmoid(sigmoid_input)
     auto sig = model_builder.CreateOperation(node, "sigmoid");
-    AddOperationInput(*sig, "x", alpha_x_name);
+    AddOperationInput(*sig, "x", sigmoid_input_name);
     const std::string& sig_name = model_builder.GetUniqueName(node, "quick_gelu_sigmoid");
     AddIntermediateOperationOutput(*sig, sig_name, elem_type, x_shape);
 
-    // 3. y = mul(x, sig)
+    // y = mul(x, sig)
     auto mul_final = model_builder.CreateOperation(node, "mul", "final");
     AddOperationInput(*mul_final, "x", x_name);
     AddOperationInput(*mul_final, "y", sig_name);
     AddOperationOutput(*mul_final, *node.OutputDefs()[0]);
 
-    model_builder.AddOperation(std::move(mul_alpha));
+    if (mul_alpha) {
+      model_builder.AddOperation(std::move(mul_alpha));
+    }
     model_builder.AddOperation(std::move(sig));
     model_builder.AddOperation(std::move(mul_final));
   }

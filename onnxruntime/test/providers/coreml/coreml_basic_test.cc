@@ -1017,6 +1017,75 @@ TEST(CoreMLExecutionProviderTest, QuickGeluTest) {
 #endif
 }
 
+TEST(CoreMLExecutionProviderTest, QuickGeluTestAlphaOne) {
+  // alpha == 1.0 triggers the "skip leading mul" optimization in the op
+  // builder. Verify correctness on that branch — the emitted MIL graph is
+  // sigmoid(x) -> mul(x, sigmoid(x)) instead of the 3-op decomposition.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(13);
+  auto* ms_opset = model_proto.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("quick_gelu_alpha_one_test");
+
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_shape = input->mutable_type()->mutable_tensor_type()->mutable_shape();
+  input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(2);
+  input_shape->add_dim()->set_dim_value(4);
+
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_shape = output->mutable_type()->mutable_tensor_type()->mutable_shape();
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(3);
+  output_shape->add_dim()->set_dim_value(2);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("QuickGelu");
+  node->set_domain("com.microsoft");
+  node->add_input("X");
+  node->add_output("Y");
+  auto* alpha_attr = node->add_attribute();
+  alpha_attr->set_name("alpha");
+  alpha_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+  alpha_attr->set_f(1.0f);
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 3, 2, 4};
+  std::vector<float> input_data = {-10.0f, -3.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 3.0f,
+                                   10.0f, -5.0f, 5.0f, 2.0f, -2.0f, 4.0f, -4.0f, 0.25f,
+                                   -0.25f, 7.0f, -7.0f, 1.5f, -1.5f, 0.1f, -0.1f, 20.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_span, "QuickGeluTestAlphaOne_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 TEST(CoreMLExecutionProviderTest, QuickGeluTestFp16) {
   // FLOAT16 variant of QuickGeluTest. Exercises the MLFloat16 branch of the
   // alpha-scalar wiring in QuickGeluOpBuilder::AddToModelBuilderImpl.
