@@ -63,6 +63,10 @@ T GsReflect(T x, T x_min, T x_max) {
   T dx = {};
   T fx = static_cast<T>(x);
   T range = x_max - x_min;
+  if (range <= static_cast<T>(0)) {
+    return x_min;
+  }
+
   if (fx < x_min) {
     dx = x_min - fx;
     int n = static_cast<int>(dx / range);
@@ -124,6 +128,8 @@ T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, in
   } else {  // (padding_mode_ == Reflection)
     c = static_cast<int64_t>(GsReflect(static_cast<T>(c), border[0], border[2]));
     r = static_cast<int64_t>(GsReflect(static_cast<T>(r), border[1], border[3]));
+    c = std::clamp<int64_t>(c, 0, W - 1);
+    r = std::clamp<int64_t>(r, 0, H - 1);
     pixel = image[r * W + c];
   }
   return pixel;
@@ -145,6 +151,9 @@ T GridSample<T>::PixelAtGrid3D(const T* image, int64_t d, int64_t h, int64_t w, 
     w = static_cast<int64_t>(GsReflect(static_cast<T>(w), border[0], border[3]));
     h = static_cast<int64_t>(GsReflect(static_cast<T>(h), border[1], border[4]));
     d = static_cast<int64_t>(GsReflect(static_cast<T>(d), border[2], border[5]));
+    w = std::clamp<int64_t>(w, 0, W - 1);
+    h = std::clamp<int64_t>(h, 0, H - 1);
+    d = std::clamp<int64_t>(d, 0, D - 1);
     pixel = image[d * H * W + h * W + w];
   }
   return pixel;
