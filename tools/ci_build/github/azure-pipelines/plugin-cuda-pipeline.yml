@@ -44,7 +44,6 @@ parameters:
   type: string
   values:
   - release
-  - RC
   - dev
   default: dev
 

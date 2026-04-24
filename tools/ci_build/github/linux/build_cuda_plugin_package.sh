@@ -56,7 +56,6 @@ docker run --rm \
         --parallel \
         --nvcc_threads 1 \
         --use_binskim_compliant_compile_flags \
-        --build_wheel \
         --use_cuda \
         --cuda_version=${SHORT_CUDA_VERSION} \
         --cuda_home=\${CUDA_HOME} \
