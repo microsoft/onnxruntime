@@ -4,6 +4,8 @@
 parameters:
 - name: package_version
   type: string
+- name: version_file
+  type: string
 
 steps:
 # Set package version string
@@ -18,11 +20,12 @@ steps:
       import sys
 
       package_version = "${{ parameters.package_version }}"
+      version_file_rel = "${{ parameters.version_file }}"
 
       src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
-      version_file = os.path.join(src_root, "plugin-ep-webgpu", "VERSION_NUMBER")
+      version_file = os.path.join(src_root, version_file_rel)
       if not os.path.isfile(version_file):
-          print("##vso[task.logissue type=error]Cannot find plugin-ep-webgpu/VERSION_NUMBER at: {}".format(version_file))
+          print("##vso[task.logissue type=error]Cannot find version number file at: {}".format(version_file))
           sys.exit(1)
 
       with open(version_file, "r") as f:
