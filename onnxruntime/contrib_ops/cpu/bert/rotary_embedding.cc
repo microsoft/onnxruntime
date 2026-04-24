@@ -88,7 +88,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
     }
   } else if (position_ids_format == 1) {
     std::ptrdiff_t position_count = 0;
-    ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, "position_ids element count", position_count));
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+        batch_size, sequence_length, "position_ids element count", position_count));
 
     // Format 1: 2D array (batch_size, sequence_length)
     for (std::ptrdiff_t i = 0; i < position_count; ++i) {
@@ -103,7 +104,8 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 
   // Parallel to calculate based on head_size
   std::ptrdiff_t loop_len = 0;
-  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, n_heads, "total_elements", loop_len));
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      batch_size, sequence_length, n_heads, "total_elements", loop_len));
 
   std::ptrdiff_t max_batch_offset = 0;
   std::ptrdiff_t max_seq_offset = 0;
@@ -111,20 +113,26 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   std::ptrdiff_t max_block_offset = 0;
   std::ptrdiff_t max_b_s_index = 0;
   [[maybe_unused]] std::ptrdiff_t max_cache_offset = 0;
-  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(batch_size - 1, 0), batch_stride, "max_batch_offset", max_batch_offset));
-  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(sequence_length - 1, 0), seq_stride, "max_seq_offset", max_seq_offset));
-  ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(std::max(n_heads - 1, 0), head_stride, "max_head_offset", max_head_offset));
-  ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_batch_offset, max_seq_offset, "max_block_offset", max_block_offset));
-  ORT_RETURN_IF_ERROR(CheckedAddToPtrdiff(max_block_offset, max_head_offset, "max_block_offset", max_block_offset));
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      std::max(batch_size - 1, 0), batch_stride, "max_batch_offset", max_batch_offset));
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      std::max(sequence_length - 1, 0), seq_stride, "max_seq_offset", max_seq_offset));
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      std::max(n_heads - 1, 0), head_stride, "max_head_offset", max_head_offset));
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff(
+      max_batch_offset, max_seq_offset, "max_block_offset", max_block_offset));
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff(
+      max_block_offset, max_head_offset, "max_block_offset", max_block_offset));
   if (position_ids_format == 0) {
     std::ptrdiff_t total_b_s_count = 0;
-    ORT_RETURN_IF_ERROR(CheckedMulToPtrdiff(batch_size, sequence_length, "total_b_s_count", total_b_s_count));
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+        batch_size, sequence_length, "total_b_s_count", total_b_s_count));
     max_b_s_index = total_b_s_count > 0 ? total_b_s_count - 1 : 0;
   } else {
     max_b_s_index = std::max(max_sequence_length - 1, 0);
   }
-  ORT_RETURN_IF_ERROR(CheckedPtrdiffMulToPtrdiff(max_b_s_index, half_rotary_emb_dim,
-                                                 "max_cache_offset", max_cache_offset));
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedPtrdiffMulToPtrdiff(
+      max_b_s_index, half_rotary_emb_dim, "max_cache_offset", max_cache_offset));
 
   // The cost is calculated as:
   //   - head_size * sizeof(T) for reading input
