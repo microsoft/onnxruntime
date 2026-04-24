@@ -1464,5 +1464,126 @@ class TestONNXAttentionGQALargeHeadUnfused(unittest.TestCase):
         func(**kwargs)
 
 
+def gqa_large_head_unfused_extended_test_cases():
+    """Extended test cases covering additional unfused GQA configurations."""
+    # decode with softcap (softcap interaction with past KV cache)
+    for softcap in [30.0, 50.0]:
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=64,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            is_causal=1,
+            softcap=softcap,
+        )
+        yield f"decode_softcap_{softcap}", config
+
+    # decode with past + boolean attn_mask (past_key concat + mask bias together)
+    config = AttentionConfig(
+        batch_size=2,
+        q_sequence_length=1,
+        kv_sequence_length=1,
+        past_kv_sequence_length=16,
+        q_num_heads=8,
+        kv_num_heads=4,
+        head_size=512,
+        is_causal=1,
+        has_attn_mask=True,
+    )
+    yield "decode_past_attn_mask", config
+
+    # single-head KV variant (higher group ratio: 8:1)
+    config = AttentionConfig(
+        batch_size=1,
+        q_sequence_length=16,
+        kv_sequence_length=16,
+        past_kv_sequence_length=0,
+        q_num_heads=8,
+        kv_num_heads=1,
+        head_size=512,
+        is_causal=1,
+        softcap=0.0,
+    )
+    yield "prompt_single_kv_head", config
+
+    # multi-batch prompt (exercises per-batch uniformity)
+    config = AttentionConfig(
+        batch_size=4,
+        q_sequence_length=8,
+        kv_sequence_length=8,
+        past_kv_sequence_length=0,
+        q_num_heads=8,
+        kv_num_heads=4,
+        head_size=512,
+        is_causal=1,
+        softcap=0.0,
+    )
+    yield "prompt_multi_batch", config
+
+    # non-causal prompt (no causal mask, just plain attention)
+    config = AttentionConfig(
+        batch_size=1,
+        q_sequence_length=16,
+        kv_sequence_length=16,
+        past_kv_sequence_length=0,
+        q_num_heads=8,
+        kv_num_heads=4,
+        head_size=512,
+        is_causal=0,
+        softcap=0.0,
+    )
+    yield "prompt_non_causal", config
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping extended unfused tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"})
+class TestONNXAttentionGQALargeHeadUnfusedExtended(unittest.TestCase):
+    """
+    Extended tests for GQA with head_size=512 via the unfused FP32-QK path.
+
+    Covers additional configurations not in the base test class:
+      - Decode with softcap
+      - Decode with past + attn_mask
+      - Single KV head (high group ratio)
+      - Multi-batch prompt
+      - Non-causal attention
+    """
+
+    @parameterized.expand(gqa_large_head_unfused_extended_test_cases())
+    def test_gqa_large_head_unfused_extended_fp16(self, name, config):
+        func = parity_check_gqa_past if "decode" in name else parity_check_gqa_prompt
+        kwargs = dict(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=bool(config.is_causal),
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+        func(**kwargs)
+
+    @parameterized.expand(gqa_large_head_unfused_extended_test_cases())
+    def test_gqa_large_head_unfused_extended_bf16(self, name, config):
+        if not torch.cuda.is_bf16_supported():
+            self.skipTest("BFloat16 not supported on this device")
+        func = parity_check_gqa_past if "decode" in name else parity_check_gqa_prompt
+        kwargs = dict(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.bfloat16,
+            ort_type=TensorProto.BFLOAT16,
+            causal=bool(config.is_causal),
+            rtol=rtol["bf16"],
+            atol=atol["bf16"],
+        )
+        func(**kwargs)
+
+
 if __name__ == "__main__":
     unittest.main()

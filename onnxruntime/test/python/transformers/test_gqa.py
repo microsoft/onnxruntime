@@ -2667,6 +2667,81 @@ class TestGQARegressions(unittest.TestCase):
             local_window_size=128,
         )
 
+    def test_gqa_gemma4_multi_batch_prompt_fp16(self):
+        """Multi-batch Gemma 4 prompt: exercises per-batch behavior in unfused kernel."""
+        if not has_cuda_provider():
+            self.skipTest("CUDA required")
+
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        os.environ["ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION"] = "1"
+        self.addCleanup(os.environ.pop, "ORT_DISABLE_FLASH_ATTENTION", None)
+        self.addCleanup(os.environ.pop, "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", None)
+
+        config = GQAConfig(
+            batch_size=3,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            q_sequence_length=8,
+            kv_sequence_length=8,
+            past_kv_sequence_length=0,
+            buffer_sequence_length=16,
+            local_window_size=-1,
+            rotary=False,
+            rotary_interleaved=False,
+            packed=False,
+            share_buffer=True,
+            softcap=0.0,
+            use_smooth_softmax=False,
+            has_head_sink=False,
+            has_position_ids=False,
+        )
+
+        parity_check_gqa_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_gqa_gemma4_local_window_decode_bf16(self):
+        """BFloat16 sliding window decode: combines bf16 + local_window_size."""
+        self._run_gemma4_gqa(
+            torch.bfloat16,
+            TensorProto.BFLOAT16,
+            q_sequence_length=1,
+            past_kv_sequence_length=256,
+            is_prompt=False,
+            local_window_size=128,
+        )
+
+    def test_gqa_gemma4_decode_softcap_fp16(self):
+        """Softcap in decode phase: tests softcap interaction with past KV cache."""
+        self._run_gemma4_gqa(
+            torch.float16,
+            TensorProto.FLOAT16,
+            q_sequence_length=1,
+            past_kv_sequence_length=64,
+            is_prompt=False,
+            softcap=50.0,
+        )
+
+    def test_gqa_gemma4_sliding_window_softcap_fp16(self):
+        """Combined sliding window + softcap: both features active simultaneously."""
+        self._run_gemma4_gqa(
+            torch.float16,
+            TensorProto.FLOAT16,
+            q_sequence_length=1,
+            past_kv_sequence_length=256,
+            is_prompt=False,
+            local_window_size=128,
+            softcap=50.0,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
