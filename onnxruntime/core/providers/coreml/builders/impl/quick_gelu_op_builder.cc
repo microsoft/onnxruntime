@@ -35,6 +35,11 @@ class QuickGeluOpBuilder : public BaseOpBuilder {
 Status QuickGeluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                  const Node& node,
                                                  const logging::Logger& logger) const {
+  // IsOpSupportedImpl gates this, but fail fast rather than silently produce an
+  // invalid model if the path is ever reached without MLProgram.
+  ORT_RETURN_IF_NOT(model_builder.CreateMLProgram(),
+                    "QuickGelu is only supported by the CoreML EP in MLProgram format");
+
   NodeAttrHelper helper(node);
   const float alpha = helper.Get("alpha", 1.702f);
 
@@ -45,7 +50,7 @@ Status QuickGeluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<int64_t> x_shape;
   ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], x_shape, logger), "Failed to get QuickGelu input shape");
 
-  if (model_builder.CreateMLProgram()) {
+  {
     using namespace CoreML::Specification::MILSpec;
 
     // When alpha ≈ 1.0 (e.g. CLIP's approximate GELU, `x * sigmoid(x)`), skip
@@ -93,11 +98,25 @@ Status QuickGeluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool QuickGeluOpBuilder::IsOpSupportedImpl(const Node& /*node*/, const OpBuilderInputParams& input_params,
-                                           const logging::Logger& /*logger*/) const {
+bool QuickGeluOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                           const logging::Logger& logger) const {
   // Only the MLProgram path is implemented. NeuralNetwork format is deprecated
   // on Apple Silicon and not worth carrying a second implementation for.
-  return input_params.create_mlprogram;
+  if (!input_params.create_mlprogram) {
+    LOGS(logger, VERBOSE) << "QuickGelu: only MLProgram format is supported by the CoreML EP";
+    return false;
+  }
+
+  // AddToModelBuilderImpl requires the input shape to size intermediate MIL
+  // outputs, so check here and fall back to CPU if shape inference was
+  // incomplete — don't claim the node and then fail at model-build time.
+  std::vector<int64_t> x_shape;
+  if (!GetShape(*node.InputDefs()[0], x_shape, logger)) {
+    LOGS(logger, VERBOSE) << "QuickGelu: failed to get input shape";
+    return false;
+  }
+
+  return true;
 }
 
 void CreateQuickGeluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
