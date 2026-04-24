@@ -263,16 +263,23 @@ __global__ void GatherAndExpandPagedKVCache(const T* __restrict__ key_cache,
   const int head_id = (tid / head_size) % num_heads;
   const int token_id = tid / (num_heads * head_size);
 
-  // Linear scan over batch_size to locate which batch this token belongs to.
-  // batch_size is small (typically <= 256) so a loop is cheap and avoids requiring
-  // a precomputed token->batch map.
-  int batch_id = 0;
-  for (int i = 0; i < batch_size; ++i) {
-    if (token_id < cumulative_seqlens_kv[i + 1]) {
-      batch_id = i;
-      break;
+  // cumulative_seqlens_kv is a prefix sum of non-negative per-batch KV lengths
+  // (past_seqlens[i] + new_tokens[i]), so it is monotonically non-decreasing for
+  // any valid op input — the same assumption the previous linear scan made.
+  // Binary-search for the batch this token belongs to: log2(batch_size) is strictly
+  // better than the linear scan, which ran once per (token, head, h) element and
+  // multiplied its cost by num_heads * head_size.
+  int left = 0;
+  int right = batch_size;
+  while (left < right) {
+    const int mid = left + (right - left) / 2;
+    if (token_id < cumulative_seqlens_kv[mid + 1]) {
+      right = mid;
+    } else {
+      left = mid + 1;
     }
   }
+  const int batch_id = left;
 
   const int pos = token_id - cumulative_seqlens_kv[batch_id];
   const int block_idx_in_seq = pos / block_size;
@@ -420,7 +427,7 @@ Status FlashAttention(
 // dispatches to CUTLASS memory-efficient attention via its seqstart_q / seqstart_k varlen ABI.
 // Caller must populate data.gathered_key / data.gathered_value / data.total_kv_tokens.
 template <typename T>
-Status UnfusedAttention(
+Status EfficientAttention(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
     contrib::PagedAttentionParameters& parameters,
@@ -550,11 +557,11 @@ Status QkvToContext(
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
-    return UnfusedAttention(device_prop, stream, parameters, data, scale);
+    return EfficientAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Paged Attention not implemented.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
 }
 
 template struct PagedAttentionData<half>;

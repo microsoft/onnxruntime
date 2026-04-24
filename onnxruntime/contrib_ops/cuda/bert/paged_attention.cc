@@ -199,6 +199,20 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Populate cumulative_seqlens_kv for both backends. The MEA path additionally needs
   // the last element on the host to size the tight gather buffers, so we D->H sync below.
+  //
+  // LaunchGetCumulativeSeqlensKV uses a per-block cub::BlockScan with a block size of 256
+  // and launches (batch_size + 255) / 256 blocks, so blocks scan independently. Enforce
+  // batch_size <= 256 so the cumulative sum is correct; a larger batch would silently
+  // produce wrong KV offsets. (A future grid-wide scan could lift this limit.)
+  constexpr int kMaxBatchSizeForCumulativeSeqlensKV = 256;
+  if (parameters.batch_size > kMaxBatchSizeForCumulativeSeqlensKV) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention currently supports batch_size <= ",
+                           kMaxBatchSizeForCumulativeSeqlensKV,
+                           " (LaunchGetCumulativeSeqlensKV limitation); got batch_size=",
+                           parameters.batch_size, ".");
+  }
+
   cudaStream_t cuda_stream = static_cast<cudaStream_t>(ort_stream.get()->GetHandle());
   ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(
       cumulative_seqlens_kv_ptr,
@@ -219,9 +233,19 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                          sizeof(int), cudaMemcpyDeviceToHost, cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
     total_kv_tokens = total_kv_pinned.get()[0];
-    if (total_kv_tokens <= 0) {
+    if (total_kv_tokens == 0) {
+      // Legal empty-input case: token_count == 0 and all past_seqlens == 0 — nothing to do.
+      // The paged key/value caches are alias-outputs already bound to the input caches
+      // (verified above), and the op's output is [0, hidden_size]; no kernel launches needed.
+      if (parameters.token_count == 0) {
+        return Status::OK();
+      }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "PagedAttention MEA fallback: total_kv_tokens is non-positive (", total_kv_tokens, ").");
+                             "PagedAttention MEA fallback: total_kv_tokens is zero for non-empty input.");
+    }
+    if (total_kv_tokens < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "PagedAttention MEA fallback: total_kv_tokens is negative (", total_kv_tokens, ").");
     }
 
     const size_t gather_elems = static_cast<size_t>(total_kv_tokens) *
