@@ -33,6 +33,8 @@ stages:
 
     - task: PowerShell@2
       displayName: 'Install and test Python package'
+      env:
+        ORT_TEST_VERBOSE: $(System.Debug)
       inputs:
         targetType: inline
         pwsh: true

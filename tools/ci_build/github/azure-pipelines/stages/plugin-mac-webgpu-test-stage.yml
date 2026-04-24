@@ -35,3 +35,5 @@ stages:
         python3 -m pip install "$wheel"
         python3 -u "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py"
       displayName: 'Install and test Python package'
+      env:
+        ORT_TEST_VERBOSE: $(System.Debug)
