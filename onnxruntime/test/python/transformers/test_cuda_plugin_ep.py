@@ -2420,7 +2420,7 @@ class TestCudaPluginEP(unittest.TestCase):
             self.assertTrue(profile_file, "No profile file returned")
             self.assertTrue(os.path.exists(profile_file), f"Profile file not found: {profile_file}")
 
-            with open(profile_file, "r") as f:
+            with open(profile_file) as f:
                 profile_data = json.load(f)
 
             self.assertIsInstance(profile_data, list)
@@ -2440,10 +2440,7 @@ class TestCudaPluginEP(unittest.TestCase):
             # ENABLE_CUDA_PROFILING=ON. The test is written to pass either way:
             # without CUDA profiling the events list simply won't contain Kernel
             # entries, and the test validates the basic profiling infrastructure.
-            kernel_events = [
-                e for e in profile_data
-                if isinstance(e, dict) and e.get("cat") == "Kernel"
-            ]
+            kernel_events = [e for e in profile_data if isinstance(e, dict) and e.get("cat") == "Kernel"]
             has_cuda_profiling = len(kernel_events) > 0
 
             if has_cuda_profiling:
@@ -2459,10 +2456,7 @@ class TestCudaPluginEP(unittest.TestCase):
             else:
                 # No GPU kernel events — CUDA profiling is likely not enabled.
                 # The test still validates the basic profiling JSON structure above.
-                print(
-                    "Note: No GPU Kernel events found in profile. "
-                    "CUDA profiling may not be enabled in this build."
-                )
+                print("Note: No GPU Kernel events found in profile. CUDA profiling may not be enabled in this build.")
 
         finally:
             if os.path.exists(model_path):

@@ -106,7 +106,8 @@ OrtStatus* ORT_API_CALL CudaPluginEpProfiler::EndProfilingImpl(
 
   // Flatten all GPU events and convert to OrtProfilingEvent.
   std::vector<Ort::ProfilingEvent> events;
-  for (auto& [correlation_id, event_list] : event_map) {
+  for (auto& kv : event_map) {
+    auto& event_list = kv.second;
     for (const auto& record : event_list) {
       // Build parallel key/value arrays to use the raw-pointer ProfilingEvent
       // constructor, avoiding a copy from InlinedHashMap to std::unordered_map.

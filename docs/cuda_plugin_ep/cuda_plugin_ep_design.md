@@ -875,13 +875,13 @@ When ORT calls `EndProfiling`:
 3. Events are converted to `Ort::ProfilingEvent` instances with `OrtProfilingEventCategory_KERNEL`.
 4. Events are appended to the `OrtProfilingEventsContainer` via `AddEvents`.
 
-The plugin does **not** perform the post-hoc merge/sort that the in-tree `GPUProfilerBase::EndProfiling` does. The plugin API is append-only; the `PluginEpProfiler` bridge on the ORT side handles merging EP events into the global event timeline.
+The plugin does **not** perform the post-hoc merge/sort that the in-tree `GPUProfilerBase::EndProfiling` does. The plugin API is append-only, and the `PluginEpProfiler` bridge on the ORT side likewise appends EP events to ORT's profiling event collection without merge/sort by timestamp or correlation ID. Any ordering or interleaving into a global timeline is handled by downstream trace consumers.
 
 ### 14.5 Design Differences from In-Tree CUDA EP Profiler
 
 | Aspect | In-tree CUDA EP | CUDA Plugin EP |
 |--------|----------------|----------------|
-| Event merge | `GPUProfilerBase::MergeEvents` interleaves GPU events into ORT's array (has known sort-order bug) | Append-only; ORT-side bridge merges |
+| Event merge | `GPUProfilerBase::MergeEvents` interleaves GPU events into ORT's array (has known sort-order bug) | Append-only; ORT-side bridge appends only, and trace consumers handle ordering |
 | Correlation IDs | Relative → absolute conversion in `GPUTracerManager::PushCorrelation` | Bridge provides absolute IDs directly; plugin pushes to CUPTI as-is |
 | `StopEvent` metadata | Ignored (just pops correlation) | ORT event metadata available; currently unused, can annotate GPU events in future |
 | Singleton scope | Process-wide `CUPTIManager` in main ORT DLL | DLL-local `CUPTIManager` in plugin (process isolation) |

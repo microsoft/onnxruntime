@@ -668,8 +668,11 @@ OrtStatus* ORT_API_CALL CudaEp::CreateProfilerImpl(
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`profiler` must not be null");
   }
 
+  *profiler = nullptr;
+
   auto* ep = static_cast<CudaEp*>(this_ptr);
-  *profiler = new CudaPluginEpProfiler(ep->factory_.GetEpApi());
+  auto profiler_impl = std::make_unique<CudaPluginEpProfiler>(ep->factory_.GetEpApi());
+  *profiler = profiler_impl.release();
   return nullptr;
 
   EXCEPTION_TO_STATUS_END
