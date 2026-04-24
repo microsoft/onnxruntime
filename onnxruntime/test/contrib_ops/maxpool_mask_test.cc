@@ -96,6 +96,7 @@ TEST(ContribOpTest, MaxPoolWithMask_SpatialDimMismatch) {
   std::vector<int64_t> m_dims = {1, 1, 4, 8};
   std::vector<int32_t> m_vals(32, 1);
 
+  // Placeholder output shape and values (not validated since we expect failure)
   std::vector<int64_t> expected_dims = {1, 1, 1, 1};
   std::vector<float> expected_vals = {1.0f};
 
@@ -122,6 +123,7 @@ TEST(ContribOpTest, MaxPoolWithMask_DimCountMismatch) {
   std::vector<int64_t> m_dims = {1, 1, 8};
   std::vector<int32_t> m_vals(8, 1);
 
+  // Placeholder output shape and values (not validated since we expect failure)
   std::vector<int64_t> expected_dims = {1, 1, 1, 1};
   std::vector<float> expected_vals = {1.0f};
 
