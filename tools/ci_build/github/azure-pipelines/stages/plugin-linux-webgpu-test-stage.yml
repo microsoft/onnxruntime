@@ -65,18 +65,10 @@ stages:
           --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
           --env "VK_ICD_FILENAMES=${swiftshader_icd}" \
           --env "VK_DRIVER_FILES=${swiftshader_icd}" \
+          --env "ORT_TEST_VERBOSE=$(System.Debug)" \
           onnxruntimewebgpuplugin \
           /bin/bash -c "
             set -e -x
-            # --- DIAGNOSTICS (remove once WebGPU EP test is stable) ---
-            echo '=== Vulkan ICD configuration ==='
-            echo \"VK_ICD_FILENAMES=\${VK_ICD_FILENAMES:-<unset>}\"
-            ls -la /opt/swiftshader/ 2>/dev/null || echo '  (no /opt/swiftshader/)'
-            echo '=== vulkaninfo --summary (SwiftShader expected) ==='
-            VK_LOADER_DEBUG=error,warn vulkaninfo --summary 2>&1 | head -60 || true
-            echo '=== END DIAGNOSTICS ==='
-            # --- END DIAGNOSTICS ---
-
             python3 -m venv /build/test_venv
             source /build/test_venv/bin/activate
             python3 -m pip install onnxruntime onnx numpy

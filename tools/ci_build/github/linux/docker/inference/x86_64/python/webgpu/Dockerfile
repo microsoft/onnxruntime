@@ -9,8 +9,9 @@ ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/buil
 #   is maintained alongside Dawn for headless CI and is self-contained (one
 #   .so + ICD JSON, no Mesa/DRM dependency).
 #
-# SwiftShader has no release tags; pin to the commit SHA that Dawn's DEPS
-# currently references. Bump this when Dawn bumps its SwiftShader revision.
+# SwiftShader has no release tags, so pin to a commit SHA. The ICD must
+# advertise at least the Vulkan apiVersion Dawn requests; picking a SHA from
+# Dawn's DEPS is a convenient way to get one known to satisfy that.
 # ---------------------------------------------------------------------------
 FROM $BASEIMAGE AS swiftshader_builder
 
@@ -56,14 +57,10 @@ FROM $BASEIMAGE
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && rm -rf /tmp/scripts
 
-# Vulkan loader + vulkaninfo for diagnostics. The SwiftShader ICD itself is
-# copied from the builder stage below. Callers pin the driver at `docker run`
-# time via VK_ICD_FILENAMES / VK_DRIVER_FILES (see
-# plugin-linux-webgpu-test-stage.yml) so this image stays reusable if we
-# ever add a real-GPU variant.
-#
-# vulkan-tools can be dropped once the WebGPU EP test is stable.
-RUN dnf install -y vulkan-loader vulkan-tools && dnf clean all
+# Vulkan loader. The SwiftShader ICD is copied from the builder stage
+# below. Callers opt into SwiftShader at `docker run` time via
+# VK_ICD_FILENAMES / VK_DRIVER_FILES (see plugin-linux-webgpu-test-stage.yml).
+RUN dnf install -y vulkan-loader && dnf clean all
 
 COPY --from=swiftshader_builder /opt/swiftshader /opt/swiftshader
 
