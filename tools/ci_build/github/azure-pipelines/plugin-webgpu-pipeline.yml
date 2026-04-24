@@ -1,9 +1,17 @@
-trigger: none
-
 # Packaging pipeline for the WebGPU EP plugin. This pipeline only builds
 # and publishes artifacts. Tests that consume those artifacts live in
 # plugin-webgpu-test-pipeline.yml, which is resource-triggered on
 # successful runs of this pipeline.
+
+trigger: none
+
+schedules:
+- cron: '0 17 * * *'  # Daily at 17:00 UTC
+  displayName: Nightly build
+  branches:
+    include:
+    - main
+  always: false  # Only run if source changed since last successful scheduled run
 
 resources:
   repositories:
@@ -21,17 +29,17 @@ parameters:
 - name: build_windows_arm64
   displayName: 'Build Windows ARM64'
   type: boolean
-  default: false
+  default: true
 
 - name: build_linux_x64
   displayName: 'Build Linux x64'
   type: boolean
-  default: false
+  default: true
 
 - name: build_macos_arm64
   displayName: 'Build macOS ARM64'
   type: boolean
-  default: false
+  default: true
 
 - name: package_version
   displayName: 'Package Version'
