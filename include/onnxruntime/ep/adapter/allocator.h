@@ -41,16 +41,20 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     return SupportsAllocOnStream();
   }
 
-  void* AllocOnStream(size_t size, Stream* stream) override {
-    // TODO: Replace direct function pointer access once Ort::Allocator exposes AllocOnStream/IsStreamAware.
-    if (SupportsAllocOnStream()) {
-      OrtAllocator* raw = ort_allocator_;
-      // TODO `static_cast<OrtSyncStream*>(stream)` may cause issues since `Stream` is an internal ORT type.
-      // Find a way to not rely on internal type usage at the shared library boundary.
-      return raw->AllocOnStream(raw, size, static_cast<OrtSyncStream*>(stream));
-    }
-    return Alloc(size);
-  }
+  // TODO: Implement AllocOnStream() properly.
+  // The internal `onnxruntime::IAllocator::AllocOnStream` signature takes an internal `onnxruntime::Stream*` argument,
+  // while the public `::OrtAllocator::AllocOnStream` signature takes an `::OrtSyncStream*` argument.
+  // We need to properly map from one to the other.
+  // `::OrtSyncStream*` should be treated as an opaque type from the plugin EP's perspective.
+
+  // void* AllocOnStream(size_t size, Stream* stream) override {
+  //   // TODO: Replace direct function pointer access once Ort::Allocator exposes AllocOnStream/IsStreamAware.
+  //   if (SupportsAllocOnStream()) {
+  //     OrtAllocator* raw = ort_allocator_;
+  //     return raw->AllocOnStream(raw, size, static_cast<OrtSyncStream*>(stream));  // This cast is not valid!
+  //   }
+  //   return Alloc(size);
+  // }
 
  private:
   static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
