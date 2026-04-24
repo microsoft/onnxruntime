@@ -1,4 +1,4 @@
-# WebGPU Plugin EP Python Package — Build & Test
+# WebGPU Plugin EP Python Package
 
 This directory contains the packaging source for the `onnxruntime-ep-webgpu` Python package.
 
@@ -46,10 +46,12 @@ pip install dist/onnxruntime_ep_webgpu-*.whl
 python test/test_webgpu_plugin_ep.py
 ```
 
-The test validates import, EP registration, device discovery, and inference (requires WebGPU-capable hardware for the inference portion).
+The test validates import, EP registration, device discovery, and inference (requires
+WebGPU-capable hardware for the inference portion). Set the environment variable
+`ORT_TEST_VERBOSE=1` to print additional diagnostic information (environment,
+available providers, discovered devices, etc.).
 
 ## Versioning
 
-The package version is derived from `plugin-ep-webgpu/VERSION_NUMBER` by the CI pipeline (`set-plugin-build-variables-step.yml`), which produces a PEP 440 version string:
-- **Release**: `X.Y.Z`
-- **Dev**: `X.Y.Z.devYYYYMMDD`
+The package version is derived from `plugin-ep-webgpu/VERSION_NUMBER` by the packaging pipeline, which produces a
+PEP 440 version string.
