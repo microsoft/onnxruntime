@@ -72,6 +72,19 @@ TEST_P(LinearRegressorTest, LinearRegressorUniTarget) {
   test.Run();
 }
 
+TEST(MLOpTest, LinearRegressorInvalidCoefficientsSize) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f, 0.f});
+  test.AddAttribute("targets", static_cast<int64_t>(2));
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("Y", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients size");
+}
+
 // For PROBIT, all the output values are NaN.
 INSTANTIATE_TEST_SUITE_P(
     LinearRegressorTest, LinearRegressorTest,

@@ -1,0 +1,230 @@
+parameters:
+- name: arch
+  type: string
+  values:
+  - x64
+  - arm64
+
+- name: package_version
+  type: string
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: npm_registry_url
+  type: string
+  default: 'https://pkgs.dev.azure.com/aiinfra/_packaging/ONNXRuntime_WebGPU_BuildDependencies/npm/registry/'
+
+stages:
+  - stage: Win_plugin_webgpu_${{ parameters.arch }}_Build
+    ${{ if eq(parameters.arch, 'arm64') }}:
+      dependsOn: Win_plugin_webgpu_x64_Build
+    ${{ else }}:
+      dependsOn: []
+    jobs:
+    - job: Win_plugin_webgpu_${{ parameters.arch }}_Build
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      templateContext:
+        sdl:
+          codeSignValidation:
+            enabled: true
+            break: true
+            additionalTargetsGlobPattern: '-|**\clang-tblgen.exe;-|**\llvm-tblgen.exe'
+          psscriptanalyzer:
+            enabled: true
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+        outputs:
+        - ${{ if eq(parameters.arch, 'x64') }}:
+          - output: pipelineArtifact
+            targetPath: '$(Build.ArtifactStagingDirectory)\WebGPU_BuildTools'
+            artifactName: WebGPU_BuildTools_x64
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)
+          artifactName: webgpu_plugin_win_${{ parameters.arch }}
+      variables:
+      - template: ../templates/common-variables.yml
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      - name: CrossCompileDefines
+        value: ''
+      - name: ArchFlag
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          value: '--arm64'
+        ${{ else }}:
+          value: ''
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+
+      - script: |
+          python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
+        displayName: 'Install Python build dependencies'
+        env:
+          TMPDIR: "$(Agent.TempDirectory)"
+
+      - ${{ if eq(parameters.arch, 'arm64') }}:
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download WebGPU build tools from x64 build'
+          inputs:
+            artifactName: 'WebGPU_BuildTools_x64'
+            targetPath: '$(Build.BinariesDirectory)\WebGPU_BuildTools'
+        - script: |
+            @echo ##vso[task.setvariable variable=LLVM_TABLEGEN_PATH]$(Build.BinariesDirectory)\WebGPU_BuildTools\llvm-tblgen.exe
+            @echo ##vso[task.setvariable variable=CLANG_TABLEGEN_PATH]$(Build.BinariesDirectory)\WebGPU_BuildTools\clang-tblgen.exe
+          displayName: 'Set tablegen paths'
+        - powershell: |
+            Write-Host "Using LLVM_TABLEGEN_PATH: $(LLVM_TABLEGEN_PATH)"
+            Write-Host "Using CLANG_TABLEGEN_PATH: $(CLANG_TABLEGEN_PATH)"
+            Write-Host "##vso[task.setvariable variable=CrossCompileDefines]LLVM_TABLEGEN=$(LLVM_TABLEGEN_PATH) CLANG_TABLEGEN=$(CLANG_TABLEGEN_PATH)"
+          displayName: 'Set build flags for WebGPU cross-compilation'
+
+      - task: PythonScript@0
+        displayName: 'Build'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >-
+            $(ArchFlag)
+            --config ${{ parameters.cmake_build_type }}
+            --build_dir $(Build.BinariesDirectory)
+            --skip_submodule_sync
+            --cmake_generator "$(VSGenerator)"
+            --parallel
+            --use_vcpkg
+            --use_vcpkg_ms_internal_asset_cache
+            --use_binskim_compliant_compile_flags
+            --update
+            --build
+            --enable_onnx_tests
+            --use_webgpu shared_lib
+            --wgsl_template static
+            --disable_rtti
+            --enable_lto
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine) $(CrossCompileDefines)
+            $(TelemetryOption)
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      - ${{ if eq(parameters.arch, 'x64') }}:
+        - script: |
+            mkdir $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\${{ parameters.cmake_build_type }}\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\${{ parameters.cmake_build_type }}\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
+          displayName: 'Copy WebGPU build tools'
+
+      - powershell: |
+          $dxcZipUrl = "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip"
+          $dxcZipPath = "$(Build.BinariesDirectory)\dxc.zip"
+          $dxcExtractPath = "$(Build.BinariesDirectory)\dxc_extracted"
+          $targetArch = "${{ parameters.arch }}"
+          $expectedHash = "70B1913A1BFCE4A3E1A5311D16246F4ECDF3A3E613ABEC8AA529E57668426F85"
+
+          # Download the DXC package
+          Write-Host "Downloading DXC release from $dxcZipUrl"
+          Invoke-WebRequest -Uri $dxcZipUrl -OutFile $dxcZipPath
+
+          # Verify integrity of downloaded file
+          $actualHash = (Get-FileHash -Path $dxcZipPath -Algorithm SHA256).Hash
+          if ($actualHash -ne $expectedHash) {
+            throw "DXC zip hash mismatch! Expected: $expectedHash, Got: $actualHash. The download may be corrupted or tampered with."
+          }
+          Write-Host "DXC zip hash verified: $actualHash"
+
+          # Create extraction directory
+          if (-not (Test-Path $dxcExtractPath)) {
+            New-Item -Path $dxcExtractPath -ItemType Directory -Force
+          }
+
+          # Extract the zip file
+          Write-Host "Extracting DXC package to $dxcExtractPath"
+          Expand-Archive -Path $dxcZipPath -DestinationPath $dxcExtractPath -Force
+
+          # Copy the necessary DLLs to the build output directory so they get ESRP-signed
+          $sourcePath = Join-Path $dxcExtractPath "bin\$targetArch"
+          $targetPath = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}"
+
+          if (-not (Test-Path $targetPath)) {
+            New-Item -Path $targetPath -ItemType Directory -Force
+          }
+
+          Write-Host "Copying dxil.dll and dxcompiler.dll from $sourcePath to $targetPath"
+          Copy-Item -Path "$sourcePath\dxil.dll" -Destination $targetPath -Force
+          Copy-Item -Path "$sourcePath\dxcompiler.dll" -Destination $targetPath -Force
+
+          Write-Host "DXC DLLs successfully copied to the target directory"
+        displayName: 'Download and Copy DXC Binaries'
+
+      # Esrp signing
+      - template: ../templates/win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: true
+          Pattern: '*.dll'
+
+      - powershell: |
+          $pluginPath = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_webgpu.dll"
+          if (-not (Test-Path $pluginPath)) {
+            Write-Error "Expected plugin binary not found at '$pluginPath'. Failing build to avoid publishing an invalid package."
+            exit 1
+          }
+          Write-Host "Verified plugin binary exists at: $pluginPath"
+        displayName: 'Verify plugin binary exists'
+
+      - task: CopyFiles@2
+        displayName: 'Copy plugin binaries to staging directory'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+          Contents: |
+            onnxruntime_providers_webgpu.dll
+            onnxruntime_providers_webgpu.pdb
+            dxil.dll
+            dxcompiler.dll
+          TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
+
+      - script: |
+          mkdir "$(Build.ArtifactStagingDirectory)\version"
+          type nul > "$(Build.ArtifactStagingDirectory)\version\$(PluginPackageVersion)"
+        displayName: 'Create version marker file'
+
+      - task: CopyFiles@2
+        displayName: 'Stage binaries for universal package'
+        inputs:
+          SourceFolder: '$(Build.ArtifactStagingDirectory)\bin'
+          Contents: '**'
+          TargetFolder: '$(Build.BinariesDirectory)\universal_package'
+
+      - task: UniversalPackages@0
+        displayName: 'Publish universal package'
+        inputs:
+          command: publish
+          publishDirectory: '$(Build.BinariesDirectory)\universal_package'
+          vstsFeedPublish: 'PublicPackages/ORT-Nightly'
+          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-win-${{ parameters.arch }}'
+          versionOption: custom
+          versionPublish: '$(PluginUniversalPackageVersion)'

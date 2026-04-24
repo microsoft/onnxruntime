@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -95,14 +96,14 @@ void PrepareMask(const int32_t* mask_index,
         // mask_index is 1D: (B) or (2B) => (Bx)T
 
         // Handle right-side padding: mask value at or after the end position will be mask_filter_value
-        int end_position = mask_index[b_i];
+        int end_position = std::max(0, std::min(static_cast<int>(mask_index[b_i]), all_sequence_length));
         for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
           p_mask[m_i] = static_cast<T>(mask_filter_value);
         }
 
         // Handle left-side padding: mask value before the start position will be mask_filter_value
         if (has_mask_start_position) {
-          int start_position = std::min(mask_index[b_i + batch_size], all_sequence_length);
+          int start_position = std::max(0, std::min(static_cast<int>(mask_index[b_i + batch_size]), all_sequence_length));
           for (int m_i = 0; m_i < start_position; m_i++) {
             p_mask[m_i] = static_cast<T>(mask_filter_value);
           }
@@ -167,11 +168,11 @@ T* ConcatStateChunkGQA(const T* past,
   T* p = start;
   if (!past_present_share_buffer && past_chunk_length > 0) {
     const T* src_past = past + i * past_buff_chunk_length;
-    memcpy(p, src_past, past_chunk_length * sizeof(T));
+    memcpy(p, src_past, SafeInt<size_t>(past_chunk_length) * sizeof(T));
   }
   p += past_chunk_length;
 
-  memcpy(p, chunk, new_chunk_length * sizeof(T));
+  memcpy(p, chunk, SafeInt<size_t>(new_chunk_length) * sizeof(T));
   return start;
 }
 

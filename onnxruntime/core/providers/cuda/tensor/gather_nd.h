@@ -23,7 +23,8 @@ class GatherNDBase : public CudaKernel {
  protected:
   template <typename TIndex>
   Status PrepareCompute(
-      onnxruntime::Stream* stream,
+      void* alloc_stream,
+      cudaStream_t cuda_stream,
       const int64_t batch_dims,
       const TensorShape& input_shape,
       const TensorShape& indices_shape,

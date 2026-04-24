@@ -19,6 +19,8 @@ std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
   os << " thread_pool_size: " << params.thread_pool_size;
   os << " auto_set_affinity: " << params.auto_set_affinity;
   os << " allow_spinning: " << params.allow_spinning;
+  os << " spin_duration_us: " << params.spin_duration_us;
+  os << " spin_backoff_max: " << params.spin_backoff_max;
   os << " dynamic_block_base_: " << params.dynamic_block_base_;
   os << " stack_size: " << params.stack_size;
   os << " affinity_str: " << params.affinity_str;
@@ -155,8 +157,22 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set");
   }
 
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  if (options.work_callbacks.on_enqueue || options.work_callbacks.on_start_work ||
+      options.work_callbacks.on_stop_work || options.work_callbacks.on_abandon) {
+    to.work_callbacks = &options.work_callbacks;
+  }
+#endif
+
+  // Clamp so that invalid negatives (e.g. -5) are treated as the default (-1).
+  const int spin_us = options.allow_spinning ? std::max(options.spin_duration_us, -1) : 0;
+  // spin_backoff_max is ignored when spinning is disabled.
+  const unsigned int backoff_max = options.allow_spinning
+                                       ? std::min(std::max(options.spin_backoff_max, 1U),
+                                                  concurrency::kSpinBackoffMaxLimit)
+                                       : 1U;
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
-                                      options.allow_spinning);
+                                      spin_us, /*force_hybrid*/ false, backoff_max);
 }
 
 std::unique_ptr<ThreadPool>

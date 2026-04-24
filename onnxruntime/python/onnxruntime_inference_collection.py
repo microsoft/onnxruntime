@@ -10,6 +10,7 @@ import os
 import typing
 import warnings
 from collections.abc import Callable, Sequence
+from enum import IntEnum
 from typing import Any
 
 from onnxruntime.capi import _pybind_state as C
@@ -38,6 +39,30 @@ def get_ort_device_type(device_type: str) -> int:
         return C.OrtDevice.npu()
     else:
         raise Exception("Unsupported device type: " + device_type)
+
+
+class OrtDeviceVendorId(IntEnum):
+    """Vendor IDs aligned with OrtDevice::VendorIds in ortdevice.h."""
+
+    NONE = 0x0000
+    AMD = 0x1002
+    NVIDIA = 0x10DE
+    ARM = 0x13B5
+    MICROSOFT = 0x1414
+    HUAWEI = 0x19E5
+    QUALCOMM = 0x5143
+    INTEL = 0x8086
+
+
+def get_vendor_id_for_device_type(device_type: str) -> OrtDeviceVendorId | None:
+    if device_type == "cuda":
+        return OrtDeviceVendorId.NVIDIA
+    elif device_type == "dml":
+        return OrtDeviceVendorId.MICROSOFT
+    elif device_type == "cann":
+        return OrtDeviceVendorId.HUAWEI
+    else:
+        return None
 
 
 class AdapterFormat:
@@ -1012,7 +1037,9 @@ class OrtValue:
         return self._ortvalue
 
     @classmethod
-    def ortvalue_from_numpy(cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0, vendor_id=-1) -> OrtValue:
+    def ortvalue_from_numpy(
+        cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0, vendor_id: int | OrtDeviceVendorId = -1
+    ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
@@ -1020,7 +1047,7 @@ class OrtValue:
         :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
-        :param vendor_id: The device's PCI vendor id. If provided, the device_type should be "gpu" or "npu".
+        :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device_type should be "gpu" or "npu".
         """
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
         # is backed directly by the data buffer of the numpy object and so the numpy object
@@ -1049,7 +1076,12 @@ class OrtValue:
 
     @classmethod
     def ortvalue_from_shape_and_type(
-        cls, shape: Sequence[int], element_type, device_type: str = "cpu", device_id: int = 0, vendor_id: int = -1
+        cls,
+        shape: Sequence[int],
+        element_type,
+        device_type: str = "cpu",
+        device_id: int = 0,
+        vendor_id: int | OrtDeviceVendorId = -1,
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -1058,7 +1090,7 @@ class OrtValue:
         :param element_type: The data type of the elements. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16).
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
-        :param vendor_id: If provided the device type should be "gpu" or "npu".
+        :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device type should be "gpu" or "npu".
         """
 
         device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
@@ -1167,6 +1199,109 @@ class OrtValue:
         """
         return self._ortvalue.numpy()
 
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
+        """
+        Supports ``numpy.asarray(ortvalue)`` and ``numpy.array(ortvalue)`` via the
+        `numpy __array__ protocol <https://numpy.org/devdocs/user/basics.interoperability.html>`_.
+
+        Valid only for OrtValues holding Tensors on CPU.
+
+        :param dtype: Optional numpy dtype to cast the result to.
+        :param copy: Optional bool (numpy >= 2.0). If ``False``, a copy will
+            only be made if necessary. If ``True``, a copy is always forced.
+            If ``None`` (default), a copy will be made only if needed.
+        :return: A numpy array with the same data as the OrtValue.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        arr = self.numpy()
+
+        if copy is not None:
+            # numpy >= 2.0 added the copy kwarg to np.asarray;
+            # np.array has always accepted it but with weaker semantics pre-2.0.
+            arr = np.array(arr, dtype=dtype, copy=copy)
+        elif dtype is not None:
+            # np.asarray avoids a copy when the dtype already matches,
+            # preserving memory sharing with the underlying OrtValue.
+            arr = np.asarray(arr, dtype=dtype)
+
+        return arr
+
+    def __dlpack__(self, *, stream=None):
+        """
+        Returns a DLPack capsule representing the tensor (part of the
+        `DLPack protocol <https://dmlc.github.io/dlpack/latest/>`_).
+
+        This enables interoperability with other frameworks via
+        ``from_dlpack(ortvalue)`` (e.g. ``torch.from_dlpack``,
+        ``jax.dlpack.from_dlpack``, ``numpy.from_dlpack``).
+
+        The OrtValue must hold a contiguous tensor. No data is copied;
+        the consumer shares memory with this OrtValue, which must remain
+        alive while the capsule is in use.
+
+        :param stream: Optional stream on which the tensor data is accessible.
+            Currently unused; included for protocol compliance.
+        :return: A PyCapsule holding a DLManagedTensor.
+        """
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """
+        Returns ``(device_type, device_id)`` indicating where the tensor data
+        resides (part of the `DLPack protocol
+        <https://dmlc.github.io/dlpack/latest/>`_).
+
+        :return: Tuple of ``(device_type, device_id)`` as ints following DLPack
+            ``DLDeviceType`` enum values.
+        """
+        return self._ortvalue.__dlpack_device__()
+
+    @classmethod
+    def from_dlpack(cls, data, /) -> OrtValue:
+        """
+        Construct an OrtValue from an object that implements the DLPack protocol.
+
+        Accepts either:
+
+        * An object with ``__dlpack__`` / ``__dlpack_device__`` methods
+          (e.g. a PyTorch tensor, JAX array, or numpy array).
+        * A raw DLPack PyCapsule (legacy path).
+
+        Boolean tensors are automatically detected when the source object
+        exposes a ``dtype`` attribute (numpy, PyTorch, etc.) or is an
+        ``OrtValue``. For raw DLPack capsules where the original dtype cannot
+        be inspected, bool tensors encoded as uint8 by older DLPack versions
+        are not distinguishable from true uint8 tensors and will be imported
+        as uint8.
+
+        No data is copied; the new OrtValue shares memory with the source.
+
+        :param data: A tensor object supporting the DLPack protocol, or a raw
+            DLPack PyCapsule.
+        :return: An OrtValue wrapping the tensor data.
+        """
+        # Detect boolean dtype from the source object before consuming it,
+        # because DLPack encodes bool as uint8 and the capsule alone cannot
+        # distinguish between the two.
+        is_bool = False
+        if isinstance(data, OrtValue):
+            is_bool = data.data_type() == "tensor(bool)"
+        elif hasattr(data, "dtype"):
+            dtype_obj = data.dtype
+            # Use .name when available (numpy, cupy, tensorflow all expose it).
+            # Fall back to str() for frameworks that don't (e.g. PyTorch).
+            dtype_name = getattr(dtype_obj, "name", str(dtype_obj))
+            is_bool = dtype_name in ("bool", "bool_", "torch.bool")
+
+        # If the input supports the __dlpack__ protocol, call it to get the capsule.
+        if hasattr(data, "__dlpack__"):
+            capsule = data.__dlpack__()
+        else:
+            capsule = data
+
+        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+
     def update_inplace(self, np_arr) -> None:
         """
         Update the OrtValue in place with a new Numpy array. The numpy contents
@@ -1211,9 +1346,24 @@ class OrtDevice:
         return self._ort_device
 
     @staticmethod
-    def make(ort_device_name, device_id, vendor_id=-1):
+    def make(ort_device_name, device_id, vendor_id: int | OrtDeviceVendorId = -1):
         if vendor_id < 0:
-            # backwards compatibility with predefined OrtDevice names
+            # Preserve the historical convenience aliases ("cuda", "dml", "cann")
+            # while making them work with plugin EP shared allocators. Those
+            # allocators are keyed by vendor-specific OrtDevice values even when the
+            # Python package itself was built without the corresponding built-in EP.
+            alias_vendor_id = get_vendor_id_for_device_type(ort_device_name)
+            if alias_vendor_id is not None:
+                return OrtDevice(
+                    C.OrtDevice(
+                        get_ort_device_type(ort_device_name),
+                        C.OrtDevice.default_memory(),
+                        int(alias_vendor_id),
+                        device_id,
+                    )
+                )
+
+            # backwards compatibility with generic predefined OrtDevice names
             return OrtDevice(
                 C.OrtDevice(
                     get_ort_device_type(ort_device_name),
@@ -1228,7 +1378,7 @@ class OrtDevice:
                 C.OrtDevice(
                     get_ort_device_type(ort_device_name),
                     C.OrtDevice.default_memory(),
-                    vendor_id,
+                    int(vendor_id),
                     device_id,
                 )
             )

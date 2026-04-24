@@ -8,12 +8,15 @@ import os
 import tempfile
 import unittest
 
+import numpy as np
 import onnx
 from bart_model_generator import create_bart_attention_sdpa
 from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
-from gpt2_model_generator import create_gpt2_attention
+from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
+from onnx import numpy_helper
 from parity_utilities import find_transformers_source
+from qwen3_model_generator import create_qwen3_decoder_layer
 
 if find_transformers_source():
     from fusion_options import FusionOptions
@@ -301,6 +304,37 @@ class TestFusion(unittest.TestCase):
                 if unidirectional_attr is not None:
                     self.assertEqual(unidirectional_attr.i, 0)
 
+    def test_gpt2_attention_no_past_fusion(self):
+        hidden_size = 64
+        num_heads = 4
+        for add_cast in [True, False]:
+            for switch_add_inputs in [False, True]:
+                model = create_gpt2_attention_no_past(
+                    hidden_size=hidden_size,
+                    num_heads=num_heads,
+                    switch_add_inputs=switch_add_inputs,
+                    add_cast=add_cast,
+                )
+                dir = "."
+                model_path = os.path.join(dir, "gpt2_attention_no_past.onnx")
+                onnx.save(model, model_path)
+
+                options = FusionOptions("gpt2")
+
+                optimized_model = optimize_model(
+                    model_path,
+                    model_type="gpt2",
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    optimization_options=options,
+                )
+
+                os.remove(model_path)
+
+                model_suffix = "add_opt" if switch_add_inputs else "opt"
+                model_name = f"gpt2_attention_no_past_{model_suffix}.onnx"
+                self.verify_fusion(optimized_model, model_name)
+
     def test_megatron_gpt2_attention_fusion(self):
         for enable_skip_layer_norm_fusion in [False, True]:
             path = get_test_data_path("models", "gpt2_megatron.onnx")
@@ -325,6 +359,248 @@ class TestFusion(unittest.TestCase):
 
             model_name = f"gpt2_megatron_{model_suffix}.onnx"
             self.verify_fusion(optimized_model, model_name)
+
+    def test_qwen3_normalization_fusion(self):
+        """Test Qwen3 decoder layer optimization.
+
+        Verifies that the optimizer fuses RMSNorm patterns into SimplifiedLayerNormalization.
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        sln_count = sum(1 for n in nodes if n.op_type == "SimplifiedLayerNormalization")
+
+        # 4 RMSNorm patterns all fuse into SimplifiedLayerNormalization:
+        # pre-attn, Q-norm, K-norm, post-attn.
+        self.assertEqual(
+            sln_count,
+            4,
+            f"Expected 4 SimplifiedLayerNormalization, got {sln_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion(self):
+        """Test Qwen3 RotaryEmbedding fusion for on-the-fly RoPE with dynamic Slice indices.
+
+        Verifies that the optimizer fuses:
+          - On-the-fly RoPE (MatMul → Cos/Sin → Mul(scaling)) into RotaryEmbedding nodes
+          - Both Q and K paths get RotaryEmbedding fusion (2 total)
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+        sln_count = sum(1 for n in nodes if n.op_type == "SimplifiedLayerNormalization")
+
+        self.assertEqual(
+            rope_count,
+            2,
+            f"Expected 2 RotaryEmbedding (Q + K), got {rope_count}",
+        )
+        self.assertEqual(
+            sln_count,
+            4,
+            f"Expected 4 SimplifiedLayerNormalization, got {sln_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion_with_expand(self):
+        """Test RotaryEmbedding fusion when inv_freq path includes Cast → Expand → Where nodes."""
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+            include_expand_in_inv_freq=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_expand.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+
+        self.assertEqual(
+            rope_count,
+            2,
+            f"Expected 2 RotaryEmbedding (Q + K) with Expand in inv_freq path, got {rope_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion_negative_dynamic_inv_freq(self):
+        """Test that RotaryEmbedding fusion gracefully falls back when inv_freq is a dynamic graph input.
+
+        When inv_freq is not a constant initializer (e.g., computed dynamically), the fusion cannot
+        extract the values at optimization time and should skip fusion without crashing.
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+            inv_freq_as_graph_input=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_dynamic_inv_freq.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+
+        # Fusion should gracefully skip — 0 RotaryEmbedding nodes, no crash
+        self.assertEqual(
+            rope_count,
+            0,
+            f"Expected 0 RotaryEmbedding when inv_freq is dynamic, got {rope_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion_cache_numerical_validation(self):
+        """Test that the generated cos/sin caches have correct values.
+
+        Verifies the mathematical correctness of the precomputed caches:
+            freqs[pos, i] = pos * inv_freq[i]
+            cos_cache[pos, i] = cos(freqs[pos, i]) * scaling
+            sin_cache[pos, i] = sin(freqs[pos, i]) * scaling
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+        head_dim = hidden_size // num_heads  # 8
+        half_dim = head_dim // 2  # 4
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_numerical.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        # Verify cos/sin cache initializers exist
+        cos_init = optimized_model.get_initializer("cos_cache")
+        sin_init = optimized_model.get_initializer("sin_cache")
+        self.assertIsNotNone(cos_init, "cos_cache initializer not found after fusion")
+        self.assertIsNotNone(sin_init, "sin_cache initializer not found after fusion")
+
+        cos_data = numpy_helper.to_array(cos_init)
+        sin_data = numpy_helper.to_array(sin_init)
+
+        # Verify shape: (max_seq_len, head_dim // 2)
+        self.assertEqual(cos_data.shape[1], half_dim, f"cos_cache dim 1 should be {half_dim}")
+        self.assertEqual(sin_data.shape[1], half_dim, f"sin_cache dim 1 should be {half_dim}")
+        self.assertEqual(cos_data.shape, sin_data.shape, "cos_cache and sin_cache shapes should match")
+
+        # Recompute expected values from inv_freq (must match the generator's formula)
+        inv_freq = 1.0 / (10000.0 ** (np.arange(0, head_dim, 2, dtype=np.float32) / head_dim))
+        scaling = 1.0  # attention_scaling in the test generator
+
+        # Spot-check at several positions
+        for pos in [0, 1, 7, 100, 1000]:
+            expected_freqs = pos * inv_freq
+            expected_cos = np.cos(expected_freqs) * scaling
+            expected_sin = np.sin(expected_freqs) * scaling
+            np.testing.assert_allclose(
+                cos_data[pos],
+                expected_cos,
+                rtol=1e-6,
+                err_msg=f"cos_cache mismatch at position {pos}",
+            )
+            np.testing.assert_allclose(
+                sin_data[pos],
+                expected_sin,
+                rtol=1e-6,
+                err_msg=f"sin_cache mismatch at position {pos}",
+            )
 
 
 if __name__ == "__main__":

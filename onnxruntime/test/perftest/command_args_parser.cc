@@ -181,6 +181,11 @@ ABSL_FLAG(bool, q, DefaultPerformanceTestConfig().run_config.do_cuda_copy_in_sep
 ABSL_FLAG(bool, z, DefaultPerformanceTestConfig().run_config.set_denormal_as_zero, "Sets denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.");
 ABSL_FLAG(bool, D, DefaultPerformanceTestConfig().run_config.disable_spinning, "Disables spinning entirely for thread owned by onnxruntime intra-op thread pool.");
 ABSL_FLAG(bool, Z, DefaultPerformanceTestConfig().run_config.disable_spinning_between_run, "Disallows thread from spinning during runs to reduce cpu usage.");
+ABSL_FLAG(int, spin_duration_us, -1, "Sets the spin duration in microseconds for intra-op thread pool. Default (-1) uses iteration-count-based spinning. 0 disables spinning. Positive values enable time-based spinning.");
+ABSL_FLAG(int, spin_backoff_max, 1,
+          "Sets the exponential-backoff cap for the intra-op thread pool spin loop. 1 (default) keeps the "
+          "legacy single-SpinPause behavior. Values >= 2 enable exp-backoff (typical: 4 or 8) to reduce "
+          "CPU/power density during the spin window. Values above 64 are clamped to 64.");
 ABSL_FLAG(bool, n, DefaultPerformanceTestConfig().run_config.exit_after_session_creation, "Allows user to measure session creation time to measure impact of enabling any initialization optimizations.");
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding, "[TensorRT RTX | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
@@ -343,8 +348,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
       } else if (ep == "acl") {
         test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
-      } else if (ep == "armnn") {
-        test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
       } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
       } else if (ep == "xnnpack") {
@@ -370,7 +373,11 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   auto is_option_specified = [&](std::string option) {
     for (int i = 1; i < argc; ++i) {
       auto utf8_arg = ToUTF8String(argv[i]);
-      if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+      const auto short_option = "-" + option;
+      const auto long_option = "--" + option;
+      if (utf8_arg == short_option || utf8_arg == long_option ||
+          utf8_arg.rfind(short_option + "=", 0) == 0 ||
+          utf8_arg.rfind(long_option + "=", 0) == 0) {
         return true;
       }
     }
@@ -511,6 +518,13 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // -Z
   test_config.run_config.disable_spinning_between_run = absl::GetFlag(FLAGS_Z);
+
+  // --spin_duration_us
+  test_config.run_config.spin_duration_us = absl::GetFlag(FLAGS_spin_duration_us);
+
+  // --spin_backoff_max
+  test_config.run_config.spin_backoff_max = absl::GetFlag(FLAGS_spin_backoff_max);
+  test_config.run_config.spin_backoff_max_set = is_option_specified("spin_backoff_max");
 
   // -n
   test_config.run_config.exit_after_session_creation = absl::GetFlag(FLAGS_n);

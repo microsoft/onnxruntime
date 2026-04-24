@@ -877,6 +877,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+    MlasConvAlgorithmDepthwiseMultiplierGreaterThan1,
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
     MlasConvAlgorithmDepthwise,
 #endif
@@ -1108,6 +1109,30 @@ MlasMaximumPool(
 void
 MLASCALL
 MlasComputeErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+//
+// Note: The Input and Output buffers for MlasComputeGeluErf must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
+void
+MLASCALL
+MlasComputeGeluErf(
+    const float* Input,
+    float* Output,
+    size_t N
+    );
+
+//
+// Note: The Input and Output buffers for MlasComputeSilu must not overlap.
+// In-place operation (e.g., passing the same buffer for both parameters) is unsupported.
+//
+void
+MLASCALL
+MlasComputeSilu(
     const float* Input,
     float* Output,
     size_t N
@@ -2005,7 +2030,9 @@ struct MLAS_SBGEMM_DATA_PARAMS {
     const MLAS_SBGEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false; /**< matrix A is fp32, needs to be converted to bf16*/
     bool BIsfp32 = false; /**< matrix B is fp32, needs to be converted to bf16*/
-    bool ZeroMode = true; /**< true: C = A*B, false: C += A*B */
+    bool ZeroMode = true; /**< when true: C = A*B + Bias (if Bias != nullptr);
+                               when false: C += A*B and Bias is ignored */
+    bool BIsPacked = false;   /**< Whether B is pre-packed */
 };
 
 /**
@@ -2015,40 +2042,84 @@ struct MLAS_SBGEMM_DATA_PARAMS {
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
  *
- * @param[in]  M       row size of matrix A and C
- * @param[in]  N       column size of matrix B and C
- * @param[in]  K       column size of matrix A and row size of matrix B
- * @param[in]  BatchN  number of batches
- * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
+ * @param[in]  TransA                       Supplies the transpose operation for matrix A.
+ * @param[in]  TransB                       Supplies the transpose operation for matrix B.
+ * @param[in]  M                            row size of matrix A and C
+ * @param[in]  N                            column size of matrix B and C
+ * @param[in]  K                            column size of matrix A and row size of matrix B
+ * @param[in]  BatchN                       number of batches
+ * @param[inout]  DataParams                An array (size BatchN) of parameter blocks
  * @param[in]  ThreadPool
+ * @param[in]  BackendKernelSelectorConfig  Supplies the backend kernel selector
+                                            configuration options, else nullptr if the
+                                            default configuration should be used.
  * @return
  */
 void MLASCALL
-MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* DataParams, MLAS_THREADPOOL* ThreadPool);
+MlasSBGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_SBGEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
 
 /**
  * @brief For bfloat16 precision GEMM, returns size of the
  *        packing buffer needed for right hand side
- * @param[in] N   Number of columns
- * @param[in] K   Number of rows
- * @return  size of the packing buffer,
- *          0 if operation not supported
+ * @param[in] TransA                       Supplies the transpose operation for matrix A.
+ * @param[in] TransB                       Supplies the transpose operation for matrix B.
+ * @param[in] BIsfp32                      Is matrix B datatype FP32
+ * @param[in] N                            Number of columns
+ * @param[in] K                            Number of rows
+ * @param[in] BackendKernelSelectorConfig  Supplies the backend kernel selector
+                                           configuration options, else nullptr if the
+                                           default configuration should be used.
+ * @return                                 size of the packing buffer,
+ *                                         0 if operation not supported
  */
 size_t MLASCALL
-MlasSBGemmPackBSize(size_t N, size_t K);
+MlasSBGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N,
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
 
 /**
  * @brief For bfloat16 precision GEMM, convert the float matrix B
  *        to blfoat16 precision and pack it into a packing buffer
  *
- * @param[in]  N        Number of columns
- * @param[in]  K        Number of rows
- * @param[in]  B        Address of matrix B
- * @param[in]  ldb      leading dimension of input matrix B
- * @param[out] PackedB  Address of the packed matrix
+ * @param[in]  TransA                      Supplies the transpose operation for matrix A.
+ * @param[in]  TransB                      Supplies the transpose operation for matrix B.
+ * @param[in]  BIsfp32                     Is matrix B datatype FP32
+ * @param[in]  N                           Number of columns
+ * @param[in]  K                           Number of rows
+ * @param[in]  B                           Address of matrix B
+ * @param[in]  ldb                         leading dimension of input matrix B
+ * @param[out] PackedB                     Address of the packed matrix
+ * @param[in]  BackendKernelSelectorConfig  Supplies the backend kernel selector
+                                           configuration options, else nullptr if the
+                                           default configuration should be used.
  */
 void MLASCALL
-MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB);
+MlasSBGemmConvertPackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
 #endif
 
 /**
@@ -2165,4 +2236,73 @@ MLASCALL
 MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief Enumeration of supported GELU algorithm variants.
+ *
+ * MlasGeluErf  - Exact GELU implementation using the error function (erf).
+ * MlasGeluTanh - Approximate GELU implementation using tanh-based formulation.
+ */
+typedef enum MLAS_GELU_ALGORITHM {
+    MlasGeluErf = 0,
+    MlasGeluTanh = 1
+} MLAS_GELU_ALGORITHM;
+
+/**
+ * @brief Computes element-wise FP16 error function (erf).
+ *
+ * This routine computes:
+ *     Output[i] = erf(Input[i])
+ * for N elements. Depending on platform capabilities, this may use
+ * vectorized FP16 intrinsics or fall back to a scalar FP32 conversion path.
+ *
+ * @param Input   Pointer to input buffer of N FP16 elements.
+ * @param Output  Pointer to output buffer of N FP16 elements.
+ * @param Input_tmp_fp32   Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 input conversion (used only on fallback path).
+ * @param Output_tmp_fp32  Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 output conversion (used only on fallback path).
+ * @param N       Number of elements to process.
+ */
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
+    size_t N
+);
+
+/**
+ * @brief Computes element-wise FP16 GELU activation.
+ *
+ * This routine computes:
+ *
+ *   If algo == MlasGeluTanh (approximate):
+ *     GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+ *
+ *   If algo == MlasGeluErf (exact):
+ *     GELU(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
+ *
+ * Depending on platform capabilities, this may use vectorized FP16 kernels
+ * (SVE/NEON) or fall back to a scalar FP32 conversion path.
+ *
+ * @param input   Pointer to input buffer of FP16 elements.
+ * @param output  Pointer to output buffer of FP16 elements.
+ * @param temp    Temporary scratch buffer of at least 'count' FP16 elements.
+ *                Required by certain vectorized implementations. May be unused
+ *                in scalar fallback paths.
+ * @param count   Number of elements to process.
+ * @param algo    GELU algorithm variant (exact erf or tanh approximation).
+ */
+void
+MLASCALL 
+MlasComputeFP16Gelu(
+    const MLAS_FP16* input,
+    MLAS_FP16* output,
+    MLAS_FP16* temp,
+    size_t count,
+    MLAS_GELU_ALGORITHM algo
 );

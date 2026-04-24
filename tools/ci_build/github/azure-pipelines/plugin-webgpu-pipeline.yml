@@ -1,0 +1,125 @@
+trigger: none
+
+schedules:
+- cron: '0 17 * * *'  # Daily at 17:00 UTC
+  displayName: Nightly build
+  branches:
+    include:
+    - main
+  always: false  # Only run if source changed since last successful scheduled run
+
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+parameters:
+- name: build_windows_x64
+  displayName: 'Build Windows x64'
+  type: boolean
+  default: true
+
+- name: build_windows_arm64
+  displayName: 'Build Windows ARM64'
+  type: boolean
+  default: true
+
+- name: build_linux_x64
+  displayName: 'Build Linux x64'
+  type: boolean
+  default: true
+
+- name: build_macos_arm64
+  displayName: 'Build macOS ARM64'
+  type: boolean
+  default: true
+
+- name: package_version
+  displayName: 'Package Version'
+  type: string
+  values:
+  - release
+  - RC
+  - dev
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+    - Debug
+    - Release
+    - RelWithDebInfo
+    - MinSizeRel
+
+variables:
+  # Windows ARM64 build requires Windows x64 build to be enabled (ARM64 cross-compilation depends on x64 build artifacts)
+  - name: invalidARM64Config
+    value: ${{ and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, false)) }}
+  # Non-dev package versions (release, RC) must use Release build type
+  - name: invalidBuildTypeConfig
+    value: ${{ and(ne(parameters.package_version, 'dev'), ne(parameters.cmake_build_type, 'Release')) }}
+
+extends:
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    settings:
+      networkIsolationPolicy: Permissive
+    sdl:
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+        alertWarningLevel: High
+        failOnAlert: false
+        verbosity: Normal
+        timeout: 3600
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+    pool:
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
+      os: windows
+
+    stages:
+      # Validate parameter combinations
+      - ${{ if or(eq(variables['invalidARM64Config'], 'True'), eq(variables['invalidBuildTypeConfig'], 'True')) }}:
+        - stage: Validate_Parameters
+          displayName: 'Validate Parameters'
+          dependsOn: []
+          jobs:
+          - job: Validate
+            displayName: 'Validate parameter combinations'
+            pool:
+              name: 'onnxruntime-Win-CPU-VS2022-Latest'
+              os: windows
+            steps:
+            - checkout: none
+            - ${{ if eq(variables['invalidARM64Config'], 'True') }}:
+              - script: |
+                  echo "##vso[task.logissue type=error]Windows ARM64 build requires Windows x64 build to be enabled."
+                  exit 1
+                displayName: 'ERROR: Windows ARM64 requires Windows x64'
+            - ${{ if eq(variables['invalidBuildTypeConfig'], 'True') }}:
+              - script: |
+                  echo "##vso[task.logissue type=error]Non-dev package version requires Release build type."
+                  exit 1
+                displayName: 'ERROR: Non-dev package version requires Release build type'
+      - ${{ else }}:
+        - template: stages/plugin-webgpu-packaging-stage.yml
+          parameters:
+            build_windows_x64: ${{ parameters.build_windows_x64 }}
+            build_windows_arm64: ${{ parameters.build_windows_arm64 }}
+            build_linux_x64: ${{ parameters.build_linux_x64 }}
+            build_macos_arm64: ${{ parameters.build_macos_arm64 }}
+            package_version: ${{ parameters.package_version }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}

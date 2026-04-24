@@ -218,7 +218,6 @@ endif()
 
 set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_ACL}
-  ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
@@ -235,7 +234,7 @@ if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
 endif()
 
-if (onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()
 
@@ -287,7 +286,7 @@ if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-if(NOT APPLE AND NOT WIN32)
+if(NOT WIN32)
   if(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set_target_properties(onnxruntime PROPERTIES
       PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
@@ -303,7 +302,7 @@ if(NOT APPLE AND NOT WIN32)
       FOLDER "ONNXRuntime")
   endif()
 else()
-  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
+  # Omit the SOVERSION setting in Windows build
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}

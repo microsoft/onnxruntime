@@ -58,15 +58,17 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
  public:
   DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits,
                                bool has_zero_points, bool has_bias,
-                               bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights) : Program{"DP4AMatMulNBitsSmallMProgram"},
-                                                                                                               tile_size_k_vec_(tile_size_k_vec),
-                                                                                                               tile_size_(tile_size),
-                                                                                                               nbits_(nbits),
-                                                                                                               has_bias_(has_bias),
-                                                                                                               has_zero_points_(has_zero_points),
-                                                                                                               has_weight_idx_(has_weight_idx),
-                                                                                                               has_weight_idx_indirect_(has_weight_idx_indirect),
-                                                                                                               single_scale_weights_(single_scale_weights) {}
+                               bool has_weight_idx, bool has_weight_idx_indirect, bool single_scale_weights,
+                               bool broadcast_a_row = false) : Program{"DP4AMatMulNBitsSmallMProgram"},
+                                                               tile_size_k_vec_(tile_size_k_vec),
+                                                               tile_size_(tile_size),
+                                                               nbits_(nbits),
+                                                               has_bias_(has_bias),
+                                                               has_zero_points_(has_zero_points),
+                                                               has_weight_idx_(has_weight_idx),
+                                                               has_weight_idx_indirect_(has_weight_idx_indirect),
+                                                               single_scale_weights_(single_scale_weights),
+                                                               broadcast_a_row_(broadcast_a_row) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_count", ProgramUniformVariableDataType::Uint32},
@@ -78,7 +80,8 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
       {"block_size", ProgramUniformVariableDataType::Uint32},
       {"num_N_tile", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32});
+      {"weight_idx", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_M", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_k_vec_;
@@ -89,12 +92,14 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
   bool has_weight_idx_;
   bool has_weight_idx_indirect_;
   bool single_scale_weights_;
+  bool broadcast_a_row_;
 };
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                   const Tensor* zero_points, const Tensor* bias,
                                   uint32_t batch_count,
                                   uint32_t M,
+                                  uint32_t dispatch_M,
                                   uint32_t N,
                                   uint32_t K,
                                   uint32_t block_size,

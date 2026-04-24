@@ -767,6 +767,20 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  // Maximum number of internal run attempts allowed (within a single session.Run()) for EP graph capture.
+  // If the number of run attempts exceeds this limit, the session.Run() returns an error status.
+  // This prevents running an unbounded number of runs due to buggy EPs that never return true from
+  // IsGraphCaptured(). Note that EPs typically need at most two runs to capture a graph (e.g., CUDA EP).
+  static constexpr int kMaxGraphCaptureRunAttempts = 8;
+
+  // Internal implementation of Run() with graph capture recursion depth tracking.
+  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                                       gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                       std::vector<OrtValue>* p_fetches,
+                                       const std::vector<OrtDevice>* p_fetches_device_info,
+                                       int graph_capture_depth);
+
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
@@ -976,8 +990,10 @@ class InferenceSession {
     std::unordered_map<int64_t, long long> duration_per_batch_size_;  // the duration (us) of Run() calls per batch size since the last report
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
-    // Event Rate per provider < 20 peak events per second
-    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+    // RuntimePerf backoff interval: starts at 2s between emissions, doubles each emission, caps at 10 min
+    constexpr static int64_t kRuntimePerfInitialInterval = 2 * 1000 * 1000;    // 2 seconds in (us)
+    constexpr static int64_t kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;  // 10 minutes in (us)
+    int64_t runtime_perf_interval_ = kRuntimePerfInitialInterval;
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
@@ -1060,6 +1076,8 @@ class InferenceSession {
     }
 
     const std::string& Type() const {
+      ORT_ENFORCE(cached_execution_provider_for_graph_replay_ != nullptr,
+                  "No EP registered for graph replay yet");
       return cached_execution_provider_for_graph_replay_->Type();
     }
 

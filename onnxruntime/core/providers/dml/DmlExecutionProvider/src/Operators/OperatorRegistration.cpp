@@ -1314,18 +1314,18 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             totalTypeCount += typeConstraints[i].allowedTypeCount;
         }
 
-        ComPtr<MLOperatorKernelFactory> factory =  wil::MakeOrThrow<MLOperatorKernelFactory>(information.creationFunction);
+        ComPtr<MLOperatorKernelFactory> factory =  Dml::SafeMakeOrThrow<MLOperatorKernelFactory>(information.creationFunction);
         ComPtr<MLOperatorShapeInferrer> shapeInferrer;
 
         if (information.shapeInferenceFunction)
         {
-            shapeInferrer = wil::MakeOrThrow<MLOperatorShapeInferrer>(information.shapeInferenceFunction);
+            shapeInferrer = Dml::SafeMakeOrThrow<MLOperatorShapeInferrer>(information.shapeInferenceFunction);
         }
 
         ComPtr<IMLOperatorSupportQueryPrivate> supportQuery;
         if (information.supportQueryFunction)
         {
-            supportQuery = wil::MakeOrThrow<MLOperatorSupportQuery>(information.supportQueryFunction);
+            supportQuery = Dml::SafeMakeOrThrow<MLOperatorSupportQuery>(information.supportQueryFunction);
         }
 
         ORT_THROW_IF_FAILED(registryPrivate->RegisterOperatorKernel(

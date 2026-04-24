@@ -147,6 +147,9 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static std::mutex mutex_;
+  static std::once_flag init_default_flag_;
+
   // Use pointers to heap-allocated objects so that their destructors do NOT run
   // during static destruction at process exit. This avoids crashes when dependent
   // DLLs (e.g. dxcompiler.dll) have already been unloaded by the OS.
@@ -155,9 +158,7 @@ class WebGpuContextFactory {
   // it is reached from OrtEnv::~OrtEnv via CleanupWebGpuContexts().
   // On abnormal/process termination they simply leak, which is safe.
   static std::unordered_map<int32_t, WebGpuContextInfo>* contexts_;
-  static std::mutex mutex_;
-  static std::once_flag init_default_flag_;
-  static wgpu::Instance default_instance_;
+  static WGPUInstance default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
@@ -169,7 +170,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
-  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
 #if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 #endif
@@ -238,6 +239,9 @@ class WebGpuContext final {
   }
 
   void StartProfiling();
+  // Collect pending GPU profiling data into the given events vector.
+  void CollectProfilingData(profiling::Events& events);
+  // Collect pending GPU profiling data into the shared events_ vector (run-level).
   void CollectProfilingData();
   void EndProfiling(TimePoint, profiling::Events& events);
 
@@ -356,7 +360,8 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
-  profiling::Events events_;  // cached GPU profiling events
+  // Shared GPU profiling events for run-level profiling.
+  profiling::Events events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};

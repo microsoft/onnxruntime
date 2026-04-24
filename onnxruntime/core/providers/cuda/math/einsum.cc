@@ -2,16 +2,13 @@
 // Licensed under the MIT License.
 
 #include "einsum.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
+#include "core/providers/cpu/math/einsum_utils/einsum_typed_compute_processor.h"
+#include "core/providers/cuda/tensor/transpose.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/math/matmul.h"
 
 namespace onnxruntime {
-
-// This function must exist due to the C++ base class constructor needing this to be defined for the vtable, but it is never called.
-Status Einsum::DeviceCompute(OpKernelContext* /*context*/, const std::vector<const Tensor*>& /*inputs*/,
-                             AllocatorPtr /*allocator*/, concurrency::ThreadPool* /*tp*/) const {
-  assert(false);
-  return Status::OK();
-}
-
 namespace cuda {
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -19,75 +16,87 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     12,
     kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<float>(),
+                                 DataTypeImpl::GetTensorType<double>(),
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}),
     Einsum);
 
-Status Einsum::Compute(OpKernelContext* context) const {
-  return onnxruntime::Einsum::Compute(context);
-}
-
-Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
-                             AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
-  auto* stream = context->GetComputeStream();
-  ORT_RETURN_IF(!stream, "stream is null");
-  auto* cuda_stream = static_cast<CudaStream*>(stream);
-  cublasHandle_t cublas_handle = cuda_stream ? cuda_stream->cublas_handle_ : nullptr;
-  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_, stream, Info().GetAllocator(OrtMemType::OrtMemTypeDefault));
-
-  // EinsumComputePreprocessor section -
-  auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,
-                                                                       &einsum_cuda_assets);
-
-  einsum_compute_preprocessor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Diagonal,
-                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose);
-  // Compute all required metadata to be used at Einsum compute time and return error status code if one was generated
-  ORT_RETURN_IF_ERROR(einsum_compute_preprocessor->Run());
-
-  // EinsumComputeProcessor section -
-  if (inputs[0]->IsDataType<float>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<float>::Create(context, allocator, tp,
-                                                                               nullptr,  // mlas_backend_config
-                                                                               *einsum_compute_preprocessor,
-                                                                               &einsum_cuda_assets);
-
-    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<float>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer);
-    return einsum_compute_processor->Run();
-  } else if (inputs[0]->IsDataType<double>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<double>::Create(context, allocator, tp,
-                                                                                nullptr,  // mlas_backend_config
-                                                                                *einsum_compute_preprocessor,
-                                                                                &einsum_cuda_assets);
-
-    // Set device specific methods (CPU methods) to be used during processing
-    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<double>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer);
-    return einsum_compute_processor->Run();
-  } else if (inputs[0]->IsDataType<MLFloat16>()) {
-    auto einsum_compute_processor = EinsumTypedComputeProcessor<MLFloat16>::Create(context, allocator, tp,
-                                                                                   nullptr,  // mlas_backend_config
-                                                                                   *einsum_compute_preprocessor,
-                                                                                   &einsum_cuda_assets);
-
-    einsum_compute_processor->SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer);
-    return einsum_compute_processor->Run();
+Status Einsum::ComputeInternal(OpKernelContext* context) const {
+  int num_inputs = context->InputCount();
+  if (num_inputs == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Einsum op: at least one input is required.");
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Einsum op: An implementation for the input type ",
-                         inputs[0]->DataType(), " is not supported yet");
+  std::vector<const Tensor*> inputs;
+  inputs.reserve(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs.push_back(context->Input<Tensor>(i));
+  }
+
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
+  auto tp = static_cast<concurrency::ThreadPool*>(nullptr);
+
+  EinsumEquationPreprocessor einsum_equation_preprocessor(*einsum_equation_preprocessor_);
+
+  auto ort_stream = GetOrtStream(context);
+  EinsumOp::EinsumCudaAssets einsum_cuda_assets(
+      ort_stream,
+      GetDeviceProp(),
+      GetCublasHandle(context),
+      GetCudnnHandle(context),
+      allocator,
+      UseTF32());
+
+  EinsumComputePreprocessor einsum_compute_preprocessor(einsum_equation_preprocessor, inputs, allocator,
+                                                        &einsum_cuda_assets);
+  einsum_compute_preprocessor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Diagonal,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
+                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+
+  ORT_RETURN_IF_ERROR(einsum_compute_preprocessor.Run());
+
+  const auto& first_input_tensor = inputs[0];
+
+  if (first_input_tensor->IsDataType<float>()) {
+    EinsumTypedComputeProcessor<float> einsum_compute_processor(context, allocator, tp, nullptr, einsum_compute_preprocessor, &einsum_cuda_assets);
+    einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<float>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+    return einsum_compute_processor.Run();
+
+  } else if (first_input_tensor->IsDataType<double>()) {
+    EinsumTypedComputeProcessor<double> einsum_compute_processor(context, allocator, tp, nullptr, einsum_compute_preprocessor, &einsum_cuda_assets);
+    einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<double>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+    return einsum_compute_processor.Run();
+
+  } else if (first_input_tensor->IsDataType<MLFloat16>()) {
+    EinsumTypedComputeProcessor<MLFloat16> einsum_compute_processor(context, allocator, tp, nullptr, einsum_compute_preprocessor, &einsum_cuda_assets);
+    einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer,
+                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+    return einsum_compute_processor.Run();
+
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Einsum op: Unsupported/unimplemented data type encountered: ",
+                           first_input_tensor->DataType());
+  }
 }
 
 }  // namespace cuda
-
 }  // namespace onnxruntime

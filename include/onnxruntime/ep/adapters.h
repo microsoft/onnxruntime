@@ -3,12 +3,16 @@
 
 #pragma once
 
-#include "api.h"
-#include "common.h"
-
-// This header is only used when building WebGPU/CUDA EP as a shared library.
+// This header is only used when building WebGPU/CUDA EP as a plugin EP library.
 //
 // This header file is used as a precompiled header so it is always included first.
+
+#if !defined(ORT_USE_EP_API_ADAPTERS)
+#error "This header should only be included when building with EP API adapters (i.e. plugin EP shared library). Please make sure ORT_USE_EP_API_ADAPTERS is defined."
+#endif
+
+#include "api.h"
+#include "common.h"
 
 #pragma push_macro("ORT_EP_API_ADAPTER_HEADER_INCLUDED")
 #undef ORT_EP_API_ADAPTER_HEADER_INCLUDED
@@ -38,6 +42,7 @@
   using DataTransferManager = onnxruntime::ep::adapter::DataTransferManager;        \
   namespace logging {                                                               \
   using Logger = onnxruntime::ep::adapter::Logger;                                  \
+  using LoggingManager = onnxruntime::ep::adapter::LoggingManager;                  \
   }
 
 namespace onnxruntime {

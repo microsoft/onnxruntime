@@ -14,6 +14,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 using namespace onnxruntime::cuda;
 
@@ -151,16 +152,24 @@ __global__ void UnpackRoPEAppend(
     const int past_seq_len = past_seq_lens[b];
     const int64_t pos_base = static_cast<int64_t>(b) * sequence_length;
     // Calculate global position for RoPE: use position_ids if provided, else rely on past_seq_len.
-    int pos_id = (position_ids != nullptr) ? static_cast<int>(position_ids[pos_base + s]) : (past_seq_len + s);
-    const int h_idx = h / elements_per_thread;
+    int64_t pos_val = (position_ids != nullptr) ? position_ids[pos_base + s] : static_cast<int64_t>(past_seq_len + s);
+#if !defined(NDEBUG)
+    if (tid == 0) {
+      CUDA_KERNEL_ASSERT(pos_val >= 0 && pos_val < static_cast<int64_t>(max_seqlen));
+    }
+#endif
+    if (pos_val >= 0 && pos_val < static_cast<int64_t>(max_seqlen)) {
+      int pos_id = static_cast<int>(pos_val);
+      const int h_idx = h / elements_per_thread;
 
-    onnxruntime::contrib::cuda::RotaryDispatcher<LoadT, T>::apply(
-        *reinterpret_cast<LoadT*>(vals),
-        reinterpret_cast<const LoadT*>(cos_cache),
-        reinterpret_cast<const LoadT*>(sin_cache),
-        rotary_dim, h_idx, pos_id, interleaved,
-        reinterpret_cast<const LoadT*>(shared_head),
-        0);
+      onnxruntime::contrib::cuda::RotaryDispatcher<LoadT, T>::apply(
+          *reinterpret_cast<LoadT*>(vals),
+          reinterpret_cast<const LoadT*>(cos_cache),
+          reinterpret_cast<const LoadT*>(sin_cache),
+          rotary_dim, h_idx, pos_id, interleaved,
+          reinterpret_cast<const LoadT*>(shared_head),
+          0);
+    }
   }
 
   // 3. Store results back to Global Memory (Unpacked Q and Quantized KV Cache)
