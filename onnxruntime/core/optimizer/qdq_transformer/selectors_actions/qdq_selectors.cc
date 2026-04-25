@@ -410,6 +410,70 @@ void SplitSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const 
   builder.num_output_defs = 1;  // set to 1 as the first output is variadic
 }
 
+// Validates that the bias DQ's scale matches input_scale * weight_scale[i] for each output channel.
+// ONNX QLinearConv requires bias to be in int32 with scale = x_scale * w_scale[i].
+// If this condition is violated, the fused output would be silently incorrect.
+// Returns false (conservative) if any scale initializer is not a constant or types are non-conformant.
+static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
+                               const Node& input_dq, const Node& weight_dq, const Node& bias_dq) {
+  const auto* x_scale_arg = input_dq.InputDefs()[QDQ::InputIndex::SCALE_ID];
+  const auto* w_scale_arg = weight_dq.InputDefs()[QDQ::InputIndex::SCALE_ID];
+  const auto* b_scale_arg = bias_dq.InputDefs()[QDQ::InputIndex::SCALE_ID];
+
+  const auto* x_scale_proto = graph_viewer.GetConstantInitializer(x_scale_arg->Name(), true);
+  const auto* w_scale_proto = graph_viewer.GetConstantInitializer(w_scale_arg->Name(), true);
+  const auto* b_scale_proto = graph_viewer.GetConstantInitializer(b_scale_arg->Name(), true);
+
+  if (!x_scale_proto || !w_scale_proto || !b_scale_proto) {
+    return false;  // conservative: cannot verify
+  }
+
+  // Input scale must be scalar (rank 0 or 1-element rank-1).
+  if (x_scale_proto->dims_size() != 0 &&
+      !(x_scale_proto->dims_size() == 1 && x_scale_proto->dims(0) == 1)) {
+    return false;
+  }
+
+  const Initializer x_scale_init{graph_viewer.GetGraph(), *x_scale_proto, graph_viewer.ModelPath()};
+  const Initializer w_scale_init{graph_viewer.GetGraph(), *w_scale_proto, graph_viewer.ModelPath()};
+  const Initializer b_scale_init{graph_viewer.GetGraph(), *b_scale_proto, graph_viewer.ModelPath()};
+
+  // All scales must be float32 for standard QLinearConv.
+  if (x_scale_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      w_scale_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+      b_scale_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    return false;
+  }
+
+  const auto x_scales = x_scale_init.DataAsSpan<float>();
+  const auto w_scales = w_scale_init.DataAsSpan<float>();
+  const auto b_scales = b_scale_init.DataAsSpan<float>();
+
+  const float x_scale = x_scales[0];
+  const size_t num_channels = w_scales.size();  // 1 for per-tensor, C_out for per-channel
+  const size_t b_num = b_scales.size();
+
+  // b_scale must be scalar or match num_channels.
+  if (b_num != 1 && b_num != num_channels) {
+    return false;
+  }
+
+  // Tolerance values matching convention in optimizer/utils.cc.
+  constexpr float atol = 1e-6f;
+  constexpr float rtol = 1e-2f;
+
+  for (size_t i = 0; i < num_channels; ++i) {
+    const float w_scale = w_scales[i];
+    const float b_scale = (b_num == 1) ? b_scales[0] : b_scales[i];
+    const float expected = x_scale * w_scale;
+    if (std::abs(b_scale - expected) > (atol + rtol * std::abs(expected))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
@@ -438,6 +502,12 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
   if (dq_nodes.size() == 3) {  // has bias
     int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
+      return false;
+    }
+
+    // Verify bias scale == input_scale * weight_scale[i] per ONNX QLinearConv spec.
+    // If scales don't match within tolerance, skip fusion to avoid silent numerical errors.
+    if (!CheckConvBiasScale(graph_viewer, *dq_nodes[0], *dq_nodes[1], *dq_nodes[2])) {
       return false;
     }
   }
