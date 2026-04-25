@@ -1071,7 +1071,7 @@ class ONNXQuantizer(BaseQuantizer):
             scale_name,
             zp_name,
             QuantizedValueType.Initializer,
-            None,
+            channel_axis,
         )
         self.quantized_value_map[weight_name] = quantized_value
 
@@ -1096,8 +1096,9 @@ class ONNXQuantizer(BaseQuantizer):
             if self.model.model.producer_name != "onnx-quantizer" or (
                 self.model.model.producer_name == "onnx-quantizer" and scale_init is not None
             ):
-                # axis is not specified so scale_init must be a scalar.
-                assert scale_init is None or onnx.numpy_helper.to_array(scale_init).size == 1
+                # Per-tensor (axis=None) requires a scalar scale.
+                if quantized_value.axis is None:
+                    assert scale_init is None or onnx.numpy_helper.to_array(scale_init).size == 1
 
             dqlinear_name = value_name + "_DequantizeLinear"
             dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())
@@ -1108,7 +1109,11 @@ class ONNXQuantizer(BaseQuantizer):
                     quantized_value.zp_name,
                 ]
                 dequantize_node = onnx.helper.make_node(
-                    "DequantizeLinear", dqlinear_inputs, [value_name], dqlinear_name
+                    "DequantizeLinear",
+                    dqlinear_inputs,
+                    [value_name],
+                    dqlinear_name,
+                    axis=quantized_value.axis,
                 )
                 return dequantize_node
             else:
