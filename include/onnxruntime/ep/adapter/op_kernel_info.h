@@ -96,14 +96,16 @@ struct OpKernelInfo {
       return it->second;
     }
 
-    OrtAllocator* ort_allocator = nullptr;
-    Ort::Status status(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator));
+    OrtAllocator* ort_allocator_raw = nullptr;
+    Ort::Status status(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator_raw));
+    Ort::Allocator ort_allocator{ort_allocator_raw};
+
     if (!status.IsOK()) {
       cache_->allocator_cache_.emplace(mem_type, nullptr);
       return nullptr;
     }
 
-    auto allocator = std::make_shared<IAllocatorWrappingOrtAllocator>(ort_allocator);
+    auto allocator = std::make_shared<IAllocatorWrappingOrtAllocator>(std::move(ort_allocator));
     cache_->allocator_cache_.emplace(mem_type, allocator);
     return allocator;
   }

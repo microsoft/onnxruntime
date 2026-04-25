@@ -8,8 +8,7 @@
 #endif
 
 #include <mutex>
-
-#include <gsl/gsl>
+#include <utility>
 
 #include "core/framework/allocator.h"
 #include "core/framework/plugin_ep_stream.h"
@@ -19,11 +18,13 @@ namespace ep {
 namespace adapter {
 
 // Wraps an OrtAllocator* exposed by the C API as an IAllocator.
-// Takes ownership of the OrtAllocator* and releases it on destruction.
+// Takes ownership of the wrapped Ort::Allocator and releases it on destruction.
 class IAllocatorWrappingOrtAllocator final : public IAllocator {
  public:
-  explicit IAllocatorWrappingOrtAllocator(gsl::not_null<OrtAllocator*> ort_allocator)
-      : IAllocator(*ort_allocator->Info(ort_allocator)), ort_allocator_(ort_allocator.get()) {}
+  explicit IAllocatorWrappingOrtAllocator(Ort::Allocator ort_allocator)
+      : IAllocator(*ort_allocator.GetInfo()), ort_allocator_(std::move(ort_allocator)) {
+    ORT_ENFORCE(ort_allocator_, "Ort::Allocator must wrap a non-null OrtAllocator*.");
+  }
 
   void* Alloc(size_t size) override {
     return ort_allocator_.Alloc(size);
@@ -37,33 +38,13 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     return ort_allocator_.Reserve(size);
   }
 
-  bool IsStreamAware() const override {
-    return SupportsAllocOnStream();
-  }
-
-  // TODO: Implement AllocOnStream() properly.
+  // TODO: Implement AllocOnStream() and IsStreamAware().
   // The internal `onnxruntime::IAllocator::AllocOnStream` signature takes an internal `onnxruntime::Stream*` argument,
   // while the public `::OrtAllocator::AllocOnStream` signature takes an `::OrtSyncStream*` argument.
   // We need to properly map from one to the other.
   // `::OrtSyncStream*` should be treated as an opaque type from the plugin EP's perspective.
 
-  // void* AllocOnStream(size_t size, Stream* stream) override {
-  //   // TODO: Replace direct function pointer access once Ort::Allocator exposes AllocOnStream/IsStreamAware.
-  //   if (SupportsAllocOnStream()) {
-  //     OrtAllocator* raw = ort_allocator_;
-  //     return raw->AllocOnStream(raw, size, static_cast<OrtSyncStream*>(stream));  // This cast is not valid!
-  //   }
-  //   return Alloc(size);
-  // }
-
  private:
-  static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
-
-  bool SupportsAllocOnStream() const {
-    const OrtAllocator* raw = ort_allocator_;
-    return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
-  }
-
   // TODO: Consider adding GetStats() override. Requires parsing OrtKeyValuePairs from the C API
   // into AllocatorStats; see GetStatsFromOrtAllocator() in allocator_adapters.cc for reference.
 
