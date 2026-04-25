@@ -2295,7 +2295,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
       ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
       ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
                         "Sparse tensor: ", name, " values data size does not match expected: ",
-                        static_cast<size_t>(nnz_elements) * element_size);
+                        static_cast<size_t>(SafeInt<size_t>(nnz_elements) * element_size));
       void* sparse_data = values_data.data();
       void* dense_data = dense_data_storage.data();
 

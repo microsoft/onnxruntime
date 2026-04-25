@@ -257,6 +257,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
     }
 
     void* output = cpu_result.MutableDataRaw();
+    const auto dense_size = cpu_result.Shape().Size();
 
     size_t src_idx = 0;
     size_t inner_idx = 0;
@@ -265,9 +266,11 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
       for (int64_t cnt = 0; cnt < row_size; ++cnt, ++inner_idx) {
         assert(inner_idx < inner_span.size());
         auto col = inner_span[inner_idx];
-        // The indices bounds are already validated at the C API boundary.
+        ORT_RETURN_IF_NOT(col >= 0 && col < cols, "Invalid CSR column index: ", col);
         // Use SafeInt to prevent overflow during index calculation.
         int64_t dst_idx = SafeInt<int64_t>(out_i - 1) * cols + col;
+        ORT_RETURN_IF_NOT(dst_idx >= 0 && dst_idx < dense_size,
+                          "Invalid CSR computed index: ", dst_idx);
         copy_func(output, values, dst_idx, src_idx);
       }
     }
@@ -358,17 +361,19 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
     // Linear index
     if (num_indices == num_values) {
       for (int64_t src_idx = 0; src_idx < num_values; ++src_idx) {
-        // The indices bounds are already validated at the C API boundary.
         auto dst_idx = indices[src_idx];
+        ORT_RETURN_IF_NOT(dst_idx >= 0 && dst_idx < dense_size,
+                          "Invalid COO index: ", dst_idx);
         copy_func(output, values, dst_idx, src_idx);
       }
     } else {
       const auto cols = src_dims[1];
       for (int64_t src_idx = 0; src_idx < num_values; ++src_idx) {
         auto tuple_idx = src_idx * 2;
-        // The indices bounds are already validated at the C API boundary.
         // Use SafeInt to prevent overflow during index calculation.
         int64_t dst_idx = SafeInt<int64_t>(indices[tuple_idx]) * cols + indices[tuple_idx + 1];
+        ORT_RETURN_IF_NOT(dst_idx >= 0 && dst_idx < dense_size,
+                          "Invalid COO 2D index: (", indices[tuple_idx], ", ", indices[tuple_idx + 1], ")");
         copy_func(output, values, dst_idx, src_idx);
       }
     }
