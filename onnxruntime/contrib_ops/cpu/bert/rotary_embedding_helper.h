@@ -158,7 +158,8 @@ Status CheckInputs(const T* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 0 should be same as ",
                            "max_sequence_length, got ", cos_cache_dims[0]);
   }
-  if ((head_size / 2) != static_cast<int>(cos_cache_dims[1]) && (rotary_embedding_dim > 0 && (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[1]))) {
+  if ((head_size / 2) != static_cast<int>(cos_cache_dims[1]) &&
+      (rotary_embedding_dim <= 0 || (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[1]))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as ",
                            "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
   }
