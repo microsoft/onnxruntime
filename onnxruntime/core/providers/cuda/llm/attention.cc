@@ -1281,8 +1281,8 @@ Status Attention<T>::RunGqaUnfusedAttention(
 // ============================================================================
 // MHA path (q_num_heads == kv_num_heads): uses direct kernel dispatch cascade
 //   flash → memory efficient → unfused
-// GQA path (q_num_heads != kv_num_heads): uses flash (handles GQA natively) or MEA
-//   (with head expansion via LaunchUngroup). Unfused fallback not yet supported for GQA.
+// GQA path (q_num_heads != kv_num_heads): uses flash (handles GQA natively), MEA
+//   (with head expansion via LaunchUngroup, fp16/bf16 only), or GQA unfused fallback.
 // ============================================================================
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -1383,7 +1383,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
         !has_output_qk &&
-        past_key == nullptr;
+        past_key == nullptr &&
+        // GQA+MEA requires LaunchUngroup which only has fp16/bf16 instantiations.
+        // FP32 GQA must fall through to the unfused path.
+        !(is_gqa && std::is_same<T, float>::value);
 
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
     // "unaligned" kernel path. When an attention mask is present (with or without
