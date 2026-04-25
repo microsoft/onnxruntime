@@ -97,6 +97,27 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
 }
 
 template <typename T>
+Status Check_Q_Only(const T* query, const int num_heads, const int kv_num_heads,
+                    int& batch_size, int& sequence_length, int& q_hidden_size, int& kv_hidden_size, int& head_size) {
+  const auto& query_dims = query->Shape().GetDims();
+  if (query_dims.size() != 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
+                           query_dims.size());
+  }
+  batch_size = static_cast<int>(query_dims[0]);
+  sequence_length = static_cast<int>(query_dims[1]);
+  q_hidden_size = static_cast<int>(query_dims[2]);
+  head_size = static_cast<int>(q_hidden_size) / num_heads;
+  if (head_size % 8 != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "head_size must be a multiple of 8. Got head_size % 8 == ",
+                           head_size % 8);
+  }
+  kv_hidden_size = head_size * kv_num_heads;
+  return Status::OK();
+}
+
+template <typename T>
 Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_num_heads, int head_size, int kv_cache_bit_width,
                  int& past_sequence_length) {
   const auto& past_key_dims = past_key->Shape().GetDims();
@@ -158,6 +179,56 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
 }
 
 template <typename T>
+Status CheckExternalKV(const T* external_key, const T* external_value, int batch_size, int kv_num_heads,
+                       int& external_sequence_length) {
+  if (external_key == nullptr || external_value == nullptr) {
+    if (external_key != nullptr || external_value != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'external_key' and 'external_value' shall be both present or both absent.");
+    }
+    return Status::OK();
+  }
+
+  const auto& ext_key_dims = external_key->Shape().GetDims();
+  const auto& ext_value_dims = external_value->Shape().GetDims();
+
+  if (ext_key_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_key' is expected to have 4 dimensions (BNSH), got ",
+                           ext_key_dims.size());
+  }
+  if (ext_value_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_value' is expected to have 4 dimensions (BNSH), got ",
+                           ext_value_dims.size());
+  }
+  if (ext_key_dims[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_key' dimension 0 should be batch_size, got ", ext_key_dims[0]);
+  }
+  if (ext_value_dims[0] != batch_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_value' dimension 0 should be batch_size, got ", ext_value_dims[0]);
+  }
+  if (ext_key_dims[1] != kv_num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_key' shall have kv_num_heads, got ", ext_key_dims[1]);
+  }
+  if (ext_value_dims[1] != kv_num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_value' shall have kv_num_heads, got ", ext_value_dims[1]);
+  }
+  if (ext_key_dims[2] != ext_value_dims[2]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_key' and 'external_value' should have same sequence length dimension.");
+  }
+  // Note: head_size validation is relaxed here — external KV may have different head_size
+  // than the query (e.g., Gemma4 global layers with head_dim=512 vs local head_dim=256).
+  external_sequence_length = static_cast<int>(ext_key_dims[2]);
+  return Status::OK();
+}
+
+template <typename T>
 Status CheckRotaryCaches(const T* cos_cache, const T* sin_cache, int head_size, int total_sequence_length,
                          int& rotary_dim) {
   const auto& cos_dims = cos_cache->Shape().GetDims();
@@ -207,7 +278,8 @@ Status CheckInputs(const T* query,
                    const T* total_seqlen,
                    float scale,
                    float softcap,
-                   int kv_cache_bit_width) {
+                   int kv_cache_bit_width,
+                   bool has_external_kv = false) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -242,8 +314,14 @@ Status CheckInputs(const T* query,
   int q_hidden_size = 0;
   int kv_hidden_size = 0;
   int head_size = 0;
-  const bool is_packed_qkv = key == nullptr;
-  if (!is_packed_qkv) {
+  // When external KV is provided, key/value can be nullptr without implying packed QKV.
+  // In this mode, query contains only Q (not packed QKV).
+  const bool is_packed_qkv = (key == nullptr) && !has_external_kv;
+  if (has_external_kv && key == nullptr) {
+    // Q-only mode: query is just Q, K and V come from external tensors
+    ORT_RETURN_IF_ERROR(Check_Q_Only(query, num_heads, kv_num_heads, batch_size, sequence_length,
+                                     q_hidden_size, kv_hidden_size, head_size));
+  } else if (!is_packed_qkv) {
     ORT_RETURN_IF_ERROR(Check_Q_K_V(query, key, value, num_heads, kv_num_heads, batch_size, sequence_length,
                                     q_hidden_size, kv_hidden_size, head_size));
   } else {
@@ -350,12 +428,13 @@ Status CheckInputs(const T* query,
                    float scale,
                    float softcap,
                    int kv_cache_bit_width,
-                   int max_threads_per_block) {
+                   int max_threads_per_block,
+                   bool has_external_kv = false) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap, kv_cache_bit_width);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap, kv_cache_bit_width, has_external_kv);
 }
 
 template <typename T = Tensor>
@@ -441,6 +520,31 @@ inline Status CheckNoQKOutput(int num_outputs, int qk_output) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "qk_output attribute is not supported");
   }
+
+  return Status::OK();
+}
+
+// Validate and configure external KV inputs for KV-shared layers.
+// Call this after CheckInputs to set up external KV parameters.
+template <typename T = Tensor>
+Status CheckAndSetExternalKV(const T* external_key, const T* external_value,
+                             GroupQueryAttentionParameters& parameters) {
+  if (external_key == nullptr && external_value == nullptr) {
+    return Status::OK();
+  }
+
+  int external_sequence_length = 0;
+  ORT_RETURN_IF_ERROR(CheckExternalKV(external_key, external_value,
+                                      parameters.batch_size, parameters.kv_num_heads,
+                                      external_sequence_length));
+
+  parameters.use_external_kv = true;
+  parameters.external_kv_sequence_length = external_sequence_length;
+
+  // When using external KV, the total sequence length for attention is determined
+  // by the external KV tensor, not the internal KV cache.
+  parameters.total_sequence_length = external_sequence_length;
+  parameters.seqlen_present_kv_cache = external_sequence_length;
 
   return Status::OK();
 }

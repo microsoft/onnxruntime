@@ -164,6 +164,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* head_sink = context->Input<Tensor>(11);
   const Tensor* k_scale = context->Input<Tensor>(12);
   const Tensor* v_scale = context->Input<Tensor>(13);
+  const Tensor* external_key = context->Input<Tensor>(14);
+  const Tensor* external_value = context->Input<Tensor>(15);
 
   if (k_quant_type_ != KVQuantizationType::NONE) {
     if (k_scale == nullptr) {
@@ -219,12 +221,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 scale_,
                                                                 softcap_,
                                                                 kv_cache_bit_width_,
-                                                                device_prop.maxThreadsPerBlock));
+                                                                device_prop.maxThreadsPerBlock,
+                                                                external_key != nullptr));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
+
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckAndSetExternalKV(external_key, external_value, parameters));
+
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
   parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;
@@ -235,6 +241,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   parameters.kv_cache_bit_width = kv_cache_bit_width_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
+
+  // When using external KV, disable rotary embedding — the external KV already has RoPE applied
+  // from the source layer, and the caller is expected to pre-apply RoPE to Q.
+  if (parameters.use_external_kv && parameters.do_rotary) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "do_rotary must be 0 when using external_key/external_value. "
+                           "Pre-apply RoPE to Q and use already-rotated K from the source layer.");
+  }
 
   // The current GQA CUDA implementation will never be able to have a QK output.
   // GQA CUDA uses either flash attention or memory efficient attention. Neither kernel supports returning the QK output.
@@ -287,15 +301,26 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.k_scale = k_scale == nullptr ? nullptr : reinterpret_cast<const float*>(k_scale->DataRaw());
   data.v_scale = v_scale == nullptr ? nullptr : reinterpret_cast<const float*>(v_scale->DataRaw());
 
-  data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
-  data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
-
-  data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
-  data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
-
-  // Compute past_present_share_buffer early since it's needed for flash attention path selection.
-  // This compares the final pointer values after quantization handling.
-  parameters.past_present_share_buffer = (data.past_key == data.present_key);
+  if (parameters.use_external_kv) {
+    // External KV mode: use external tensors as the KV source for attention.
+    // The external KV is treated as "past" KV since it's already computed.
+    // No KV cache update is performed — the present outputs are copies/views of external KV.
+    data.external_key = reinterpret_cast<const CudaU*>(external_key->Data<U>());
+    data.external_value = reinterpret_cast<const CudaU*>(external_value->Data<U>());
+    data.past_key = data.external_key;
+    data.past_value = data.external_value;
+    data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
+    data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
+    // Mark as shared buffer so the kernel treats external KV as already-populated cache
+    parameters.past_present_share_buffer = false;
+  } else {
+    data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
+    data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
+    data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
+    data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
+    // Compute past_present_share_buffer early since it's needed for flash attention path selection.
+    parameters.past_present_share_buffer = (data.past_key == data.present_key);
+  }
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
@@ -519,7 +544,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 
   // Validate past_value pointer consistency (past_present_share_buffer was computed early after pointer setup)
-  if (parameters.past_present_share_buffer) {
+  if (parameters.use_external_kv) {
+    // External KV mode: past and present are separate (external source -> present output)
+  } else if (parameters.past_present_share_buffer) {
     ORT_ENFORCE(data.past_value == data.present_value, "past_value and present_value must be the same tensor when past_present_share_buffer is true");
   } else {
     ORT_ENFORCE(data.past_value != data.present_value, "past_value and present_value must be different tensors when past_present_share_buffer is false");

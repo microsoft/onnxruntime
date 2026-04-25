@@ -97,6 +97,23 @@ Status PrepareQKV(
     q_out = nullptr;
   }
 
+  // External KV mode: the external KV data is already set as past_key/past_value.
+  // Copy it into the present buffers and skip the KV append/RoPE logic.
+  if (parameters.use_external_kv) {
+    U* k = reinterpret_cast<U*>(data.present_key);
+    U* v = reinterpret_cast<U*>(data.present_value);
+    int external_seq_len = parameters.external_kv_sequence_length;
+
+    // Copy external KV into present buffers
+    size_t kv_copy_size = (size_t)batch_size * kv_num_heads * external_seq_len * head_size * sizeof(U);
+    CUDA_CALL_THROW(cudaMemcpyAsync(k, data.past_key, kv_copy_size, cudaMemcpyDeviceToDevice, stream));
+    CUDA_CALL_THROW(cudaMemcpyAsync(v, data.past_value, kv_copy_size, cudaMemcpyDeviceToDevice, stream));
+
+    // Q is used directly from the input
+    q = reinterpret_cast<const T*>(data.query);
+    return Status::OK();
+  }
+
   U* k = reinterpret_cast<U*>(data.present_key);
   U* v = reinterpret_cast<U*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;

@@ -101,6 +101,10 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   KVQuantizationType k_quant_type = KVQuantizationType::NONE;
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
   int kv_cache_bit_width = 0;
+
+  // External KV parameters for KV-shared layers (e.g., Gemma4)
+  bool use_external_kv = false;        // When true, use external K,V tensors instead of internal KV cache
+  int external_kv_sequence_length = 0; // Sequence length of external KV tensors
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

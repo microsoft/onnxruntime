@@ -1314,6 +1314,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(12, "k_scale", "Scale tensor for past_key.", "T_KV_SCALE", OpSchema::Optional)
         .Input(13, "v_scale", "Scale tensor for past_value.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(14,
+               "external_key",
+               "External pre-computed key tensor in BNSH format (batch_size, kv_num_heads, external_seq_len, head_size). "
+               "Used for KV-shared layers that borrow K,V from another layer's present KV output. "
+               "When provided, the operator skips its internal KV cache update and uses this tensor directly "
+               "for attention computation. RoPE is not applied to external keys (assumed already applied).",
+               "T_CACHE",
+               OpSchema::Optional)
+        .Input(15,
+               "external_value",
+               "External pre-computed value tensor in BNSH format (batch_size, kv_num_heads, external_seq_len, head_size). "
+               "Must be provided together with external_key. When provided, the operator uses this tensor "
+               "for attention computation instead of the internal KV cache.",
+               "T_CACHE",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
