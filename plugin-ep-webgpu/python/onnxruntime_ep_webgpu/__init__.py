@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import pathlib
 
-__all__ = ["get_library_path", "get_ep_name", "get_ep_names"]
+__all__ = [
+    "get_ep_name",
+    "get_ep_names",
+    "get_library_path",
+]
 
 _module_dir = pathlib.Path(__file__).parent
 

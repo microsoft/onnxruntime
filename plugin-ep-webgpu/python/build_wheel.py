@@ -76,9 +76,13 @@ def build_wheel(source_dir: Path, wheel_dir: Path):
     """Build the wheel using pip."""
     wheel_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
-        sys.executable, "-m", "pip", "wheel",
+        sys.executable,
+        "-m",
+        "pip",
+        "wheel",
         str(source_dir),
-        "--wheel-dir", str(wheel_dir),
+        "--wheel-dir",
+        str(wheel_dir),
         "--no-deps",
         "--no-build-isolation",
     ]
@@ -133,12 +137,11 @@ def collect_wheels(wheel_dir: Path, output_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Build onnxruntime-ep-webgpu wheel")
-    parser.add_argument("--binary_dir", required=True, type=Path,
-                        help="Directory containing the built plugin EP binaries")
-    parser.add_argument("--version", required=True,
-                        help="Package version string (PEP 440 format)")
-    parser.add_argument("--output_dir", required=True, type=Path,
-                        help="Directory to place the built wheel")
+    parser.add_argument(
+        "--binary_dir", required=True, type=Path, help="Directory containing the built plugin EP binaries"
+    )
+    parser.add_argument("--version", required=True, help="Package version string (PEP 440 format)")
+    parser.add_argument("--output_dir", required=True, type=Path, help="Directory to place the built wheel")
     args = parser.parse_args()
 
     if not args.binary_dir.is_dir():

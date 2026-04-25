@@ -20,9 +20,9 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import onnxruntime as ort
 from onnx import TensorProto, helper
 
+import onnxruntime as ort
 
 VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
 
@@ -35,13 +35,13 @@ def debug_print(*args, **kwargs):
 
 def create_mul_model() -> str:
     """Create a simple Mul model and return the path to the saved .onnx file."""
-    X = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
-    Y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
-    Z = helper.make_tensor_value_info("z", TensorProto.FLOAT, [2, 3])
+    x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
+    y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
+    z = helper.make_tensor_value_info("z", TensorProto.FLOAT, [2, 3])
 
     mul_node = helper.make_node("Mul", inputs=["x", "y"], outputs=["z"])
 
-    graph = helper.make_graph([mul_node], "mul_graph", [X, Y], [Z])
+    graph = helper.make_graph([mul_node], "mul_graph", [x, y], [z])
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     model.ir_version = 7
 
@@ -67,7 +67,7 @@ def print_environment_info():
 
 def test_import_and_library_path():
     """Test that the package imports and the library path is valid."""
-    import onnxruntime_ep_webgpu as webgpu_ep
+    import onnxruntime_ep_webgpu as webgpu_ep  # noqa: PLC0415  # `import` should be at the top-level of a file.
 
     debug_print(f"  Package location: {webgpu_ep.__file__}")
     pkg_dir = Path(webgpu_ep.__file__).parent
@@ -88,7 +88,7 @@ def test_import_and_library_path():
 
 def test_registration_and_inference():
     """Test EP registration, device discovery, and inference."""
-    import onnxruntime_ep_webgpu as webgpu_ep
+    import onnxruntime_ep_webgpu as webgpu_ep  # noqa: PLC0415  # `import` should be at the top-level of a file.
 
     lib_path = webgpu_ep.get_library_path()
     ep_name = webgpu_ep.get_ep_name()
@@ -133,7 +133,7 @@ def test_registration_and_inference():
         result = outputs[0]
 
         np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
-        print(f"OK: Inference result matches expected output")
+        print("OK: Inference result matches expected output")
 
         del sess
         print("OK: Session released")
