@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <gsl/gsl>
 #include <memory>
 #include <string_view>
@@ -26,6 +27,7 @@ class Environment;
 class EpLibrary;
 class EpFactoryInternal;
 class IExecutionProvider;
+class ModelPackageContext;
 struct IExecutionProviderFactory;
 struct SessionOptions;
 struct VariantSelectionEpInfo;
@@ -84,23 +86,19 @@ Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep
 /// Constraints (matching the standard path):
 //   - Only one EP is selected (CPU EP is skipped in favor of the first non-CPU EP if available).
 //   - All devices are expected to be supported by the same EP.
-Status GetVariantSelectionEpInfo(const OrtSessionOptions* session_options,
-                                 std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
+Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>>& provider_list,
                                  std::vector<VariantSelectionEpInfo>& ep_infos);
 
 // Logs available environment EP devices and the ones selected for variant selection. Informational only.
 Status PrintAvailableAndSelectedEpInfos(const Environment& env,
                                         std::vector<VariantSelectionEpInfo>& ep_infos);
 
-// Shared tail of the model-package session-creation flow.
+// Create session for model package workflow.
 OrtStatus* CreateSessionForResolvedModelPackage(
     _In_ const OrtSessionOptions* options,
     const onnxruntime::Environment& env,
     const std::filesystem::path& selected_model_path,
-    std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>>& provider_list,
-    const std::vector<const OrtEpDevice*>& execution_devices,
-    const std::vector<const OrtEpDevice*>& devices_selected,
-    bool from_policy,
+    onnxruntime::ModelPackageContext& model_package_context,
     std::unique_ptr<onnxruntime::InferenceSession>& sess);
 
 }  // namespace onnxruntime

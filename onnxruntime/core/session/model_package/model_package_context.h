@@ -8,7 +8,6 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/model_package/model_package_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/common/common.h"
 #include <memory>
@@ -63,19 +62,25 @@ struct VariantSelectionEpInfo {
   std::vector<const OrtEpDevice*> ep_devices{};
   std::vector<const OrtHardwareDevice*> hardware_devices{};
   std::vector<const OrtKeyValuePairs*> ep_metadata{};
-  ProviderOptions ep_options{};
 };
 
 class ModelPackageOptions;  // forward declaration
 
 class ModelPackageContext {
  public:
-  explicit ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root);
+  explicit ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root,
+                               std::vector<VariantSelectionEpInfo> ep_infos);
 
   ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root,
                       const ModelPackageOptions& options);
 
-  Status GetEpInfosAndResolveVariant();
+  const ModelPackageOptions* Options() const noexcept;
+
+  Status ResolveVariant();
+
+  const ModelPackageInfo& GetModelPackageInfo() const noexcept {
+    return model_package_info_;
+  }
 
   const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept {
     return model_variant_infos_;
@@ -86,28 +91,25 @@ class ModelPackageContext {
   Status GetSelectedVariantModelInfo(const std::string& component_name,
                                      const char* file_identifier /*may be null*/,
                                      const VariantModelInfo*& out_model_info) const;
-  Status GetSelectedVariantFiles(const std::string& component_name,
-                                 gsl::span<const std::string>& out_file_identifiers) const;
-  Status ResolveSelectedVariantFile(const std::string& component_name,
-                                    const char* file_identifier /*may be null*/,
-                                    std::filesystem::path& out_path) const;
+  Status GetSelectedVariantFileIdentifiers(const std::string& component_name,
+                                           gsl::span<const std::string>& out_file_identifiers) const;
+  Status ResolveSelectedVariantFilePath(const std::string& component_name,
+                                        const char* file_identifier /*may be null*/,
+                                        std::filesystem::path& out_path) const;
 
-  const ModelPackageOptions* Options() const noexcept { return options_; }
+  // Convenience API for single-component packages. Will return an error if there are 0 or >1 components.
+  Status GetSelectedVariantFilePath(std::filesystem::path& out_path) const;
 
-  // Resolved EP state (taken from ModelPackageOptions at ResolveVariants time).
-  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() noexcept { return provider_list_; }
-  const std::vector<const OrtEpDevice*>& ExecutionDevices() const noexcept { return execution_devices_; }
-  const std::vector<const OrtEpDevice*>& DevicesSelected() const noexcept { return devices_selected_; }
-  bool IsFromPolicy() const noexcept { return from_policy_; }
-
-  const ModelPackageInfo& GetModelPackageInfo() const noexcept {
-    return model_package_info_;
-  }
+  // Resolved EP state (taken from ModelPackageOptions).
+  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() noexcept;
+  const std::vector<const OrtEpDevice*>& ExecutionDevices() const noexcept;
+  const std::vector<const OrtEpDevice*>& DevicesSelected() const noexcept;
+  bool IsFromPolicy() const noexcept;
 
  private:
   const onnxruntime::Environment& env_;
-  std::vector<ModelVariantInfo> model_variant_infos_;
   const ModelPackageOptions* options_{};  // non-owning, immutable config source
+  std::vector<ModelVariantInfo> model_variant_infos_;
 
   // Hierarchical package/component/variant cache used by query APIs.
   ModelPackageInfo model_package_info_{};
@@ -117,11 +119,11 @@ class ModelPackageContext {
   mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
 
   // Resolved EP state owned by context
-  std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
   std::vector<VariantSelectionEpInfo> ep_infos_{};
   std::vector<const OrtEpDevice*> execution_devices_{};
   std::vector<const OrtEpDevice*> devices_selected_{};
   bool from_policy_{false};
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
 
   void BuildComponentModelCache();
 

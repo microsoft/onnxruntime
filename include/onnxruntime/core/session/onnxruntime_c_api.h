@@ -8572,6 +8572,7 @@ struct OrtModelPackageApi {
   ORT_CLASS_RELEASE(ModelPackageOptions);
 
   ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
+                  _In_ const OrtEnv* env,
                   _In_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtModelPackageOptions** out);
   /// @}

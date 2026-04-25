@@ -11,6 +11,7 @@ ORT_API(const OrtModelPackageApi*, GetModelPackageApi);
 
 ORT_API(void, ReleaseModelPackageOptions, _Frees_ptr_opt_ OrtModelPackageOptions*);
 ORT_API_STATUS_IMPL(CreateModelPackageOptionsFromSessionOptions,
+                    _In_ const OrtEnv* env,
                     _In_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtModelPackageOptions** out);
 

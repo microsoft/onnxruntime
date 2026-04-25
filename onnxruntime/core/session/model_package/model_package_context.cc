@@ -15,6 +15,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_descriptor_parser.h"
+#include "core/session/model_package/model_package_options.h"
 #include "core/session/ort_env.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
@@ -348,7 +349,8 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
 }
 
 ModelPackageContext::ModelPackageContext(const onnxruntime::Environment& env,
-                                         const std::filesystem::path& package_root) : env_(env) {
+                                         const std::filesystem::path& package_root,
+                                         std::vector<VariantSelectionEpInfo> ep_infos) : env_(env), ep_infos_(std::move(ep_infos)) {
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
   ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, model_variant_infos_));
   BuildComponentModelCache();
@@ -362,41 +364,54 @@ ModelPackageContext::ModelPackageContext(const onnxruntime::Environment& env,
   BuildComponentModelCache();
 }
 
-Status ModelPackageContext::GetEpInfosAndResolveVariant() {
-  ORT_RETURN_IF(options_ == nullptr, "ModelPackageContext has no associated ModelPackageOptions.");
+const ModelPackageOptions* ModelPackageContext::Options() const noexcept {
+  return options_;
+}
 
-  const OrtSessionOptions& session_options = options_->SessionOptions();
-  const bool has_provider_factories = !session_options.provider_factories.empty();
-  from_policy_ = !has_provider_factories && session_options.value.ep_selection_policy.enable;
+std::vector<std::unique_ptr<IExecutionProvider>>& ModelPackageContext::MutableProviderList() noexcept {
+  ORT_ENFORCE(options_ != nullptr, "ModelPackageContext has no associated ModelPackageOptions.");
+  return options_->MutableProviderList();
+}
 
-  provider_list_.clear();
-  execution_devices_.clear();
-  devices_selected_.clear();
-  ep_infos_.clear();
+const std::vector<const OrtEpDevice*>& ModelPackageContext::ExecutionDevices() const noexcept {
+  ORT_ENFORCE(options_ != nullptr, "ModelPackageContext has no associated ModelPackageOptions.");
+  return options_->ExecutionDevices();
+}
 
-  if (has_provider_factories) {
-    const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
-    for (auto& factory : session_options.provider_factories) {
-      provider_list_.push_back(factory->CreateProvider(session_options, logger));
-    }
-  } else if (from_policy_) {
-    OrtKeyValuePairs model_metadata;
-    ProviderPolicyContext provider_policy_context;
-    OrtSessionOptions mutable_session_options = session_options;
-    ORT_RETURN_IF_ERROR(provider_policy_context.SelectEpsForModelPackage(
-        env_, mutable_session_options, model_metadata,
-        execution_devices_, devices_selected_, provider_list_));
+const std::vector<const OrtEpDevice*>& ModelPackageContext::DevicesSelected() const noexcept {
+  ORT_ENFORCE(options_ != nullptr, "ModelPackageContext has no associated ModelPackageOptions.");
+  return options_->DevicesSelected();
+}
+
+bool ModelPackageContext::IsFromPolicy() const noexcept {
+  ORT_ENFORCE(options_ != nullptr, "ModelPackageContext has no associated ModelPackageOptions.");
+  return options_->FromPolicy();
+}
+
+Status ModelPackageContext::ResolveVariant() {
+  // Determine EP infos source:
+  // 1) explicit ep_infos passed to context ctor, or
+  // 2) resolved infos from options.
+  std::vector<VariantSelectionEpInfo> ep_infos;
+  if (!ep_infos_.empty()) {
+    ep_infos = ep_infos_;
+  } else {
+    ORT_RETURN_IF(options_ == nullptr,
+                  "ModelPackageContext requires either explicit ep_infos or associated ModelPackageOptions.");
+    ep_infos = options_->EpInfos();
   }
-
-  ORT_RETURN_IF_ERROR(GetVariantSelectionEpInfo(&session_options, provider_list_, ep_infos_));
-  ORT_RETURN_IF_ERROR(PrintAvailableAndSelectedEpInfos(env_, ep_infos_));
 
   std::optional<VariantModelInfo> selected_model_info;
   ModelVariantSelector selector;
-  ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos_, selected_model_info));
+  ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos, selected_model_info));
 
   ORT_RETURN_IF(!selected_model_info.has_value(),
                 "No suitable model variant found for the configured execution providers.");
+
+  // Clear prior selection state before applying new selection.
+  for (auto& component : model_package_info_.component_models) {
+    component.selected_variant_index.reset();
+  }
 
   // Update selected variant cache for the component that owns this selected model_info.
   size_t matched_variants = 0;
@@ -524,8 +539,8 @@ Status ModelPackageContext::GetSelectedVariantModelInfo(const std::string& compo
                          "' for component '", component_name, "'.");
 }
 
-Status ModelPackageContext::GetSelectedVariantFiles(const std::string& component_name,
-                                                    gsl::span<const std::string>& out_file_identifiers) const {
+Status ModelPackageContext::GetSelectedVariantFileIdentifiers(const std::string& component_name,
+                                                              gsl::span<const std::string>& out_file_identifiers) const {
   out_file_identifiers = gsl::span<const std::string>{};
 
   const ModelVariantInfo* selected_variant = nullptr;
@@ -547,9 +562,9 @@ Status ModelPackageContext::GetSelectedVariantFiles(const std::string& component
   return Status::OK();
 }
 
-Status ModelPackageContext::ResolveSelectedVariantFile(const std::string& component_name,
-                                                       const char* file_identifier,
-                                                       std::filesystem::path& out_path) const {
+Status ModelPackageContext::ResolveSelectedVariantFilePath(const std::string& component_name,
+                                                           const char* file_identifier,
+                                                           std::filesystem::path& out_path) const {
   out_path.clear();
 
   const VariantModelInfo* selected_model_info = nullptr;
@@ -558,6 +573,38 @@ Status ModelPackageContext::ResolveSelectedVariantFile(const std::string& compon
                 "Selected model info is null for component: ", component_name);
 
   out_path = selected_model_info->model_file_path;
+  return Status::OK();
+}
+
+Status ModelPackageContext::GetSelectedVariantFilePath(std::filesystem::path& out_path) const {
+  out_path.clear();
+
+  const size_t component_count = GetComponentModelCount();
+  if (component_count != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "ResolveSelectedVariantFileForSingleComponent requires exactly one component model, found: ",
+                           component_count);
+  }
+
+  const std::string* component_name = nullptr;
+  ORT_RETURN_IF_ERROR(GetComponentModelName(0, component_name));
+  ORT_RETURN_IF(component_name == nullptr || component_name->empty(),
+                "Single component model name is null or empty.");
+
+  const ModelVariantInfo* selected_variant = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantForComponent(*component_name, selected_variant));
+  ORT_RETURN_IF(selected_variant == nullptr,
+                "Selected variant is null for single component model: ", *component_name);
+
+  if (selected_variant->model_info.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "ResolveSelectedVariantFileForSingleComponent requires selected variant to have exactly one model_info entry, found: ",
+                           selected_variant->model_info.size(),
+                           ", component: ", *component_name,
+                           ", variant: ", selected_variant->variant_name);
+  }
+
+  out_path = selected_variant->model_info.front().model_file_path;
   return Status::OK();
 }
 

@@ -35,7 +35,6 @@ static constexpr const char* kFilesKey = "files";
 static constexpr const char* kPathKey = "path";
 static constexpr const char* kFileTypeKey = "type";
 
-static constexpr const char* kEpKey = "ep";
 static constexpr const char* kDeviceKey = "device";
 static constexpr const char* kArchitectureKey = "architecture";
 static constexpr const char* kEpCompatibilityInfoKey = "ep_compatibility_info";
