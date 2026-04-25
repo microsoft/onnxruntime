@@ -7,6 +7,8 @@
 # configuration, test scripts) can be iterated on without rebuilding
 # Dawn/WebGPU from source.
 
+trigger: none
+
 variables:
 - name: DisableDockerDetector
   value: true
