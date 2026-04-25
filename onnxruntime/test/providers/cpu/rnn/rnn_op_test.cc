@@ -986,5 +986,68 @@ TEST(RNNTest, RNN_forward_sequence_lens_with_zero) {
   test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
+TEST(RNNTest, RNN_ForwardDefaultActivations_OpSet22_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  // Simple forward RNN at opset 22 to verify CUDA registration.
+  int64_t seq_length = 2;
+  int batch_size = 1;
+  int64_t input_size = 2;
+  int64_t hidden_size = 3;
+  int num_directions = 1;
+
+  std::vector<float> X_data = {1.f, 2.f, 3.f, 4.f};
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+
+  std::vector<float> W_data = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f};
+  std::vector<int64_t> W_dims = {num_directions, hidden_size, input_size};
+
+  std::vector<float> R_data(num_directions * hidden_size * hidden_size, 0.1f);
+  std::vector<int64_t> R_dims = {num_directions, hidden_size, hidden_size};
+
+  // Y = tanh(X * W^T + H_prev * R^T), H_prev = 0
+  // time_step 0: X=[1,2], W^T cols=[0.1,0.3,0.5; 0.2,0.4,0.6]
+  //   h0 = tanh([0.1*1+0.2*2, 0.3*1+0.4*2, 0.5*1+0.6*2]) = tanh([0.5, 1.1, 1.7])
+  float h0_0 = std::tanh(0.5f);
+  float h0_1 = std::tanh(1.1f);
+  float h0_2 = std::tanh(1.7f);
+
+  // time_step 1: X=[3,4], h_prev = h0
+  //   h1 = tanh(X * W^T + h0 * R^T)
+  //   X * W^T = [0.1*3+0.2*4, 0.3*3+0.4*4, 0.5*3+0.6*4] = [1.1, 2.5, 3.9]
+  //   h0 * R^T (R=0.1 everywhere) = [0.1*(h0_0+h0_1+h0_2), ...] (same for each)
+  float h0_sum = h0_0 + h0_1 + h0_2;
+  float h1_0 = std::tanh(1.1f + 0.1f * h0_sum);
+  float h1_1 = std::tanh(2.5f + 0.1f * h0_sum);
+  float h1_2 = std::tanh(3.9f + 0.1f * h0_sum);
+
+  std::vector<float> Y_data = {h0_0, h0_1, h0_2, h1_0, h1_1, h1_2};
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+
+  std::vector<float> Y_h_data = {h1_0, h1_1, h1_2};
+  std::vector<int64_t> Y_h_dims = {num_directions, batch_size, hidden_size};
+
+  OpTester test("RNN", 22);
+  test.AddShapeToTensorData();
+
+  test.AddAttribute<std::vector<string>>("activations", {"Tanh"});
+  test.AddAttribute("direction", string("forward"));
+  test.AddAttribute("hidden_size", hidden_size);
+
+  test.AddInput<float>("X", X_dims, X_data);
+  test.AddInput<float>("W", W_dims, W_data, true);
+  test.AddInput<float>("R", R_dims, R_data, true);
+
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+  test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
