@@ -197,10 +197,22 @@ struct GroupQueryAttentionData {
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
   bool use_xqa = false;
+  // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
+  // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
+  bool use_unfused = false;
 
   // XQA buffer
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
+
+  // Unfused fallback buffers (see LaunchGqaUnfusedAttention in gqa_unfused_attention.h):
+  //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
+  //   unfused_y_bnsh : [B, N_q, S_q, H_v] (output BNSH, transposed to BSNH before leaving op)
+  //   unfused_workspace: FP32 QK scratch + T softmax scratch (sized by
+  //                      GetGqaUnfusedAttentionWorkspaceSize)
+  T* unfused_q_bnsh = nullptr;
+  T* unfused_y_bnsh = nullptr;
+  void* unfused_workspace = nullptr;
 };
 
 template <typename T>
