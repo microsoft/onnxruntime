@@ -42,7 +42,7 @@ static ONNX_NAMESPACE::TensorProto* GetTensorProto(TensorProtoHolder& holder) {
 
 template <typename T>
 static bool TryGetScalarTensorAttribute(const OpKernelInfo& info, const std::string& tensor_name,
-                                        const std::string& attr_name, T& value) {
+                                        [[maybe_unused]] const std::string& attr_name, T& value) {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
   // Plugin EP: use Ort C++ API to read tensor attributes.
   try {
