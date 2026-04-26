@@ -38,13 +38,28 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     return ort_allocator_.Reserve(size);
   }
 
-  // TODO: Implement AllocOnStream() and IsStreamAware().
+  bool IsStreamAware() const override {
+    return SupportsAllocOnStream();
+  }
+
+  // TODO: Implement AllocOnStream() properly.
   // The internal `onnxruntime::IAllocator::AllocOnStream` signature takes an internal `onnxruntime::Stream*` argument,
   // while the public `::OrtAllocator::AllocOnStream` signature takes an `::OrtSyncStream*` argument.
   // We need to properly map from one to the other.
   // `::OrtSyncStream*` should be treated as an opaque type from the plugin EP's perspective.
 
+  void* AllocOnStream(size_t size, Stream* /*stream*/) override {
+    ORT_NOT_IMPLEMENTED("IAllocatorWrappingOrtAllocator::AllocOnStream is not implemented yet.");
+  }
+
  private:
+  static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+
+  bool SupportsAllocOnStream() const {
+    const OrtAllocator* raw = ort_allocator_;
+    return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
+  }
+
   // TODO: Consider adding GetStats() override. Requires parsing OrtKeyValuePairs from the C API
   // into AllocatorStats; see GetStatsFromOrtAllocator() in allocator_adapters.cc for reference.
 
