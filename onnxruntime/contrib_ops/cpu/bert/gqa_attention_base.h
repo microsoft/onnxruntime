@@ -246,8 +246,8 @@ class GQAAttentionBase {
           // External KV mode: use past_key directly (it holds the external KV data in BNSH format).
           // No new K to concatenate — the external KV is the complete key sequence.
           k = past_key + (i / kv_num_heads_factor) * present_buff_chunk_length;
-          // Also copy to present for output pass-through
-          if (present_key != nullptr && !past_present_share_buffer) {
+          // Copy to present for output pass-through (once per KV head, not per Q head)
+          if (present_key != nullptr && !past_present_share_buffer && head_index % kv_num_heads_factor == 0) {
             memcpy(present_key + (i / kv_num_heads_factor) * present_buff_chunk_length,
                    k, SafeInt<size_t>(total_seqlen) * head_size * sizeof(T));
           }
@@ -463,8 +463,8 @@ class GQAAttentionBase {
         if (use_external_kv) {
           // External KV mode: use past_value directly (it holds the external KV data in BNSH format).
           v = past_value + (i / kv_num_heads_factor) * present_buff_chunk_length;
-          // Copy to present for output pass-through
-          if (present_value != nullptr && !past_present_share_buffer) {
+          // Copy to present for output pass-through (once per KV head, not per Q head)
+          if (present_value != nullptr && !past_present_share_buffer && head_index % kv_num_heads_factor == 0) {
             memcpy(present_value + (i / kv_num_heads_factor) * present_buff_chunk_length,
                    v, SafeInt<size_t>(total_seqlen) * head_size * sizeof(T));
           }

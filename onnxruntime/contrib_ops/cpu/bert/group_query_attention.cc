@@ -83,6 +83,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckAndSetExternalKV(external_key, external_value, parameters));
 
+  // External KV mode requires do_rotary=0 — K already has RoPE from the source layer
+  if (parameters.use_external_kv && do_rotary_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "do_rotary must be 0 when using external_key/external_value. "
+                           "Pre-apply RoPE to Q and use already-rotated K from the source layer.");
+  }
+
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int present_kv_seqlen = parameters.seqlen_present_kv_cache;

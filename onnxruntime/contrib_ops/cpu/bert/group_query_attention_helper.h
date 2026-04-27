@@ -543,6 +543,13 @@ Status CheckAndSetExternalKV(const T* external_key, const T* external_value,
 
   // When using external KV, the total sequence length for attention is determined
   // by the external KV tensor, not the internal KV cache.
+  // Validate that the original total_sequence_length doesn't exceed external KV length.
+  if (parameters.total_sequence_length > external_sequence_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length (", parameters.total_sequence_length,
+                           ") exceeds external KV sequence length (", external_sequence_length,
+                           "). Ensure seqlens_k is consistent with the external KV tensor size.");
+  }
   parameters.total_sequence_length = external_sequence_length;
   parameters.seqlen_present_kv_cache = external_sequence_length;
 
