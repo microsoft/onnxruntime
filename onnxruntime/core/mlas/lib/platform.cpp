@@ -527,14 +527,14 @@ Return Value:
                 }
 
 #ifndef __APPLE__
-#if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+#if defined(MLAS_SUPPORTS_AVX512FP16)
                 //
                 // Check if the processor supports AVX NE CONVERT.
                 //
                 if ((Cpuid7_1[3] & (0b1 << 5)) != 0) {
                     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx;
                 }
-#endif  // (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+#endif  // MLAS_SUPPORTS_AVX512FP16
 
 
                 //
@@ -671,7 +671,7 @@ Return Value:
         }
         else{
             this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
-            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
         }
     #else
         this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
