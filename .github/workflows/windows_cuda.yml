@@ -70,6 +70,11 @@ jobs:
           java-version: '17'
           architecture: x64
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - uses: actions/cache@v5
         id: onnx-node-tests-cache
         with:
@@ -185,6 +190,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
           architecture: x64
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
