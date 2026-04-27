@@ -200,6 +200,16 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex) {
           /* sum_output = */ true);
 }
 
+// Regression test: shape inference with mask_index_type=0 and 2 outputs (no embedding_sum)
+// must not write to output index 2, which would be out-of-bounds.
+// Before the fix in EmbedLayerNormalizationShapeInference (shape_inference_functions.cc),
+// this case triggered a heap OOB write when getNumOutputs()==2 and mask_index_type==0.
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_NoMaskIndex_NoSumOutput) {
+  RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum_NoMaskIndex(),
+          /* use_float16 = */ false,
+          /* sum_output = */ false);
+}
+
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {
   RunTest(embedlayernorm::EmbedLayerNormBatch2());
 }

@@ -3,16 +3,18 @@
 
 #include "core/session/utils.h"
 
-#include <memory>
-#include <utility>
 #include <filesystem>
+#include <limits>
+#include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"
+#include "core/common/narrow.h"
 #include "core/platform/env.h"
 #include "core/platform/telemetry.h"
 #include "core/session/abi_session_options_impl.h"
@@ -374,6 +376,14 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
     }
   }
 
+  int32_t model_data_length_int = 0;
+  if (model_path == nullptr) {
+    ORT_API_RETURN_IF(model_data == nullptr, ORT_INVALID_ARGUMENT, "Model data pointer is null.");
+    ORT_API_RETURN_IF(model_data_length > static_cast<size_t>(std::numeric_limits<int32_t>::max()),
+                      ORT_INVALID_ARGUMENT, "Model data size exceeds maximum supported size (2GB).");
+    model_data_length_int = narrow<int32_t>(model_data_length);
+  }
+
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (model_path != nullptr) {
@@ -385,7 +395,7 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
       sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env,
-          model_data, static_cast<int>(model_data_length));
+          model_data, model_data_length_int);
     }
 #else
     return OrtApis::CreateStatus(ORT_FAIL, "Loading config from ONNX models is not supported in this build.");
@@ -437,7 +447,7 @@ static OrtStatus* CreateSessionAndLoadSingleModelImpl(_In_ const OrtSessionOptio
     if (model_path != nullptr) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_path));
     } else {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, model_data_length_int));
     }
   }
 
