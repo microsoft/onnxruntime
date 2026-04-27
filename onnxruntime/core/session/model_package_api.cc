@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
+#include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"

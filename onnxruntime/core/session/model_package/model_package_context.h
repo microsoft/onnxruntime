@@ -10,6 +10,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/common/common.h"
+#include "core/session/model_package/model_package_variant_selector.h"
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -101,10 +102,10 @@ class ModelPackageContext {
   Status GetSelectedVariantFilePath(std::filesystem::path& out_path) const;
 
   // Resolved EP state (taken from ModelPackageOptions).
-  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() noexcept;
-  const std::vector<const OrtEpDevice*>& ExecutionDevices() const noexcept;
-  const std::vector<const OrtEpDevice*>& DevicesSelected() const noexcept;
-  bool IsFromPolicy() const noexcept;
+  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList();
+  const std::vector<const OrtEpDevice*>& ExecutionDevices() const;
+  const std::vector<const OrtEpDevice*>& DevicesSelected() const;
+  bool IsFromPolicy() const;
 
  private:
   const onnxruntime::Environment& env_;
@@ -129,20 +130,6 @@ class ModelPackageContext {
 
   Status GetSelectedVariantForComponent(const std::string& component_name,
                                         const ModelVariantInfo*& out_variant) const;
-};
-
-class ModelVariantSelector {
- public:
-  ModelVariantSelector() = default;
-
-  // Select model variant (finest granularity) and return the selected model_info entry.
-  Status SelectVariant(const ModelPackageContext& context,
-                       gsl::span<VariantSelectionEpInfo> ep_infos,
-                       std::optional<VariantModelInfo>& selected_model_info) const;
-
- private:
-  // Compute a score for a variant
-  int CalculateVariantScore(const ModelVariantInfo& variant) const;
 };
 
 }  // namespace onnxruntime
