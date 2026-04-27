@@ -664,6 +664,10 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
 #if !defined(DISABLE_SPARSE_TENSORS)
   auto v = reinterpret_cast<::OrtValue*>(ort_value);
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*v);
+  if (indices_num > 0 && indices_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "indices_data must not be null when indices_num > 0.");
+  }
   auto indices_span = (indices_num == 0 || indices_data == nullptr)
                           ? gsl::span<int64_t>()
                           : gsl::make_span(indices_data, indices_num);
@@ -731,6 +735,14 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*ort_value);
+  if (inner_num > 0 && inner_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "inner_data must not be null when inner_num > 0.");
+  }
+  if (outer_num > 0 && outer_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "outer_data must not be null when outer_num > 0.");
+  }
   auto inner_span = (inner_num == 0 || inner_data == nullptr)
                         ? gsl::span<int64_t>()
                         : gsl::make_span(inner_data, inner_num);

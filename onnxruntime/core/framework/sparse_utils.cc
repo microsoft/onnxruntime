@@ -258,9 +258,23 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 
     void* output = cpu_result.MutableDataRaw();
     const auto dense_size = cpu_result.Shape().Size();
+    const auto outer_size = outer_span.size();
+    const auto inner_size = static_cast<int64_t>(inner_span.size());
+
+    // Validate CSR structural invariants (O(1) checks).
+    if (outer_size > 0) {
+      ORT_RETURN_IF_NOT(outer_span[0] == 0,
+                        "CSR outer index must start at 0, got: ", outer_span[0]);
+      ORT_RETURN_IF_NOT(outer_span[outer_size - 1] == inner_size,
+                        "CSR outer index last element must equal inner index count (",
+                        inner_size, "), got: ", outer_span[outer_size - 1]);
+    }
 
     size_t inner_idx = 0;
-    for (size_t out_i = 1; out_i < outer_span.size(); ++out_i) {
+    for (size_t out_i = 1; out_i < outer_size; ++out_i) {
+      ORT_RETURN_IF_NOT(outer_span[out_i] >= outer_span[out_i - 1],
+                        "CSR outer index not non-decreasing at position ", out_i,
+                        ": ", outer_span[out_i]);
       auto row_size = outer_span[out_i] - outer_span[out_i - 1];
       for (int64_t cnt = 0; cnt < row_size; ++cnt, ++inner_idx) {
         ORT_RETURN_IF_NOT(inner_idx < inner_span.size(),
