@@ -62,33 +62,13 @@ const validateInputs = (inputs: readonly TensorView[], attributes: RotaryEmbeddi
     }
   }
 
-  // Validate position_ids values are within cos/sin cache bounds.
   if (sequenceLength > maxSequenceLength) {
     throw new Error('Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported');
   }
 
-  const positionIdsElementCount = ShapeUtil.size(positionIds.dims);
-  const positionIdsBigInt = positionIds.getBigInt64Array();
-  if (positionIdsElementCount === 1) {
-    // Format 0: single base offset. Effective positions are [base_pos, base_pos + sequence_length - 1].
-    const basePos = positionIdsBigInt[0];
-    const maxValidBase = BigInt(maxSequenceLength) - BigInt(sequenceLength);
-    if (basePos < 0n || basePos > maxValidBase) {
-      throw new Error(
-        `position_ids base value ${basePos} with sequence_length ${sequenceLength}` +
-          ` exceeds cos/sin cache range [0, ${maxSequenceLength})`,
-      );
-    }
-  } else {
-    // Format 1: 2D array (batch_size, sequence_length). Each value must be in [0, max_sequence_length).
-    const maxSeqBigInt = BigInt(maxSequenceLength);
-    for (let i = 0; i < positionIdsElementCount; i++) {
-      const pos = positionIdsBigInt[i];
-      if (pos < 0n || pos >= maxSeqBigInt) {
-        throw new Error(`position_ids value ${pos} at index ${i} is out of range [0, ${maxSequenceLength})`);
-      }
-    }
-  }
+  // Note: position_ids value validation is handled by shader-side bounds checks (defense-in-depth).
+  // We cannot validate position_ids values here because the tensor is GPU-resident — its data field
+  // is a GPU buffer ID, not a WASM heap pointer, so getBigInt64Array() would read garbage.
 
   if (headSize / 2 !== cosCache.dims[1] && rotaryEmbeddingDim / 2 !== cosCache.dims[1]) {
     throw new Error(
