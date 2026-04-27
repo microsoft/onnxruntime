@@ -279,7 +279,7 @@ Status CheckInputs(const T* query,
                    float scale,
                    float softcap,
                    int kv_cache_bit_width,
-                   bool has_external_kv = false) {
+                   bool has_external_kv) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
