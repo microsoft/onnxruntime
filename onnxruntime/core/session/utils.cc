@@ -448,6 +448,7 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 #else
       return OrtApis::CreateStatus(ORT_FAIL, "Model package is not supported in this build.");
 #endif
+      return nullptr;
     }
   }
 

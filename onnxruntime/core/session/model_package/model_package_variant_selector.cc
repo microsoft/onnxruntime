@@ -173,7 +173,7 @@ VariantMatchResult MatchVariantForEp(ModelVariantInfo& variant, const VariantSel
   }
 
   int total_score = 0;
- 
+
   // ALL model_info must match for variant to match.
   for (auto& mi : variant.model_info) {
     int best_score_for_mi = std::numeric_limits<int>::min();

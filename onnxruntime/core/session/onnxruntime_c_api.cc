@@ -3559,6 +3559,10 @@ ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   return OrtCompileAPI::GetCompileApi();
 }
 
+ORT_API(const OrtModelPackageApi*, OrtApis::GetModelPackageApi) {
+  return OrtModelPackageAPI::GetModelPackageApi();
+}
+
 ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
   auto kvps = std::make_unique<OrtKeyValuePairs>();
   *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());

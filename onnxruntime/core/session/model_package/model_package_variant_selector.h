@@ -6,8 +6,8 @@
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include <optional>
-#include <gsl/gsl>                  
-#include "core/common/common.h"     
+#include <gsl/gsl>
+#include "core/common/common.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
