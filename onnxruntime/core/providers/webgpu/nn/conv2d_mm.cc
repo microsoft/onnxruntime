@@ -217,7 +217,9 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
     std::transform(vec.begin(), vec.end(), std::ostream_iterator<std::string>(oss, ","), [](uint32_t i) { return std::to_string(i); });
     return oss.str();
   };
-  program.CacheHint(activation.ToString(), is_channels_last, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_a_outer, tile_inner, static_cast<uint32_t>(components)}))
+
+  const bool has_batch_dims = false;  // Conv2dMMProgram::GenerateShaderCode passes nullptr for batch_dims.
+  program.CacheHint(activation.ToString(), is_channels_last, has_batch_dims, stringify({inner_element_size, static_cast<uint32_t>(is_vec4 ? 1 : 0), fit_a_outer, fit_b_outer, fit_inner, tile_a_outer, tile_a_outer, tile_inner, static_cast<uint32_t>(components)}))
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
       .SetDispatchGroupSize(dispatch[0], dispatch[1], dispatch[2])
       .SetWorkgroupSize(workgroup_size[0], workgroup_size[1], workgroup_size[2])

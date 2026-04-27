@@ -158,7 +158,8 @@ Status ApplyGemmPacked(const Tensor* a,
   const uint32_t dispatch_x = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t dispatch_y = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  program.CacheHint(alpha, transA, transB, c_is_scalar, split_dim_inner)
+  const bool has_batch_dims = false;  // GemmProgram::GenerateShaderCode passes nullptr for batch_dims.
+  program.CacheHint(alpha, transA, transB, c_is_scalar, split_dim_inner, has_batch_dims)
       .AddOutput(std::move(output))
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
