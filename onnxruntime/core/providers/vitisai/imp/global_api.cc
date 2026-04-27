@@ -93,7 +93,7 @@ struct OrtVitisAIEpAPI {
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       const char* const* keys,
       const char* const* values, size_t kv_len) = nullptr;
-  void (*profiler_start)(uint64_t profiling_start_time_ns) = nullptr;
+  void (*profiler_start)(uint64_t profiling_start_time_us) = nullptr;
   void (*profiler_stop)() = nullptr;
   // v1: Original 5-element EventInfo
   void (*profiler_collect)(
@@ -186,7 +186,6 @@ struct OrtVitisAIEpAPI {
       compile_onnx_model_vitisai_ep_v4 = nullptr;
       vaip_execution_provider_deletor = [](std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* p) noexcept { delete p; };
       vaip_get_version = nullptr;
-      profiler_collect = nullptr;
       get_compiled_model_compatibility_info = nullptr;
       validate_compiled_model_compatibility_info = nullptr;
       create_ep_context_nodes = nullptr;
@@ -211,9 +210,9 @@ static vaip_core::OrtApiForVaip the_global_api;
 std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
 
-void profiler_start(uint64_t profiling_start_time_ns) {
+void profiler_start(uint64_t profiling_start_time_us) {
   if (s_library_vitisaiep.profiler_start) {
-    s_library_vitisaiep.profiler_start(profiling_start_time_ns);
+    s_library_vitisaiep.profiler_start(profiling_start_time_us);
   }
 }
 
