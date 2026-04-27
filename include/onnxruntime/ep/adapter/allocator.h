@@ -22,7 +22,8 @@ namespace adapter {
 class IAllocatorWrappingOrtAllocator final : public IAllocator {
  public:
   explicit IAllocatorWrappingOrtAllocator(Ort::Allocator ort_allocator)
-      : IAllocator(*ort_allocator.GetInfo()), ort_allocator_(std::move(ort_allocator)) {
+      : IAllocator(*(EnsureOrtAllocatorHasValue(ort_allocator).GetInfo())),
+        ort_allocator_(std::move(ort_allocator)) {
     ORT_ENFORCE(ort_allocator_, "Ort::Allocator must wrap a non-null OrtAllocator*.");
   }
 
@@ -52,6 +53,11 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   }
 
  private:
+  static const Ort::Allocator& EnsureOrtAllocatorHasValue(const Ort::Allocator& ort_allocator) {
+    ORT_ENFORCE(ort_allocator != nullptr, "Ort::Allocator must contain a non-nullptr OrtAllocator.");
+    return ort_allocator;
+  }
+
   bool SupportsAllocOnStream() const {
     static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
     const OrtAllocator* raw = ort_allocator_;
