@@ -752,6 +752,58 @@ TEST_F(ActivationOpTest, ONNX_Gelu) {
       {},
       {{"approximate", "tanh"}}, true, 20);
 }
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+TEST_F(ActivationOpTest, Gelu_fp16_tanh) {
+  OpTester test("Gelu", 20);
+  auto formula = [](float x) {
+    return 0.5f * x * (1 + tanhf(0.7978845608028654f * (x + 0.044715f * x * x * x)));
+  };
+  const std::vector<float> X = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  std::vector<float> Y;
+  Y.reserve(X.size());
+  for (float x : X) {
+    Y.push_back(formula(x));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  std::vector<MLFloat16> f_X(X.size());
+  std::vector<MLFloat16> f_Y(Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  test.AddInput<MLFloat16>("X", dims, f_X);
+  test.AddOutput<MLFloat16>("Y", dims, f_Y);
+  test.AddAttribute("approximate", "tanh");
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST_F(ActivationOpTest, Gelu_fp16_erf) {
+  OpTester test("Gelu", 20);
+  auto formula = [](float x) {
+    return static_cast<float>(0.5 * x * (1 + erf(x * M_SQRT1_2)));
+  };
+  const std::vector<float> X = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  std::vector<float> Y;
+  Y.reserve(X.size());
+  for (float x : X) {
+    Y.push_back(formula(x));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  std::vector<MLFloat16> f_X(X.size());
+  std::vector<MLFloat16> f_Y(Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  test.AddInput<MLFloat16>("X", dims, f_X);
+  test.AddOutput<MLFloat16>("Y", dims, f_Y);
+  test.AddAttribute("approximate", "none");
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
 #endif
 
 }  // namespace test

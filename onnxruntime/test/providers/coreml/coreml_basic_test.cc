@@ -569,5 +569,383 @@ TEST(CoreMLExecutionProviderTest, ExternalDataInitializer) {
 }
 #endif  // !(ORT_MINIMAL_BUILD)
 
+// Verify that Pad(mode=reflect) is handled by the CoreML EP in ML Program mode
+// instead of falling back to CPU.
+// See https://github.com/microsoft/onnxruntime/issues/28022
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CoreMLExecutionProviderTest, PadReflectMLProgram) {
+  // Build a model: output = Pad(X, pads, mode="reflect")
+  // Input shape: {1,1,3,4}, pads on last 2 dims: H=[1,1], W=[2,1]
+  // Expected output shape: {1,1,5,7}
+  onnxruntime::Model model("pad_reflect_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // Input X: {1,1,3,4} float tensor
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(4);
+
+  // Output Y: {1,1,5,7} float tensor
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(5);
+  output_shape->add_dim()->set_dim_value(7);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  // Pads initializer: [0,0,1,2, 0,0,1,1] -- pad H by (1,1), W by (2,1)
+  ONNX_NAMESPACE::TensorProto pads_init;
+  pads_init.set_name("pads");
+  pads_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  pads_init.add_dims(8);
+  // ONNX pads: [dim0_start, dim1_start, dim2_start, dim3_start, dim0_end, dim1_end, dim2_end, dim3_end]
+  // Pads last two dims: H=(1,1), W=(2,1).
+  const std::vector<int64_t> pads_data = {0, 0, 1, 2, 0, 0, 1, 1};
+  for (auto v : pads_data) {
+    pads_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(pads_init);
+
+  auto& pads_arg = graph.GetOrCreateNodeArg("pads", nullptr);
+
+  auto& pad_node = graph.AddNode("pad_reflect", "Pad", "reflect pad",
+                                 {&input_arg, &pads_arg}, {&output_arg});
+  pad_node.AddAttribute("mode", "reflect");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  // Input data for {1,1,3,4}:
+  // [[[ 1,  2,  3,  4],
+  //   [ 5,  6,  7,  8],
+  //   [ 9, 10, 11, 12]]]
+  std::vector<int64_t> dims = {1, 1, 3, 4};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "PadReflectMLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, PadConstantDefaultValueMLProgram) {
+  // Build a model: output = Pad(X, pads, mode="constant"), no explicit constant_value input should default to 0.
+  onnxruntime::Model model("pad_constant_default_value_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(5);
+  output_shape->add_dim()->set_dim_value(7);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto pads_init;
+  pads_init.set_name("pads");
+  pads_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  pads_init.add_dims(8);
+  // ONNX pads: [dim0_start, dim1_start, dim2_start, dim3_start, dim0_end, dim1_end, dim2_end, dim3_end]
+  // Pads last two dims: H=(1,1), W=(2,1).
+  const std::vector<int64_t> pads_data = {0, 0, 1, 2, 0, 0, 1, 1};
+  for (auto v : pads_data) {
+    pads_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(pads_init);
+
+  auto& pads_arg = graph.GetOrCreateNodeArg("pads", nullptr);
+  auto& pad_node = graph.AddNode("pad_constant", "Pad", "constant pad default value",
+                                 {&input_arg, &pads_arg}, {&output_arg});
+  pad_node.AddAttribute("mode", "constant");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 1, 3, 4};
+  std::vector<float> input_data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "PadConstantDefaultValueMLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// Verify that ML Program supports padding on dimensions other than the last two.
+// NeuralNetwork only supports padding on last two dims [H,W], but MIL pad op has no such restriction.
+TEST(CoreMLExecutionProviderTest, PadAllDimsMLProgram) {
+  // Build a model: output = Pad(X, pads, mode="constant")
+  // Input shape: {2,3,4}, pad on dim 0: start=1, end=1 -> output shape: {4,3,4}
+  onnxruntime::Model model("pad_all_dims_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // Input X: {2,3,4} float tensor
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(2);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(4);
+
+  // Output Y: {4,3,4} float tensor
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(4);
+  output_shape->add_dim()->set_dim_value(3);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  // Pads initializer: [1,0,0, 1,0,0] — pad dim 0 by (1,1), no padding on dims 1,2
+  ONNX_NAMESPACE::TensorProto pads_init;
+  pads_init.set_name("pads");
+  pads_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  pads_init.add_dims(6);
+  const std::vector<int64_t> pads_data = {1, 0, 0, 1, 0, 0};
+  for (auto v : pads_data) {
+    pads_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(pads_init);
+
+  // constant_value initializer: 0.0
+  ONNX_NAMESPACE::TensorProto constant_value_init;
+  constant_value_init.set_name("constant_value");
+  constant_value_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  constant_value_init.add_float_data(0.0f);
+  graph.AddInitializedTensor(constant_value_init);
+
+  auto& pads_arg = graph.GetOrCreateNodeArg("pads", nullptr);
+  auto& constant_value_arg = graph.GetOrCreateNodeArg("constant_value", nullptr);
+
+  auto& pad_node = graph.AddNode("pad_all_dims", "Pad", "constant pad on dim 0",
+                                 {&input_arg, &pads_arg, &constant_value_arg}, {&output_arg});
+  pad_node.AddAttribute("mode", "constant");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  // Input data for {2,3,4}
+  std::vector<int64_t> dims = {2, 3, 4};
+  std::vector<float> input_data(24);
+  std::iota(input_data.begin(), input_data.end(), 1.0f);
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "PadAllDimsMLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, Pad1DMLProgram) {
+  // Build a model: output = Pad(X, pads, mode="constant")
+  // 1D input shape: {5}, pad start=2, end=3 -> output shape: {10}
+  onnxruntime::Model model("pad_1d_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // Input X: {5} float tensor
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(5);
+
+  // Output Y: {10} float tensor
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(10);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  // Pads initializer: [2, 3] — pad dim 0 by (2,3)
+  ONNX_NAMESPACE::TensorProto pads_init;
+  pads_init.set_name("pads");
+  pads_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  pads_init.add_dims(2);
+  const std::vector<int64_t> pads_data = {2, 3};
+  for (auto v : pads_data) {
+    pads_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(pads_init);
+
+  // constant_value initializer: 0.0
+  ONNX_NAMESPACE::TensorProto constant_value_init;
+  constant_value_init.set_name("constant_value");
+  constant_value_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  constant_value_init.add_float_data(0.0f);
+  graph.AddInitializedTensor(constant_value_init);
+
+  auto& pads_arg = graph.GetOrCreateNodeArg("pads", nullptr);
+  auto& constant_value_arg = graph.GetOrCreateNodeArg("constant_value", nullptr);
+
+  auto& pad_node = graph.AddNode("pad_1d", "Pad", "constant pad on 1D input",
+                                 {&input_arg, &pads_arg, &constant_value_arg}, {&output_arg});
+  pad_node.AddAttribute("mode", "constant");
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  // Input data for {5}
+  std::vector<int64_t> dims = {5};
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "Pad1DMLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, HardSigmoidTest) {
+  // Single-node HardSigmoid model; verify it is claimed entirely by the
+  // CoreML EP in both NeuralNetwork and MLProgram formats, and that the
+  // output matches the CPU EP reference.
+  onnxruntime::Model model("hard_sigmoid_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(2);
+  input_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(3);
+  output_shape->add_dim()->set_dim_value(2);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  auto& node = graph.AddNode("hard_sigmoid", "HardSigmoid", "HardSigmoid with non-default alpha/beta",
+                             {&input_arg}, {&output_arg});
+  // Use non-default values so the test catches any attribute-wiring bug.
+  node.AddAttribute("alpha", 0.1f);
+  node.AddAttribute("beta", 0.6f);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  // Inputs span the three HardSigmoid regions (saturated-low, linear, saturated-high)
+  // for alpha=0.1, beta=0.6: values < -6 clamp to 0, values > 4 clamp to 1, others are linear.
+  std::vector<int64_t> dims = {1, 3, 2, 4};
+  std::vector<float> input_data = {-10.0f, -7.0f, -6.0f, -5.0f, -3.0f, -1.0f, 0.0f, 1.0f,
+                                   2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 10.0f, 0.5f, -0.5f,
+                                   -4.0f, -2.0f, 1.5f, 2.5f, -1.5f, 3.5f, -3.5f, 4.5f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "HardSigmoidTest_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "HardSigmoidTest_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+#endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime

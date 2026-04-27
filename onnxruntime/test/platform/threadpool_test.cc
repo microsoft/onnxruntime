@@ -1008,4 +1008,36 @@ TEST(ThreadPoolTest, SpinDurationPositive_TimeBased) {
   TestSpinDurationMode(1000);  // 1ms
 }
 
+// Smoke test: exponential backoff (spin_backoff_max > 1) produces correct results.
+void TestSpinBackoffMode(int spin_duration_us, unsigned int spin_backoff_max) {
+  constexpr int num_threads = 4;
+  constexpr std::ptrdiff_t num_tasks = 1024;
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                         onnxruntime::ThreadOptions(),
+                                         nullptr,
+                                         num_threads,
+                                         spin_duration_us,
+                                         /*force_hybrid*/ false,
+                                         spin_backoff_max);
+  std::atomic<std::ptrdiff_t> ctr{0};
+  ThreadPool::TryParallelFor(tp.get(), num_tasks, 0.0,
+                             [&](std::ptrdiff_t s, std::ptrdiff_t e) {
+                               ctr += e - s;
+                             });
+  ASSERT_EQ(ctr.load(), num_tasks);
+}
+
+TEST(ThreadPoolTest, SpinBackoffDefault_NoBackoff) {
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 1U);
+}
+
+TEST(ThreadPoolTest, SpinBackoffEnabled) {
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 4U);
+  TestSpinBackoffMode(onnxruntime::concurrency::kSpinDurationDefault, 8U);
+}
+
+TEST(ThreadPoolTest, SpinBackoffWithTimeBoundedSpin) {
+  TestSpinBackoffMode(1000, 8U);  // 1ms + backoff cap 8
+}
+
 }  // namespace onnxruntime

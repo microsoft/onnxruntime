@@ -375,7 +375,8 @@ ThreadPool::ThreadPool(Env* env,
                        const NAME_CHAR_TYPE* name,
                        int degree_of_parallelism,
                        int spin_duration_us,
-                       bool force_hybrid)
+                       bool force_hybrid,
+                       unsigned int spin_backoff_max)
     : thread_options_(thread_options), force_hybrid_(force_hybrid) {
   // In the current implementation, a thread pool with degree_of_parallelism==1 uses
   // the caller as one of the threads for executing work.  Hence we only create
@@ -398,6 +399,7 @@ ThreadPool::ThreadPool(Env* env,
     extended_eigen_threadpool_ =
         std::make_unique<PoolType>(name, threads_to_create,
                                    spin_duration_us,
+                                   spin_backoff_max,
                                    *env, thread_options_);
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
