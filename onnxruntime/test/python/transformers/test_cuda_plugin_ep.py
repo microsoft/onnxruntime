@@ -2437,13 +2437,23 @@ class TestCudaPluginEP(unittest.TestCase):
                     self.assertIn(key, entry, f"Missing '{key}' in profile entry: {entry}")
 
             # Check for GPU kernel events. These only appear when the build has
-            # ENABLE_CUDA_PROFILING=ON. The test is written to pass either way:
-            # without CUDA profiling the events list simply won't contain Kernel
-            # entries, and the test validates the basic profiling infrastructure.
+            # ENABLE_CUDA_PROFILING=ON.
+            #
+            # When the env var ORT_CUDA_PROFILING_ENABLED=1 is set (e.g. by the
+            # profiling-enabled CI job), we require at least one Kernel event so
+            # that a broken CUPTI integration cannot ship green.
             kernel_events = [e for e in profile_data if isinstance(e, dict) and e.get("cat") == "Kernel"]
-            has_cuda_profiling = len(kernel_events) > 0
+            expect_cuda_profiling = os.environ.get("ORT_CUDA_PROFILING_ENABLED") == "1"
 
-            if has_cuda_profiling:
+            if expect_cuda_profiling:
+                self.assertGreater(
+                    len(kernel_events),
+                    0,
+                    "ORT_CUDA_PROFILING_ENABLED=1 but no GPU Kernel events found in profile. "
+                    "CUPTI integration may be broken.",
+                )
+
+            if len(kernel_events) > 0:
                 # Validate GPU kernel event metadata.
                 for event in kernel_events:
                     self.assertIn("ts", event)
@@ -2453,7 +2463,7 @@ class TestCudaPluginEP(unittest.TestCase):
                     # CUPTI events include stream and block dimensions.
                     self.assertIn("stream", args, f"GPU kernel event missing 'stream': {event}")
                     self.assertIn("block_x", args, f"GPU kernel event missing 'block_x': {event}")
-            else:
+            elif not expect_cuda_profiling:
                 # No GPU kernel events — CUDA profiling is likely not enabled.
                 # The test still validates the basic profiling JSON structure above.
                 print("Note: No GPU Kernel events found in profile. CUDA profiling may not be enabled in this build.")

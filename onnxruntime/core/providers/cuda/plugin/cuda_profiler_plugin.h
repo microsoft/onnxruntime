@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if defined(ENABLE_CUDA_PROFILING)
 
 #include "cuda_plugin_utils.h"
 #include "cupti_manager.h"
@@ -40,4 +40,4 @@ struct CudaPluginEpProfiler : OrtEpProfilerImpl {
 }  // namespace cuda_plugin
 }  // namespace onnxruntime
 
-#endif  // defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#endif  // defined(ENABLE_CUDA_PROFILING)

@@ -267,9 +267,7 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
 
 if (onnxruntime_ENABLE_CUDA_PROFILING)
     target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE CUDA::cupti)
-    # USE_CUDA is required by cupti_manager.h guards. ENABLE_CUDA_PROFILING activates
-    # the profiler implementation in cuda_profiler_plugin.cc.
-    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE USE_CUDA ENABLE_CUDA_PROFILING)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_PROFILING)
 endif()
 
 # Symbol visibility — only export CreateEpFactories and ReleaseEpFactory

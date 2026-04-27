@@ -884,6 +884,7 @@ The plugin does **not** perform the post-hoc merge/sort that the in-tree `GPUPro
 | Event merge | `GPUProfilerBase::MergeEvents` interleaves GPU events into ORT's array (has known sort-order bug) | Append-only; ORT-side bridge appends only, and trace consumers handle ordering |
 | Correlation IDs | Relative → absolute conversion in `GPUTracerManager::PushCorrelation` | Bridge provides absolute IDs directly; plugin pushes to CUPTI as-is |
 | `StopEvent` metadata | Ignored (just pops correlation) | ORT event metadata available; currently unused, can annotate GPU events in future |
+| GPU→ORT event linkage | Implicit via CUPTI external correlation IDs merged into timeline | GPU events carry only CUPTI metadata (`stream`, `grid_*`, `block_*`); no ORT correlation or parent identifier is attached. Downstream consumers must relate GPU kernels to ORT nodes via timestamp proximity. This is a known limitation; future work may attach `correlation_id` or parent event name via `StopEvent`'s `OrtProfilingEvent` parameter |
 | Singleton scope | Process-wide `CUPTIManager` in main ORT DLL | DLL-local `CUPTIManager` in plugin (process isolation) |
 
 ### 14.6 Build Configuration
