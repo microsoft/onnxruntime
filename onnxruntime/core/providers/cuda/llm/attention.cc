@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention.h"
 #include "core/providers/cpu/llm/attention_helper.h"
@@ -10,6 +11,7 @@
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kv_cache.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
+#include "contrib_ops/cuda/bert/gqa_unfused_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
@@ -1039,12 +1041,248 @@ Status Attention<T>::RunUnfusedAttention(
 }
 
 // ============================================================================
+// RunGqaUnfusedAttention: GQA-capable unfused path + large-head fp16/bf16 fix
+// ============================================================================
+//
+// Routes to LaunchGqaUnfusedAttention from contrib_ops/cuda/bert/gqa_unfused_attention.h.
+//
+// Handles:
+//   - GQA natively (no K/V head replication; reshape-Q trick inside kernel).
+//   - fp16/bf16 with large head_size via FP32 QK scratch (fixes issue #28195:
+//     unfused attention producing NaN when head_dim > 256 at scale=1.0).
+//   - Different Q/K sequence lengths, past_key+past_value, nonpad_kv_seqlen.
+//   - attn_mask (bool/float, 2D/3D/4D), causal, softcap.
+//
+// Not supported here (caller rejects upstream):
+//   - output_qk: only MHA unfused emits QK, so this path requires output_qk==nullptr.
+// ============================================================================
+template <typename T>
+Status Attention<T>::RunGqaUnfusedAttention(
+    OpKernelContext* context,
+    const Tensor* Q, const Tensor* K, const Tensor* V,
+    const Tensor* attn_mask, const Tensor* past_key, const Tensor* past_value,
+    const Tensor* nonpad_kv_seqlen,
+    Tensor* Y, Tensor* present_key, Tensor* present_value,
+    const attention_helper::AttentionParameters& parameters) const {
+  using NativeCudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+  auto& device_prop = GetDeviceProp();
+  auto cuda_stream = Stream(context);
+  const bool is_bsnh = parameters.transpose_output;
+  const int B = parameters.batch_size;
+  const int S_q = parameters.q_sequence_length;
+  const int N_q = parameters.q_num_heads;
+  const int N_kv = parameters.kv_num_heads;
+  const int H = parameters.head_size;
+  const int H_v = parameters.v_head_size;
+  const int total_kv = parameters.total_sequence_length;
+  const int max_threads = device_prop.maxThreadsPerBlock;
+
+  // -------- Build BNSH Q (transpose if input was BSNH) ------------------------
+  const NativeCudaT* q_bnsh = nullptr;
+  IAllocatorUniquePtr<void> q_bnsh_buffer;
+  if (is_bsnh) {
+    const size_t q_bytes = SafeInt<size_t>(B) * S_q * N_q * H * sizeof(T);
+    q_bnsh_buffer = GetScratchBuffer<void>(q_bytes, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, S_q, N_q, H,
+                                               Q->Data<T>(), q_bnsh_buffer.get(),
+                                               cuda_stream, max_threads));
+    q_bnsh = reinterpret_cast<const NativeCudaT*>(q_bnsh_buffer.get());
+  } else {
+    q_bnsh = reinterpret_cast<const NativeCudaT*>(Q->Data<T>());
+  }
+
+  // -------- Build BNSH K/V cache of length total_kv --------------------------
+  // Three cases:
+  //   (a) nonpad_kv_seqlen: K/V are the full cache (kv_seq == total_kv).
+  //   (b) past_key + new K/V: concat via LaunchConcatNewToPastKV into present buffers.
+  //   (c) no past: K/V are the new tokens only (total_kv == kv_sequence_length).
+  // In cases (a) and (c) the cache is contiguous in the input tensors (subject
+  // to a BSNH->BNSH transpose). Case (b) writes into present_key/present_value.
+  const NativeCudaT* k_cache = nullptr;
+  const NativeCudaT* v_cache = nullptr;
+  IAllocatorUniquePtr<void> k_bnsh_buffer;
+  IAllocatorUniquePtr<void> v_bnsh_buffer;
+  bool present_already_populated = false;
+
+  if (past_key != nullptr) {
+    ORT_ENFORCE(past_value != nullptr, "past_key requires past_value.");
+    ORT_ENFORCE(present_key != nullptr && present_value != nullptr,
+                "present_key/value outputs are required when past_key is provided.");
+    // LaunchConcatNewToPastKV uses a single head_size for both K and V caches.
+    ORT_RETURN_IF(H != H_v,
+                  "RunGqaUnfusedAttention: past_key with H != H_v not supported");
+    auto past_seqlens_buffer = GetScratchBuffer<int>(B, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(LaunchFillInt32(past_seqlens_buffer.get(),
+                                        parameters.past_sequence_length, B,
+                                        cuda_stream, max_threads));
+
+    // New K/V must be BSNH for the concat kernel; transpose if 4D BNSH input.
+    const T* k_new_bsnh = K->Data<T>();
+    const T* v_new_bsnh = V->Data<T>();
+    if (!is_bsnh) {
+      const size_t kn_bytes = SafeInt<size_t>(B) * parameters.kv_sequence_length * N_kv * H * sizeof(T);
+      const size_t vn_bytes = SafeInt<size_t>(B) * parameters.kv_sequence_length * N_kv * H_v * sizeof(T);
+      k_bnsh_buffer = GetScratchBuffer<void>(kn_bytes, GetComputeStream(context));
+      v_bnsh_buffer = GetScratchBuffer<void>(vn_bytes, GetComputeStream(context));
+      ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(B, parameters.kv_sequence_length, N_kv, H,
+                                                 K->Data<T>(), k_bnsh_buffer.get(),
+                                                 cuda_stream, max_threads));
+      ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(B, parameters.kv_sequence_length, N_kv, H_v,
+                                                 V->Data<T>(), v_bnsh_buffer.get(),
+                                                 cuda_stream, max_threads));
+      k_new_bsnh = static_cast<const T*>(k_bnsh_buffer.get());
+      v_new_bsnh = static_cast<const T*>(v_bnsh_buffer.get());
+    }
+
+    ORT_RETURN_IF_ERROR(onnxruntime::contrib::cuda::LaunchConcatNewToPastKV<NativeCudaT>(
+        B, N_kv, H, parameters.kv_sequence_length, parameters.past_sequence_length, total_kv,
+        /*is_bsnh=*/false,
+        past_seqlens_buffer.get(), /*total_seq_lens=*/nullptr,
+        reinterpret_cast<const NativeCudaT*>(past_key->Data<T>()),
+        reinterpret_cast<const NativeCudaT*>(past_value->Data<T>()),
+        reinterpret_cast<const NativeCudaT*>(k_new_bsnh),
+        reinterpret_cast<const NativeCudaT*>(v_new_bsnh),
+        reinterpret_cast<NativeCudaT*>(present_key->MutableData<T>()),
+        reinterpret_cast<NativeCudaT*>(present_value->MutableData<T>()),
+        cuda_stream, max_threads, /*past_only=*/false));
+    k_cache = reinterpret_cast<const NativeCudaT*>(present_key->MutableData<T>());
+    v_cache = reinterpret_cast<const NativeCudaT*>(present_value->MutableData<T>());
+    present_already_populated = true;
+  } else if (is_bsnh) {
+    // BSNH K/V -> BNSH. total_kv == kv_sequence_length (no past).
+    // When present_key/present_value outputs exist, transpose directly into them
+    // to avoid a redundant copy later.
+    if (present_key != nullptr && present_value != nullptr) {
+      ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, total_kv, N_kv, H,
+                                                 K->Data<T>(), present_key->MutableData<T>(),
+                                                 cuda_stream, max_threads));
+      ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, total_kv, N_kv, H_v,
+                                                 V->Data<T>(), present_value->MutableData<T>(),
+                                                 cuda_stream, max_threads));
+      k_cache = reinterpret_cast<const NativeCudaT*>(present_key->Data<T>());
+      v_cache = reinterpret_cast<const NativeCudaT*>(present_value->Data<T>());
+      present_already_populated = true;
+    } else {
+      const size_t k_bytes = SafeInt<size_t>(B) * total_kv * N_kv * H * sizeof(T);
+      const size_t v_bytes = SafeInt<size_t>(B) * total_kv * N_kv * H_v * sizeof(T);
+      k_bnsh_buffer = GetScratchBuffer<void>(k_bytes, GetComputeStream(context));
+      v_bnsh_buffer = GetScratchBuffer<void>(v_bytes, GetComputeStream(context));
+      ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, total_kv, N_kv, H,
+                                                 K->Data<T>(), k_bnsh_buffer.get(),
+                                                 cuda_stream, max_threads));
+      ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, total_kv, N_kv, H_v,
+                                                 V->Data<T>(), v_bnsh_buffer.get(),
+                                                 cuda_stream, max_threads));
+      k_cache = reinterpret_cast<const NativeCudaT*>(k_bnsh_buffer.get());
+      v_cache = reinterpret_cast<const NativeCudaT*>(v_bnsh_buffer.get());
+    }
+  } else {
+    // 4D BNSH input, no past: use directly.
+    k_cache = reinterpret_cast<const NativeCudaT*>(K->Data<T>());
+    v_cache = reinterpret_cast<const NativeCudaT*>(V->Data<T>());
+  }
+
+  // -------- Build per-batch seqlens (for nonpad_kv_seqlen) --------------------
+  const int* seqlens_k_ptr = nullptr;
+  IAllocatorUniquePtr<int> seqlens_k_buffer;
+  if (nonpad_kv_seqlen != nullptr) {
+    seqlens_k_buffer = GetScratchBuffer<int>(B, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+        nonpad_kv_seqlen->Data<int64_t>(), seqlens_k_buffer.get(),
+        B, total_kv, cuda_stream, max_threads));
+    seqlens_k_ptr = seqlens_k_buffer.get();
+  }
+
+  // -------- Build attn_bias from attn_mask ------------------------------------
+  IAllocatorUniquePtr<void> mask_bias_buffer;
+  const NativeCudaT* attn_bias_data = nullptr;
+  bool bcast0 = false, bcast1 = false;
+  if (attn_mask != nullptr) {
+    const void* bias_void = nullptr;
+    ORT_RETURN_IF_ERROR(ConvertAttnMaskToBias(context, attn_mask, cuda_stream, max_threads,
+                                              mask_bias_buffer, bias_void, bcast0, bcast1));
+    attn_bias_data = reinterpret_cast<const NativeCudaT*>(bias_void);
+  }
+
+  // -------- Allocate output BNSH scratch (if 3D BSNH output needed) ----------
+  NativeCudaT* out_bnsh = reinterpret_cast<NativeCudaT*>(Y->MutableData<T>());
+  IAllocatorUniquePtr<void> out_bnsh_buffer;
+  if (is_bsnh) {
+    const size_t out_bytes = SafeInt<size_t>(B) * S_q * N_q * H_v * sizeof(T);
+    out_bnsh_buffer = GetScratchBuffer<void>(out_bytes, GetComputeStream(context));
+    out_bnsh = reinterpret_cast<NativeCudaT*>(out_bnsh_buffer.get());
+  }
+
+  // -------- Allocate kernel workspace -----------------------------------------
+  const size_t ws_bytes = onnxruntime::contrib::cuda::GetGqaUnfusedAttentionWorkspaceSize(
+      B, N_q, S_q, total_kv);
+  auto ws_buffer = GetScratchBuffer<void>(ws_bytes, GetComputeStream(context));
+
+  // -------- Call the kernel ---------------------------------------------------
+  onnxruntime::contrib::cuda::GqaUnfusedAttentionParams p;
+  p.batch_size = B;
+  p.num_heads = N_q;
+  p.kv_num_heads = N_kv;
+  p.head_size = H;
+  p.v_head_size = H_v;
+  p.q_sequence_length = S_q;
+  p.total_kv_length = total_kv;
+  p.max_kv_length = total_kv;  // ONNX Attention caches are packed (no shared buffer).
+  p.broadcast_attn_bias_dim_0 = bcast0;
+  p.broadcast_attn_bias_dim_1 = bcast1;
+  p.is_causal = parameters.is_causal;
+  p.local_window_size = -1;  // ONNX Attention (opset 23/24) does not expose sliding window.
+  p.scale = parameters.scale;
+  p.softcap = parameters.softcap;
+  p.seqlens_k = seqlens_k_ptr;
+
+  ORT_RETURN_IF_ERROR((onnxruntime::contrib::cuda::LaunchGqaUnfusedAttention<NativeCudaT>(
+      device_prop, GetCublasHandle(context), cuda_stream,
+      p, q_bnsh, k_cache, v_cache, attn_bias_data, out_bnsh, ws_buffer.get())));
+
+  // -------- Transpose output BNSH -> BSNH if input was 3D --------------------
+  if (is_bsnh && out_bnsh_buffer != nullptr) {
+    ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(B, S_q, N_q, H_v,
+                                               out_bnsh_buffer.get(), Y->MutableData<T>(),
+                                               cuda_stream, max_threads));
+  }
+
+  // -------- Populate present_key/present_value if requested ------------------
+  if (!present_already_populated) {
+    if (present_key != nullptr) {
+      if (is_bsnh) {
+        ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, parameters.kv_sequence_length, N_kv, H,
+                                                   K->Data<T>(), present_key->MutableData<T>(),
+                                                   cuda_stream, max_threads));
+      } else {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+            present_key->MutableData<T>(), K->Data<T>(),
+            K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+      }
+    }
+    if (present_value != nullptr) {
+      if (is_bsnh) {
+        ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(B, parameters.kv_sequence_length, N_kv, H_v,
+                                                   V->Data<T>(), present_value->MutableData<T>(),
+                                                   cuda_stream, max_threads));
+      } else {
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+            present_value->MutableData<T>(), V->Data<T>(),
+            V->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+// ============================================================================
 // ComputeInternal: Dispatch to appropriate attention kernel
 // ============================================================================
 // MHA path (q_num_heads == kv_num_heads): uses direct kernel dispatch cascade
 //   flash → memory efficient → unfused
-// GQA path (q_num_heads != kv_num_heads): uses flash (handles GQA natively) or MEA
-//   (with head expansion via LaunchUngroup). Unfused fallback not yet supported for GQA.
+// GQA path (q_num_heads != kv_num_heads): uses flash (handles GQA natively), MEA
+//   (with head expansion via LaunchUngroup, fp16/bf16 only), or GQA unfused fallback.
 // ============================================================================
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -1145,7 +1383,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
         !has_output_qk &&
-        past_key == nullptr;
+        past_key == nullptr &&
+        // GQA+MEA requires LaunchUngroup which only has fp16/bf16 instantiations.
+        // FP32 GQA must fall through to the unfused path.
+        !(is_gqa && std::is_same<T, float>::value);
 
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
     // "unaligned" kernel path. When an attention mask is present (with or without
@@ -1173,15 +1414,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 #endif
 
-  // Fallback: unfused attention
-  // Softcap is not implemented in the unfused path — it requires Flash or MEA.
-  if (parameters.softcap > 0.0f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "softcap requires flash attention or memory efficient attention, "
-                           "but neither is eligible for this configuration. Check dtype (fp16/bf16 required for Flash), "
-                           "head_size constraints, and past_key compatibility.");
-  }
-
   // TODO(titaiwang): Support additional output_qk modes beyond kNone and kQK.
   // Currently only unfused handles output_qk, and only kNone/kQK modes.
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
@@ -1191,16 +1423,46 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                            "in Attention op (CUDA).");
   }
 
+  // GQA-capable unfused fallback (issue #28195).
+  // Routes through LaunchGqaUnfusedAttention when:
+  //   - GQA (q_num_heads != kv_num_heads) — the MHA unfused runner cannot handle this.
+  //   - fp16/bf16 with head_size > 128 — raw Q*K^T can overflow fp16 storage even
+  //     though cuBLAS accumulates in FP32; the new kernel writes QK to an FP32 scratch.
+  //     The overflow threshold depends on the distribution of Q/K values and scale.
+  //     head_size=256 at scale=1/sqrt(256)=0.0625 is borderline; head_size=512 at
+  //     scale=1.0 (Gemma 4) definitely overflows. We use 128 as a conservative
+  //     threshold since all fused kernels already handle head_size <= 128 anyway.
+  // This kernel supports softcap. It does not support output_qk, so we only enter it
+  // when qk_matmul_output_mode_ == kNone.
+  const bool is_half_or_bf16 = std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value;
+  const bool needs_fp32_qk_scratch = is_half_or_bf16 && parameters.head_size > 128;
+  if ((is_gqa || needs_fp32_qk_scratch) &&
+      qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone) {
+    LOGS_DEFAULT(VERBOSE) << "Attention: using GQA unfused fallback (is_gqa=" << is_gqa
+                          << ", needs_fp32_qk_scratch=" << needs_fp32_qk_scratch
+                          << ", head_size=" << parameters.head_size
+                          << ", softcap=" << parameters.softcap << ")";
+    return RunGqaUnfusedAttention(context, Q, K, V, attn_mask, past_key, past_value,
+                                  nonpad_kv_seqlen, Y, present_key, present_value, parameters);
+  }
+
   if (is_gqa) {
-    // TODO(titaiwang): Support GQA in unfused attention path for fp32/old-GPU fallback.
-    // Currently blocked because QkvToContext allocates K/V workspace assuming
-    // num_heads == kv_num_heads. GQA needs a head expansion step (ExpandKVHeads kernel)
-    // to replicate kv_num_heads -> q_num_heads before unfused can process.
-    // Requires ~160 lines. See issue #27516.
+    // qk_matmul_output_mode != kNone reaches here; the unfused MHA runner cannot handle GQA.
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "ONNX Attention with GQA (q_num_heads != kv_num_heads) is not supported by the "
-                           "unfused runner. Flash requires fp16/bf16, SM>=80, and attn_mask==nullptr; MEA "
-                           "requires past_key==nullptr. See PR #27851 for MEA past_key support.");
+                           "ONNX Attention with GQA (q_num_heads != kv_num_heads) and output_qk is not "
+                           "supported by the unfused runner.");
+  }
+
+  // Fallback: unfused MHA attention (legacy runner).
+  // Softcap is not implemented in the legacy unfused path — it requires Flash or MEA
+  // (or the new GQA unfused path above, which supports softcap for fp16/bf16/fp32).
+  // NOTE: keep this guard even if future PRs add softcap to more fused paths — this
+  // legacy unfused runner does NOT apply softcap and would silently produce wrong results.
+  if (parameters.softcap > 0.0f) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "softcap requires flash attention or memory efficient attention, "
+                           "but neither is eligible for this configuration. Check dtype (fp16/bf16 required for Flash), "
+                           "head_size constraints, and past_key compatibility.");
   }
 
   return RunUnfusedAttention(context, Q, K, V, attn_mask, past_key, past_value,
