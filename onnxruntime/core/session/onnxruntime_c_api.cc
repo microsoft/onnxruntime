@@ -533,6 +533,18 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
     }
   }
   if (outer_indices_num > 0) {
+    if (outer_indices_data[0] != 0) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index must start at 0, got: ", outer_indices_data[0]).c_str());
+    }
+    if (outer_indices_data[outer_indices_num - 1] != static_cast<int64_t>(inner_indices_num)) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index last element must equal inner_indices_num (",
+                     inner_indices_num, "), got: ", outer_indices_data[outer_indices_num - 1])
+              .c_str());
+    }
     int64_t prev = 0;
     for (size_t i = 0; i < outer_indices_num; ++i) {
       auto val = outer_indices_data[i];
@@ -658,6 +670,13 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
 
   const auto values_size = sparse_tensor.NumValues();
   const auto& dense_shape = sparse_tensor.DenseShape();
+  if ((values_size == 0) != (indices_num == 0)) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        values_size == 0
+            ? "COO indices must be empty when the sparse tensor has no values."
+            : "COO indices must be provided when the sparse tensor has values.");
+  }
   if (values_size > 0 && indices_num > 0) {
     if (indices_num == values_size) {
       const auto dense_size = dense_shape.Size();
@@ -733,6 +752,18 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
     }
   }
   if (outer_num > 0) {
+    if (outer_data[0] != 0) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index must start at 0, got: ", outer_data[0]).c_str());
+    }
+    if (outer_data[outer_num - 1] != static_cast<int64_t>(inner_num)) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index last element must equal inner_num (",
+                     inner_num, "), got: ", outer_data[outer_num - 1])
+              .c_str());
+    }
     int64_t prev = 0;
     for (size_t i = 0; i < outer_num; ++i) {
       auto val = outer_data[i];
