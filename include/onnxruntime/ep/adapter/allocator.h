@@ -48,7 +48,7 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   // We need to properly map from one to the other.
   // `::OrtSyncStream*` should be treated as an opaque type from the plugin EP's perspective.
 
-  void* AllocOnStream(size_t size, Stream* /*stream*/) override {
+  void* AllocOnStream(size_t /*size*/, Stream* /*stream*/) override {
     ORT_NOT_IMPLEMENTED("IAllocatorWrappingOrtAllocator::AllocOnStream is not implemented yet.");
   }
 
