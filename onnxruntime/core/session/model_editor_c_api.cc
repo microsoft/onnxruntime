@@ -228,26 +228,31 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                  "Each OrtValue can only be added once.");
   }
 
-  // Track the pointer before transferring ownership to the map.
-  // This ensures exception safety: if the map insertion throws, the tracking set
-  // is already updated but no ownership was transferred, so the caller still owns the pointer.
-  graph->owned_initializer_ptrs_.insert(tensor);
-
   if (data_is_external) {
     // enforce that an external initializer is not used if the data size is < 128 bytes.
     // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
     // input involved in that. the ONNX shape inferencing does not support external data for those values.
     // e.g. Reshape's `shape` input, Reduce's `axes', Slice's `starts`, `ends`, `steps`, Clip's `min`, `max`, etc.
     if (t.SizeInBytes() < 128) {
-      graph->owned_initializer_ptrs_.erase(tensor);
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "External initializer should only be used for data >= 128 bytes. "
                                    "Please use CreateTensorAsOrtValue instead.");
     }
+  }
 
-    graph->external_initializers[name] = std::unique_ptr<OrtValue>(tensor);  // take ownership
-  } else {
-    graph->initializers[name] = std::unique_ptr<OrtValue>(tensor);  // take ownership
+  // All validation done. Take ownership with exception-safe rollback.
+  // Insert into tracking set first, then try to insert into the map.
+  // If the map insertion throws, roll back the tracking set so the caller can retry.
+  // The actual ownership transfer (reset) is noexcept.
+  graph->owned_initializer_ptrs_.insert(tensor);
+  try {
+    auto& m = data_is_external ? graph->external_initializers : graph->initializers;
+    auto [it, inserted] = m.try_emplace(name, nullptr);
+    ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
+    it->second.reset(tensor);  // noexcept ownership transfer
+  } catch (...) {
+    graph->owned_initializer_ptrs_.erase(tensor);
+    throw;  // API_IMPL_END converts to OrtStatus
   }
 
   return nullptr;
@@ -281,8 +286,12 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
                                  "Each OrtNode can only be added once.");
   }
 
+  // All validation done. Take ownership.
+  // Reserve first so push_back won't reallocate — if reserve() throws, node is not yet
+  // owned by a unique_ptr and the caller still safely owns it.
   node->id = graph->nodes.size();
-  graph->nodes.push_back(std::unique_ptr<onnxruntime::ModelEditorNode>(node));  // take ownership
+  graph->nodes.reserve(graph->nodes.size() + 1);
+  graph->nodes.emplace_back(node);  // constructs unique_ptr in-place; won't reallocate
   node->owned_ = true;
   return nullptr;
   API_IMPL_END
