@@ -378,4 +378,15 @@ CPUIDInfo::CPUIDInfo() {
 #endif
 #endif  // defined(CPUIDINFO_ARCH_ARM)
 }
+
+void CPUIDInfo::ShutDown() {
+#if defined(CPUINFO_SUPPORTED)
+  static bool is_shutdown = false;
+  if (!is_shutdown && pytorch_cpuinfo_init_) {
+    cpuinfo_deinitialize();
+    pytorch_cpuinfo_init_ = false;
+    is_shutdown = true;
+  }
+#endif
+}
 }  // namespace onnxruntime

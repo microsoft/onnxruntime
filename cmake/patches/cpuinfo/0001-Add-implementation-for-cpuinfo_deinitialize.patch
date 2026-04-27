@@ -1,0 +1,183 @@
+From 9544f586644918c90496ce91d445968572bf1487 Mon Sep 17 00:00:00 2001
+From: Vineeth Chelur <vchelur@microsoft.com>
+Date: Mon, 29 Dec 2025 16:09:42 -0800
+Subject: [PATCH] Add implementation for cpuinfo_deinitialize
+
+---
+ src/cpuinfo/internal-api.h |   3 +
+ src/init.c                 | 117 ++++++++++++++++++++++++++++++++++++-
+ src/x86/windows/init.c     |   3 +
+ 3 files changed, 122 insertions(+), 1 deletion(-)
+
+diff --git a/src/cpuinfo/internal-api.h b/src/cpuinfo/internal-api.h
+index d84b26a..e12e2df 100644
+--- a/src/cpuinfo/internal-api.h
++++ b/src/cpuinfo/internal-api.h
+@@ -45,6 +45,9 @@ extern CPUINFO_INTERNAL struct cpuinfo_uarch_info cpuinfo_global_uarch;
+ extern CPUINFO_INTERNAL uint32_t cpuinfo_linux_cpu_max;
+ extern CPUINFO_INTERNAL const struct cpuinfo_processor** cpuinfo_linux_cpu_to_processor_map;
+ extern CPUINFO_INTERNAL const struct cpuinfo_core** cpuinfo_linux_cpu_to_core_map;
++#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64 || CPUINFO_ARCH_RISCV32 || CPUINFO_ARCH_RISCV64
++extern CPUINFO_INTERNAL const uint32_t* cpuinfo_linux_cpu_to_uarch_index_map;
++#endif
+ #endif
+
+ CPUINFO_PRIVATE void cpuinfo_x86_mach_init(void);
+diff --git a/src/init.c b/src/init.c
+index 81d5721..6a4aabf 100644
+--- a/src/init.c
++++ b/src/init.c
+@@ -2,6 +2,7 @@
+ #include <windows.h>
+ #elif !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+ #include <pthread.h>
++#include <stdlib.h>
+ #endif
+
+ #include <cpuinfo.h>
+@@ -14,10 +15,13 @@
+
+ #if defined(_WIN32) || defined(__CYGWIN__)
+ static INIT_ONCE init_guard = INIT_ONCE_STATIC_INIT;
++static INIT_ONCE deinit_guard = INIT_ONCE_STATIC_INIT;
+ #elif !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+ static pthread_once_t init_guard = PTHREAD_ONCE_INIT;
++static pthread_once_t deinit_guard = PTHREAD_ONCE_INIT;
+ #else
+ static bool init_guard = false;
++static bool deinit_guard = false;
+ #endif
+
+ bool CPUINFO_ABI cpuinfo_initialize(void) {
+@@ -64,4 +68,115 @@ bool CPUINFO_ABI cpuinfo_initialize(void) {
+	return cpuinfo_is_initialized;
+ }
+
+-void CPUINFO_ABI cpuinfo_deinitialize(void) {}
++#if defined(_WIN32) || defined(__CYGWIN__)
++#define CPUINFO_FREE(ptr)                                            \
++	do {                                                         \
++		if (ptr)                                             \
++			HeapFree(GetProcessHeap(), 0, (void*)(ptr)); \
++	} while (0)
++#else
++#define CPUINFO_FREE(ptr) free(ptr)
++#endif
++
++static void free_cpuinfo_cache(void) {
++	if (!cpuinfo_cache[cpuinfo_cache_level_1i])
++		return;
++
++	bool contiguous = true;
++	struct cpuinfo_cache* base = cpuinfo_cache[cpuinfo_cache_level_1i];
++	size_t offset = cpuinfo_cache_count[cpuinfo_cache_level_1i];
++
++	// For each subsequent level, either pointer is NULL (no caches of that level)
++	// or must match base + current offset if contiguous scheme was used.
++	for (int lvl = cpuinfo_cache_level_1d; lvl < cpuinfo_cache_level_max; ++lvl) {
++		if (cpuinfo_cache[lvl]) {
++			if (cpuinfo_cache[lvl] != base + offset) {
++				contiguous = false;
++				break;
++			}
++			offset += cpuinfo_cache_count[lvl];
++		}
++	}
++
++	if (contiguous) {
++		CPUINFO_FREE(base); // single block
++	} else {
++		for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++			CPUINFO_FREE(cpuinfo_cache[lvl]); // individually allocated
++		}
++	}
++
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++}
++
++static void cpuinfo_cleanup(void) {
++	if (!cpuinfo_is_initialized) {
++		return;
++	}
++
++	// Mark uninitialized early
++	cpuinfo_is_initialized = false;
++
++	CPUINFO_FREE(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	CPUINFO_FREE(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	CPUINFO_FREE(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	CPUINFO_FREE(cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	free_cpuinfo_cache();
++
++#if (CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64 || CPUINFO_ARCH_RISCV32 || CPUINFO_ARCH_RISCV64)
++	CPUINFO_FREE(cpuinfo_uarchs);
++	cpuinfo_uarchs = NULL;
++	cpuinfo_uarchs_count = 0;
++#endif
++
++#ifdef __linux__
++	CPUINFO_FREE(cpuinfo_linux_cpu_to_processor_map);
++	cpuinfo_linux_cpu_to_processor_map = NULL;
++
++	CPUINFO_FREE(cpuinfo_linux_cpu_to_core_map);
++	cpuinfo_linux_cpu_to_core_map = NULL;
++
++#if (CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64 || CPUINFO_ARCH_RISCV32 || CPUINFO_ARCH_RISCV64)
++	CPUINFO_FREE(cpuinfo_linux_cpu_to_uarch_index_map);
++	cpuinfo_linux_cpu_to_uarch_index_map = NULL;
++#endif
++
++	cpuinfo_linux_cpu_max = 0;
++#endif
++}
++
++#if defined(_WIN32) || defined(__CYGWIN__)
++static BOOL CALLBACK cpuinfo_deinit_once(PINIT_ONCE once, PVOID param, PVOID* ctx) {
++	cpuinfo_cleanup();
++	return TRUE;
++}
++#endif
++
++void CPUINFO_ABI cpuinfo_deinitialize(void) {
++#if defined(_WIN32) || defined(__CYGWIN__)
++	InitOnceExecuteOnce(&deinit_guard, cpuinfo_deinit_once, NULL, NULL);
++#elif !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
++	pthread_once(&deinit_guard, cpuinfo_cleanup);
++#else
++	if (!deinit_guard) {
++		cpuinfo_cleanup();
++		deinit_guard = true;
++	}
++#endif
++}
+diff --git a/src/x86/windows/init.c b/src/x86/windows/init.c
+index d233280..3f4c69b 100644
+--- a/src/x86/windows/init.c
++++ b/src/x86/windows/init.c
+@@ -667,5 +667,8 @@ cleanup:
+	if (l4 != NULL) {
+		HeapFree(heap, 0, l4);
+	}
++	if (processor_infos != NULL) {
++		HeapFree(heap, 0, processor_infos);
++	}
+	return TRUE;
+ }
+--
+2.52.0.windows.1

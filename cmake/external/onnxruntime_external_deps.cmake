@@ -362,7 +362,7 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
   if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
-    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo")
+    message(STATUS "Applying patches for Windows ARM64/ARM64EC in cpuinfo and implementing cpu_deinitialize function")
     onnxruntime_fetchcontent_declare(
       pytorch_cpuinfo
       URL ${DEP_URL_pytorch_cpuinfo}
@@ -373,15 +373,19 @@ if (CPUINFO_SUPPORTED)
         # https://github.com/pytorch/cpuinfo/pull/324
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
         # https://github.com/pytorch/cpuinfo/pull/348
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch &&
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/0001-Add-implementation-for-cpuinfo_deinitialize.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   else()
+    message(STATUS "Applying cpuinfo_deinitialize patch for cpuinfo")
     onnxruntime_fetchcontent_declare(
       pytorch_cpuinfo
       URL ${DEP_URL_pytorch_cpuinfo}
       URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
       EXCLUDE_FROM_ALL
+      PATCH_COMMAND
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/0001-Add-implementation-for-cpuinfo_deinitialize.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   endif()
