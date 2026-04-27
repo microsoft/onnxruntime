@@ -297,6 +297,33 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     return [zero_point, scale]
 
 
+def snap_zero_point_to_uint8(rmin, rmax):
+    """Snap a uint8 activation zero-point to 0 (when rmin >= 0) or 128 (when rmin < 0).
+
+    Used by the ActivationRestrictedAsymmetric quantization option. Recomputes scale so the
+    dequantized range still covers [rmin, rmax] without clipping.
+
+    :parameter rmin: calibrated minimum activation value (numpy scalar)
+    :parameter rmax: calibrated maximum activation value (numpy scalar)
+    :return: (zero_point, scale) with zero_point dtype uint8 and scale dtype float32
+    """
+    rmin = float(numpy.squeeze(rmin))
+    rmax = float(numpy.squeeze(rmax))
+    if rmax <= rmin:
+        # Degenerate range – return neutral values
+        return numpy.array(0, dtype=numpy.uint8), numpy.array(1.0, dtype=numpy.float32)
+    if rmin >= 0.0:
+        zero_point = numpy.array(0, dtype=numpy.uint8)
+        scale = numpy.array(rmax / 255.0, dtype=numpy.float32)
+    else:
+        zero_point = numpy.array(128, dtype=numpy.uint8)
+        # Choose scale that covers both negative and positive halves without clipping
+        scale_neg = -rmin / 128.0  # scale needed to represent rmin at q=0
+        scale_pos = rmax / 127.0  # scale needed to represent rmax at q=255
+        scale = numpy.array(max(scale_neg, scale_pos), dtype=numpy.float32)
+    return zero_point, scale
+
+
 def compute_scale_zp_float8(element_type, std):
     """Calculate the scale s for a float8 type (E4M3FN).
     The function assumes the coefficient distribution and the float 8

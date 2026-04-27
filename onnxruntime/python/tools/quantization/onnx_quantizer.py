@@ -30,6 +30,7 @@ from .quant_utils import (
     ms_domain,
     quantize_onnx_initializer,
     save_and_reload_model_with_shape_infer,
+    snap_zero_point_to_uint8,
     tensor_proto_to_array,
 )
 from .registry import CreateOpQuantizer
@@ -1157,6 +1158,8 @@ class ONNXQuantizer(BaseQuantizer):
                 reduce_range = quant_overrides.get("reduce_range", False)
                 qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
                 zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, self.min_real_range)
+                if self.is_activation_restricted_asymmetric and quant_type == onnx.TensorProto.UINT8 and not symmetric:
+                    zero, scale = snap_zero_point_to_uint8(rmin, rmax)
 
             quantization_params[tensor_name] = QuantizationParams(zero_point=zero, scale=scale, quant_type=quant_type)
 
