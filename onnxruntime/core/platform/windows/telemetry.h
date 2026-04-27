@@ -109,6 +109,8 @@ class WindowsTelemetry : public Telemetry {
   void LogRegisterEpLibraryEnd(const std::string& registration_name,
                                const common::Status& status) const override;
 
+  void LogMemoryUsage(uint32_t session_id) const override;
+
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
