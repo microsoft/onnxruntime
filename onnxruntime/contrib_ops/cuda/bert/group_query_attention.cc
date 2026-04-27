@@ -233,6 +233,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckAndSetExternalKV(external_key, external_value, parameters));
 
+  // External KV is mutually exclusive with provided key/value inputs
+  if (parameters.use_external_kv && (key != nullptr || value != nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "key and value (inputs 1/2) must not be provided when using external_key/external_value. "
+                           "External KV replaces the K,V projections entirely.");
+  }
+
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
   parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;

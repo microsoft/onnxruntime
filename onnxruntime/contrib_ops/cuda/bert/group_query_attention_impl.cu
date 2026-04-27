@@ -105,8 +105,10 @@ Status PrepareQKV(
     U* v = reinterpret_cast<U*>(data.present_value);
     int external_seq_len = parameters.external_kv_sequence_length;
 
-    // Copy external KV into present buffers
-    size_t kv_copy_size = (size_t)batch_size * kv_num_heads * external_seq_len * head_size * sizeof(U);
+    // For 4-bit quantized KV cache, the stored head dimension is head_size/2 (two nibbles per byte).
+    // Use the packed dimension to compute the correct copy size.
+    int cache_head_dim = (parameters.kv_cache_bit_width == 4) ? (head_size + 1) / 2 : head_size;
+    size_t kv_copy_size = (size_t)batch_size * kv_num_heads * external_seq_len * cache_head_dim * sizeof(U);
     CUDA_CALL_THROW(cudaMemcpyAsync(k, data.past_key, kv_copy_size, cudaMemcpyDeviceToDevice, stream));
     CUDA_CALL_THROW(cudaMemcpyAsync(v, data.past_value, kv_copy_size, cudaMemcpyDeviceToDevice, stream));
 

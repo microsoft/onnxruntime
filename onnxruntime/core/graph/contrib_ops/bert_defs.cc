@@ -240,13 +240,20 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
     const auto* past_key_type = ctx.getInputType(past_key_index);
+    // external_key is at input index 14 for GroupQueryAttention
+    const auto* external_key_type = (ctx.getNumInputs() > 14) ? ctx.getInputType(14) : nullptr;
     if (past_key_type != nullptr) {
       // present_key and present_value have the same type as past_key/past_value.
       // This allows them to be int8 or packed uint8 when quantization is enabled.
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);      // present_key
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index + 1, 2);  // present_value
+    } else if (external_key_type != nullptr) {
+      // When external KV is provided (inputs 14/15), present outputs should match
+      // the external KV type (T_CACHE), not the query type (T).
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 14, 1);  // present_key from external_key
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 15, 2);  // present_value from external_value
     } else {
-      // If no past state, present is the same type as query.
+      // If no past state and no external KV, present is the same type as query.
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
     }

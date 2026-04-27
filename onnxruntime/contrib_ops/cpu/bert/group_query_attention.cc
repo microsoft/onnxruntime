@@ -83,6 +83,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckAndSetExternalKV(external_key, external_value, parameters));
 
+  // External KV is mutually exclusive with provided key/value inputs
+  if (parameters.use_external_kv && (key != nullptr || value != nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "key and value (inputs 1/2) must not be provided when using external_key/external_value. "
+                           "External KV replaces the K,V projections entirely.");
+  }
+
   // External KV mode requires do_rotary=0 — K already has RoPE from the source layer
   if (parameters.use_external_kv && do_rotary_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

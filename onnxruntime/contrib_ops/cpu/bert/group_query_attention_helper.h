@@ -107,7 +107,18 @@ Status Check_Q_Only(const T* query, const int num_heads, const int kv_num_heads,
   batch_size = static_cast<int>(query_dims[0]);
   sequence_length = static_cast<int>(query_dims[1]);
   q_hidden_size = static_cast<int>(query_dims[2]);
-  head_size = static_cast<int>(q_hidden_size) / num_heads;
+  if (q_hidden_size % num_heads != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "q_hidden_size (", q_hidden_size, ") must be divisible by num_heads (", num_heads,
+                           ") in Q-only mode (external KV). Got q_hidden_size % num_heads == ",
+                           q_hidden_size % num_heads);
+  }
+  head_size = q_hidden_size / num_heads;
+  if (head_size == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "head_size must be > 0. Got q_hidden_size=", q_hidden_size,
+                           ", num_heads=", num_heads);
+  }
   if (head_size % 8 != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "head_size must be a multiple of 8. Got head_size % 8 == ",
@@ -180,7 +191,7 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
 
 template <typename T>
 Status CheckExternalKV(const T* external_key, const T* external_value, int batch_size, int kv_num_heads,
-                       int& external_sequence_length) {
+                       int head_size, int kv_cache_bit_width, int& external_sequence_length) {
   if (external_key == nullptr || external_value == nullptr) {
     if (external_key != nullptr || external_value != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -222,8 +233,18 @@ Status CheckExternalKV(const T* external_key, const T* external_value, int batch
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'external_key' and 'external_value' should have same sequence length dimension.");
   }
-  // Note: head_size validation is relaxed here — external KV may have different head_size
-  // than the query (e.g., Gemma4 global layers with head_dim=512 vs local head_dim=256).
+  // Validate head dimension (dim 3). For 4-bit quantized KV cache, the stored dimension is head_size / 2.
+  int expected_head_dim = (kv_cache_bit_width == 4) ? (head_size / 2) : head_size;
+  if (ext_key_dims[3] != expected_head_dim) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_key' dimension 3 should be head_size (", expected_head_dim,
+                           "), got ", ext_key_dims[3]);
+  }
+  if (ext_value_dims[3] != expected_head_dim) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'external_value' dimension 3 should be head_size (", expected_head_dim,
+                           "), got ", ext_value_dims[3]);
+  }
   external_sequence_length = static_cast<int>(ext_key_dims[2]);
   return Status::OK();
 }
@@ -536,10 +557,25 @@ Status CheckAndSetExternalKV(const T* external_key, const T* external_value,
   int external_sequence_length = 0;
   ORT_RETURN_IF_ERROR(CheckExternalKV(external_key, external_value,
                                       parameters.batch_size, parameters.kv_num_heads,
+                                      parameters.head_size, parameters.kv_cache_bit_width,
                                       external_sequence_length));
 
   parameters.use_external_kv = true;
   parameters.external_kv_sequence_length = external_sequence_length;
+
+  // External KV mode is incompatible with packed QKV — query must contain only Q.
+  if (parameters.is_packed_qkv) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "external_key/external_value cannot be used with packed QKV input. "
+                           "Provide query as Q-only (without K,V) when using external KV.");
+  }
+
+  // External KV replaces the internal KV cache — past_key/past_value should not be provided.
+  if (parameters.seqlen_past_kv_cache > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "past_key/past_value should not be provided when using external_key/external_value. "
+                           "External KV replaces the internal KV cache entirely.");
+  }
 
   // When using external KV, the total sequence length for attention is determined
   // by the external KV tensor, not the internal KV cache.
