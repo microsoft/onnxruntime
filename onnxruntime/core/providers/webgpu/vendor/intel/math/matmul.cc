@@ -55,7 +55,8 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   TensorShape output_shape = helper.OutputShape();
 
-  // when B is a matrix (batch is 1), merge batchA into M dimension to improve performance for small M cases.
+  // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
+  // performance (e.g., [2,3,5] → [1,6,5]).
   if (batchA != 1 && batchB == 1) {
     // dimensions of A: [1,`batchA`, M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
