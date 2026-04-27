@@ -188,13 +188,13 @@ new adapter following examples in https://github.com/justinchuby/lintrunner-adap
 
 ## Python Code Style
 
-Follow the [Black formatter](https://black.readthedocs.io)'s coding style when possible. A maximum line length of 120 characters is allowed for consistency with the C++ code.
+Follow the [Ruff formatter](https://docs.astral.sh/ruff/formatter/)'s coding style when possible. A maximum line length of 120 characters is allowed for consistency with the C++ code.
 
 Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). We use [Google's python style guide](https://google.github.io/styleguide/pyguide.html) as the style guide which is an extension to PEP8.
 
 Use `pyright`, which is provided as a component of the `pylance` extension in VS Code for static type checking.
 
-Auto-formatting is done with `black` and `isort`. The tools are configured in `pyproject.toml`. From the root of the repository, you can run
+Auto-formatting and linting are done with [Ruff](https://docs.astral.sh/ruff/), which handles both code formatting and import sorting. The tools are configured in `pyproject.toml` and `.lintrunner.toml`. From the root of the repository, you can run
 
 ```sh
 lintrunner f --all-files
@@ -202,21 +202,19 @@ lintrunner f --all-files
 
 to format Python files.
 
-Use `pydocstyle` to lint documentation styles. `pydocstyle` is enabled in VS Code.
-
 ## IDEs
 
 ### VS Code
 
 VS Code is automatically configured with workspace configurations.
 
-For Python development is VS Code, read
+For Python development in VS Code, read
 [this tutorial](https://code.visualstudio.com/docs/python/python-tutorial) for
 more information.
 
 ### PyCharm
 
-Follow [black's documentation](https://black.readthedocs.io/en/stable/integrations/editors.html#pycharm-intellij-idea) to set up the black formatter for PyCharm.
+Follow [Ruff's documentation](https://docs.astral.sh/ruff/editors/setup/#pycharm) to set up the Ruff formatter for PyCharm.
 
 ## Testing
 
