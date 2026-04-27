@@ -59,7 +59,10 @@ steps:
               print("##vso[task.logissue type=error]Failed to get git info: {}".format(e))
               sys.exit(1)
           version_string = "{}-dev.{}+{}".format(original_ver, date_str, commit_sha)
-          universal_version = "{}-dev.{}.{}".format(original_ver, date_str, commit_sha)
+          # Prefix the SHA with "commit-" so the pre-release identifier always contains a
+          # non-digit. Otherwise, an all-numeric short SHA with a leading zero (e.g. "01234567")
+          # would violate SemVer 2.0.0's rule against leading zeros in numeric identifiers.
+          universal_version = "{}-dev.{}.commit-{}".format(original_ver, date_str, commit_sha)
 
       else:
           print("##vso[task.logissue type=error]Unknown package_version '{}'. Must be 'release', 'RC', or 'dev'.".format(package_version))
@@ -74,10 +77,10 @@ steps:
           print("##vso[task.logissue type=error]Version string '{}' is not valid semver 2.0.0.".format(version_string))
           sys.exit(1)
 
-      # Validate universal version (SemVer 1.0.0 - no build metadata)
+      # Validate universal version (SemVer 2.0.0, without build metadata)
       universal_semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
       if not re.match(universal_semver_pattern, universal_version):
-          print("##vso[task.logissue type=error]Universal version string '{}' is not valid semver 1.0.0.".format(universal_version))
+          print("##vso[task.logissue type=error]Universal version string '{}' is not valid semver 2.0.0 (without build metadata).".format(universal_version))
           sys.exit(1)
 
       print("##vso[task.setvariable variable=PluginPackageVersion]{}".format(version_string))
