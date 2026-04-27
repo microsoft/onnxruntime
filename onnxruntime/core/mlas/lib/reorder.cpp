@@ -161,7 +161,40 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_SSE2_INTRINSICS)
+#if defined(MLAS_AVX2_INTRINSICS)
+    printf("Using AVX2 intrinsics for 4x4 transpose\n");
+    // Load rows into 256-bit registers: lane0=row0, lane1=row1 and lane0=row2, lane1=row3
+    __m256 row01 = _mm256_castps128_ps256(_mm_loadu_ps(&S[GatherStride * 0]));
+    row01 = _mm256_insertf128_ps(row01, _mm_loadu_ps(&S[GatherStride * 1]), 1);
+    __m256 row23 = _mm256_castps128_ps256(_mm_loadu_ps(&S[GatherStride * 2]));
+    row23 = _mm256_insertf128_ps(row23, _mm_loadu_ps(&S[GatherStride * 3]), 1);
+
+    // Regroup so even rows share one register and odd rows share the other:
+    // r02: lane0=row0 [a b c d], lane1=row2 [i j k l]
+    // r13: lane0=row1 [e f g h], lane1=row3 [m n o p]
+    __m256 r02 = _mm256_permute2f128_ps(row01, row23, 0x20);
+    __m256 r13 = _mm256_permute2f128_ps(row01, row23, 0x31);
+
+    // Interleave within each 128-bit lane:
+    // t0: lane0=[a e b f], lane1=[i m j n]
+    // t1: lane0=[c g d h], lane1=[k o l p]
+    __m256 t0 = _mm256_unpacklo_ps(r02, r13);
+    __m256 t1 = _mm256_unpackhi_ps(r02, r13);
+
+    // Cross-lane shuffle: pick elements 0,1 then 2,3 from each lane pair.
+    // col0 = [a e i m], col1 = [b f j n], col2 = [c g k o], col3 = [d h l p]
+    __m128 col0 = _mm_shuffle_ps(_mm256_castps256_ps128(t0), _mm256_extractf128_ps(t0, 1), _MM_SHUFFLE(1, 0, 1, 0));
+    __m128 col1 = _mm_shuffle_ps(_mm256_castps256_ps128(t0), _mm256_extractf128_ps(t0, 1), _MM_SHUFFLE(3, 2, 3, 2));
+    __m128 col2 = _mm_shuffle_ps(_mm256_castps256_ps128(t1), _mm256_extractf128_ps(t1, 1), _MM_SHUFFLE(1, 0, 1, 0));
+    __m128 col3 = _mm_shuffle_ps(_mm256_castps256_ps128(t1), _mm256_extractf128_ps(t1, 1), _MM_SHUFFLE(3, 2, 3, 2));
+
+    // Store the transposed results
+    _mm_storeu_ps(&D[ScatterStride * 0], col0);
+    _mm_storeu_ps(&D[ScatterStride * 1], col1);
+    _mm_storeu_ps(&D[ScatterStride * 2], col2);
+    _mm_storeu_ps(&D[ScatterStride * 3], col3);
+#elif defined(MLAS_SSE2_INTRINSICS)
+    // printf("Using SSE2 intrinsics for 4x4 transpose\n");
     MLAS_FLOAT32X4 v[4];
     MLAS_FLOAT32X4 t[4];
 
