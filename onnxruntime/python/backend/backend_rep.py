@@ -25,8 +25,8 @@ _ALLOWED_RUN_OPTIONS = frozenset(
 
 class OnnxRuntimeBackendRep(BackendRep):
     """
-    Computes the prediction for a pipeline converted into
-    an :class:`onnxruntime.InferenceSession` node.
+    Wraps an :class:`onnxruntime.InferenceSession` to implement ONNX's
+    :class:`onnx.backend.base.BackendRep` interface for running predictions.
     """
 
     def __init__(self, session):
@@ -39,6 +39,12 @@ class OnnxRuntimeBackendRep(BackendRep):
         """
         Computes the prediction.
         See :meth:`onnxruntime.InferenceSession.run`.
+
+        :param inputs: a list of input arrays (one per model input) or a single
+            array when the model has exactly one input
+        :param kwargs: only a safe subset of :class:`onnxruntime.RunOptions` attributes are
+            accepted; see ``_ALLOWED_RUN_OPTIONS`` for the list
+        :return: list of output arrays
         """
 
         options = RunOptions()

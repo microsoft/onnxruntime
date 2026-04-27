@@ -116,17 +116,18 @@ class OnnxRuntimeBackend(Backend):
     @classmethod
     def prepare(cls, model, device=None, **kwargs):
         """
-        Load the model and creates a :class:`onnxruntime.InferenceSession`
+        Load the model and creates an :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep`
         ready to be used as a backend.
 
-        :param model: ModelProto (returned by `onnx.load`),
-            string for a filename or bytes for a serialized model
+        :param model: the model to prepare — accepts a file path (str), serialized
+            model (bytes), :class:`onnx.ModelProto`, :class:`onnxruntime.InferenceSession`,
+            or :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep` (returned as-is)
         :param device: requested device for the computation,
             None means the default one which depends on
             the compilation settings
         :param kwargs: only a safe subset of :class:`onnxruntime.SessionOptions` attributes are
             accepted; see ``_ALLOWED_SESSION_OPTIONS`` for the list
-        :return: :class:`onnxruntime.InferenceSession`
+        :return: :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep`
         """
         if isinstance(model, OnnxRuntimeBackendRep):
             return model
@@ -178,8 +179,9 @@ class OnnxRuntimeBackend(Backend):
         """
         Compute the prediction.
 
-        :param model: :class:`onnxruntime.InferenceSession` returned
-            by function *prepare*
+        :param model: the model to run — accepts a file path (str), serialized
+            model (bytes), :class:`onnx.ModelProto`, :class:`onnxruntime.InferenceSession`,
+            or :class:`onnxruntime.backend.backend_rep.OnnxRuntimeBackendRep`
         :param inputs: inputs
         :param device: requested device for the computation,
             None means the default one which depends on
