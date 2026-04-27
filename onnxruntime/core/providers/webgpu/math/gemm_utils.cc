@@ -322,7 +322,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
           << "  let split_index = i32(logical_global_id.z) % i32(splits_per_batch);\n"
           << "  var kStart = kSplitK * split_index;\n"
           << "  let batch = i32(logical_global_id.z) / i32(splits_per_batch);\n"
-          << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "");
+          << "  let batchIndices = " << batch_dims->OffsetToIndices("u32(batch)") << ";\n";
     } else {
       // With Split-K without batch (in Gemm), `logical_global_id.z` is exactly the Split-K index.
       shader.MainFunctionBody()
