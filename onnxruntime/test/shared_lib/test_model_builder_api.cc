@@ -1260,3 +1260,46 @@ TEST(ModelEditorAPITest, SetGraphOutputs_DuplicatePointer_Fails) {
   api.ReleaseValueInfo(value_info);
   api.ReleaseGraph(graph);
 }
+
+TEST(ModelEditorAPITest, AddNodeToGraph_NullGraph_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtNode* node = CreateNode(model_editor_api, "Relu", "relu1", {"X"}, {"Y"});
+
+  // Null graph should fail without crashing
+  Ort::Status status{model_editor_api.AddNodeToGraph(nullptr, node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("null"));
+
+  api.ReleaseNode(node);
+}
+
+TEST(ModelEditorAPITest, AddGraphToModel_SameGraphTwoModels_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
+  std::vector<int> opset_versions = {18};
+  OrtModel* model1 = nullptr;
+  OrtModel* model2 = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(),
+                                                 domain_names.size(), &model1));
+  Ort::ThrowOnError(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(),
+                                                 domain_names.size(), &model2));
+
+  // First add should succeed
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddGraphToModel(model1, graph));
+
+  // Second add to different model should fail (graph already owned)
+  Ort::Status status{model_editor_api.AddGraphToModel(model2, graph)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+
+  // model2 doesn't own anything, model1 owns graph
+  api.ReleaseModel(model2);
+  api.ReleaseModel(model1);
+}

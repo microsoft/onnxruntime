@@ -107,6 +107,14 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len) {
   API_IMPL_BEGIN
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
+  if (inputs == nullptr && inputs_len != 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "inputs cannot be null when inputs_len is non-zero");
+  }
+
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
 
   if (graph == nullptr) {
@@ -147,6 +155,14 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len) {
   API_IMPL_BEGIN
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
+  if (outputs == nullptr && outputs_len != 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "outputs cannot be null when outputs_len is non-zero");
+  }
+
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
 
   if (graph == nullptr) {
@@ -193,6 +209,10 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
 
   if (tensor == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tensor cannot be null");
+  }
+
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
   }
 
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
@@ -265,6 +285,10 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "node cannot be null");
   }
 
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
 
   if (graph == nullptr) {
@@ -330,7 +354,22 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddGraphToModel, _In_ OrtModel* model, _I
                                  "Model already has a graph. Each OrtModel can only have one graph.");
   }
 
+  // Reject if this graph has already been added to a model (prevents double-free across models)
+  onnxruntime::ModelEditorGraph* me_graph = onnxruntime::ModelEditorGraph::ToInternal(graph);
+  if (me_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
+  }
+
+  if (me_graph->owned_) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "This graph has already been added to a model. "
+                                 "Each OrtGraph can only be added once.");
+  }
+
   model->graph = std::unique_ptr<OrtGraph>(graph);  // take ownership
+  me_graph->owned_ = true;
+
   return nullptr;
   API_IMPL_END
 }

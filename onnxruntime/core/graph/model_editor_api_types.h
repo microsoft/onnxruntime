@@ -239,6 +239,7 @@ struct ModelEditorGraph : public OrtGraph {
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
   onnxruntime::InlinedHashSet<const OrtValue*> owned_initializer_ptrs_;  // tracks owned OrtValue pointers to prevent double-free
+  bool owned_ = false;                                                   // true after ownership transferred to a model
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;
