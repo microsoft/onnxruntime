@@ -212,7 +212,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 scale_,
                                                                 softcap_,
                                                                 0,
-                                                                context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+                                                                static_cast<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup),
+                                                                /*has_external_kv=*/false));
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
