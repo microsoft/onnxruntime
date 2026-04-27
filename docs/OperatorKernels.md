@@ -1028,6 +1028,11 @@ Do not modify directly.*
 |Xor|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|7+|**T** = tensor(bool)<br/> **T1** = tensor(bool)|
 | |
 | |
+|**Operator Domain:** *ai.onnx.ml*||||
+|LabelEncoder|*in* X:**T1**<br> *out* Y:**T2**|4+|**T1** = tensor(double), tensor(float), tensor(int64)<br/> **T2** = tensor(double), tensor(float), tensor(int64)|
+|||[2, 3]|**T1** = tensor(float), tensor(int64)<br/> **T2** = tensor(float), tensor(int64)|
+| |
+| |
 |**Operator Domain:** *com.microsoft*||||
 |Attention|*in* input:**T**<br> *in* weights:**T**<br> *in* bias:**T**<br> *in* mask_index:**M**<br> *in* past:**T**<br> *in* attention_bias:**T**<br> *in* past_sequence_length:**M**<br> *out* output:**T**<br> *out* present:**T**|1+|**T** = tensor(bfloat16), tensor(float), tensor(float16)|
 |BeamSearch|*in* input_ids:**F**<br> *in* max_length:**I**<br> *in* min_length:**I**<br> *in* num_beams:**I**<br> *in* num_return_sequences:**I**<br> *in* length_penalty:**T**<br> *in* repetition_penalty:**T**<br> *in* vocab_mask:**M**<br> *in* prefix_vocab_mask:**M**<br> *in* attention_mask:**I**<br> *in* decoder_input_ids:**I**<br> *in* logits_processor:**I**<br> *out* sequences:**I**<br> *out* sequences_scores:**T**<br> *out* scores:**T**|1+|**T** = tensor(float), tensor(float16)|
