@@ -4,6 +4,13 @@
 
 See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed instructions.
 
+### Build prerequisites
+
+- **CMake ≥ 3.28**, **C++20**, C99
+- Python 3.10+ for core build scripts/tooling; Python 3.11+ for building/installing the Python wheel and running Python tests
+- Platform toolchain (MSVC on Windows, GCC/Clang on Linux, Xcode on macOS)
+- EP-specific SDKs as needed (CUDA Toolkit, TensorRT, etc.)
+
 ## Architecture Overview
 
 ONNX Runtime is a cross-platform inference and training engine for ONNX models. The core pipeline is: **Load model → Build graph → Optimize graph → Partition across Execution Providers → Execute**.
@@ -29,6 +36,34 @@ Training-specific code (gradient ops, loss functions, optimizers, `TrainingSessi
 ### Language bindings
 
 `csharp/`, `java/`, `js/`, `objectivec/`, `rust/` — each wraps the C API (`include/onnxruntime/core/session/onnxruntime_c_api.h`).
+
+### Adding operators / kernels
+
+Kernel registration uses macros from `core/framework/op_kernel.h`:
+
+- `ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, version, OpName)` — standard op
+- `ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, version, type, OpName)` — typed variant
+- `ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startVer, endVer, OpName)` — versioned range
+
+To add a new contrib op: implement the kernel class, then register it in the EP's contrib kernel file (e.g., `onnxruntime/contrib_ops/cpu/cpu_contrib_kernels.cc`). See `docs/OperatorKernels.md` and `docs/ContribOperators.md` for more details.
+
+### Execution Providers
+
+Each EP implements `IExecutionProvider` (`include/onnxruntime/core/framework/execution_provider.h`). Key overrides: `GetCapability()` (claim nodes), kernel registration, `GetDataTransfer()` (device memory copies). See `docs/execution_providers/` for EP-specific documentation.
+
+### Test organization (`onnxruntime/test/`)
+
+| Directory | Content |
+|-----------|---------|
+| `framework/` | Core framework tests (tensor, allocator, session) |
+| `optimizer/` | Graph transformer unit tests |
+| `providers/` | Per-EP operator kernel tests |
+| `contrib_ops/` | Tests for contrib/custom operators |
+| `python/` | Python API and integration tests |
+| `shared_lib/` | C API / shared library tests |
+| `quantization/` | Quantization tool tests |
+| `wasm/`, `webgpu/` | Web platform tests |
+| `testdata/` | ONNX models and data files used by tests |
 
 ## C++ Conventions
 
@@ -110,3 +145,31 @@ The main public C API header is `include/onnxruntime/core/session/onnxruntime_c_
 - All changes must have unit tests, unless documentation-only or already adequately covered
 - Build and test locally on at least one platform before submitting
 - PR author is responsible for merging after approval
+
+## Tool Configuration
+
+| Tool | Purpose | Config file |
+|------|---------|-------------|
+| ruff | Python lint + format | `pyproject.toml` |
+| pyright | Python static type checking | `pyproject.toml` |
+| clang-format | C++ formatting | `.clang-format` |
+| clang-tidy | C++ static analysis | `.clang-tidy` |
+| lintrunner | Unified lint runner (wraps ruff, clang-format) | `.lintrunner.toml` |
+
+Use `lintrunner -a` to auto-fix changed files. See the `/ort-lint` skill for detailed commands.
+
+## Key Documentation
+
+| Topic | Path |
+|-------|------|
+| C++ coding conventions | `docs/Coding_Conventions_and_Standards.md` |
+| C API design guidelines | `docs/C_API_Guidelines.md` |
+| CMake guidelines | `docs/cmake_guideline.md` |
+| Operator kernels | `docs/OperatorKernels.md` |
+| Contrib operators | `docs/ContribOperators.md` |
+| PR guidelines | `docs/PR_Guidelines.md` |
+| Execution providers | `docs/execution_providers/` |
+| Graph partitioning | `docs/annotated_partitioning/` |
+| Training (ORTModule) | `docs/ORTModule_Training_Guidelines.md` |
+| Threading model | `docs/NotesOnThreading.md` |
+| Release process | `docs/ReleaseManagement.md`, `docs/Versioning.md` |
