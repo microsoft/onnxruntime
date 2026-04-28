@@ -82,9 +82,6 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
                 "vectors_per_class attribute size (", vectors_per_class_.size(),
                 ") must match class_count (", class_count_, ").");
     ORT_ENFORCE(vector_count_ > 0, "vector_count must be greater than 0 in SVC mode.");
-    ORT_ENFORCE(support_vectors_.size() % static_cast<size_t>(vector_count_) == 0,
-                "support_vectors attribute size (", support_vectors_.size(),
-                ") must be divisible by vector_count (", vector_count_, ").");
 
     // SVC mode: coefficients layout is [class_count - 1, vector_count]
     size_t expected_coefficients = 0;
@@ -97,6 +94,9 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
                 "coefficients attribute size (", coefficients_.size(),
                 ") is smaller than expected (", expected_coefficients,
                 ") for the given class_count and vector_count.");
+    ORT_ENFORCE(support_vectors_.size() % static_cast<size_t>(vector_count_) == 0,
+          "support_vectors attribute size (", support_vectors_.size(),
+          ") must be divisible by vector_count (", vector_count_, ").");
 
     // rho needs one entry per classifier pair: class_count * (class_count - 1) / 2
     size_t num_classifiers = 0;

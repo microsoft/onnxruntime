@@ -129,7 +129,7 @@ TEST(MLOpTest, LinearClassifierBinaryWithLabels) {
 TEST(MLOpTest, LinearClassifierInvalidCoefficientsSize) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
-  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f, 3.f});
   test.AddAttribute("intercepts", std::vector<float>{0.f, 0.f});
   test.AddAttribute("classlabels_ints", std::vector<int64_t>{0, 1});
 
@@ -181,7 +181,7 @@ TEST(MLOpTest, LinearClassifierMulticlassDoubleInput) {
   LinearClassifierMulticlass<double>();
 }
 
-// Regression test: coefficients size doesn't match class_count * num_features.
+// Regression test: input feature count must match the feature count encoded in coefficients.
 TEST(MLOpTest, LinearClassifierInvalidCoefficientsSizeFails) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
@@ -199,7 +199,7 @@ TEST(MLOpTest, LinearClassifierInvalidCoefficientsSizeFails) {
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "coefficients size (3) is less than class_count (3) * num_features (2)");
+           "LinearClassifier: input feature count (2) must match the coefficients feature count (1)");
 }
 
 // Regression test: coefficients not divisible by class_count.
