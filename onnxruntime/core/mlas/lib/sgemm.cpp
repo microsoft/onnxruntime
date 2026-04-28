@@ -247,13 +247,6 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && !defined(FORCE_GENERIC_ALGORITHMS)
-    if (GetMlasPlatform().GemmFloatKernel != nullptr) {
-        MlasSgemmCopyPackBRvv(D, B, ldb, CountX, CountY);
-        return;
-    }
-#endif
-
     //
     // Copy data from matrix B into the destination buffer 16 columns at a
     // time.

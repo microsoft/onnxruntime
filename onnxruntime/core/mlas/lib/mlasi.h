@@ -1021,12 +1021,6 @@ extern "C" {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
 #elif defined(MLAS_TARGET_RISCV64)
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelRvv;
-    void MlasSgemmCopyPackBRvv(
-        float* D,
-        const float* B,
-        size_t ldb,
-        size_t CountX,
-        size_t CountY);
     size_t MLASCALL MlasSgemmKernelZero(
         const float* A,
         const float* B,
