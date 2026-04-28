@@ -435,10 +435,10 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
       Tensor* c_write;
 
       if (t % 2 == 0) {
-        h_read = &H_a; c_read = &C_a;
-        h_write = &H_b; c_write = &C_b;
-      } else {
-        h_read = &H_b; c_read = &C_b;
+        h_read = &H_a;
+        c_read = &C_a;
+        h_write = &H_b;
+        c_write = &C_b;
         h_write = &H_a; c_write = &C_a;
       }
 
