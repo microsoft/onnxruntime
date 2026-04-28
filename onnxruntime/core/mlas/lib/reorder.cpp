@@ -161,8 +161,24 @@ Return Value:
 
 --*/
 {
+    // --- DEBUG: print first call per unique (GatherStride, ScatterStride) pair ---
+    // Each unique pair corresponds to a different layer, giving cross-layer coverage.
+    // static size_t dbg_last_gather = 0, dbg_last_scatter = 0;
+    // static int dbg_layer_count = 0;
+    // const bool dbg_print = (GatherStride != dbg_last_gather || ScatterStride != dbg_last_scatter);
+    // if (dbg_print) { dbg_last_gather = GatherStride; dbg_last_scatter = ScatterStride; ++dbg_layer_count; }
+
 #if defined(MLAS_AVX2_INTRINSICS)
-    printf("Using AVX2 intrinsics for 4x4 transpose\n");
+    // if (dbg_print) {
+    //     printf("\n[4x4-AVX2] layer#%d  GatherStride=%zu  ScatterStride=%zu\n",
+    //            dbg_layer_count, GatherStride, ScatterStride);
+    //     printf("  INPUT (4 rows x 4 cols):\n");
+    //     for (int r = 0; r < 4; ++r)
+    //         printf("    row%d: %10.5f %10.5f %10.5f %10.5f\n", r,
+    //                S[GatherStride * r + 0], S[GatherStride * r + 1],
+    //                S[GatherStride * r + 2], S[GatherStride * r + 3]);
+    //     fflush(stdout);
+    // }
     // Load rows into 256-bit registers: lane0=row0, lane1=row1 and lane0=row2, lane1=row3
     __m256 row01 = _mm256_castps128_ps256(_mm_loadu_ps(&S[GatherStride * 0]));
     row01 = _mm256_insertf128_ps(row01, _mm_loadu_ps(&S[GatherStride * 1]), 1);
@@ -193,8 +209,26 @@ Return Value:
     _mm_storeu_ps(&D[ScatterStride * 1], col1);
     _mm_storeu_ps(&D[ScatterStride * 2], col2);
     _mm_storeu_ps(&D[ScatterStride * 3], col3);
+    // if (dbg_print) {
+    //     printf("  OUTPUT (4 cols x 4 rows):\n");
+    //     for (int c = 0; c < 4; ++c)
+    //         printf("    col%d: %10.5f %10.5f %10.5f %10.5f\n", c,
+    //                D[ScatterStride * c + 0], D[ScatterStride * c + 1],
+    //                D[ScatterStride * c + 2], D[ScatterStride * c + 3]);
+    //     fflush(stdout);
+    // }
 #elif defined(MLAS_SSE2_INTRINSICS)
-    // printf("Using SSE2 intrinsics for 4x4 transpose\n");
+    // printf("SSE implementation \n");
+    // if (dbg_print) {
+    //     printf("\n[4x4-SSE2] layer#%d  GatherStride=%zu  ScatterStride=%zu\n",
+    //            dbg_layer_count, GatherStride, ScatterStride);
+    //     printf("  INPUT (4 rows x 4 cols):\n");
+    //     for (int r = 0; r < 4; ++r)
+    //         printf("    row%d: %10.5f %10.5f %10.5f %10.5f\n", r,
+    //                S[GatherStride * r + 0], S[GatherStride * r + 1],
+    //                S[GatherStride * r + 2], S[GatherStride * r + 3]);
+    //     fflush(stdout);
+    // }
     MLAS_FLOAT32X4 v[4];
     MLAS_FLOAT32X4 t[4];
 
@@ -217,6 +251,14 @@ Return Value:
     MlasStoreFloat32x4(&D[ScatterStride * 1], v[1]);
     MlasStoreFloat32x4(&D[ScatterStride * 2], v[2]);
     MlasStoreFloat32x4(&D[ScatterStride * 3], v[3]);
+    // if (dbg_print) {
+    //     printf("  OUTPUT (4 cols x 4 rows):\n");
+    //     for (int c = 0; c < 4; ++c)
+    //         printf("    col%d: %10.5f %10.5f %10.5f %10.5f\n", c,
+    //                D[ScatterStride * c + 0], D[ScatterStride * c + 1],
+    //                D[ScatterStride * c + 2], D[ScatterStride * c + 3]);
+    //     fflush(stdout);
+    // }
 #elif  defined(MLAS_LSX_INTRINSICS)
 
     MLAS_FLOAT32X4 v[4];
@@ -248,7 +290,97 @@ Return Value:
     MlasReorderScatterFloat32x4(&S[GatherStride * 2], &D[2], ScatterStride);
     MlasReorderScatterFloat32x4(&S[GatherStride * 3], &D[3], ScatterStride);
 #endif
+
 }
+
+#if defined(MLAS_AVX2_INTRINSICS)
+MLAS_FORCEINLINE
+void
+MlasReorderTransposeFloat32x4x8AVX2(
+    const float* S,
+    float* D,
+    size_t GatherStride,
+    size_t ScatterStride
+    )
+//
+// Transposes a 4x8 block: 4 rows of 8 floats each -> 8 output vectors of 4 floats.
+// Replaces two consecutive MlasReorderTransposeFloat32x4x8 calls when BlockSize==8.
+//
+// Uses _mm256_loadu_ps to load each full 8-float row in one 256-bit instruction,
+// eliminating the insertf128 + permute2f128 overhead of the 4x4 path.
+//
+// Instruction count: 4 loads + 4 unpacks + 4 shuffles + 8 stores = 20
+// vs two 4x4 calls:  8 loads + 4 inserts + 4 permutes + 4 unpacks + 8 shuffles + 8 stores = 36
+//
+{
+    // --- DEBUG: print first call per unique (GatherStride, ScatterStride) pair ---
+    // Each unique pair corresponds to a different layer, giving cross-layer coverage.
+    // static size_t dbg_last_gather = 0, dbg_last_scatter = 0;
+    // static int dbg_layer_count = 0;
+    // const bool dbg_print = (GatherStride != dbg_last_gather || ScatterStride != dbg_last_scatter);
+    // if (dbg_print) { dbg_last_gather = GatherStride; dbg_last_scatter = ScatterStride; ++dbg_layer_count; }
+
+    // Load each full row (8 floats) into a 256-bit register.
+    // lane0 = columns 0-3, lane1 = columns 4-7.
+    __m256 r0 = _mm256_loadu_ps(&S[GatherStride * 0]);
+    __m256 r1 = _mm256_loadu_ps(&S[GatherStride * 1]);
+    __m256 r2 = _mm256_loadu_ps(&S[GatherStride * 2]);
+    __m256 r3 = _mm256_loadu_ps(&S[GatherStride * 3]);
+
+    // if (dbg_print) {
+    //     printf("\n[4x8-AVX2] layer#%d  GatherStride=%zu  ScatterStride=%zu\n",
+    //            dbg_layer_count, GatherStride, ScatterStride);
+    //     printf("  INPUT (4 rows x 8 cols):\n");
+    //     for (int r = 0; r < 4; ++r)
+    //         printf("    row%d: %8.4f %8.4f %8.4f %8.4f  %8.4f %8.4f %8.4f %8.4f\n", r,
+    //                S[GatherStride * r + 0], S[GatherStride * r + 1],
+    //                S[GatherStride * r + 2], S[GatherStride * r + 3],
+    //                S[GatherStride * r + 4], S[GatherStride * r + 5],
+    //                S[GatherStride * r + 6], S[GatherStride * r + 7]);
+    //     fflush(stdout);
+    // }
+
+    // Interleave row pairs within each 128-bit lane simultaneously.
+    // t0 lane0=[r0[0],r1[0],r0[1],r1[1]]  lane1=[r0[4],r1[4],r0[5],r1[5]]
+    // t1 lane0=[r0[2],r1[2],r0[3],r1[3]]  lane1=[r0[6],r1[6],r0[7],r1[7]]
+    // t2 lane0=[r2[0],r3[0],r2[1],r3[1]]  lane1=[r2[4],r3[4],r2[5],r3[5]]
+    // t3 lane0=[r2[2],r3[2],r2[3],r3[3]]  lane1=[r2[6],r3[6],r2[7],r3[7]]
+    __m256 t0 = _mm256_unpacklo_ps(r0, r1);
+    __m256 t1 = _mm256_unpackhi_ps(r0, r1);
+    __m256 t2 = _mm256_unpacklo_ps(r2, r3);
+    __m256 t3 = _mm256_unpackhi_ps(r2, r3);
+
+    // Shuffle to assemble complete columns.
+    // Each 256-bit result holds two output columns: lane0=col_i, lane1=col_(i+4).
+    // u0: lane0=[r0[0],r1[0],r2[0],r3[0]] lane1=[r0[4],r1[4],r2[4],r3[4]]
+    // u1: lane0=[r0[1],r1[1],r2[1],r3[1]] lane1=[r0[5],r1[5],r2[5],r3[5]]
+    // u2: lane0=[r0[2],r1[2],r2[2],r3[2]] lane1=[r0[6],r1[6],r2[6],r3[6]]
+    // u3: lane0=[r0[3],r1[3],r2[3],r3[3]] lane1=[r0[7],r1[7],r2[7],r3[7]]
+    __m256 u0 = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(1, 0, 1, 0));
+    __m256 u1 = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 2, 3, 2));
+    __m256 u2 = _mm256_shuffle_ps(t1, t3, _MM_SHUFFLE(1, 0, 1, 0));
+    __m256 u3 = _mm256_shuffle_ps(t1, t3, _MM_SHUFFLE(3, 2, 3, 2));
+
+    // Store lane0 as columns 0-3, lane1 as columns 4-7.
+    _mm_storeu_ps(&D[ScatterStride * 0], _mm256_castps256_ps128(u0));
+    _mm_storeu_ps(&D[ScatterStride * 1], _mm256_castps256_ps128(u1));
+    _mm_storeu_ps(&D[ScatterStride * 2], _mm256_castps256_ps128(u2));
+    _mm_storeu_ps(&D[ScatterStride * 3], _mm256_castps256_ps128(u3));
+    _mm_storeu_ps(&D[ScatterStride * 4], _mm256_extractf128_ps(u0, 1));
+    _mm_storeu_ps(&D[ScatterStride * 5], _mm256_extractf128_ps(u1, 1));
+    _mm_storeu_ps(&D[ScatterStride * 6], _mm256_extractf128_ps(u2, 1));
+    _mm_storeu_ps(&D[ScatterStride * 7], _mm256_extractf128_ps(u3, 1));
+
+    // if (dbg_print) {
+    //     printf("  OUTPUT (8 cols x 4 rows):  [ch0..ch3 = lane0]  [ch4..ch7 = lane1]\n");
+    //     for (int c = 0; c < 8; ++c)
+    //         printf("    col%d (ch%d): %8.4f %8.4f %8.4f %8.4f\n", c, c,
+    //                D[ScatterStride * c + 0], D[ScatterStride * c + 1],
+    //                D[ScatterStride * c + 2], D[ScatterStride * c + 3]);
+    //     fflush(stdout);
+    // }
+}
+#endif
 
 void
 MLASCALL
@@ -545,6 +677,16 @@ Return Value:
             float* dd = d;
             size_t bc = 0;
 
+#if defined(MLAS_AVX2_INTRINSICS)
+            // Process 8 output channels at once when possible.
+            // Each call loads full 8-float rows with _mm256_loadu_ps, avoiding the
+            // insertf128 + permute2f128 overhead of two separate 4x4 calls.
+            for (; bc + 8 <= AlignedOutputChannelsThisIteration; bc += 8) {
+                MlasReorderTransposeFloat32x4x8AVX2(ss, dd, BlockSize, OutputSize);
+                ss += 8;
+                dd += 8 * OutputSize;
+            }
+#endif
             for (; bc < AlignedOutputChannelsThisIteration; bc += 4) {
                 MlasReorderTransposeFloat32x4x4(ss, dd, BlockSize, OutputSize);
                 ss += 4;
