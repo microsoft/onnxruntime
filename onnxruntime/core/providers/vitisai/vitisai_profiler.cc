@@ -20,6 +20,11 @@ bool VitisaiProfiler::StartProfiling(TimePoint tp) {
 
 void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
   // Notify VAIP EP that profiling has stopped
+  // Contract: the VAIP EP must preserve any pending/buffered event data after
+  // profiler_stop() returns, so that the subsequent profiler_collect[_v2]()
+  // call below can still retrieve the full set of recorded events. The EP is
+  // expected to release that buffered data only after collection completes
+  // (or on the next profiler_start()).
   profiler_stop();
 
   auto time_point =
