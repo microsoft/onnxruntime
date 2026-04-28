@@ -95,8 +95,8 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
                 ") is smaller than expected (", expected_coefficients,
                 ") for the given class_count and vector_count.");
     ORT_ENFORCE(support_vectors_.size() % static_cast<size_t>(vector_count_) == 0,
-          "support_vectors attribute size (", support_vectors_.size(),
-          ") must be divisible by vector_count (", vector_count_, ").");
+                "support_vectors attribute size (", support_vectors_.size(),
+                ") must be divisible by vector_count (", vector_count_, ").");
 
     // rho needs one entry per classifier pair: class_count * (class_count - 1) / 2
     size_t num_classifiers = 0;
