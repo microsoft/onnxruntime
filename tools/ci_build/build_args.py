@@ -575,6 +575,15 @@ def add_client_package_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_threadpool_callback_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for per-session thread pool work callbacks."""
+    parser.add_argument(
+        "--enable_session_threadpool_callbacks",
+        action="store_true",
+        help="Enable per-session thread pool work callbacks.",
+    )
+
+
 def add_python_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Python bindings."""
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python bindings.")
@@ -871,13 +880,17 @@ def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
     class Parser(argparse.ArgumentParser):
-        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:  # Use list[str] for Python 3.9+
+        # override argument file line parsing behavior
+        # - allow multiple arguments per line and handle quotes
+        # - allow comment lines starting with '#'
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+            if arg_line.lstrip().startswith("#"):  # ignore comment lines
+                return []
             return shlex.split(arg_line)
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""
+        usage=f"""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -886,6 +899,10 @@ def parse_arguments() -> argparse.Namespace:
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags (--update, --build, --test) to only run specific stages.
+
+        Arguments can also be passed in an argument file prefixed with '@'.
+        E.g., `{sys.argv[0]} @arguments.txt`.
+        Argument files may contain comment lines starting with '#'. They will be ignored.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
@@ -905,6 +922,7 @@ def parse_arguments() -> argparse.Namespace:
     add_extension_args(parser)
     add_size_reduction_args(parser)
     add_client_package_args(parser)
+    add_threadpool_callback_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)

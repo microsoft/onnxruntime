@@ -151,14 +151,14 @@ jobs:
           ndk-version: 28.0.13004108
 
       - name: Setup CCache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | android.yml | android_nnapi_ep
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: vcpkg-cache | android.yml | android_nnapi_ep
           path: ~/.cache/vcpkg
@@ -256,14 +256,14 @@ jobs:
           ndk-version: 28.0.13004108
 
       - name: Setup CCache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | android.yml | android_cpu_ep
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           key: vcpkg-cache | android.yml | android_cpu_ep
           path: ~/.cache/vcpkg

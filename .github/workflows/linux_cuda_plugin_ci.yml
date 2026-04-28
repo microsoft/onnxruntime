@@ -1,0 +1,126 @@
+name: CUDA Plugin Linux CI
+
+on:
+  push:
+    branches: [main, 'rel-*']
+  pull_request:
+    branches: [main, 'rel-*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  build-linux-cuda-plugin-x64-release:
+    name: Build Linux CUDA Plugin EP x64 Release
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+      docker_image_repo: onnxruntimecuda12manylinuxbuild
+      extra_build_flags: >-
+        --use_binskim_compliant_compile_flags
+        --build_wheel
+        --parallel
+        --nvcc_threads 1
+        --cuda_version=12.8
+        --cuda_home=/usr/local/cuda-12.8
+        --cudnn_home=/usr/local/cuda-12.8
+        --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+      python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
+      run_tests: false
+      upload_build_output: true
+      execution_providers: 'cuda'
+      job_identifier: build-linux-cuda-plugin-x64-release
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test-linux-cuda-plugin-x64-release:
+    name: Test Linux CUDA Plugin EP x64 Release
+    needs: build-linux-cuda-plugin-x64-release
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-linux-a10"
+      - "JobId=test-linux-cuda-plugin-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda12manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Download Build Artifact to Runner Temp Directory ---
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: build-output-x64-Release
+          path: ${{ runner.temp }}/Release
+
+      # --- Restore Permissions in the Temp Directory ---
+      - name: Restore Executable Permissions
+        if: success()
+        working-directory: ${{ runner.temp }}/Release
+        run: |
+          if [ -f perms.txt ]; then
+            echo "Restoring executable permissions in ${{ runner.temp }}/Release ..."
+            while IFS= read -r file; do
+              if [ -f "$file" ]; then
+                chmod +x "$file"
+              else
+                echo "Warning: File '$file' listed in perms.txt not found."
+              fi
+            done < perms.txt
+            echo "Permissions restored."
+          else
+            echo "Warning: perms.txt not found in artifact."
+          fi
+
+      # --- Install the ORT wheel and run CUDA plugin EP tests ---
+      - name: Run CUDA Plugin EP Python Tests
+        run: |
+          docker run --rm --gpus all \
+            -v ${{ github.workspace }}:/onnxruntime_src \
+            -v ${{ runner.temp }}/Release:/build/Release \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "
+              set -ex
+              export PATH=/opt/python/cp312-cp312/bin:\$PATH
+
+              # Install the ORT wheel
+              python -m pip install /build/Release/Release/dist/onnxruntime*.whl
+
+              # Install test dependencies
+              python -m pip install numpy onnx
+              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+              # Set plugin path and run tests
+              export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda_plugin.so
+              echo \"ORT_CUDA_PLUGIN_PATH=\$ORT_CUDA_PLUGIN_PATH\"
+              ls -la \$ORT_CUDA_PLUGIN_PATH
+
+              cd /onnxruntime_src/onnxruntime/test/python/transformers
+              python test_cuda_plugin_ep.py
+            "

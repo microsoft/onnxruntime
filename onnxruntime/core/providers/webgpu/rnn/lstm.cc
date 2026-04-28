@@ -439,12 +439,13 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
         c_read = &C_a;
         h_write = &H_b;
         c_write = &C_b;
-        h_write = &H_a; c_write = &C_a;
+        h_write = &H_a;
+        c_write = &C_a;
       }
 
       LstmCellProgram program{B != nullptr, P != nullptr, cell_has_Y, has_seq_lens,
-                               input_forget_ != 0, clip_ > 0.0f,
-                               static_cast<int>(layout_), fa, ga, ha};
+                              input_forget_ != 0, clip_ > 0.0f,
+                              static_cast<int>(layout_), fa, ga, ha};
 
       program.CacheHint(std::to_string(B != nullptr), std::to_string(P != nullptr),
                         std::to_string(cell_has_Y), std::to_string(has_seq_lens),

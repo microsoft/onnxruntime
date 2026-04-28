@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
@@ -13,6 +14,7 @@
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
+#include "contrib_ops/cuda/bert/gqa_unfused_attention.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
@@ -142,6 +144,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
 // 11. head_sink        (Tensor) - Attention sink for GPT-OSS
 template <typename T, typename U>
 Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) const {
+  auto ort_stream = GetOrtStream(context);
+
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -259,8 +263,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache, dense_head_size};
 
   TensorShape present_shape(present_dims);
-  Tensor* present_key_tensor = context->Output(1, present_shape);
-  Tensor* present_value_tensor = context->Output(2, present_shape);
+  Tensor* present_key_output = context->Output(1, present_shape);    // present_key
+  Tensor* present_value_output = context->Output(2, present_shape);  // present_value
 
   IAllocatorUniquePtr<void> k_buffer;
   IAllocatorUniquePtr<void> v_buffer;
@@ -288,8 +292,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
 
-  data.present_key = reinterpret_cast<CudaU*>(present_key_tensor->MutableData<U>());
-  data.present_value = reinterpret_cast<CudaU*>(present_value_tensor->MutableData<U>());
+  data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
+  data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
 
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   // This compares the final pointer values after quantization handling.
@@ -370,7 +374,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
         xqa_total_bytes += q_bytes + k_bytes;
       }
 
-      xqa_scratch_buffer = this->GetScratchBuffer<void>(xqa_total_bytes, context->GetComputeStream());
+      xqa_scratch_buffer = this->GetScratchBuffer<void>(xqa_total_bytes, GetComputeStream(context));
       data.xqa_buffer = xqa_scratch_buffer.get();
       data.xqa_buffer_bytes = xqa_internal_bytes;
 
@@ -413,11 +417,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       out_accum_bytes = onnxruntime::flash::get_out_accum_size(num_splits, parameters.batch_size, parameters.num_heads, parameters.sequence_length, round_multiple(parameters.head_size, 32));
     }
 
-    softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-    softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
-    out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
+    softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+    softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
+    out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
 
-    auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+    auto cuda_stream = Stream(context);
     if (softmax_lse_accum_bytes > 0) {
       // Initialize to 0 is fine because Flash kernel will write -inf to it if needed.
       // However, the standard Flash kernel often doesn't zero it globally.
@@ -442,8 +446,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   } else {
     // Compute sequence length buffers (past_seq_lens and total_seq_lens).
     // Allocate buffer for both: first half is past_seq_lens, second half is total_seq_lens.
-    seq_lens_buffer = GetScratchBuffer<int>(3 * parameters.batch_size, context->GetComputeStream());
-    auto cuda_stream = static_cast<cudaStream_t>(context->GetComputeStream()->GetHandle());
+    seq_lens_buffer = GetScratchBuffer<int>(3 * parameters.batch_size, GetComputeStream(context));
+    auto cuda_stream = Stream(context);
     data.past_seq_lens = seq_lens_buffer.get();
     data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
@@ -480,9 +484,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                    ? (sizeof(float) * parameters.batch_size * parameters.sequence_length * parameters.num_heads * parameters.head_size)
                                    : 0;
 
-    k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
-    v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, context->GetComputeStream());
-    fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, context->GetComputeStream());
+    k_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
+    v_buffer = GetScratchBuffer<void>(kv_buffer_bytes, GetComputeStream(context));
+    fmha_buffer = GetScratchBuffer<void>(fmha_buffer_bytes, GetComputeStream(context));
 
     data.k = reinterpret_cast<CudaT*>(k_buffer.get());
     data.v = reinterpret_cast<CudaT*>(v_buffer.get());
@@ -501,8 +505,49 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       data.use_memory_efficient_attention);
 
   if (buffer_req.qkv_buffer_bytes > 0) {
-    unpacked_qkv_buffer = GetScratchBuffer<void>(buffer_req.qkv_buffer_bytes, context->GetComputeStream());
+    unpacked_qkv_buffer = GetScratchBuffer<void>(buffer_req.qkv_buffer_bytes, GetComputeStream(context));
     data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
+  }
+
+  // ---------------------------------------------------------------------
+  // GQA-capable unfused fallback (issue #28195).
+  // Activates when Flash / MEA / XQA are all ineligible and KV is not quantized.
+  // Supports any head_size (FP32 QK accumulation), GQA, sliding window, softcap.
+  // See LaunchGqaUnfusedAttention in contrib_ops/cuda/bert/gqa_unfused_attention.h.
+  // ---------------------------------------------------------------------
+  IAllocatorUniquePtr<void> unfused_scratch;
+  if (!data.use_xqa && !data.use_flash_attention && !data.use_memory_efficient_attention &&
+      !is_inputs_quantized && !parameters.use_smooth_softmax && head_sink == nullptr &&
+      parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+    data.use_unfused = true;
+
+    const size_t B = static_cast<size_t>(parameters.batch_size);
+    const size_t N_q = static_cast<size_t>(parameters.num_heads);
+    const size_t S_q = static_cast<size_t>(parameters.sequence_length);
+    const size_t H = static_cast<size_t>(parameters.head_size);
+    // GQA guarantees head_size == v_head_size; use H_v for the Y output buffer
+    // so the allocation stays correct if a distinct v_head_size is ever exposed.
+    const size_t H_v = (parameters.v_head_size > 0)
+                           ? static_cast<size_t>(parameters.v_head_size)
+                           : H;
+    const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
+
+    auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
+      return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
+    };
+    const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H_v * sizeof(T));
+    const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
+        onnxruntime::contrib::cuda::GetGqaUnfusedAttentionWorkspaceSize(
+            static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
+    const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
+
+    unfused_scratch = GetScratchBuffer<void>(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
+                                             GetComputeStream(context));
+    auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
+    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
+    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
+    data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
   }
 
   if (kernel_options_->AllowDebugInfo()) {
@@ -556,7 +601,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   cublasHandle_t cublas = GetCublasHandle(context);
 
   ORT_RETURN_IF_ERROR((QkvToContext<CudaT, CudaU>(
-      device_prop, cublas, context->GetComputeStream(), parameters, data)));
+      device_prop, cublas, ort_stream.get(), parameters, data)));
   return Status::OK();
 }
 

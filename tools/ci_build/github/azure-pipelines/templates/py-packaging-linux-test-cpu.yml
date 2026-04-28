@@ -50,6 +50,10 @@ jobs:
   - download: build   # pipeline resource identifier.
     artifact: 'onnxruntime-${{ parameters.arch }}-${{ parameters.ep }}'
 
+  - template: templates/setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: ${{ parameters.arch }}
+
   - bash: |
       set -e -x
       ls $(Pipeline.Workspace)/build
