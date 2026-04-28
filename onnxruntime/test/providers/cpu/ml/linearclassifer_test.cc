@@ -222,5 +222,25 @@ TEST(MLOpTest, LinearClassifierCoefficientsSizeNotDivisibleByClassCountFails) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "coefficients size (5) must be a multiple of the number of classes (3)");
 }
+
+TEST(MLOpTest, LinearClassifierInputFeatureCountMismatchFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f,
+                                     -0.68051993f, -0.1975279f, 0.03748541f};
+  std::vector<int64_t> classes = {1, 2, 3};
+  std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 1}, {1.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "LinearClassifier: input feature count (1) must match the coefficients feature count (2)");
+}
 }  // namespace test
 }  // namespace onnxruntime

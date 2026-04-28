@@ -297,6 +297,31 @@ TEST(MLOpTest, SVMClassifierUndersizedCoefficients) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients attribute size");
 }
 
+TEST(MLOpTest, SVMClassifierVectorsPerClassSizeMismatch) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 1.f, 1.f, 1.f};
+  std::vector<float> support_vectors = {0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f};
+  std::vector<float> rho = {0.1f, 0.1f, 0.1f};
+  std::vector<float> kernel_params = {0.01f, 0.f, 3.f};
+  std::vector<int64_t> classes = {0, 1, 2};
+  std::vector<int64_t> vectors_per_class = {1, 1};  // needs one entry per class
+
+  test.AddAttribute("kernel_type", std::string("RBF"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 4}, {0.f, 0.f, 0.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {1});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "vectors_per_class attribute size");
+}
+
 TEST(MLOpTest, SVMClassifierInvalidInputFeatureCount) {
   OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
 

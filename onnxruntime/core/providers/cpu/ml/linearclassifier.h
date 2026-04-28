@@ -29,6 +29,7 @@ class LinearClassifier final : public OpKernel {
 
   int64_t multi_class_;
   ptrdiff_t class_count_;
+  ptrdiff_t feature_count_;
   POST_EVAL_TRANSFORM post_transform_;
   bool using_strings_;
   std::vector<float> coefficients_;
