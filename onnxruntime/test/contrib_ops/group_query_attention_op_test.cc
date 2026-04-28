@@ -342,7 +342,8 @@ static void RunGQAOptionalPresentTest(
   tester.AddOptionalInputEdge<float>();  // past_key
   tester.AddOptionalInputEdge<float>();  // past_value
 
-  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {static_cast<int32_t>(total_seq_len - 1)});
+  std::vector<int32_t> seqlens_k_data(batch_size, static_cast<int32_t>(total_seq_len - 1));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k_data);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(total_seq_len)});
 
   tester.AddOptionalInputEdge<float>();    // cos_cache
