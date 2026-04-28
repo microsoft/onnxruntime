@@ -110,7 +110,9 @@ class TestCpuinfoSysfsFallback(unittest.TestCase):
             self.assertEqual(result.returncode, 0, f"Compilation failed: {result.stderr}")
 
             result = subprocess.run([exe_path], check=False, capture_output=True, text=True, timeout=10)
-            self.assertEqual(result.returncode, 0, f"Program crashed with exit code {result.returncode}: {result.stderr}")
+            self.assertEqual(
+                result.returncode, 0, f"Program crashed with exit code {result.returncode}: {result.stderr}"
+            )
             self.assertIn("PASS", result.stdout)
         finally:
             os.unlink(src_path)
@@ -202,9 +204,9 @@ class TestCpuinfoSysfsFallback(unittest.TestCase):
     def test_sysfs_hide_with_ld_preload(self):
         """Verify LD_PRELOAD shim can hide sysfs files.
 
-        This compiles a small shim that intercepts fopen to return ENOENT
-        for /sys/devices/system/cpu/{possible,present}, then runs a test program
-        that tries to read those files.
+        This compiles a small shim that intercepts open-family calls to return
+        ENOENT for /sys/devices/system/cpu/{possible,present}, then runs a test
+        program that opens those files.
         """
         _require_linux()
         _require_gcc()
@@ -213,14 +215,101 @@ class TestCpuinfoSysfsFallback(unittest.TestCase):
         #define _GNU_SOURCE
         #include <dlfcn.h>
         #include <errno.h>
-        #include <string.h>
+        #include <fcntl.h>
+        #include <stdarg.h>
         #include <stdio.h>
+        #include <string.h>
+        #include <sys/types.h>
+
+#ifndef O_TMPFILE
+#define O_TMPFILE 0
+#endif
 
         static const char *CPU_POSSIBLE = "/sys/devices/system/cpu/possible";
         static const char *CPU_PRESENT  = "/sys/devices/system/cpu/present";
 
         static int is_blocked(const char *path) {
             return (strcmp(path, CPU_POSSIBLE) == 0 || strcmp(path, CPU_PRESENT) == 0);
+        }
+
+        static mode_t get_mode_if_needed(int flags, va_list args) {
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE)) ? va_arg(args, mode_t) : 0;
+        }
+
+        int open(const char *path, int flags, ...) {
+            static int (*real_open)(const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_open) real_open = dlsym(RTLD_NEXT, "open");
+            if (is_blocked(path)) {
+                errno = ENOENT;
+                return -1;
+            }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_open(path, flags, mode)
+                       : real_open(path, flags);
+        }
+
+        int open64(const char *path, int flags, ...) {
+            static int (*real_open64)(const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_open64) real_open64 = dlsym(RTLD_NEXT, "open64");
+            if (is_blocked(path)) {
+                errno = ENOENT;
+                return -1;
+            }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_open64(path, flags, mode)
+                       : real_open64(path, flags);
+        }
+
+        int openat(int dirfd, const char *path, int flags, ...) {
+            static int (*real_openat)(int, const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_openat) real_openat = dlsym(RTLD_NEXT, "openat");
+            if (path && is_blocked(path)) {
+                errno = ENOENT;
+                return -1;
+            }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_openat(dirfd, path, flags, mode)
+                       : real_openat(dirfd, path, flags);
+        }
+
+        int openat64(int dirfd, const char *path, int flags, ...) {
+            static int (*real_openat64)(int, const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_openat64) real_openat64 = dlsym(RTLD_NEXT, "openat64");
+            if (path && is_blocked(path)) {
+                errno = ENOENT;
+                return -1;
+            }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_openat64(dirfd, path, flags, mode)
+                       : real_openat64(dirfd, path, flags);
         }
 
         FILE *fopen(const char *restrict path, const char *restrict mode) {
@@ -236,28 +325,36 @@ class TestCpuinfoSysfsFallback(unittest.TestCase):
         """)
 
         test_source = textwrap.dedent(r"""
-        #include <stdio.h>
         #include <errno.h>
+        #include <fcntl.h>
+        #include <stdio.h>
         #include <string.h>
+        #include <unistd.h>
+
+        static int try_open(const char *path) {
+            int fd = open(path, O_RDONLY);
+            if (fd >= 0) {
+                close(fd);
+            }
+            return fd;
+        }
 
         int main() {
-            FILE *f;
+            int fd;
             int pass = 1;
 
-            f = fopen("/sys/devices/system/cpu/possible", "r");
-            if (f != NULL) {
+            fd = try_open("/sys/devices/system/cpu/possible");
+            if (fd >= 0) {
                 printf("FAIL: /sys/devices/system/cpu/possible should be blocked\n");
-                fclose(f);
                 pass = 0;
             } else {
                 printf("OK: /sys/devices/system/cpu/possible blocked (errno=%d: %s)\n",
                        errno, strerror(errno));
             }
 
-            f = fopen("/sys/devices/system/cpu/present", "r");
-            if (f != NULL) {
+            fd = try_open("/sys/devices/system/cpu/present");
+            if (fd >= 0) {
                 printf("FAIL: /sys/devices/system/cpu/present should be blocked\n");
-                fclose(f);
                 pass = 0;
             } else {
                 printf("OK: /sys/devices/system/cpu/present blocked (errno=%d: %s)\n",
@@ -265,12 +362,11 @@ class TestCpuinfoSysfsFallback(unittest.TestCase):
             }
 
             // Verify other files still work
-            f = fopen("/proc/cpuinfo", "r");
-            if (f == NULL) {
+            fd = try_open("/proc/cpuinfo");
+            if (fd < 0) {
                 printf("WARN: /proc/cpuinfo not accessible (may be OK in some envs)\n");
             } else {
                 printf("OK: /proc/cpuinfo still accessible\n");
-                fclose(f);
             }
 
             if (pass) {
@@ -334,14 +430,89 @@ class TestCpuinfoSysfsFallback(unittest.TestCase):
         #define _GNU_SOURCE
         #include <dlfcn.h>
         #include <errno.h>
-        #include <string.h>
+        #include <fcntl.h>
+        #include <stdarg.h>
         #include <stdio.h>
+        #include <string.h>
+        #include <sys/types.h>
+
+#ifndef O_TMPFILE
+#define O_TMPFILE 0
+#endif
 
         static const char *CPU_POSSIBLE = "/sys/devices/system/cpu/possible";
         static const char *CPU_PRESENT  = "/sys/devices/system/cpu/present";
 
         static int is_blocked(const char *path) {
             return (strcmp(path, CPU_POSSIBLE) == 0 || strcmp(path, CPU_PRESENT) == 0);
+        }
+
+        static mode_t get_mode_if_needed(int flags, va_list args) {
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE)) ? va_arg(args, mode_t) : 0;
+        }
+
+        int open(const char *path, int flags, ...) {
+            static int (*real_open)(const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_open) real_open = dlsym(RTLD_NEXT, "open");
+            if (is_blocked(path)) { errno = ENOENT; return -1; }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_open(path, flags, mode)
+                       : real_open(path, flags);
+        }
+
+        int open64(const char *path, int flags, ...) {
+            static int (*real_open64)(const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_open64) real_open64 = dlsym(RTLD_NEXT, "open64");
+            if (is_blocked(path)) { errno = ENOENT; return -1; }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_open64(path, flags, mode)
+                       : real_open64(path, flags);
+        }
+
+        int openat(int dirfd, const char *path, int flags, ...) {
+            static int (*real_openat)(int, const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_openat) real_openat = dlsym(RTLD_NEXT, "openat");
+            if (path && is_blocked(path)) { errno = ENOENT; return -1; }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_openat(dirfd, path, flags, mode)
+                       : real_openat(dirfd, path, flags);
+        }
+
+        int openat64(int dirfd, const char *path, int flags, ...) {
+            static int (*real_openat64)(int, const char *, int, ...) = NULL;
+            va_list args;
+            mode_t mode = 0;
+
+            if (!real_openat64) real_openat64 = dlsym(RTLD_NEXT, "openat64");
+            if (path && is_blocked(path)) { errno = ENOENT; return -1; }
+
+            va_start(args, flags);
+            mode = get_mode_if_needed(flags, args);
+            va_end(args);
+            return ((flags & O_CREAT) || ((flags & O_TMPFILE) == O_TMPFILE))
+                       ? real_openat64(dirfd, path, flags, mode)
+                       : real_openat64(dirfd, path, flags);
         }
 
         FILE *fopen(const char *restrict path, const char *restrict mode) {
