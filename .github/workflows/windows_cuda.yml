@@ -15,6 +15,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
+# Must match the version in java/gradle/wrapper/gradle-wrapper.properties.
+env:
+  GRADLE_VERSION: '8.7'
+
 #TODO: enable  --build_nodejs
 jobs:
   build:
@@ -70,12 +74,10 @@ jobs:
           java-version: '17'
           architecture: x64
 
-      - name: Pre-download and cache Gradle (version from java/gradle/wrapper)
+      - name: Pre-download and cache Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          # 'wrapper' tells the action to read the Gradle version from
-          # java/gradle/wrapper/gradle-wrapper.properties (currently 8.7).
-          gradle-version: 'wrapper'
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - uses: actions/cache@v5
         id: onnx-node-tests-cache
@@ -193,12 +195,10 @@ jobs:
           java-version: '17'
           architecture: x64
 
-      - name: Pre-download and cache Gradle (version from java/gradle/wrapper)
+      - name: Pre-download and cache Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          # 'wrapper' tells the action to read the Gradle version from
-          # java/gradle/wrapper/gradle-wrapper.properties (currently 8.7).
-          gradle-version: 'wrapper'
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
