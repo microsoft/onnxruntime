@@ -9,6 +9,7 @@
 #param n_bits
 #param single_scale_weights
 #param sub_tile_count
+#param swizzle_size
 #param tile_size_k_vec
 #param tile_size_k
 #param tile_size
@@ -35,8 +36,14 @@ fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 }
 
 $MAIN {
+  const kSwizzleSize = u32(swizzle_size);
   let batch = workgroup_idx / (uniforms.dispatch_M * uniforms.num_N_tile);
-  let a_global = (workgroup_idx / uniforms.num_N_tile) % uniforms.dispatch_M;
+  let tile_idx = workgroup_idx % (uniforms.dispatch_M * uniforms.num_N_tile);
+  let swizzle_group = tile_idx / (uniforms.num_N_tile * kSwizzleSize);
+  let first_swizzled_m = swizzle_group * kSwizzleSize;
+  let swizzled_m_count = min(uniforms.dispatch_M - first_swizzled_m, kSwizzleSize);
+  let tile_idx_in_swizzle = tile_idx % (uniforms.num_N_tile * kSwizzleSize);
+  let a_global = first_swizzled_m + tile_idx_in_swizzle % swizzled_m_count;
 #if has_weight_idx
 #if has_weight_idx_indirect
   let actual_weight_idx = weight_index_indirect[a_global];
@@ -57,7 +64,7 @@ $MAIN {
 #if has_bias
   let b_bias_offset = actual_weight_idx * uniforms.N;
 #endif
-  let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
+  let b_global_base = (tile_idx_in_swizzle / swizzled_m_count) * tile_size;
 
   // When broadcast_a_row is true, A has only 1 row but M=k for dispatch.
   // Always read from A row 0; a_global is used for output row and weight selection.

@@ -106,6 +106,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(output_type_i32, false),
                              WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
                              WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
+                             WGSL_TEMPLATE_PARAMETER(swizzle_size, swizzle_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                              WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
@@ -312,10 +313,13 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   constexpr uint32_t workgroup_size = 128;
   constexpr uint32_t tile_size = 8;
+  constexpr uint32_t swizzle_size = 8;
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a};
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias,
+                             has_weight_idx, has_weight_idx_indirect, single_scale_weights,
+                             tile_size_k_vec, broadcast_a, swizzle_size};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   program.SetDispatchGroupSize(num_N_tile, dispatch_M, batch_count);
@@ -336,7 +340,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {batch_count},
                             {weight_index},
                             {dispatch_M}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect,
+               tile_size_k_vec, broadcast_a, swizzle_size);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
