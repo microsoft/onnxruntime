@@ -141,7 +141,7 @@ pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
 // Update the tensor data in an OrtValue in-place from another OrtValue.
 // Both OrtValues must contain tensors of the same data type and size.
 // This function supports various device-to-device transfers.
-void UpdateOrtValueInplace(OrtValue* dst, const OrtValue* src);
+void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src);
 
 // The below two functions are used to convert OrtValue to numpy arrays
 

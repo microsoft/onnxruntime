@@ -1071,16 +1071,16 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
   }
 }
 
-void UpdateOrtValueInplace(OrtValue* dst, const OrtValue* src) {
-  if (!dst->IsTensor()) {
+void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
+  if (!dst.IsTensor()) {
     throw std::runtime_error("Inplace update of OrtValues is only supported for Tensors");
   }
-  if (!src->IsTensor()) {
+  if (!src.IsTensor()) {
     throw std::runtime_error("The source OrtValue must contain a Tensor");
   }
 
-  const auto& dst_tensor = dst->Get<Tensor>();
-  const auto& src_tensor = src->Get<Tensor>();
+  const auto& dst_tensor = dst.Get<Tensor>();
+  const auto& src_tensor = src.Get<Tensor>();
 
   if (dst_tensor.DataType() != src_tensor.DataType()) {
     throw std::runtime_error("The source and destination OrtValues must have the same data type");
@@ -1103,7 +1103,7 @@ void UpdateOrtValueInplace(OrtValue* dst, const OrtValue* src) {
   const auto src_device = src_tensor.Location().device;
   const auto dst_device = dst_tensor.Location().device;
 
-  void* dst_ptr = dst->GetMutable<Tensor>()->MutableDataRaw();
+  void* dst_ptr = dst.GetMutable<Tensor>()->MutableDataRaw();
   const void* src_ptr = src_tensor.DataRaw();
 
   if (src_device.UsesCpuMemory() && dst_device.UsesCpuMemory()) {
@@ -1115,7 +1115,7 @@ void UpdateOrtValueInplace(OrtValue* dst, const OrtValue* src) {
 #ifdef USE_CUDA
       if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::GPU) {
         auto data_transfer = GetGPUDataTransfer();
-        ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, *(dst->GetMutable<Tensor>())));
+        ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, *dst.GetMutable<Tensor>()));
         return;
       }
       if (src_device.UsesCpuMemory() && dst_device.Type() == OrtDevice::GPU) {
