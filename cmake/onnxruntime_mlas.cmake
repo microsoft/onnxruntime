@@ -777,13 +777,19 @@ else()
 
         include(CheckCSourceCompiles)
 
-        set(CMAKE_REQUIRED_FLAGS "-mavx512fp16")
+        set(MLAS_OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+        if(CMAKE_REQUIRED_FLAGS)
+          set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -mavx512fp16")
+        else()
+          set(CMAKE_REQUIRED_FLAGS "-mavx512fp16")
+        endif()
         check_c_source_compiles("
         int main() {
             __asm__ volatile(\"vcvtneeph2ps %ymm0, %ymm1\");
             return 0;
         }
         " COMPILER_SUPPORTS_AVX512FP16)
+        set(CMAKE_REQUIRED_FLAGS "${MLAS_OLD_CMAKE_REQUIRED_FLAGS}")
 
         if(COMPILER_SUPPORTS_AVX512FP16 AND NOT APPLE)
           set(mlas_platform_srcs_avx2
