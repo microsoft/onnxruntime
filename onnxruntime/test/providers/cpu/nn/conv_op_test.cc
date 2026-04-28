@@ -890,13 +890,13 @@ TEST(ConvTest, Conv2D_MatMul_SplitK_With_Bias) {
 
 TEST(ConvTest, Conv2D_MatMul_Batched_No_Bias) {
   ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{1, 1},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      "",                                // auto_pad
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      std::vector<int64_t>{1, 1},        // kernel_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      {}                                 // excluded EPs
   };
 
   constexpr int64_t batch = 2;  // batch > 1
@@ -904,15 +904,15 @@ TEST(ConvTest, Conv2D_MatMul_Batched_No_Bias) {
   constexpr int64_t K = 768;
   constexpr int64_t N = 64;
 
-  vector<int64_t> X_shape = {batch, K, M, 1};
-  vector<int64_t> W_shape = {N, K, 1, 1};
-  vector<int64_t> Y_shape = {batch, N, M, 1};
+  std::vector<int64_t> X_shape = {batch, K, M, 1};
+  std::vector<int64_t> W_shape = {N, K, 1, 1};
+  std::vector<int64_t> Y_shape = {batch, N, M, 1};
 
   RandomValueGenerator random{5678};
-  vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
-  vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+  std::vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  std::vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
 
-  vector<float> expected_vals(batch * N * M, 0.0f);
+  std::vector<float> expected_vals(batch * N * M, 0.0f);
   for (int64_t b = 0; b < batch; ++b) {
     for (int64_t m = 0; m < M; ++m) {
       for (int64_t n = 0; n < N; ++n) {
@@ -934,13 +934,13 @@ TEST(ConvTest, Conv2D_MatMul_Batched_No_Bias) {
 
 TEST(ConvTest, Conv2D_MatMul_Batched_With_Bias) {
   ConvOpAndTestAttributes attrs = {
-      "",                           // auto_pad
-      vector<int64_t>{1, 1},        // dilations
-      1,                            // group
-      vector<int64_t>{1, 1},        // kernel_shape
-      vector<int64_t>{0, 0, 0, 0},  // pads
-      vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      "",                                // auto_pad
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      std::vector<int64_t>{1, 1},        // kernel_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      {}                                 // excluded EPs
   };
 
   constexpr int64_t batch = 2;
@@ -948,17 +948,17 @@ TEST(ConvTest, Conv2D_MatMul_Batched_With_Bias) {
   constexpr int64_t K = 768;
   constexpr int64_t N = 64;
 
-  vector<int64_t> X_shape = {batch, K, M, 1};
-  vector<int64_t> W_shape = {N, K, 1, 1};
-  vector<int64_t> Y_shape = {batch, N, M, 1};
-  vector<int64_t> B_shape = {N};
+  std::vector<int64_t> X_shape = {batch, K, M, 1};
+  std::vector<int64_t> W_shape = {N, K, 1, 1};
+  std::vector<int64_t> Y_shape = {batch, N, M, 1};
+  std::vector<int64_t> B_shape = {N};
 
   RandomValueGenerator random{5678};
-  vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
-  vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
-  vector<float> B(random.Gaussian<float>(AsSpan(B_shape), 0.0f, 0.25f));
+  std::vector<float> X(random.Gaussian<float>(AsSpan(X_shape), 0.0f, 0.025f));
+  std::vector<float> W(random.Gaussian<float>(AsSpan(W_shape), 0.0f, 0.025f));
+  std::vector<float> B(random.Gaussian<float>(AsSpan(B_shape), 0.0f, 0.25f));
 
-  vector<float> expected_vals(batch * N * M, 0.0f);
+  std::vector<float> expected_vals(batch * N * M, 0.0f);
   for (int64_t b = 0; b < batch; ++b) {
     for (int64_t m = 0; m < M; ++m) {
       for (int64_t n = 0; n < N; ++n) {
