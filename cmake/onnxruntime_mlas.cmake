@@ -796,7 +796,7 @@ else()
             ${mlas_platform_srcs_avx2}
             ${MLAS_SRC_DIR}/x86_64/cvtfp16Avx.S
           )
-          add_compile_definitions(MLAS_SUPPORTS_AVX512FP16)
+          list(APPEND mlas_private_compile_definitions MLAS_SUPPORTS_AVX512FP16)
         endif()
 
 message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
