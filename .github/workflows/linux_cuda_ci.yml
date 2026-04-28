@@ -92,15 +92,60 @@ jobs:
           fi
 
       # --- Run Tests using the downloaded build ---
-      # The run-build-script-in-docker action mounts ${{ runner.temp }} to /onnxruntime_src/build
-      # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
+      # Enable NVIDIA GPU persistence mode so the driver stays loaded between test
+      # processes. Without this, the GPU can become invisible after the C++ test
+      # binary exits, causing "CUDA failure 100: no CUDA-capable device" in
+      # subsequent Python tests.
+      - name: Enable GPU persistence mode
+        run: sudo nvidia-smi -pm 1
+
+      # Verify the GPU is accessible inside Docker before running the full test suite.
+      # If the NVIDIA Container Toolkit fails to expose /dev/nvidia* devices,
+      # tests will fail with "CUDA failure 100" and waste 10+ minutes.
+      - name: Verify GPU access in Docker
+        run: |
+          docker run --rm --gpus all \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            nvidia-smi
+
+      # Run docker directly (instead of run-build-script-in-docker action) so we can pass
+      # --ipc=host. cuDNN 9.x requires adequate shared memory for handle creation; Docker's
+      # default 64 MB /dev/shm causes CUDNN_STATUS_INTERNAL_ERROR when multiple test
+      # processes create cuDNN handles in parallel.
       - name: Test ONNX Runtime
         id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: Release
-          mode: 'test' # Set mode to test
-          execution_providers: 'cuda'
-          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+        run: |
+          set -e
+          # Ensure host directories exist for mounts
+          mkdir -p "$HOME/.cache" "$HOME/.onnx"
+          docker run --rm \
+            --gpus all \
+            --ipc=host \
+            --volume "${{ github.workspace }}:/onnxruntime_src" \
+            --volume "${{ runner.temp }}:/onnxruntime_src/build" \
+            --volume "$HOME/.cache:/home/onnxruntimedev/.cache" \
+            --volume "/data/onnx:/data/onnx:ro" \
+            --volume "/data/models:/data/models:ro" \
+            --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" \
+            -w /onnxruntime_src \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+            -e NIGHTLY_BUILD=1 \
+            -e RUNNER_TEMP=/onnxruntime_src/build \
+            -e CCACHE_DIR=/home/onnxruntimedev/.cache/ccache \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            /bin/bash -c "set -ex; PATH=/opt/python/cp310-cp310/bin:\$PATH && \
+              ccache --version && ccache --max-size=20GiB && ccache --zero-stats && \
+              python3 tools/ci_build/build.py \
+                --build_dir build/Release --config Release \
+                --cmake_generator Ninja \
+                --skip_submodule_sync \
+                --build_shared_lib --parallel \
+                --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+                --enable_onnx_tests \
+                --use_cuda \
+                --use_binskim_compliant_compile_flags \
+                --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 \
+                --enable_cuda_profiling \
+                --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON \
+                --test && \
+              ccache --show-stats"
