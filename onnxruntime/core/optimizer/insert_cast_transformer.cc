@@ -4,6 +4,8 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/data_types.h"
 #include "core/graph/graph_utils.h"
+#include "core/framework/compute_capability.h"
+#include "core/graph/indexed_sub_graph.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -548,6 +550,14 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       // Set current node to run on the CPU execution provider
       // Keep in mind that the EP will be empty because NeedInsertCast() already insures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
+
+      // Record the CPU reassignment via the partition assignment callback if provided.
+      if (on_partition_assignment_fn_) {
+        auto sub_graph = std::make_unique<IndexedSubGraph>();
+        sub_graph->nodes = {node->Index()};
+        ComputeCapability capability(std::move(sub_graph));
+        on_partition_assignment_fn_(graph, capability, kCpuExecutionProvider);
+      }
 
       // Some ONNX operators have an attribute `dtype` which define the output type for these operators
       // (mostly Generator ops like RandomNormal, RandomNormalLike, EyeLike, etc.).
