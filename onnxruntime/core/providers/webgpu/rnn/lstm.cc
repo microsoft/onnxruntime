@@ -396,8 +396,7 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
 
   // Check if the cell program would exceed storage buffer limits (max 10).
   // Base bindings: x, w, r, h_prev, c_prev (5 inputs) + h_new, c_new (2 outputs) = 7.
-  int cell_bindings = 7 + (B != nullptr ? 1 : 0) + (P != nullptr ? 1 : 0)
-                      + (has_seq_lens ? 1 : 0) + (has_Y ? 1 : 0);
+  int cell_bindings = 7 + (B != nullptr ? 1 : 0) + (P != nullptr ? 1 : 0) + (has_seq_lens ? 1 : 0) + (has_Y ? 1 : 0);
   bool split_y = (cell_bindings > 10) && has_Y;
   bool cell_has_Y = has_Y && !split_y;
 
