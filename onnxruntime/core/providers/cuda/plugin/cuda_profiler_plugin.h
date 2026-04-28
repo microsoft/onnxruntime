@@ -6,7 +6,7 @@
 #if defined(ENABLE_CUDA_PROFILING)
 
 #include "cuda_plugin_utils.h"
-#include "cupti_manager.h"
+#include "core/providers/cuda/cupti_manager.h"
 #include "core/common/gpu_profiler_common.h"
 
 namespace onnxruntime {
