@@ -82,6 +82,7 @@ stages:
     - template: plugin-webgpu-nuget-packaging-stage.yml
       parameters:
         package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
         DoEsrp: true
         platforms:

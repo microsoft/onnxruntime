@@ -6,6 +6,9 @@ parameters:
 - name: package_version
   type: string
 
+- name: version_file
+  type: string
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -65,6 +68,7 @@ stages:
     - template: ../templates/set-plugin-build-variables-step.yml
       parameters:
         package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
 
     # Download platform artifacts
     - ${{ if eq(parameters.platforms.win_x64, true) }}:
