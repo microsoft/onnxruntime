@@ -185,7 +185,7 @@ ABSL_FLAG(int, spin_duration_us, -1, "Sets the spin duration in microseconds for
 ABSL_FLAG(bool, n, DefaultPerformanceTestConfig().run_config.exit_after_session_creation, "Allows user to measure session creation time to measure impact of enabling any initialization optimizations.");
 ABSL_FLAG(uint32_t, hold_ms_after_session_creation, DefaultPerformanceTestConfig().run_config.hold_ms_after_session_creation,
           "When used with -n, keeps the process alive for the specified number of milliseconds after session creation.\n"
-          "Prints 'SESSION_READY pid=<pid>' to stdout before sleeping. Useful for multi-process memory measurements.");
+          "Prints 'SESSION_READY' to stdout before sleeping. Useful for multi-process memory measurements.");
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding, "[TensorRT RTX | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
 ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Registers custom ops from onnxruntime-extensions.");

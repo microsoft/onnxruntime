@@ -194,7 +194,7 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 /// <summary>
 /// Key for using the ORT format model flatbuffer bytes directly for initializers.
 /// This avoids copying the bytes and reduces peak memory usage during model loading and initialization.
-/// Requires `session.use_ort_model_bytes_directly` to be true.
+/// Requires `session.use_ort_model_bytes_directly` or `session.use_memory_mapped_ort_model` to be true.
 /// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire
 /// duration of the InferenceSession.
 /// </summary>

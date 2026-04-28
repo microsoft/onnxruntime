@@ -1744,6 +1744,11 @@ Status InferenceSession::LoadOrtModel(const PathString& model_uri) {
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
   return LoadOrtModelWithLoader([&]() {
     const auto& config_options = GetSessionOptions().config_options;
+
+    if (config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseMemoryMappedOrtModel, "0") == "1") {
+      LOGS(*session_logger_, WARNING) << "session.use_memory_mapped_ort_model is ignored when loading from a buffer.";
+    }
+
     const auto use_ort_model_bytes_directly =
         config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0") == "1";
 
