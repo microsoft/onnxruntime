@@ -70,10 +70,12 @@ jobs:
           java-version: '17'
           architecture: x64
 
-      - name: Setup Gradle
+      - name: Pre-download and cache Gradle (version from java/gradle/wrapper)
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          # 'wrapper' tells the action to read the Gradle version from
+          # java/gradle/wrapper/gradle-wrapper.properties (currently 8.7).
+          gradle-version: 'wrapper'
 
       - uses: actions/cache@v5
         id: onnx-node-tests-cache
@@ -191,10 +193,12 @@ jobs:
           java-version: '17'
           architecture: x64
 
-      - name: Setup Gradle
+      - name: Pre-download and cache Gradle (version from java/gradle/wrapper)
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          # 'wrapper' tells the action to read the Gradle version from
+          # java/gradle/wrapper/gradle-wrapper.properties (currently 8.7).
+          gradle-version: 'wrapper'
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
