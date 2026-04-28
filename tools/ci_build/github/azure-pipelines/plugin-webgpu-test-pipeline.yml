@@ -22,6 +22,7 @@ resources:
   - pipeline: build
     source: 'WebGPU Plugin EP Packaging Pipeline'
     trigger: true
+  repositories:
   - repository: 1esPipelines
     type: git
     name: 1ESPipelineTemplates/1ESPipelineTemplates
