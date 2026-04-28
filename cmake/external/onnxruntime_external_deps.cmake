@@ -373,9 +373,7 @@ if (CPUINFO_SUPPORTED)
         # https://github.com/pytorch/cpuinfo/pull/324
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
         # https://github.com/pytorch/cpuinfo/pull/348
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch &&
-        # https://github.com/microsoft/onnxruntime/issues/10038
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
