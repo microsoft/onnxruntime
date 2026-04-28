@@ -38,7 +38,12 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   }
 
   bool IsStreamAware() const override {
-    return SupportsAllocOnStream();
+    return false;
+
+    // TODO: Enable once AllocOnStream() is implemented.
+    // static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+    // const OrtAllocator* raw = ort_allocator_;
+    // return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
   }
 
   void* AllocOnStream(size_t /*size*/, Stream* /*stream*/) override {
@@ -54,12 +59,6 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   static const Ort::Allocator& EnsureOrtAllocatorHasValue(const Ort::Allocator& ort_allocator) {
     ORT_ENFORCE(ort_allocator != nullptr, "Ort::Allocator must contain a non-nullptr OrtAllocator.");
     return ort_allocator;
-  }
-
-  bool SupportsAllocOnStream() const {
-    static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
-    const OrtAllocator* raw = ort_allocator_;
-    return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
   }
 
   // TODO: Consider adding GetStats() override. Requires parsing OrtKeyValuePairs from the C API
