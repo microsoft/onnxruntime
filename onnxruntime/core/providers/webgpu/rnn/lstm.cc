@@ -385,8 +385,10 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     prog.AddInputs({{src, ProgramTensorMetadataDependency::Type}});
     prog.AddOutputs({{dst, ProgramTensorMetadataDependency::None}});
     prog.AddUniformVariables({
-        {static_cast<uint32_t>(batch_size)}, {H},
-        {static_cast<uint32_t>(dir)}, {static_cast<uint32_t>(num_directions)},
+        {static_cast<uint32_t>(batch_size)},
+        {H},
+        {static_cast<uint32_t>(dir)},
+        {static_cast<uint32_t>(num_directions)},
     });
     return context.RunProgram(prog);
   };
