@@ -181,7 +181,7 @@ TEST(MLOpTest, LinearClassifierMulticlassDoubleInput) {
   LinearClassifierMulticlass<double>();
 }
 
-// Regression test: input feature count must match the feature count encoded in coefficients.
+// Regression test: coefficients size doesn't match class_count * num_features.
 TEST(MLOpTest, LinearClassifierInvalidCoefficientsSizeFails) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
@@ -199,7 +199,7 @@ TEST(MLOpTest, LinearClassifierInvalidCoefficientsSizeFails) {
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "LinearClassifier: input feature count (2) must match the coefficients feature count (1)");
+           "coefficients size (3) is less than class_count (3) * num_features (2)");
 }
 
 // Regression test: coefficients not divisible by class_count.
@@ -235,12 +235,12 @@ TEST(MLOpTest, LinearClassifierInputFeatureCountMismatchFails) {
   test.AddAttribute("intercepts", intercepts);
   test.AddAttribute("classlabels_ints", classes);
 
-  test.AddInput<float>("X", {1, 1}, {1.f});
+  test.AddInput<float>("X", {1, 3}, {1.f, 0.f, 0.f});
   test.AddOutput<int64_t>("Y", {1}, {0LL});
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "LinearClassifier: input feature count (1) must match the coefficients feature count (2)");
+           "coefficients size (6) is less than class_count (3) * num_features (3)");
 }
 }  // namespace test
 }  // namespace onnxruntime
