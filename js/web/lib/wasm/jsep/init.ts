@@ -39,19 +39,9 @@ class TensorViewImpl implements TensorView {
       throw new Error('Invalid data type');
     }
     const elementCount = ShapeUtil.size(this.dims);
-    if (elementCount === 0) {
-      return new BigInt64Array();
-    }
-    // BigInt64Array requires the byte offset to be a multiple of 8. WASM allocators may return
-    // offsets that are not 8-byte aligned, so fall back to copying bytes into an aligned buffer.
-    // Note: the returned array is a read-only copy when unaligned (mutations won't propagate to WASM heap).
-    if (this.data % 8 === 0) {
-      return new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
-    }
-    const byteLength = elementCount * 8;
-    const alignedBuffer = new ArrayBuffer(byteLength);
-    new Uint8Array(alignedBuffer).set(new Uint8Array(this.module.HEAP8.buffer, this.data, byteLength));
-    return new BigInt64Array(alignedBuffer);
+    return elementCount === 0
+      ? new BigInt64Array()
+      : new BigInt64Array(this.module.HEAP8.buffer, this.data, elementCount);
   }
 
   getInt32Array(): Int32Array {

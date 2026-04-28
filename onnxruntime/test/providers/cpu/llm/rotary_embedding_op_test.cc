@@ -1208,10 +1208,11 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_CUDA_Passthrough) {
   }
 
   test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
   test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
   test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
   // position_id = 2048 exceeds max_sequence_length = 8 — CUDA should pass through input unchanged.
   test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {2048});
 
@@ -1314,10 +1315,11 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_WebGPU_Passthrough) {
   }
 
   test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
   test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
   test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
   // position_id = 2048 exceeds max_sequence_length = 8 — shader passes through input unchanged.
   test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {2048});
 
@@ -1353,10 +1355,11 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_Negative_WebGPU_Passthroug
   }
 
   test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
   test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
   test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
   // Negative position_id — shader checks raw_pos < 0 and passes through.
   test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {-1});
 
@@ -1392,10 +1395,11 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_InBatch_WebGPU_Passthr
   }
 
   test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
   test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
   test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
   // All OOB position_ids — shader passes through input unchanged.
   test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {100, 200, 300, 400});
 
