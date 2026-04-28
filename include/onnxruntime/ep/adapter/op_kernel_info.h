@@ -10,8 +10,6 @@
 #include <memory>
 #include <shared_mutex>
 
-#include <gsl/gsl>
-
 #include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/common/status.h"
