@@ -27,6 +27,7 @@ Abstract:
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
+#include <cstdlib>
 #include <thread>
 #include <mutex>
 
@@ -47,6 +48,14 @@ Abstract:
 
 #if defined(MLAS_TARGET_S390X)
 #include <sys/auxv.h>
+#endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#ifndef COMPAT_HWCAP_ISA_V
+#define COMPAT_HWCAP_ISA_V (1UL << ('V' - 'A'))
+#endif
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
@@ -264,6 +273,34 @@ Return Value:
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
+
+#if defined(MLAS_TARGET_RISCV64)
+    this->GemmFloatKernel = nullptr;
+    this->ErfKernelRoutine = MlasErfKernel;
+    this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+
+#if defined(MLAS_USE_RVV)
+    bool has_rvv = true;
+#if defined(__linux__)
+    has_rvv = (getauxval(AT_HWCAP) & COMPAT_HWCAP_ISA_V) != 0;
+#endif
+    const char* force_scalar = std::getenv("ORT_MLAS_RISCV_FORCE_SCALAR");
+    if (force_scalar != nullptr && force_scalar[0] != '\0' && force_scalar[0] != '0') {
+        has_rvv = false;
+    }
+    if (has_rvv) {
+        this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+        this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+    }
+#endif
+#endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 
