@@ -1,0 +1,148 @@
+parameters:
+- name: stage_name
+  type: string
+  default: 'Linux_plugin_cuda_x64_Build'
+
+- name: arch
+  type: string
+  default: 'x64'
+  values:
+  - x64
+  - aarch64
+
+- name: machine_pool
+  type: string
+  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
+
+- name: package_version
+  type: string
+  default: dev
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: docker_base_image
+  type: string
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+
+- name: cuda_version
+  type: string
+  default: '12.8'
+
+- name: cmake_cuda_archs
+  type: string
+  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+
+- name: python_version
+  type: string
+  default: '3.12'
+
+- name: docker_python_exe_path
+  type: string
+  default: '/opt/python/cp312-cp312/bin/python3.12'
+
+- name: artifact_name
+  type: string
+  default: 'cuda_plugin_linux_x64'
+
+stages:
+- stage: ${{ parameters.stage_name }}
+  dependsOn: []
+  jobs:
+  - job: ${{ parameters.stage_name }}
+    timeoutInMinutes: 240
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+      ${{ if eq(parameters.arch, 'aarch64') }}:
+        hostArchitecture: Arm64
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: ${{ parameters.artifact_name }}
+    variables:
+      - template: ../templates/common-variables.yml
+    steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+
+      - template: ../templates/setup-feeds-and-python-steps.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
+
+      - template: ../templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u ) --build-arg TRT_VERSION="
+          Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
+
+      - script: >-
+          $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_plugin_package.sh
+          -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
+          -c ${{ parameters.cmake_build_type }}
+          -p ${{ parameters.docker_python_exe_path }}
+          -v ${{ parameters.cuda_version }}
+          -a "${{ parameters.cmake_cuda_archs }}"
+        workingDirectory: $(Build.SourcesDirectory)
+        displayName: 'Build CUDA Plugin (Python ${{ parameters.python_version }}, ${{ parameters.arch }}, CUDA ${{ parameters.cuda_version }})'
+        env:
+          EXTRA_CMAKE_DEFINES: $(PluginEpVersionDefine)
+
+      - script: |
+          set -e -x
+          mkdir -p $(Build.ArtifactStagingDirectory)/bin
+          plugin_path="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/libonnxruntime_providers_cuda_plugin.so"
+          if [ ! -f "$plugin_path" ]; then
+            echo "Error: Expected plugin binary not found at '$plugin_path'. Failing build to avoid publishing an invalid package."
+            exit 1
+          fi
+          cp "$plugin_path" "$(Build.ArtifactStagingDirectory)/bin/"
+        displayName: 'Copy plugin binaries'
+
+      - script: |
+          set -e -x
+          wheel_dir="$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}/dist"
+          if [ -d "$wheel_dir" ]; then
+            mkdir -p "$(Build.ArtifactStagingDirectory)/wheels"
+            cp "$wheel_dir"/onnxruntime*.whl "$(Build.ArtifactStagingDirectory)/wheels/" || true
+          fi
+        displayName: 'Copy wheels (if built)'
+
+      - script: |
+          set -e -x
+          mkdir -p "$(Build.ArtifactStagingDirectory)/version"
+          touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
+        displayName: 'Create version marker file'
+
+      - script: |
+          set -e -x
+          mkdir -p "$(Build.BinariesDirectory)/universal_package"
+          cp -R "$(Build.ArtifactStagingDirectory)/bin/"* "$(Build.BinariesDirectory)/universal_package/"
+        displayName: 'Stage binaries for universal package'
+
+      - task: UniversalPackages@0
+        displayName: 'Publish universal package'
+        inputs:
+          command: publish
+          publishDirectory: '$(Build.BinariesDirectory)/universal_package'
+          vstsFeedPublish: 'PublicPackages/ORT-Nightly'
+          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-linux-${{ parameters.arch }}'
+          versionOption: custom
+          versionPublish: '$(PluginUniversalPackageVersion)'

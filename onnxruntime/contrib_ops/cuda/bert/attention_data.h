@@ -197,10 +197,22 @@ struct GroupQueryAttentionData {
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
   bool use_xqa = false;
+  // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
+  // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
+  bool use_unfused = false;
 
   // XQA buffer
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
+
+  // Unfused fallback buffers (see LaunchGqaUnfusedAttention in gqa_unfused_attention.h):
+  //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
+  //   unfused_y_bnsh : [B, N_q, S_q, H_v] (output BNSH, transposed to BSNH before leaving op)
+  //   unfused_workspace: FP32 QK scratch + T softmax scratch (sized by
+  //                      GetGqaUnfusedAttentionWorkspaceSize)
+  T* unfused_q_bnsh = nullptr;
+  T* unfused_y_bnsh = nullptr;
+  void* unfused_workspace = nullptr;
 };
 
 template <typename T>
@@ -225,11 +237,27 @@ struct PagedAttentionData {
   // Fused op buffers
   T* workspace_buffer = nullptr;
 
+  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
+  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
+  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
+  int total_kv_tokens = 0;
+
+  // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
+  // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's
+  // grid_x (ceil_div(sequence_length, kQueriesPerBlock)) cover every query token. The previous
+  // heuristic `token_count - batch_size + 1` underestimates when any batch has 0 new tokens,
+  // producing silent per-token dropout in MEA and rotary.
+  int max_query_len = 0;
+
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
 };
 
 }  // namespace cuda
