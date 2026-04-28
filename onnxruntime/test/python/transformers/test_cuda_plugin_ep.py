@@ -2479,6 +2479,35 @@ class TestCudaPluginEP(unittest.TestCase):
                     # CUPTI events include stream and block dimensions.
                     self.assertIn("stream", args, f"GPU kernel event missing 'stream': {event}")
                     self.assertIn("block_x", args, f"GPU kernel event missing 'block_x': {event}")
+
+                # Timeline plausibility: GPU kernel timestamps must fall within
+                # the session's profiling window. All ts values are in
+                # microseconds relative to profiling start (epoch 0). Compute
+                # the window from CPU-side events (Session/Node/Api) and assert
+                # kernel events fit. This catches timestamp-domain mismatches
+                # (e.g., missing NormalizeGPUTimestampToCPUEpoch in
+                # cupti_manager.cc).
+                cpu_events = [
+                    e
+                    for e in profile_data
+                    if isinstance(e, dict) and e.get("cat") in ("Session", "Node", "Api") and "ts" in e and "dur" in e
+                ]
+                if cpu_events:
+                    session_end_us = max(e["ts"] + e["dur"] for e in cpu_events)
+                    # Allow a small margin for GPU-side clock skew (100ms).
+                    margin_us = 100_000
+                    for event in kernel_events:
+                        ts = event["ts"]
+                        self.assertGreaterEqual(
+                            ts,
+                            -margin_us,
+                            f"GPU kernel event timestamp before profiling start (domain mismatch?): {event}",
+                        )
+                        self.assertLessEqual(
+                            ts,
+                            session_end_us + margin_us,
+                            f"GPU kernel event timestamp beyond session end (domain mismatch?): {event}",
+                        )
             elif not expect_cuda_profiling:
                 # No GPU kernel events — CUDA profiling is likely not enabled.
                 # The test still validates the basic profiling JSON structure above.

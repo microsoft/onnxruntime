@@ -83,6 +83,7 @@ jobs:
             --skip_tests `
             --use_vcpkg `
             --use_vcpkg_ms_internal_asset_cache `
+            --enable_cuda_profiling `
             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
             --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
 
@@ -194,6 +195,9 @@ jobs:
             Write-Error "CUDA plugin EP library not found at $env:ORT_CUDA_PLUGIN_PATH"
             exit 1
           }
+          # Signal the test that CUPTI profiling is available so it
+          # asserts GPU kernel events are present in the profile.
+          $env:ORT_CUDA_PROFILING_ENABLED = "1"
           python test_cuda_plugin_ep.py
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
