@@ -11,7 +11,6 @@
 #include <utility>
 
 #include "core/framework/allocator.h"
-#include "core/framework/plugin_ep_stream.h"
 
 namespace onnxruntime {
 namespace ep {
@@ -24,7 +23,6 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   explicit IAllocatorWrappingOrtAllocator(Ort::Allocator ort_allocator)
       : IAllocator(*(EnsureOrtAllocatorHasValue(ort_allocator).GetInfo())),
         ort_allocator_(std::move(ort_allocator)) {
-    ORT_ENFORCE(ort_allocator_, "Ort::Allocator must wrap a non-null OrtAllocator*.");
   }
 
   void* Alloc(size_t size) override {
