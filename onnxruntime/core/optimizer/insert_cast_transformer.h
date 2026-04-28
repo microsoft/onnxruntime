@@ -8,6 +8,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/graph_partitioner.h"
 
 namespace onnxruntime {
 
@@ -23,10 +24,12 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
    * @param name                    for logging purpose
    * @param cpu_kernel_registry     used to query whether an op node can be safely created
    */
-  InsertCastTransformer(const std::string& name, const KernelRegistry* cpu_kernel_registry)
+  InsertCastTransformer(const std::string& name, const KernelRegistry* cpu_kernel_registry,
+                        OnPartitionAssignmentFunction on_partition_assignment_fn = {})
       : onnxruntime::GraphTransformer(name),
         cpu_kernel_registries_(cpu_kernel_registry),
-        force_cpu_fp32_(cpu_kernel_registry != nullptr) {}
+        force_cpu_fp32_(cpu_kernel_registry != nullptr),
+        on_partition_assignment_fn_(std::move(on_partition_assignment_fn)) {}
 
  private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -39,5 +42,9 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
   // A better solution is to have a cost model to evaluate does it works to place the node on float16.
   // Here for simplify, we only force the single-node-float16 sub-graph to float32
   const bool force_cpu_fp32_;
+
+  // Optional callback to record when nodes are reassigned to CPU EP by this transformer.
+  // Reuses the same callback type as GraphPartitioner to maintain consistent EP assignment tracking.
+  OnPartitionAssignmentFunction on_partition_assignment_fn_;
 };
 }  // namespace onnxruntime
