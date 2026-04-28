@@ -1302,15 +1302,21 @@ class OrtValue:
 
         return cls(C.OrtValue.from_dlpack(capsule, is_bool))
 
-    def update_inplace(self, np_arr) -> None:
+    def update_inplace(self, data) -> None:
         """
-        Update the OrtValue in place with a new Numpy array. The numpy contents
-        are copied over to the device memory backing the OrtValue. It can be used
-        to update the input valuess for an InferenceSession with CUDA graph
-        enabled or other scenarios where the OrtValue needs to be updated while
-        the memory address can not be changed.
+        Update the OrtValue in place. The source data is copied over to the device
+        memory backing the OrtValue. It can be used to update the input values for
+        an InferenceSession with CUDA graph enabled or other scenarios where the
+        OrtValue needs to be updated while the memory address can not be changed.
+
+        :param data: The source data, which can be a Numpy array or another OrtValue.
+            When an OrtValue is provided, data can be copied between devices (e.g.,
+            GPU to GPU) without going through the CPU.
         """
-        self._ortvalue.update_inplace(np_arr)
+        if isinstance(data, OrtValue):
+            self._ortvalue.update_inplace(data._ortvalue)
+        else:
+            self._ortvalue.update_inplace(data)
 
 
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
