@@ -519,13 +519,25 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
 // ===========================================================================
 // Kernel registrations
 // ===========================================================================
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(LSTM, kOnnxDomain, 7, 13, kWebGpuExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    LSTM,
+    kOnnxDomain,
+    7, 13,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+    Lstm);
 
-ONNX_OPERATOR_KERNEL_EX(LSTM, kOnnxDomain, 14, kWebGpuExecutionProvider,
-                                  (*KernelDefBuilder::Create())
-                                      .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-                                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
-                                  Lstm);
+ONNX_OPERATOR_KERNEL_EX(
+    LSTM,
+    kOnnxDomain,
+    14,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+    Lstm);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
