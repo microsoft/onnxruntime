@@ -47,11 +47,6 @@ parameters:
   type: boolean
   default: true
 
-- name: test_nuget
-  displayName: 'Test NuGet Package'
-  type: boolean
-  default: true
-
 extends:
   # The pipeline extends the 1ES PT which will inject SDL and compliance
   # tasks. Uses "Official" to stay consistent with the companion
@@ -100,7 +95,3 @@ extends:
       # macOS ARM64
       - ${{ if eq(parameters.test_macos_arm64, true) }}:
         - template: stages/plugin-mac-webgpu-test-stage.yml
-
-      # NuGet package
-      - ${{ if eq(parameters.test_nuget, true) }}:
-        - template: stages/plugin-webgpu-nuget-test-stage.yml
