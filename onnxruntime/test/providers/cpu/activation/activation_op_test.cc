@@ -650,6 +650,16 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
         } else if (x == -FLT_MAX) {
           result = -0.;
         }
+#elif defined(__AVX2__)
+        // On x86 with AVX2, Eigen's inverse() uses _mm256_rcp_ps (12-bit approximate reciprocal).
+        // For FLT_MAX the approximation underflows to 0, so 0 * (±FLT_MAX) = ±0 by IEEE 754 signed-zero rules,
+        // rather than the ≈±1 that exact division would produce.
+        // Special-case to match the actual AVX2 Eigen output.
+        if (x == FLT_MAX) {
+          result = 0.f;
+        } else if (x == -FLT_MAX) {
+          result = -0.f;
+        }
 #endif
 
         return result;
