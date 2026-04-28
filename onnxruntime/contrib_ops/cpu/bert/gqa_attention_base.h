@@ -85,7 +85,9 @@ class GQAAttentionBase {
     if (past_key != nullptr && past_value != nullptr) {
       seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
     }
-    int seqlen_present_kv_cache = static_cast<int>(present_key->Shape().GetDims()[2]);
+    int seqlen_present_kv_cache = present_key != nullptr
+                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
+                                      : parameters.seqlen_present_kv_cache;
 
     // Compute the attention score.
     bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
@@ -104,10 +106,6 @@ class GQAAttentionBase {
 
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
-    // External KV mode: K and V are nullptr, past_key/past_value contain the external KV data.
-    // Skip KV cache concatenation and use external KV directly.
-    const bool use_external_kv = parameters.use_external_kv;
-
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
 
     T* output_qk_buffer = output_qk != nullptr ? output_qk->MutableData<T>() : nullptr;
@@ -116,7 +114,7 @@ class GQAAttentionBase {
       ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
                             batch_size, sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
                             seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
-                            past_present_share_buffer, packed_qkv, is_prompt, use_external_kv, tp, allocator);
+                            past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -124,12 +122,12 @@ class GQAAttentionBase {
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                               hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
-                              is_prompt, use_external_kv, tp, allocator);
+                              is_prompt, tp, allocator);
     } else {
       ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
                             batch_size, sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
                             seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
-                            past_present_share_buffer, packed_qkv, is_prompt, use_external_kv, tp, allocator);
+                            past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -137,7 +135,7 @@ class GQAAttentionBase {
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                               hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
-                              is_prompt, use_external_kv, tp, allocator);
+                              is_prompt, tp, allocator);
     }
 
     return Status::OK();
@@ -168,7 +166,6 @@ class GQAAttentionBase {
                              const bool past_present_share_buffer,                 // whether present key and value share the same buffer
                              const bool packed_qkv,                                // whether Q, K, V are packed
                              const bool is_prompt,                                 // whether it is prompt
-                             const bool use_external_kv,                           // whether using external KV (skip KV concat)
                              ThreadPool* tp,                                       // thread pool
                              AllocatorPtr allocator) const {                       // allocator for temporary buffer
     const ptrdiff_t packed_batch_stride =
@@ -180,7 +177,7 @@ class GQAAttentionBase {
     const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;        // L x H
     const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
-    if (!past_present_share_buffer) {
+    if (present_key && !past_present_share_buffer) {
       memset((void*)present_key,
              0,
              batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
@@ -242,21 +239,12 @@ class GQAAttentionBase {
         }
 
         const T* k;
-        if (use_external_kv) {
-          // External KV mode: use past_key directly (it holds the external KV data in BNSH format).
-          // No new K to concatenate — the external KV is the complete key sequence.
-          k = past_key + (i / kv_num_heads_factor) * present_buff_chunk_length;
-          // Copy to present for output pass-through (once per KV head, not per Q head)
-          if (present_key != nullptr && !past_present_share_buffer && head_index % kv_num_heads_factor == 0) {
-            memcpy(present_key + (i / kv_num_heads_factor) * present_buff_chunk_length,
-                   k, SafeInt<size_t>(total_seqlen) * head_size * sizeof(T));
-          }
-        } else if (packed_qkv) {
+        if (packed_qkv) {
           k = K + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
         } else {
           k = K + kv_input_chunk_length * (i / kv_num_heads_factor);
         }
-        if (!use_external_kv && nullptr != present_key) {
+        if (nullptr != present_key) {
           k = ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
                                   past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
                                   i / kv_num_heads_factor);
@@ -406,7 +394,6 @@ class GQAAttentionBase {
                                const bool past_present_share_buffer,         // whether present key and value share the same buffer
                                const bool packed_qkv,                        // whether Q, K, V are packed
                                const bool is_prompt,                         // whether it is prompt
-                               const bool use_external_kv,                   // whether using external KV (skip KV concat)
                                ThreadPool* tp,
                                AllocatorPtr allocator) const {
     const ptrdiff_t packed_batch_stride =
@@ -417,7 +404,7 @@ class GQAAttentionBase {
     const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;        // L x H
     const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
-    if (!past_present_share_buffer) {
+    if (present_value && !past_present_share_buffer) {
       memset((void*)present_value,
              0,
              batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
@@ -460,20 +447,12 @@ class GQAAttentionBase {
         const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const T* v;
-        if (use_external_kv) {
-          // External KV mode: use past_value directly (it holds the external KV data in BNSH format).
-          v = past_value + (i / kv_num_heads_factor) * present_buff_chunk_length;
-          // Copy to present for output pass-through (once per KV head, not per Q head)
-          if (present_value != nullptr && !past_present_share_buffer && head_index % kv_num_heads_factor == 0) {
-            memcpy(present_value + (i / kv_num_heads_factor) * present_buff_chunk_length,
-                   v, SafeInt<size_t>(total_seqlen) * head_size * sizeof(T));
-          }
-        } else if (packed_qkv) {
+        if (packed_qkv) {
           v = V + packed_batch_stride * batch_index + kv_input_chunk_length * (head_index / kv_num_heads_factor);
         } else {
           v = V + kv_input_chunk_length * (i / kv_num_heads_factor);
         }
-        if (!use_external_kv && nullptr != present_value) {
+        if (nullptr != present_value) {
           v = ConcatStateChunkGQA(past_value, v, present_value, present_buff_chunk_length, past_buff_chunk_length,
                                   past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
                                   i / kv_num_heads_factor);

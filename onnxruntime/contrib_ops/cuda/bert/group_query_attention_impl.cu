@@ -98,23 +98,12 @@ Status PrepareQKV(
     q_out = nullptr;
   }
 
-  // External KV mode: the external KV data is already set as past_key/past_value.
-  // Copy it into the present buffers and skip the KV append/RoPE logic.
-  if (parameters.use_external_kv) {
-    U* k = reinterpret_cast<U*>(data.present_key);
-    U* v = reinterpret_cast<U*>(data.present_value);
-    int external_seq_len = parameters.external_kv_sequence_length;
-
-    // For 4-bit quantized KV cache, the stored head dimension is head_size/2 (two nibbles per byte).
-    // Use the packed dimension to compute the correct copy size.
-    int cache_head_dim = (parameters.kv_cache_bit_width == 4) ? (head_size + 1) / 2 : head_size;
-    size_t kv_copy_size = (size_t)batch_size * kv_num_heads * external_seq_len * cache_head_dim * sizeof(U);
-    CUDA_CALL_THROW(cudaMemcpyAsync(k, data.past_key, kv_copy_size, cudaMemcpyDeviceToDevice, stream));
-    CUDA_CALL_THROW(cudaMemcpyAsync(v, data.past_value, kv_copy_size, cudaMemcpyDeviceToDevice, stream));
-
-    // Q is used directly from the input
-    q = reinterpret_cast<const T*>(data.query);
-    return Status::OK();
+  // present_key/present_value are required for the CUDA path since flash attention
+  // and memory-efficient attention read directly from the present KV buffers.
+  // The CPU path supports optional present outputs for KV-shared layers.
+  if (data.present_key == nullptr || data.present_value == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value outputs are required for the CUDA GroupQueryAttention kernel.");
   }
 
   U* k = reinterpret_cast<U*>(data.present_key);

@@ -240,20 +240,13 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
   if (ctx.getNumOutputs() >= 3) {  // has present output
     const auto* past_key_type = ctx.getInputType(past_key_index);
-    // external_key is at input index 14 for GroupQueryAttention
-    const auto* external_key_type = (ctx.getNumInputs() > 14) ? ctx.getInputType(14) : nullptr;
     if (past_key_type != nullptr) {
       // present_key and present_value have the same type as past_key/past_value.
       // This allows them to be int8 or packed uint8 when quantization is enabled.
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);      // present_key
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, past_key_index + 1, 2);  // present_value
-    } else if (external_key_type != nullptr) {
-      // When external KV is provided (inputs 14/15), present outputs should match
-      // the external KV type (T_CACHE), not the query type (T).
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 14, 1);  // present_key from external_key
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 15, 2);  // present_value from external_value
     } else {
-      // If no past state and no external KV, present is the same type as query.
+      // If no past state, present is the same type as query.
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
     }
@@ -1321,21 +1314,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(12, "k_scale", "Scale tensor for past_key.", "T_KV_SCALE", OpSchema::Optional)
         .Input(13, "v_scale", "Scale tensor for past_value.", "T_KV_SCALE", OpSchema::Optional)
-        .Input(14,
-               "external_key",
-               "External pre-computed key tensor in BNSH format (batch_size, kv_num_heads, external_seq_len, head_size). "
-               "Used for KV-shared layers that borrow K,V from another layer's present KV output. "
-               "When provided, the operator skips its internal KV cache update and uses this tensor directly "
-               "for attention computation. RoPE is not applied to external keys (assumed already applied).",
-               "T_CACHE",
-               OpSchema::Optional)
-        .Input(15,
-               "external_value",
-               "External pre-computed value tensor in BNSH format (batch_size, kv_num_heads, external_seq_len, head_size). "
-               "Must be provided together with external_key. When provided, the operator uses this tensor "
-               "for attention computation instead of the internal KV cache.",
-               "T_CACHE",
-               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
@@ -1345,13 +1323,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present state key with support for format BNSH. When past_key uses same tensor as present_key"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T_CACHE")
+                "T_CACHE",
+                OpSchema::Optional)
         .Output(2,
                 "present_value",
                 "present state value with support for format BNSH. When past_value uses same tensor as present_value"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T_CACHE")
+                "T_CACHE",
+                OpSchema::Optional)
         .Output(3,
                 "output_qk",
                 "Values of QK matrix multiplication, either before or after softmax normalization",

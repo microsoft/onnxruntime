@@ -55,8 +55,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* position_ids = context->Input<Tensor>(9);
   const Tensor* attention_bias = context->Input<Tensor>(10);
   const Tensor* head_sink = context->Input<Tensor>(11);
-  const Tensor* external_key = context->Input<Tensor>(14);
-  const Tensor* external_value = context->Input<Tensor>(15);
 
   GroupQueryAttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -73,29 +71,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_,
-                                                                0,
-                                                                external_key != nullptr));
+                                                                0));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
-
-  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckAndSetExternalKV(external_key, external_value, parameters));
-
-  // External KV is mutually exclusive with provided key/value inputs
-  if (parameters.use_external_kv && (key != nullptr || value != nullptr)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "key and value (inputs 1/2) must not be provided when using external_key/external_value. "
-                           "External KV replaces the K,V projections entirely.");
-  }
-
-  // External KV mode requires do_rotary=0 — K already has RoPE from the source layer
-  if (parameters.use_external_kv && do_rotary_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "do_rotary must be 0 when using external_key/external_value. "
-                           "Pre-apply RoPE to Q and use already-rotated K from the source layer.");
-  }
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -144,11 +125,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   OrtValue Q;
   OrtValue K;
   OrtValue V;
-  if (parameters.use_external_kv) {
-    // External KV mode: only Q needs transposing. K,V come from external tensors.
-    ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        allocator, batch_size, num_heads_, sequence_length, head_size, query, Q));
-  } else if (packed_qkv) {
+  if (packed_qkv) {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size, query, Q));
   } else {
@@ -164,8 +141,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   OrtValue RotaryQ;
   OrtValue RotaryK;
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
-  T* k_rotary = (packed_qkv || parameters.use_external_kv) ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
-  if (do_rotary_ && !parameters.use_external_kv) {
+  T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
+  if (do_rotary_) {
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
@@ -255,16 +232,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
 
-  // When external KV is provided, use it in place of past_key/past_value for attention computation.
-  // External KV is pre-computed from another layer (KV-shared layers, e.g., Gemma4).
-  const Tensor* effective_past_key = parameters.use_external_kv ? external_key : past_key;
-  const Tensor* effective_past_value = parameters.use_external_kv ? external_value : past_value;
-
   // Compute the attention score and apply the score to V
-  const T* k_data = (packed_qkv || parameters.use_external_kv) ? nullptr : k_rotary;
-  const T* v_data = (packed_qkv || parameters.use_external_kv) ? nullptr : V.Get<Tensor>().Data<T>();
+  const T* k_data = packed_qkv ? nullptr : k_rotary;
+  const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
   return ApplyAttention(q_rotary, k_data, v_data,
-                        head_sink_data, attention_bias, effective_past_key, effective_past_value, output, present_k, present_v,
+                        head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
                         output_qk, seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib

@@ -192,10 +192,6 @@ struct GroupQueryAttentionData {
   U* present_key = nullptr;
   U* present_value = nullptr;
 
-  // External KV for KV-shared layers (e.g., Gemma4)
-  const U* external_key = nullptr;
-  const U* external_value = nullptr;
-
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
