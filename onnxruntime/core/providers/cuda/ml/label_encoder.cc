@@ -45,6 +45,7 @@ static bool TryGetScalarTensorAttribute(const OpKernelInfo& info, const std::str
                                         const std::string& attr_name, T& value) {
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
   // Plugin EP: use Ort C++ API to read tensor attributes.
+  ORT_UNUSED_PARAMETER(attr_name);
   try {
     Ort::AllocatorWithDefaultOptions allocator;
     auto tensor_value = info.GetKernelInfo().GetTensorAttribute(tensor_name.c_str(), allocator);
