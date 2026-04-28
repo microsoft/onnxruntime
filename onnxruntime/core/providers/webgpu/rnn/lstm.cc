@@ -344,8 +344,6 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-
-
   TensorShape state_shape({batch_size, hidden_size_});
   auto dtype = X->DataType();
   uint32_t total_threads = static_cast<uint32_t>(batch_size) * H;
