@@ -2,7 +2,19 @@
 # variable based on the build type (nightly, official, or dev).
 
 parameters:
+# The package version type: 'release', 'RC', or 'dev'. Controls how the final version
+# string is derived from the contents of the version_file.
 - name: package_version
+  type: string
+  values:
+  - release
+  - RC
+  - dev
+
+# Path, relative to the repository root, of the file containing the base version number
+# (e.g. "plugin-ep-webgpu/VERSION_NUMBER"). The file should contain a single semver-like
+# version string (e.g. "1.2.3").
+- name: version_file
   type: string
 
 steps:
@@ -18,11 +30,12 @@ steps:
       import sys
 
       package_version = "${{ parameters.package_version }}"
+      version_file_rel = "${{ parameters.version_file }}"
 
       src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
-      version_file = os.path.join(src_root, "plugin-ep-webgpu", "VERSION_NUMBER")
+      version_file = os.path.join(src_root, version_file_rel)
       if not os.path.isfile(version_file):
-          print("##vso[task.logissue type=error]Cannot find plugin-ep-webgpu/VERSION_NUMBER at: {}".format(version_file))
+          print("##vso[task.logissue type=error]Cannot find version number file at: {}".format(version_file))
           sys.exit(1)
 
       with open(version_file, "r") as f:

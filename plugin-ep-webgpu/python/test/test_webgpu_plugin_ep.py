@@ -20,19 +20,28 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import onnxruntime as ort
 from onnx import TensorProto, helper
+
+import onnxruntime as ort
+
+VERBOSE = os.environ.get("ORT_TEST_VERBOSE", "").strip().lower() in ("1", "true", "yes")
+
+
+def debug_print(*args, **kwargs):
+    """Print only when ORT_TEST_VERBOSE is set to a truthy value."""
+    if VERBOSE:
+        print(*args, **kwargs)
 
 
 def create_mul_model() -> str:
     """Create a simple Mul model and return the path to the saved .onnx file."""
-    X = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
-    Y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
-    Z = helper.make_tensor_value_info("z", TensorProto.FLOAT, [2, 3])
+    x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
+    y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
+    z = helper.make_tensor_value_info("z", TensorProto.FLOAT, [2, 3])
 
     mul_node = helper.make_node("Mul", inputs=["x", "y"], outputs=["z"])
 
-    graph = helper.make_graph([mul_node], "mul_graph", [X, Y], [Z])
+    graph = helper.make_graph([mul_node], "mul_graph", [x, y], [z])
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     model.ir_version = 7
 
@@ -58,11 +67,11 @@ def print_environment_info():
 
 def test_import_and_library_path():
     """Test that the package imports and the library path is valid."""
-    import onnxruntime_ep_webgpu as webgpu_ep
+    import onnxruntime_ep_webgpu as webgpu_ep  # noqa: PLC0415  # `import` should be at the top-level of a file.
 
-    print(f"  Package location: {webgpu_ep.__file__}")
+    debug_print(f"  Package location: {webgpu_ep.__file__}")
     pkg_dir = Path(webgpu_ep.__file__).parent
-    print(f"  Package directory contents: {sorted(p.name for p in pkg_dir.iterdir())}")
+    debug_print(f"  Package directory contents: {sorted(p.name for p in pkg_dir.iterdir())}")
 
     lib_path = webgpu_ep.get_library_path()
     assert Path(lib_path).is_file(), f"Library path does not exist: {lib_path}"
@@ -79,22 +88,22 @@ def test_import_and_library_path():
 
 def test_registration_and_inference():
     """Test EP registration, device discovery, and inference."""
-    import onnxruntime_ep_webgpu as webgpu_ep
+    import onnxruntime_ep_webgpu as webgpu_ep  # noqa: PLC0415  # `import` should be at the top-level of a file.
 
     lib_path = webgpu_ep.get_library_path()
     ep_name = webgpu_ep.get_ep_name()
     registration_name = "webgpu_plugin_test"
 
     # Register the plugin EP
-    print(f"  Registering library: {lib_path}")
-    print(f"  Library file size: {Path(lib_path).stat().st_size} bytes")
+    debug_print(f"  Registering library: {lib_path}")
+    debug_print(f"  Library file size: {Path(lib_path).stat().st_size} bytes")
     ort.register_execution_provider_library(registration_name, lib_path)
     print(f"OK: Registered EP library as '{registration_name}'")
 
     try:
         # Discover devices
         all_devices = ort.get_ep_devices()
-        print(f"  All devices: {[(d.ep_name, getattr(d, 'device_id', 'N/A')) for d in all_devices]}")
+        debug_print(f"  All devices: {[(d.ep_name, getattr(d, 'device_id', 'N/A')) for d in all_devices]}")
         webgpu_devices = [d for d in all_devices if d.ep_name == ep_name]
         print(f"Found {len(webgpu_devices)} WebGPU device(s)")
 
@@ -110,9 +119,9 @@ def test_registration_and_inference():
         print("OK: Session options configured with WebGPU EP")
 
         model_path = create_mul_model()
-        print(f"  Model path: {model_path}")
+        debug_print(f"  Model path: {model_path}")
         sess = ort.InferenceSession(model_path, sess_options=sess_options)
-        print(f"  Session providers: {sess.get_providers()}")
+        debug_print(f"  Session providers: {sess.get_providers()}")
         print("OK: InferenceSession created")
 
         # Run inference
@@ -124,7 +133,7 @@ def test_registration_and_inference():
         result = outputs[0]
 
         np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
-        print(f"OK: Inference result matches expected output")
+        print("OK: Inference result matches expected output")
 
         del sess
         print("OK: Session released")
@@ -137,11 +146,12 @@ def test_registration_and_inference():
 def main():
     print("=== WebGPU Plugin EP Python Package Test ===")
 
-    # Set verbose logging so ORT internals are visible in CI logs
-    ort.set_default_logger_severity(0)
+    if VERBOSE:
+        # Set verbose ORT logging so ORT internals are visible in CI logs
+        ort.set_default_logger_severity(0)
 
-    print("\n--- Environment ---")
-    print_environment_info()
+        print("\n--- Environment ---")
+        print_environment_info()
 
     print("\n--- Test 1: Import and library path ---")
     test_import_and_library_path()

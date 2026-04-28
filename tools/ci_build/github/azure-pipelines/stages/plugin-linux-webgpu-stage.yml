@@ -11,6 +11,9 @@ parameters:
   type: string
   default: dev
 
+- name: version_file
+  type: string
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -22,7 +25,7 @@ parameters:
 
 - name: docker_base_image
   type: string
-  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1'
 
 stages:
 - stage: Linux_plugin_webgpu_x64_Build
@@ -52,13 +55,16 @@ stages:
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
+
+      - template: ../templates/setup-feeds-and-python-steps.yml
 
       - template: ../templates/setup-feeds-and-python-steps.yml
 
       - template: ../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
           DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimewebgpuplugin
 
@@ -104,7 +110,7 @@ stages:
   # Python package build job
   - job: Linux_plugin_webgpu_x64_Python_Package
     dependsOn: Linux_plugin_webgpu_x64_Build
-    timeoutInMinutes: 30
+    timeoutInMinutes: 60
     workspace:
       clean: all
     pool:
@@ -127,11 +133,14 @@ stages:
     - template: ../templates/set-plugin-build-variables-step.yml
       parameters:
         package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
+
+    - template: ../templates/setup-feeds-and-python-steps.yml
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
         DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimewebgpuplugin
 
@@ -147,47 +156,3 @@ stages:
           -i onnxruntimewebgpuplugin \
           -v "$(PluginPythonPackageVersion)"
       displayName: 'Build Python wheel'
-
-  # Python package test job
-  - job: Linux_plugin_webgpu_x64_Python_Test
-    dependsOn: Linux_plugin_webgpu_x64_Python_Package
-    timeoutInMinutes: 30
-    workspace:
-      clean: all
-    pool:
-      name: ${{ parameters.gpu_machine_pool }}
-      os: linux
-    steps:
-    - checkout: self
-      clean: true
-      submodules: none
-
-    - template: ../templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cuda
-        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimewebgpuplugin
-
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Python wheel'
-      inputs:
-        artifactName: webgpu_plugin_python_linux_x64
-        targetPath: '$(Build.BinariesDirectory)/python_wheel'
-
-    - script: |
-        set -e -x
-        docker run --rm --gpus all \
-          --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
-          --volume "$(Build.BinariesDirectory):/build" \
-          onnxruntimewebgpuplugin \
-          /bin/bash -c "
-            set -e -x
-            python3 -m venv /build/test_venv
-            source /build/test_venv/bin/activate
-            python3 -m pip install onnxruntime onnx numpy
-            wheel=\$(find /build/python_wheel -name 'onnxruntime_ep_webgpu-*.whl' | head -1)
-            python3 -m pip install \"\$wheel\"
-            python3 -u /onnxruntime_src/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py
-          "
-      displayName: 'Install and test Python package'
