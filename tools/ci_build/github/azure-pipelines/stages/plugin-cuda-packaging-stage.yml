@@ -1,0 +1,143 @@
+parameters:
+- name: build_windows_x64
+  displayName: 'Build Windows x64'
+  type: boolean
+  default: true
+
+- name: build_linux_x64
+  displayName: 'Build Linux x64'
+  type: boolean
+  default: true
+
+- name: build_linux_aarch64
+  displayName: 'Build Linux aarch64'
+  type: boolean
+  default: false
+
+- name: cuda_version
+  type: string
+  displayName: 'CUDA Version'
+  default: '12.8'
+
+- name: package_type
+  displayName: 'Package Type'
+  type: string
+  default: dev
+  values:
+  - dev
+  - release
+  - RC
+
+- name: cmake_build_type
+  type: string
+  displayName: 'CMake build type'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: docker_base_image
+  type: string
+  displayName: 'Linux x86_64 docker base image'
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+
+- name: docker_base_image_aarch64
+  type: string
+  displayName: 'Linux aarch64 docker base image'
+  default: ''
+
+- name: cmake_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES'
+  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+
+- name: python_version
+  type: string
+  displayName: 'Python version'
+  default: '3.12'
+
+- name: docker_python_exe_path
+  type: string
+  displayName: 'Docker Python executable path'
+  default: '/opt/python/cp312-cp312/bin/python3.12'
+
+stages:
+    # Windows x64
+    - ${{ if eq(parameters.build_windows_x64, true) }}:
+      - template: plugin-win-cuda-stage.yml
+        parameters:
+          cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          package_version: ${{ parameters.package_type }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Linux x64
+    - ${{ if eq(parameters.build_linux_x64, true) }}:
+      - template: plugin-linux-cuda-stage.yml
+        parameters:
+          stage_name: Linux_plugin_cuda_x64
+          arch: 'x64'
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          package_version: ${{ parameters.package_type }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          docker_base_image: ${{ parameters.docker_base_image }}
+          python_version: ${{ parameters.python_version }}
+          docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
+          artifact_name: cuda_plugin_linux_x64
+
+    # Linux aarch64 (CUDA 13.0 only)
+    - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+      - template: plugin-linux-cuda-stage.yml
+        parameters:
+          stage_name: Linux_plugin_cuda_aarch64
+          arch: 'aarch64'
+          machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+          cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          package_version: ${{ parameters.package_type }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+          docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
+          python_version: ${{ parameters.python_version }}
+          docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
+          artifact_name: cuda_plugin_linux_aarch64
+
+    # Merge Linux x64 and aarch64 artifacts into a single combined artifact
+    - ${{ if or(eq(parameters.build_linux_x64, true), eq(parameters.build_linux_aarch64, true)) }}:
+      - stage: Linux_plugin_cuda_Merge_Artifacts
+        dependsOn:
+        - ${{ if eq(parameters.build_linux_x64, true) }}:
+          - Linux_plugin_cuda_x64
+        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          - Linux_plugin_cuda_aarch64
+        jobs:
+        - job: Linux_plugin_cuda_Merge_Artifacts
+          workspace:
+            clean: all
+          pool:
+            name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+            os: linux
+          templateContext:
+            outputs:
+            - output: pipelineArtifact
+              targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
+              artifactName: cuda_plugin_linux
+          steps:
+          - checkout: none
+
+          - ${{ if eq(parameters.build_linux_x64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download - x64'
+              inputs:
+                artifact: cuda_plugin_linux_x64
+                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin/x64
+
+          - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download - aarch64'
+              inputs:
+                artifact: cuda_plugin_linux_aarch64
+                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin/aarch64
