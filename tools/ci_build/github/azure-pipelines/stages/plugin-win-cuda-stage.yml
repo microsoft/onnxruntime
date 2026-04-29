@@ -77,28 +77,33 @@ stages:
         env:
           TMPDIR: "$(Agent.TempDirectory)"
 
-      - powershell: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }}" "$(Agent.TempDirectory)"
+      - task: AzureCLI@2
         displayName: 'Download CUDA SDK v${{ parameters.cuda_version }}'
-        env:
-          AZCOPY_AUTO_LOGIN_TYPE: MSI
-          AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} $(Agent.TempDirectory)
 
+      # Since CUDA 13.0, CUDA DLLs are in bin\x64 folder instead of bin folder for Windows.
       - powershell: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "CUDA Path: $(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
-          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
-          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin;$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin\x64;$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
         displayName: 'Add CUDA to PATH'
 
       # Download cuDNN separately for CUDA 13.0
       - ${{ if eq(parameters.cuda_version, '13.0') }}:
-        - powershell: |
-            azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_9/9.14.0.64_cuda13" "$(Agent.TempDirectory)"
+        - task: AzureCLI@2
           displayName: 'Download cuDNN for CUDA 13.0'
-          env:
-            AZCOPY_AUTO_LOGIN_TYPE: MSI
-            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 $(Agent.TempDirectory)
 
       # CUDA 12.x build (no separate cuDNN)
       - ${{ if ne(parameters.cuda_version, '13.0') }}:
@@ -126,9 +131,6 @@ stages:
               --cmake_extra_defines $(PluginEpVersionDefine)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
-          env:
-            AZCOPY_AUTO_LOGIN_TYPE: MSI
-            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
       # CUDA 13.0 build (separate cuDNN folder)
       - ${{ if eq(parameters.cuda_version, '13.0') }}:
@@ -157,9 +159,6 @@ stages:
               --cmake_extra_defines $(PluginEpVersionDefine)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
-          env:
-            AZCOPY_AUTO_LOGIN_TYPE: MSI
-            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml

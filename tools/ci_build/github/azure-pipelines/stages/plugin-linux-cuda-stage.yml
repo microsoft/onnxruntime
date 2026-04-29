@@ -90,7 +90,12 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u ) --build-arg TRT_VERSION="
+          DockerBuildArgs: "
+          --network=host
+          --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+          --build-arg TRT_VERSION=
+          --build-arg BUILD_UID=$( id -u )
+          "
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
 
       - script: >-
