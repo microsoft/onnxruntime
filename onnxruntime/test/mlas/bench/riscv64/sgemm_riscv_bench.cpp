@@ -12,8 +12,8 @@ Abstract:
 
     This module implements a standalone SGEMM benchmark used while tuning the
     RISC-V MLAS path. It is intentionally separate from the Google Benchmark
-    suite so it can print compute time, checksum, and compare RVV against
-    scalar execution via ORT_MLAS_RISCV_FORCE_SCALAR.
+    suite so it can print pack time, compute time, checksum, and compare RVV
+    against scalar execution via ORT_MLAS_RISCV_FORCE_SCALAR.
 
 --*/
 
@@ -36,6 +36,7 @@ struct Options {
   size_t k = 768;
   size_t iters = 20;
   size_t warmup = 3;
+  bool pack_b = false;
   bool trans_a = false;
   bool trans_b = false;
   float alpha = 1.0f;
@@ -45,7 +46,7 @@ struct Options {
 void PrintUsage(const char* argv0) {
   std::cout
       << "Usage: " << argv0 << " [--m=N] [--n=N] [--k=N] [--iters=N] [--warmup=N]\n"
-      << "       [--trans_a=0|1] [--trans_b=0|1]\n"
+      << "       [--pack_b=0|1] [--trans_a=0|1] [--trans_b=0|1]\n"
       << "       [--alpha=F] [--beta=F]\n";
 }
 
@@ -90,6 +91,8 @@ Options ParseArgs(int argc, char** argv) {
       options.iters = std::strtoull(value.data(), nullptr, 10);
     } else if (key == "--warmup") {
       options.warmup = std::strtoull(value.data(), nullptr, 10);
+    } else if (key == "--pack_b") {
+      options.pack_b = ParseBool(value);
     } else if (key == "--trans_a") {
       options.trans_a = ParseBool(value);
     } else if (key == "--trans_b") {
@@ -145,27 +148,63 @@ int main(int argc, char** argv) {
   const size_t ldb = options.trans_b ? options.k : options.n;
   const size_t ldc = options.n;
 
+  std::vector<uint8_t> packed_b;
+  double pack_ms = 0.0;
+
+  if (options.pack_b) {
+    const size_t packed_b_size = MlasGemmPackBSize(trans_a, trans_b, options.n, options.k, nullptr);
+    if (packed_b_size == 0) {
+      std::cerr << "packing is not supported for this configuration" << std::endl;
+      return 2;
+    }
+
+    packed_b.resize(packed_b_size);
+
+    pack_ms = TimeLoop(options.iters, [&]() {
+      MlasGemmPackB(trans_a, trans_b, options.n, options.k, b.data(), ldb, packed_b.data(), nullptr);
+    });
+
+    MlasGemmPackB(trans_a, trans_b, options.n, options.k, b.data(), ldb, packed_b.data(), nullptr);
+  }
+
   auto run_once = [&]() {
     if (options.beta == 0.0f) {
       std::fill(c.begin(), c.end(), 0.0f);
     }
 
-    MlasGemm(
-        trans_a,
-        trans_b,
-        options.m,
-        options.n,
-        options.k,
-        options.alpha,
-        a.data(),
-        lda,
-        b.data(),
-        ldb,
-        options.beta,
-        c.data(),
-        ldc,
-        nullptr,
-        nullptr);
+    if (options.pack_b) {
+      MlasGemm(
+          trans_a,
+          options.m,
+          options.n,
+          options.k,
+          options.alpha,
+          a.data(),
+          lda,
+          packed_b.data(),
+          options.beta,
+          c.data(),
+          ldc,
+          nullptr,
+          nullptr);
+    } else {
+      MlasGemm(
+          trans_a,
+          trans_b,
+          options.m,
+          options.n,
+          options.k,
+          options.alpha,
+          a.data(),
+          lda,
+          b.data(),
+          ldb,
+          options.beta,
+          c.data(),
+          ldc,
+          nullptr,
+          nullptr);
+    }
   };
 
   for (size_t i = 0; i < options.warmup; ++i) {
@@ -174,6 +213,7 @@ int main(int argc, char** argv) {
 
   const double compute_ms = TimeLoop(options.iters, run_once);
   const double avg_compute_ms = compute_ms / static_cast<double>(options.iters);
+  const double avg_pack_ms = pack_ms / static_cast<double>(options.iters);
   const double flops = 2.0 * static_cast<double>(options.m) * static_cast<double>(options.n) *
                        static_cast<double>(options.k);
   const double gflops = flops / (avg_compute_ms * 1.0e6);
@@ -183,10 +223,14 @@ int main(int argc, char** argv) {
   std::cout << "M=" << options.m
             << " N=" << options.n
             << " K=" << options.k
+            << " pack_b=" << (options.pack_b ? 1 : 0)
             << " trans_a=" << (options.trans_a ? 1 : 0)
             << " trans_b=" << (options.trans_b ? 1 : 0)
             << " iters=" << options.iters
             << " warmup=" << options.warmup << '\n';
+  if (options.pack_b) {
+    std::cout << "pack_total_ms=" << pack_ms << " pack_avg_ms=" << avg_pack_ms << '\n';
+  }
   std::cout << "compute_total_ms=" << compute_ms
             << " compute_avg_ms=" << avg_compute_ms
             << " gflops=" << gflops << '\n';

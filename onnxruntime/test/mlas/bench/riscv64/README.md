@@ -47,11 +47,11 @@ build/k1_rvv_resync/Release/onnxruntime_mlas_softmax_riscv_compare
 
 ## SGEMM examples
 
-RVV:
+RVV, packed-B:
 
 ```bash
 taskset -c 0 build/k1_rvv_resync/Release/onnxruntime_mlas_sgemm_riscv_bench \
-  --m=128 --n=3072 --k=768 --iters=10 --warmup=3 --trans_a=0 --trans_b=0
+  --m=128 --n=3072 --k=768 --iters=10 --warmup=3 --pack_b=1 --trans_a=0 --trans_b=0
 ```
 
 Scalar baseline on the same binary:
@@ -59,7 +59,7 @@ Scalar baseline on the same binary:
 ```bash
 ORT_MLAS_RISCV_FORCE_SCALAR=1 taskset -c 0 \
   build/k1_rvv_resync/Release/onnxruntime_mlas_sgemm_riscv_bench \
-  --m=128 --n=3072 --k=768 --iters=10 --warmup=3 --trans_a=0 --trans_b=0
+  --m=128 --n=3072 --k=768 --iters=10 --warmup=3 --pack_b=1 --trans_a=0 --trans_b=0
 ```
 
 ## Softmax examples
@@ -70,11 +70,8 @@ taskset -c 0 build/k1_rvv_resync/Release/onnxruntime_mlas_softmax_riscv_compare
 
 ## Notes
 
-- This reduced RVV benchmark set focuses on the SGEMM compute kernel and the
-  Softmax critical path. It does not include a dedicated RVV pack-B helper or
-  pack-B benchmark coverage.
-- The RVV SGEMM and Softmax paths are written to be VLEN-agnostic and use
-  runtime `vsetvl` chunking so the same binary works across different VLENs
-  such as 128 and 256.
+- The RVV SGEMM path is written to be VLEN-agnostic. The MLAS packing format
+  remains 16 columns wide, but each tile is consumed using runtime `vsetvl`
+  chunking so the same binary works across different VLENs such as 128 and 256.
 - `ORT_MLAS_RISCV_FORCE_SCALAR=1` disables the RVV dispatch at runtime and is
   the preferred way to gather scalar baselines from the same build.
