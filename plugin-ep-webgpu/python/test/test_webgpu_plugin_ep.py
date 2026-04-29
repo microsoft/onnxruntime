@@ -33,8 +33,8 @@ def debug_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def create_mul_model() -> str:
-    """Create a simple Mul model and return the path to the saved .onnx file."""
+def create_mul_model(output_dir: Path) -> Path:
+    """Create a simple Mul model in `output_dir` and return the path to the saved .onnx file."""
     x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
     y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
     z = helper.make_tensor_value_info("z", TensorProto.FLOAT, [2, 3])
@@ -45,9 +45,9 @@ def create_mul_model() -> str:
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     model.ir_version = 7
 
-    model_path = Path(tempfile.mkdtemp()) / "mul.onnx"
+    model_path = output_dir / "mul.onnx"
     onnx.save(model, str(model_path))
-    return str(model_path)
+    return model_path
 
 
 def print_environment_info():
@@ -118,25 +118,26 @@ def test_registration_and_inference():
         assert sess_options.has_providers(), "SessionOptions should have providers after add_provider_for_devices"
         print("OK: Session options configured with WebGPU EP")
 
-        model_path = create_mul_model()
-        debug_print(f"  Model path: {model_path}")
-        sess = ort.InferenceSession(model_path, sess_options=sess_options)
-        debug_print(f"  Session providers: {sess.get_providers()}")
-        print("OK: InferenceSession created")
+        with tempfile.TemporaryDirectory() as model_dir:
+            model_path = create_mul_model(Path(model_dir))
+            debug_print(f"  Model path: {model_path}")
+            sess = ort.InferenceSession(model_path, sess_options=sess_options)
+            debug_print(f"  Session providers: {sess.get_providers()}")
+            print("OK: InferenceSession created")
 
-        # Run inference
-        x = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
-        y = np.array([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], dtype=np.float32)
-        expected = x * y
+            # Run inference
+            x = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+            y = np.array([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], dtype=np.float32)
+            expected = x * y
 
-        outputs = sess.run(None, {"x": x, "y": y})
-        result = outputs[0]
+            outputs = sess.run(None, {"x": x, "y": y})
+            result = outputs[0]
 
-        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
-        print("OK: Inference result matches expected output")
+            np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+            print("OK: Inference result matches expected output")
 
-        del sess
-        print("OK: Session released")
+            del sess
+            print("OK: Session released")
 
     finally:
         ort.unregister_execution_provider_library(registration_name)

@@ -95,24 +95,20 @@ def auditwheel_repair(wheel_dir: Path):
     if platform.system() != "Linux":
         return
 
-    raw_wheels = wheel_dir.glob("onnxruntime_ep_webgpu-*.whl")
-    if not raw_wheels:
-        return
-
-    raw_wheel_list = list(raw_wheels)
-    if not raw_wheel_list:
+    original_wheels = list(wheel_dir.glob("onnxruntime_ep_webgpu-*.whl"))
+    if not original_wheels:
         return
 
     with tempfile.TemporaryDirectory() as repaired_dir_name:
         repaired_dir = Path(repaired_dir_name)
 
-        for wheel in raw_wheel_list:
+        for wheel in original_wheels:
             cmd = [sys.executable, "-m", "auditwheel", "repair", str(wheel), "--wheel-dir", str(repaired_dir)]
             for lib in AUDITWHEEL_EXCLUDE:
                 cmd.extend(["--exclude", lib])
             print(f"Running: {' '.join(cmd)}")
             subprocess.check_call(cmd)
-            # Remove the raw wheel so only the repaired one remains
+            # Remove the original wheel so only the repaired one remains
             wheel.unlink()
 
         # Move repaired wheels into wheel_dir
@@ -122,7 +118,7 @@ def auditwheel_repair(wheel_dir: Path):
 
 def collect_wheels(wheel_dir: Path, output_dir: Path):
     """Copy built wheels to the output directory and verify at least one was produced."""
-    wheels = wheel_dir.glob("onnxruntime_ep_webgpu-*.whl")
+    wheels = list(wheel_dir.glob("onnxruntime_ep_webgpu-*.whl"))
     if not wheels:
         print("ERROR: No wheel was produced", file=sys.stderr)
         sys.exit(1)
