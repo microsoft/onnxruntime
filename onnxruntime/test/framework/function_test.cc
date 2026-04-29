@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include "core/graph/onnx_protobuf.h"
+#include "onnx/checker.h"
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
@@ -85,6 +87,30 @@ static void Check(const char* source,
       ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
     }
   }
+}
+
+static Status LoadModel(const char* source) {
+  ONNX_NAMESPACE::OnnxParser parser(source);
+  ONNX_NAMESPACE::ModelProto model;
+  auto parse_status = parser.Parse(model);
+  EXPECT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  EXPECT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+  if (!parse_status.IsOK() || !parser.EndOfInput()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to parse test model.");
+  }
+
+  EXPECT_NO_THROW(ONNX_NAMESPACE::checker::check_model(model));
+
+  std::string serialized_model;
+  EXPECT_TRUE(model.SerializeToString(&serialized_model));
+  if (serialized_model.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize test model.");
+  }
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+  std::stringstream sstr(serialized_model);
+  return session_object.Load(sstr);
 }
 
 namespace {
@@ -301,6 +327,101 @@ TEST(FunctionTest, CallInConditional) {
         )";
 
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
+}
+
+TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.self_recursive (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        self_recursive (lx) => (ly) {
+            ly = local.self_recursive (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.first (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        first (lx) => (ly) {
+            ly = local.second (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        second (lx) => (ly) {
+            ly = local.first (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
+  // A local function that calls itself inside an If subgraph (then_branch).
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.recursive_if (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        recursive_if (lx) => (ly) {
+            temp = Identity (lx)
+            cond = Constant <value = bool {1}> ()
+            ly = If (cond) <
+                then_branch = then_graph () => (float[N] then_out)
+                {
+                    then_out = local.recursive_if (temp)
+                },
+                else_branch = else_graph () => (float[N] else_out)
+                {
+                    else_out = Identity (temp)
+                }
+                >
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
 }
 
 // Test use of attibute references, especially where source/target attribute

@@ -1,7 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <vector>
+
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
@@ -41,6 +46,114 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+namespace {
+
+void CollectLocalFunctionCalls(
+    const ONNX_NAMESPACE::NodeProto& node,
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    InlinedHashSet<std::string>& called_local_functions);
+
+void CollectLocalFunctionCalls(
+    const ONNX_NAMESPACE::GraphProto& graph,
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    InlinedHashSet<std::string>& called_local_functions) {
+  for (const auto& node : graph.node()) {
+    CollectLocalFunctionCalls(node, model_local_functions, called_local_functions);
+  }
+}
+
+void CollectLocalFunctionCalls(
+    const ONNX_NAMESPACE::NodeProto& node,
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    InlinedHashSet<std::string>& called_local_functions) {
+  const auto function_id = function_utils::GetFunctionIdentifier(node.domain(), node.op_type());
+  if (model_local_functions.find(function_id) != model_local_functions.end()) {
+    called_local_functions.insert(function_id);
+  }
+
+  for (const auto& attr : node.attribute()) {
+    if (attr.has_g()) {
+      CollectLocalFunctionCalls(attr.g(), model_local_functions, called_local_functions);
+    }
+
+    for (const auto& graph : attr.graphs()) {
+      CollectLocalFunctionCalls(graph, model_local_functions, called_local_functions);
+    }
+  }
+}
+
+enum class VisitState {
+  kNotVisited,
+  kVisiting,
+  kVisited,
+};
+
+Status VisitLocalFunction(
+    const std::string& function_id,
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    InlinedHashMap<std::string, VisitState>& visit_states,
+    std::vector<std::string>& call_stack) {
+  auto& visit_state = visit_states[function_id];
+  if (visit_state == VisitState::kVisited) {
+    return Status::OK();
+  }
+
+  if (visit_state == VisitState::kVisiting) {
+    auto cycle_start = std::find(call_stack.cbegin(), call_stack.cend(), function_id);
+    std::string cycle;
+    for (auto it = cycle_start; it != call_stack.cend(); ++it) {
+      if (!cycle.empty()) {
+        cycle.append(" -> ");
+      }
+      cycle.append(*it);
+    }
+    if (!cycle.empty()) {
+      cycle.append(" -> ");
+    }
+    cycle.append(function_id);
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Model local function definitions must not be recursive. Cycle detected: ", cycle);
+  }
+
+  visit_state = VisitState::kVisiting;
+  call_stack.push_back(function_id);
+
+  const auto* function_proto = model_local_functions.at(function_id);
+  InlinedHashSet<std::string> called_local_functions;
+  for (const auto& node : function_proto->node()) {
+    CollectLocalFunctionCalls(node, model_local_functions, called_local_functions);
+  }
+
+  for (const auto& called_function_id : called_local_functions) {
+    ORT_RETURN_IF_ERROR(VisitLocalFunction(called_function_id, model_local_functions, visit_states, call_stack));
+  }
+
+  call_stack.pop_back();
+  visit_state = VisitState::kVisited;
+  return Status::OK();
+}
+
+Status ValidateModelLocalFunctionAcyclic(
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions) {
+  InlinedHashMap<std::string, VisitState> visit_states;
+  visit_states.reserve(model_local_functions.size());
+  for (const auto& [function_id, _] : model_local_functions) {
+    ORT_UNUSED_PARAMETER(_);
+    visit_states.emplace(function_id, VisitState::kNotVisited);
+  }
+
+  std::vector<std::string> call_stack;
+  for (const auto& [function_id, _] : model_local_functions) {
+    ORT_UNUSED_PARAMETER(_);
+    ORT_RETURN_IF_ERROR(VisitLocalFunction(function_id, model_local_functions, visit_states, call_stack));
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
 
 void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retained) {
   auto* local_functions = model_proto_.mutable_functions();
@@ -128,6 +241,8 @@ Model::Model(const std::string& graph_name,
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
                                             func_ptr);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
@@ -258,6 +373,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   for (auto& func : model_proto_.functions()) {
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
