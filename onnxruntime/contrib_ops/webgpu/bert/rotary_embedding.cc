@@ -35,13 +35,28 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  if (global_idx >= size) { return; }\n"
                                "  if (bsnh[3] < half_rotary_emb_dim) {\n"
                             << "    let position_ids_idx = " << position_ids.BroadcastedIndicesToOffset("bsnh.xy", output_indices) << ";\n"
-                            << "    let position_id = u32(" << position_ids.GetByOffset("position_ids_idx") << ") + select(0, bsnh[1], position_ids_idx == 0);\n"
+                            << "    let raw_pos = " << position_ids.GetByOffset("position_ids_idx") << ";\n"
                             << "    let i = dot(bsnh, uniforms.input_output_stride) + select(0, bsnh[3], " << interleaved_str << ");\n"
                             << "    let j = i + select(half_rotary_emb_dim, 1, " << interleaved_str << ");\n"
-                            << "    let re = " << input.GetByOffset("i") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " - " << input.GetByOffset("j") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
-                            << "    " << output.SetByOffset("i", "re") << "\n"
-                            << "    let im = " << input.GetByOffset("i") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " + " << input.GetByOffset("j") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
-                            << "    " << output.SetByOffset("j", "im") << "\n"
+                                                                                                       "    let max_position = uniforms.cos_cache_shape[0];\n"
+                                                                                                       // Bounds check: raw_pos < 0 catches negative position_ids (i32 from truncated int64).
+                                                                                                       // After u32 conversion + offset, check >= max_position catches too-large values.
+                                                                                                       // On OOB, pass through input unchanged (same as CUDA kernel behavior).
+                                                                                                       "    if (raw_pos < 0) {\n"
+                            << "      " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
+                            << "      " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
+                                                                                              "    } else {\n"
+                                                                                              "      let position_id = u32(raw_pos) + select(0, bsnh[1], position_ids_idx == 0);\n"
+                                                                                              "      if (position_id >= max_position) {\n"
+                            << "        " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
+                            << "        " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
+                                                                                                "      } else {\n"
+                            << "        let re = " << input.GetByOffset("i") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " - " << input.GetByOffset("j") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+                            << "        " << output.SetByOffset("i", "re") << "\n"
+                            << "        let im = " << input.GetByOffset("i") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " + " << input.GetByOffset("j") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+                            << "        " << output.SetByOffset("j", "im") << "\n"
+                                                                              "      }\n"
+                                                                              "    }\n"
                             << "  } else { \n"
                                "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n"
                             << "    " << output.SetByOffset("k", input.GetByOffset("k")) << "\n"
@@ -74,24 +89,39 @@ Status FusedQKRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "    let seqlen = u32(seqlen_i);\n"
       << "    let total_seqlen = seqlen + 1u;\n"
       << "    let past_seqlen = total_seqlen - uniforms.q_global_shape[1];\n"
+      // position_id is derived from past_seqlen + sequence_idx (always non-negative).
       << "    let position_id = past_seqlen + sequence_idx;\n"
-      << "    let cos_v = " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
-      << "    let sin_v = " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
       << "    let qi = dot(bsnh, uniforms.q_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
       << "    let qj = qi + select(half_rotary_dim, 1u, " << interleaved_str << ");\n"
-      << "    let q_re = " << q_input.GetByOffset("qi") << " * cos_v - " << q_input.GetByOffset("qj") << " * sin_v;\n"
-      << "    " << q_output.SetByOffset("qi", "q_re") << "\n"
-      << "    let q_im = " << q_input.GetByOffset("qi") << " * sin_v + " << q_input.GetByOffset("qj") << " * cos_v;\n"
-      << "    " << q_output.SetByOffset("qj", "q_im") << "\n"
+                                                                                // Bounds check: position_id must be within cos/sin cache range.
+                                                                                // On OOB, pass through input unchanged (same as CUDA kernel behavior).
+                                                                                "    let max_position = uniforms.cos_cache_shape[0];\n"
+                                                                                "    if (position_id >= max_position) {\n"
+      << "      " << q_output.SetByOffset("qi", q_input.GetByOffset("qi")) << "\n"
+      << "      " << q_output.SetByOffset("qj", q_input.GetByOffset("qj")) << "\n"
+      << "      if (bsnh[2] < uniforms.k_global_shape[2]) {\n"
+      << "        let ki = dot(bsnh, uniforms.k_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
+      << "        let kj = ki + select(half_rotary_dim, 1u, " << interleaved_str << ");\n"
+      << "        " << k_output.SetByOffset("ki", k_input.GetByOffset("ki")) << "\n"
+      << "        " << k_output.SetByOffset("kj", k_input.GetByOffset("kj")) << "\n"
+                                                                                "      }\n"
+                                                                                "    } else {\n"
+      << "      let cos_v = " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+      << "      let sin_v = " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+      << "      let q_re = " << q_input.GetByOffset("qi") << " * cos_v - " << q_input.GetByOffset("qj") << " * sin_v;\n"
+      << "      " << q_output.SetByOffset("qi", "q_re") << "\n"
+      << "      let q_im = " << q_input.GetByOffset("qi") << " * sin_v + " << q_input.GetByOffset("qj") << " * cos_v;\n"
+      << "      " << q_output.SetByOffset("qj", "q_im") << "\n"
       // Conditionally process Key (only for heads that exist in K domain)
-      << "    if (bsnh[2] < uniforms.k_global_shape[2]) {\n"
-      << "      let ki = dot(bsnh, uniforms.k_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
-      << "      let kj = ki + select(half_rotary_dim, 1u, " << interleaved_str << ");\n"
-      << "      let k_re = " << k_input.GetByOffset("ki") << " * cos_v - " << k_input.GetByOffset("kj") << " * sin_v;\n"
-      << "      " << k_output.SetByOffset("ki", "k_re") << "\n"
-      << "      let k_im = " << k_input.GetByOffset("ki") << " * sin_v + " << k_input.GetByOffset("kj") << " * cos_v;\n"
-      << "      " << k_output.SetByOffset("kj", "k_im") << "\n"
-      << "    }\n"
+      << "      if (bsnh[2] < uniforms.k_global_shape[2]) {\n"
+      << "        let ki = dot(bsnh, uniforms.k_input_output_stride) + select(0u, bsnh[3], " << interleaved_str << ");\n"
+      << "        let kj = ki + select(half_rotary_dim, 1u, " << interleaved_str << ");\n"
+      << "        let k_re = " << k_input.GetByOffset("ki") << " * cos_v - " << k_input.GetByOffset("kj") << " * sin_v;\n"
+      << "        " << k_output.SetByOffset("ki", "k_re") << "\n"
+      << "        let k_im = " << k_input.GetByOffset("ki") << " * sin_v + " << k_input.GetByOffset("kj") << " * cos_v;\n"
+      << "        " << k_output.SetByOffset("kj", "k_im") << "\n"
+                                                             "      }\n"
+                                                             "    }\n"
       << "  } else {\n"
       << "    let qk = dot(bsnh, uniforms.q_input_output_stride) + half_rotary_dim;\n"
       << "    " << q_output.SetByOffset("qk", q_input.GetByOffset("qk")) << "\n"
@@ -126,6 +156,11 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
   const auto hidden_size = batch_stride / sequence_length;
   const auto half_rotary_embedding_dim = onnxruntime::narrow<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = rotary_embedding_dim_ == 0 ? half_rotary_embedding_dim * 2 : hidden_size / num_heads_;
+
+  // position_ids bounds validation is handled by shader-side defense-in-depth checks
+  // (OOB position_ids → pass-through input unchanged). Host-side value scanning is not possible
+  // because WebGPU program inputs must be GPU buffers (InputMemoryType(OrtMemTypeCPUInput) is
+  // incompatible with AddInputs).
 
   // Rotary embeddings will be calculated in a pair-wise fashion. In accordance, use the shape
   // [batch size, sequence length, num of heads, num of pairs to rotate + num of dims to copy]

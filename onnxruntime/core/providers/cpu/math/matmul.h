@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cmath>
+
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -20,6 +22,34 @@ class MatMul final : public OpKernel {
 
  private:
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+};
+
+template <>
+class MatMul<double> final : public OpKernel {
+ public:
+  MatMul(const OpKernelInfo& info) : OpKernel(info) {
+    info.GetAttrOrDefault<int64_t>("transA", &trans_a_attr_, 0);
+    info.GetAttrOrDefault<int64_t>("transB", &trans_b_attr_, 0);
+    info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0f);
+    ORT_ENFORCE(std::isfinite(alpha_attr_),
+                "FusedMatMul alpha attribute must be finite, got: ",
+                alpha_attr_);
+    int64_t trans_batch_a_attr, trans_batch_b_attr;
+    info.GetAttrOrDefault<int64_t>("transBatchA", &trans_batch_a_attr, 0);
+    info.GetAttrOrDefault<int64_t>("transBatchB", &trans_batch_b_attr, 0);
+    trans_batch_a_ = trans_batch_a_attr != 0;
+    trans_batch_b_ = trans_batch_b_attr != 0;
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  // For FusedMatMul contrib ops
+  float alpha_attr_;
+  int64_t trans_a_attr_;
+  int64_t trans_b_attr_;
+  bool trans_batch_a_;
+  bool trans_batch_b_;
 };
 
 template <>

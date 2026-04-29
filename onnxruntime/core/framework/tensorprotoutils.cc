@@ -1934,7 +1934,10 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
   }
 
   tensor_proto.set_data_type(tensor.GetElementType());
-  if (use_tensor_buffer && tensor.SizeInBytes() > kSmallTensorExternalDataThreshold) {
+  // String tensors cannot use the external data in-memory optimization because their raw buffer
+  // contains std::string objects (with internal pointers), not serializable string content.
+  if (use_tensor_buffer && !tensor.IsDataTypeString() &&
+      tensor.SizeInBytes() > kSmallTensorExternalDataThreshold) {
     // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/graph_flatbuffers_utils.cc#L302
     const auto* raw_data = tensor.DataRaw();
     ORT_ENFORCE(raw_data, "Missing raw data for tensor proto. Invalid tensor.");
@@ -2071,7 +2074,7 @@ static Status CopySparseData(const std::string& name,
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (narrow<size_t>(indices_elements) * sizeof(int64_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int64_t),
                           "Sparse tensor: ", name, " indices raw data size does not match expected: ",
                           indices_elements * sizeof(int64_t));
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
@@ -2085,7 +2088,7 @@ static Status CopySparseData(const std::string& name,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       if (needs_unpack) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (narrow<size_t>(indices_elements) * sizeof(int32_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int32_t),
                           "Sparse tensor: ", name, " indices raw data size does not match expected: ",
                           indices_elements * sizeof(int32_t));
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
@@ -2104,7 +2107,7 @@ static Status CopySparseData(const std::string& name,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       if (needs_unpack) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (narrow<size_t>(indices_elements) * sizeof(int16_t)),
+        ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int16_t),
                           "Sparse tensor: ", name, " indices raw data size does not match expected: ",
                           indices_elements * sizeof(int16_t));
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
@@ -2285,14 +2288,14 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
-    std::string dense_data_storage(narrow<size_t>(dense_elements) * element_size, 0);
+    std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
       std::vector<uint8_t> values_data;
       ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
-      ORT_RETURN_IF_NOT(values_data.size() == static_cast<size_t>(nnz_elements) * element_size,
+      ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
                         "Sparse tensor: ", name, " values data size does not match expected: ",
-                        static_cast<size_t>(nnz_elements) * element_size);
+                        static_cast<size_t>(SafeInt<size_t>(nnz_elements) * element_size));
       void* sparse_data = values_data.data();
       void* dense_data = dense_data_storage.data();
 

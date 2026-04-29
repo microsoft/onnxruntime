@@ -208,6 +208,73 @@ void GemmEx<float, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, p
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool, mlas_backend_kernel_selector_config);
 }
 
+#ifdef MLAS_SUPPORTS_GEMM_DOUBLE
+template <>
+void GemmEx<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                double alpha, const double* A, int lda, const double* B, int ldb, double beta, double* C,
+                                int ldc, ThreadPool* threadpool, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+  MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, ldc, threadpool);
+}
+#else
+template <>
+void GemmEx<double, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
+                                double alpha, const double* A, int lda, const double* B, int ldb, double beta, double* C,
+                                int ldc, ThreadPool*, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+  auto C_mat = EigenMatrixMapWithStrides<double>(C, N, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldc, 1));
+  if (beta == 0) {
+    C_mat.setZero();
+  } else {
+    C_mat *= beta;
+  }
+  switch (TransA) {
+    case CblasNoTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, N, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1)) *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, K, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1)));
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, K, N, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1))
+                                          .transpose() *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, K, M, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1)));
+          return;
+        default:
+          ORT_THROW("CblasNoTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    case CblasTrans: {
+      switch (TransB) {
+        case CblasNoTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, N, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1)) *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, M, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1))
+                                          .transpose());
+          return;
+        case CblasTrans:
+          C_mat.noalias() += alpha * (ConstEigenMatrixMapWithStrides<double>(
+                                          B, K, N, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(ldb, 1))
+                                          .transpose() *
+                                      ConstEigenMatrixMapWithStrides<double>(
+                                          A, M, K, Eigen::Stride<Eigen::Dynamic, Eigen::Dynamic>(lda, 1))
+                                          .transpose());
+          return;
+        default:
+          ORT_THROW("CblasTrans Unexpected CBLAS_TRANSPOSE for TransB of ", TransB);
+      }
+    }
+    default:
+      ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
+  }
+}
+#endif
+
 template <>
 void GemmEx<MLFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M, ptrdiff_t N, ptrdiff_t K,
                                    MLFloat16 alpha, const MLFloat16* A, int lda, const MLFloat16* B, int ldb, MLFloat16 beta,
