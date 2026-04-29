@@ -397,11 +397,26 @@ NhwcFusedConv is a Conv operator with optional activation and add operators fuse
                                 .Attr("group", "", AttributeProto::INT, static_cast<int64_t>(1))
                                 .Attr("activation", "", AttributeProto::STRING, OPTIONAL_VALUE)
                                 .Attr("activation_params", "", AttributeProto::FLOATS, OPTIONAL_VALUE)
-                                .Input(0, "X", "", "T")
-                                .Input(1, "W", "", "T")
-                                .Input(2, "B", "", "T", OpSchema::Optional)
-                                .Input(3, "Z", "Tensor to be added to the output, must be the same shape and format as the output tensor.", "T", OpSchema::Optional)
-                                .Output(0, "Y", "", "T")
+                                .Input(0, "X",
+                                       "Input activation tensor in channels-last layout. For 2D convolution this is "
+                                       "[N, H, W, C], where N is batch size, H/W are spatial dimensions, and C is "
+                                       "the number of input channels.",
+                                       "T")
+                                .Input(1, "W",
+                                       "Convolution weight tensor in the standard ONNX Conv filter layout "
+                                       "[M, C/group, kH, kW], where M is the number of output channels.",
+                                       "T")
+                                .Input(2, "B",
+                                       "Optional 1D bias tensor of shape [M].",
+                                       "T", OpSchema::Optional)
+                                .Input(3, "Z",
+                                       "Optional residual/add tensor in the same channels-last layout and shape as "
+                                       "the output tensor Y. For 2D convolution this is [N, out_H, out_W, M].",
+                                       "T", OpSchema::Optional)
+                                .Output(0, "Y",
+                                        "Output tensor in channels-last layout. For 2D convolution this is "
+                                        "[N, out_H, out_W, M], where M is the number of output channels.",
+                                        "T")
                                 .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to float tensors")
                                 .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
                                   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
