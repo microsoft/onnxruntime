@@ -1052,6 +1052,14 @@ common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& fi
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Persist resolver entries for ops that layout transformation may add so newly saved ORT models do not
+  // rely on load-time aliasing to resolve their kernel type strings.
+  ORT_RETURN_IF_ERROR(
+      kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(
+          kernel_type_str_resolver));
+#endif
+
   ORT_RETURN_IF_ERROR(
       kernel_type_str_resolver.SaveToOrtFormat(builder, fbs_kernel_type_str_resolver));
 
