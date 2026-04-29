@@ -167,5 +167,31 @@ TEST(ContribOpTest, WordConvEmbedding_rejects_sequence_rank_one) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Sequence input must have rank greater than 1");
 }
 
+TEST(ContribOpTest, WordConvEmbedding_rejects_undersized_bias) {
+  OpTester test("WordConvEmbedding", 1, onnxruntime::kMSDomain);
+
+  // W has 2 filters but B has only 1 element
+  test.AddInput<int>("Sequence", {1, 2}, {1, 2});
+  test.AddInput<float>("W", {2, 1, 2, 1}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("B", {1}, {0.0f});
+  test.AddInput<float>("C", {3, 1}, {0.0f, 1.0f, 2.0f});
+  test.AddOutput<float>("Y", {1, 2}, {0.0f, 0.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "conv bias B must be a 1-D tensor of length 2");
+}
+
+TEST(ContribOpTest, WordConvEmbedding_rejects_2d_bias) {
+  OpTester test("WordConvEmbedding", 1, onnxruntime::kMSDomain);
+
+  // B has correct element count but wrong rank
+  test.AddInput<int>("Sequence", {1, 2}, {1, 2});
+  test.AddInput<float>("W", {2, 1, 2, 1}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("B", {1, 2}, {0.0f, 0.0f});
+  test.AddInput<float>("C", {3, 1}, {0.0f, 1.0f, 2.0f});
+  test.AddOutput<float>("Y", {1, 2}, {0.0f, 0.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "conv bias B must be a 1-D tensor of length 2");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
