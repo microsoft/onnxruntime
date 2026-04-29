@@ -293,6 +293,14 @@ class IExecutionProvider {
   }
 
   /**
+     Release a previously captured graph and its associated resources.
+     Called when the caller no longer needs the captured graph for the given annotation ID.
+   */
+  virtual common::Status ReleaseGraph(int /*graph_annotation_id*/) {
+    return Status::OK();
+  }
+
+  /**
      Get the node assignment validation policy for graph capture.
      When graph capture is enabled, ORT validates that nodes are assigned to EPs
      in a way compatible with graph capture. This tells ORT which policy to apply.

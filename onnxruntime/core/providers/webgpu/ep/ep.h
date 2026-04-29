@@ -75,6 +75,9 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   static OrtStatus* ORT_API_CALL ReplayGraphImpl(_In_ OrtEp* this_ptr,
                                                  _In_ int graph_annotation_id) noexcept;
 
+  static OrtStatus* ORT_API_CALL ReleaseGraphImpl(_In_ OrtEp* this_ptr,
+                                                  _In_ int graph_annotation_id) noexcept;
+
   static OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL GetGraphCaptureNodeAssignmentPolicyImpl(
       _In_ const OrtEp* this_ptr) noexcept;
 

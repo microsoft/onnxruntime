@@ -11,6 +11,7 @@
 namespace onnxruntime::version_check {
 
 // A simple constexpr-friendly result type for ParseUint.
+// std::optional triggers an internal compiler error in MSVC 14.44 when used with constexpr.
 struct ParseUintResult {
   uint32_t value;
   bool has_value;

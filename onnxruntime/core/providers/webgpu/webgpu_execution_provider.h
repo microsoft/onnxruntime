@@ -7,6 +7,8 @@
 #include <span>
 #include <string>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "core/framework/execution_provider.h"
@@ -97,11 +99,14 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  Status ReleaseGraph(int graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
   webgpu::BufferManager& BufferManager() const;
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
+  // Set the device allocator pointer so we can call SetBufferManager on it during OnRunStart/OnRunEnd
+  void SetDeviceAllocator(webgpu::GpuBufferAllocator* allocator) { default_gpu_allocator_ = allocator; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
 
@@ -126,8 +131,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_graph_capture_ = false;
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
-  bool is_graph_captured_ = false;
-  int regular_run_count_before_graph_capture_ = 0;
+  std::unordered_map<int, int> graph_id_to_run_count_;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // Required regular runs before graph capture for any necessary allocations.
   int m_current_graph_annotation_id = 0;
 
@@ -135,14 +139,26 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
-  // Buffer manager specifically for graph capture mode
-  std::unique_ptr<webgpu::BufferManager> graph_buffer_mgr_ = nullptr;
+  // Default buffer manager for graph capture mode (used during warmup runs
+  // and as the stable reference target for GpuBufferAllocator)
+  std::unique_ptr<webgpu::BufferManager> graph_default_buffer_mgr_ = nullptr;
 
-  // Store captured commands directly in the EP instead of in WebGpuContext
-  std::vector<webgpu::CapturedCommandInfo> captured_commands_;
+  // Per-graph buffer managers keyed by annotation ID.
+  // Each captured graph gets its own buffer manager so that buffer caches
+  // are isolated between different generators.
+  std::unordered_map<int, std::unique_ptr<webgpu::BufferManager>> per_graph_buffer_mgrs_;
+
+  // Store captured commands per graph annotation ID
+  std::unordered_map<int, std::vector<webgpu::CapturedCommandInfo>> captured_graphs_;
+  // Track which graph annotation IDs have completed capture
+  std::unordered_set<int> captured_graph_ids_;
 
   // Allocator for prepacked weights (uses buffers without mapping)
   AllocatorPtr prepack_allocator_;
+
+  // Raw pointer to the default GPU allocator (owned by the framework via CreatePreferredAllocators)
+  // Used to swap the buffer manager for per-graph isolation
+  webgpu::GpuBufferAllocator* default_gpu_allocator_ = nullptr;
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
   std::unique_ptr<onnxruntime::ep::adapter::Logger> ep_logger_;

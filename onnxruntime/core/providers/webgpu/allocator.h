@@ -24,9 +24,12 @@ class GpuBufferAllocator : public IAllocator {
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
 
+  // Update the buffer manager used for allocations (for per-graph buffer isolation)
+  void SetBufferManager(const BufferManager& buffer_manager);
+
  private:
   AllocatorStats stats_;
-  const BufferManager& buffer_manager_;
+  const BufferManager* buffer_manager_;
   bool mapped_at_creation_;
 };
 

@@ -7435,6 +7435,21 @@ struct OrtApi {
   ORT_API2_STATUS(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* env,
                   _In_ const OrtThreadPoolCallbacksConfig* config);
 
+  /** \brief Release a previously captured graph and its associated GPU resources.
+   *
+   * When graph capture is enabled, the EP records GPU commands during initial runs and replays them
+   * on subsequent runs. This function releases the captured commands and associated GPU buffers
+   * for a specific graph annotation ID, freeing GPU memory.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[in] graph_annotation_id The annotation ID of the captured graph to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(SessionReleaseGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
+
   /// @}
 };
 

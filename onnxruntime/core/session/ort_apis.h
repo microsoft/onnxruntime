@@ -429,6 +429,8 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
 ORT_API_STATUS_IMPL(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
                     _In_ const OrtThreadPoolCallbacksConfig* config);
 
+ORT_API_STATUS_IMPL(SessionReleaseGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
+
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
                     _In_ const ORTCHAR_T* library_name);
 ORT_API_STATUS_IMPL(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
