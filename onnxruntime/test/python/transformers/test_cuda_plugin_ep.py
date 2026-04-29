@@ -2404,6 +2404,11 @@ class TestCudaPluginEP(unittest.TestCase):
         When CUDA profiling is enabled (ENABLE_CUDA_PROFILING), also verify
         that GPU kernel events appear in the profile with expected metadata
         (category Kernel, stream, block_x).
+
+        When ORT_CUDA_PROFILING_ENABLED=1 is set by CI (build has CUPTI compiled in),
+        the test distinguishes between a runtime environment that lacks CUPTI support
+        (tolerated with a warning) and a code regression that silently broke the
+        profiling wiring (hard fail).
         """
         target_device = get_cuda_plugin_device()
 
@@ -2419,20 +2424,49 @@ class TestCudaPluginEP(unittest.TestCase):
             sess_options.enable_profiling = True
             sess_options.profile_file_prefix = profile_prefix
 
-            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+            # Lower the ORT log level to ERROR so we can detect CUPTI init
+            # failures logged by PluginEpProfiler::StartProfiling.
+            sess_options.log_severity_level = 3  # ERROR
 
-            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
-            self.assertTrue(
-                assigned_nodes,
-                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
-                f"Assignments: {_format_assignment_summary(assignment_info)}",
-            )
+            # Capture stderr during session creation + run.  ORT's default
+            # logging sink (CLogSink) writes to std::clog which flushes to
+            # OS file-descriptor 2 (stderr).  Python's sys.stderr is a
+            # higher-level wrapper and does NOT see C++ writes, so we must
+            # redirect at the fd level with os.dup2().
+            #
+            # We redirect fd 2 into a temporary file rather than a pipe to
+            # avoid cross-platform blocking-read issues on Windows.
+            with tempfile.TemporaryFile(mode="w+b") as stderr_capture_file:
+                saved_stderr_fd = os.dup(2)
+                os.dup2(stderr_capture_file.fileno(), 2)
+                try:
+                    sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
-            a = np.random.rand(3, 4).astype(np.float32)
-            b = np.random.rand(4, 5).astype(np.float32)
-            sess.run(None, {"A": a, "B": b})
+                    assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                    self.assertTrue(
+                        assigned_nodes,
+                        f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                        f"Assignments: {_format_assignment_summary(assignment_info)}",
+                    )
 
-            profile_file = sess.end_profiling()
+                    a = np.random.rand(3, 4).astype(np.float32)
+                    b = np.random.rand(4, 5).astype(np.float32)
+                    sess.run(None, {"A": a, "B": b})
+
+                    profile_file = sess.end_profiling()
+                finally:
+                    os.dup2(saved_stderr_fd, 2)  # restore original stderr
+                    os.close(saved_stderr_fd)
+
+                stderr_capture_file.seek(0)
+                ort_log_output = stderr_capture_file.read().decode("utf-8", errors="replace")
+
+            # Detect whether CUPTI initialization failed at runtime.
+            # PluginEpProfiler::StartProfiling logs:
+            #   "OrtEpProfilerImpl::StartProfiling() for <EP> returned an error
+            #    OrtStatus: CUPTI activity tracing failed to start..."
+            cupti_init_failed = "CUPTI" in ort_log_output and "StartProfiling" in ort_log_output
+
             self.assertTrue(profile_file, "No profile file returned")
             self.assertTrue(os.path.exists(profile_file), f"Profile file not found: {profile_file}")
 
@@ -2453,25 +2487,31 @@ class TestCudaPluginEP(unittest.TestCase):
                     self.assertIn(key, entry, f"Missing '{key}' in profile entry: {entry}")
 
             # Check for GPU kernel events. These only appear when the build has
-            # ENABLE_CUDA_PROFILING=ON and CUPTI is available at runtime.
-            #
-            # When ORT_CUDA_PROFILING_ENABLED=1 is set by CI, we expect kernel
-            # events but tolerate their absence (CUPTI may be unavailable in the
-            # runtime environment). When they ARE present, we fully validate
-            # their metadata and timeline plausibility.
+            # ENABLE_CUDA_PROFILING=ON and CUPTI is functional at runtime.
             kernel_events = [e for e in profile_data if isinstance(e, dict) and e.get("cat") == "Kernel"]
             expect_cuda_profiling = os.environ.get("ORT_CUDA_PROFILING_ENABLED") == "1"
 
             if expect_cuda_profiling and len(kernel_events) == 0:
-                # The build has CUPTI compiled in but the runtime environment
-                # may not support it (e.g., missing CUPTI library, driver
-                # restrictions, container sandboxing). Log rather than fail so
-                # CI stays green when the environment prevents CUPTI tracing.
-                print(
-                    "WARNING: ORT_CUDA_PROFILING_ENABLED=1 but no GPU Kernel events in profile. "
-                    "CUPTI may not be available in this environment. "
-                    "Skipping kernel-event assertions."
-                )
+                if cupti_init_failed:
+                    # CUPTI is compiled in but the runtime environment doesn't
+                    # support it (e.g., missing CUPTI library, driver restrictions,
+                    # container sandboxing). Log a warning; this is not a code bug.
+                    print(
+                        "WARNING: ORT_CUDA_PROFILING_ENABLED=1 but CUPTI tracing "
+                        "failed to start (detected via ORT error log). "
+                        "Skipping kernel-event assertions. "
+                        f"ORT log excerpt: {ort_log_output[:500]}"
+                    )
+                else:
+                    # CUPTI did NOT report an initialization failure, yet zero
+                    # kernel events appeared. This indicates a code regression
+                    # in the profiling wiring — fail the test.
+                    self.fail(
+                        "ORT_CUDA_PROFILING_ENABLED=1 and CUPTI did not report an "
+                        "initialization failure, but no GPU Kernel events were found "
+                        "in the profile. This likely indicates a regression in the "
+                        "CUDA plugin EP profiling integration."
+                    )
 
             if len(kernel_events) > 0:
                 # Validate GPU kernel event metadata.
