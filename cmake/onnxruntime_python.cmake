@@ -211,6 +211,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${onnxruntime_pybind11_state_static_providers}
+    ${PROVIDERS_NEUTRON}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -1160,6 +1161,18 @@ if (onnxruntime_USE_WEBGPU)
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
   endif()
+endif()
+
+if (onnxruntime_USE_NEUTRON)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_neutron>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${REPO_ROOT}/onnxruntime/core/providers/neutron/tools/neutron_offline_prepack.py
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  )
 endif()
 
 if (onnxruntime_USE_VSINPU)

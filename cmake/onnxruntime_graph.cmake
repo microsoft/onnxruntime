@@ -42,6 +42,8 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/shape_inference_functions.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/dml_defs.h"
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/dml_defs.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/neutron_ops/neutron_defs.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/neutron_ops/neutron_defs.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/function_template.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.h"
     "${ONNXRUNTIME_ROOT}/core/graph/function_utils.cc"
@@ -83,6 +85,13 @@ if(NOT onnxruntime_USE_DML)
   list(APPEND onnxruntime_graph_src_exclude_patterns
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/dml_ops/*.cc"
+    )
+endif()
+
+if(NOT onnxruntime_USE_NEUTRON)
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_ROOT}/core/graph/neutron_ops/*.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/neutron_ops/*.cc"
     )
 endif()
 
