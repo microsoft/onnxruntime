@@ -10,6 +10,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/allocator.h"
 
@@ -134,10 +135,13 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
   auto factory = static_cast<Factory*>(this_ptr);
   const int context_id = webgpu_ep->GetDeviceId();
+  auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
+  auto device_alloc = std::make_shared<webgpu::GpuBufferAllocator>(webgpu_ep_ptr->BufferManager(), false);
+  webgpu_ep_ptr->SetDeviceAllocator(device_alloc.get());
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),                                                                                              // CPU allocator
-      std::make_shared<webgpu::GpuBufferAllocator>(WebGpuContextFactory::GetContext(context_id).BufferManager(), false),            // default device allocator
-      std::make_shared<webgpu::GpuBufferAllocator>(WebGpuContextFactory::GetContext(context_id).InitializerBufferManager(), true),  // initializer device allocator
+      device_alloc,                                                                                                                 // default device allocator
+      std::make_shared<webgpu::GpuBufferAllocator>(WebGpuContextFactory::GetContext(context_id).InitializerBufferManager(), true),   // initializer device allocator
   };
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
   return nullptr;
