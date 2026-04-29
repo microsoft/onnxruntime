@@ -4214,6 +4214,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionReleaseGraph, _In_ OrtSession* session, _In_ int graph_annotation_id) {
+  API_IMPL_BEGIN
+  auto* inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  return ToOrtStatus(inference_session->ReleaseGraph(graph_annotation_id));
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -4764,6 +4771,7 @@ static constexpr OrtApi ort_api_1_to_26 = {
     &OrtApis::KernelInfoGetAttributeArray_string,
     &OrtApis::SetPerSessionThreadPoolCallbacks,
     // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
+    &OrtApis::SessionReleaseGraph,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

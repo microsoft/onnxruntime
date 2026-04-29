@@ -43,6 +43,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
   IsGraphCaptured = IsGraphCapturedImpl;
   ReplayGraph = ReplayGraphImpl;
+  ReleaseGraph = ReleaseGraphImpl;
   GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
 }
 
@@ -271,6 +272,18 @@ OrtStatus* ORT_API_CALL Ep::ReplayGraphImpl(_In_ OrtEp* this_ptr, _In_ int graph
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
   auto status = ep->EpImpl()->ReplayGraph(graph_annotation_id);
+  if (!status.IsOK()) {
+    return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
+                                  status.ErrorMessage().c_str());
+  }
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+OrtStatus* ORT_API_CALL Ep::ReleaseGraphImpl(_In_ OrtEp* this_ptr, _In_ int graph_annotation_id) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto* ep = static_cast<Ep*>(this_ptr);
+  auto status = ep->EpImpl()->ReleaseGraph(graph_annotation_id);
   if (!status.IsOK()) {
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());

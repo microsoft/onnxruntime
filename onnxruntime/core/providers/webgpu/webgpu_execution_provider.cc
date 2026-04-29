@@ -578,7 +578,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
   // If graph capture is enabled, create a dedicated buffer manager for graph mode
   if (enable_graph_capture_) {
     // Create buffer manager for graph capture mode with appropriate cache modes
-    graph_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
+    graph_default_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
         context_,
         webgpu::BufferCacheMode::Graph,
         webgpu::BufferCacheMode::GraphSimple,
@@ -596,11 +596,13 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
+  auto default_alloc = std::make_unique<webgpu::GpuBufferAllocator>(BufferManager(), false);
+  default_gpu_allocator_ = default_alloc.get();
   return {
       // allocator for initializers
       std::make_unique<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), true),
       // default allocator
-      std::make_unique<webgpu::GpuBufferAllocator>(BufferManager(), false),
+      std::move(default_alloc),
   };
 }
 
@@ -725,11 +727,17 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
 }
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
-  // Release all resources associated with the captured graph
-  if (!captured_commands_.empty()) {
-    context_.ReleaseGraphResources(captured_commands_);
+  // Release all captured graphs and their associated resources
+  std::vector<int> graph_ids;
+  graph_ids.reserve(captured_graph_ids_.size());
+  for (int id : captured_graph_ids_) {
+    graph_ids.push_back(id);
   }
-  // The graph_buffer_mgr_ will be automatically cleaned up by unique_ptr
+  for (int id : graph_ids) {
+    (void)ReleaseGraph(id);
+  }
+  // Also release any per-graph buffer managers for graphs that were never fully captured
+  per_graph_buffer_mgrs_.clear();
 
   WebGpuContextFactory::ReleaseContext(context_id_);
 }
@@ -764,8 +772,24 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
                   *graph_annotation_str);
     }
 
+    // Create a per-graph buffer manager on first encounter of each annotation ID
+    if (graph_annotation_id != -1) {
+      if (per_graph_buffer_mgrs_.find(graph_annotation_id) == per_graph_buffer_mgrs_.end()) {
+        per_graph_buffer_mgrs_[graph_annotation_id] = webgpu::BufferManagerFactory::Create(
+            context_,
+            webgpu::BufferCacheMode::Graph,
+            webgpu::BufferCacheMode::GraphSimple,
+            webgpu::BufferCacheMode::Disabled);
+      }
+      // Route allocator to this graph's buffer manager
+      if (default_gpu_allocator_) {
+        default_gpu_allocator_->SetBufferManager(*per_graph_buffer_mgrs_[graph_annotation_id]);
+      }
+    }
+
     if (graph_annotation_id != -1 && IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
-      context_.CaptureBegin(&captured_commands_, *graph_buffer_mgr_);
+      auto& commands = captured_graphs_[graph_annotation_id];
+      context_.CaptureBegin(&commands, *per_graph_buffer_mgrs_[graph_annotation_id]);
     }
     m_current_graph_annotation_id = graph_annotation_id;
   }
@@ -779,7 +803,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(m_current_graph_annotation_id)) {
     if (m_current_graph_annotation_id != -1 && IsGraphCaptureAllowed()) {
       context_.CaptureEnd();
-      is_graph_captured_ = true;
+      captured_graph_ids_.insert(m_current_graph_annotation_id);
       ORT_RETURN_IF_ERROR(ReplayGraph(m_current_graph_annotation_id));
     } else {
       IncrementRegularRunCountBeforeGraphCapture();
@@ -800,6 +824,11 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   }
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
+  // Reset allocator to default buffer manager after run completes
+  if (default_gpu_allocator_ && graph_default_buffer_mgr_) {
+    default_gpu_allocator_->SetBufferManager(*graph_default_buffer_mgr_);
+  }
+
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();
   } else {
@@ -812,7 +841,7 @@ bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
-  return is_graph_captured_ && graph_annotation_id != -1;
+  return graph_annotation_id != -1 && captured_graph_ids_.count(graph_annotation_id) > 0;
 }
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
@@ -821,7 +850,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   if (session_profiler_ && session_profiler_->Enabled()) {
     context_.StartProfiling();
   }
-  context_.Replay(captured_commands_, *graph_buffer_mgr_);
+  context_.Replay(captured_graphs_.at(graph_annotation_id), *per_graph_buffer_mgrs_.at(graph_annotation_id));
   if (session_profiler_ && session_profiler_->Enabled()) {
     // Session-level profiling: collect into profiler's own events storage.
     context_.CollectProfilingData(session_profiler_->GpuEvents());
@@ -829,19 +858,51 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   return Status::OK();
 }
 
+Status WebGpuExecutionProvider::ReleaseGraph(int graph_annotation_id) {
+  // Release captured commands
+  auto cmd_it = captured_graphs_.find(graph_annotation_id);
+  if (cmd_it != captured_graphs_.end()) {
+    if (!cmd_it->second.empty()) {
+      context_.ReleaseGraphResources(cmd_it->second);
+    }
+    captured_graphs_.erase(cmd_it);
+  }
+
+  // Remove from captured set
+  captured_graph_ids_.erase(graph_annotation_id);
+
+  // Release per-graph buffer manager (destroys cached buffers)
+  per_graph_buffer_mgrs_.erase(graph_annotation_id);
+
+  // Clean up run count tracking
+  graph_id_to_run_count_.erase(graph_annotation_id);
+
+  return Status::OK();
+}
+
 webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
-  if (graph_buffer_mgr_) {
-    return *graph_buffer_mgr_;
+  // Use per-graph buffer manager if one exists for the current annotation ID
+  if (m_current_graph_annotation_id != 0 && m_current_graph_annotation_id != -1) {
+    auto it = per_graph_buffer_mgrs_.find(m_current_graph_annotation_id);
+    if (it != per_graph_buffer_mgrs_.end()) {
+      return *it->second;
+    }
+  }
+  // Fall back to default graph buffer manager (warmup runs) or context buffer manager
+  if (graph_default_buffer_mgr_) {
+    return *graph_default_buffer_mgr_;
   } else {
     return context_.BufferManager();
   }
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {
-  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+  auto it = graph_id_to_run_count_.find(m_current_graph_annotation_id);
+  int run_count = (it != graph_id_to_run_count_.end()) ? it->second : 0;
+  return run_count >= min_num_runs_before_cuda_graph_capture_;
 }
 
 void WebGpuExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
-  ++regular_run_count_before_graph_capture_;
+  ++graph_id_to_run_count_[m_current_graph_annotation_id];
 }
 }  // namespace onnxruntime

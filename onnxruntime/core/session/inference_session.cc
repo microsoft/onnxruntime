@@ -3788,6 +3788,10 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
   return Run(run_options, io_binding);
 }
 
+common::Status InferenceSession::ReleaseGraph(int graph_annotation_id) {
+  return cached_execution_provider_for_graph_replay_.ReleaseGraph(graph_annotation_id);
+}
+
 template <typename T>
 void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
   std::basic_ostringstream<T> ss;
