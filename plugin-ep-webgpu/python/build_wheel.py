@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,40 @@ import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
+MIN_ONNXRUNTIME_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
+
+# Matches "@var@" template variables.
+_TEMPLATE_VARIABLE_PATTERN = re.compile(r"@(\w+)@")
+
+
+def gen_file_from_template(
+    template_file: Path, output_file: Path, variable_substitutions: dict[str, str], strict: bool = True
+) -> None:
+    """Generate a file from a template by substituting "@var@" markers with provided values.
+
+    If `strict` is True, raises ValueError when the set of "@var@" names found in the template
+    does not match the keys of `variable_substitutions`.
+    """
+    content = template_file.read_text(encoding="utf-8")
+
+    variables_in_file: set[str] = set()
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        variables_in_file.add(name)
+        return variable_substitutions.get(name, match.group(0))
+
+    content = _TEMPLATE_VARIABLE_PATTERN.sub(replace, content)
+
+    if strict and variables_in_file != variable_substitutions.keys():
+        provided = set(variable_substitutions.keys())
+        raise ValueError(
+            f"Template variables and substitution keys do not match for {template_file}. "
+            f"Only in template: {sorted(variables_in_file - provided)}. "
+            f"Only in substitutions: {sorted(provided - variables_in_file)}."
+        )
+
+    output_file.write_text(content, encoding="utf-8")
 
 # Patterns for binaries to include in the package
 BINARY_PATTERNS = [
@@ -43,7 +78,6 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy only the files needed to build the wheel
-    shutil.copy2(SCRIPT_DIR / "pyproject.toml", staging_dir / "pyproject.toml")
     shutil.copy2(SCRIPT_DIR / "setup.py", staging_dir / "setup.py")
     shutil.copytree(SCRIPT_DIR / "onnxruntime_ep_webgpu", staging_dir / "onnxruntime_ep_webgpu")
 
@@ -57,19 +91,20 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
             shutil.copy2(src, dst)
             copied.append(dst)
     if not copied:
-        print(f"ERROR: No plugin binaries found in {binary_dir}", file=sys.stderr)
-        print(f"Looked for: {BINARY_PATTERNS}", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError(
+            f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}"
+        )
 
-    # Stamp the version in pyproject.toml
-    pyproject_path = staging_dir / "pyproject.toml"
-    content = pyproject_path.read_text(encoding="utf-8")
-    placeholder = 'version = "VERSION_PLACEHOLDER"'
-    if placeholder not in content:
-        print(f"ERROR: Version placeholder not found in pyproject.toml. Expected: {placeholder}", file=sys.stderr)
-        sys.exit(1)
-    updated = content.replace(placeholder, f'version = "{version}"')
-    pyproject_path.write_text(updated, encoding="utf-8")
+    # Render pyproject.toml from its template
+    min_ort_version = MIN_ONNXRUNTIME_VERSION_FILE.read_text(encoding="utf-8").strip()
+    if not min_ort_version:
+        raise ValueError(f"{MIN_ONNXRUNTIME_VERSION_FILE} is empty")
+
+    gen_file_from_template(
+        SCRIPT_DIR / "pyproject.toml.in",
+        staging_dir / "pyproject.toml",
+        {"version": version, "min_onnxruntime_version": min_ort_version},
+    )
 
 
 def build_wheel(source_dir: Path, wheel_dir: Path):
@@ -97,7 +132,7 @@ def auditwheel_repair(wheel_dir: Path):
 
     original_wheels = list(wheel_dir.glob("onnxruntime_ep_webgpu-*.whl"))
     if not original_wheels:
-        return
+        raise RuntimeError(f"No wheel found in {wheel_dir} to repair with auditwheel")
 
     with tempfile.TemporaryDirectory() as repaired_dir_name:
         repaired_dir = Path(repaired_dir_name)
@@ -111,8 +146,12 @@ def auditwheel_repair(wheel_dir: Path):
             # Remove the original wheel so only the repaired one remains
             wheel.unlink()
 
+        repaired_wheels = list(repaired_dir.glob("*.whl"))
+        if not repaired_wheels:
+            raise RuntimeError(f"auditwheel repair produced no wheels in {repaired_dir}")
+
         # Move repaired wheels into wheel_dir
-        for repaired_wheel in repaired_dir.glob("*.whl"):
+        for repaired_wheel in repaired_wheels:
             repaired_wheel.replace(wheel_dir / repaired_wheel.name)
 
 
@@ -120,8 +159,7 @@ def collect_wheels(wheel_dir: Path, output_dir: Path):
     """Copy built wheels to the output directory and verify at least one was produced."""
     wheels = list(wheel_dir.glob("onnxruntime_ep_webgpu-*.whl"))
     if not wheels:
-        print("ERROR: No wheel was produced", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("No wheel was produced")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -141,8 +179,7 @@ def main():
     args = parser.parse_args()
 
     if not args.binary_dir.is_dir():
-        print(f"ERROR: Binary directory does not exist: {args.binary_dir}", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError(f"Binary directory does not exist: {args.binary_dir}")
 
     with tempfile.TemporaryDirectory(prefix="ort_webgpu_wheel_") as tmp:
         staging_dir = Path(tmp) / "package"

@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onnxruntime-ep-webgpu"
-version = "VERSION_PLACEHOLDER"  # Replaced at build time by build_wheel.py
+version = "@version@"
 description = "ONNX Runtime WebGPU Plugin Execution Provider"
 readme = "onnxruntime_ep_webgpu/README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
 dependencies = [
-  "onnxruntime>=1.24.4",
+  "onnxruntime>=@min_onnxruntime_version@",
 ]
 
 [tool.setuptools.packages.find]
