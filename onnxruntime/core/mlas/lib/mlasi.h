@@ -81,7 +81,6 @@ Abstract:
 #endif
 #endif
 
-
 //
 // Macro to place variables at a specified alignment.
 //
@@ -181,7 +180,6 @@ class MLASCPUIDInfo
 
     // ARM
     bool HasArmNeonDot() const { return has_arm_neon_dot_; }
-      bool HasArmSVE() const { return has_arm_sve_; }
 
     bool HasFp16VectorAcceleration() const { return has_fp16_; }
 
@@ -208,7 +206,6 @@ class MLASCPUIDInfo
 
     bool has_arm_neon_dot_{false};
     bool has_fp16_{false};
-     bool has_arm_sve_{false};
     bool has_arm_neon_i8mm_{false};
     bool has_arm_sve_{false};
     bool has_arm_sve_i8mm_{false};

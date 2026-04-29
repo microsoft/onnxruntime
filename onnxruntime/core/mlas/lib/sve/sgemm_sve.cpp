@@ -13,6 +13,7 @@ Abstract:
 
 #ifdef __ARM_FEATURE_SVE
 #include "mlasi_sve.h"
+const size_t k_step = 64;
 
 template <bool ZeroMode, bool Alpha1>
 inline void
@@ -27,8 +28,7 @@ processrows_8(
     float alpha,
     size_t vl
 )
-{
-    size_t k_step = 8 * vl;
+{    
     svfloat32_t zero_vec = MlasSveBroadcastFloat32(0.f);
     size_t col = 0;
     for (; col + 2 * vl <= n; col += 2 * vl) {
@@ -226,7 +226,6 @@ processrows_6(
     size_t vl
 )
 {
-    size_t k_step = 8 * vl;
     svfloat32_t zero_vec = MlasSveBroadcastFloat32(0.f);
     size_t col = 0;
     for (; col + 2 * vl <= n; col += 2 * vl) {
@@ -405,10 +404,8 @@ processrows_4(
     size_t vl
 )
 {
-    size_t k_step = 8 * vl;
 
     svfloat32_t zero_vec = MlasSveBroadcastFloat32(0.f);
-
     size_t col = 0;
     for (; col + 2 * vl <= n; col += 2 * vl) {
         svbool_t pg0 = svwhilelt_b32(col, n);
@@ -551,7 +548,6 @@ processrows_2(
     size_t vl
 )
 {
-    size_t k_step = 8 * vl;
     svfloat32_t zero_vec = MlasSveBroadcastFloat32(0.f);
     size_t col = 0;
     for (; col + 2 * vl <= n; col += 2 * vl) {
@@ -643,7 +639,6 @@ processrows_1(
     size_t vl
 )
 {
-    size_t k_step = 8 * vl;
 
     MLAS_UNREFERENCED_PARAMETER(ldc);
     MLAS_UNREFERENCED_PARAMETER(lda);
@@ -727,7 +722,7 @@ ProcessRowsTemplate(
     }
 }
 
-size_t MLASCALL
+size_t MLAS_SVE_TARGET MLASCALL
 MlasSgemmKernelZero_sve(
     const float* A,
     const float* B,
@@ -780,7 +775,7 @@ MlasSgemmKernelZero_sve(
     }
 }
 
-size_t MLASCALL
+size_t MLAS_SVE_TARGET MLASCALL
 MlasSgemmKernelAdd_sve(
     const float* A,
     const float* B,
@@ -837,7 +832,7 @@ MLAS_SVE_TARGET
 inline size_t
 VL()
 {
-    static size_t fp32Lanes = svcntw();  // evaluated only once, the first time it's called
+    static size_t fp32Lanes = svcntw();
     return fp32Lanes;
 }
 
@@ -1240,11 +1235,9 @@ SVE_LOAD_STORE(float* D, const float* b)
 void MLAS_SVE_TARGET MLASCALL
 SVE_ZERO_INITIALIZE(float* d)
 {
-    if (VL() == PACKED_B_BLOCK_WIDTH) {
-        MlasSveStoreFloat32(svptrue_b32(), d, svdup_f32(0));
-    } else {
-        MlasSveStoreFloat32(svptrue_b32(), d, svdup_f32(0));
-        MlasSveStoreFloat32(svptrue_b32(), d + VL(), svdup_f32(0));
+    svfloat32_t zero = svdup_f32(0.0f);
+    for (int i = 0; i < PACKED_B_BLOCK_WIDTH; i += svcntw()) {
+        MlasSveStoreFloat32(svptrue_b32(), d + i, zero);
     }
 }
 
