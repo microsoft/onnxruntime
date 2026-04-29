@@ -578,6 +578,16 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMemoryMappedWithInitializersFromMap) {
   RunOrtModel(test_info);
 }
 
+// Verify that mmap loading fails gracefully on a non-existent file
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMemoryMappedFailsOnMissingFile) {
+  SessionOptions so;
+  so.session_logid = "MemoryMappedMissingFile";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseMemoryMappedOrtModel, "1"));
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  auto status = session_object.Load(ORT_TSTR("nonexistent_model.ort"));
+  ASSERT_FALSE(status.IsOK());
+}
+
 // regression test for 2 issues covered by PR #17000 (internally reported issue).
 // 1) allocation planner broke in minimal build when subgraph had no nodes.
 // 2) usage of a sequence data type caused an exception due to IsSparseTensor() throwing

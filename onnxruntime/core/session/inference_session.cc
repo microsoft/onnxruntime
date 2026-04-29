@@ -1711,6 +1711,7 @@ static Status LoadOrtModelBytesMapped(const PathString& model_uri,
                                       Env::MappedMemoryPtr& mapped_memory) {
   size_t num_bytes = 0;
   ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_uri.c_str(), num_bytes));
+  ORT_RETURN_IF(num_bytes == 0, "Cannot memory-map an empty file: ", ToUTF8String(model_uri));
 
   ORT_RETURN_IF_ERROR(Env::Default().MapFileIntoMemory(model_uri.c_str(), 0, num_bytes, mapped_memory));
 
