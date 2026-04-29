@@ -3,8 +3,10 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <cstring>
 #include <fstream>
 #include <iostream>
+#include <limits>
 
 #include "gtest/gtest.h"
 
@@ -113,10 +115,6 @@ ONNX_NAMESPACE::TensorProto CreateInitializer(const std::string& name,
     }
     default:
       ORT_THROW("Unsupported data type: ", data_type);
-  }
-
-  if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto(tp);
   }
 
   return tp;
@@ -261,9 +259,6 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
   for (const auto* fbs_tensor : *fbs_tensors2) {
     ONNX_NAMESPACE::TensorProto initializer;
     ASSERT_STATUS_OK(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader));
-    if constexpr (endian::native != endian::little) {
-      utils::ConvertRawDataInTensorProto(initializer);
-    }
     loaded_initializers.emplace_back(std::move(initializer));
     // also check that the loaded flatbuffer tensors have accurately written to the external_data_offset field
     if (fbs_tensor->data_type() != fbs::TensorDataType::STRING && fbs_tensor->name()->str() != "tensor_32_small") {
@@ -300,6 +295,148 @@ TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadInitializers) {
       ASSERT_EQ_TENSORPROTO_VECTORFIELD(expected_initializer, loaded_initializer, string_data());
     }
   }
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsNullStringDataEntry) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_string");
+  auto dims = builder.CreateVector(std::vector<int64_t>{2});
+  auto string_data = builder.CreateVector(std::vector<flatbuffers::Offset<flatbuffers::String>>{
+      builder.CreateString("string_0"),
+      builder.CreateString("string_1"),
+  });
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::STRING);
+  tensor_builder.add_string_data(string_data);
+  builder.Finish(tensor_builder.Finish());
+
+  auto* fbs_tensor = flatbuffers::GetMutableRoot<fbs::Tensor>(builder.GetBufferPointer());
+  ASSERT_NE(fbs_tensor, nullptr);
+
+  const auto* fbs_string_data = fbs_tensor->string_data();
+  ASSERT_NE(fbs_string_data, nullptr);
+  auto* mutable_string_data =
+      const_cast<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>*>(fbs_string_data);
+  auto* string_offsets = mutable_string_data->data();
+  const flatbuffers::Offset<flatbuffers::String> null_string_offset;
+  std::memcpy(&string_offsets[1], &null_string_offset, sizeof(null_string_offset));
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options),
+                                      "Null string data entry for initializer");
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithoutDims) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_external");
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "Missing dimensions for initializer");
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithNegativeDim) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_negative_dim");
+  auto dims = builder.CreateVector(std::vector<int64_t>{2, -1});
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "Invalid negative dimension -1");
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithOverflowingDims) {
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_overflow_dims");
+  std::vector<int64_t> overflow_dims;
+  if (sizeof(size_t) < sizeof(int64_t)) {
+    overflow_dims = {static_cast<int64_t>(std::numeric_limits<size_t>::max()), 2};
+  } else {
+    overflow_dims = {std::numeric_limits<int64_t>::max(), 3};
+  }
+  auto dims = builder.CreateVector(overflow_dims);
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "overflows size_t");
+}
+
+TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithDimTooLargeForSizeT) {
+  if (sizeof(size_t) >= sizeof(int64_t)) {
+    GTEST_SKIP() << "This platform does not have a narrower size_t than int64_t.";
+  }
+
+  flatbuffers::FlatBufferBuilder builder(256);
+
+  auto name = builder.CreateString("tensor_dim_too_large_for_size_t");
+  auto dims = builder.CreateVector(std::vector<int64_t>{std::numeric_limits<int64_t>::max()});
+
+  fbs::TensorBuilder tensor_builder(builder);
+  tensor_builder.add_name(name);
+  tensor_builder.add_dims(dims);
+  tensor_builder.add_data_type(fbs::TensorDataType::FLOAT);
+  tensor_builder.add_external_data_offset(0);
+  builder.Finish(tensor_builder.Finish());
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  OrtFormatLoadOptions options;
+  ExternalDataReader reader = [](uint64_t, gsl::span<uint8_t>) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Reader should not be called for invalid tensor.");
+  };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(LoadInitializerOrtFormat(*fbs_tensor, initializer, options, reader),
+                                      "does not fit in size_t");
 }
 
 #ifdef ENABLE_TRAINING_APIS

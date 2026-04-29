@@ -20,6 +20,7 @@ Abstract:
 #include <arm_neon.h>
 
 #include <cassert>
+#include <cstring>
 #include <vector>
 #include <numeric>
 
@@ -62,13 +63,22 @@ QNBitGemmPackQuantBDataSize(
 #endif
 
 #ifdef USE_KLEIDIAI
-        if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
+        if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig)) {
             const auto& k = GetKleidiAIGemmUKernel();
             const auto& ukernel = k.ukernel;
             const size_t nr = ukernel.get_nr();
             const size_t kr = ukernel.get_kr();
             const size_t sr = ukernel.get_sr();
-            return kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+            size_t packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+            if (HasZeroPoint) {
+                // Align so that BZpCorrection starts at a float-aligned offset
+                constexpr size_t FloatAlignment = alignof(float);
+                packed_size = (packed_size + FloatAlignment - 1) & ~(FloatAlignment - 1);
+                // Additional space for BZpCorrection: N * BlockCountK floats
+                const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+                packed_size += N * BlockCountK * sizeof(float);
+            }
+            return packed_size;
         } else
 #endif
         {
@@ -183,7 +193,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
-    const std::byte*,
+    const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 4>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
@@ -192,11 +202,12 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 #ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(QuantBScaleBegin);
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
+    MLAS_UNREFERENCED_PARAMETER(QuantBZPBegin);
 #endif
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
 #ifdef USE_KLEIDIAI
-    if (UseKleidiAI(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
+    if (UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig)) {
         const auto& k = GetKleidiAIGemmUKernel();
         const auto& ukernel = k.ukernel;
         std::byte* PackedQuantBDataBegin = PackedQuantB.PackedQuantBData;
@@ -204,24 +215,55 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
         const size_t nr = ukernel.get_nr();
         const size_t kr = ukernel.get_kr();
         const size_t sr = ukernel.get_sr();
-
-        kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params;
-        params.lhs_zero_point = 1;
-        params.rhs_zero_point = 8;
-        params.scale_dt = kai_dt_bf16;
-
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-        const size_t scales_len = N * BlockCountK;
-        std::vector<uint16_t> scales(scales_len);
-        for (size_t i = 0; i < scales_len; i++) {
-            const uint32_t* i32 = reinterpret_cast<const uint32_t*>(&QuantBScaleBegin[i]);
-            scales[i] = *i32 >> 16;
+
+        // Pack B data with KleidiAI (only when B data is provided)
+        if (QuantBDataBegin != nullptr) {
+            assert(QuantBScaleBegin != nullptr);
+            kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params;
+            params.lhs_zero_point = 1;
+            params.rhs_zero_point = 8;
+            params.scale_dt = kai_dt_bf16;
+
+            const size_t scales_len = N * BlockCountK;
+            std::vector<uint16_t> scales(scales_len);
+            for (size_t i = 0; i < scales_len; i++) {
+                uint32_t bits;
+                static_assert(sizeof(bits) == sizeof(QuantBScaleBegin[i]), "Unexpected float size");
+                std::memcpy(&bits, &QuantBScaleBegin[i], sizeof(bits));
+                scales[i] = static_cast<uint16_t>(bits >> 16);
+            }
+
+            kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(1, N, K, nr, kr, sr, BlkLen,
+                    reinterpret_cast<const uint8_t*>(QuantBDataBegin), BlockCountK * BlkLen / 2,
+                    nullptr, scales.data(), BlockCountK * sizeof(uint16_t),
+                    PackedQuantBDataBegin, 0, &params);
         }
 
-        kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(1, N, K, nr, kr, sr, BlkLen,
-                reinterpret_cast<const uint8_t*>(QuantBDataBegin), BlockCountK * BlkLen / 2,
-                nullptr, scales.data(), BlockCountK * sizeof(uint16_t),
-                PackedQuantBDataBegin, 0, &params);
+        // Compute BZpCorrection when both scales and zero points are available.
+        // BZpCorr[n * BlockCountK + blk] = scale_b * (8 - zp_b)
+        // Note: We intentionally use fp32 scales here (not bf16-truncated) for higher precision
+        // in the correction term. KleidiAI internally truncates scales to bf16 for the main GEMM,
+        // but the correction benefits from full fp32 precision to better approximate the true result.
+        // This may be called separately from B packing when zero points arrive later.
+        if (HasZeroPoint && QuantBZPBegin != nullptr && QuantBScaleBegin != nullptr) {
+            const size_t kleidiai_packed_size = kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(
+                N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+            // Align offset so BZpCorr starts at a float-aligned address
+            constexpr size_t FloatAlignment = alignof(float);
+            const size_t bzpcorr_offset = (kleidiai_packed_size + FloatAlignment - 1) & ~(FloatAlignment - 1);
+            float* BZpCorr = reinterpret_cast<float*>(PackedQuantBDataBegin + bzpcorr_offset);
+
+            for (size_t n = 0; n < N; ++n) {
+                for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                    const size_t idx = n * BlockCountK + blk;
+                    const size_t zp_byte_idx = blk / 2;
+                    const uint8_t zp_byte = static_cast<uint8_t>(QuantBZPBegin[n * MlasDivRoundup(BlockCountK, 2) + zp_byte_idx]);
+                    const uint8_t zp = (blk & 1) == 0 ? (zp_byte & 0x0F) : (zp_byte >> 4);
+                    BZpCorr[idx] = QuantBScaleBegin[idx] * (8.0f - static_cast<float>(zp));
+                }
+            }
+        }
     } else
 #endif
     {
@@ -419,14 +461,23 @@ QNBitGemmPerGemmWorkspaceSize(
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
-            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
+            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, BackendKernelSelectorConfig)) {
                 const auto& k = (M == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
                 const auto& ukernel = k.ukernel;
 
                 const size_t mr = ukernel.get_mr();
                 const size_t kr = ukernel.get_kr();
                 const size_t sr = ukernel.get_sr();
-                return kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(M, K, mr, kr, sr);
+                size_t ws = kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(M, K, mr, kr, sr);
+                if (HasZeroPoint) {
+                    // Align so that AFloatBlkSum starts at a float-aligned offset
+                    constexpr size_t FloatAlignment = alignof(float);
+                    ws = (ws + FloatAlignment - 1) & ~(FloatAlignment - 1);
+                    // Additional space for AFloatBlkSum: M * BlockCountK floats
+                    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+                    ws += M * BlockCountK * sizeof(float);
+                }
+                return ws;
             } else
 #endif
             {
@@ -464,7 +515,7 @@ QNBitGemmPerGemmWorkspaceAlignment(
 }  // namespace
 
 bool
-UseKleidiAI(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+UseKleidiAI(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
 #ifdef USE_KLEIDIAI
     if (BackendKernelSelectorConfig != nullptr && !BackendKernelSelectorConfig->use_kleidiai) {
@@ -472,12 +523,11 @@ UseKleidiAI(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELEC
     }
 
     bool has_dotprod = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
-    return (BlkLen % 32) == 0 && (K % BlkLen) == 0 && !HasZp && has_dotprod;
+    return (BlkLen % 32) == 0 && (K % BlkLen) == 0 && has_dotprod;
 #else
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     MLAS_UNREFERENCED_PARAMETER(K);
     MLAS_UNREFERENCED_PARAMETER(BlkLen);
-    MLAS_UNREFERENCED_PARAMETER(HasZp);
     return false;
 #endif
 }
@@ -594,6 +644,8 @@ GetMlasQNBitGemmDispatchNeon(
 #ifdef USE_KLEIDIAI
             d.SQ4BitGemmKernel_Packed_CompInt8 = sqnbitgemm_neon::SQ4BitGemmKernel_Packed_CompInt8;
             d.QuantizeA_Packed_CompInt8 = sqnbitgemm_neon::QuantizeA_Packed_CompInt8;
+            d.ComputeAFloatBlkSum = sqnbitgemm_neon::ComputeAFloatBlkSum;
+            d.ApplyBZpCorrection = sqnbitgemm_neon::ApplyBZpCorrection;
 #endif
         }
 
@@ -607,6 +659,8 @@ GetMlasQNBitGemmDispatchNeon(
         d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;
         d.HQ4BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ4BitBlkDequantBForHgemm_CompFp16;
         d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
+        d.HQ8BitGemmPackQuantBData = sqnbitgemm_neon::HQ8BitGemmPackQuantBData_CompFp16;
+        d.HQ8BitBlkDequantBForHgemm_CompFp16 = sqnbitgemm_neon::HQ8BitBlkDequantBForHgemm_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
         return d;

@@ -495,7 +495,8 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
   NodeArg* shape_arg = &graph_utils::AddInitializerWithOrtValue(graph, shape_initializer_proto);
   Node& reshape_node = graph.AddNode(graph.GenerateNodeName(name + "_new_reshape"), "Reshape", "Reshape for " + name,
                                      {contiguous_reshapes[0].get().MutableInputDefs()[0], shape_arg},
-                                     {contiguous_reshapes.back().get().MutableOutputDefs()[0]});
+                                     {contiguous_reshapes.back().get().MutableOutputDefs()[0]},
+                                     reshape);
   reshape_node.SetExecutionProviderType(contiguous_reshapes[0].get().GetExecutionProviderType());
 
   graph_utils::FinalizeNodeFusion(graph, contiguous_reshapes, reshape_node);

@@ -49,6 +49,17 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
 void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
+ * This function is used to get element size of tensor data.
+ *
+ * For complex types it returns size of one of elements of complex value.
+ *
+ * It will be used mostly to convert data on big endian systems
+ * after unpacking data.
+ * @param tensor_data_type tensor data type to get element size from
+ */
+size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type);
+
+/**
  * Wrapper function for set_raw_data.
  * First calls the set_raw_data and then calls ConvertRawDataInTensorProto
  * under big endian system.
@@ -156,7 +167,7 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 
 /// The threshold for small tensors. If the size of the tensor is LE to this value,
 /// The data will stay in the TensorProto. Otherwise, the data will be moved to a Tensor instance
-/// and TensorProto will contain a kTensorProtoMemoryAddressTag reference as a result of
+/// and TensorProto will contain a kTensorProtoNativeEndianMemoryAddressTag reference as a result of
 /// TensorToTensorProto() below. This is because shape inferencing code in onnx for
 /// like Reshape parses weights data and it needs to be in the TensorProto.
 /// The value of 127 was chosen empirically to be the smallest value that is required
@@ -177,7 +188,7 @@ constexpr const size_t kMaxEmbeddedInitializerSizeInBytes = size_t{2} * 1024 * 1
  * @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
  * @param[in] tensor_proto_name the name of the TensorProto.
  * @param[in] use_tensor_buffer the tensor proto is set to use external location, with
- *                              'location' set to onnxruntime::utils::kTensorProtoMemoryAddressTag
+ *                              'location' set to onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag
  *                              'offset' set to tensor's memory location, and 'length' set to tensor's
  *                              memory size. The caller is responsible to maintain the lifetime of
  *                              the allocated memory buffer. Use with caution.
@@ -215,8 +226,19 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
 Special marker used to indicate an existing memory buffer contains the TensorProto external data.
 If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
 address of the memory containing the data.
+
+This marker is used when data is always in little endian format.
 */
-constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+constexpr const ORTCHAR_T* kTensorProtoLittleEndianMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+
+/**
+Special marker used to indicate an existing memory buffer contains the TensorProto external data.
+If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
+address of the memory containing the data.
+
+This marker is used when data is in native endian format, i.e. big endian on big endian systems.
+*/
+constexpr const ORTCHAR_T* kTensorProtoNativeEndianMemoryAddressTag = ORT_TSTR("*/_ORT_NATIVE_ENDIAN_MEM_ADDR_/*");
 
 /// <summary>
 /// Creates a OrtValue with a tensor on top of the external data.
@@ -539,19 +561,33 @@ Status TensorProtoWithExternalDataToTensorProto(
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
 /// <summary>
-/// Validates if the external data path is under the model directory.
-/// If the model is a symlink, it checks against both the logical model directory (base_dir)
-/// and the real/canonical directory of the model.
-/// If the `base_dir` is empty, the function only ensures that `location` is not an absolute path.
+/// Validates that the given external data path is not an absolute path, is under the model directory
+/// (after resolving symlinks), and exists.
+///
+/// The model path can be empty if the model is loaded from bytes and the application did not specify a directory
+/// for external data files. In this case, the external data path must be contained under the current working
+/// directory.
+///
+/// The model path can point to a non-existing model file if the model is loaded from bytes and the application
+/// specified a directory for external data files via the session config entry
+/// `kOrtSessionOptionsModelExternalInitializersFileFolderPath`. In this case, the model_path is set to
+/// "<kOrtSessionOptionsModelExternalInitializersFileFolderPath> / virtual_model.onnx" and the external data path
+/// must be contained under `kOrtSessionOptionsModelExternalInitializersFileFolderPath`.
+///
+/// If the model itself is a symlink, this function checks against both the directory containing the symlink
+/// and the real/canonical directory of the model after resolving all symlinks.
+///
+/// On WASM builds, this function skips most validation (except checks for non-empty/non-absolute path) if we are
+/// unable to query the current working directory, as this indicates that the WASM environment does not have
+/// a valid filesystem. If skipped, an ExternalDataLoader will validate the location and contents of the
+/// external data file at the time of access.
 /// </summary>
-/// <param name="base_dir">Logical model location directory</param>
-/// <param name="location">Location string retrieved from TensorProto external data</param>
-/// <param name="model_path">Optional path to the model file, used for canonical path validation if base_dir check fails</param>
-/// <returns>The function will fail if the resolved full path is not under the logical model directory
-///          nor the real directory of the model path</returns>
-Status ValidateExternalDataPath(const std::filesystem::path& base_dir,
-                                const std::filesystem::path& location,
-                                const std::filesystem::path& model_path = {});
+/// <param name="model_path">Path to the model file. Can be empty or point to a virtual file.</param>
+/// <param name="external_data_path">External data file path to be validated.
+/// Retrieved from TensorProto external data info</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under the model directory</returns>
+Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                const std::filesystem::path& external_data_path);
 
 #endif  // !defined(SHARED_PROVIDER)
 
@@ -657,5 +693,15 @@ common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initiali
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      std::vector<uint8_t>& unpacked_tensor);
+
+constexpr const char* kNodeProtoLayerAnnotation = "layer_ann";
+
+/**
+ * This function examines the given node proto and looks into its metadata_props.
+ * It returns the first non-empty value found for the key kNodeProtoLayerAnnotation.
+ * A node is expected to have only one such annotation.
+ * If no non-empty annotation is found, std::nullopt is returned.
+ */
+std::optional<std::string> GetNodeProtoLayeringAnnotation(const ONNX_NAMESPACE::NodeProto& node_proto);
 }  // namespace utils
 }  // namespace onnxruntime

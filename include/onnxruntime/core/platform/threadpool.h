@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include "core/common/common.h"
 #include "core/platform/env.h"
+#include "core/platform/threadpool_config.h"
 
 #include <functional>
 #include <memory>
@@ -129,7 +130,11 @@ struct TensorOpCost {
 
 namespace concurrency {
 
-template <typename Environment>
+// Sentinel value for spin_duration_us indicating the default iteration-count-based
+// spinning behavior. This preserves the original spin loop performance characteristics
+// where the spin duration varies by architecture depending on pause instruction latency.
+static constexpr int kSpinDurationDefault = -1;
+template <typename Environment, typename CallbackPolicy>
 class ThreadPoolTempl;
 
 class ExtendedThreadPoolInterface;
@@ -145,19 +150,50 @@ class ThreadPool {
 #endif
   // Constructs a pool for running with with "degree_of_parallelism" threads with
   // specified "name". env->StartThread() is used to create individual threads
-  // with the given ThreadOptions. If "low_latency_hint" is true the thread pool
-  // implementation may use it as a hint that lower latency is preferred at the
-  // cost of higher CPU usage, e.g. by letting one or more idle threads spin
-  // wait. Conversely, if the threadpool is used to schedule high-latency
-  // operations like I/O the hint should be set to false.
+  // with the given ThreadOptions. "spin_duration_us" controls idle thread spin behavior:
+  //   -1 (kSpinDurationDefault) = use default iteration-count-based spinning (best throughput,
+  //       but spin duration varies by CPU architecture and pause instruction latency)
+  //    0 = disable spinning entirely (threads block immediately when idle)
+  //   >0 = calibrated iteration-based spinning for the specified duration in microseconds
+  //        (best-effort duration via one-time SpinPause() calibration; actual spin time
+  //         may vary with CPU frequency changes)
+  //
+  // Note: The OrtThreadPoolParams.allow_spinning flag (controlled by the
+  // session.intra_op.allow_spinning / session.inter_op.allow_spinning config keys or
+  // the C API) takes priority. When allow_spinning is false, spin_duration_us is forced
+  // to 0 by CreateThreadPoolHelper regardless of the value passed here.
+  //
+  // "spin_backoff_max" controls an optional exponential-backoff inside the spin
+  // window. 1 (default) keeps the legacy behavior (single SpinPause() per iteration).
+  // Values >= 2 emit 1, 2, 4, ... pause calls per iteration capped at this value,
+  // reducing CPU/power density during the same targeted spin budget. For
+  // explicit spin_duration_us > 0 this keeps the wall-clock spin duration close
+  // to the requested value. On the legacy default path
+  // (spin_duration_us == kSpinDurationDefault), it preserves only an
+  // approximate pause budget rather than the exact historical outer-loop
+  // iteration count. Values above kSpinBackoffMaxLimit are clamped to that
+  // limit.
   //
   // REQUIRES: degree_of_parallelism > 0
   ThreadPool(Env* env,
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
              int degree_of_parallelism,
-             bool low_latency_hint,
-             bool force_hybrid = false);
+             int spin_duration_us = kSpinDurationDefault,
+             bool force_hybrid = false,
+             unsigned int spin_backoff_max = 1);
+
+  // Backward-compatible overload: maps the legacy bool parameter to the new
+  // spin_duration_us semantics so that external callers passing true/false
+  // don't silently get implicit bool-to-int conversion (true -> 1us).
+  ThreadPool(Env* env,
+             const ThreadOptions& thread_options,
+             const NAME_CHAR_TYPE* name,
+             int degree_of_parallelism,
+             bool allow_spinning,
+             bool force_hybrid = false)
+      : ThreadPool(env, thread_options, name, degree_of_parallelism,
+                   allow_spinning ? kSpinDurationDefault : 0, force_hybrid) {}
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -424,7 +460,7 @@ class ThreadPool {
   ExtendedThreadPoolInterface* underlying_threadpool_ = nullptr;
 
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
-  std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
+  std::unique_ptr<ExtendedThreadPoolInterface> extended_eigen_threadpool_;
 
   // Force the thread pool to run in hybrid mode on a normal cpu.
   bool force_hybrid_ = false;

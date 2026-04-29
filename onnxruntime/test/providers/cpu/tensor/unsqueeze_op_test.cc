@@ -44,6 +44,15 @@ TEST(UnsqueezeOpTest, Unsqueeze_1_int64) {
 }
 #endif
 
+TEST(UnsqueezeOpTest, Unsqueeze_1_bool) {
+  OpTester test("Unsqueeze");
+
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddInput<bool>("input", {2, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
+  test.AddOutput<bool>("output", {2, 1, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(UnsqueezeOpTest, Unsqueeze_2) {
   OpTester test("Unsqueeze");
 

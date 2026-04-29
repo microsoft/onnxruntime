@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <cmath>
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
@@ -112,6 +111,8 @@ __global__ void Dequantize4BitsKernelReOrder(
   const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
   for (int i = 0; i < element_per_thread; i++) {
     int32_t rid = reorder_idx_with_off[i];
+    CUDA_KERNEL_ASSERT(rid >= 0 && rid < groups_per_K);
+    rid = max(0, min(rid, groups_per_K - 1));  // Clamp for release safety
     T scale = *(scale_data + n_idx * scales_shape_x + rid);
     uint8_t zp = 8;  // Default zero point is 1 << (bits - 1)
     if (zero_points) {

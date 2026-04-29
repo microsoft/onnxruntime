@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 25
+#define ORT_API_VERSION 26
 
 #ifdef __cplusplus
 extern "C" {
@@ -418,6 +418,22 @@ typedef struct OrtAllocator {
    * \since 1.23
    */
   void*(ORT_API_CALL* AllocOnStream)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
+
+  /** \brief Release unused memory held by the allocator back to the system.
+   *
+   * For arena-based allocators, this frees allocation regions that are completely unused.
+   * For mempool-based allocators, this trims the pool to a configured minimum.
+   * For non-arena allocators this is a no-op.
+   *
+   * \param[in] this_ OrtAllocator instance
+   *
+   * \return nullptr on success, or an OrtStatus* on failure.
+   *
+   * \note Implementation of this function is optional and Shrink may be set to a nullptr.
+   *       Callers must check for nullptr before invoking.
+   * \since 1.25
+   */
+  ORT_API2_STATUS(Shrink, _In_ struct OrtAllocator* this_);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -959,6 +975,69 @@ typedef OrtCustomThreadHandle (*OrtCustomCreateThreadFn)(void* ort_custom_thread
  */
 typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_handle);
 
+/** \brief Thread pool work enqueue callback
+ *
+ * Called when work is about to be enqueued to a thread pool worker thread.
+ * This runs on the thread that is submitting the work.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \return Callback-specific data that will be passed to the configured
+ *         OrtThreadPoolCallbacksConfig::on_start_work and OrtThreadPoolCallbacksConfig::on_stop_work.
+ *         May return NULL.
+ */
+typedef _Ret_maybenull_ void* (*OrtThreadPoolWorkEnqueueFn)(_In_opt_ void* user_context)NO_EXCEPTION;
+
+/** \brief Thread pool work start callback
+ *
+ * Called when a thread is about to start executing work.
+ * This typically runs on a worker thread, but may also run on the submitting thread
+ * when the work queue is full and work is executed synchronously.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
+ */
+typedef void (*OrtThreadPoolWorkStartFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+
+/** \brief Thread pool work stop callback
+ *
+ * Called when a thread has finished executing work.
+ * This typically runs on a worker thread, but may also run on the submitting thread
+ * when the work queue is full and work is executed synchronously.
+ * Guaranteed to be called regardless of whether the work finishes successfully or not.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
+ */
+typedef void (*OrtThreadPoolWorkStopFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+
+/** \brief Thread pool work abandon callback
+ *
+ * Called when enqueued work is abandoned (revoked or rejected) without execution.
+ * This allows the caller to free any resources associated with enqueue_data.
+ * \param[in] user_context The user-provided context passed when configuring callbacks
+ * \param[in] enqueue_data Data returned by the corresponding OrtThreadPoolCallbacksConfig::on_enqueue call
+ */
+typedef void (*OrtThreadPoolWorkAbandonFn)(_In_opt_ void* user_context, _In_opt_ void* enqueue_data) NO_EXCEPTION;
+
+/** \brief Configuration for thread pool work callbacks.
+ *
+ * A versioned struct that bundles all thread pool callback function pointers and a user context.
+ * Pass to OrtApi::SetPerSessionThreadPoolCallbacks.
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ * \note New fields MUST only be appended at the end of this struct.
+ *
+ * \since Version 1.25.
+ */
+typedef struct OrtThreadPoolCallbacksConfig {
+  uint32_t version;                       /**< Must be ORT_API_VERSION */
+  OrtThreadPoolWorkEnqueueFn on_enqueue;  /**< Called when work is enqueued. May be NULL. */
+  OrtThreadPoolWorkStartFn on_start_work; /**< Called when work starts. May be NULL. */
+  OrtThreadPoolWorkStopFn on_stop_work;   /**< Called when work completes. May be NULL. */
+  OrtThreadPoolWorkAbandonFn on_abandon;  /**< Called when work is abandoned. May be NULL. */
+  void* user_context;                     /**< User-provided context passed to all callbacks. May be NULL.
+                                               Must remain valid for the lifetime of the session.
+                                               Subject to concurrent invocations from multiple threads
+                                               and must be thread-safe. May affect inference performance. */
+} OrtThreadPoolCallbacksConfig;
+
 typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
 /** \brief Callback function for RunAsync
@@ -972,15 +1051,15 @@ typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t n
 
 /** \brief External memory handle type for importing GPU resources.
  *
- * \todo Add OPAQUE_WIN32 for Windows Vulkan-specific memory handles
- * \todo Add POSIX file descriptor (OPAQUE_FD) for Linux Vulkan/CUDA/OpenCL interop
  * \todo Add Linux DMA-BUF file descriptor for embedded GPU memory sharing
  *
  * \since Version 1.24.
  */
 typedef enum OrtExternalMemoryHandleType {
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
-  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE = 0,      /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(resource) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP = 1,          /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(heap) */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_WIN32 = 2,     /**< Shared HANDLE from vkGetMemoryWin32HandleKHR, non-dedicated allocation */
+  ORT_EXTERNAL_MEMORY_HANDLE_TYPE_VK_MEMORY_OPAQUE_FD = 3, /**< File descriptor from vkGetMemoryOpaqueFdKHR, non-dedicated allocation */
 } OrtExternalMemoryHandleType;
 
 /** \brief Descriptor for importing external memory.
@@ -1004,7 +1083,9 @@ typedef struct OrtExternalMemoryDescriptor {
  * \since Version 1.24.
  */
 typedef enum OrtExternalSemaphoreType {
-  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0, /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_D3D12_FENCE = 0,                     /**< Shared HANDLE from ID3D12Device::CreateSharedHandle(fence) */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_WIN32 = 1,     /**< Shared HANDLE from vkGetSemaphoreWin32HandleKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
+  ORT_EXTERNAL_SEMAPHORE_VK_TIMELINE_SEMAPHORE_OPAQUE_FD = 2, /**< File descriptor from vkGetSemaphoreFdKHR of a VkSemaphore created as VK_SEMAPHORE_TYPE_TIMELINE */
 } OrtExternalSemaphoreType;
 
 /** \brief Descriptor for importing external semaphores.
@@ -1019,6 +1100,71 @@ typedef struct OrtExternalSemaphoreDescriptor {
   OrtExternalSemaphoreType type; /**< Type of the external semaphore */
   void* native_handle;           /**< Platform-specific handle (e.g., Windows HANDLE) */
 } OrtExternalSemaphoreDescriptor;
+
+/** \brief Graphics API type for interop configuration.
+ *
+ * Specifies the graphics API used for GPU interop with the execution provider.
+ * This enables synchronization between graphics workloads (e.g., rendering, compute shaders)
+ * and ONNX Runtime inference.
+ *
+ * \since Version 1.25.
+ */
+typedef enum OrtGraphicsApi {
+  ORT_GRAPHICS_API_NONE = 0,   /**< No graphics interop (default) */
+  ORT_GRAPHICS_API_D3D12 = 1,  /**< Direct3D 12 interop */
+  ORT_GRAPHICS_API_VULKAN = 2, /**< Vulkan interop */
+} OrtGraphicsApi;
+
+/** \brief Configuration for initializing graphics interop on an EP factory.
+ *
+ * This structure contains all parameters needed to set up graphics interop between
+ * ONNX Runtime and an external graphics API (D3D12, Vulkan). The factory stores this
+ * configuration and uses it when creating synchronization streams.
+ *
+ * Design rationale:
+ * - Single init function with all required params to avoid multiple init signatures
+ * - Factory stores the context and uses it in stream creation
+ * - Supports extensibility via additional_options for future requirements
+ *
+ * Example usage for D3D12:
+ * \code
+ *   const OrtInteropApi* interop_api = ort_api->GetInteropApi();
+ *   OrtGraphicsInteropConfig config = {0};
+ *   config.version = ORT_API_VERSION;
+ *   config.graphics_api = ORT_GRAPHICS_API_D3D12;
+ *   config.command_queue = my_d3d12_command_queue;  // ID3D12CommandQueue*
+ *   status = interop_api->InitGraphicsInteropForEpDevice(ep_device, &config);
+ * \endcode
+ *
+ * \note The version field must be set to ORT_API_VERSION.
+ *       This ensures forward compatibility as fields may be added in future versions.
+ *
+ * \since Version 1.25.
+ */
+typedef struct OrtGraphicsInteropConfig {
+  uint32_t version;            /**< Must be ORT_API_VERSION */
+  OrtGraphicsApi graphics_api; /**< The graphics API to use for interop */
+
+  /** \brief Command queue/submission queue for graphics workloads (optional).
+   *
+   * Optional. When provided, the factory may use it for efficient GPU-side synchronization
+   * with inference streams (performance optimization). When null, the Interop API still
+   * works; streams use the default context.
+   *
+   * For D3D12: ID3D12CommandQueue*
+   * For Vulkan: pass NULL
+   */
+  void* command_queue;
+
+  /** \brief Additional API-specific options (optional).
+   *
+   * Can be used for future extensibility without changing the struct layout.
+   * For example, D3D12 fence sharing flags or provider-specific options like
+   * onnxruntime::nv::provider_option_names::kExternalComputeQueueDataParamNV_data
+   * for Vulkan interop for the NvTensorRTRTX provider.
+   */
+  const OrtKeyValuePairs* additional_options;
+} OrtGraphicsInteropConfig;
 
 /** \brief Descriptor for creating a tensor from imported external memory.
  *
@@ -7198,7 +7344,7 @@ struct OrtApi {
 
   /** \brief Get the element data type and shape for an OrtValue that represents a Tensor (scalar, dense, or sparse).
    *
-   * \note This function is an alternative to ::GetTensorTypeAndShape() that does not allocate a new array for
+   * \note This function is an alternative to OrtApi::GetTensorTypeAndShape that does not allocate a new array for
    *       the shape data. The OrtValue instance's internal shape data is returned directly.
    *
    * \note Returns an error if the underlying OrtValue is not a Tensor.
@@ -7242,6 +7388,54 @@ struct OrtApi {
    * \since Version 1.25.
    */
   ORT_API2_STATUS(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+
+  /** \brief Fetch an array of strings stored as an attribute in the graph node
+   *
+   * If `out` is nullptr, the value of `size` is set to the true size of the attribute
+   * array and a success status is returned.
+   *
+   * Otherwise, the strings and pointer array are allocated using `allocator`.
+   * The caller must free each string and the pointer array with `allocator`.
+   * If the attribute array is empty, `*out` is set to nullptr and `*size` is set to 0.
+   *
+   * \param[in] info instance
+   * \param[in] name name of the attribute to be parsed
+   * \param[in] allocator allocator used to allocate the returned string array and strings
+   * \param[out] out pointer to the returned array of null-terminated UTF-8 strings
+   * \param[out] size actual size of attribute array
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
+
+  /// \name OrtEnv
+  /// @{
+
+  /** \brief Set thread pool work callbacks for per-session thread pools.
+   *
+   * Stores callbacks on the Env that will be applied to per-session thread pools
+   * created by subsequent sessions. Does not affect sessions already created or
+   * global thread pools created via OrtApi::CreateEnvWithGlobalThreadPools.
+   *
+   * Requires ORT built with --enable_session_threadpool_callbacks.
+   *
+   * \param[in] env OrtEnv instance.
+   * \param[in] config Versioned callbacks configuration. ORT copies the struct contents;
+   *                   the caller does not need to keep the struct alive after this call returns.
+   *                   However, all pointers within the struct must remain valid for the
+   *                   lifetime of any session that uses these callbacks.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* env,
+                  _In_ const OrtThreadPoolCallbacksConfig* config);
+
+  /// @}
 };
 
 /*
@@ -8276,6 +8470,52 @@ struct OrtInteropApi {
                   _In_ OrtExternalSemaphoreHandle* semaphore_handle,
                   _In_ OrtSyncStream* stream,
                   _In_ uint64_t value);
+
+  /// @}
+  /// \name Graphics interop
+  /// @{
+
+  /** \brief Initialize graphics interop for an execution provider device.
+   *
+   * Requests the EP factory to set up graphics interop for the given ep_device using the
+   * provided config. How the factory uses the config (e.g. creating a context, affecting
+   * later stream creation) is implementation-defined. The config (OrtGraphicsInteropConfig)
+   * supplies the graphics API and optional handles; the command_queue member is optional.
+   * Passing command_queue and calling this before CreateSyncStreamForEpDevice for the same
+   * ep_device may allow the factory to enable more efficient GPU-side sync; see the EP
+   * documentation for details.
+   *
+   * Initialization is tied to the OrtEpDevice instance and applies across all sessions
+   * that use that ep_device (i.e. it is global per ep_device, not per-session).
+   *
+   * \param[in] ep_device The OrtEpDevice to initialize graphics interop for.
+   * \param[in] config Configuration (OrtGraphicsInteropConfig): required fields are version (ORT_API_VERSION)
+   *             and graphics_api; optional handles include command_queue and additional_options.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(InitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device,
+                  _In_ const OrtGraphicsInteropConfig* config);
+
+  /** \brief Deinitialize graphics interop for an execution provider device.
+   *
+   * This function cleans up the graphics interop context that was created by InitGraphicsInteropForEpDevice.
+   * Should be called when graphics interop is no longer needed for the ep_device.
+   *
+   * The caller must release all resources that use the interop context before calling this function:
+   * - OrtSyncStream instances created for this ep_device via CreateSyncStreamForEpDevice
+   * - OrtExternalSemaphoreHandle and OrtExternalResourceImporter instances created for this ep_device
+   * Failure to do so may lead to undefined behavior if the implementation destroys the underlying context.
+   *
+   * \param[in] ep_device The OrtEpDevice to deinitialize graphics interop for.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.25.
+   */
+  ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 
   /// @}
 };

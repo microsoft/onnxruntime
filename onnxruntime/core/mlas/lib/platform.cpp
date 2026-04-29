@@ -19,6 +19,10 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#include "erf_neon_fp16.h"
+#include "gelu_neon_fp16.h"
+#endif
 #if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
@@ -283,7 +287,9 @@ Return Value:
     this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelSse;
     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelSse;
     this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
+    this->GeluErfKernelRoutine = MlasGeluErfKernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->SiluKernelRoutine = MlasSiluKernel;
     this->TanhKernelRoutine = MlasTanhKernel;
     this->ErfKernelRoutine = MlasErfKernel;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
@@ -445,7 +451,6 @@ Return Value:
 
                 if ((Cpuid7_1[0] & 0x10) != 0) {
 
-                    this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
@@ -460,7 +465,8 @@ Return Value:
                 //
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
-
+                    this->GeluErfKernelRoutine = MlasGeluErfKernelAvx512F;
+                    this->SiluKernelRoutine = MlasSiluKernelAvx512F;
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->GemmDoubleKernel = MlasGemmDoubleKernelAvx512F;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
@@ -500,7 +506,6 @@ Return Value:
 
                         if ((Cpuid7[2] & 0x800) != 0) {
 
-                            this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
@@ -540,7 +545,6 @@ Return Value:
                     (Cpuid7[3] & 0b1 << 25) != 0 &&
                     (xcr0 & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE) {
                     if (MlasInitAMX()) {
-                        this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
@@ -583,7 +587,9 @@ Return Value:
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    this->ConvNchwBf16Kernel = MlasConvNchwBf16KernelNeon;
+    this->ConvDepthwiseBf16Kernel = MlasConvDepthwiseBf16KernelNeon;
     this->ConvPointwiseBf16Kernel = MlasConvPointwiseBf16KernelNeon;
 #endif
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
@@ -626,6 +632,14 @@ Return Value:
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
+#if defined(__aarch64__) && defined(__linux__)
+        // Currently only an SME2 variant of SBGEMM exists
+        if (ArmKleidiAI::UseSME2){
+            this->MlasSBGemmBatchOverride = ArmKleidiAI::MlasSBGemmBatch;
+            this->MlasSBGemmPackBSizeOverride = ArmKleidiAI::MlasSBGemmPackBSize;
+            this->MlasSBGemmPackBOverride = ArmKleidiAI::MlasSBGemmPackB;
+        }
+#endif
     }
 #endif
 
@@ -646,6 +660,23 @@ Return Value:
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(_WIN32)
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasSveGeluFP16Kernel;
+            this->TanhFP16KernelRoutine = MlasSveTanhFP16Kernel;
+        }
+        else{
+            this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
+        }
+    #else
+        this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+        this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+    #endif
 #endif
 
     //
