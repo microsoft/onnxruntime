@@ -172,7 +172,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
  * @return Status indicating whether the operation was successful or if an error occurred.
  *
  * @note Special optimizations are considered:
- *       - Subgroup matrix multiplication for eligible Apple/Intel GPUs.
+ *       - Subgroup matrix multiplication for GPUs with supported configs.
  *       - DP4A-based multiplication on FP32-only GPUs for specific dimensions and conditions.
  *       - A wide tile program is used when block size, component count, and other criteria are met.
  *       - Otherwise, a default matmul program is used.
@@ -227,8 +227,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
 #if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
-  // apple|intel - Experimental dawn support for subgroup matrix matmul.
-  if ((M >= kMinMForTileOptimization && !has_weight_idx_indirect) && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
+  // Experimental dawn support for subgroup matrix matmul (vendor-agnostic).
+  if ((M >= kMinMForTileOptimization && !has_weight_idx_indirect) &&
       CanApplySubgroupMatrixMatMulNBits(context, accuracy_level, block_size, batch_count, N, K, static_cast<uint32_t>(nbits), y->DataType() == DataTypeImpl::GetType<MLFloat16>(), subgroup_matrix_config_index)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
   }

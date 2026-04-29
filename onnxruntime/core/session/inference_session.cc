@@ -126,6 +126,31 @@ int ParseSpinDurationUs(std::string_view str, const char* config_key,
   return spin_us;
 }
 
+// Parse a spin backoff max config value (exponential-backoff cap). Defaults to
+// 1 (no backoff, one SpinPause() per iteration). Values >= 2 enable backoff.
+unsigned int ParseSpinBackoffMax(std::string_view str, const char* config_key,
+                                 const logging::Logger& logger) {
+  unsigned int backoff = 1U;
+  if (!TryParseStringWithClassicLocale(str, backoff)) {
+    LOGS(logger, WARNING) << "Invalid value for " << config_key
+                          << ": \"" << str << "\", using default (no backoff)";
+    return 1U;
+  }
+  if (backoff == 0U) {
+    LOGS(logger, WARNING) << config_key << " is set to 0; treating as 1 (no backoff). "
+                          << "Valid values are >= 1.";
+    return 1U;
+  }
+  if (backoff > concurrency::kSpinBackoffMaxLimit) {
+    LOGS(logger, WARNING) << config_key << " is set to " << backoff
+                          << " (>" << concurrency::kSpinBackoffMaxLimit
+                          << "); clamping to " << concurrency::kSpinBackoffMaxLimit
+                          << ". Typical values are 4-8.";
+    return concurrency::kSpinBackoffMaxLimit;
+  }
+  return backoff;
+}
+
 template <typename T>
 const T* GetDateFormatString();
 
@@ -478,9 +503,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         // If the thread pool can use all the processors, then
         // we set affinity of each thread to each processor.
         to.allow_spinning = allow_intra_op_spinning;
-        to.spin_duration_us = ParseSpinDurationUs(
-            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinDurationUs, "-1"),
-            kOrtSessionOptionsConfigIntraOpSpinDurationUs, *session_logger_);
+        if (allow_intra_op_spinning) {
+          to.spin_duration_us = ParseSpinDurationUs(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinDurationUs, "-1"),
+              kOrtSessionOptionsConfigIntraOpSpinDurationUs, *session_logger_);
+          to.spin_backoff_max = ParseSpinBackoffMax(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, "1"),
+              kOrtSessionOptionsConfigIntraOpSpinBackoffMax, *session_logger_);
+        } else {
+          to.spin_duration_us = concurrency::kSpinDurationDefault;
+          to.spin_backoff_max = 1U;
+        }
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
 
@@ -528,9 +561,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.name = inter_thread_pool_name_.c_str();
         to.set_denormal_as_zero = set_denormal_as_zero;
         to.allow_spinning = allow_inter_op_spinning;
-        to.spin_duration_us = ParseSpinDurationUs(
-            session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinDurationUs, "-1"),
-            kOrtSessionOptionsConfigInterOpSpinDurationUs, *session_logger_);
+        if (allow_inter_op_spinning) {
+          to.spin_duration_us = ParseSpinDurationUs(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinDurationUs, "-1"),
+              kOrtSessionOptionsConfigInterOpSpinDurationUs, *session_logger_);
+          to.spin_backoff_max = ParseSpinBackoffMax(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinBackoffMax, "1"),
+              kOrtSessionOptionsConfigInterOpSpinBackoffMax, *session_logger_);
+        } else {
+          to.spin_duration_us = concurrency::kSpinDurationDefault;
+          to.spin_backoff_max = 1U;
+        }
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
 
         // Set custom threading functions

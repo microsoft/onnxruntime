@@ -24,6 +24,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateActivationOpBuilder("Gelu", op_registrations);
   CreateActivationOpBuilder("Softplus", op_registrations);
   CreateActivationOpBuilder("Elu", op_registrations);
+  CreateActivationOpBuilder("HardSigmoid", op_registrations);
+
+  // Microsoft-domain ops produced by ORT's own optimizer passes
+  CreateQuickGeluOpBuilder("QuickGelu", op_registrations);
 
   // Unary ops
   CreateUnaryOpBuilder("Erf", op_registrations);

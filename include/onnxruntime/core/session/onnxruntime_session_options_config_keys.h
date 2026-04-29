@@ -183,6 +183,23 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
 static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
 
+// Configure the maximum exponential-backoff cap for the thread pool spin loop.
+// When > 1, each idle spin iteration emits a growing number of SpinPause() calls
+// (1, 2, 4, ..., up to this cap), which reduces the density of pause instructions
+// during the spin window and lowers CPU/power usage compared to emitting one
+// SpinPause() per iteration. The total wall-clock spin duration targeted by
+// session.{intra,inter}_op.spin_duration_us is preserved by scaling the iteration
+// count against the backoff cap.
+//   "1" (default) = no backoff, one SpinPause() per iteration (original behavior).
+//   ">= 2"        = enable exponential backoff capped at this value. Typical
+//                   values: 4 (hybrid/E-core friendly) or 8 (desktop/server).
+// Values above 64 are clamped to 64.
+// This setting is subordinate to allow_spinning and spin_duration_us: when
+// spinning is disabled or spin_duration_us forces zero iterations, this value
+// has no effect.
+static const char* const kOrtSessionOptionsConfigIntraOpSpinBackoffMax = "session.intra_op.spin_backoff_max";
+static const char* const kOrtSessionOptionsConfigInterOpSpinBackoffMax = "session.inter_op.spin_backoff_max";
+
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,
 // By default we will copy the model bytes at the time of session creation to ensure the model bytes

@@ -438,5 +438,47 @@ TEST(MLOpTest, SVMClassifierDifferentSizeKernelParameters) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "kernel_params must be empty or have 3 values");
 }
 
+TEST(MLOpTest, SVMClassifierSVCLinearUndersizedVectorPerClass) {
+  OpTester test("SVMClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {0.766398549079895f, 0.0871576070785522f, 0.110420741140842f,
+                                     -0.963976919651031f};
+  std::vector<float> support_vectors = {4.80000019073486f, 3.40000009536743f, 1.89999997615814f,
+                                        5.f, 3.f, 1.60000002384186f,
+                                        4.5f, 2.29999995231628f, 1.29999995231628f,
+                                        5.09999990463257f, 2.5f, 3.f};
+  std::vector<float> rho = {2.23510527610779f};
+  std::vector<float> kernel_params = {0.122462183237076f, 0.f, 3.f};  // gamma, coef0, degree
+  std::vector<int64_t> classes = {0, 1};
+  std::vector<int64_t> vectors_per_class = {3};  // undersized: 2 classes but only 1 entry
+
+  std::vector<float> X = {5.1f, 3.5f, 1.4f,
+                          4.9f, 3.f, 1.4f,
+                          4.7f, 3.2f, 1.3f,
+                          4.6f, 3.1f, 1.5f,
+                          5.f, 3.6f, 1.4f};
+  std::vector<float> scores_predictions = {-1.5556798f, 1.5556798f,
+                                           -1.2610321f, 1.2610321f,
+                                           -1.5795376f, 1.5795376f,
+                                           -1.3083477f, 1.3083477f,
+                                           -1.6572928f, 1.6572928f};
+
+  std::vector<int64_t> class_predictions = {0, 0, 0, 0, 0};
+
+  test.AddAttribute("kernel_type", std::string("LINEAR"));
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("support_vectors", support_vectors);
+  test.AddAttribute("vectors_per_class", vectors_per_class);
+  test.AddAttribute("rho", rho);
+  test.AddAttribute("kernel_params", kernel_params);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {5, 3}, X);
+  test.AddOutput<int64_t>("Y", {5}, class_predictions);
+  test.AddOutput<float>("Z", {5, 2}, scores_predictions);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Mismatch between classlabels_ints/classlabels_strings and vectors_per_class dimensions.");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
