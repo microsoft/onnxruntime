@@ -12,8 +12,13 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/graph/schema_registry.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/inference_session_wrapper.h"
+
+#include <filesystem>
+#include <fstream>
 
 namespace onnxruntime::test {
 
@@ -56,35 +61,6 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
 }
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS) && defined(USE_KLEIDIAI)
-TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromFusedConvSchema) {
-  SchemaRegistryManager schema_registry;
-  const auto* fused_conv_schema = schema_registry.GetSchema("FusedConv", 1, kMSDomain);
-  ASSERT_NE(fused_conv_schema, nullptr);
-
-  KernelTypeStrResolver resolver;
-  ASSERT_STATUS_OK(resolver.RegisterOpSchema(*fused_conv_schema));
-
-  Model model("nhwc_fused_conv_resolver_test", false, DefaultLoggingManager().DefaultLogger());
-  auto& graph = model.MainGraph();
-
-  ONNX_NAMESPACE::TypeProto float_tensor;
-  auto* tensor_type = float_tensor.mutable_tensor_type();
-  tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
-
-  auto& x = graph.GetOrCreateNodeArg("x", &float_tensor);
-  auto& w = graph.GetOrCreateNodeArg("w", &float_tensor);
-  auto& y = graph.GetOrCreateNodeArg("y", &float_tensor);
-
-  auto& nhwc_fused_conv = graph.AddNode(
-      "nhwc_fused_conv", "NhwcFusedConv", "test node", {&x, &w}, {&y}, nullptr, kMSDomain);
-  nhwc_fused_conv.SetSinceVersion(1);
-
-  gsl::span<const ArgTypeAndIndex> resolved_args;
-  ASSERT_STATUS_OK(resolver.ResolveKernelTypeStr(nhwc_fused_conv, "T", resolved_args));
-  ASSERT_FALSE(resolved_args.empty());
-}
-
 TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformationRequiredOps) {
   KernelTypeStrResolver resolver;
   ASSERT_STATUS_OK(kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(resolver));
@@ -108,6 +84,59 @@ TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformatio
   gsl::span<const ArgTypeAndIndex> resolved_args;
   ASSERT_STATUS_OK(resolver.ResolveKernelTypeStr(nhwc_fused_conv, "T", resolved_args));
   ASSERT_FALSE(resolved_args.empty());
+}
+
+TEST(KernelTypeStrResolverUtilsTest, SavedOrtModelResolverContainsNhwcFusedConv) {
+  const auto ort_model_path = std::filesystem::temp_directory_path() / "nhwc_fused_conv_resolver_test.ort";
+  std::error_code remove_ec;
+  std::filesystem::remove(ort_model_path, remove_ec);
+
+  SessionOptions so;
+  so.optimized_model_filepath = ort_model_path.native();
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.onnx")));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  std::ifstream ort_model_stream(ort_model_path, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(ort_model_stream.good());
+  const std::string ort_model_data((std::istreambuf_iterator<char>(ort_model_stream)),
+                                   std::istreambuf_iterator<char>());
+  ort_model_stream.close();
+  ASSERT_FALSE(ort_model_data.empty());
+
+  flatbuffers::Verifier verifier(reinterpret_cast<const uint8_t*>(ort_model_data.data()), ort_model_data.size());
+  ASSERT_TRUE(fbs::VerifyInferenceSessionBuffer(verifier));
+
+  const auto* fbs_session = fbs::GetInferenceSession(ort_model_data.data());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->kernel_type_str_resolver(), nullptr);
+
+  KernelTypeStrResolver resolver;
+  ASSERT_STATUS_OK(resolver.LoadFromOrtFormat(*fbs_session->kernel_type_str_resolver()));
+
+  Model model("nhwc_fused_conv_saved_ort_model_resolver_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  auto* tensor_type = float_tensor.mutable_tensor_type();
+  tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& x = graph.GetOrCreateNodeArg("x", &float_tensor);
+  auto& w = graph.GetOrCreateNodeArg("w", &float_tensor);
+  auto& y = graph.GetOrCreateNodeArg("y", &float_tensor);
+
+  auto& nhwc_fused_conv = graph.AddNode(
+      "nhwc_fused_conv", "NhwcFusedConv", "test node", {&x, &w}, {&y}, nullptr, kMSDomain);
+  nhwc_fused_conv.SetSinceVersion(1);
+
+  gsl::span<const ArgTypeAndIndex> resolved_args;
+  ASSERT_STATUS_OK(resolver.ResolveKernelTypeStr(nhwc_fused_conv, "T", resolved_args));
+  ASSERT_FALSE(resolved_args.empty());
+
+  std::filesystem::remove(ort_model_path, remove_ec);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS) && defined(USE_KLEIDIAI)
 
