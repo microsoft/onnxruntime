@@ -263,6 +263,21 @@ TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShapeMultiBatch) {
       /*seqlens_k_shape=*/{2, 1});
 }
 
+// Backward compat: seqlens_k shape {1, 2} accepted for batch_size=2.
+// Batch dimension in trailing position.
+TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShapeTrailingBatch) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0, 0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/2,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/{1, 2});
+}
+
 // Shape {2, 2} with batch_size=4: correct element count but invalid factored shape.
 TEST(GroupQueryAttentionTest, SeqlensKInvalidFactoredShape) {
   RunGQASeqlensKTest(
