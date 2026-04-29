@@ -212,7 +212,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // For smaller head_size, use a larger K tile (32) since register/SHM pressure is lower.
   // This halves K loop iterations, reducing barrier sync overhead.
   // SHM: max_k_step * (head_size/4) * 8bytes * 2(K+V). head_size=64: 32*16*8*2=8KB (OK)
-  const uint32_t max_k_step = (qkv_head_size_ <= 64 && !is_qualcomm_) ? 32 : 16;
+  // Excluded on Intel (sg_size may be 16) and Qualcomm (not implemented in shader yet).
+  const uint32_t max_k_step = (qkv_head_size_ <= 64 && !is_qualcomm_ && !is_intel_) ? 32 : 16;
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
@@ -489,6 +490,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+    bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"};
     bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
     bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
     bool has_head_sink = head_sink != nullptr;
@@ -500,6 +502,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                   parameters.num_heads_,
                                   parameters.is_unidirectional_,
                                   is_nvidia,
+                                  is_intel,
                                   q_BNSH,
                                   use_seqlen_k,
                                   has_head_sink};
@@ -531,7 +534,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
         .SetWorkgroupSize(tile_size)
-        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_intel, q_BNSH, use_seqlen_k, has_head_sink)
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(present_sequence_length)},
@@ -582,10 +585,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
 bool CanApplyFlashAttention(const Tensor* bias,
                             const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
-  // Note: FlashAttention is slower than unfused path for head_size <= 32 (e.g.
-  // ~14x slower for head_size=16), but faster for head_size >= 64. Uncomment
-  // the check below if targeting models with head_size <= 32.
-  // if (parameters.head_size_ <= 32) { return false; }
   return !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
          bias == nullptr &&

@@ -76,6 +76,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         int qkv_num_heads,
                         bool is_unidirectional,
                         bool is_nvidia,
+                        bool is_intel,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
                         bool has_head_sink = false)
@@ -87,6 +88,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
         is_nvidia_(is_nvidia),
+        is_intel_(is_intel),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
         has_head_sink_(has_head_sink) {
@@ -112,6 +114,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
   bool is_unidirectional_;
   bool is_nvidia_;
+  bool is_intel_;
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;
