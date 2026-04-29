@@ -164,7 +164,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     inputs.push_back(bias);
   }
 
-  if (intel::CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
+  if (intel::CanApplyMatMulIntel(context, helper.OutputOffsets().size(), helper.M(), helper.N(), helper.K())) {
     return intel::ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
   }
 

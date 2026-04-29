@@ -23,7 +23,7 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
     MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_);
   }
 
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, nullptr, is_vec4_, transA_, transB_,
+  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, nullptr, vec_size_, transB_,
                                                alpha_, need_handle_matmul_));
   const ShaderVariableHelper* c = nullptr;
   if (need_handle_bias_) {
@@ -35,7 +35,7 @@ Status GemmSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 bool CanApplyGemmIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
-  return CanApplySubgroup(context, M, N, K, transA, transB);
+  return CanApplySubgroup(context, 1 /* batch_count */, M, N, K, transA, transB);
 }
 
 Status ApplyGemmIntel(const Tensor* a,
@@ -65,12 +65,12 @@ Status ApplyGemmIntel(const Tensor* a,
   bool need_handle_matmul = a_shape.Size() > 0 && b_shape.Size() > 0;
   bool need_handle_bias = c && beta;
 
-  const bool is_vec4 = b_shape[1] % 4 == 0;
+  const uint32_t vec_size = (b_shape[1] > 64 && b_shape[1] % 4 == 0) ? 4 : ((b_shape[1] % 2 == 0 && b_shape[1] > 32) ? 2 : 1);
   // Components for A, B
   int a_components = 1;
-  int b_components = is_vec4 ? 4 : 1;
+  int b_components = vec_size;
   // Components for Y
-  int output_components = (is_vec4 && N % 4 == 0) ? 4 : 1;
+  int output_components = vec_size;
   // Components for C.
   int c_components = 1;
 
@@ -80,17 +80,17 @@ Status ApplyGemmIntel(const Tensor* a,
     int64_t c_last_dim = c_shape[c_shape.NumDimensions() - 1];
     // `C` in GEMM might be broadcast to the output, and broadcasting requires the components to be consistent.
     // So we use vec4 for C when its last dimension is N, and the output is also a vec4.
-    c_components = (c_last_dim == N && output_components == 4) ? 4 : 1;
+    c_components = (c_last_dim == N && output_components == 4) ? 4 : (c_last_dim == N && output_components == 2 ? 2 : 1);
     c_is_scalar = c_shape.Size() == 1;
   }
 
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(is_vec4, M), 1});
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({vec_size == 2 ? 2 : 4, intel::ElementsPerThreadY(vec_size, M), 1});
   const uint32_t dispatch_x = narrow<uint32_t>((N + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
   const uint32_t dispatch_y = narrow<uint32_t>((M + kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1]));
 
-  GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, is_vec4, elements_per_thread};
+  GemmSubgroupProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, vec_size, elements_per_thread};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},

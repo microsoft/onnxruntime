@@ -30,12 +30,12 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
   MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ false);
   // generate the main function
-  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_));
+  ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, vec_size_));
   return Status::OK();
 }
 
-bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K) {
-  return CanApplySubgroup(context, M, N, K);
+bool CanApplyMatMulIntel(const ComputeContext& context, int64_t batch_count, int64_t M, int64_t N, int64_t K) {
+  return CanApplySubgroup(context, batch_count, M, N, K);
 }
 
 Status ApplyMatMulIntel(ComputeContext& context,
@@ -90,8 +90,8 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
 
   // Always access A with 1-component when using subgroup.
-  const bool is_vec4 = dim_b_outer % 4 == 0;
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(is_vec4, dim_a_outer), 1});
+  const uint32_t vec_size = (dim_b_outer > 64 && dim_b_outer % 4 == 0) ? 4 : ((dim_b_outer % 2 == 0 && dim_b_outer > 32) ? 2 : 1);
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({vec_size == 2 ? 2 : 4, intel::ElementsPerThreadY(vec_size, dim_a_outer), 1});
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
@@ -101,14 +101,14 @@ Status ApplyMatMulIntel(ComputeContext& context,
                                                 kSubgroupLogicalWorkGroupSizeZ * elements_per_thread[2] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeZ * elements_per_thread[2]));
 
-  const int components = is_vec4 ? 4 : 1;
+  const int components = vec_size;
   const int a_components = 1;
   const int b_components = components;
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, a_components);
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, b_components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulSubgroupProgram program{activation, has_bias, is_vec4, elements_per_thread};
+  MatMulSubgroupProgram program{activation, has_bias, vec_size, elements_per_thread};
   program
       .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"))
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},

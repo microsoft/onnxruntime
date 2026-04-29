@@ -22,16 +22,18 @@ std::string LoadAStr(const ShaderIndicesHelper* batch_dims, int64_t elements_per
 }
 
 // Load one tile of B into local memory.
-std::string LoadBStr(const ShaderIndicesHelper* batch_dims, int64_t tile_b_outer, bool is_vec4) {
+std::string LoadBStr(const ShaderIndicesHelper* batch_dims, int64_t tile_b_outer, uint32_t vec_size) {
   SS(load_b_ss, 256);
   load_b_ss << "    let loadRowsPerThread = " << kSubgroupLogicalWorkGroupSizeX / kSubgroupLogicalWorkGroupSizeY << ";\n"
             << "    for (var innerRow = 0; innerRow < loadRowsPerThread; innerRow++) {\n"
             << "      let inputRow = loadRowsPerThread * localRow + innerRow;\n"
             << "      let inputCol = tileCol;\n";
-  if (is_vec4) {
+  if (IsVectorized(vec_size)) {
+    // For vectorized access, mm_Bsub elements are already packed
     load_b_ss << "      mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalColStart"
               << (batch_dims ? ", batchIndices" : "") << ");\n";
   } else {
+    // For scalar access, fill mm_Bsub with multiple reads
     for (int j = 0; j < tile_b_outer; j += kSubgroupLogicalWorkGroupSizeX) {
       load_b_ss << "      mm_Bsub[inputRow][inputCol + " << j << "] = mm_readB(batch, kStart + inputRow, globalColStart + "
                 << j << (batch_dims ? ", batchIndices" : "") << ");\n";
@@ -43,11 +45,14 @@ std::string LoadBStr(const ShaderIndicesHelper* batch_dims, int64_t tile_b_outer
   return SS_GET(load_b_ss);
 }
 
-std::string LoadBCacheStr(bool is_vec4, uint32_t offset) {
+std::string LoadBCacheStr(uint32_t vec_size, uint32_t offset) {
   SS(b_cache_ss, 256);
-  if (is_vec4) {
+  if (IsVectorized(vec_size)) {
+    // For vectorized access (vec_size == 4 or vec_size == 2),
+    // mm_Bsub elements are already packed as vec4 or vec2
     b_cache_ss << "BCache = mm_Bsub[" << offset << "][tileCol];\n";
   } else {
+    // For scalar access, assemble vec4 from multiple locations
     b_cache_ss << "BCache = vec4<b_element_t>(mm_Bsub[" << offset << "][tileCol], "
                << "mm_Bsub[" << offset << "][tileCol + " << kSubgroupLogicalWorkGroupSizeX << "], "
                << "mm_Bsub[" << offset << "][tileCol + " << 2 * kSubgroupLogicalWorkGroupSizeX << "], "
@@ -56,7 +61,7 @@ std::string LoadBCacheStr(bool is_vec4, uint32_t offset) {
   return SS_GET(b_cache_ss);
 }
 
-std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t elements_per_thread_y, bool is_vec4) {
+std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t elements_per_thread_y, uint32_t vec_size) {
   SS(cal_acc_ss, 1024);
 
   // key: simd size; value: the offset row of mm_Bsub.
@@ -70,7 +75,7 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
       cal_acc_ss << LoadAStr(batch_dims, elements_per_thread_y)
                  << "      aCol += " << simd << ";\n";
       for (uint32_t sg_idx = 0; sg_idx < simd; sg_idx++) {
-        cal_acc_ss << "      " << LoadBCacheStr(is_vec4, sg_idx + offset);
+        cal_acc_ss << "      " << LoadBCacheStr(vec_size, sg_idx + offset);
         for (uint32_t i = 0; i < elements_per_thread_y; i++) {
           cal_acc_ss << "      acc_" << i << " += subgroupBroadcast(a_val_" << i << ", " << sg_idx << ") * BCache;\n";
         }
@@ -84,24 +89,23 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
 
 }  // namespace
 
-bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    bool use_subgroup = context.HasFeature(wgpu::FeatureName::Subgroups) &&
-                        M >= 64 && N >= 512 && K >= 32 && !transA && !transB;
-    return use_subgroup;
+bool CanApplySubgroup(const ComputeContext& context, int64_t batch_count,  int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
+  if (!transA && !transB && context.AdapterInfo().vendor == std::string_view{"intel"} && context.HasFeature(wgpu::FeatureName::Subgroups)) {
+    // TODO: further tune the condition for better performance, currently we use a very simple condition.
+    return (M >= 64 && N >= 512 && K >= 32) ||
+           (M >= 64 && N > 32 && N % 2 == 0 && K >= 32 && ((batch_count * ((M + 63) / 64) * ((N + 31) / 32)) >= 96));
   }
-
   return false;
 }
 
-int64_t ElementsPerThreadY(bool is_vec4, uint32_t M) {
-  return is_vec4 ? (M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : 8))) : 4;
+int64_t ElementsPerThreadY(uint32_t vec_size, uint32_t M) {
+  return (IsVectorized(vec_size)) ? (M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : 8))) : 4;
 }
 
 Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
                                 const ShaderIndicesHelper* batch_dims,
-                                bool is_vec4,
+                                uint32_t vec_size,
                                 bool transpose_a,
                                 bool transpose_b,
                                 float alpha,
@@ -117,7 +121,7 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
   const auto tile_b_outer = kSubgroupLogicalWorkGroupSizeX * elements_per_thread_x;
 
   shader.AdditionalImplementation()
-      << "var<workgroup> mm_Bsub: array<array<b_value_t, " << (is_vec4 ? tile_b_outer / elements_per_thread_x : tile_b_outer) << ">, 32>;\n";
+      << "var<workgroup> mm_Bsub: array<array<b_value_t, " << (IsVectorized(vec_size) ? tile_b_outer / elements_per_thread_x : tile_b_outer) << ">, 32>;\n";
 
   shader.MainFunctionBody()
       << "  let workgroupIdXStride = (uniforms.dim_b_outer - 1) / " << tile_b_outer << " + 1;\n"
@@ -131,22 +135,22 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
       << "  let localRow = i32(local_id.x / " << kSubgroupLogicalWorkGroupSizeX << ");\n"
       << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
       << "  let globalRowStart = i32(workgroupIdY) * " << tile_a_outer << " + tileRow;\n"
-      << "  let globalColStart = i32(workgroupIdX) * " << (is_vec4 ? tile_b_outer / elements_per_thread_x : tile_b_outer) << " + tileCol;\n"
+      << "  let globalColStart = i32(workgroupIdX) * " << (IsVectorized(vec_size) ? tile_b_outer / elements_per_thread_x : tile_b_outer) << " + tileCol;\n"
       << "  let numTiles = (uniforms.dim_inner - 1) / 32 + 1;\n"
       << "  var kStart = 0;\n"
       << "  var aCol = 0;\n"
-      << "  var BCache: vec4<b_element_t>;\n";
+      << (vec_size == 2 ? "  var BCache: vec2<b_element_t>;\n" : "  var BCache: vec4<b_element_t>;\n");
 
   for (uint32_t i = 0; i < elements_per_thread_y; i++) {
-    shader.MainFunctionBody() << "  var acc_" << i << " = vec4<output_element_t>(0);\n"
+    shader.MainFunctionBody() << "  var acc_" << i << " = " << (vec_size == 2 ? "vec2<output_element_t>(0)" : "vec4<output_element_t>(0)") << ";\n"
                               << "  var a_val_" << i << " = a_value_t(0);\n";
   }
 
   if (need_handle_matmul) {
     shader.MainFunctionBody() << "  for (var t = 0; t < i32(numTiles); t++) {\n"
-                              << LoadBStr(batch_dims, tile_b_outer, is_vec4)
+                              << LoadBStr(batch_dims, tile_b_outer, vec_size)
                               << "    aCol = kStart + tileCol % i32(sg_size);\n"
-                              << CalculateAccStr(batch_dims, elements_per_thread_y, is_vec4)
+                              << CalculateAccStr(batch_dims, elements_per_thread_y, vec_size)
                               << "    kStart = kStart + 32;\n"
                               << "    workgroupBarrier();\n"
                               << "  }\n";  // main for loop
@@ -160,7 +164,7 @@ Status MakeMatMulSubgroupSource(ShaderHelper& shader,
   }
 
   // Write the results to the output buffer
-  if (is_vec4) {
+  if (IsVectorized(vec_size)) {
     for (uint32_t i = 0; i < elements_per_thread_y; i++) {
       shader.MainFunctionBody() << "  mm_write(batch, globalRowStart + " << i
                                 << ", globalColStart, acc_" << i << ");\n";

@@ -13,14 +13,19 @@ const uint32_t kSubgroupLogicalWorkGroupSizeX = 32;
 const uint32_t kSubgroupLogicalWorkGroupSizeY = 8;
 const uint32_t kSubgroupLogicalWorkGroupSizeZ = 1;
 
-bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA = false, bool transB = false);
+bool CanApplySubgroup(const ComputeContext& context, int64_t batch_count, int64_t M, int64_t N, int64_t K, bool transA = false, bool transB = false);
 
-int64_t ElementsPerThreadY(bool is_vec4, uint32_t M);
+int64_t ElementsPerThreadY(uint32_t vec_size, uint32_t M);
+
+// Helper function to determine if vectorization is used (vec_size > 1)
+inline bool IsVectorized(uint32_t vec_size) {
+  return vec_size > 1;
+}
 
 Status MakeMatMulSubgroupSource(ShaderHelper& shader,
                                 const InlinedVector<int64_t>& elements_per_thread,
                                 const ShaderIndicesHelper* batch_dims,
-                                bool is_vec4,
+                                uint32_t vec_size,
                                 bool transpose_a = false,
                                 bool transpose_b = false,
                                 float alpha = 1.0f,
