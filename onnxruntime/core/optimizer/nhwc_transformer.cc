@@ -45,13 +45,13 @@ bool TryGetDimValueAsSizeT(const ONNX_NAMESPACE::TensorShapeProto& shape, int in
   return true;
 }
 
-bool TryReadPositiveOrZeroInts(const std::vector<int64_t>& values, std::array<size_t, 2>& out) {
+bool TryReadPositiveInts(const std::vector<int64_t>& values, std::array<size_t, 2>& out) {
   if (values.size() != out.size()) {
     return false;
   }
 
   for (size_t i = 0; i < out.size(); ++i) {
-    if (values[i] < 0) {
+    if (values[i] <= 0) {
       return false;
     }
 
@@ -107,6 +107,12 @@ bool TryComputeFloatNhwcPads(const api::NodeRef& node,
                              const std::array<size_t, 2>& strides,
                              const std::array<size_t, 2>& dilations,
                              std::array<size_t, 4>& pads) {
+  for (size_t i = 0; i < 2; ++i) {
+    if (kernel_shape[i] == 0 || strides[i] == 0 || dilations[i] == 0) {
+      return false;
+    }
+  }
+
   const auto auto_pad_value = node.GetAttributeString("auto_pad");
   AutoPadType auto_pad = AutoPadType::NOTSET;
   if (!TryParseAutoPadType(auto_pad_value.value_or("NOTSET"), auto_pad)) {
@@ -207,12 +213,12 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   }
 
   const auto dilations_opt = node.GetAttributeInts("dilations");
-  if (dilations_opt.has_value() && !TryReadPositiveOrZeroInts(*dilations_opt, dilations)) {
+  if (dilations_opt.has_value() && !TryReadPositiveInts(*dilations_opt, dilations)) {
     return false;
   }
 
   const auto strides_opt = node.GetAttributeInts("strides");
-  if (strides_opt.has_value() && !TryReadPositiveOrZeroInts(*strides_opt, strides)) {
+  if (strides_opt.has_value() && !TryReadPositiveInts(*strides_opt, strides)) {
     return false;
   }
 
