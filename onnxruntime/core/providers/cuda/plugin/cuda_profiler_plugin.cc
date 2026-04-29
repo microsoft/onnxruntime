@@ -54,6 +54,14 @@ OrtStatus* ORT_API_CALL CudaPluginEpProfiler::StartProfilingImpl(
   auto& manager = profiling::CUPTIManager::GetInstance();
   manager.StartLogging();
 
+  if (!manager.IsTracingEnabled()) {
+    return Ort::GetApi().CreateStatus(
+        ORT_EP_FAIL,
+        "CUPTI activity tracing failed to start. "
+        "GPU kernel events will not be available in the profile. "
+        "Check that the CUDA driver supports CUPTI and the CUPTI library is accessible.");
+  }
+
   return nullptr;
   EXCEPTION_TO_STATUS_END
 }

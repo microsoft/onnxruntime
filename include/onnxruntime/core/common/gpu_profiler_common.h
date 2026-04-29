@@ -122,6 +122,10 @@ class GPUTracerManager {
     tracing_enabled_ = this_as_derived->OnStartLogging();
   }
 
+  bool IsTracingEnabled() const noexcept {
+    return tracing_enabled_;
+  }
+
   void Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events) {
     auto this_as_derived = static_cast<TDerived*>(this);
     events.clear();

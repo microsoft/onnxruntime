@@ -195,9 +195,6 @@ jobs:
             Write-Error "CUDA plugin EP library not found at $env:ORT_CUDA_PLUGIN_PATH"
             exit 1
           }
-          # Signal the test that CUPTI profiling is available so it
-          # asserts GPU kernel events are present in the profile.
-          $env:ORT_CUDA_PROFILING_ENABLED = "1"
           python test_cuda_plugin_ep.py
           if ($lastExitCode -ne 0) {
             exit $lastExitCode

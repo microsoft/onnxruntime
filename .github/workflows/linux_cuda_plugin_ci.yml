@@ -121,9 +121,6 @@ jobs:
               export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda_plugin.so
               echo \"ORT_CUDA_PLUGIN_PATH=\$ORT_CUDA_PLUGIN_PATH\"
               ls -la \$ORT_CUDA_PLUGIN_PATH
-              # Signal the test that CUPTI profiling is available so it
-              # asserts GPU kernel events are present in the profile.
-              export ORT_CUDA_PROFILING_ENABLED=1
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "
