@@ -423,9 +423,9 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
     }
 
     if (provider_options.find("device_type") == provider_options.end()) {
-        // Preserve the device selected during factory creation unless the session-level
-        // OpenVINO provider options explicitly override it.
-        provider_options["device_type"] = provider_info_.device_type;
+      // Preserve the device selected during factory creation unless the session-level
+      // OpenVINO provider options explicitly override it.
+      provider_options["device_type"] = provider_info_.device_type;
     }
 
     ProviderInfo provider_info = provider_info_;
