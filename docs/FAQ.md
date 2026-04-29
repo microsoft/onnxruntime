@@ -30,21 +30,15 @@ ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
 
 ## How do I force single threaded execution mode in ORT? By default, session.run() uses all the computer's cores. 
 
-To limit use to a single thread only:
-* If built with OpenMP, set the environment variable OMP_NUM_THREADS to 1. The default inter_op_num_threads in session options is already 1.  
-* If not built with OpenMP, set the session options intra_op_num_threads to 1. Do not change the default inter_op_num_threads (1).
-
-It's recommended to build onnxruntime without openmp if you only need single threaded execution. 
-
-This is supported in ONNX Runtime v1.3.0+
+To limit use to a single thread only, set the session options `intra_op_num_threads` to 1. Do not change the default `inter_op_num_threads` (1).
 
 **Python example:**
 ```
 #!/usr/bin/python3
-os.environ["OMP_NUM_THREADS"] = "1"
 import onnxruntime
 
 opts = onnxruntime.SessionOptions()
+opts.intra_op_num_threads = 1
 opts.inter_op_num_threads = 1
 opts.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
 ort_session = onnxruntime.InferenceSession('/path/to/model.onnx', sess_options=opts)
@@ -57,6 +51,7 @@ Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
 
 // initialize session options if needed
 Ort::SessionOptions session_options;
+session_options.SetIntraOpNumThreads(1);
 session_options.SetInterOpNumThreads(1);
 #ifdef _WIN32
   const wchar_t* model_path = L"squeezenet.onnx";
