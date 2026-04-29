@@ -237,8 +237,8 @@ void addOrtValueMethods(pybind11::module& m) {
           throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
         }
       })
-      .def("update_inplace", [](OrtValue* ml_value, const OrtValue* source) {
-        python::UpdateOrtValueInplace(*ml_value, *source);
+      .def("update_inplace", [](OrtValue* ml_value, const OrtValue& source) {
+        python::UpdateOrtValueInplace(*ml_value, source);
       })
       // Create an ortvalue value on top of the numpy array, but interpret the data
       // as a different type with the same element size.

@@ -1111,48 +1111,62 @@ void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
   } else {
     auto copy_fn = CreateDataTransferMemCpy(src_device, dst_device);
     if (!copy_fn) {
-      // Fall back to built-in EP copy functions
+      // Fall back to built-in EP copy functions.
+      // Gate each path on (Type, VendorId) so that builds with multiple GPU EPs
+      // (e.g. CUDA + DML) route through the correct backend.
+      const auto is_cuda_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NVIDIA;
+      };
+      const auto is_migraphx_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD;
+      };
+      const auto is_dml_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::MICROSOFT;
+      };
+      const auto is_cann_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI;
+      };
 #ifdef USE_CUDA
-      if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::GPU) {
+      if (is_cuda_device(src_device) && is_cuda_device(dst_device)) {
         auto data_transfer = GetGPUDataTransfer();
         ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, *dst.GetMutable<Tensor>()));
         return;
       }
-      if (src_device.UsesCpuMemory() && dst_device.Type() == OrtDevice::GPU) {
+      if (src_device.UsesCpuMemory() && is_cuda_device(dst_device)) {
         CpuToCudaMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }
-      if (src_device.Type() == OrtDevice::GPU && dst_device.UsesCpuMemory()) {
+      if (is_cuda_device(src_device) && dst_device.UsesCpuMemory()) {
         CudaToCpuMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }
 #endif
 #if USE_MIGRAPHX
-      if (src_device.UsesCpuMemory() && dst_device.Type() == OrtDevice::GPU) {
+      if (src_device.UsesCpuMemory() && is_migraphx_device(dst_device)) {
         CpuToMIGraphXMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }
-      if (src_device.Type() == OrtDevice::GPU && dst_device.UsesCpuMemory()) {
+      if (is_migraphx_device(src_device) && dst_device.UsesCpuMemory()) {
         MIGraphXToCpuMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }
 #endif
 #if USE_DML
-      if (src_device.UsesCpuMemory() && (dst_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::DML)) {
+      if (src_device.UsesCpuMemory() && is_dml_device(dst_device)) {
         CpuToDmlMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }
-      if ((src_device.Type() == OrtDevice::GPU || src_device.Type() == OrtDevice::DML) && dst_device.UsesCpuMemory()) {
+      if (is_dml_device(src_device) && dst_device.UsesCpuMemory()) {
         DmlToCpuMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }
 #endif
 #ifdef USE_CANN
-      if (src_device.UsesCpuMemory() && dst_device.Type() == OrtDevice::NPU) {
+      if (src_device.UsesCpuMemory() && is_cann_device(dst_device)) {
         CpuToCannMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }
-      if (src_device.Type() == OrtDevice::NPU && dst_device.UsesCpuMemory()) {
+      if (is_cann_device(src_device) && dst_device.UsesCpuMemory()) {
         CannToCpuMemCpy(dst_ptr, src_ptr, bytes);
         return;
       }

@@ -13,10 +13,11 @@ from collections.abc import Callable, Sequence
 from enum import IntEnum
 from typing import Any
 
+import numpy as np
+
 from onnxruntime.capi import _pybind_state as C
 
 if typing.TYPE_CHECKING:
-    import numpy as np
     import numpy.typing as npt
 
     import onnxruntime
@@ -1212,8 +1213,6 @@ class OrtValue:
             If ``None`` (default), a copy will be made only if needed.
         :return: A numpy array with the same data as the OrtValue.
         """
-        import numpy as np  # noqa: PLC0415
-
         arr = self.numpy()
 
         if copy is not None:
@@ -1315,8 +1314,12 @@ class OrtValue:
         """
         if isinstance(data, OrtValue):
             self._ortvalue.update_inplace(data._ortvalue)
-        else:
-            self._ortvalue.update_inplace(data)
+            return
+
+        if not isinstance(data, np.ndarray):
+            raise TypeError("data must be a numpy.ndarray or an OrtValue.")
+
+        self._ortvalue.update_inplace(data)
 
 
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
