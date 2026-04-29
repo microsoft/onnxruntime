@@ -2294,6 +2294,251 @@ TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ValuesSizeMismatch_Ra
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("values data size does not match expected"));
 }
 
+// Tests for SparseTensorProtoToDenseTensorProto with negative indices (model-loading path)
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_NegativeIndex_Rank1) {
+  // Dense size 4
+  // Index -1 -> negative, out of bounds
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_neg_idx");
+  sparse.add_dims(4);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(1);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(-1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("index is out of bounds"));
+}
+
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_NegativeIndex_Rank2) {
+  // Dense Shape [3, 3]
+  // Index [-1, 0] -> negative row, out of bounds
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.mutable_values()->set_name("test_neg_idx_2d");
+  sparse.add_dims(3);
+  sparse.add_dims(3);
+
+  auto* val = sparse.mutable_values();
+  val->add_dims(1);
+  val->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  val->add_float_data(1.0f);
+
+  auto* ind = sparse.mutable_indices();
+  ind->add_dims(1);
+  ind->add_dims(2);
+  ind->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  ind->add_int64_data(-1);
+  ind->add_int64_data(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  auto status = utils::SparseTensorProtoToDenseTensorProto(sparse, {}, dense);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("index is out of bounds"));
+}
+
+// Tests for SparseCooToDenseTensor and SparseCsrToDenseTensor (sparse_utils.cc paths)
+TEST(SparseTensorConversionTests, SparseCooToDense_NegativeLinearIndex) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  // Create a SparseTensor with COO format and a negative linear index
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {1, 2, 3};
+  std::vector<int64_t> bad_indices = {-1, 3, 5};  // -1 is invalid
+
+  ASSERT_STATUS_OK(src.MakeCooData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(), gsl::make_span(bad_indices)));
+
+  Tensor dense_dst;
+  auto status = sparse_utils::SparseCooToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid COO index"));
+}
+
+TEST(SparseTensorConversionTests, SparseCooToDense_UpperBoundLinearIndex) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  // Dense 3x3 = 9 elements. Index 9 is out of bounds (valid: 0-8)
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {1, 2, 3};
+  std::vector<int64_t> bad_indices = {0, 3, 9};
+
+  ASSERT_STATUS_OK(src.MakeCooData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(), gsl::make_span(bad_indices)));
+
+  Tensor dense_dst;
+  auto status = sparse_utils::SparseCooToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid COO index"));
+}
+
+TEST(SparseTensorConversionTests, SparseCooToDense_Negative2DIndex) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  // 2D indices: (-1, 0) is invalid
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {1, 2};
+  std::vector<int64_t> bad_indices = {-1, 0, 1, 1};  // 2D, first entry has negative row
+
+  ASSERT_STATUS_OK(src.MakeCooData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(), gsl::make_span(bad_indices)));
+
+  Tensor dense_dst;
+  auto status = sparse_utils::SparseCooToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid COO 2D index"));
+}
+
+TEST(SparseTensorConversionTests, SparseCsrToDense_NegativeColumnIndex) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  // 3x3 dense, CSR with a negative column index
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {1, 2, 3};
+  std::vector<int64_t> inner = {-1, 0, 2};  // -1 is invalid column
+  std::vector<int64_t> outer = {0, 1, 2, 3};
+
+  ASSERT_STATUS_OK(src.MakeCsrData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(),
+                                   gsl::make_span(inner), gsl::make_span(outer)));
+
+  Tensor dense_dst;
+  auto status = sparse_utils::SparseCsrToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid CSR column index"));
+}
+
+TEST(SparseTensorConversionTests, SparseCsrToDense_ColumnIndexOutOfBounds) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  // 3x3 dense, CSR with column index 3 (valid: 0-2)
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {1, 2, 3};
+  std::vector<int64_t> inner = {1, 3, 1};  // 3 is out of bounds for 3 columns
+  std::vector<int64_t> outer = {0, 1, 2, 3};
+
+  ASSERT_STATUS_OK(src.MakeCsrData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(),
+                                   gsl::make_span(inner), gsl::make_span(outer)));
+
+  Tensor dense_dst;
+  auto status = sparse_utils::SparseCsrToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid CSR column index"));
+}
+
+// Regression test: SparseCsrToDenseTensor must use correct source index for each
+// non-zero value. Previously src_idx was never incremented, so all entries got values[0].
+// Using distinct values exposes this bug.
+TEST(SparseTensorConversionTests, SparseCsrToDense_DistinctValuesRoundtrip) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  // 3x3 dense matrix:
+  //   0  0  10
+  //  20  0  30
+  //   0  0   0
+  // CSR: values={10, 20, 30}, inner(col)={2, 0, 2}, outer={0, 1, 3, 3}
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {10, 20, 30};
+  std::vector<int64_t> inner = {2, 0, 2};
+  std::vector<int64_t> outer = {0, 1, 3, 3};
+
+  ASSERT_STATUS_OK(src.MakeCsrData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(),
+                                   gsl::make_span(inner), gsl::make_span(outer)));
+
+  Tensor dense_dst;
+  ASSERT_STATUS_OK(sparse_utils::SparseCsrToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst));
+
+  std::vector<int32_t> expected_dense = {
+      0, 0, 10,
+      20, 0, 30,
+      0, 0, 0};
+
+  auto dense_span = dense_dst.DataAsSpan<int32_t>();
+  ASSERT_EQ(dense_span.size(), expected_dense.size());
+  for (size_t i = 0; i < expected_dense.size(); ++i) {
+    EXPECT_EQ(dense_span[i], expected_dense[i]) << "Mismatch at index " << i;
+  }
+}
+
+// Test that COO 2D validation catches out-of-range column even when
+// the linearized index would be in bounds. E.g., for a 3x3 matrix,
+// (row=0, col=4) gives linear index 4 which is in [0,9), but col=4 >= cols=3.
+TEST(SparseTensorConversionTests, SparseCooToDense_2DColumnOutOfRange) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {1};
+  // (row=0, col=4): linear index = 0*3+4 = 4, valid linear but col >= cols
+  std::vector<int64_t> bad_indices = {0, 4};
+
+  ASSERT_STATUS_OK(src.MakeCooData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(), gsl::make_span(bad_indices)));
+
+  Tensor dense_dst;
+  auto status = sparse_utils::SparseCooToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid COO 2D index"));
+}
+
+// Test that COO 2D validation catches out-of-range row.
+TEST(SparseTensorConversionTests, SparseCooToDense_2DRowOutOfRange) {
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_allocator = cpu_provider->CreatePreferredAllocators()[0];
+
+  DataTransferManager dtm;
+  ASSERT_STATUS_OK(dtm.RegisterDataTransfer(cpu_provider->GetDataTransfer()));
+
+  SparseTensor src(DataTypeImpl::GetType<int32_t>(), TensorShape{3, 3}, cpu_allocator);
+  std::vector<int32_t> values = {1};
+  // (row=3, col=0): row >= rows
+  std::vector<int64_t> bad_indices = {3, 0};
+
+  ASSERT_STATUS_OK(src.MakeCooData(*cpu_provider->GetDataTransfer(), cpu_allocator->Info(),
+                                   values.size(), values.data(), gsl::make_span(bad_indices)));
+
+  Tensor dense_dst;
+  auto status = sparse_utils::SparseCooToDenseTensor(dtm, src, cpu_allocator, cpu_allocator, dense_dst);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid COO 2D index"));
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace test
 }  // namespace onnxruntime

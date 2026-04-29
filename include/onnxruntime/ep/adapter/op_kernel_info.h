@@ -8,14 +8,16 @@
 #endif
 
 #include <memory>
+#include <shared_mutex>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
-#include "core/session/allocator_adapters.h"
 
+#include "allocator.h"
 #include "node.h"
 #include "kernel_def.h"
 #include "tensor_helper.h"
@@ -45,7 +47,8 @@ struct OpKernelInfo {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
       Ort::ConstKernelInfo info{kernel_info};
       ort_ep_ = info.GetEp();
-      ep_impl_ = ort_ep_ != nullptr ? (static_cast<const Ep*>(ort_ep_))->EpImpl() : nullptr;
+      ORT_ENFORCE(ort_ep_ != nullptr, "Plugin EP adapter requires a non-null OrtEp");
+      ep_impl_ = static_cast<const Ep*>(ort_ep_)->EpImpl();
 
       const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);
@@ -61,6 +64,10 @@ struct OpKernelInfo {
     const OrtEp* ort_ep_{};
     const ::onnxruntime::IExecutionProvider* ep_impl_{};
     std::vector<Tensor> constant_input_tensors;
+
+    mutable std::shared_mutex allocator_cache_mutex_;
+    mutable InlinedHashMap<OrtMemType, AllocatorPtr> allocator_cache_;
+
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelInfoCache);
   };
 
@@ -72,9 +79,33 @@ struct OpKernelInfo {
   }
 
   AllocatorPtr GetAllocator(OrtMemType mem_type) const {
-    OrtAllocator* ort_allocator = nullptr;
-    Ort::ThrowOnError(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator));
-    return std::make_shared<IAllocatorImplWrappingOrtAllocator>(ort_allocator);
+    {
+      std::shared_lock lock(cache_->allocator_cache_mutex_);
+      auto it = cache_->allocator_cache_.find(mem_type);
+      if (it != cache_->allocator_cache_.end()) {
+        return it->second;
+      }
+    }
+
+    std::unique_lock lock(cache_->allocator_cache_mutex_);
+    // Double-check after acquiring exclusive lock
+    auto it = cache_->allocator_cache_.find(mem_type);
+    if (it != cache_->allocator_cache_.end()) {
+      return it->second;
+    }
+
+    OrtAllocator* ort_allocator_raw = nullptr;
+    Ort::Status status(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator_raw));
+
+    if (!status.IsOK() || ort_allocator_raw == nullptr) {
+      cache_->allocator_cache_.emplace(mem_type, nullptr);
+      return nullptr;
+    }
+
+    Ort::Allocator ort_allocator{ort_allocator_raw};
+    auto allocator = std::make_shared<IAllocatorWrappingOrtAllocator>(std::move(ort_allocator));
+    cache_->allocator_cache_.emplace(mem_type, allocator);
+    return allocator;
   }
 
   Node node() const noexcept {
