@@ -55,7 +55,7 @@ static void RunGQASeqlensKTest(
   }
 
   std::vector<int64_t> shape = seqlens_k_shape.has_value()
-                                   ? seqlens_k_shape.value()
+                                   ? *seqlens_k_shape
                                    : std::vector<int64_t>{batch_size};
   tester.AddInput<int32_t>("seqlens_k", shape, seqlens_k_data);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len});
