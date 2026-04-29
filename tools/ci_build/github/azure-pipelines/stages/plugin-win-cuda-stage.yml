@@ -70,6 +70,7 @@ stages:
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
+          version_file: VERSION_NUMBER
 
       - script: |
           python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"

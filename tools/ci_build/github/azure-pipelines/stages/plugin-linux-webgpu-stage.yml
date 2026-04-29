@@ -3,10 +3,6 @@ parameters:
   type: string
   default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
-- name: gpu_machine_pool
-  type: string
-  default: 'Onnxruntime-Linux-GPU-A10'
-
 - name: package_version
   type: string
   default: dev
