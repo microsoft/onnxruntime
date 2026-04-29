@@ -125,10 +125,20 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
   // Check for duplicate pointers in the input array to prevent double-free
   onnxruntime::InlinedHashSet<const OrtValueInfo*> seen;
   for (size_t i = 0; i < inputs_len; ++i) {
-    if (inputs[i] != nullptr && !seen.insert(inputs[i]).second) {
+    if (inputs[i] == nullptr) {
+      continue;  // null entries are validated in the transfer loop below
+    }
+    if (!seen.insert(inputs[i]).second) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Duplicate OrtValueInfo pointer found in inputs array. "
                                    "Each OrtValueInfo can only appear once.");
+    }
+    // Reject already-owned ValueInfos (prevents double-free if reused across calls)
+    onnxruntime::ModelEditorValueInfo* vi = onnxruntime::ModelEditorValueInfo::ToInternal(inputs[i]);
+    if (vi != nullptr && vi->owned_) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "This OrtValueInfo has already been added to a graph. "
+                                   "Each OrtValueInfo can only be added once.");
     }
   }
 
@@ -145,6 +155,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
     }
 
     graph->inputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(input));  // take ownership
+    input->owned_ = true;
     inputs[i] = nullptr;
   }
 
@@ -173,10 +184,20 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
   // Check for duplicate pointers in the output array to prevent double-free
   onnxruntime::InlinedHashSet<const OrtValueInfo*> seen;
   for (size_t i = 0; i < outputs_len; ++i) {
-    if (outputs[i] != nullptr && !seen.insert(outputs[i]).second) {
+    if (outputs[i] == nullptr) {
+      continue;  // null entries are validated in the transfer loop below
+    }
+    if (!seen.insert(outputs[i]).second) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Duplicate OrtValueInfo pointer found in outputs array. "
                                    "Each OrtValueInfo can only appear once.");
+    }
+    // Reject already-owned ValueInfos (prevents double-free if reused across calls)
+    onnxruntime::ModelEditorValueInfo* vi = onnxruntime::ModelEditorValueInfo::ToInternal(outputs[i]);
+    if (vi != nullptr && vi->owned_) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "This OrtValueInfo has already been added to a graph. "
+                                   "Each OrtValueInfo can only be added once.");
     }
   }
 
@@ -193,6 +214,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
     }
 
     graph->outputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(output));  // take ownership
+    output->owned_ = true;
     outputs[i] = nullptr;
   }
 

@@ -1303,3 +1303,123 @@ TEST(ModelEditorAPITest, AddGraphToModel_SameGraphTwoModels_Fails) {
   api.ReleaseModel(model2);
   api.ReleaseModel(model1);
 }
+
+// Regression tests for Release-after-ownership-transfer (yuslepukhin review comments).
+// These verify that calling Release on an object after ownership has been transferred
+// to a graph/model is safely ignored (no double-free).
+
+TEST(ModelEditorAPITest, ReleaseNode_AfterAddToGraph_IsNoOp) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  OrtNode* node = CreateNode(model_editor_api, "Relu", "relu1", {"X"}, {"Y"});
+
+  // Transfer ownership to graph
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddNodeToGraph(graph, node));
+
+  // Caller still holds raw pointer — Release should be a safe no-op
+  api.ReleaseNode(node);
+
+  // Graph destructor should safely clean up the node (no double-free)
+  api.ReleaseGraph(graph);
+}
+
+TEST(ModelEditorAPITest, ReleaseGraph_AfterAddToModel_IsNoOp) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
+  std::vector<int> opset_versions = {18};
+  OrtModel* model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(),
+                                                 domain_names.size(), &model));
+
+  // Transfer ownership to model
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddGraphToModel(model, graph));
+
+  // Caller still holds raw pointer — Release should be a safe no-op
+  api.ReleaseGraph(graph);
+
+  // Model destructor should safely clean up the graph (no double-free)
+  api.ReleaseModel(model);
+}
+
+TEST(ModelEditorAPITest, ReleaseValueInfo_AfterSetGraphInputs_IsNoOp) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+
+  // Create OrtValueInfo
+  OrtTensorTypeAndShapeInfo* tensor_type_info = nullptr;
+  std::vector<int64_t> dims = {3, 4};
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&tensor_type_info));
+  Ort::ThrowOnError(api.SetTensorElementType(tensor_type_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  Ort::ThrowOnError(api.SetDimensions(tensor_type_info, dims.data(), dims.size()));
+
+  OrtTypeInfo* type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(tensor_type_info, &type_info));
+  api.ReleaseTensorTypeAndShapeInfo(tensor_type_info);
+
+  OrtValueInfo* x_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("X", type_info, &x_info));
+  api.ReleaseTypeInfo(type_info);
+
+  // Save the raw pointer before SetGraphInputs nulls out the array entry
+  OrtValueInfo* saved_ptr = x_info;
+  std::vector<OrtValueInfo*> inputs = {x_info};
+  ASSERT_ORTSTATUS_OK(model_editor_api.SetGraphInputs(graph, inputs.data(), inputs.size()));
+
+  // Caller still holds saved_ptr — Release should be a safe no-op
+  api.ReleaseValueInfo(saved_ptr);
+
+  // Graph destructor should safely clean up the ValueInfo (no double-free)
+  api.ReleaseGraph(graph);
+}
+
+TEST(ModelEditorAPITest, SetGraphInputs_AlreadyOwnedValueInfo_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  OrtGraph* graph1 = nullptr;
+  OrtGraph* graph2 = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph1));
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph2));
+
+  // Create OrtValueInfo
+  OrtTensorTypeAndShapeInfo* tensor_type_info = nullptr;
+  std::vector<int64_t> dims = {3, 4};
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&tensor_type_info));
+  Ort::ThrowOnError(api.SetTensorElementType(tensor_type_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  Ort::ThrowOnError(api.SetDimensions(tensor_type_info, dims.data(), dims.size()));
+
+  OrtTypeInfo* type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(tensor_type_info, &type_info));
+  api.ReleaseTensorTypeAndShapeInfo(tensor_type_info);
+
+  OrtValueInfo* x_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("X", type_info, &x_info));
+  api.ReleaseTypeInfo(type_info);
+
+  // Save the raw pointer before SetGraphInputs nulls out the array entry
+  OrtValueInfo* saved_ptr = x_info;
+  std::vector<OrtValueInfo*> inputs = {x_info};
+  ASSERT_ORTSTATUS_OK(model_editor_api.SetGraphInputs(graph1, inputs.data(), inputs.size()));
+
+  // Try to add the already-owned ValueInfo to a second graph — should fail
+  std::vector<OrtValueInfo*> inputs2 = {saved_ptr};
+  Ort::Status status{model_editor_api.SetGraphInputs(graph2, inputs2.data(), inputs2.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+
+  // graph1 owns x_info, graph2 is empty
+  api.ReleaseGraph(graph2);
+  api.ReleaseGraph(graph1);
+}

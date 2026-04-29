@@ -81,6 +81,7 @@ struct ModelEditorValueInfo : public OrtValueInfo {
                            "OrtModelEditorApi does not support querying if a OrtValueInfo is defined in an outer scope.");
   }
 
+  bool owned_ = false;  // true after ownership transferred to a graph
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
 };

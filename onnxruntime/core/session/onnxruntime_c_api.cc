@@ -2622,14 +2622,32 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(void, OrtApis::ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo* value_info) {
+  if (value_info != nullptr) {
+    if (auto* me = onnxruntime::ModelEditorValueInfo::ToInternal(value_info);
+        me != nullptr && me->owned_) {
+      return;  // owned by a graph — caller should not release
+    }
+  }
   delete value_info;
 }
 
 ORT_API(void, OrtApis::ReleaseNode, _Frees_ptr_opt_ OrtNode* node) {
+  if (node != nullptr) {
+    if (auto* me = onnxruntime::ModelEditorNode::ToInternal(node);
+        me != nullptr && me->owned_) {
+      return;  // owned by a graph — caller should not release
+    }
+  }
   delete node;
 }
 
 ORT_API(void, OrtApis::ReleaseGraph, _Frees_ptr_opt_ OrtGraph* graph) {
+  if (graph != nullptr) {
+    if (auto* me = onnxruntime::ModelEditorGraph::ToInternal(graph);
+        me != nullptr && me->owned_) {
+      return;  // owned by a model — caller should not release
+    }
+  }
   delete graph;
 }
 
