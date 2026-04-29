@@ -10,21 +10,20 @@
 
 namespace onnxruntime::version_check {
 
-// A simple consteval-friendly result type for ParseUint.
-// std::optional triggers an internal compiler error in MSVC 14.44 when used with consteval.
+// A simple constexpr-friendly result type for ParseUint.
 struct ParseUintResult {
   uint32_t value;
   bool has_value;
 
-  consteval bool operator==(uint32_t other) const { return has_value && value == other; }
-  consteval bool operator!=(uint32_t other) const { return !(*this == other); }
+  constexpr bool operator==(uint32_t other) const { return has_value && value == other; }
+  constexpr bool operator!=(uint32_t other) const { return !(*this == other); }
 };
 
-inline consteval ParseUintResult ParseUintNone() { return {0, false}; }
+inline constexpr ParseUintResult ParseUintNone() { return {0, false}; }
 
 // Parse a non-negative integer from a string_view without leading zeros.
 // Returns a result with has_value == false on failure (empty, leading zero, non-digit, or overflow).
-consteval ParseUintResult ParseUint(std::string_view str) {
+constexpr ParseUintResult ParseUint(std::string_view str) {
   if (str.empty()) return ParseUintNone();
   // Leading zeros are not allowed (except "0" itself).
   if (str.size() > 1 && str[0] == '0') return ParseUintNone();
@@ -42,7 +41,7 @@ consteval ParseUintResult ParseUint(std::string_view str) {
 //   - Major version is 1
 //   - Y and Z are non-negative integers without leading zeros
 //   - Y (minor version) must equal expected_api_version (defaults to ORT_API_VERSION)
-consteval bool IsOrtVersionValid(std::string_view version, uint32_t expected_api_version = ORT_API_VERSION) {
+constexpr bool IsOrtVersionValid(std::string_view version, uint32_t expected_api_version = ORT_API_VERSION) {
   size_t first_dot = version.find('.');
   if (first_dot == std::string_view::npos) return false;
   size_t second_dot = version.find('.', first_dot + 1);
