@@ -30,43 +30,29 @@ namespace {
 
 template <typename T>
 void ConvertNHWCToNCHW(const T* src, T* dst,
-                       int64_t n, int64_t c, int64_t h, int64_t w) {
+                       int64_t n, int64_t c, int64_t h, int64_t w,
+                       concurrency::ThreadPool* thread_pool) {
   const size_t n_count = narrow<size_t>(n);
   const size_t c_count = narrow<size_t>(c);
   const size_t hw = narrow<size_t>(SafeInt<int64_t>(h) * w);
   for (size_t n_idx = 0; n_idx < n_count; ++n_idx) {
     const size_t n_src_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * hw) * c_count;
     const size_t n_dst_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * c_count) * hw;
-    for (size_t c_idx = 0; c_idx < c_count; ++c_idx) {
-      const size_t c_dst_offset = SafeInt<size_t>(c_idx) * hw;
-      const T* src_ptr = src + n_src_offset + c_idx;
-      T* dst_ptr = dst + n_dst_offset + c_dst_offset;
-      for (size_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
-        const size_t src_hw_offset = SafeInt<size_t>(hw_idx) * c_count;
-        dst_ptr[hw_idx] = src_ptr[src_hw_offset];
-      }
-    }
+    MlasTranspose(src + n_src_offset, dst + n_dst_offset, hw, c_count, thread_pool);
   }
 }
 
 template <typename T>
 void ConvertNCHWToNHWC(const T* src, T* dst,
-                       int64_t n, int64_t c, int64_t h, int64_t w) {
+                       int64_t n, int64_t c, int64_t h, int64_t w,
+                       concurrency::ThreadPool* thread_pool) {
   const size_t n_count = narrow<size_t>(n);
   const size_t c_count = narrow<size_t>(c);
   const size_t hw = narrow<size_t>(SafeInt<int64_t>(h) * w);
   for (size_t n_idx = 0; n_idx < n_count; ++n_idx) {
     const size_t n_src_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * c_count) * hw;
     const size_t n_dst_offset = SafeInt<size_t>(SafeInt<size_t>(n_idx) * hw) * c_count;
-    for (size_t hw_idx = 0; hw_idx < hw; ++hw_idx) {
-      const size_t hw_dst_offset = SafeInt<size_t>(hw_idx) * c_count;
-      const T* src_ptr = src + n_src_offset + hw_idx;
-      T* dst_ptr = dst + n_dst_offset + hw_dst_offset;
-      for (size_t c_idx = 0; c_idx < c_count; ++c_idx) {
-        const size_t src_c_offset = SafeInt<size_t>(c_idx) * hw;
-        dst_ptr[c_idx] = src_ptr[src_c_offset];
-      }
-    }
+    MlasTranspose(src + n_src_offset, dst + n_dst_offset, c_count, hw, thread_pool);
   }
 }
 
@@ -366,7 +352,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
       float* temp_input = static_cast<float*>(alloc->Alloc(sizeof(float) * input_elements));
       input_temp = BufferUniquePtr(temp_input, BufferDeleter(alloc));
       ConvertNHWCToNCHW(X->Data<float>(), temp_input,
-                        input_n, input_c, input_h, input_w);
+                        input_n, input_c, input_h, input_w, thread_pool);
       input_compute = temp_input;
     }
 
@@ -387,7 +373,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         BufferUniquePtr sum_nchw_buffer(sum_nchw, BufferDeleter(alloc));
         ConvertNHWCToNCHW(sum_manual_data,
                           sum_nchw,
-                          y_dims[0], y_dims[3], y_dims[1], y_dims[2]);
+                          y_dims[0], y_dims[3], y_dims[1], y_dims[2], thread_pool);
 
         auto output_span = gsl::make_span(output_compute, static_cast<size_t>(output_elements));
         auto sum_span = gsl::make_span(sum_nchw, static_cast<size_t>(output_elements));
@@ -403,7 +389,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
       ConvertNCHWToNHWC(output_compute,
                         Ydata.data(),
-                        y_dims[0], y_dims[3], y_dims[1], y_dims[2]);
+                        y_dims[0], y_dims[3], y_dims[1], y_dims[2], thread_pool);
     }
   } else {
     const int64_t input_image_size = input_shape.Size();
