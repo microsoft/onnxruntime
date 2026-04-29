@@ -1121,7 +1121,8 @@ void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
         return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD;
       };
       const auto is_dml_device = [](const OrtDevice& device) {
-        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::MICROSOFT;
+        return (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::MICROSOFT) ||
+               device.Type() == OrtDevice::DML;
       };
       const auto is_cann_device = [](const OrtDevice& device) {
         return device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI;
