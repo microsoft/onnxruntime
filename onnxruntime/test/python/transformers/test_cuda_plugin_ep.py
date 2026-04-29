@@ -344,6 +344,22 @@ def run_operator_test(
 
 def run_provider_options_test(provider_options, expect_plugin_provider=True):
     require_cuda_plugin_ep()
+
+    # When we expect the plugin provider to work, verify that at least one plugin device is available.
+    # Device enumeration can fail in some CI environments even when the plugin library loads successfully.
+    if expect_plugin_provider:
+        try:
+            devices = onnxrt.get_ep_devices()
+            plugin_devices = [d for d in devices if d.ep_name == CUDA_PLUGIN_EP_NAME]
+            if not plugin_devices:
+                raise unittest.SkipTest(
+                    f"{CUDA_PLUGIN_EP_NAME} registered but no plugin devices enumerated in this environment"
+                )
+        except unittest.SkipTest:
+            raise
+        except Exception as exc:
+            raise unittest.SkipTest(f"Failed to enumerate plugin EP devices: {exc}") from exc
+
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
         model_path = tmp.name
     try:

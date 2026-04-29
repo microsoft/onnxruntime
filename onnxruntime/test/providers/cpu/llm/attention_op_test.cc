@@ -2308,5 +2308,370 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// GQA unfused attention with FP32 QK accumulation for large head_size (> 128).
+// This exercises the RunGqaUnfusedAttention path in attention.cc which uses
+// an FP32 scratch buffer for QK matmul to prevent overflow in fp16.
+TEST(AttentionTest, Attention_GqaUnfused_LargeHeadSize_FP16) {
+  if (!HasCudaEnvironment(530)) {
+    return;  // fp16 requires SM 5.3+
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  // head_size=256 > 128 triggers needs_fp32_qk_scratch in the CUDA Attention kernel.
+  // GQA: q_num_heads=4, kv_num_heads=2.
+  int batch_size = 2;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 2;
+  int kv_sequence_length = 4;
+  int head_size = 256;
+
+  int q_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  int k_elements = batch_size * kv_num_heads * kv_sequence_length * head_size;
+  int v_elements = k_elements;
+
+  // Use constant Q and K so softmax produces uniform weights.
+  std::vector<float> q(q_elements, 0.01f);
+  std::vector<float> k(k_elements, 0.01f);
+  // V: each KV position s gets value (s+1)*0.1 across all head dims.
+  std::vector<float> v(v_elements);
+  for (int b = 0; b < batch_size; b++) {
+    for (int n = 0; n < kv_num_heads; n++) {
+      for (int s = 0; s < kv_sequence_length; s++) {
+        float val = static_cast<float>(s + 1) * 0.1f;
+        for (int h = 0; h < head_size; h++) {
+          v[(b * kv_num_heads * kv_sequence_length + n * kv_sequence_length + s) * head_size + h] = val;
+        }
+      }
+    }
+  }
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+
+  // Uniform softmax over all 4 KV positions → output = mean of V.
+  // mean = (0.1 + 0.2 + 0.3 + 0.4) / 4 = 0.25
+  int y_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  std::vector<float> expected_y(y_elements, 0.25f);
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                            ToFloat16(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// GQA unfused attention with causal mask and large head_size.
+// Verifies that is_causal works correctly in the unfused GQA path.
+TEST(AttentionTest, Attention_GqaUnfused_LargeHeadSize_Causal_FP16) {
+  if (!HasCudaEnvironment(530)) {
+    return;  // fp16 requires SM 5.3+
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  // Self-attention: q_sequence_length == kv_sequence_length with causal mask.
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int sequence_length = 3;
+  int head_size = 256;
+
+  int q_elements = batch_size * q_num_heads * sequence_length * head_size;
+  int k_elements = batch_size * kv_num_heads * sequence_length * head_size;
+  int v_elements = k_elements;
+
+  // Constant Q and K → equal attention scores before causal masking.
+  std::vector<float> q(q_elements, 0.01f);
+  std::vector<float> k(k_elements, 0.01f);
+  // V: position s gets value (s+1)*0.1
+  std::vector<float> v(v_elements);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < head_size; h++) {
+        v[(n * sequence_length + s) * head_size + h] = val;
+      }
+    }
+  }
+
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, sequence_length, head_size}, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+
+  // With causal mask and constant Q/K, each position attends uniformly to itself and prior positions.
+  // Position 0: attends to [0] → output = V[0] = 0.1
+  // Position 1: attends to [0,1] → output = mean(0.1, 0.2) = 0.15
+  // Position 2: attends to [0,1,2] → output = mean(0.1, 0.2, 0.3) = 0.2
+  int y_elements = batch_size * q_num_heads * sequence_length * head_size;
+  std::vector<float> expected_y(y_elements);
+  float pos_values[] = {0.1f, 0.15f, 0.2f};
+  for (int n = 0; n < q_num_heads; n++) {
+    for (int s = 0; s < sequence_length; s++) {
+      for (int h = 0; h < head_size; h++) {
+        expected_y[(n * sequence_length + s) * head_size + h] = pos_values[s];
+      }
+    }
+  }
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, sequence_length, head_size},
+                            ToFloat16(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// GQA unfused with past_key + attn_mask: exercises concat + bias path together.
+TEST(AttentionTest, Attention_GqaUnfused_PastKey_AttnMask_FP16) {
+  if (!HasCudaEnvironment(530)) {
+    return;
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 1;   // decode step
+  int kv_sequence_length = 1;  // one new token
+  int past_sequence_length = 2;
+  int total_sequence_length = past_sequence_length + kv_sequence_length;  // 3
+  int head_size = 256;
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  // Constant Q, K → uniform attention scores before masking.
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.01f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.01f);
+  // V new token: position 2 value = 0.3
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.3f);
+
+  std::vector<float> past_key(batch_size * kv_num_heads * past_sequence_length * head_size, 0.01f);
+  // Past V: position 0 = 0.1, position 1 = 0.2
+  std::vector<float> past_value(batch_size * kv_num_heads * past_sequence_length * head_size);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < past_sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < head_size; h++) {
+        past_value[(n * past_sequence_length + s) * head_size + h] = val;
+      }
+    }
+  }
+
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(v));
+  test.AddInput<MLFloat16>("attn_mask", {q_sequence_length, total_sequence_length},
+                           ToFloat16(std::vector<float>{0.0f, neg_inf, 0.0f}));
+  test.AddInput<MLFloat16>("past_key",
+                           {batch_size, kv_num_heads, past_sequence_length, head_size}, ToFloat16(past_key));
+  test.AddInput<MLFloat16>("past_value",
+                           {batch_size, kv_num_heads, past_sequence_length, head_size}, ToFloat16(past_value));
+
+  // Mask position 1 → uniform over positions 0, 2 → mean(0.1, 0.3) = 0.2
+  std::vector<float> expected_y(batch_size * q_num_heads * q_sequence_length * head_size, 0.2f);
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                            ToFloat16(expected_y), false, 0, 0.02f);
+
+  // present_key: all 0.01
+  std::vector<float> expected_pk(batch_size * kv_num_heads * total_sequence_length * head_size, 0.01f);
+  test.AddOutput<MLFloat16>("present_key",
+                            {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            ToFloat16(expected_pk), false, 0, 0.01f);
+
+  // present_value: pos 0→0.1, pos 1→0.2, pos 2→0.3
+  std::vector<float> expected_pv(batch_size * kv_num_heads * total_sequence_length * head_size);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < total_sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < head_size; h++) {
+        expected_pv[(n * total_sequence_length + s) * head_size + h] = val;
+      }
+    }
+  }
+  test.AddOutput<MLFloat16>("present_value",
+                            {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            ToFloat16(expected_pv), false, 0, 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// GQA unfused with softcap + attn_mask: verifies the softcap + bias interaction.
+TEST(AttentionTest, Attention_GqaUnfused_Softcap_AttnMask_FP16) {
+  if (!HasCudaEnvironment(530)) {
+    return;
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 1;
+  int kv_sequence_length = 3;
+  int head_size = 256;
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+  test.AddAttribute<float>("softcap", 50.0f);
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.01f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.01f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * head_size);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < kv_sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < head_size; h++) {
+        v[(n * kv_sequence_length + s) * head_size + h] = val;
+      }
+    }
+  }
+
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(v));
+  test.AddInput<MLFloat16>("attn_mask", {q_sequence_length, kv_sequence_length},
+                           ToFloat16(std::vector<float>{0.0f, neg_inf, 0.0f}));
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+
+  // softcap(50) with near-zero logits is ~identity → uniform over positions 0,2.
+  // mean(0.1, 0.3) = 0.2
+  std::vector<float> expected_y(batch_size * q_num_heads * q_sequence_length * head_size, 0.2f);
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                            ToFloat16(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// GQA unfused with BSNH (3D) input: previous tests all use 4D BNSH input.
+TEST(AttentionTest, Attention_GqaUnfused_BSNH_FP16) {
+  if (!HasCudaEnvironment(530)) {
+    return;
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 2;
+  int kv_sequence_length = 4;
+  int head_size = 256;
+  int q_hidden = q_num_heads * head_size;    // 1024
+  int kv_hidden = kv_num_heads * head_size;  // 512
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  std::vector<float> q(batch_size * q_sequence_length * q_hidden, 0.01f);
+  std::vector<float> k(batch_size * kv_sequence_length * kv_hidden, 0.01f);
+  // BSNH V: position s gets value (s+1)*0.1 across all head dims.
+  std::vector<float> v(batch_size * kv_sequence_length * kv_hidden);
+  for (int s = 0; s < kv_sequence_length; s++) {
+    float val = static_cast<float>(s + 1) * 0.1f;
+    for (int d = 0; d < kv_hidden; d++) {
+      v[s * kv_hidden + d] = val;
+    }
+  }
+
+  test.AddInput<MLFloat16>("Q", {batch_size, q_sequence_length, q_hidden}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_sequence_length, kv_hidden}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_sequence_length, kv_hidden}, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+
+  // Uniform over 4 positions → mean(0.1, 0.2, 0.3, 0.4) = 0.25
+  std::vector<float> expected_y(batch_size * q_sequence_length * q_hidden, 0.25f);
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_sequence_length, q_hidden},
+                            ToFloat16(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// GQA unfused with fp32: exercises the float template instantiation.
+TEST(AttentionTest, Attention_GqaUnfused_FP32) {
+  if (!HasCudaEnvironment(0)) {
+    return;
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  // GQA triggers the unfused path for fp32 regardless of head_size.
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 2;
+  int kv_sequence_length = 4;
+  int head_size = 8;
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.1f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.1f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * head_size);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < kv_sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < head_size; h++) {
+        v[(n * kv_sequence_length + s) * head_size + h] = val;
+      }
+    }
+  }
+
+  test.AddInput<float>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, q);
+  test.AddInput<float>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, k);
+  test.AddInput<float>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+
+  // Uniform over 4 positions → mean(0.1, 0.2, 0.3, 0.4) = 0.25
+  int y_elements = batch_size * q_num_heads * q_sequence_length * head_size;
+  std::vector<float> expected_y(y_elements, 0.25f);
+  test.AddOutput<float>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                        expected_y, false, 0, 1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
