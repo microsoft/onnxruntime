@@ -201,6 +201,11 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
+  const size_t kernel_rank = kernel_shape.size();
+
+  if (channels_last_) {
+    ORT_RETURN_IF_NOT(kernel_rank == 2, "Conv with channels_last layout currently supports 2D kernels.");
+  }
 
   ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
@@ -234,12 +239,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   auto Xdata = X->DataAsSpan<float>();
   const auto* Bdata = B != nullptr ? B->Data<float>() : nullptr;
   auto Ydata = Y->MutableDataAsSpan<float>();
-  const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
-
-  if (channels_last_) {
-    ORT_RETURN_IF_NOT(kernel_rank == 2, "Conv with channels_last layout currently supports 2D kernels.");
-  }
 
   const bool wants_channels_last = channels_last_;
   const bool sum_present = Sum != nullptr;
