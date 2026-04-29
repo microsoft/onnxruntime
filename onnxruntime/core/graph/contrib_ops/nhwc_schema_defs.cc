@@ -388,7 +388,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(NhwcFusedConv, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(
 NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
-Only has fp16 implementation as of 2023/04/15.
 )DOC")
                                 .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
                                 .Attr("kernel_shape", "", AttributeProto::INTS, OPTIONAL_VALUE)
