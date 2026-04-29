@@ -659,6 +659,9 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   if (!domain_.empty())
     proto.set_domain(domain_);
 
+  if (!overload_.empty())
+    proto.set_overload(overload_);
+
   if (!description_.empty())
     proto.set_doc_string(description_);
 
@@ -3495,7 +3498,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
       if (!node.op_) {
         // check whether it refer to a function.
-        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
+        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType(), node.Overload());
         const auto& model_local_func_templates = owning_model_.GetModelLocalFunctionTemplates();
         auto iter = model_local_func_templates.find(func_identifier);
         if (iter != model_local_func_templates.end()) {
@@ -4386,6 +4389,10 @@ Node& Graph::AddNode(const Node& other) {
                            &other.GetAttributes(),
                            other.Domain());
 
+  if (!other.Overload().empty()) {
+    new_node.SetOverload(other.Overload());
+  }
+
   // Preserve layering annotation from the source node so that graph transformers
   // that reconstruct nodes (or function inlining) retain the EP assignment hint.
   const auto& annotation = other.GetLayeringAnnotation();
@@ -4417,6 +4424,10 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                            output_defs,
                            &attributes,
                            node_proto.domain());
+
+  if (!node_proto.overload().empty()) {
+    new_node.SetOverload(node_proto.overload());
+  }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   auto maybe_annotation = utils::GetNodeProtoLayeringAnnotation(node_proto);

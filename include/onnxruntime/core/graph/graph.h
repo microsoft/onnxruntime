@@ -145,6 +145,14 @@ class Node {
    */
   const std::string& Domain() const noexcept { return domain_; }
 
+  /** Gets the overload identifier for model-local function dispatch (IR version 10+).
+   * @remarks Empty string for non-overloaded operators.
+   */
+  const std::string& Overload() const noexcept { return overload_; }
+
+  /** Sets the overload identifier for model-local function dispatch. */
+  void SetOverload(std::string_view overload) { overload_ = overload; }
+
   /** Gets the path of the owning model if any. */
   const std::filesystem::path& ModelPath() const noexcept;
 
@@ -638,6 +646,9 @@ class Node {
 
   // OperatorSet domain of op_type_.
   std::string domain_;
+
+  // Overload identifier for model-local function dispatch (IR version 10+).
+  std::string overload_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.

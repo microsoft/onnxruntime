@@ -269,15 +269,17 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
+                                                       const std::string& function_overload,
                                                        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                                                        const std::unordered_map<std::string, int>& domain_version_map,
                                                        const SchemaRegistryManager& schema_registry,
                                                        const logging::Logger& logger,
                                                        bool allow_released_opsets_only) {
-  std::string func_identifier = function_utils::GetFunctionIdentifier(function_domain, function_name);
+  std::string func_identifier = function_utils::GetFunctionIdentifier(function_domain, function_name, function_overload);
   auto iter = model_local_functions.find(func_identifier);
   if (iter == model_local_functions.end()) {
-    ORT_THROW("The given function name: ", function_name, ", domain: ", function_domain, " is not found in model local functions");
+    ORT_THROW("The given function name: ", function_name, ", domain: ", function_domain,
+              ", overload: ", function_overload, " is not found in model local functions");
   }
 
   auto* onnx_func_proto = iter->second;
