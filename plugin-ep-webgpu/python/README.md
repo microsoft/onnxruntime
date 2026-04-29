@@ -27,7 +27,7 @@ Example:
 ```bash
 python build_wheel.py \
   --binary_dir ./build/Release \
-  --version 1.26.0.dev20260410 \
+  --version 0.1.0.dev20260429 \
   --output_dir ./dist
 ```
 
