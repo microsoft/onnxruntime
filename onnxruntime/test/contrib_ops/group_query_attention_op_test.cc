@@ -307,5 +307,61 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongLength) {
              {}, nullptr, &execution_providers);
 }
 
+// Regression: seqlens_k valid for KV cache but exceeding cos_cache.shape[0] must be rejected
+// when do_rotary is enabled. Without this check, the position ID derived from seqlens_k
+// would index out of bounds in the cos/sin cache, leaking heap memory into output.
+TEST(GroupQueryAttentionTest, SeqlensKExceedsCosCache_OOB) {
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int rotary_half_dim = head_size / 2;  // cos/sin cache dim-1
+
+  constexpr int cos_cache_max_seq = 4;   // small rotary cache
+  constexpr int past_seq_len = 16;       // large KV cache
+  constexpr int seqlens_k_val = 10;      // valid for KV (10 < 16) but OOB for cos (10 >= 4)
+  constexpr int total_seq_len = 11;      // seqlens_k + 1
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+
+  tester.AddInput<float>("query", {1, 1, hidden_size}, std::vector<float>(hidden_size, 1.0f));
+  tester.AddInput<float>("key", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
+  tester.AddInput<float>("value", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
+
+  // Past KV cache is large enough for seqlens_k=10
+  tester.AddInput<float>("past_key", {1, kv_num_heads, past_seq_len, head_size},
+                         std::vector<float>(kv_num_heads * past_seq_len * head_size, 0.5f));
+  tester.AddInput<float>("past_value", {1, kv_num_heads, past_seq_len, head_size},
+                         std::vector<float>(kv_num_heads * past_seq_len * head_size, 0.5f));
+
+  tester.AddInput<int32_t>("seqlens_k", {1}, {seqlens_k_val});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len});
+
+  // cos/sin cache with only 4 rows — seqlens_k=10 exceeds this
+  tester.AddInput<float>("cos_cache", {cos_cache_max_seq, rotary_half_dim},
+                         std::vector<float>(cos_cache_max_seq * rotary_half_dim, 1.0f));
+  tester.AddInput<float>("sin_cache", {cos_cache_max_seq, rotary_half_dim},
+                         std::vector<float>(cos_cache_max_seq * rotary_half_dim, 0.0f));
+
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {1, 1, hidden_size}, std::vector<float>(hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, past_seq_len, head_size},
+                          std::vector<float>(kv_num_heads * past_seq_len * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, past_seq_len, head_size},
+                          std::vector<float>(kv_num_heads * past_seq_len * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "exceeds rotary cache dimension 0",
+             {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
