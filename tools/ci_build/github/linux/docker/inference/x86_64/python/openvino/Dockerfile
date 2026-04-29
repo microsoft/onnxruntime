@@ -9,6 +9,9 @@ ARG BUILD_USER=onnxruntimedev
 USER root
 WORKDIR /
 
+# FIXME: base image should already have ccache installed
+RUN if ! command -v ccache; then dnf install -y ccache; fi
+
 RUN dnf install -y --nodocs \
         wget \
         tar \
@@ -19,8 +22,8 @@ RUN dnf install -y --nodocs \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025.4.1
-ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4.1/linux/openvino_toolkit_rhel8_2025.4.1.20426.82bbf0292c5_x86_64.tgz
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2026.1.0
+ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2026.1/linux/openvino_toolkit_rhel8_2026.1.0.21367.63e31528c62_x86_64.tgz
 ARG TEMP_DIR=/tmp/openvino_installer
 
 RUN mkdir -p ${TEMP_DIR} && \

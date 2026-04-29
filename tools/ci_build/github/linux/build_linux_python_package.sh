@@ -18,7 +18,7 @@ PYTHON_EXES=(
   "/opt/python/cp312-cp312/bin/python3.12"
   )
 
-while getopts "d:p:x:c:e" parameter_Option
+while getopts "d:p:x:c:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU|WEBGPU|CPU|NPU.
@@ -34,7 +34,6 @@ p)
   ;;
 x) EXTRA_ARG=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-e) ENABLE_CACHE=true;;
 *) echo "Usage: $0 -d <GPU|WEBGPU|CPU|NPU> [-p <python_exe_path>] [-x <extra_build_arg>] [-c <build_config>]"
    exit 1;;
 esac
@@ -45,9 +44,10 @@ BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--buil
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
 fi
-if [ "$ENABLE_CACHE" = true ] ; then
+
+if command -v ccache &> /dev/null; then
+    ccache --zero-stats
     BUILD_ARGS+=("--use_cache")
-    ccache -s;
 fi
 
 ARCH=$(uname -m)
@@ -80,8 +80,20 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     fi
 
     SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
-    #Enable CUDA and TRT EPs.
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    CUDA_HOME=/usr/local/cuda-$SHORT_CUDA_VERSION
+    if [ ! -d "$CUDA_HOME" ] && [ -d /usr/local/cuda ]; then
+        # Allow the cu13 packaging flow to run on images that expose a newer CUDA minor version via /usr/local/cuda.
+        CUDA_HOME=/usr/local/cuda
+    fi
+    #Enable CUDA EP.
+    BUILD_ARGS+=("--use_cuda" "--cuda_version=$SHORT_CUDA_VERSION" "--cuda_home=$CUDA_HOME" "--cudnn_home=$CUDA_HOME" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    # Enable TRT EP only if TensorRT is installed.
+    if [ -f /usr/include/NvInfer.h ]; then
+        BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/usr")
+    elif [ "$ARCH" != "aarch64" ] && [ -f /opt/tensorrt/include/NvInfer.h ]; then
+        # The aarch64 TensorRT tarball is not compatible with the packaging image's glibc baseline.
+        BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/opt/tensorrt")
+    fi
 fi
 if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
     BUILD_ARGS+=("--use_webgpu")
@@ -116,6 +128,7 @@ do
   cp /build/"$BUILD_CONFIG"/dist/*.whl /build/dist
 done
 
-if [ "$ENABLE_CACHE" = true ] ; then
-  which ccache && ccache -sv && ccache -z
+if command -v ccache &> /dev/null; then
+  # FIXME: can't use `-vv` for extra details b/c we're shipping with a decrepit version of ccache (3.something) that doesn't support it.
+  ccache --show-stats # -vv
 fi

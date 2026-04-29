@@ -67,6 +67,58 @@ class TestQuantIssues(unittest.TestCase):
             assert os.path.exists(preprocessed_path), f"missing output {preprocessed_path!r}"
             assert os.path.exists(quantized_path), f"missing output {quantized_path!r}"
 
+    def test_issue_23268_quantize_static_modelproto_no_validation_error(self):
+        # Regression test for https://github.com/microsoft/onnxruntime/issues/23268.
+        # Before PR #23322, save_and_reload_model_with_shape_infer() saved the caller's
+        # ModelProto with save_as_external_data=True (mutating it to point at a temp
+        # path), then deleted that temp dir.  Any subsequent onnx.checker.check_model()
+        # call on the original proto therefore raised:
+        #   onnx.onnx_cpp2py_export.checker.ValidationError
+        # because the referenced external-data file no longer existed.
+        # PR #23322 fixed this by deep-copying the proto before saving.
+        import numpy as np  # noqa: PLC0415
+        import onnx.helper as oh  # noqa: PLC0415
+        import onnx.numpy_helper as onp  # noqa: PLC0415
+        from onnx import TensorProto  # noqa: PLC0415
+
+        import onnxruntime.quantization as oq  # noqa: PLC0415
+
+        # Build a minimal Add model: output = input + weight.
+        # Weight shape [32, 32] float32 => 4096 bytes, which is above the
+        # 1024-byte threshold that triggers ONNX external-data serialization
+        # inside save_and_reload_model_with_shape_infer.
+        weight_data = np.ones((32, 32), dtype=np.float32)
+        weight_initializer = onp.from_array(weight_data, name="weight")
+
+        input_vi = oh.make_tensor_value_info("input", TensorProto.FLOAT, [32, 32])
+        output_vi = oh.make_tensor_value_info("output", TensorProto.FLOAT, [32, 32])
+        add_node = oh.make_node("Add", inputs=["input", "weight"], outputs=["output"])
+
+        graph = oh.make_graph([add_node], "test_graph", [input_vi], [output_vi], [weight_initializer])
+        model_proto = oh.make_model(graph, opset_imports=[oh.make_opsetid("", 13)])
+        model_proto.ir_version = 7
+
+        class MockReader:
+            def __init__(self):
+                self.i = 0
+
+            def get_next(self):
+                if self.i > 0:
+                    return None
+                self.i += 1
+                return {"input": np.ones((32, 32), dtype=np.float32)}
+
+        with tempfile.TemporaryDirectory() as temp:
+            output_path = os.path.join(temp, "quantized.onnx")
+            # Before the fix this raised ValidationError because the temp dir
+            # created inside save_and_reload_model_with_shape_infer was deleted
+            # while the mutated proto still referenced it.
+            oq.quantize_static(model_proto, output_path, MockReader())
+            self.assertTrue(
+                os.path.exists(output_path),
+                f"Expected quantized model at {output_path!r}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

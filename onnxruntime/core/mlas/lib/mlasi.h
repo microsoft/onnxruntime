@@ -611,6 +611,31 @@ void
     );
 
 typedef
+void
+(MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+typedef
+void
+(MLASCALL MLAS_COMPUTE_GELU_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    MLAS_FP16* Temp,
+    size_t N,
+    MLAS_GELU_ALGORITHM Algo
+);
+
+typedef void
+(MLASCALL MLAS_COMPUTE_TANH_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+typedef
 float
 (MLASCALL MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL)(
     const float* Input,
@@ -1008,6 +1033,10 @@ extern "C" {
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeonAsm;
 #endif
     MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+#if !defined(_WIN32)
+    // AArch64 assembly micro-kernel for direct NCHWc convolution
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeonAsm;
+#endif
     // Intrinsics kernel for depthwise NCHWc convolution
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
 #if !defined(_WIN32)
@@ -1020,7 +1049,10 @@ extern "C" {
     // AArch64 assembly micro-kernel for pointwise NCHWc convolution
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
 #endif
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    // AArch64 assembly fast-math micro-kernels
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwBf16KernelNeon;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseBf16KernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
 #endif
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
@@ -1096,6 +1128,8 @@ extern "C" {
 #endif
 
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernel;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32Kernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernel;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernel;
@@ -1110,6 +1144,7 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
     MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
@@ -1126,6 +1161,8 @@ extern "C" {
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL MlasQLinearAddU8KernelAvx2;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelAvx512F;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernelAvx512F;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelAvx512F;
 #endif
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
@@ -1440,7 +1477,9 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwBf16Kernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseBf16Kernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseBf16Kernel;
 #endif
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
@@ -1476,7 +1515,14 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
 #endif
+
+MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
+
 #if defined(MLAS_TARGET_AMD64)
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* TransposePackB16x4Routine;
@@ -1678,8 +1724,6 @@ MlasFp32FromBits(
 #endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
-
-
 void
 MLASCALL
 MlasConvDepthwiseFloat_CHW(
@@ -1692,6 +1736,28 @@ MlasConvDepthwiseFloat_CHW(
 
 #endif
 
+void
+MlasConvDepthwiseWithMultiplierFloat_CHW(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    const float* Zeros
+    );
+
+#if defined(MLAS_TARGET_AMD64)
+void
+MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
+    const float* Input,
+    size_t InputHeight,
+    size_t InputWidth,
+    const float* Filter,
+    float* Output,
+    size_t OutputHeight,
+    size_t OutputWidth,
+    float Beta
+    );
+#endif
 
 //
 // Define the missing ARM64 NEON intrinsic macros from arm64_neon.h that enable

@@ -43,6 +43,16 @@ class Tensor final {
   // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  /// Static factory kept for plugin EP kernels that still call Tensor::Create().
+  /// The main tree deprecated these in favor of constructors, but dynamically-linked
+  /// plugin code relies on the static method.
+  static std::unique_ptr<Tensor> Create(MLDataType elt_type, const TensorShape& shape,
+                                        std::shared_ptr<IAllocator> allocator) {
+    return std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+  }
+#endif
+
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
   /**
