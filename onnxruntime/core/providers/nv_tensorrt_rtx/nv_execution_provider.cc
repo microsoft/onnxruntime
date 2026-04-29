@@ -1778,7 +1778,7 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         SubGraphCollection_t parser_nodes_list;
         TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
         auto trt_builder = GetBuilder(trt_logger);
-#if (TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 97) || TRT_MINOR_RTX >= 6
+#if TRT_MAJOR_RTX >= 2 || (TRT_MAJOR_RTX == 1 && ((TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 97) || TRT_MINOR_RTX >= 6))
         // kSTRONGLY_TYPED == 0 => bit flag value is 1U. Use literal to avoid deprecated-enum warning (deprecated since 1.5.0.97).
         constexpr uint32_t network_flags = 1U;
 #else
@@ -2718,7 +2718,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
   auto trt_builder = GetBuilder(trt_logger);
-#if (TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 97) || TRT_MINOR_RTX >= 6
+#if TRT_MAJOR_RTX >= 2 || (TRT_MAJOR_RTX == 1 && ((TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 97) || TRT_MINOR_RTX >= 6))
   // kSTRONGLY_TYPED == 0 => bit flag value is 1U. Use literal to avoid deprecated-enum warning (deprecated since 1.5.0.97).
   constexpr uint32_t network_flags = 1U;
 #else
