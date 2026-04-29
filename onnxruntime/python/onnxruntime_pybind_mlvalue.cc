@@ -1114,20 +1114,11 @@ void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
       // Fall back to built-in EP copy functions.
       // Gate each path on (Type, VendorId) so that builds with multiple GPU EPs
       // (e.g. CUDA + DML) route through the correct backend.
+#ifdef USE_CUDA
       const auto is_cuda_device = [](const OrtDevice& device) {
         return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NVIDIA;
       };
-      const auto is_migraphx_device = [](const OrtDevice& device) {
-        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD;
-      };
-      const auto is_dml_device = [](const OrtDevice& device) {
-        return (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::MICROSOFT) ||
-               device.Type() == OrtDevice::DML;
-      };
-      const auto is_cann_device = [](const OrtDevice& device) {
-        return device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI;
-      };
-#ifdef USE_CUDA
+
       if (is_cuda_device(src_device) && is_cuda_device(dst_device)) {
         auto data_transfer = GetGPUDataTransfer();
         ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, *dst.GetMutable<Tensor>()));
@@ -1143,6 +1134,10 @@ void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
       }
 #endif
 #if USE_MIGRAPHX
+      const auto is_migraphx_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD;
+      };
+
       if (src_device.UsesCpuMemory() && is_migraphx_device(dst_device)) {
         CpuToMIGraphXMemCpy(dst_ptr, src_ptr, bytes);
         return;
@@ -1153,6 +1148,11 @@ void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
       }
 #endif
 #if USE_DML
+      const auto is_dml_device = [](const OrtDevice& device) {
+        return (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::MICROSOFT) ||
+               device.Type() == OrtDevice::DML;
+      };
+
       if (src_device.UsesCpuMemory() && is_dml_device(dst_device)) {
         CpuToDmlMemCpy(dst_ptr, src_ptr, bytes);
         return;
@@ -1163,6 +1163,10 @@ void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
       }
 #endif
 #ifdef USE_CANN
+      const auto is_cann_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI;
+      };
+
       if (src_device.UsesCpuMemory() && is_cann_device(dst_device)) {
         CpuToCannMemCpy(dst_ptr, src_ptr, bytes);
         return;
