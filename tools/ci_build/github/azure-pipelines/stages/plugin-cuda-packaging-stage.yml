@@ -28,6 +28,9 @@ parameters:
   - release
   - RC
 
+- name: version_file
+  type: string
+
 - name: cmake_build_type
   type: string
   displayName: 'CMake build type'
@@ -71,6 +74,7 @@ stages:
           cuda_version: ${{ parameters.cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
           package_version: ${{ parameters.package_type }}
+          version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # Linux x64
@@ -83,6 +87,7 @@ stages:
           cuda_version: ${{ parameters.cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
           package_version: ${{ parameters.package_type }}
+          version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           docker_base_image: ${{ parameters.docker_base_image }}
           python_version: ${{ parameters.python_version }}
@@ -99,6 +104,7 @@ stages:
           cuda_version: ${{ parameters.cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
           package_version: ${{ parameters.package_type }}
+          version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
           python_version: ${{ parameters.python_version }}
