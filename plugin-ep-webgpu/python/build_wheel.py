@@ -31,6 +31,9 @@ def gen_file_from_template(
 
     If `strict` is True, raises ValueError when the set of "@var@" names found in the template
     does not match the keys of `variable_substitutions`.
+
+    Note: substituted values are inserted verbatim with no awareness of the target file's syntax.
+    The caller is responsible for any quoting/escaping required by the target format.
     """
     content = template_file.read_text(encoding="utf-8")
 
@@ -52,6 +55,7 @@ def gen_file_from_template(
         )
 
     output_file.write_text(content, encoding="utf-8")
+
 
 # Patterns for binaries to include in the package
 BINARY_PATTERNS = [
@@ -91,9 +95,7 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
             shutil.copy2(src, dst)
             copied.append(dst)
     if not copied:
-        raise FileNotFoundError(
-            f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}"
-        )
+        raise FileNotFoundError(f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}")
 
     # Render pyproject.toml from its template
     min_ort_version = MIN_ONNXRUNTIME_VERSION_FILE.read_text(encoding="utf-8").strip()

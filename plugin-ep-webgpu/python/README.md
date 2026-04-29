@@ -15,6 +15,9 @@ pip install -r requirements-build-wheel.txt
 
 ## Building the wheel
 
+Wheels are built via `build_wheel.py`. Running `pip install` or `pip wheel` directly against this directory is not
+supported — the source tree contains `pyproject.toml.in` (a template), not a real `pyproject.toml`.
+
 ```bash
 python build_wheel.py \
   --binary_dir <path-to-built-binaries> \

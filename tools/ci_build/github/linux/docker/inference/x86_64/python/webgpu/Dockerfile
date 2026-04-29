@@ -12,6 +12,10 @@ ARG BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/buil
 # SwiftShader has no release tags, so pin to a commit SHA. The ICD must
 # advertise at least the Vulkan apiVersion Dawn requests; picking a SHA from
 # Dawn's DEPS is a convenient way to get one known to satisfy that.
+#
+# This SHA is lifted from Dawn's DEPS (third_party/swiftshader entry) at the
+# Dawn commit pinned by ORT in cmake/deps.txt. To refresh on a Dawn bump:
+#   https://dawn.googlesource.com/dawn/+/<dawn-commit>/DEPS
 # ---------------------------------------------------------------------------
 FROM $BASEIMAGE AS swiftshader_builder
 
