@@ -35,7 +35,10 @@ param(
     [string]$BinaryDir_WinX64,
     [string]$BinaryDir_WinArm64,
     [string]$BinaryDir_LinuxX64,
-    [string]$BinaryDir_OsxArm64
+    [string]$BinaryDir_OsxArm64,
+
+    # Optional NuGet.config to pass to `dotnet pack` via --configfile.
+    [string]$NuGetConfig
 )
 
 $ErrorActionPreference = 'Stop'
@@ -143,7 +146,22 @@ Get-ChildItem -Recurse (Join-Path $stagingDir "runtimes") | ForEach-Object { Wri
 Write-Host ""
 Write-Host "Running dotnet pack (Version=$Version, Configuration=$Configuration)..."
 
-dotnet pack $stagedCsproj --configuration $Configuration "-p:Version=$Version" --output $OutputDir
+$packArgs = @(
+    $stagedCsproj,
+    '--configuration', $Configuration,
+    "-p:Version=$Version",
+    '--output', $OutputDir
+)
+if ($NuGetConfig) {
+    if (-not (Test-Path $NuGetConfig)) {
+        Write-Error "NuGet.config not found: $NuGetConfig"
+        exit 1
+    }
+    $packArgs += @('--configfile', $NuGetConfig)
+    Write-Host "Using NuGet.config: $NuGetConfig"
+}
+
+dotnet pack @packArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Error "dotnet pack failed with exit code $LASTEXITCODE"
     exit $LASTEXITCODE

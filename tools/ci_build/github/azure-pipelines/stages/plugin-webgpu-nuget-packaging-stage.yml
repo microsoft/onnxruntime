@@ -111,6 +111,7 @@ stages:
           -ArtifactsDir "$(Build.BinariesDirectory)\artifacts"
           -OutputDir "$(Build.ArtifactStagingDirectory)\nuget"
           -Configuration Release
+          -NuGetConfig "$(Build.SourcesDirectory)\NuGet.config"
 
     # ESRP sign
     - template: ../templates/esrp_nuget.yml

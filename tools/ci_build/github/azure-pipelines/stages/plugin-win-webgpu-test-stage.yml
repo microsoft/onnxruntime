@@ -73,6 +73,8 @@ stages:
         clean: true
         submodules: none
 
+      - template: ../templates/setup-feeds-and-python-steps.yml
+
       # Download the NuGet package produced by the packaging pipeline run that
       # triggered this pipeline (or that was selected at queue time).
       - download: build
@@ -88,20 +90,18 @@ stages:
           # Copy .nupkg to local feed
           Copy-Item "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\*.nupkg" $localFeedDir -Force
 
-          # Update nuget.config in test project to point to local feed
+          # Write a project-level nuget.config that adds ONLY the local feed.
+          # NuGet merges this with the repo-root NuGet.config.
           $nugetConfig = "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\nuget.config"
-          $configContent = @"
+          Set-Content -Path $nugetConfig -Encoding UTF8 -Value @"
           <?xml version="1.0" encoding="utf-8"?>
           <configuration>
             <packageSources>
-              <clear />
-              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
               <add key="local" value="$localFeedDir" />
             </packageSources>
           </configuration>
           "@
-          Set-Content -Path $nugetConfig -Value $configContent -Encoding UTF8
-          Write-Host "Updated nuget.config with local feed: $localFeedDir"
+          Write-Host "Wrote project-level nuget.config with local feed: $localFeedDir"
           Write-Host "Local feed contents:"
           Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
         displayName: 'Set up local NuGet feed'
