@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <optional>
 
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -23,7 +24,7 @@ static void RunGQASeqlensKTest(
     const std::string& expected_message,
     bool provide_past = false,
     int past_seq_len = 0,
-    const std::vector<int64_t>& seqlens_k_shape = {}) {
+    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt) {
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
@@ -53,9 +54,9 @@ static void RunGQASeqlensKTest(
     tester.AddOptionalInputEdge<float>();  // past_value
   }
 
-  std::vector<int64_t> shape = seqlens_k_shape.empty()
-                                   ? std::vector<int64_t>{batch_size}
-                                   : seqlens_k_shape;
+  std::vector<int64_t> shape = seqlens_k_shape.has_value()
+                                   ? seqlens_k_shape.value()
+                                   : std::vector<int64_t>{batch_size};
   tester.AddInput<int32_t>("seqlens_k", shape, seqlens_k_data);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len});
 
@@ -246,7 +247,7 @@ TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShape) {
       "",
       /*provide_past=*/false,
       /*past_seq_len=*/0,
-      /*seqlens_k_shape=*/{1, 1});
+      /*seqlens_k_shape=*/std::vector<int64_t>{1, 1});
 }
 
 // Backward compat: seqlens_k shape {2, 1} accepted for batch_size=2.
@@ -260,7 +261,7 @@ TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShapeMultiBatch) {
       "",
       /*provide_past=*/false,
       /*past_seq_len=*/0,
-      /*seqlens_k_shape=*/{2, 1});
+      /*seqlens_k_shape=*/std::vector<int64_t>{2, 1});
 }
 
 // Backward compat: seqlens_k shape {1, 2} accepted for batch_size=2.
@@ -275,7 +276,7 @@ TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShapeTrailingBatch) {
       "",
       /*provide_past=*/false,
       /*past_seq_len=*/0,
-      /*seqlens_k_shape=*/{1, 2});
+      /*seqlens_k_shape=*/std::vector<int64_t>{1, 2});
 }
 
 // Shape {2, 2} with batch_size=4: correct element count but invalid factored shape.
@@ -289,7 +290,7 @@ TEST(GroupQueryAttentionTest, SeqlensKInvalidFactoredShape) {
       "seqlens_k has unexpected shape",
       /*provide_past=*/false,
       /*past_seq_len=*/0,
-      /*seqlens_k_shape=*/{2, 2});
+      /*seqlens_k_shape=*/std::vector<int64_t>{2, 2});
 }
 
 // Wrong element count (1D): 2 elements for batch_size=1.
@@ -303,7 +304,7 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongLength) {
       "seqlens_k must have batch_size",
       /*provide_past=*/false,
       /*past_seq_len=*/0,
-      /*seqlens_k_shape=*/{2});
+      /*seqlens_k_shape=*/std::vector<int64_t>{2});
 }
 
 // Wrong element count (2D): shape {2, 1} has 2 elements but batch_size=1.
@@ -317,7 +318,21 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongElementCount2D) {
       "seqlens_k must have batch_size",
       /*provide_past=*/false,
       /*past_seq_len=*/0,
-      /*seqlens_k_shape=*/{2, 1});
+      /*seqlens_k_shape=*/std::vector<int64_t>{2, 1});
+}
+
+// Scalar seqlens_k must be rejected even when batch_size=1.
+TEST(GroupQueryAttentionTest, SeqlensKScalarRejected) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k must be at least 1D",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{});
 }
 
 }  // namespace test

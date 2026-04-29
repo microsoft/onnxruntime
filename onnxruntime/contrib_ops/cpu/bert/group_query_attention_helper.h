@@ -263,6 +263,10 @@ Status CheckInputs(const T* query,
 
   // Spec requires 1D shape (batch_size), but older model builders may add unit
   // dimensions (e.g. [B, 1] instead of [B]). Allow shapes where each dim is 1 or batch_size.
+  if (seqlens_k->Shape().NumDimensions() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "seqlens_k must be at least 1D, got scalar.");
+  }
   const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
   if (seqlens_k->Shape().Size() != static_cast<int64_t>(batch_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

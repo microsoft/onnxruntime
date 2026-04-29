@@ -197,6 +197,9 @@ export const validateInputs = (
   // dimensions (e.g. [B, 1] instead of [B]). Allow shapes where each dim is 1 or batchSize.
   const seqlLens = inputs.length > 4 ? inputs[5] : undefined;
   if (seqlLens) {
+    if (seqlLens.dims.length === 0) {
+      throw new Error('seqlens_k must be at least 1D, got scalar.');
+    }
     const seqlLenSize = seqlLens.dims.reduce((a, b) => a * b, 1);
     if (seqlLenSize !== batchSize) {
       throw new Error(
