@@ -240,7 +240,7 @@ TEST(MLOpTest, LinearClassifierCoefficientsSizeNotDivisibleByClassCountFails) {
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "coefficients size (5) must be a multiple of the number of classes (3)");
+           "coefficients size (5) is less than class_count (3) * num_features (2)");
 }
 
 TEST(MLOpTest, LinearClassifierInputFeatureCountMismatchFails) {

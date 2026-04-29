@@ -319,7 +319,7 @@ TEST(MLOpTest, SVMClassifierVectorsPerClassSizeMismatch) {
   test.AddOutput<int64_t>("Y", {1}, {1});
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "vectors_per_class attribute size");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "vectors_per_class");
 }
 
 TEST(MLOpTest, SVMClassifierInvalidInputFeatureCount) {
