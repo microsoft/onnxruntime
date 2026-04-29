@@ -28,31 +28,6 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
-namespace {
-std::filesystem::path ResolveTestPath(const std::filesystem::path& path) {
-  if (path.is_absolute() || path.empty()) {
-    return path;
-  }
-
-  std::filesystem::path workspace_candidate = std::filesystem::current_path() / path;
-  std::error_code ec;
-  if (std::filesystem::exists(workspace_candidate, ec) && !ec) {
-    return workspace_candidate;
-  }
-
-  static const std::filesystem::path kSourceTestRoot =
-      std::filesystem::path{ORT_TSTR_ON_MACRO(__FILE__)}.parent_path().parent_path();
-  std::filesystem::path source_candidate = kSourceTestRoot / path;
-  ec.clear();
-  if (std::filesystem::exists(source_candidate, ec) && !ec) {
-    return source_candidate;
-  }
-
-  // Keep the original relative-to-workdir intent so the downstream file-open
-  // error points to the path we actually tried first.
-  return workspace_candidate;
-}
-}  // namespace
 
 struct OrtModelTestInfo {
   std::basic_string<ORTCHAR_T> model_filename;
@@ -86,7 +61,7 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 
   std::vector<char> model_data;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  std::filesystem::path model_path = ResolveTestPath(std::filesystem::path{test_info.model_filename});
+  std::filesystem::path model_path{test_info.model_filename};
 
   const auto& model_path_str = model_path.native();
   if (test_info.run_use_buffer) {
@@ -244,8 +219,8 @@ static void SaveAndCompareModels(const PathString& orig_file,
                                  const PathString& ort_file,
                                  TransformerLevel optimization_level = TransformerLevel::Level3,
                                  bool compare_saved_model = true) {
-  std::filesystem::path orig_path = ResolveTestPath(std::filesystem::path{orig_file});
-  std::filesystem::path ort_path = ResolveTestPath(std::filesystem::path{ort_file});
+  std::filesystem::path orig_path{orig_file};
+  std::filesystem::path ort_path{ort_file};
   if (ort_path.has_parent_path()) {
     std::filesystem::create_directories(ort_path.parent_path());
   }
