@@ -42,12 +42,13 @@ OrtStatus* ORT_API_CALL CudaPluginEpProfiler::StartProfilingImpl(
   EXCEPTION_TO_STATUS_BEGIN
   auto* self = static_cast<CudaPluginEpProfiler*>(this_ptr);
 
-  self->ep_profiling_start_offset_ns_ = ep_profiling_start_offset_ns;
-  self->start_time_point_ = TimePoint::clock::now();
+  auto now = TimePoint::clock::now();
 
   // Reconstruct the approximate ORT profiling start time so that GPU event
   // timestamps (computed by CUPTIManager::Consume) are relative to ORT's start.
-  self->ort_profiling_start_ = self->start_time_point_ -
+  // The result equals (ORT's profiling start) + (cross-DLL call latency), which
+  // is typically < 1 µs — acceptable for profiling-level accuracy.
+  self->ort_profiling_start_ = now -
                                std::chrono::duration_cast<TimePoint::duration>(
                                    std::chrono::nanoseconds(ep_profiling_start_offset_ns));
 

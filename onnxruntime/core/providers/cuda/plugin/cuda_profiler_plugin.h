@@ -18,8 +18,6 @@ namespace cuda_plugin {
 struct CudaPluginEpProfiler : OrtEpProfilerImpl {
   const OrtEpApi& ep_api;
   uint64_t client_handle_ = 0;
-  int64_t ep_profiling_start_offset_ns_ = 0;
-  TimePoint start_time_point_;
   TimePoint ort_profiling_start_;
 
   explicit CudaPluginEpProfiler(const OrtEpApi& api);
