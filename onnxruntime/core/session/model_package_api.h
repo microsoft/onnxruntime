@@ -39,6 +39,22 @@ ORT_API_STATUS_IMPL(ModelPackageContext_GetSelectedVariantFileIdentifier,
                     _In_ size_t index,
                     _Outptr_ const char** out_file_identifier);
 
+ORT_API_STATUS_IMPL(ModelPackageGetFileSessionOptions,
+                    _In_ const OrtModelPackageContext* context,
+                    _In_ const char* component_name,
+                    _In_opt_ const char* file_identifier,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries);
+
+ORT_API_STATUS_IMPL(ModelPackageGetFileProviderOptions,
+                    _In_ const OrtModelPackageContext* context,
+                    _In_ const char* component_name,
+                    _In_opt_ const char* file_identifier,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries);
+
 ORT_API_STATUS_IMPL(CreateSession,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageContext* ctx,

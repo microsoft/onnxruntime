@@ -22,8 +22,8 @@ struct EpCompatibilitySchema {
   std::optional<std::string> ep;  // nullable in schema
   std::optional<std::string> device_type;
   std::optional<std::string> compatibility_info;
-  std::optional<json> session_options;
-  std::optional<json> provider_options;
+  std::optional<std::unordered_map<std::string, std::string>> session_options;
+  std::optional<std::unordered_map<std::string, std::string>> provider_options;
 };
 
 struct ModelInfoSchema {
@@ -48,13 +48,40 @@ struct MetadataSchema {
   std::unordered_map<std::string, VariantSchema> model_variants;  // required
 };
 
+namespace {
+
+std::optional<std::unordered_map<std::string, std::string>> ParseStringMapObject(
+    const json& j, const char* key_name) {
+  if (!j.contains(key_name) || j[key_name].is_null()) {
+    return std::nullopt;
+  }
+
+  const auto& obj = j[key_name];
+  if (!obj.is_object()) {
+    throw std::invalid_argument(std::string("\"") + key_name + "\" must be an object");
+  }
+
+  std::unordered_map<std::string, std::string> result;
+  for (auto it = obj.begin(); it != obj.end(); ++it) {
+    if (!it.value().is_string()) {
+      throw std::invalid_argument(std::string("\"") + key_name +
+                                  "\" must contain only string values. Key '" + it.key() + "' is not a string.");
+    }
+    result.emplace(it.key(), it.value().get<std::string>());
+  }
+
+  return result;
+}
+
+}  // namespace
+
 void from_json(const json& j, EpCompatibilitySchema& c) {
   if (j.contains(kEpKey) && !j[kEpKey].is_null()) c.ep = j[kEpKey].get<std::string>();
   if (j.contains(kDeviceTypeKey) && j[kDeviceTypeKey].is_string()) c.device_type = j[kDeviceTypeKey].get<std::string>();
   if (j.contains(kCompatibilityInfoKey) && j[kCompatibilityInfoKey].is_string()) c.compatibility_info = j[kCompatibilityInfoKey].get<std::string>();
 
-  if (j.contains(kSessionOptionsKey) && j[kSessionOptionsKey].is_object()) c.session_options = j[kSessionOptionsKey];
-  if (j.contains(kProviderOptionsKey) && j[kProviderOptionsKey].is_object()) c.provider_options = j[kProviderOptionsKey];
+  c.session_options = ParseStringMapObject(j, kSessionOptionsKey);
+  c.provider_options = ParseStringMapObject(j, kProviderOptionsKey);
 }
 
 void from_json(const json& j, ModelInfoSchema& m) {
@@ -480,6 +507,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
                              << "' is listed in manifest.json but directory does not exist: "
                              << component_model_root.string()
                              << ". Skipping this component model.";
+
       continue;
     }
 

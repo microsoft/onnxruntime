@@ -239,31 +239,77 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       mp_ctx.ResolveSelectedVariantFilePath(component_name, file_identifier, selected_model_path));
 
-  // 2) Pick the OrtSessionOptions per precedence rules on OrtApi::CreateSessionFromModelPackage:
+  // 2) Pick the OrtSessionOptions per precedence rules:
   //    - session_options == nullptr (default path): use the options captured on the context,
   //      and merge variant-specific session + provider options from the package metadata.
   //    - session_options != nullptr (advanced path): use caller-supplied as-is, no metadata merge.
-  OrtSessionOptions effective_options{};
+  const OrtSessionOptions* effective_options = nullptr;
+  std::optional<OrtSessionOptions> effective_options_storage;
+
   if (session_options == nullptr) {
-    effective_options = mp_ctx_options->SessionOptions();
-    // TODO: merge variant-specific session and provider options declared in the
-    // package metadata (component_name / variant / file_identifier) onto `effective_options`.
+    // Important: use copy-constructor, not assignment (operator= is not implemented).
+    effective_options_storage.emplace(mp_ctx_options->SessionOptions());
+
+    // Merge variant/file session options into config options.
+    gsl::span<const std::string> session_option_keys;
+    gsl::span<const std::string> session_option_values;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(
+        mp_ctx.GetSelectedVariantFileSessionOptions(component_name, file_identifier,
+                                                    session_option_keys, session_option_values));
+
+    ORT_API_RETURN_IF(session_option_keys.size() != session_option_values.size(),
+                      ORT_FAIL, "Session option keys/values size mismatch.");
+
+    for (size_t i = 0; i < session_option_keys.size(); ++i) {
+      ORT_API_RETURN_IF_STATUS_NOT_OK(
+          effective_options_storage->value.config_options.AddConfigEntry(
+              session_option_keys[i].c_str(), session_option_values[i].c_str()));
+    }
+
+    // Merge variant/file provider options as flat key/value entries for the selected EP devices.
+    gsl::span<const std::string> provider_option_keys;
+    gsl::span<const std::string> provider_option_values;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(
+        mp_ctx.GetSelectedVariantFileProviderOptions(component_name, file_identifier,
+                                                     provider_option_keys, provider_option_values));
+
+    ORT_API_RETURN_IF(provider_option_keys.size() != provider_option_values.size(),
+                      ORT_FAIL, "Provider option keys/values size mismatch.");
+
+    if (!provider_option_keys.empty()) {
+      std::vector<const char*> provider_option_key_ptrs;
+      std::vector<const char*> provider_option_value_ptrs;
+      provider_option_key_ptrs.reserve(provider_option_keys.size());
+      provider_option_value_ptrs.reserve(provider_option_values.size());
+
+      for (size_t i = 0; i < provider_option_keys.size(); ++i) {
+        provider_option_key_ptrs.push_back(provider_option_keys[i].c_str());
+        provider_option_value_ptrs.push_back(provider_option_values[i].c_str());
+      }
+
+      ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::AddEpOptionsToSessionOptions(
+          gsl::span<const OrtEpDevice* const>(mp_ctx.DevicesSelected().data(), mp_ctx.DevicesSelected().size()),
+          gsl::span<const char* const>(provider_option_key_ptrs.data(), provider_option_key_ptrs.size()),
+          gsl::span<const char* const>(provider_option_value_ptrs.data(), provider_option_value_ptrs.size()),
+          effective_options_storage->value));
+    }
+
+    effective_options = &*effective_options_storage;
   } else {
-    effective_options = *session_options;
+    effective_options = session_options;
   }
 
   // 3) Create session with the resolved file and effective session options.
   std::unique_ptr<onnxruntime::InferenceSession> sess;
   ORT_API_RETURN_IF_ERROR(onnxruntime::CreateSessionForResolvedModelPackage(
-      &effective_options,
+      effective_options,
       env->GetEnvironment(),
       selected_model_path,
       mp_ctx,
       sess));
 
   // 4) Initialize.
-  //    TODO: might need to resolve external weights in the shared folder.
-  ORT_API_RETURN_IF_ERROR(InitializeSession(&effective_options, *sess));
+  ORT_API_RETURN_IF_ERROR(InitializeSession(effective_options, *sess));
 
   *session = reinterpret_cast<OrtSession*>(sess.release());
   return nullptr;
@@ -274,6 +320,118 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
   ORT_UNUSED_PARAMETER(file_identifier);
   ORT_UNUSED_PARAMETER(session_options);
   ORT_UNUSED_PARAMETER(session);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageGetFileSessionOptions,
+                    _In_ const OrtModelPackageContext* context,
+                    _In_ const char* component_name,
+                    _In_opt_ const char* file_identifier,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (context == nullptr || component_name == nullptr || option_keys == nullptr || option_values == nullptr || num_entries == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid null argument.");
+  }
+
+  gsl::span<const std::string> keys;
+  gsl::span<const std::string> values;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(context)->GetSelectedVariantFileSessionOptions(
+          component_name, file_identifier, keys, values));
+
+  ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Session options keys/values size mismatch.");
+  *num_entries = keys.size();
+
+  if (*num_entries == 0) {
+    *option_keys = nullptr;
+    *option_values = nullptr;
+  } else {
+    static thread_local std::vector<const char*> key_ptrs;
+    static thread_local std::vector<const char*> value_ptrs;
+
+    key_ptrs.clear();
+    value_ptrs.clear();
+    key_ptrs.reserve(keys.size());
+    value_ptrs.reserve(values.size());
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      key_ptrs.push_back(keys[i].c_str());
+      value_ptrs.push_back(values[i].c_str());
+    }
+
+    *option_keys = key_ptrs.data();
+    *option_values = value_ptrs.data();
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(file_identifier);
+  ORT_UNUSED_PARAMETER(option_keys);
+  ORT_UNUSED_PARAMETER(option_values);
+  ORT_UNUSED_PARAMETER(num_entries);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageGetFileProviderOptions,
+                    _In_ const OrtModelPackageContext* context,
+                    _In_ const char* component_name,
+                    _In_opt_ const char* file_identifier,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (context == nullptr || component_name == nullptr || option_keys == nullptr || option_values == nullptr || num_entries == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid null argument.");
+  }
+
+  gsl::span<const std::string> keys;
+  gsl::span<const std::string> values;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(context)->GetSelectedVariantFileProviderOptions(
+          component_name, file_identifier, keys, values));
+
+  ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Provider options keys/values size mismatch.");
+  *num_entries = keys.size();
+
+  if (*num_entries == 0) {
+    *option_keys = nullptr;
+    *option_values = nullptr;
+  } else {
+    static thread_local std::vector<const char*> key_ptrs;
+    static thread_local std::vector<const char*> value_ptrs;
+
+    key_ptrs.clear();
+    value_ptrs.clear();
+    key_ptrs.reserve(keys.size());
+    value_ptrs.reserve(values.size());
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      key_ptrs.push_back(keys[i].c_str());
+      value_ptrs.push_back(values[i].c_str());
+    }
+
+    *option_keys = key_ptrs.data();
+    *option_values = value_ptrs.data();
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(file_identifier);
+  ORT_UNUSED_PARAMETER(option_keys);
+  ORT_UNUSED_PARAMETER(option_values);
+  ORT_UNUSED_PARAMETER(num_entries);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END
@@ -295,6 +453,8 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     &OrtModelPackageAPI::ModelPackageContext_GetComponentModelName,
     &OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileCount,
     &OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileIdentifier,
+    &OrtModelPackageAPI::ModelPackageGetFileSessionOptions,
+    &OrtModelPackageAPI::ModelPackageGetFileProviderOptions,
 
     // Session
     &OrtModelPackageAPI::CreateSession,
@@ -302,7 +462,7 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     // End of Version X - DO NOT MODIFY ABOVE
 };
 
-static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 8,
+static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 10,
               "Size of initial OrtModelPackageApi cannot change");
 
 ORT_API(const OrtModelPackageApi*, OrtModelPackageAPI::GetModelPackageApi) {

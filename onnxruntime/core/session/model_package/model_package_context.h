@@ -25,8 +25,8 @@ struct VariantEpCompatibilityInfo {
   std::optional<std::string> ep;
   std::optional<std::string> device_type;
   std::optional<std::string> compatibility_info;
-  std::optional<json> session_options;
-  std::optional<json> provider_options;
+  std::optional<std::unordered_map<std::string, std::string>> session_options;
+  std::optional<std::unordered_map<std::string, std::string>> provider_options;
   OrtCompiledModelCompatibility compiled_model_compatibility{};
 };
 
@@ -107,6 +107,16 @@ class ModelPackageContext {
   const std::vector<const OrtEpDevice*>& DevicesSelected() const;
   bool IsFromPolicy() const;
 
+  Status GetSelectedVariantFileSessionOptions(const std::string& component_name,
+                                              const char* file_identifier /*may be null*/,
+                                              gsl::span<const std::string>& out_keys,
+                                              gsl::span<const std::string>& out_values) const;
+
+  Status GetSelectedVariantFileProviderOptions(const std::string& component_name,
+                                               const char* file_identifier /*may be null*/,
+                                               gsl::span<const std::string>& out_keys,
+                                               gsl::span<const std::string>& out_values) const;
+
  private:
   const onnxruntime::Environment& env_;
   const ModelPackageOptions* options_{};  // non-owning, immutable config source
@@ -118,6 +128,10 @@ class ModelPackageContext {
 
   // Cached file identifiers for the currently selected variant (for query APIs).
   mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
+  mutable std::vector<std::string> selected_variant_session_option_keys_cache_{};
+  mutable std::vector<std::string> selected_variant_session_option_values_cache_{};
+  mutable std::vector<std::string> selected_variant_provider_option_keys_cache_{};
+  mutable std::vector<std::string> selected_variant_provider_option_values_cache_{};
 
   // Resolved EP state owned by context
   std::vector<VariantSelectionEpInfo> ep_infos_{};

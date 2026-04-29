@@ -8606,6 +8606,37 @@ struct OrtModelPackageApi {
                   _In_ const char* component_name,
                   _In_ size_t index,
                   _Outptr_ const char** out_file_identifier);
+
+  /** \brief Get session options for a selected file as flat key/value entries.
+   *
+   * Returns NULL/empty arrays when none specified.
+   * Memory is owned by `context` and valid until the next model-package query call on that context.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(ModelPackageGetFileSessionOptions,
+                  _In_ const OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_opt_ const char* file_identifier,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                  _Out_ size_t* num_entries);
+
+  /** \brief Get provider options for a selected file as flat key/value entries.
+   *
+   * EP-name nesting is not included (selected EP is already known).
+   * Returns NULL/empty arrays when none specified.
+   * Memory is owned by `context` and valid until the next model-package query call on that context.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(ModelPackageGetFileProviderOptions,
+                  _In_ const OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_opt_ const char* file_identifier,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                  _Out_ size_t* num_entries);
   /// @}
   /** \brief Create an OrtSession for a selected file within a component model variant.
    *

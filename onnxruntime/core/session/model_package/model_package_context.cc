@@ -23,6 +23,67 @@
 
 namespace onnxruntime {
 
+namespace {
+
+Status FillOptionCachesFromJsonObject(const std::optional<json>& options_json,
+                                      std::vector<std::string>& key_cache,
+                                      std::vector<std::string>& value_cache,
+                                      gsl::span<const std::string>& out_keys,
+                                      gsl::span<const std::string>& out_values) {
+  key_cache.clear();
+  value_cache.clear();
+
+  if (!options_json.has_value()) {
+    out_keys = gsl::span<const std::string>{};
+    out_values = gsl::span<const std::string>{};
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF(!options_json->is_object(), "Options JSON must be an object.");
+
+  key_cache.reserve(options_json->size());
+  value_cache.reserve(options_json->size());
+
+  for (auto it = options_json->begin(); it != options_json->end(); ++it) {
+    key_cache.push_back(it.key());
+    value_cache.push_back(it.value().is_string() ? it.value().get<std::string>() : it.value().dump());
+  }
+
+  out_keys = gsl::span<const std::string>(key_cache.data(), key_cache.size());
+  out_values = gsl::span<const std::string>(value_cache.data(), value_cache.size());
+  return Status::OK();
+}
+
+Status FillOptionCachesFromMap(
+    const std::optional<std::unordered_map<std::string, std::string>>& options_map,
+    std::vector<std::string>& key_cache,
+    std::vector<std::string>& value_cache,
+    gsl::span<const std::string>& out_keys,
+    gsl::span<const std::string>& out_values) {
+  key_cache.clear();
+  value_cache.clear();
+
+  if (!options_map.has_value()) {
+    out_keys = gsl::span<const std::string>{};
+    out_values = gsl::span<const std::string>{};
+    return Status::OK();
+  }
+
+  key_cache.reserve(options_map->size());
+  value_cache.reserve(options_map->size());
+
+  for (const auto& kv : *options_map) {
+    key_cache.push_back(kv.first);
+    value_cache.push_back(kv.second);
+  }
+
+  out_keys = gsl::span<const std::string>(key_cache.data(), key_cache.size());
+  out_values = gsl::span<const std::string>(value_cache.data(), value_cache.size());
+  return Status::OK();
+}
+
+}  // namespace
+
 ModelPackageContext::ModelPackageContext(const onnxruntime::Environment& env,
                                          const std::filesystem::path& package_root,
                                          std::vector<VariantSelectionEpInfo> ep_infos) : env_(env), ep_infos_(std::move(ep_infos)) {
@@ -283,24 +344,67 @@ Status ModelPackageContext::GetSelectedVariantFilePath(std::filesystem::path& ou
   return Status::OK();
 }
 
-namespace {
+Status ModelPackageContext::GetSelectedVariantFileSessionOptions(const std::string& component_name,
+                                                                 const char* file_identifier,
+                                                                 gsl::span<const std::string>& out_keys,
+                                                                 gsl::span<const std::string>& out_values) const {
+  out_keys = {};
+  out_values = {};
 
-bool IsUnconstrainedVariant(const ModelVariantInfo& variant) {
-  for (const auto& model_info : variant.model_info) {
-    for (const auto& ec : model_info.ep_compatibility) {
-      const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
-      const bool no_device = !ec.device_type.has_value() || ec.device_type->empty();
-      const bool no_compat = !ec.compatibility_info.has_value() || ec.compatibility_info->empty();
-      if (no_ep && no_device && no_compat) {
-        return true;
-      }
-    }
+  const VariantModelInfo* mi = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, mi));
+  ORT_RETURN_IF(mi == nullptr, "Selected model info is null for component: ", component_name);
+
+  ORT_RETURN_IF(mi->ep_compatibility.empty(),
+                "Selected model info has no ep_compatibility entries.");
+
+  size_t ec_idx = 0;
+  if (mi->selected_ep_compatibility_index.has_value()) {
+    ec_idx = *mi->selected_ep_compatibility_index;
+    ORT_RETURN_IF(ec_idx >= mi->ep_compatibility.size(),
+                  "selected_ep_compatibility_index out of range.");
+  } else if (mi->ep_compatibility.size() > 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "selected_ep_compatibility_index is not set for selected model_info with multiple ep_compatibility entries.");
   }
 
-  return false;
+  return FillOptionCachesFromMap(mi->ep_compatibility[ec_idx].session_options,
+                                 selected_variant_session_option_keys_cache_,
+                                 selected_variant_session_option_values_cache_,
+                                 out_keys,
+                                 out_values);
 }
 
-}  // namespace
+Status ModelPackageContext::GetSelectedVariantFileProviderOptions(const std::string& component_name,
+                                                                  const char* file_identifier,
+                                                                  gsl::span<const std::string>& out_keys,
+                                                                  gsl::span<const std::string>& out_values) const {
+  out_keys = {};
+  out_values = {};
+
+  const VariantModelInfo* mi = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, mi));
+  ORT_RETURN_IF(mi == nullptr, "Selected model info is null for component: ", component_name);
+
+  ORT_RETURN_IF(mi->ep_compatibility.empty(),
+                "Selected model info has no ep_compatibility entries.");
+
+  size_t ec_idx = 0;
+  if (mi->selected_ep_compatibility_index.has_value()) {
+    ec_idx = *mi->selected_ep_compatibility_index;
+    ORT_RETURN_IF(ec_idx >= mi->ep_compatibility.size(),
+                  "selected_ep_compatibility_index out of range.");
+  } else if (mi->ep_compatibility.size() > 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "selected_ep_compatibility_index is not set for selected model_info with multiple ep_compatibility entries.");
+  }
+
+  return FillOptionCachesFromMap(mi->ep_compatibility[ec_idx].provider_options,
+                                 selected_variant_provider_option_keys_cache_,
+                                 selected_variant_provider_option_values_cache_,
+                                 out_keys,
+                                 out_values);
+}
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
