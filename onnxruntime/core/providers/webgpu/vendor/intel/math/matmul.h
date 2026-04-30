@@ -41,7 +41,9 @@ bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, in
 Status ApplyMatMulIntel(ComputeContext& context,
                         const Activation& activation,
                         std::vector<const Tensor*>& inputs,
-                        Tensor* output);
+                        Tensor* output,
+                        const TensorShape& input_a_reshape = TensorShape(),
+                        const TensorShape& input_b_reshape = TensorShape());
 
 }  // namespace intel
 }  // namespace webgpu

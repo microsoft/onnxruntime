@@ -28,7 +28,7 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
-  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ false);
+  MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, /*is_channels_last = */ true);
   // generate the main function
   ORT_RETURN_IF_ERROR(MakeMatMulSubgroupSource(shader, elements_per_thread_, &batch_dims, is_vec4_));
   return Status::OK();
@@ -41,12 +41,14 @@ bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, in
 Status ApplyMatMulIntel(ComputeContext& context,
                         const Activation& activation,
                         std::vector<const Tensor*>& inputs,
-                        Tensor* output) {
+                        Tensor* output,
+                        const TensorShape& input_a_reshape,
+                        const TensorShape& input_b_reshape) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
   bool has_bias = inputs.size() > 2;
-  TensorShape a_shape = a->Shape();
-  TensorShape b_shape = b->Shape();
+  TensorShape a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
+  TensorShape b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
 
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
@@ -120,7 +122,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
       .SetWorkgroupSize(kSubgroupLogicalWorkGroupSizeX * kSubgroupLogicalWorkGroupSizeY, 1, 1);
 
   if (has_bias) {
-    auto bias_components = 1;
+    auto bias_components = components;
     const auto* bias = inputs[2];
     TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
     program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
