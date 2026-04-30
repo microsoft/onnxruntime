@@ -4,7 +4,6 @@
 #include "core/common/inlined_containers.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/unittest_util/framework_test_utils.h"
-#include "test/util/include/scoped_env_vars.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
@@ -16,21 +15,6 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
-
-namespace {
-
-constexpr const char* kOrtEnableMatMulNBitsSiluFusionEnvVar = "ORT_ENABLE_MATMUL_NBITS_SILU_FUSION";
-constexpr const char* kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar =
-  "ORT_ENABLE_MATMUL_NBITS_QKV_SIMPLIFIED_LAYER_NORM_FUSION";
-
-bool HasTransformerNamed(const InlinedVector<std::unique_ptr<GraphTransformer>>& transformers,
-                         std::string_view name) {
-  return std::any_of(transformers.begin(), transformers.end(), [&](const auto& transformer) {
-    return transformer && transformer->Name() == name;
-  });
-}
-
-}  // namespace
 
 TEST(GraphTransformerUtilsTests, TestGenerateRewriterules) {
   // Generate all test
@@ -84,66 +68,6 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   filtered_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, logger,
                                                                 disabled);
   ASSERT_TRUE(filtered_transformers.size() == all_transformers.size() - 1);
-#endif
-}
-
-TEST(GraphTransformerUtilsTests, MatMulNBitsSiluFusionDisabledByDefault) {
-#if defined(DISABLE_CONTRIB_OPS)
-  GTEST_SKIP() << "MatMulNBitsSiluFusion requires contrib ops.";
-#else
-  const EnvVarMap env_vars{{kOrtEnableMatMulNBitsSiluFusionEnvVar, optional<std::string>{}}};
-  ScopedEnvironmentVariables scoped_env_vars{env_vars};
-
-  CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
-  const auto& logger = DefaultLoggingManager().DefaultLogger();
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, logger);
-
-  EXPECT_FALSE(HasTransformerNamed(transformers, "MatMulNBitsSiluFusion"));
-#endif
-}
-
-TEST(GraphTransformerUtilsTests, MatMulNBitsSiluFusionEnabledViaEnvironmentVariable) {
-#if defined(DISABLE_CONTRIB_OPS)
-  GTEST_SKIP() << "MatMulNBitsSiluFusion requires contrib ops.";
-#else
-  const EnvVarMap env_vars{{kOrtEnableMatMulNBitsSiluFusionEnvVar, optional<std::string>{"1"}}};
-  ScopedEnvironmentVariables scoped_env_vars{env_vars};
-
-  CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
-  const auto& logger = DefaultLoggingManager().DefaultLogger();
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, logger);
-
-  EXPECT_TRUE(HasTransformerNamed(transformers, "MatMulNBitsSiluFusion"));
-#endif
-}
-
-TEST(GraphTransformerUtilsTests, MatMulNBitsQKVSimplifiedLayerNormFusionDisabledByDefault) {
-#if defined(DISABLE_CONTRIB_OPS)
-  GTEST_SKIP() << "MatMulNBitsQKVSimplifiedLayerNormFusion requires contrib ops.";
-#else
-  const EnvVarMap env_vars{{kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar, optional<std::string>{}}};
-  ScopedEnvironmentVariables scoped_env_vars{env_vars};
-
-  CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
-  const auto& logger = DefaultLoggingManager().DefaultLogger();
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, logger);
-
-  EXPECT_FALSE(HasTransformerNamed(transformers, "MatMulNBitsQKVSimplifiedLayerNormFusion"));
-#endif
-}
-
-TEST(GraphTransformerUtilsTests, MatMulNBitsQKVSimplifiedLayerNormFusionEnabledViaEnvironmentVariable) {
-#if defined(DISABLE_CONTRIB_OPS)
-  GTEST_SKIP() << "MatMulNBitsQKVSimplifiedLayerNormFusion requires contrib ops.";
-#else
-  const EnvVarMap env_vars{{kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar, optional<std::string>{"1"}}};
-  ScopedEnvironmentVariables scoped_env_vars{env_vars};
-
-  CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
-  const auto& logger = DefaultLoggingManager().DefaultLogger();
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, {}, cpu_ep, logger);
-
-  EXPECT_TRUE(HasTransformerNamed(transformers, "MatMulNBitsQKVSimplifiedLayerNormFusion"));
 #endif
 }
 

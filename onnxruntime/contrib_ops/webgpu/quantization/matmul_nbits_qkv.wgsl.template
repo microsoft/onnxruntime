@@ -5,9 +5,6 @@
 #param component_a
 #param component_b
 #param elements_in_value_b
-#param has_full_k_tiles
-#param has_full_kv_tiles
-#param has_full_q_tiles
 #param has_skip_input
 #param has_skip_output
 #param k_unroll_tiles
@@ -73,15 +70,6 @@ fn load_a_vec4(a_offset: u32) -> vec4<q_output_element_t> {
 fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32) {
   let k_offset = kidx / component_a + col;
   let input_offset = batch * uniforms.K_of_a + k_offset;
-#if has_full_k_tiles
-  let merged_value = load_merged_input(input_offset);
-#if has_skip_output
-  if (b_global_base == 0u) {
-    input_skip_bias_sum.setByOffset(input_offset, input_skip_bias_sum_value_t(merged_value));
-  }
-#endif
-  tile_A[col] = merged_value * input_a_value_t(input_a_element_t(inv_std)) * norm_scale.getByOffset(k_offset);
-#else
   if (k_offset < uniforms.K_of_a) {
     let merged_value = load_merged_input(input_offset);
 #if has_skip_output
@@ -93,7 +81,6 @@ fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32) {
   } else {
     tile_A[col] = input_a_value_t(0);
   }
-#endif
 }
 
 fn compute_projection_sum(weight: q_b_value_t,
@@ -158,18 +145,7 @@ fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy
   #if !single_scale_weights
     let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
   #endif
-  #if has_full_k_tiles
-    {
-  #else
     if (k_offset < uniforms.K_of_b) {
-  #endif
-  #if has_full_q_tiles
-  #if !single_scale_weights
-      let q_scale_b = q_output_element_t(q_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
-  #endif
-      let q_weight = q_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
-      q_inter_results[local_row_offset + idy][idx] += compute_projection_sum(q_weight, q_scale_b, idx);
-  #else
       if (b_global < uniforms.Nq) {
   #if !single_scale_weights
         let q_scale_b = q_output_element_t(q_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
@@ -177,17 +153,6 @@ fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy
       let q_weight = q_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
       q_inter_results[local_row_offset + idy][idx] += compute_projection_sum(q_weight, q_scale_b, idx);
     }
-  #endif
-  #if has_full_kv_tiles
-  #if !single_scale_weights
-    let k_scale_b = q_output_element_t(k_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
-    let v_scale_b = q_output_element_t(v_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
-  #endif
-    let k_weight = k_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
-    let v_weight = v_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
-    k_inter_results[local_row_offset + idy][idx] += compute_projection_sum(k_weight, k_scale_b, idx);
-    v_inter_results[local_row_offset + idy][idx] += compute_projection_sum(v_weight, v_scale_b, idx);
-  #else
     if (b_global < uniforms.Nkv) {
   #if !single_scale_weights
       let k_scale_b = q_output_element_t(k_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx));
@@ -198,7 +163,6 @@ fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy
       k_inter_results[local_row_offset + idy][idx] += compute_projection_sum(k_weight, k_scale_b, idx);
       v_inter_results[local_row_offset + idy][idx] += compute_projection_sum(v_weight, v_scale_b, idx);
     }
-  #endif
     }
   }
   workgroupBarrier();
@@ -291,18 +255,10 @@ $MAIN {
       k_output_value += k_inter_results[local_idx][b];
       v_output_value += v_inter_results[local_idx][b];
     }
-#if has_full_q_tiles
-    {
-#else
     if (b_global < uniforms.Nq) {
-#endif
       q_output.setByOffset(batch * uniforms.Nq + b_global, q_output_value_t(q_output_value));
     }
-#if has_full_kv_tiles
-    {
-#else
     if (b_global < uniforms.Nkv) {
-#endif
       k_output.setByOffset(batch * uniforms.Nkv + b_global, k_output_value_t(k_output_value));
       v_output.setByOffset(batch * uniforms.Nkv + b_global, v_output_value_t(v_output_value));
     }

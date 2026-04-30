@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/webgpu/quantization/matmul_nbits_silu.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_mlp.h"
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
@@ -21,103 +21,9 @@ namespace webgpu {
 
 namespace {
 
-constexpr unsigned int kMinMForTileOptimization = 4;
-
 constexpr uint32_t kFusedDecodeFastPathBits = 4u;
 constexpr uint32_t kFusedDecodeFastPathBlockSize = 32u;
 constexpr float kSkipSimplifiedLayerNormEpsilon = 1e-05f;
-
-bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(const Tensor* a,
-                                                          int64_t K_op,
-                                                          int64_t N_op,
-                                                          int64_t block_size_op,
-                                                          int64_t accuracy_level,
-                                                          int64_t nbits,
-                                                          onnxruntime::webgpu::ComputeContext& context,
-                                                          Tensor* y) {
-  TensorShape b_shape({N_op, K_op});
-  MatMulComputeHelper helper;
-  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
-    return false;
-  }
-
-  const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
-  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
-  const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
-  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
-  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
-
-#if !defined(__wasm__)
-  int32_t subgroup_matrix_config_index = -1;
-  return (M >= kMinMForTileOptimization) &&
-         (context.AdapterInfo().vendor == std::string_view{"apple"} ||
-          context.AdapterInfo().vendor == std::string_view{"intel"}) &&
-         CanApplySubgroupMatrixMatMulNBits(context,
-                                           accuracy_level,
-                                           block_size,
-                                           batch_count,
-                                           N,
-                                           K,
-                                           static_cast<uint32_t>(nbits),
-                                           y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                           subgroup_matrix_config_index);
-#endif
-
-  return false;
-}
-
-bool WouldApplyWideTileMatMulNBitsInCurrentDispatch(const Tensor* a,
-                                                    int64_t K_op,
-                                                    int64_t N_op,
-                                                    int64_t block_size_op,
-                                                    int64_t nbits) {
-  TensorShape b_shape({N_op, K_op});
-  MatMulComputeHelper helper;
-  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
-    return false;
-  }
-
-  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
-  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
-  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
-
-  const uint32_t components_a = GetMaxComponents(K);
-  const uint32_t block_size_per_col = block_size;
-  const uint32_t blob_size = (block_size_per_col / 8) * static_cast<uint32_t>(nbits);
-  const uint32_t blob_size_in_words = blob_size / 4;
-  const uint32_t components_b = GetMaxComponents(blob_size_in_words);
-
-  return block_size == 32 &&
-         components_a == 4 &&
-         components_b == 4 &&
-         nbits != 2 &&
-         M >= kMinMForTileOptimization;
-}
-
-bool WouldApplyDP4AMatMulNBitsInCurrentDispatch(const Tensor* a,
-                                                int64_t K_op,
-                                                int64_t N_op,
-                                                int64_t block_size_op,
-                                                int64_t accuracy_level,
-                                                onnxruntime::webgpu::ComputeContext& context,
-                                                Tensor* y) {
-  TensorShape b_shape({N_op, K_op});
-  MatMulComputeHelper helper;
-  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
-    return false;
-  }
-
-  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
-  const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
-  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
-  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
-  const uint32_t components_a = GetMaxComponents(K);
-
-  return ((M >= kMinMForTileOptimization) ||
-          y->DataType() == DataTypeImpl::GetType<float>() ||
-          context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
-         CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a);
-}
 
 TensorShape GetOverrideShape(const TensorShape& shape, int components) {
   return TensorShape{shape.Size() / components};
@@ -234,20 +140,18 @@ Status ApplyUnfusedSiluMul(const Tensor* a,
                            onnxruntime::webgpu::ComputeContext& context,
                            Tensor* y);
 
-class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulDecodeProgram> {
+class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodeProgram> {
  public:
-  MatMulNBitsSiluMulDecodeProgram(uint32_t tile_size,
-                                  bool has_gate_bias,
-                                  bool has_up_bias,
-                                  bool has_norm_input,
-                                  bool has_skip_input,
-                                  bool has_skip_output,
-                                  bool single_scale_weights,
-                                  uint32_t tile_size_k_vec,
-                                  uint32_t k_unroll_tiles,
-                                  bool has_full_n_tiles,
-                                  bool has_full_k_tiles)
-      : Program{"MatMulNBitsSiluMulDecode"},
+  MatMulNBitsMlpDecodeProgram(uint32_t tile_size,
+                              bool has_gate_bias,
+                              bool has_up_bias,
+                              bool has_norm_input,
+                              bool has_skip_input,
+                              bool has_skip_output,
+                              bool single_scale_weights,
+                              uint32_t tile_size_k_vec,
+                              uint32_t k_unroll_tiles)
+      : Program{"MatMulNBitsMlpDecode"},
         tile_size_(tile_size),
         has_gate_bias_(has_gate_bias),
         has_up_bias_(has_up_bias),
@@ -256,9 +160,7 @@ class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulD
         has_skip_output_(has_skip_output),
         single_scale_weights_(single_scale_weights),
         tile_size_k_vec_(tile_size_k_vec),
-        k_unroll_tiles_(k_unroll_tiles),
-        has_full_n_tiles_(has_full_n_tiles),
-        has_full_k_tiles_(has_full_k_tiles) {}
+        k_unroll_tiles_(k_unroll_tiles) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -274,12 +176,16 @@ class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulD
     if (has_up_bias_) {
       shader.AddInput("up_bias", ShaderUsage::UseUniform);
     }
-    const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    const auto& output = shader.AddOutput("output",
+                        ShaderUsage::UseElementTypeAlias);
     const auto* input_skip_bias_sum = has_skip_output_
                                           ? &shader.AddOutput("input_skip_bias_sum",
-                                                              ShaderUsage::UseValueTypeAlias |
-                                                                  ShaderUsage::UseElementTypeAlias)
+                                  ShaderUsage::UseValueTypeAlias |
+                                    ShaderUsage::UseElementTypeAlias)
                                           : nullptr;
+    const auto& skip_var = skip != nullptr ? *skip : a;
+    const auto& norm_scale_var = norm_scale != nullptr ? *norm_scale : a;
+    const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : output;
 
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = gate_b.NumComponents() / 4;
@@ -289,44 +195,70 @@ class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulD
     const uint32_t a_length_per_tile = tile_size_k / components_a;
     const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
 
-    if (has_norm_input_ && has_skip_output_) {
-      return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_silu_mul.wgsl.template",
-                                 WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
-                                 WGSL_TEMPLATE_PARAMETER(component_a, components_a),
-                                 WGSL_TEMPLATE_PARAMETER(component_b, components_b),
-                                 WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
-                                 WGSL_TEMPLATE_PARAMETER(has_full_k_tiles, has_full_k_tiles_),
-                                 WGSL_TEMPLATE_PARAMETER(has_full_n_tiles, has_full_n_tiles_),
-                                 WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
-                                 WGSL_TEMPLATE_PARAMETER(has_norm_input, has_norm_input_),
-                                 WGSL_TEMPLATE_PARAMETER(has_skip_input, has_skip_input_),
-                                 WGSL_TEMPLATE_PARAMETER(has_skip_output, has_skip_output_),
-                                 WGSL_TEMPLATE_PARAMETER(has_up_bias, has_up_bias_),
-                                 WGSL_TEMPLATE_PARAMETER(k_unroll_tiles, k_unroll_tiles_),
-                                 WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
-                                 WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
-                                 WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                                 WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
-                                 WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
-                                 WGSL_TEMPLATE_VARIABLE(a, a),
-                                 WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
-                                 WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                                 WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, *input_skip_bias_sum),
-                                 WGSL_TEMPLATE_VARIABLE(norm_scale, *norm_scale),
-                                 WGSL_TEMPLATE_VARIABLE(output, output),
-                                 WGSL_TEMPLATE_VARIABLE(skip, *skip),
-                                 WGSL_TEMPLATE_VARIABLE(up_b, up_b),
-                                 WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
+    if (has_skip_input_) {
+      if (has_norm_input_ && has_skip_output_) {
+        return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
+                                   WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                                   WGSL_TEMPLATE_PARAMETER(component_a, components_a),
+                                   WGSL_TEMPLATE_PARAMETER(component_b, components_b),
+                                   WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
+                                   WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
+                                   WGSL_TEMPLATE_PARAMETER(has_norm_input, has_norm_input_),
+                                   WGSL_TEMPLATE_PARAMETER(has_skip_input, has_skip_input_),
+                                   WGSL_TEMPLATE_PARAMETER(has_skip_output, has_skip_output_),
+                                   WGSL_TEMPLATE_PARAMETER(has_up_bias, has_up_bias_),
+                                   WGSL_TEMPLATE_PARAMETER(k_unroll_tiles, k_unroll_tiles_),
+                                   WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
+                                   WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
+                                   WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                                   WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
+                                   WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                                   WGSL_TEMPLATE_VARIABLE(a, a),
+                                   WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
+                                   WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
+                                   WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
+                                   WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
+                                   WGSL_TEMPLATE_VARIABLE(output, output),
+                                   WGSL_TEMPLATE_VARIABLE(skip, skip_var),
+                                   WGSL_TEMPLATE_VARIABLE(up_b, up_b),
+                                   WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
+      }
+
+      if (has_norm_input_) {
+        return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
+                                   WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                                   WGSL_TEMPLATE_PARAMETER(component_a, components_a),
+                                   WGSL_TEMPLATE_PARAMETER(component_b, components_b),
+                                   WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
+                                   WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
+                                   WGSL_TEMPLATE_PARAMETER(has_norm_input, has_norm_input_),
+                                   WGSL_TEMPLATE_PARAMETER(has_skip_input, has_skip_input_),
+                                   WGSL_TEMPLATE_PARAMETER(has_skip_output, has_skip_output_),
+                                   WGSL_TEMPLATE_PARAMETER(has_up_bias, has_up_bias_),
+                                   WGSL_TEMPLATE_PARAMETER(k_unroll_tiles, k_unroll_tiles_),
+                                   WGSL_TEMPLATE_PARAMETER(single_scale_weights, single_scale_weights_),
+                                   WGSL_TEMPLATE_PARAMETER(sub_tile_count, sub_tile_count),
+                                   WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                                   WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
+                                   WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                                   WGSL_TEMPLATE_VARIABLE(a, a),
+                                   WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
+                                   WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
+                                   WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
+                                   WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
+                                   WGSL_TEMPLATE_VARIABLE(output, output),
+                                   WGSL_TEMPLATE_VARIABLE(skip, skip_var),
+                                   WGSL_TEMPLATE_VARIABLE(up_b, up_b),
+                                   WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
+      }
     }
 
     if (has_norm_input_) {
-      return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_silu_mul.wgsl.template",
+      return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
                                  WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
                                  WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                                  WGSL_TEMPLATE_PARAMETER(component_b, components_b),
                                  WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
-                                 WGSL_TEMPLATE_PARAMETER(has_full_k_tiles, has_full_k_tiles_),
-                                 WGSL_TEMPLATE_PARAMETER(has_full_n_tiles, has_full_n_tiles_),
                                  WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
                                  WGSL_TEMPLATE_PARAMETER(has_norm_input, has_norm_input_),
                                  WGSL_TEMPLATE_PARAMETER(has_skip_input, has_skip_input_),
@@ -341,20 +273,19 @@ class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulD
                                  WGSL_TEMPLATE_VARIABLE(a, a),
                                  WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                  WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                                 WGSL_TEMPLATE_VARIABLE(norm_scale, *norm_scale),
+                                 WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
+                                 WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
                                  WGSL_TEMPLATE_VARIABLE(output, output),
-                                 WGSL_TEMPLATE_VARIABLE(skip, *skip),
+                                 WGSL_TEMPLATE_VARIABLE(skip, skip_var),
                                  WGSL_TEMPLATE_VARIABLE(up_b, up_b),
                                  WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
     }
 
-    return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_silu_mul.wgsl.template",
+    return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
                                WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                                WGSL_TEMPLATE_PARAMETER(component_b, components_b),
                                WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
-                               WGSL_TEMPLATE_PARAMETER(has_full_k_tiles, has_full_k_tiles_),
-                               WGSL_TEMPLATE_PARAMETER(has_full_n_tiles, has_full_n_tiles_),
                                WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
                                WGSL_TEMPLATE_PARAMETER(has_norm_input, has_norm_input_),
                                WGSL_TEMPLATE_PARAMETER(has_skip_input, has_skip_input_),
@@ -369,7 +300,10 @@ class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulD
                                WGSL_TEMPLATE_VARIABLE(a, a),
                                WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
+                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
+                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
                                WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(skip, skip_var),
                                WGSL_TEMPLATE_VARIABLE(up_b, up_b),
                                WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }
@@ -396,62 +330,11 @@ class MatMulNBitsSiluMulDecodeProgram final : public Program<MatMulNBitsSiluMulD
   bool single_scale_weights_;
   uint32_t tile_size_k_vec_;
   uint32_t k_unroll_tiles_;
-  bool has_full_n_tiles_;
-  bool has_full_k_tiles_;
 };
 
-class MatMulNBitsSiluMulWideTileM1Program final : public Program<MatMulNBitsSiluMulWideTileM1Program> {
+class MatMulNBitsMlpProgram final : public Program<MatMulNBitsMlpProgram> {
  public:
-  MatMulNBitsSiluMulWideTileM1Program(bool has_gate_bias,
-                                      bool has_up_bias,
-                                      uint32_t outputs_per_thread)
-      : Program{"MatMulNBitsSiluMulWideTileM1Decode"},
-        has_gate_bias_(has_gate_bias),
-        has_up_bias_(has_up_bias),
-        outputs_per_thread_(outputs_per_thread) {}
-
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    const auto& gate_b = shader.AddInput("gate_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    const auto& gate_scales_b = shader.AddInput("gate_scales_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    const auto& up_b = shader.AddInput("up_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    const auto& up_scales_b = shader.AddInput("up_scales_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-    if (has_gate_bias_) {
-      shader.AddInput("gate_bias", ShaderUsage::UseUniform);
-    }
-    if (has_up_bias_) {
-      shader.AddInput("up_bias", ShaderUsage::UseUniform);
-    }
-    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-
-    return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_silu_mul_wide_tile_m1.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_gate_bias, has_gate_bias_),
-                               WGSL_TEMPLATE_PARAMETER(has_up_bias, has_up_bias_),
-                               WGSL_TEMPLATE_PARAMETER(outputs_per_thread, outputs_per_thread_),
-                               WGSL_TEMPLATE_VARIABLE(a, a),
-                               WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
-                               WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(output, output),
-                               WGSL_TEMPLATE_VARIABLE(up_b, up_b),
-                               WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
-  }
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_count", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K_of_a", ProgramUniformVariableDataType::Uint32},
-      {"K_of_b", ProgramUniformVariableDataType::Uint32},
-      {"n_blocks_per_col", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_gate_bias_;
-  bool has_up_bias_;
-  uint32_t outputs_per_thread_;
-};
-
-class MatMulNBitsSiluMulProgram final : public Program<MatMulNBitsSiluMulProgram> {
- public:
-  MatMulNBitsSiluMulProgram() : Program{"MatMulNBitsSiluMul"} {}
+  MatMulNBitsMlpProgram() : Program{"MatMulNBitsMlp"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -471,20 +354,20 @@ class MatMulNBitsSiluMulProgram final : public Program<MatMulNBitsSiluMulProgram
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"vec_size", ProgramUniformVariableDataType::Uint32});
 };
 
-Status ApplyUnfusedSiluMul(const Tensor* a,
-                           const Tensor* gate_b,
-                           const Tensor* gate_scales,
-                           const Tensor* gate_bias,
-                           const Tensor* up_b,
-                           const Tensor* up_scales,
-                           const Tensor* up_bias,
-                           int64_t K,
-                           int64_t N,
-                           int64_t block_size,
-                           int64_t accuracy_level,
-                           int64_t bits,
-                           onnxruntime::webgpu::ComputeContext& context,
-                           Tensor* y) {
+Status ApplyUnfusedMlp(const Tensor* a,
+                       const Tensor* gate_b,
+                       const Tensor* gate_scales,
+                       const Tensor* gate_bias,
+                       const Tensor* up_b,
+                       const Tensor* up_scales,
+                       const Tensor* up_bias,
+                       int64_t K,
+                       int64_t N,
+                       int64_t block_size,
+                       int64_t accuracy_level,
+                       int64_t bits,
+                       onnxruntime::webgpu::ComputeContext& context,
+                       Tensor* y) {
   MatMulComputeHelper helper;
   TensorShape b_shape({N, K});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -498,7 +381,7 @@ Status ApplyUnfusedSiluMul(const Tensor* a,
 
   const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   const uint32_t vec_size = (data_size + 3u) / 4u;
-  MatMulNBitsSiluMulProgram program;
+  MatMulNBitsMlpProgram program;
   program
       .AddInputs({{&gate_output, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
                   {&up_output, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
@@ -512,16 +395,16 @@ Status ApplyUnfusedSiluMul(const Tensor* a,
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
-    MatMulNBitsSiluMul,
+  MatMulNBitsMlp,
     kMSDomain,
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", WebGpuSupportedFloatTypes())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
-    MatMulNBitsSiluMul);
+    MatMulNBitsMlp);
 
-Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+  Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input<Tensor>(0);
   const Tensor* skip = context.Input<Tensor>(1);
   const Tensor* norm_scale = context.Input<Tensor>(2);
@@ -533,7 +416,7 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   const Tensor* up_bias = context.Input<Tensor>(8);
 
   ORT_ENFORCE(skip == nullptr || norm_scale != nullptr,
-              "MatMulNBitsSiluMul requires norm_scale when skip is present.");
+              "MatMulNBitsMlp requires norm_scale when skip is present.");
 
   MatMulComputeHelper helper;
   TensorShape b_shape({N_, K_});
@@ -556,7 +439,9 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   const uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
 
   Tensor* y = context.Output(0, output_shape);
-  Tensor* input_skip_bias_sum = skip != nullptr ? context.Output(1, a->Shape()) : nullptr;
+  Tensor* input_skip_bias_sum = (skip != nullptr && context.OutputCount() > 1)
+                                    ? context.Output(1, a->Shape())
+                                    : nullptr;
   const uint32_t data_size = onnxruntime::narrow<uint32_t>(y->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
@@ -565,6 +450,9 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   if (norm_scale != nullptr) {
     ORT_ENFORCE(norm_scale->Shape().Size() == K_, "norm_scale must have shape [K].");
   }
+
+  const bool has_skip_input = skip != nullptr;
+  const bool has_skip_output = input_skip_bias_sum != nullptr;
 
   const bool is_decode_fast_path_candidate =
       M == 1 &&
@@ -596,9 +484,6 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
                              block_size_,
                              bits_);
 
-  // The experimental wide M==1 fused path regressed badly on NVIDIA decode shapes.
-  // Keep the implementation around for future work, but do not dispatch to it.
-
   const bool can_use_decode_fast_path =
       is_decode_fast_path_candidate &&
       !would_use_subgroup_unfused &&
@@ -606,23 +491,18 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
       !would_use_wide_tile_unfused;
 
   if (can_use_decode_fast_path) {
-    //ORT_ENFORCE(false, "The experimental wide M==1 fused path regressed badly on NVIDIA decode shapes. Keep the implementation around for future work, but do not dispatch to it.");
     ORT_ENFORCE(bits_ == kFusedDecodeFastPathBits,
-                "MatMulNBitsSiluMulDecodeProgram is specialized for 4-bit weights only.");
+                "MatMulNBitsMlpDecodeProgram is specialized for 4-bit weights only.");
     ORT_ENFORCE(block_size == kFusedDecodeFastPathBlockSize,
-                "MatMulNBitsSiluMulDecodeProgram is specialized for block_size=32 only.");
+                "MatMulNBitsMlpDecodeProgram is specialized for block_size=32 only.");
 
     const bool has_gate_bias = gate_bias != nullptr;
     const bool has_up_bias = up_bias != nullptr;
-    const bool has_skip_input = skip != nullptr;
-    const bool has_skip_output = input_skip_bias_sum != nullptr;
     uint32_t workgroup_size = 128;
     uint32_t tile_size = 8;
     uint32_t tile_size_k_vec =
       (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
 
-    // For the smallest decode-like M==1 case, reduce K-split width and workgroup size
-    // so the generic fused kernel spends less time on reduction and barriers.
     if (context.AdapterInfo().vendor != std::string_view{"intel"} && N <= 2048) {
       workgroup_size = 64;
       tile_size = 4;
@@ -631,12 +511,10 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
     const uint32_t elements_in_value_b = components_b * (32u / onnxruntime::narrow<uint32_t>(bits_));
     const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
-    const bool has_full_n_tiles = (N % tile_size) == 0;
-    const bool has_full_k_tiles = (K % tile_size_k) == 0;
     const uint32_t k_tile_iterations = K / tile_size_k;
 
     uint32_t k_unroll_tiles = 1;
-    if (has_full_k_tiles) {
+    if ((K % tile_size_k) == 0) {
       if (k_tile_iterations >= 8 && N <= 2048 && context.AdapterInfo().vendor != std::string_view{"intel"}) {
         k_unroll_tiles = 4;
       } else if (k_tile_iterations >= 4) {
@@ -646,17 +524,15 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
     const uint32_t num_N_tile = CeilDiv(N, tile_size);
 
-    MatMulNBitsSiluMulDecodeProgram program{tile_size,
-                                            has_gate_bias,
-                                            has_up_bias,
-                                            has_norm_input,
-                                            has_skip_input,
-                                            has_skip_output,
-                                            single_scale_weights,
-                                            tile_size_k_vec,
-                                            k_unroll_tiles,
-                                            has_full_n_tiles,
-                                            has_full_k_tiles};
+    MatMulNBitsMlpDecodeProgram program{tile_size,
+              has_gate_bias,
+              has_up_bias,
+              has_norm_input,
+              has_skip_input,
+                      has_skip_output,
+              single_scale_weights,
+              tile_size_k_vec,
+                            k_unroll_tiles};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
     program.AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
@@ -690,8 +566,6 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
                    has_skip_output,
                    tile_size_k_vec,
                    k_unroll_tiles,
-                   has_full_n_tiles,
-                   has_full_k_tiles,
                    "decode_4bit");
     if (has_skip_output) {
       program.AddOutput({input_skip_bias_sum,
@@ -712,7 +586,7 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
     Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
     ORT_RETURN_IF_ERROR(ApplySkipSimplifiedLayerNorm(a, skip, norm_scale, kSkipSimplifiedLayerNormEpsilon,
                                                      context, &normalized_a, input_skip_bias_sum));
-    return ApplyUnfusedSiluMul(&normalized_a,
+    return ApplyUnfusedMlp(&normalized_a,
                                gate_b,
                                gate_scales,
                                gate_bias,
@@ -731,7 +605,7 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   if (norm_scale != nullptr) {
     Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
     ORT_RETURN_IF_ERROR(ApplySimplifiedLayerNorm(a, norm_scale, kSkipSimplifiedLayerNormEpsilon, context, &normalized_a));
-    return ApplyUnfusedSiluMul(&normalized_a,
+    return ApplyUnfusedMlp(&normalized_a,
                                gate_b,
                                gate_scales,
                                gate_bias,
@@ -747,7 +621,7 @@ Status MatMulNBitsSiluMul::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
                                y);
   }
 
-  return ApplyUnfusedSiluMul(a,
+  return ApplyUnfusedMlp(a,
                              gate_b,
                              gate_scales,
                              gate_bias,

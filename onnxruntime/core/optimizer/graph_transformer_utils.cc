@@ -56,8 +56,8 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
-#include "core/optimizer/matmul_nbits_qkv_sln_fusion.h"
-#include "core/optimizer/matmul_nbits_silu_fusion.h"
+#include "core/optimizer/matmul_nbits_qkv_fusion.h"
+#include "core/optimizer/matmul_nbits_mlp_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -103,22 +103,6 @@
 namespace onnxruntime::optimizer_utils {
 
 namespace {
-
-constexpr const char* kOrtEnableMatMulNBitsSiluFusionEnvVar = "ORT_ENABLE_MATMUL_NBITS_SILU_FUSION";
-constexpr const char* kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar =
-    "ORT_ENABLE_MATMUL_NBITS_QKV_SIMPLIFIED_LAYER_NORM_FUSION";
-
-#if !defined(ORT_MINIMAL_BUILD)
-bool IsMatMulNBitsSiluFusionEnabled() {
-  return ParseEnvironmentVariableWithDefault<int>(kOrtEnableMatMulNBitsSiluFusionEnvVar, 0) == 1;
-  //return true;
-}
-
-bool IsMatMulNBitsQKVSimplifiedLayerNormFusionEnabled() {
-  return ParseEnvironmentVariableWithDefault<int>(kOrtEnableMatMulNBitsQKVSimplifiedLayerNormFusionEnvVar, 0) == 1;
-  //return true;
-}
-#endif
 
 }  // namespace
 
@@ -459,14 +443,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
-      if (IsMatMulNBitsSiluFusionEnabled()) {
-        transformers.emplace_back(std::make_unique<MatMulNBitsSiluFusion>(
-            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
-      }
-      if (IsMatMulNBitsQKVSimplifiedLayerNormFusionEnabled()) {
-        transformers.emplace_back(std::make_unique<MatMulNBitsQKVSimplifiedLayerNormFusion>(
-            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
-      }
+      transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

@@ -7,11 +7,10 @@
 
 namespace onnxruntime {
 
-class MatMulNBitsQKVSimplifiedLayerNormFusion : public GraphTransformer {
+class MatMulNBitsMlpFusion : public GraphTransformer {
  public:
-  explicit MatMulNBitsQKVSimplifiedLayerNormFusion(
-      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("MatMulNBitsQKVSimplifiedLayerNormFusion", compatible_execution_providers) {}
+  explicit MatMulNBitsMlpFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("MatMulNBitsMlpFusion", compatible_execution_providers) {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

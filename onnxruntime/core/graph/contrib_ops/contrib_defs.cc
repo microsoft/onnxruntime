@@ -3616,36 +3616,44 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
         }
       });
 
-  static const char* MatMulNBitsSiluMul_ver1_doc = R"DOC(
-MatMulNBitsSiluMul fuses two MatMulNBits projections that share the same input and computes
+  static const char* MatMulNBitsMlp_ver1_doc = R"DOC(
+MatMulNBitsMlp fuses two MatMulNBits projections that share the same input and computes
 
-  Y = SiLU(MatMulNBits(A, gate_weight) + gate_bias) * (MatMulNBits(A, up_weight) + up_bias)
-
-where SiLU(x) = x * sigmoid(x).
+    gate = MatMulNBits(A, gate_weight) + gate_bias
+    up = MatMulNBits(A, up_weight) + up_bias
+    Y = activation(gate) * up
 
 It can also optionally fuse SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization before the
 two projections:
 
   A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
-  Y = SiLU(MatMulNBits(A_norm, gate_weight) + gate_bias) * (MatMulNBits(A_norm, up_weight) + up_bias)
+    gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+    up = MatMulNBits(A_norm, up_weight) + up_bias
+    Y = activation(gate) * up
 
   A_norm = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
-  Y = SiLU(MatMulNBits(A_norm, gate_weight) + gate_bias) * (MatMulNBits(A_norm, up_weight) + up_bias)
+    gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+    up = MatMulNBits(A_norm, up_weight) + up_bias
+    Y = activation(gate) * up
 
 This operator is intended for decoder MLP patterns such as Qwen-style gate and up projections, but it remains
 semantically valid for both prefill and decode because the output shape is the standard MatMul result shape
 derived from the runtime shape of A and the shared attributes K and N.
 
+The operator contract includes a string attribute describing the fused gate activation.
+
 When fused from SkipSimplifiedLayerNormalization, the optional residual-sum output may also be materialized:
 
   A_norm, input_skip_bias_sum = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
-  Y = SiLU(MatMulNBits(A_norm, gate_weight) + gate_bias) * (MatMulNBits(A_norm, up_weight) + up_bias)
+  gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+  up = MatMulNBits(A_norm, up_weight) + up_bias
+  Y = activation(gate) * up
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsSiluMul)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsMlp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(MatMulNBitsSiluMul_ver1_doc)
+      .SetDoc(MatMulNBitsMlp_ver1_doc)
       .Attr("K", "Input feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
       .Attr("N", "Output feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
       .Attr("bits", "Bit-width used to quantize both weight matrices (valid range: 2~8)", AttributeProto::INT, static_cast<int64_t>(4))
@@ -3655,6 +3663,9 @@ When fused from SkipSimplifiedLayerNormalization, the optional residual-sum outp
       .Attr("accuracy_level",
             "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
             AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("activation",
+            "Activation applied to the gate projection.",
+            AttributeProto::STRING)
       .Input(0, "A", "The shared input tensor.", "T1")
       .Input(1, "skip", "Optional skip input used by SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
       .Input(2, "norm_scale", "Optional RMSNorm scale with shape [K] used by SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
@@ -3664,7 +3675,7 @@ When fused from SkipSimplifiedLayerNormalization, the optional residual-sum outp
       .Input(6, "up_B", "Packed uint8 tensor for the up projection weights.", "T2")
       .Input(7, "up_scales", "Per-block scaling factors for the up projection.", "T1")
       .Input(8, "up_bias", "Optional bias for the up projection with shape [N].", "T1", OpSchema::Optional)
-      .Output(0, "Y", "The fused SiLU-multiply output tensor.", "T1")
+      .Output(0, "Y", "The fused gated MLP output tensor.", "T1")
       .Output(1, "input_skip_bias_sum", "Optional residual-sum output for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                       "Constrain input and output types to float tensors.")
@@ -3727,8 +3738,8 @@ When fused from SkipSimplifiedLayerNormalization, the optional residual-sum outp
         }
       });
 
-  static const char* MatMulNBitsQKVSimplifiedLayerNorm_ver1_doc = R"DOC(
-MatMulNBitsQKVSimplifiedLayerNorm fuses either SimplifiedLayerNormalization (RMSNorm)
+  static const char* MatMulNBitsQkv_ver1_doc = R"DOC(
+MatMulNBitsQkv fuses either SimplifiedLayerNormalization (RMSNorm)
 or SkipSimplifiedLayerNormalization with three MatMulNBits projections that share the
 same normalized activation.
 
@@ -3743,10 +3754,10 @@ and may also return the input+skip residual sum as output 3.
 This operator is intended as a decode-oriented QKV fusion primitive.
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQKVSimplifiedLayerNorm)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQkv)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(MatMulNBitsQKVSimplifiedLayerNorm_ver1_doc)
+      .SetDoc(MatMulNBitsQkv_ver1_doc)
       .Attr("K", "Input feature dimension shared by the normalized input and all projection weights.", AttributeProto::INT)
       .Attr("Nq", "Output feature dimension of the Q projection.", AttributeProto::INT)
       .Attr("Nkv", "Output feature dimension shared by the K and V projections.", AttributeProto::INT)

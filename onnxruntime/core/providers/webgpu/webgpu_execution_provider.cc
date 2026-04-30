@@ -940,16 +940,6 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), false)} {
-  // If graph capture is enabled, create a dedicated buffer manager for graph mode
-  if (enable_graph_capture_) {
-    // Create buffer manager for graph capture mode with appropriate cache modes
-    graph_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
-        context_,
-        webgpu::BufferCacheMode::Graph,
-        webgpu::BufferCacheMode::GraphSimple,
-        webgpu::BufferCacheMode::Disabled);
-  }
-
   if (config.enable_pix_capture) {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
     // set pix frame generator
@@ -965,7 +955,7 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // allocator for initializers
       std::make_unique<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), true),
       // default allocator
-      std::make_unique<webgpu::GpuBufferAllocator>(BufferManager(), false),
+      std::make_unique<webgpu::GpuBufferAllocator>([this]() -> const webgpu::BufferManager& { return BufferManager(); }, false),
   };
 }
 
@@ -1130,6 +1120,14 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
 
     if (graph_annotation_id != -1 && IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
+      if (!graph_buffer_mgr_) {
+        graph_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
+            context_,
+            webgpu::BufferCacheMode::Graph,
+            webgpu::BufferCacheMode::GraphSimple,
+            webgpu::BufferCacheMode::Disabled);
+      }
+      graph_buffer_mgr_active_ = true;
       context_.CaptureBegin(&captured_commands_, *graph_buffer_mgr_);
     }
     m_current_graph_annotation_id = graph_annotation_id;
@@ -1150,6 +1148,8 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
       IncrementRegularRunCountBeforeGraphCapture();
     }
   }
+
+  graph_buffer_mgr_active_ = false;
 
   if (session_profiler_ && session_profiler_->Enabled()) {
     // Session-level profiling: collect into profiler's own events storage.
@@ -1182,6 +1182,7 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
+  ORT_ENFORCE(graph_buffer_mgr_ != nullptr, "Graph buffer manager must exist before replay.");
   // TODO: enable profiling in run level
   if (session_profiler_ && session_profiler_->Enabled()) {
     context_.StartProfiling();
@@ -1195,7 +1196,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
 }
 
 webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
-  if (graph_buffer_mgr_) {
+  if (graph_buffer_mgr_active_ && graph_buffer_mgr_) {
     return *graph_buffer_mgr_;
   } else {
     return context_.BufferManager();

@@ -3,7 +3,7 @@
 
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/graph_transformer_mgr.h"
-#include "core/optimizer/matmul_nbits_qkv_sln_fusion.h"
+#include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -36,18 +36,18 @@ NodeAttributes MakeMatMulNBitsAttrs(int64_t k, int64_t n, int64_t block_size, in
   return attrs;
 }
 
-Status CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraphImpl(const Graph& graph, bool expect_skip_sln_output) {
+Status CheckMatMulNBitsQkvFusedGraphImpl(const Graph& graph, bool expect_skip_sln_output) {
   const auto op_to_count = CountOpsInGraph(graph);
-  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsQKVSimplifiedLayerNorm") != 1 ||
+  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsQkv") != 1 ||
       OpCount(op_to_count, "SimplifiedLayerNormalization") != 0 ||
       OpCount(op_to_count, "com.microsoft.SkipSimplifiedLayerNormalization") != 0 ||
       OpCount(op_to_count, "com.microsoft.MatMulNBits") != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Unexpected operator counts after MatMulNBitsQKVSimplifiedLayerNormFusion.");
+                           "Unexpected operator counts after MatMulNBitsQkvFusion.");
   }
 
   for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "MatMulNBitsQKVSimplifiedLayerNorm") {
+    if (node.OpType() == "MatMulNBitsQkv") {
       ORT_RETURN_IF_NOT(node.Domain() == kMSDomain, "Fused node must be in com.microsoft domain.");
       ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == kWebGpuExecutionProvider,
                         "Fused node must be assigned to WebGPU EP.");
@@ -60,15 +60,19 @@ Status CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraphImpl(const Graph& graph, 
   return Status::OK();
 }
 
-Status CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraph(Graph& graph) {
-  return CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraphImpl(static_cast<const Graph&>(graph), false);
+Status CheckMatMulNBitsQkvFusedGraph(Graph& graph) {
+  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph), false);
 }
 
-Status CheckMatMulNBitsQKVSimplifiedLayerNormSkipFusedGraph(Graph& graph) {
-  return CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraphImpl(static_cast<const Graph&>(graph), true);
+Status CheckMatMulNBitsQkvSkipFusedGraph(Graph& graph) {
+  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph), false);
 }
 
-void BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPatternImpl(ModelTestBuilder& builder, bool with_skip_input) {
+Status CheckMatMulNBitsQkvSkipOutputPassthroughFusedGraph(Graph& graph) {
+  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph), true);
+}
+
+void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_skip_input, bool with_skip_output) {
   constexpr int64_t k = 16;
   constexpr int64_t q_n = 8;
   constexpr int64_t kv_n = 4;
@@ -106,17 +110,21 @@ void BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPatternImpl(ModelTestBuilder& b
   NodeArg* norm_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k});
   NodeArg* optional_norm_output_1 = builder.MakeOptionalTensor();
   NodeArg* optional_norm_output_2 = builder.MakeOptionalTensor();
-  NodeArg* residual_out = with_skip_input ? builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k}) : nullptr;
+  NodeArg* residual_out = (with_skip_input && with_skip_output) ? builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k}) : nullptr;
   NodeArg* q_output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, q_n});
   NodeArg* k_output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, kv_n});
   NodeArg* v_output = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, kv_n});
-  NodeArg* residual_passthrough = with_skip_input ? builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, k}) : nullptr;
+  NodeArg* residual_passthrough = (with_skip_input && with_skip_output) ? builder.MakeOutput<MLFloat16>(std::vector<int64_t>{1, k}) : nullptr;
 
   NodeAttributes q_attrs = MakeMatMulNBitsAttrs(k, q_n, block_size, bits, accuracy_level);
   NodeAttributes kv_attrs = MakeMatMulNBitsAttrs(k, kv_n, block_size, bits, accuracy_level);
 
   Node& norm = with_skip_input
-                   ? builder.AddNode("SkipSimplifiedLayerNormalization", {input, skip_input, norm_scale}, {norm_out, optional_norm_output_1, optional_norm_output_2, residual_out}, kMSDomain)
+                   ? builder.AddNode("SkipSimplifiedLayerNormalization",
+                                     {input, skip_input, norm_scale},
+                                     with_skip_output ? std::vector<NodeArg*>{norm_out, optional_norm_output_1, optional_norm_output_2, residual_out}
+                                                      : std::vector<NodeArg*>{norm_out},
+                                     kMSDomain)
                    : builder.AddNode("SimplifiedLayerNormalization", {input, norm_scale}, {norm_out});
   norm.AddAttribute("epsilon", 1e-6f);
 
@@ -129,71 +137,111 @@ void BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPatternImpl(ModelTestBuilder& b
   SetWebGpuProvider(k_matmul);
   SetWebGpuProvider(v_matmul);
 
-  if (with_skip_input) {
+  if (with_skip_output) {
     Node& residual_identity = builder.AddNode("Identity", {residual_out}, {residual_passthrough});
     SetWebGpuProvider(residual_identity);
   }
 }
 
-void BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPattern(ModelTestBuilder& builder) {
-  BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPatternImpl(builder, false);
+void BuildMatMulNBitsQkvWebGpuPattern(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false);
 }
 
-void BuildMatMulNBitsQKVSimplifiedLayerNormSkipWebGpuPattern(ModelTestBuilder& builder) {
-  BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPatternImpl(builder, true);
+void BuildMatMulNBitsQkvSkipWebGpuPattern(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, true, false);
+}
+
+void BuildMatMulNBitsQkvSkipOutputPassthroughWebGpuPattern(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, true, true);
 }
 
 }  // namespace
 
-TEST_F(GraphTransformationTests, MatMulNBitsQKVSimplifiedLayerNormFusionFusesWebGpuPattern) {
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesWebGpuPattern) {
   ASSERT_STATUS_OK(TestGraphTransformer(
-      BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPattern,
+      BuildMatMulNBitsQkvWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsQKVSimplifiedLayerNormFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       TransformerLevel::Level2,
       1,
       nullptr,
-      CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraph));
+      CheckMatMulNBitsQkvFusedGraph));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsQKVSimplifiedLayerNormFusionMatchesUnfusedWebGpuResults) {
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraphImpl(session.GetGraph(), false));
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(), false));
   };
 
   TransformerTester(
-      BuildMatMulNBitsQKVSimplifiedLayerNormWebGpuPattern,
+      BuildMatMulNBitsQkvWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsQKVSimplifiedLayerNormFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       {},
       {},
       std::move(webgpu_ep));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsQKVSimplifiedLayerNormFusionFusesSkipWebGpuPattern) {
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesSkipWebGpuPattern) {
   ASSERT_STATUS_OK(TestGraphTransformer(
-      BuildMatMulNBitsQKVSimplifiedLayerNormSkipWebGpuPattern,
+      BuildMatMulNBitsQkvSkipWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsQKVSimplifiedLayerNormFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       TransformerLevel::Level2,
       1,
       nullptr,
-      CheckMatMulNBitsQKVSimplifiedLayerNormSkipFusedGraph));
+      CheckMatMulNBitsQkvSkipFusedGraph));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsQKVSimplifiedLayerNormFusionMatchesUnfusedSkipWebGpuResults) {
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuResults) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(), false));
+  };
+
+  TransformerTester(
+      BuildMatMulNBitsQkvSkipWebGpuPattern,
+      check_transformed_graph,
+      TransformerLevel::Level1,
+      TransformerLevel::Level2,
+      21,
+      1e-3,
+      1e-3,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      {},
+      {},
+      std::move(webgpu_ep));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesSkipWebGpuPatternWithResidualOutputPassthrough) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildMatMulNBitsQkvSkipOutputPassthroughWebGpuPattern,
+      21,
+      *logger_,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2,
+      1,
+      nullptr,
+      CheckMatMulNBitsQkvSkipOutputPassthroughFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuResultsWithResidualOutputPassthrough) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
@@ -205,18 +253,18 @@ TEST_F(GraphTransformationTests, MatMulNBitsQKVSimplifiedLayerNormFusionMatchesU
   };
 
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsQKVSimplifiedLayerNormFusedGraphImpl(session.GetGraph(), true));
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(), true));
   };
 
   TransformerTester(
-      BuildMatMulNBitsQKVSimplifiedLayerNormSkipWebGpuPattern,
+      BuildMatMulNBitsQkvSkipOutputPassthroughWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsQKVSimplifiedLayerNormFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       add_session_options,
       {},
       std::move(webgpu_ep));

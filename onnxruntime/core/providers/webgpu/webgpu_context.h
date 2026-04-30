@@ -165,7 +165,7 @@ class WebGpuContextFactory {
 class WebGpuContext final {
  public:
   Status Wait(wgpu::Future f);
-    Status WaitForQueueIdle();
+  Status WaitForQueueIdle();
 
   const wgpu::Device& Device() const { return device_; }
 

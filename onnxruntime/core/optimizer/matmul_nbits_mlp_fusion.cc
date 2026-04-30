@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/matmul_nbits_silu_fusion.h"
+#include "core/optimizer/matmul_nbits_mlp_fusion.h"
 
 #include <algorithm>
-#include <cstdio>
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
@@ -13,6 +12,11 @@
 namespace onnxruntime {
 
 namespace {
+
+constexpr const char* kActivationAttrName = "activation";
+// The transformer name is generic for future expansion, but the current fused
+// pattern and emitted op only support gate activation = "silu".
+constexpr const char* kSupportedActivation = "silu";
 
 bool HasInput(const Node& node, size_t index) {
   return index < node.InputDefs().size() && node.InputDefs()[index] != nullptr && !node.InputDefs()[index]->Name().empty();
@@ -39,7 +43,7 @@ bool IsSupportedSkipSimplifiedLayerNormalization(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SkipSimplifiedLayerNormalization", {1}, kMSDomain);
 }
 
-bool IsSupportedSiluNormAnchor(const Node& node) {
+bool IsSupportedMlpNormAnchor(const Node& node) {
   return IsSupportedSimplifiedLayerNormalization(node) || IsSupportedSkipSimplifiedLayerNormalization(node);
 }
 
@@ -63,7 +67,6 @@ bool HasExpectedNormConsumers(const Graph& graph, const Node& node) {
     return false;
   }
 
-  // Match optimizer_utils::CheckOutputEdges safety check while allowing output 3 to be a graph output.
   for (auto output_edge_it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); output_edge_it != end; ++output_edge_it) {
     const auto& output_node = output_edge_it->GetNode();
     const auto output_node_input_arg_idx = static_cast<size_t>(output_edge_it->GetDstArgIndex());
@@ -95,9 +98,9 @@ bool HasSingleNonGraphConsumer(const Graph& graph, const Node& node) {
   return !graph.NodeProducesGraphOutput(node) && optimizer_utils::CheckOutputEdges(graph, node, 1);
 }
 
-const Node* GetOptionalNormProducer(const Graph& graph,
-                                    const Node& gate_matmul,
-                                    const Node& up_matmul) {
+const Node* GetNormProducer(const Graph& graph,
+                            const Node& gate_matmul,
+                            const Node& up_matmul) {
   if (gate_matmul.InputDefs().empty() || up_matmul.InputDefs().empty() ||
       gate_matmul.InputDefs()[0] != up_matmul.InputDefs()[0]) {
     return nullptr;
@@ -105,7 +108,7 @@ const Node* GetOptionalNormProducer(const Graph& graph,
 
   const Node* gate_input = GetInputNode(graph, gate_matmul, 0);
   const Node* up_input = GetInputNode(graph, up_matmul, 0);
-  if (gate_input == nullptr || gate_input != up_input || !IsSupportedSiluNormAnchor(*gate_input)) {
+  if (gate_input == nullptr || gate_input != up_input || !IsSupportedMlpNormAnchor(*gate_input)) {
     return nullptr;
   }
 
@@ -189,8 +192,8 @@ bool IsFuseCandidate(const Graph& graph,
 
 }  // namespace
 
-Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
-                                        const logging::Logger& logger) const {
+Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                       const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -252,33 +255,30 @@ Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       continue;
     }
 
-    LOGS(logger, INFO) << "MatMulNBitsSiluFusion: matched candidate final_mul='" << node.Name()
-                       << "' gate='" << gate_matmul->Name() << "' up='" << up_matmul->Name()
-                       << "' sigmoid='" << sigmoid->Name() << "' silu_mul='" << silu_mul->Name()
-                       << "' attrs={K=" << GetIntAttr(*gate_matmul, "K", -1, true)
-                       << ", N=" << GetIntAttr(*gate_matmul, "N", -1, true)
-                       << ", bits=" << GetIntAttr(*gate_matmul, "bits", 4)
-                       << ", block_size=" << GetIntAttr(*gate_matmul, "block_size", -1, true)
-                       << ", accuracy_level=" << GetIntAttr(*gate_matmul, "accuracy_level", 0)
-                       << "}";
-
-    LOGS(logger, INFO) << "MatMulNBitsSiluFusion: EP state final_mul='" << node.GetExecutionProviderType()
-                       << "' gate='" << gate_matmul->GetExecutionProviderType()
-                       << "' up='" << up_matmul->GetExecutionProviderType()
-                       << "' sigmoid='" << sigmoid->GetExecutionProviderType()
-                       << "' silu_mul='" << silu_mul->GetExecutionProviderType() << "'";
+    LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: matched candidate output_mul='" << node.Name()
+          << "' gate='" << gate_matmul->Name() << "' up='" << up_matmul->Name()
+          << "' sigmoid='" << sigmoid->Name() << "' activation_mul='" << silu_mul->Name()
+                << "' attrs={K=" << GetIntAttr(*gate_matmul, "K", -1, true)
+                << ", N=" << GetIntAttr(*gate_matmul, "N", -1, true)
+                << ", bits=" << GetIntAttr(*gate_matmul, "bits", 4)
+                << ", block_size=" << GetIntAttr(*gate_matmul, "block_size", -1, true)
+                << ", accuracy_level=" << GetIntAttr(*gate_matmul, "accuracy_level", 0)
+                << "}";
 
     if ((!gate_matmul->GetExecutionProviderType().empty() && gate_matmul->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
         (!up_matmul->GetExecutionProviderType().empty() && up_matmul->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
         (!sigmoid->GetExecutionProviderType().empty() && sigmoid->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
         (!silu_mul->GetExecutionProviderType().empty() && silu_mul->GetExecutionProviderType() != kWebGpuExecutionProvider)) {
-      LOGS(logger, INFO) << "MatMulNBitsSiluFusion: skipping candidate due to non-WebGPU EP assignment.";
+      LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: skipping candidate due to non-WebGPU EP assignment.";
       continue;
     }
 
-    const Node* norm = GetOptionalNormProducer(graph, *gate_matmul, *up_matmul);
-    if (norm != nullptr &&
-        !norm->GetExecutionProviderType().empty() && norm->GetExecutionProviderType() != kWebGpuExecutionProvider) {
+    const Node* norm = GetNormProducer(graph, *gate_matmul, *up_matmul);
+    if (norm == nullptr) {
+      continue;
+    }
+
+    if (!norm->GetExecutionProviderType().empty() && norm->GetExecutionProviderType() != kWebGpuExecutionProvider) {
       continue;
     }
 
@@ -288,14 +288,15 @@ Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     utils::SetNodeAttribute(utils::MakeAttribute("bits", GetIntAttr(*gate_matmul, "bits", 4)), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", GetIntAttr(*gate_matmul, "block_size", -1, true)), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", GetIntAttr(*gate_matmul, "accuracy_level", 0)), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute(kActivationAttrName, std::string{kSupportedActivation}), attrs);
 
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
     const bool is_skip_sln = norm != nullptr && IsSupportedSkipSimplifiedLayerNormalization(*norm);
 
     InlinedVector<NodeArg*> fused_inputs{
-      const_cast<NodeArg*>(norm != nullptr ? norm->InputDefs()[0] : gate_matmul->InputDefs()[0]),
-      is_skip_sln ? const_cast<NodeArg*>(norm->InputDefs()[1]) : &empty_arg,
-      norm != nullptr ? const_cast<NodeArg*>(norm->InputDefs()[is_skip_sln ? 2 : 1]) : &empty_arg,
+        const_cast<NodeArg*>(norm->InputDefs()[0]),
+        is_skip_sln ? const_cast<NodeArg*>(norm->InputDefs()[1]) : &empty_arg,
+        const_cast<NodeArg*>(norm->InputDefs()[is_skip_sln ? 2 : 1]),
         const_cast<NodeArg*>(gate_matmul->InputDefs()[1]),
         const_cast<NodeArg*>(gate_matmul->InputDefs()[2]),
         HasInput(*gate_matmul, 5) ? const_cast<NodeArg*>(gate_matmul->InputDefs()[5]) : &empty_arg,
@@ -310,18 +311,15 @@ Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
       fused_outputs.push_back(const_cast<NodeArg*>(norm->OutputDefs()[3]));
     }
 
-    const auto norm_input_edges = norm != nullptr ? graph_utils::GraphEdge::GetNodeInputEdges(*norm)
-                                                  : std::vector<graph_utils::GraphEdge>{};
+    const auto norm_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*norm);
     const auto gate_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*gate_matmul);
     const auto up_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*up_matmul);
     const auto final_mul_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node);
     const auto norm_output_edges = preserve_skip_output ? graph_utils::GraphEdge::GetNodeOutputEdges(*norm)
                                                         : std::vector<graph_utils::GraphEdge>{};
 
-    if (norm != nullptr) {
-      graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*norm));
-      graph.RemoveNode(norm->Index());
-    }
+    graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*norm));
+    graph.RemoveNode(norm->Index());
     graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*gate_matmul));
     graph.RemoveNode(gate_matmul->Index());
     graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*up_matmul));
@@ -333,33 +331,25 @@ Status MatMulNBitsSiluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
 
-    Node& fused_node = graph.AddNode(graph.GenerateNodeName("MatMulNBitsSiluMul"),
-                                     "MatMulNBitsSiluMul",
-                                     "fused MatMulNBits gate/up projections with SiLU multiply",
+    Node& fused_node = graph.AddNode(graph.GenerateNodeName("MatMulNBitsMlp"),
+                     "MatMulNBitsMlp",
+                     "fused MatMulNBits gated MLP projections",
                                      fused_inputs,
                                      fused_outputs,
                                      &attrs,
                                      kMSDomain);
     fused_node.SetExecutionProviderType(kWebGpuExecutionProvider);
 
-    LOGS(logger, INFO) << "MatMulNBitsSiluFusion: created fused node '" << fused_node.Name()
-                       << "' from final_mul='" << node.Name() << "'";
+    LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: created fused node '" << fused_node.Name()
+          << "' from output_mul='" << node.Name() << "'";
 
-    if (norm != nullptr) {
-      for (const auto& input_edge : norm_input_edges) {
-        int fused_input_index = input_edge.dst_arg_index;
-        if (!is_skip_sln && input_edge.dst_arg_index == 1) {
-          fused_input_index = 2;
-        }
+    for (const auto& input_edge : norm_input_edges) {
+      int fused_input_index = input_edge.dst_arg_index;
+      if (!is_skip_sln && input_edge.dst_arg_index == 1) {
+        fused_input_index = 2;
+      }
 
-        graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, fused_input_index);
-      }
-    } else {
-      for (const auto& input_edge : gate_input_edges) {
-        if (input_edge.dst_arg_index == 0) {
-          graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, 0);
-        }
-      }
+      graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, fused_input_index);
     }
 
     auto add_input_edge_if_present = [&](const std::vector<graph_utils::GraphEdge>& edges,

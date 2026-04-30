@@ -2,9 +2,16 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+
 #include <sstream>
+
 #include "core/common/common.h"
+#include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_utils.h"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -59,6 +66,105 @@ bool HasDP4ADeviceSupport(int context_id) {
   auto& ctx = onnxruntime::webgpu::WebGpuContextFactory::GetContext(context_id);
   return ctx.DeviceHasFeature(wgpu::FeatureName::Subgroups) &&
          ctx.AdapterInfo().vendor != std::string_view{"apple"};
+}
+
+bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(const Tensor* a,
+                                                          int64_t K_op,
+                                                          int64_t N_op,
+                                                          int64_t block_size_op,
+                                                          int64_t accuracy_level,
+                                                          int64_t nbits,
+                                                          onnxruntime::webgpu::ComputeContext& context,
+                                                          Tensor* y,
+                                                          bool has_weight_idx_indirect,
+                                                          int32_t* subgroup_matrix_config_index) {
+  TensorShape b_shape({N_op, K_op});
+  MatMulComputeHelper helper;
+  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
+    return false;
+  }
+
+  const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
+  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
+  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
+
+#if !defined(__wasm__)
+  int32_t local_subgroup_matrix_config_index = -1;
+  return (M >= kMinMForTileOptimization && !has_weight_idx_indirect) &&
+         (context.AdapterInfo().vendor == std::string_view{"apple"} ||
+          context.AdapterInfo().vendor == std::string_view{"intel"}) &&
+         CanApplySubgroupMatrixMatMulNBits(context,
+                                           accuracy_level,
+                                           block_size,
+                                           batch_count,
+                                           N,
+                                           K,
+                                           static_cast<uint32_t>(nbits),
+                                           y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                           subgroup_matrix_config_index != nullptr ? *subgroup_matrix_config_index : local_subgroup_matrix_config_index);
+#endif
+
+  return false;
+}
+
+bool WouldApplyDP4AMatMulNBitsInCurrentDispatch(const Tensor* a,
+                                                int64_t K_op,
+                                                int64_t N_op,
+                                                int64_t block_size_op,
+                                                int64_t accuracy_level,
+                                                onnxruntime::webgpu::ComputeContext& context,
+                                                Tensor* y,
+                                                bool has_weight_idx_indirect) {
+  TensorShape b_shape({N_op, K_op});
+  MatMulComputeHelper helper;
+  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
+    return false;
+  }
+
+  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
+  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
+  const uint32_t components_a = GetMaxComponents(K);
+
+  return ((M >= kMinMForTileOptimization && !has_weight_idx_indirect) ||
+          y->DataType() == DataTypeImpl::GetType<float>() ||
+          context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
+         CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a);
+}
+
+bool WouldApplyWideTileMatMulNBitsInCurrentDispatch(const Tensor* a,
+                                                    int64_t K_op,
+                                                    int64_t N_op,
+                                                    int64_t block_size_op,
+                                                    int64_t nbits,
+                                                    bool has_weight_idx_indirect) {
+  if (has_weight_idx_indirect) {
+    return false;
+  }
+
+  TensorShape b_shape({N_op, K_op});
+  MatMulComputeHelper helper;
+  if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
+    return false;
+  }
+
+  const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
+  const uint32_t components_a = GetMaxComponents(K);
+  const uint32_t block_size_per_col = block_size;
+  const uint32_t blob_size = (block_size_per_col / 8) * static_cast<uint32_t>(nbits);
+  const uint32_t blob_size_in_words = blob_size / 4;
+  const uint32_t components_b = GetMaxComponents(blob_size_in_words);
+
+  return block_size == 32 &&
+         components_a == 4 &&
+         components_b == 4 &&
+         nbits != 2 &&
+         M >= kMinMForTileOptimization;
 }
 
 }  // namespace webgpu

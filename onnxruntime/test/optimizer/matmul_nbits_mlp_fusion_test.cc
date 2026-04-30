@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/graph_transformer_mgr.h"
-#include "core/optimizer/matmul_nbits_silu_fusion.h"
+#include "core/optimizer/matmul_nbits_mlp_fusion.h"
 #include "core/optimizer/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -21,8 +23,9 @@ namespace test {
 
 namespace {
 
+constexpr const char* kExpectedActivation = "silu";
+
 enum class NormAnchorKind {
-  kNone,
   kSimplified,
   kSkipSimplified,
 };
@@ -46,19 +49,19 @@ NodeAttributes MakeMatMulNBitsAttrs(int64_t k, int64_t n, int64_t block_size, in
   return attrs;
 }
 
-Status CheckMatMulNBitsSiluFusedGraphImpl(const Graph& graph, NormAnchorKind norm_anchor_kind) {
+Status CheckMatMulNBitsMlpFusedGraphImpl(const Graph& graph, NormAnchorKind norm_anchor_kind) {
   const auto op_to_count = CountOpsInGraph(graph);
-  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsSiluMul") != 1 ||
+  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsMlp") != 1 ||
       OpCount(op_to_count, "com.microsoft.MatMulNBits") != 0 ||
       OpCount(op_to_count, "SimplifiedLayerNormalization") != 0 ||
       OpCount(op_to_count, "com.microsoft.SkipSimplifiedLayerNormalization") != 0 ||
       OpCount(op_to_count, "Sigmoid") != 0 ||
       OpCount(op_to_count, "Mul") != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator counts after MatMulNBitsSiluFusion.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected operator counts after MatMulNBitsMlpFusion.");
   }
 
   for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "MatMulNBitsSiluMul") {
+    if (node.OpType() == "MatMulNBitsMlp") {
       ORT_RETURN_IF_NOT(node.Domain() == kMSDomain, "Fused node must be in com.microsoft domain.");
       ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == kWebGpuExecutionProvider,
                         "Fused node must be assigned to WebGPU EP.");
@@ -66,42 +69,44 @@ Status CheckMatMulNBitsSiluFusedGraphImpl(const Graph& graph, NormAnchorKind nor
       const bool has_skip = node.InputDefs()[1] != nullptr && !node.InputDefs()[1]->Name().empty();
       const bool has_norm_scale = node.InputDefs()[2] != nullptr && !node.InputDefs()[2]->Name().empty();
       ORT_RETURN_IF_NOT(has_skip == (norm_anchor_kind == NormAnchorKind::kSkipSimplified),
-                        "Unexpected skip input presence on fused node.");
-      ORT_RETURN_IF_NOT(has_norm_scale == (norm_anchor_kind != NormAnchorKind::kNone),
-                        "Unexpected norm_scale input presence on fused node.");
+            "Unexpected skip input presence on fused node.");
+      ORT_RETURN_IF_NOT(has_norm_scale,
+        "Expected norm_scale input on fused node.");
+      ORT_RETURN_IF_NOT(node.OutputDefs().size() == 1u,
+            "Non-passthrough fusion should expose only the Y output.");
+
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      ORT_RETURN_IF_NOT(activation_attr != nullptr && activation_attr->s() == kExpectedActivation,
+                        "Fused node must carry activation='silu'.");
     }
   }
 
   return Status::OK();
 }
 
-Status CheckMatMulNBitsSiluFusedGraph(const Graph& graph) {
-  return CheckMatMulNBitsSiluFusedGraphImpl(graph, NormAnchorKind::kNone);
+Status CheckMatMulNBitsMlpSimplifiedFusedGraph(const Graph& graph) {
+  return CheckMatMulNBitsMlpFusedGraphImpl(graph, NormAnchorKind::kSimplified);
 }
 
-Status CheckMatMulNBitsSiluSimplifiedFusedGraph(const Graph& graph) {
-  return CheckMatMulNBitsSiluFusedGraphImpl(graph, NormAnchorKind::kSimplified);
+Status CheckMatMulNBitsMlpSkipFusedGraph(const Graph& graph) {
+  return CheckMatMulNBitsMlpFusedGraphImpl(graph, NormAnchorKind::kSkipSimplified);
 }
 
-Status CheckMatMulNBitsSiluSkipFusedGraph(const Graph& graph) {
-  return CheckMatMulNBitsSiluFusedGraphImpl(graph, NormAnchorKind::kSkipSimplified);
-}
-
-Status CheckMatMulNBitsSiluSkipOutputPassthroughFusedGraph(const Graph& graph) {
+Status CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph(const Graph& graph) {
   const auto op_to_count = CountOpsInGraph(graph);
-  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsSiluMul") != 1 ||
+  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsMlp") != 1 ||
       OpCount(op_to_count, "com.microsoft.MatMulNBits") != 0 ||
       OpCount(op_to_count, "SimplifiedLayerNormalization") != 0 ||
       OpCount(op_to_count, "com.microsoft.SkipSimplifiedLayerNormalization") != 0 ||
       OpCount(op_to_count, "Sigmoid") != 0 ||
       OpCount(op_to_count, "Mul") != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Unexpected operator counts after MatMulNBitsSiluFusion with skip output passthrough.");
+                           "Unexpected operator counts after MatMulNBitsMlpFusion with skip output passthrough.");
   }
 
   bool found_fused_node = false;
   for (const auto& node : graph.Nodes()) {
-    if (node.OpType() != "MatMulNBitsSiluMul") {
+    if (node.OpType() != "MatMulNBitsMlp") {
       continue;
     }
 
@@ -111,22 +116,26 @@ Status CheckMatMulNBitsSiluSkipOutputPassthroughFusedGraph(const Graph& graph) {
                       "Fused node must be assigned to WebGPU EP.");
     ORT_RETURN_IF_NOT(node.InputDefs().size() == 9u, "Fused node must have 9 inputs.");
     ORT_RETURN_IF_NOT(node.OutputDefs().size() == 2u,
-              "Fused node must expose Y and the passthrough residual output.");
+                      "Fused node must expose Y and the passthrough residual output.");
     const bool has_skip = node.InputDefs()[1] != nullptr && !node.InputDefs()[1]->Name().empty();
     const bool has_norm_scale = node.InputDefs()[2] != nullptr && !node.InputDefs()[2]->Name().empty();
     ORT_RETURN_IF_NOT(has_skip && has_norm_scale,
-              "Skip output passthrough should remain fused into MatMulNBitsSiluMul.");
+                      "Skip output passthrough should remain fused into MatMulNBitsMlp.");
     ORT_RETURN_IF_NOT(node.OutputDefs()[1] != nullptr && !node.OutputDefs()[1]->Name().empty(),
-              "Expected fused node to preserve the residual passthrough output.");
+                      "Expected fused node to preserve the residual passthrough output.");
+
+    const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+    ORT_RETURN_IF_NOT(activation_attr != nullptr && activation_attr->s() == kExpectedActivation,
+                      "Fused node must carry activation='silu'.");
   }
 
-  ORT_RETURN_IF_NOT(found_fused_node, "Expected a MatMulNBitsSiluMul node in the transformed graph.");
+  ORT_RETURN_IF_NOT(found_fused_node, "Expected a MatMulNBitsMlp node in the transformed graph.");
   return Status::OK();
 }
 
-void BuildMatMulNBitsSiluWebGpuPatternImpl(ModelTestBuilder& builder,
-                                           NormAnchorKind norm_anchor_kind,
-                                           SkipOutputKind skip_output_kind = SkipOutputKind::kNone) {
+void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
+                                          NormAnchorKind norm_anchor_kind,
+                                          SkipOutputKind skip_output_kind = SkipOutputKind::kNone) {
   constexpr int64_t k = 16;
   constexpr int64_t n = 8;
   constexpr int64_t block_size = 16;
@@ -150,9 +159,7 @@ void BuildMatMulNBitsSiluWebGpuPatternImpl(ModelTestBuilder& builder,
   NodeArg* up_scale = builder.MakeInitializer<MLFloat16>({n, 1}, MLFloat16(1.0f), MLFloat16(1.0f));
   NodeArg* up_bias = builder.MakeInitializer<MLFloat16>({n}, MLFloat16(0.0f), MLFloat16(0.0f));
 
-  NodeArg* normalized_input = norm_anchor_kind == NormAnchorKind::kNone
-                                  ? input
-                                  : builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k});
+  NodeArg* normalized_input = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k});
   NodeArg* gate_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, n});
   NodeArg* up_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, n});
   NodeArg* sigmoid_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, n});
@@ -176,8 +183,8 @@ void BuildMatMulNBitsSiluWebGpuPatternImpl(ModelTestBuilder& builder,
       norm_outputs.push_back(residual_output);
     }
     norm = &builder.AddNode("SkipSimplifiedLayerNormalization", {input, skip_input, norm_scale}, norm_outputs,
-                kMSDomain);
-  } else if (norm_anchor_kind == NormAnchorKind::kSimplified) {
+                            kMSDomain);
+  } else {
     NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({k}, MLFloat16(1.0f), MLFloat16(1.0f));
     norm = &builder.AddNode("SimplifiedLayerNormalization", {input, norm_scale}, {normalized_input});
   }
@@ -204,164 +211,129 @@ void BuildMatMulNBitsSiluWebGpuPatternImpl(ModelTestBuilder& builder,
   SetWebGpuProvider(final_mul);
 }
 
-void BuildMatMulNBitsSiluWebGpuPattern(ModelTestBuilder& builder) {
-  BuildMatMulNBitsSiluWebGpuPatternImpl(builder, NormAnchorKind::kNone);
+void BuildMatMulNBitsMlpSimplifiedWebGpuPattern(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSimplified);
 }
 
-void BuildMatMulNBitsSiluSimplifiedWebGpuPattern(ModelTestBuilder& builder) {
-  BuildMatMulNBitsSiluWebGpuPatternImpl(builder, NormAnchorKind::kSimplified);
+void BuildMatMulNBitsMlpSkipWebGpuPattern(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified);
 }
 
-void BuildMatMulNBitsSiluSkipWebGpuPattern(ModelTestBuilder& builder) {
-  BuildMatMulNBitsSiluWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified);
-}
-
-void BuildMatMulNBitsSiluSkipOutputPassthroughWebGpuPattern(ModelTestBuilder& builder) {
-  BuildMatMulNBitsSiluWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput);
+void BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPattern(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput);
 }
 
 }  // namespace
 
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionFusesWebGpuPattern) {
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSimplifiedWebGpuPattern) {
   ASSERT_STATUS_OK(TestGraphTransformer(
-      BuildMatMulNBitsSiluWebGpuPattern,
+      BuildMatMulNBitsMlpSimplifiedWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       TransformerLevel::Level2,
       1,
       nullptr,
-      CheckMatMulNBitsSiluFusedGraph));
+      CheckMatMulNBitsMlpSimplifiedFusedGraph));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionFusesSkipWebGpuPattern) {
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSkipWebGpuPattern) {
   ASSERT_STATUS_OK(TestGraphTransformer(
-      BuildMatMulNBitsSiluSkipWebGpuPattern,
+      BuildMatMulNBitsMlpSkipWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       TransformerLevel::Level2,
       1,
       nullptr,
-      CheckMatMulNBitsSiluSkipFusedGraph));
+      CheckMatMulNBitsMlpSkipFusedGraph));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionFusesSkipWebGpuPatternWithResidualOutputPassthrough) {
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSkipWebGpuPatternWithResidualOutputPassthrough) {
   ASSERT_STATUS_OK(TestGraphTransformer(
-      BuildMatMulNBitsSiluSkipOutputPassthroughWebGpuPattern,
+      BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       TransformerLevel::Level2,
       1,
       nullptr,
-      CheckMatMulNBitsSiluSkipOutputPassthroughFusedGraph));
+      CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionFusesSimplifiedWebGpuPattern) {
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      BuildMatMulNBitsSiluSimplifiedWebGpuPattern,
-      21,
-      *logger_,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
-      TransformerLevel::Level2,
-      1,
-      nullptr,
-      CheckMatMulNBitsSiluSimplifiedFusedGraph));
-}
-
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionMatchesUnfusedWebGpuResults) {
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWebGpuResults) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsSiluFusedGraph(session.GetGraph()));
+    ASSERT_STATUS_OK(CheckMatMulNBitsMlpSimplifiedFusedGraph(session.GetGraph()));
   };
 
   TransformerTester(
-      BuildMatMulNBitsSiluWebGpuPattern,
+      BuildMatMulNBitsMlpSimplifiedWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       {},
       {},
       std::move(webgpu_ep));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionMatchesUnfusedSkipWebGpuResults) {
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuResults) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsSiluSkipFusedGraph(session.GetGraph()));
+    ASSERT_STATUS_OK(CheckMatMulNBitsMlpSkipFusedGraph(session.GetGraph()));
   };
 
   TransformerTester(
-      BuildMatMulNBitsSiluSkipWebGpuPattern,
+      BuildMatMulNBitsMlpSkipWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       {},
       {},
       std::move(webgpu_ep));
 }
 
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionMatchesUnfusedSkipWebGpuResultsWithResidualOutputPassthrough) {
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuResultsWithResidualOutputPassthrough) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
+  auto add_session_options = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers,
+                                                      "EliminateIdentity"));
+  };
+
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsSiluSkipOutputPassthroughFusedGraph(session.GetGraph()));
+    ASSERT_STATUS_OK(CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph(session.GetGraph()));
   };
 
   TransformerTester(
-      BuildMatMulNBitsSiluSkipOutputPassthroughWebGpuPattern,
+      BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
-      {},
-      {},
-      std::move(webgpu_ep));
-}
-
-TEST_F(GraphTransformationTests, MatMulNBitsSiluFusionMatchesUnfusedSimplifiedWebGpuResults) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
-  }
-
-  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsSiluSimplifiedFusedGraph(session.GetGraph()));
-  };
-
-  TransformerTester(
-      BuildMatMulNBitsSiluSimplifiedWebGpuPattern,
-      check_transformed_graph,
-      TransformerLevel::Level1,
-      TransformerLevel::Level2,
-      21,
-      1e-3,
-      1e-3,
-      std::make_unique<MatMulNBitsSiluFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
-      {},
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      add_session_options,
       {},
       std::move(webgpu_ep));
 }
