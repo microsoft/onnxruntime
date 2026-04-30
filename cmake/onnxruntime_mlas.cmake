@@ -874,8 +874,11 @@ endif()
         set(mlas_platform_srcs
             ${mlas_platform_srcs_scalar}
             ${MLAS_SRC_DIR}/qgemm_kernel_rvv.cpp
+            ${MLAS_SRC_DIR}/riscv64/sgemv_kernel_rvv.cpp
         )
         set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_rvv.cpp
+            PROPERTIES COMPILE_FLAGS "-march=rv64gcv")
+        set_source_files_properties(${MLAS_SRC_DIR}/riscv64/sgemv_kernel_rvv.cpp
             PROPERTIES COMPILE_FLAGS "-march=rv64gcv")
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
             set(MLAS_SOURCE_IS_NOT_SET 0)
