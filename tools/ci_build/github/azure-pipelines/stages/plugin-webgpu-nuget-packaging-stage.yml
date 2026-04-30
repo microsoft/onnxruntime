@@ -54,6 +54,16 @@ stages:
         artifactName: webgpu_plugin_nuget
     variables:
     - template: ../templates/common-variables.yml
+    - name: WebGpuPackStagingDir
+      value: '$(Build.BinariesDirectory)\webgpu_pack_staging'
+    # Common arguments shared by the Build and Pack invocations of pack_nuget.ps1.
+    - name: WebGpuPackNuGetCommonArgs
+      value: >-
+        -Version "$(PluginPackageVersion)"
+        -OutputDir "$(Build.ArtifactStagingDirectory)\nuget"
+        -StagingDir "$(WebGpuPackStagingDir)"
+        -Configuration Release
+        -NuGetConfig "$(Build.SourcesDirectory)\NuGet.config"
     steps:
     - checkout: self
       clean: true
@@ -99,7 +109,27 @@ stages:
           artifactName: webgpu_plugin_macos_arm64
           targetPath: '$(Build.BinariesDirectory)\artifacts\macos_arm64'
 
-    # Stage binaries and pack NuGet
+    # Stage binaries and build the managed assembly (so it can be ESRP-signed before packing).
+    - task: PowerShell@2
+      displayName: 'Build managed DLL'
+      inputs:
+        targetType: filePath
+        filePath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.ps1'
+        pwsh: true
+        arguments: >-
+          $(WebGpuPackNuGetCommonArgs)
+          -ArtifactsDir "$(Build.BinariesDirectory)\artifacts"
+          -BuildOnly
+
+    # ESRP-sign the managed DLL before it gets embedded in the .nupkg.
+    - template: ../templates/win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(WebGpuPackStagingDir)'
+        Pattern: '**\Microsoft.ML.OnnxRuntime.EP.WebGpu.dll'
+        DisplayName: 'ESRP - Sign managed DLL'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+    # Pack the (now-signed) managed DLL plus native binaries into the .nupkg.
     - task: PowerShell@2
       displayName: 'Pack NuGet package'
       inputs:
@@ -107,11 +137,8 @@ stages:
         filePath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.ps1'
         pwsh: true
         arguments: >-
-          -Version "$(PluginPackageVersion)"
-          -ArtifactsDir "$(Build.BinariesDirectory)\artifacts"
-          -OutputDir "$(Build.ArtifactStagingDirectory)\nuget"
-          -Configuration Release
-          -NuGetConfig "$(Build.SourcesDirectory)\NuGet.config"
+          $(WebGpuPackNuGetCommonArgs)
+          -PackOnly
 
     # ESRP sign
     - template: ../templates/esrp_nuget.yml

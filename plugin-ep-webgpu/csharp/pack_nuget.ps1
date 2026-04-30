@@ -38,8 +38,28 @@ param(
     [string]$BinaryDir_OsxArm64,
 
     # Optional NuGet.config to pass to `dotnet pack` via --configfile.
-    [string]$NuGetConfig
+    [string]$NuGetConfig,
+
+    # Optional explicit staging directory. If unset, a directory under $OutputDir is used.
+    # Useful in CI when the caller wants to point ESRP signing at a known location.
+    [string]$StagingDir,
+
+    # Split-phase switches for CI signing: build the managed DLL in one task
+    # (so it can be ESRP-signed), then pack with --no-build in a later task.
+    # When neither is set, the script does the full build+pack end-to-end.
+    [switch]$BuildOnly,
+    [switch]$PackOnly
 )
+
+if ($BuildOnly -and $PackOnly) {
+    Write-Error "-BuildOnly and -PackOnly are mutually exclusive."
+    exit 1
+}
+
+if ($NuGetConfig -and -not (Test-Path $NuGetConfig)) {
+    Write-Error "NuGet.config not found: $NuGetConfig"
+    exit 1
+}
 
 $ErrorActionPreference = 'Stop'
 
@@ -54,17 +74,34 @@ if (-not (Test-Path $csproj)) {
 $OutputDir = [System.IO.Path]::GetFullPath($OutputDir)
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
-# Stage into a temporary directory under the output dir so we don't modify the source tree.
-$stagingDir = Join-Path $OutputDir "_staging"
-if (Test-Path $stagingDir) {
-    Remove-Item -Recurse -Force $stagingDir
+# Stage into a temporary directory so we don't modify the source tree.
+# When the caller provides $StagingDir explicitly, they own its lifecycle (no auto-cleanup).
+$ownsStaging = -not $StagingDir
+if ($StagingDir) {
+    $StagingDir = [System.IO.Path]::GetFullPath($StagingDir)
 }
-New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+else {
+    $StagingDir = Join-Path $OutputDir "_staging"
+}
+$stagedCsproj = Join-Path $StagingDir "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
 
-# Copy project sources to staging
-Write-Host "Staging project files to $stagingDir"
-Copy-Item -Path (Join-Path $projectDir "*") -Destination $stagingDir -Recurse -Force
-$stagedCsproj = Join-Path $stagingDir "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
+if ($PackOnly) {
+    if (-not (Test-Path $stagedCsproj)) {
+        Write-Error "Staged project not found at $stagedCsproj. Run with -BuildOnly first."
+        exit 1
+    }
+    Write-Host "Reusing existing staging directory: $StagingDir"
+}
+else {
+    if (Test-Path $StagingDir) {
+        Remove-Item -Recurse -Force $StagingDir
+    }
+    New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
+
+    # Copy project sources to staging
+    Write-Host "Staging project files to $StagingDir"
+    Copy-Item -Path (Join-Path $projectDir "*") -Destination $StagingDir -Recurse -Force
+}
 
 # --- Platform definitions ---
 $platforms = [ordered]@{
@@ -91,58 +128,91 @@ $platforms = [ordered]@{
 }
 
 # --- Stage binaries ---
-$anyStaged = $false
+if (-not $PackOnly) {
+    $anyStaged = $false
 
-foreach ($entry in $platforms.GetEnumerator()) {
-    $name  = $entry.Key
-    $info  = $entry.Value
-    $rid   = $info.rid
+    foreach ($entry in $platforms.GetEnumerator()) {
+        $name  = $entry.Key
+        $info  = $entry.Value
+        $rid   = $info.rid
 
-    # Resolve source directory: explicit param > ArtifactsDir > skip
-    $sourceDir = $info.param
-    if (-not $sourceDir -and $ArtifactsDir) {
-        $candidate = Join-Path $ArtifactsDir "$name\bin"
-        if (Test-Path $candidate) {
-            $sourceDir = $candidate
+        # Resolve source directory: explicit param > ArtifactsDir > skip
+        $sourceDir = $info.param
+        if (-not $sourceDir -and $ArtifactsDir) {
+            $candidate = Join-Path $ArtifactsDir "$name\bin"
+            if (Test-Path $candidate) {
+                $sourceDir = $candidate
+            }
         }
+
+        if (-not $sourceDir) {
+            Write-Host "Skipping $name (no binary directory provided)"
+            continue
+        }
+
+        if (-not (Test-Path $sourceDir)) {
+            Write-Error "Binary directory does not exist: $sourceDir"
+            exit 1
+        }
+
+        $targetDir = Join-Path $StagingDir "runtimes\$rid\native"
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+
+        Write-Host "Staging $name -> runtimes/$rid/native/"
+        foreach ($file in $info.files) {
+            $src = Join-Path $sourceDir $file
+            if (-not (Test-Path $src)) {
+                Write-Error "Expected binary not found: $src"
+                exit 1
+            }
+            Copy-Item -Path $src -Destination $targetDir -Force
+            Write-Host "  $file"
+        }
+        $anyStaged = $true
     }
 
-    if (-not $sourceDir) {
-        Write-Host "Skipping $name (no binary directory provided)"
-        continue
-    }
-
-    if (-not (Test-Path $sourceDir)) {
-        Write-Error "Binary directory does not exist: $sourceDir"
+    if (-not $anyStaged) {
+        Write-Error "No platform binaries were staged. Provide at least one -BinaryDir_* parameter or -ArtifactsDir."
         exit 1
     }
 
-    $targetDir = Join-Path $stagingDir "runtimes\$rid\native"
-    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    Write-Host ""
+    Write-Host "Runtimes layout:"
+    Get-ChildItem -Recurse (Join-Path $StagingDir "runtimes") | ForEach-Object { Write-Host "  $($_.FullName)" }
+}
 
-    Write-Host "Staging $name -> runtimes/$rid/native/"
-    foreach ($file in $info.files) {
-        $src = Join-Path $sourceDir $file
-        if (-not (Test-Path $src)) {
-            Write-Error "Expected binary not found: $src"
-            exit 1
-        }
-        Copy-Item -Path $src -Destination $targetDir -Force
-        Write-Host "  $file"
+# --- Build / Pack ---
+if ($BuildOnly) {
+    Write-Host ""
+    Write-Host "Running dotnet build (Version=$Version, Configuration=$Configuration)..."
+
+    $buildArgs = @(
+        $stagedCsproj,
+        '--configuration', $Configuration,
+        "-p:Version=$Version"
+    )
+    if ($NuGetConfig) {
+        $buildArgs += @('--configfile', $NuGetConfig)
+        Write-Host "Using NuGet.config: $NuGetConfig"
     }
-    $anyStaged = $true
+
+    dotnet build @buildArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "dotnet build failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+
+    $managedDll = Join-Path $StagingDir "bin\$Configuration\netstandard2.0\Microsoft.ML.OnnxRuntime.EP.WebGpu.dll"
+    if (-not (Test-Path $managedDll)) {
+        Write-Error "Managed DLL not found after build: $managedDll"
+        exit 1
+    }
+    Write-Host ""
+    Write-Host "Built managed DLL: $managedDll"
+    Write-Host "Staging directory preserved for subsequent -PackOnly invocation."
+    exit 0
 }
 
-if (-not $anyStaged) {
-    Write-Error "No platform binaries were staged. Provide at least one -BinaryDir_* parameter or -ArtifactsDir."
-    exit 1
-}
-
-Write-Host ""
-Write-Host "Runtimes layout:"
-Get-ChildItem -Recurse (Join-Path $stagingDir "runtimes") | ForEach-Object { Write-Host "  $($_.FullName)" }
-
-# --- Pack ---
 Write-Host ""
 Write-Host "Running dotnet pack (Version=$Version, Configuration=$Configuration)..."
 
@@ -152,11 +222,10 @@ $packArgs = @(
     "-p:Version=$Version",
     '--output', $OutputDir
 )
+if ($PackOnly) {
+    $packArgs += '--no-build'
+}
 if ($NuGetConfig) {
-    if (-not (Test-Path $NuGetConfig)) {
-        Write-Error "NuGet.config not found: $NuGetConfig"
-        exit 1
-    }
     $packArgs += @('--configfile', $NuGetConfig)
     Write-Host "Using NuGet.config: $NuGetConfig"
 }
@@ -183,8 +252,8 @@ foreach ($pkg in $snupkgs) {
 }
 
 # --- Clean up staging directory ---
-if (Test-Path $stagingDir) {
-    Remove-Item -Recurse -Force $stagingDir
+if ($ownsStaging -and (Test-Path $StagingDir)) {
+    Remove-Item -Recurse -Force $StagingDir
     Write-Host ""
     Write-Host "Cleaned up staging directory."
 }
