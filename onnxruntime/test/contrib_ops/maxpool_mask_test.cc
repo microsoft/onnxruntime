@@ -80,5 +80,59 @@ TEST(ContribOpTest, MaxPoolWithMask) {
   test.Run();
 }
 
+TEST(ContribOpTest, MaxPoolWithMask_SpatialDimMismatch) {
+  OpTester test("MaxpoolWithMask", 1, onnxruntime::kMSDomain);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
+
+  // Input X has shape {1, 1, 8, 8}
+  std::vector<int64_t> x_dims = {1, 1, 8, 8};
+  std::vector<float> x_vals(64, 1.0f);
+
+  // Mask M has wrong spatial dimensions: {1, 1, 4, 8} instead of {1, 1, 8, 8}
+  std::vector<int64_t> m_dims = {1, 1, 4, 8};
+  std::vector<int32_t> m_vals(32, 1);
+
+  // Placeholder output shape and values (not validated since we expect failure)
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {1.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddInput<int32_t>("M", m_dims, m_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(BaseTester::ExpectResult::kExpectFailure,
+           "Mask and input spatial dimensions mismatch at dimension 2");
+}
+
+TEST(ContribOpTest, MaxPoolWithMask_DimCountMismatch) {
+  OpTester test("MaxpoolWithMask", 1, onnxruntime::kMSDomain);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
+
+  // Input X has shape {1, 1, 8, 8} (4D)
+  std::vector<int64_t> x_dims = {1, 1, 8, 8};
+  std::vector<float> x_vals(64, 1.0f);
+
+  // Mask M has wrong number of dimensions: {1, 1, 8} (3D) instead of 4D
+  std::vector<int64_t> m_dims = {1, 1, 8};
+  std::vector<int32_t> m_vals(8, 1);
+
+  // Placeholder output shape and values (not validated since we expect failure)
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {1.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddInput<int32_t>("M", m_dims, m_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(BaseTester::ExpectResult::kExpectFailure,
+           "Mask and input must have the same number of dimensions");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

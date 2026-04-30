@@ -200,10 +200,14 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     const TensorShape& x_shape = X->Shape();
     const TensorShape& m_shape = M->Shape();
     ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
-
-    // TODO: fix this checker later
-    // ONNXRUNTIME_RETURN_IF_NOT((x_shape[2] == m_shape[2]) && (x_shape[3] == m_shape[3]), " Input shape and mask shape
-    // mismatch: ", x_shape, " vs ", m_shape);
+    ORT_RETURN_IF_NOT(m_shape.NumDimensions() == x_shape.NumDimensions(),
+                      "Mask and input must have the same number of dimensions. Got mask dims: ",
+                      m_shape.NumDimensions(), " input dims: ", x_shape.NumDimensions());
+    for (size_t i = 2; i < x_shape.NumDimensions(); ++i) {
+      ORT_RETURN_IF_NOT(m_shape[i] == x_shape[i],
+                        "Mask and input spatial dimensions mismatch at dimension ", i,
+                        ": mask=", m_shape[i], " input=", x_shape[i]);
+    }
 
     TensorShapeVector pads = pool_attrs_.pads;
     TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;
