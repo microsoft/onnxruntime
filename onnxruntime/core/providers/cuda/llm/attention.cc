@@ -1316,6 +1316,29 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                     parameters.q_sequence_length != parameters.total_sequence_length &&
                                     parameters.past_sequence_length == 0;
 
+  // Reject causal + TensorScatter decode (S_q < S_kv without past_key).
+  // Per ONNX spec, is_causal without past_key means upper-left alignment: q[i] attends
+  // only to kv[0..i]. For decode with external cache (S_q=1, S_kv=cache_size), this means
+  // q[0] sees only kv[0] — not meaningful for autoregressive generation.
+  //
+  // Why is_causal=0 is correct for external cache decode:
+  // - With S_q=1, there's only one query position at the end of the sequence
+  // - All KV positions are in the "past" relative to this query — nothing to mask
+  // - nonpad_kv_seqlen already bounds attention to valid cache positions
+  //
+  // For external cache prompt (S_q == S_kv), is_causal=1 works correctly (square matrix,
+  // upper-left == lower-right). For chunked prefill (S_q > 1 but S_q < S_kv), use an
+  // explicit attn_mask instead of is_causal.
+  if (causal_cross_no_past && nonpad_kv_seqlen != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+        "Causal attention with TensorScatter (nonpad_kv_seqlen) and S_q != S_kv without "
+        "past_key is not supported. Per ONNX spec, is_causal without past_key produces "
+        "upper-left alignment where q[i] only attends to kv[0..i], which for decode (S_q=1) "
+        "means q[0] sees only kv[0]. Use is_causal=0 for TensorScatter decode; the KV bounds "
+        "are already enforced by nonpad_kv_seqlen without needing a causal mask. For chunked "
+        "prefill with external cache, use an explicit attn_mask instead.");
+  }
+
 #if USE_FLASH_ATTENTION
   {
     auto& device_prop = GetDeviceProp();
