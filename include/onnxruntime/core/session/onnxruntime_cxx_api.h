@@ -1426,7 +1426,7 @@ struct Env : detail::Base<OrtEnv> {
   /** \brief Check for known incompatibility issues between hardware device and a specific execution provider.
    *
    * If returned incompatibility details have non-zero reasons, it indicates the device is not compatible.
-   * However, if returned detail have reason == 0, it doesn't guarantee 100% compatibility for all models.
+   * However, if the returned details have reasons == 0, that does not guarantee 100% compatibility for all models.
    *
    * \param ep_name The name of the execution provider to check.
    * \param hw The hardware device to check for incompatibility.

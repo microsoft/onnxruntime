@@ -16,6 +16,18 @@ With ONNX Runtime React Native, React Native developers can score pre-trained ON
 npm install onnxruntime-react-native
 ```
 
+React Native's autolinking registers the native Android and iOS modules automatically. No manual changes to `settings.gradle`, `build.gradle`, or `MainApplication` are required for bare React Native projects.
+
+For Expo managed/prebuild workflows, add the config plugin to your `app.json`/`app.config.js`:
+
+```json
+{
+  "plugins": ["onnxruntime-react-native"]
+}
+```
+
+Then run `npx expo prebuild` to apply the native changes.
+
 ### Usage
 
 ```js

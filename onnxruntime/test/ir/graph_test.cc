@@ -2977,5 +2977,129 @@ TEST_F(GraphTest, ConvertInitializersIntoOrtValuesSkipsStringTensors) {
   }
 }
 
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28158
+// Verifies that ToGraphProtoWithCustomInitializerHandling does not serialize
+// _ORT_MEM_ADDR_ in-memory markers into the output model after
+// ConvertInitializersIntoOrtValues has replaced large initializers.
+TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
+  // Build a simple model with a large initializer (>127 bytes triggers conversion).
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Create a large initializer: 32 int64 values = 256 bytes (> 127 byte threshold).
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("large_init");
+  initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  initializer->add_dims(32);
+  for (int64_t i = 0; i < 32; ++i) {
+    initializer->add_int64_data(i);
+  }
+
+  // Also add a small initializer (stays inline).
+  auto* small_init = graph_proto->add_initializer();
+  small_init->set_name("small_init");
+  small_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  small_init->add_dims(1);
+  small_init->add_int64_data(42);
+
+  // Add node: output = input + large_init
+  auto* add_node = graph_proto->add_node();
+  add_node->set_op_type("Add");
+  add_node->set_name("add_node");
+  add_node->add_input("input");
+  add_node->add_input("large_init");
+  add_node->add_output("add_out");
+
+  // Add node: output2 = add_out + small_init
+  auto* add_node2 = graph_proto->add_node();
+  add_node2->set_op_type("Add");
+  add_node2->set_name("add_node2");
+  add_node2->add_input("add_out");
+  add_node2->add_input("small_init");
+  add_node2->add_output("output");
+
+  // Graph input
+  auto* input = graph_proto->add_input();
+  input->set_name("input");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  input_type->mutable_shape()->add_dim()->set_dim_value(32);
+
+  // Graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+
+  // Load model and resolve
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Convert large initializers into OrtValues — this creates _ORT_MEM_ADDR_ markers.
+  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+
+  const ONNX_NAMESPACE::TensorProto* large_tp = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("large_init", large_tp));
+  ASSERT_TRUE(utils::HasExternalDataInMemory(*large_tp))
+      << "large_init should have been externalized to in-memory OrtValue";
+
+  // Serialize with a custom initializer handler that inlines everything.
+  // Use a static function with ORT_API_CALL calling convention to match OrtGetInitializerLocationFunc.
+  struct InlineAllHandler {
+    static OrtStatus* ORT_API_CALL Func(void* /*state*/,
+                                        const char* /*name*/,
+                                        const OrtValue* /*value*/,
+                                        const OrtExternalInitializerInfo* /*ext_info*/,
+                                        OrtExternalInitializerInfo** new_ext_info) {
+      *new_ext_info = nullptr;
+      return nullptr;
+    }
+  };
+
+  // Use Model::ToGraphProtoWithCustomInitializerHandling which is the real code path that triggers the bug.
+  // It first copies model_proto_ (which contains the stale _ORT_MEM_ADDR_ initializers from
+  // ConvertInitializersIntoOrtValues) into the output ModelProto, then calls the Graph-level function
+  // on the pre-populated graph. Without the fix, the stale initializers remain alongside the newly
+  // added ones, producing duplicates with _ORT_MEM_ADDR_ markers.
+  ONNX_NAMESPACE::ModelProto output_model_proto;
+  ASSERT_STATUS_OK(model->ToGraphProtoWithCustomInitializerHandling(InlineAllHandler::Func, nullptr,
+                                                                    output_model_proto));
+
+  const auto& output_graph = output_model_proto.graph();
+
+  // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers,
+  // and there should be no duplicates.
+  ASSERT_EQ(output_graph.initializer_size(), 2) << "Expected both initializers in output without duplication";
+
+  size_t large_init_count = 0;
+  size_t small_init_count = 0;
+  for (const auto& init : output_graph.initializer()) {
+    if (init.name() == "large_init") {
+      ++large_init_count;
+    } else if (init.name() == "small_init") {
+      ++small_init_count;
+    }
+    EXPECT_FALSE(utils::HasExternalData(init))
+        << "Initializer '" << init.name() << "' should be inline, not external (no _ORT_MEM_ADDR_)";
+    EXPECT_TRUE(init.has_raw_data() || init.int64_data_size() > 0)
+        << "Initializer '" << init.name() << "' should have data";
+  }
+  EXPECT_EQ(large_init_count, 1u) << "large_init should appear exactly once";
+  EXPECT_EQ(small_init_count, 1u) << "small_init should appear exactly once";
+
+  // Verify the large initializer data was correctly serialized.
+  auto it = std::find_if(output_graph.initializer().begin(), output_graph.initializer().end(),
+                         [](const TensorProto& tp) { return tp.name() == "large_init"; });
+  ASSERT_NE(it, output_graph.initializer().end());
+  // The data should be in raw_data (SetRawDataInTensorProto writes to raw_data).
+  ASSERT_GT(it->raw_data().size(), 0u) << "large_init should have raw_data after inlining";
+  ASSERT_EQ(it->raw_data().size(), 32 * sizeof(int64_t));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
