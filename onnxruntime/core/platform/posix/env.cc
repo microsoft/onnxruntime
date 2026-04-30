@@ -430,6 +430,17 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
+    // Validate that the file is large enough for the requested mapping.
+    struct stat file_stat;
+    if (fstat(file_descriptor.Get(), &file_stat) != 0) {
+      return ReportSystemError("fstat", file_path);
+    }
+    ORT_RETURN_IF(static_cast<size_t>(file_stat.st_size) < static_cast<size_t>(offset) + length,
+                  "File \"", file_path,
+                  "\" is too small for the requested mapping (file size: ",
+                  file_stat.st_size, " bytes, requested offset + length: ",
+                  static_cast<size_t>(offset) + length, " bytes).");
+
     static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
     const size_t mapped_length = length + static_cast<size_t>(offset_to_page);

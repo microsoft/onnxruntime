@@ -424,6 +424,21 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                            " - ", std::system_category().message(error_code));
   }
 
+  // Validate that the file is large enough for the requested mapping.
+  LARGE_INTEGER actual_size;
+  if (!GetFileSizeEx(file_handle.get(), &actual_size)) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "GetFileSizeEx ", ToUTF8String(Basename(file_path)),
+                           " fail, errcode = ", error_code,
+                           " - ", std::system_category().message(error_code));
+  }
+  ORT_RETURN_IF(static_cast<ULONGLONG>(actual_size.QuadPart) < static_cast<ULONGLONG>(offset) + length,
+                "File ", ToUTF8String(Basename(file_path)),
+                " is too small for the requested mapping (file size: ",
+                actual_size.QuadPart, " bytes, requested offset + length: ",
+                static_cast<size_t>(offset) + length, " bytes).");
+
   wil::unique_hfile file_mapping_handle{
       CreateFileMappingW(file_handle.get(),
                          nullptr,
