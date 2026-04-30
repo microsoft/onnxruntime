@@ -2830,10 +2830,12 @@ TEST(AttentionTest, Attention4DCausalCrossAttentionUpperLeft) {
 
 // Test: Causal + cross-attention (S_q=3, S_kv=5, no past) with head_size=8.
 // ONNX spec mandates upper-left alignment: q_i attends to kv[0..i].
-// head_size=8 satisfies MEA's head_size%8==0 requirement, so this exercises
-// MEA's CausalFromTopLeft path (via causal_from_top_left=true when past_seq==0).
+// head_size=8 targets the MEA path (below Flash minimum of 32) but validates
+// correctness regardless of which kernel handles it. head_size=8 satisfies
+// MEA's head_size%8==0 requirement, so this exercises MEA's CausalFromTopLeft
+// path (via causal_from_top_left=true when past_seq==0).
 // V is identity-like so output directly reveals which KV positions were attended.
-TEST(AttentionTest, Attention4DCausalCrossAttentionUpperLeftMEA) {
+TEST(AttentionTest, Attention4DCausalCrossAttentionUpperLeftSmallHead) {
   int batch_size = 1;
   int q_num_heads = 1;
   int q_sequence_length = 3;
