@@ -30,7 +30,7 @@ Example:
 ```bash
 python build_wheel.py \
   --binary_dir ./build/Release \
-  --version 0.1.0.dev20260429 \
+  --version 0.1.0.devYYYYMMDD \
   --output_dir ./dist
 ```
 
@@ -44,7 +44,7 @@ Install the wheel and dependencies in a clean environment, then run the smoke te
 python -m venv test_venv
 source test_venv/bin/activate  # or test_venv\Scripts\Activate.ps1 on Windows
 pip install onnx numpy
-pip install dist/onnxruntime_ep_webgpu-*.whl  # pulls in onnxruntime>=1.24.4
+pip install dist/onnxruntime_ep_webgpu-*.whl  # pulls in the minimum compatible onnxruntime (see ../MIN_ONNXRUNTIME_VERSION)
 python test/test_webgpu_plugin_ep.py
 ```
 

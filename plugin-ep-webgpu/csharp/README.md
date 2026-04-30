@@ -10,7 +10,7 @@ csharp/
 ├── Microsoft.ML.OnnxRuntime.EP.WebGpu/
 │   ├── Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj   # NuGet package project (netstandard2.0)
 │   ├── WebGpuEp.cs                                 # Helper class for native library resolution
-│   └── readme.md                                   # Package readme (shipped inside .nupkg)
+│   └── README.md                                   # Package readme (shipped inside .nupkg)
 └── test/
     └── WebGpuEpNuGetTest/
         ├── WebGpuEpNuGetTest.csproj                # Test console app (net8.0)
@@ -52,14 +52,14 @@ is never modified.
 ```powershell
 cd plugin-ep-webgpu/csharp
 
-.\pack_nuget.ps1 -Version 1.26.0-dev `
+.\pack_nuget.ps1 -Version 0.1.0-dev `
   -BinaryDir_WinX64 ..\..\build\webgpu.plugin\Release\Release
 ```
 
 ### Pack multiple platforms
 
 ```powershell
-.\pack_nuget.ps1 -Version 1.26.0-dev `
+.\pack_nuget.ps1 -Version 0.1.0-dev `
   -BinaryDir_WinX64 C:\builds\win_x64 `
   -BinaryDir_WinArm64 C:\builds\win_arm64 `
   -BinaryDir_LinuxX64 /mnt/builds/linux_x64 `
@@ -70,7 +70,7 @@ cd plugin-ep-webgpu/csharp
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
-| `-Version` | Yes | — | Package version string (e.g. `1.26.0`, `1.26.0-dev`) |
+| `-Version` | Yes | — | Package version string (e.g. `0.1.0`, `0.1.0-dev`) |
 | `-OutputDir` | No | `./nuget_output` | Directory for the `.nupkg` and `.snupkg` output |
 | `-Configuration` | No | `Release` | Build configuration |
 | `-ArtifactsDir` | No | — | CI mode: root directory with `win_x64/bin/`, `linux_x64/bin/`, etc. |
@@ -78,16 +78,24 @@ cd plugin-ep-webgpu/csharp
 | `-BinaryDir_WinArm64` | No | — | Path to directory containing win-arm64 binaries |
 | `-BinaryDir_LinuxX64` | No | — | Path to directory containing linux-x64 binaries |
 | `-BinaryDir_OsxArm64` | No | — | Path to directory containing osx-arm64 binaries |
+| `-StagingDir` | No | `<OutputDir>/_staging` | Explicit staging directory. Caller owns its lifecycle (no auto-cleanup) |
+| `-BuildOnly` | No | `false` | Stage and build the managed DLL only; skip `dotnet pack`. Preserves the staging directory for a later `-PackOnly` run |
+| `-PackOnly` | No | `false` | Skip staging/build and run `dotnet pack` against an existing staging directory (mutually exclusive with `-BuildOnly`) |
 
 At least one binary directory (or `-ArtifactsDir` with matching subdirectories) must be provided.
 Platforms without a binary directory are skipped.
+
+## Versioning
+
+The package version is supplied to `pack_nuget.ps1` via `-Version`. In the packaging pipeline, the release or
+pre-release version is derived from [`plugin-ep-webgpu/VERSION_NUMBER`](../VERSION_NUMBER).
 
 ## Inspecting the Package
 
 The `.nupkg` is a ZIP file. To verify its contents:
 
 ```powershell
-Expand-Archive nuget_output/Microsoft.ML.OnnxRuntime.EP.WebGpu.1.26.0-dev.nupkg `
+Expand-Archive nuget_output/Microsoft.ML.OnnxRuntime.EP.WebGpu.0.1.0-dev.nupkg `
   -DestinationPath nuget_output/inspect -Force
 
 Get-ChildItem nuget_output/inspect -Recurse | Select-Object FullName

@@ -10,8 +10,12 @@ For more information about plugin EPs, see the documentation [here](https://onnx
 - [`VERSION_NUMBER`](VERSION_NUMBER) — Base plugin EP version consumed by the CI pipeline. The pipeline derives the
   final package version (release, dev) from this via
   [`tools/ci_build/github/azure-pipelines/templates/set-plugin-build-variables-step.yml`](../tools/ci_build/github/azure-pipelines/templates/set-plugin-build-variables-step.yml).
+- [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) — Minimum compatible core `onnxruntime` version. Single source
+  of truth shared by all packages built from this directory.
 - [`python/`](python/) — Sources and build script for the `onnxruntime-ep-webgpu` Python wheel. See
   [`python/README.md`](python/README.md) for build and test instructions.
+- [`csharp/`](csharp/) — Sources and packaging script for the `Microsoft.ML.OnnxRuntime.EP.WebGpu` NuGet package. See
+  [`csharp/README.md`](csharp/README.md) for build and test instructions.
 
 ## How it fits together
 
@@ -19,6 +23,7 @@ The plugin EP is built as a shared library (`onnxruntime_providers_webgpu.{dll,s
 build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into:
 
 - A Python wheel (`onnxruntime-ep-webgpu`), built from [`python/`](python/).
+- A NuGet package (`Microsoft.ML.OnnxRuntime.EP.WebGpu`), built from [`csharp/`](csharp/).
 - A universal package published to the internal ORT-Nightly feed for Windows (x64 / arm64), Linux x64, and macOS
   arm64.
 
@@ -29,7 +34,7 @@ and post-build smoke tests run in the companion `WebGPU Plugin EP Test Pipeline`
 
 ## Usage
 
-Once installed, the plugin EP is registered at runtime:
+Once installed, the plugin EP is registered at runtime. Example in Python:
 
 ```python
 import onnxruntime as ort
@@ -43,5 +48,7 @@ sess_options.add_provider_for_devices(devices, {})
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
 
-See [`python/onnxruntime_ep_webgpu/README.md`](python/onnxruntime_ep_webgpu/README.md) for the user-facing package
-documentation (this README is bundled into the wheel).
+See the user-facing package READMEs (bundled into the published packages) for full per-language usage:
+
+- Python: [`python/onnxruntime_ep_webgpu/README.md`](python/onnxruntime_ep_webgpu/README.md)
+- C# / .NET: [`csharp/Microsoft.ML.OnnxRuntime.EP.WebGpu/README.md`](csharp/Microsoft.ML.OnnxRuntime.EP.WebGpu/README.md)
