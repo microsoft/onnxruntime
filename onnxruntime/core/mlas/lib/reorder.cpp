@@ -161,24 +161,7 @@ Return Value:
 
 --*/
 {
-    // --- DEBUG: print first call per unique (GatherStride, ScatterStride) pair ---
-    // Each unique pair corresponds to a different layer, giving cross-layer coverage.
-    // static size_t dbg_last_gather = 0, dbg_last_scatter = 0;
-    // static int dbg_layer_count = 0;
-    // const bool dbg_print = (GatherStride != dbg_last_gather || ScatterStride != dbg_last_scatter);
-    // if (dbg_print) { dbg_last_gather = GatherStride; dbg_last_scatter = ScatterStride; ++dbg_layer_count; }
-
 #if defined(MLAS_AVX2_INTRINSICS)
-    // if (dbg_print) {
-    //     printf("\n[4x4-AVX2] layer#%d  GatherStride=%zu  ScatterStride=%zu\n",
-    //            dbg_layer_count, GatherStride, ScatterStride);
-    //     printf("  INPUT (4 rows x 4 cols):\n");
-    //     for (int r = 0; r < 4; ++r)
-    //         printf("    row%d: %10.5f %10.5f %10.5f %10.5f\n", r,
-    //                S[GatherStride * r + 0], S[GatherStride * r + 1],
-    //                S[GatherStride * r + 2], S[GatherStride * r + 3]);
-    //     fflush(stdout);
-    // }
     // Load rows into 256-bit registers: lane0=row0, lane1=row1 and lane0=row2, lane1=row3
     __m256 row01 = _mm256_castps128_ps256(_mm_loadu_ps(&S[GatherStride * 0]));
     row01 = _mm256_insertf128_ps(row01, _mm_loadu_ps(&S[GatherStride * 1]), 1);
@@ -209,26 +192,7 @@ Return Value:
     _mm_storeu_ps(&D[ScatterStride * 1], col1);
     _mm_storeu_ps(&D[ScatterStride * 2], col2);
     _mm_storeu_ps(&D[ScatterStride * 3], col3);
-    // if (dbg_print) {
-    //     printf("  OUTPUT (4 cols x 4 rows):\n");
-    //     for (int c = 0; c < 4; ++c)
-    //         printf("    col%d: %10.5f %10.5f %10.5f %10.5f\n", c,
-    //                D[ScatterStride * c + 0], D[ScatterStride * c + 1],
-    //                D[ScatterStride * c + 2], D[ScatterStride * c + 3]);
-    //     fflush(stdout);
-    // }
 #elif defined(MLAS_SSE2_INTRINSICS)
-    // printf("SSE implementation \n");
-    // if (dbg_print) {
-    //     printf("\n[4x4-SSE2] layer#%d  GatherStride=%zu  ScatterStride=%zu\n",
-    //            dbg_layer_count, GatherStride, ScatterStride);
-    //     printf("  INPUT (4 rows x 4 cols):\n");
-    //     for (int r = 0; r < 4; ++r)
-    //         printf("    row%d: %10.5f %10.5f %10.5f %10.5f\n", r,
-    //                S[GatherStride * r + 0], S[GatherStride * r + 1],
-    //                S[GatherStride * r + 2], S[GatherStride * r + 3]);
-    //     fflush(stdout);
-    // }
     MLAS_FLOAT32X4 v[4];
     MLAS_FLOAT32X4 t[4];
 
@@ -251,14 +215,6 @@ Return Value:
     MlasStoreFloat32x4(&D[ScatterStride * 1], v[1]);
     MlasStoreFloat32x4(&D[ScatterStride * 2], v[2]);
     MlasStoreFloat32x4(&D[ScatterStride * 3], v[3]);
-    // if (dbg_print) {
-    //     printf("  OUTPUT (4 cols x 4 rows):\n");
-    //     for (int c = 0; c < 4; ++c)
-    //         printf("    col%d: %10.5f %10.5f %10.5f %10.5f\n", c,
-    //                D[ScatterStride * c + 0], D[ScatterStride * c + 1],
-    //                D[ScatterStride * c + 2], D[ScatterStride * c + 3]);
-    //     fflush(stdout);
-    // }
 #elif  defined(MLAS_LSX_INTRINSICS)
 
     MLAS_FLOAT32X4 v[4];
@@ -313,32 +269,12 @@ MlasReorderTransposeFloat32x4x8AVX2(
 // vs two 4x4 calls:  8 loads + 4 inserts + 4 permutes + 4 unpacks + 8 shuffles + 8 stores = 36
 //
 {
-    // --- DEBUG: print first call per unique (GatherStride, ScatterStride) pair ---
-    // Each unique pair corresponds to a different layer, giving cross-layer coverage.
-    // static size_t dbg_last_gather = 0, dbg_last_scatter = 0;
-    // static int dbg_layer_count = 0;
-    // const bool dbg_print = (GatherStride != dbg_last_gather || ScatterStride != dbg_last_scatter);
-    // if (dbg_print) { dbg_last_gather = GatherStride; dbg_last_scatter = ScatterStride; ++dbg_layer_count; }
-
     // Load each full row (8 floats) into a 256-bit register.
     // lane0 = columns 0-3, lane1 = columns 4-7.
     __m256 r0 = _mm256_loadu_ps(&S[GatherStride * 0]);
     __m256 r1 = _mm256_loadu_ps(&S[GatherStride * 1]);
     __m256 r2 = _mm256_loadu_ps(&S[GatherStride * 2]);
     __m256 r3 = _mm256_loadu_ps(&S[GatherStride * 3]);
-
-    // if (dbg_print) {
-    //     printf("\n[4x8-AVX2] layer#%d  GatherStride=%zu  ScatterStride=%zu\n",
-    //            dbg_layer_count, GatherStride, ScatterStride);
-    //     printf("  INPUT (4 rows x 8 cols):\n");
-    //     for (int r = 0; r < 4; ++r)
-    //         printf("    row%d: %8.4f %8.4f %8.4f %8.4f  %8.4f %8.4f %8.4f %8.4f\n", r,
-    //                S[GatherStride * r + 0], S[GatherStride * r + 1],
-    //                S[GatherStride * r + 2], S[GatherStride * r + 3],
-    //                S[GatherStride * r + 4], S[GatherStride * r + 5],
-    //                S[GatherStride * r + 6], S[GatherStride * r + 7]);
-    //     fflush(stdout);
-    // }
 
     // Interleave row pairs within each 128-bit lane simultaneously.
     // t0 lane0=[r0[0],r1[0],r0[1],r1[1]]  lane1=[r0[4],r1[4],r0[5],r1[5]]
@@ -370,15 +306,6 @@ MlasReorderTransposeFloat32x4x8AVX2(
     _mm_storeu_ps(&D[ScatterStride * 5], _mm256_extractf128_ps(u1, 1));
     _mm_storeu_ps(&D[ScatterStride * 6], _mm256_extractf128_ps(u2, 1));
     _mm_storeu_ps(&D[ScatterStride * 7], _mm256_extractf128_ps(u3, 1));
-
-    // if (dbg_print) {
-    //     printf("  OUTPUT (8 cols x 4 rows):  [ch0..ch3 = lane0]  [ch4..ch7 = lane1]\n");
-    //     for (int c = 0; c < 8; ++c)
-    //         printf("    col%d (ch%d): %8.4f %8.4f %8.4f %8.4f\n", c, c,
-    //                D[ScatterStride * c + 0], D[ScatterStride * c + 1],
-    //                D[ScatterStride * c + 2], D[ScatterStride * c + 3]);
-    //     fflush(stdout);
-    // }
 }
 #endif
 
