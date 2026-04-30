@@ -14,6 +14,7 @@ mkdir -p $HOME/.onnx
 docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $BUILD_SOURCESDIRECTORY:/onnxruntime_src \
   --volume $BUILD_BINARIESDIRECTORY:/build --volume /data/models:/build/models:ro \
   -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+  -e PIP_INDEX_URL=${PIPINDEXURL} \
   --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
   --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
   --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
