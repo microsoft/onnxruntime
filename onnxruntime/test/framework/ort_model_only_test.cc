@@ -57,7 +57,7 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   }
 
   if (test_info.use_buffer_for_initializers &&
-      (test_info.disable_copy_ort_buffer || test_info.use_memory_mapped_load)) {
+      (test_info.disable_copy_ort_buffer || (test_info.use_memory_mapped_load && !test_info.run_use_buffer))) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "1"));
   }
 

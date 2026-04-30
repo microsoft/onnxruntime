@@ -534,6 +534,10 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --hold_ms_after_session_creation
   test_config.run_config.hold_ms_after_session_creation = absl::GetFlag(FLAGS_hold_ms_after_session_creation);
+  if (test_config.run_config.hold_ms_after_session_creation > 0 &&
+      !test_config.run_config.exit_after_session_creation) {
+    fprintf(stderr, "WARNING: --hold_ms_after_session_creation has no effect without -n.\n");
+  }
 
   // -l
   test_config.model_info.load_via_path = absl::GetFlag(FLAGS_l);
