@@ -82,6 +82,23 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const int sequence_length = parameters.sequence_length;
   const int present_kv_seqlen = parameters.seqlen_present_kv_cache;
   int head_size = parameters.head_size;
+
+  // Validate seqlens_k values before they are used as GEMM dimensions to prevent OOB access.
+  {
+    const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+    for (int b = 0; b < batch_size; b++) {
+      if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= present_kv_seqlen) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                               " is out of range [0, ", present_kv_seqlen, ")");
+      }
+      if (!parameters.is_first_prompt && static_cast<int64_t>(seqlens_k_data[b]) + 1 < sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                               " is too small for sequence_length ", sequence_length);
+      }
+    }
+  }
   int q_hidden_size = parameters.hidden_size;
   const bool packed_qkv = parameters.is_packed_qkv;
 

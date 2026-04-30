@@ -103,6 +103,54 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace {
+
+// Parse a spin duration config value (in microseconds) from a string.
+// Returns kSpinDurationDefault (-1) if the config is not explicitly set.
+// Returns the parsed value (>= -1) if valid. Logs a warning and returns
+// kSpinDurationDefault on parse failure.
+constexpr int kSpinDurationWarnThresholdUs = 10000;  // 10ms — warn above this
+int ParseSpinDurationUs(std::string_view str, const char* config_key,
+                        const logging::Logger& logger) {
+  int spin_us = concurrency::kSpinDurationDefault;
+  if (!TryParseStringWithClassicLocale(str, spin_us) || spin_us < -1) {
+    LOGS(logger, WARNING) << "Invalid value for " << config_key
+                          << ": \"" << str << "\", using default spin duration setting";
+    return concurrency::kSpinDurationDefault;
+  }
+  if (spin_us > kSpinDurationWarnThresholdUs) {
+    LOGS(logger, WARNING) << config_key << " is set to " << spin_us
+                          << "us (>" << kSpinDurationWarnThresholdUs
+                          << "us). Large spin durations increase CPU/power usage. "
+                          << "Typical values are 500-2000us.";
+  }
+  return spin_us;
+}
+
+// Parse a spin backoff max config value (exponential-backoff cap). Defaults to
+// 1 (no backoff, one SpinPause() per iteration). Values >= 2 enable backoff.
+unsigned int ParseSpinBackoffMax(std::string_view str, const char* config_key,
+                                 const logging::Logger& logger) {
+  unsigned int backoff = 1U;
+  if (!TryParseStringWithClassicLocale(str, backoff)) {
+    LOGS(logger, WARNING) << "Invalid value for " << config_key
+                          << ": \"" << str << "\", using default (no backoff)";
+    return 1U;
+  }
+  if (backoff == 0U) {
+    LOGS(logger, WARNING) << config_key << " is set to 0; treating as 1 (no backoff). "
+                          << "Valid values are >= 1.";
+    return 1U;
+  }
+  if (backoff > concurrency::kSpinBackoffMaxLimit) {
+    LOGS(logger, WARNING) << config_key << " is set to " << backoff
+                          << " (>" << concurrency::kSpinBackoffMaxLimit
+                          << "); clamping to " << concurrency::kSpinBackoffMaxLimit
+                          << ". Typical values are 4-8.";
+    return concurrency::kSpinBackoffMaxLimit;
+  }
+  return backoff;
+}
+
 template <typename T>
 const T* GetDateFormatString();
 
@@ -455,6 +503,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         // If the thread pool can use all the processors, then
         // we set affinity of each thread to each processor.
         to.allow_spinning = allow_intra_op_spinning;
+        if (allow_intra_op_spinning) {
+          to.spin_duration_us = ParseSpinDurationUs(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinDurationUs, "-1"),
+              kOrtSessionOptionsConfigIntraOpSpinDurationUs, *session_logger_);
+          to.spin_backoff_max = ParseSpinBackoffMax(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, "1"),
+              kOrtSessionOptionsConfigIntraOpSpinBackoffMax, *session_logger_);
+        } else {
+          to.spin_duration_us = concurrency::kSpinDurationDefault;
+          to.spin_backoff_max = 1U;
+        }
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
 
@@ -502,6 +561,17 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.name = inter_thread_pool_name_.c_str();
         to.set_denormal_as_zero = set_denormal_as_zero;
         to.allow_spinning = allow_inter_op_spinning;
+        if (allow_inter_op_spinning) {
+          to.spin_duration_us = ParseSpinDurationUs(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinDurationUs, "-1"),
+              kOrtSessionOptionsConfigInterOpSpinDurationUs, *session_logger_);
+          to.spin_backoff_max = ParseSpinBackoffMax(
+              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigInterOpSpinBackoffMax, "1"),
+              kOrtSessionOptionsConfigInterOpSpinBackoffMax, *session_logger_);
+        } else {
+          to.spin_duration_us = concurrency::kSpinDurationDefault;
+          to.spin_backoff_max = 1U;
+        }
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
 
         // Set custom threading functions

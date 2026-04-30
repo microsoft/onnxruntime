@@ -618,7 +618,17 @@ class PosixEnv : public Env {
   PosixEnv() {
     cpuinfo_available_ = cpuinfo_initialize();
     if (!cpuinfo_available_) {
-      LOGS_DEFAULT(INFO) << "cpuinfo_initialize failed";
+      // PosixEnv may be constructed before the logging system is initialized
+      // (e.g. via a static Env::Default() reference in the Python bindings).
+      // Using LOGS_DEFAULT here would crash with "Attempt to use DefaultLogger
+      // but none has been registered". Fall back to stderr when no logger exists.
+      if (logging::LoggingManager::HasDefaultLogger()) {
+        LOGS_DEFAULT(WARNING) << "cpuinfo_initialize failed. "
+                                 "May cause CPU EP performance degradation due to undetected CPU features.";
+      } else {
+        std::cerr << "onnxruntime warning: cpuinfo_initialize failed. "
+                     "May cause CPU EP performance degradation due to undetected CPU features.\n";
+      }
     }
   }
   bool cpuinfo_available_{false};
