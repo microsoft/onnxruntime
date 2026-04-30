@@ -313,10 +313,10 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongLength) {
 TEST(GroupQueryAttentionTest, SeqlensKExceedsCosCache_OOB) {
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
-  constexpr int head_size = 8;
+  constexpr int head_size = 16;  // must be multiple of 16 for rotary
   constexpr int hidden_size = num_heads * head_size;
   constexpr int kv_hidden_size = kv_num_heads * head_size;
-  constexpr int rotary_half_dim = head_size / 2;  // cos/sin cache dim-1
+  constexpr int rotary_half_dim = head_size / 2;  // cos/sin cache dim-1 = 8
 
   constexpr int cos_cache_max_seq = 4;   // small rotary cache
   constexpr int past_seq_len = 16;       // large KV cache
