@@ -28,6 +28,18 @@
 
 namespace onnxruntime {
 
+static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices);
+
+// Single source of truth for the OrtEp::GetMemoryInfoByMemType callback (added in EP API
+// version 26): version-gated, null-checked. Returns nullptr if the EP did not opt in or if
+// the EP returned nullptr to defer to ORT's built-in fallback.
+static const OrtMemoryInfo* TryGetEpMemoryInfo(const OrtEp& ep, OrtMemType mem_type) {
+  if (ep.ort_version_supported >= 26 && ep.GetMemoryInfoByMemType != nullptr) {
+    return ep.GetMemoryInfoByMemType(&ep, mem_type);
+  }
+  return nullptr;
+}
+
 //
 // PluginExecutionProviderFactory
 //
@@ -84,10 +96,17 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
   std::shared_ptr<KernelRegistry> kernel_registry;
   ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
 
+  // The EP is the single source of truth for its default device when it opts in; otherwise
+  // GetOrtDeviceForPluginEp throws on heterogeneous ep_devices. Resolved here once and
+  // forwarded to PluginExecutionProvider's IExecutionProvider base.
+  const OrtMemoryInfo* default_info = TryGetEpMemoryInfo(*ort_ep, OrtMemTypeDefault);
+  OrtDevice default_device = default_info ? default_info->device : GetOrtDeviceForPluginEp(devices_);
+
   plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
                                                         session_options, ep_factory_, devices_,
                                                         kernel_registry,
-                                                        *logger.ToInternal());
+                                                        *logger.ToInternal(),
+                                                        default_device);
   return Status::OK();
 }
 
@@ -164,8 +183,9 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
-                                                 const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices),
+                                                 const logging::Logger& logger,
+                                                 OrtDevice default_device)
+    : IExecutionProvider(ep->GetName(ep.get()), default_device,
                          std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
@@ -216,15 +236,10 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
 }
 
 OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    // Use the first host-accessble allocator device if one was registered by the plugin.
-    // This avoids unnecessary copies between CPU and HOST_ACCESSIBLE memory.
-    if (!ep_devices_.empty() && ep_devices_[0]->host_accessible_memory_info != nullptr) {
-      return ep_devices_[0]->host_accessible_memory_info->device;
-    }
-    return OrtDevice();
+  if (const OrtMemoryInfo* info = TryGetEpMemoryInfo(*ort_ep_, mem_type)) {
+    return info->device;
   }
-  return GetDevice();
+  return IExecutionProvider::GetOrtDeviceByMemType(mem_type);
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {

@@ -91,7 +91,8 @@ class PluginExecutionProvider : public IExecutionProvider {
   explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options, OrtEpFactory& ep_factory,
                                    gsl::span<const OrtEpDevice* const> ep_devices,
                                    std::shared_ptr<KernelRegistry> kernel_registry,
-                                   const logging::Logger& logger);
+                                   const logging::Logger& logger,
+                                   OrtDevice default_device);
   ~PluginExecutionProvider();
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
