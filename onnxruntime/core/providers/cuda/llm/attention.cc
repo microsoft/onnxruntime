@@ -607,6 +607,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     ORT_RETURN_IF_NOT(past_value != nullptr, "past_key requires past_value.");
     ORT_RETURN_IF_NOT(nonpad_kv_seqlen == nullptr,
                       "nonpad_kv_seqlen and past_key are mutually exclusive (internal vs external cache).");
+    // This mirrors the eligibility check in ComputeInternal — must stay in sync.
     ORT_RETURN_IF_NOT(parameters.head_size == parameters.v_head_size,
                       "MEA decode (past_key) requires head_size == v_head_size for LaunchConcatNewToPastKV.");
 
@@ -618,9 +619,9 @@ Status Attention<T>::RunMemoryEfficientAttention(
     T* present_v_data = nullptr;
 
     SafeInt<size_t> present_k_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
-                                     parameters.total_sequence_length * parameters.head_size * sizeof(T);
+                                      parameters.total_sequence_length * parameters.head_size * sizeof(T);
     SafeInt<size_t> present_v_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
-                                     parameters.total_sequence_length * parameters.v_head_size * sizeof(T);
+                                      parameters.total_sequence_length * parameters.v_head_size * sizeof(T);
 
     if (present_key != nullptr) {
       present_k_data = present_key->MutableData<T>();
@@ -876,11 +877,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.qk_head_size = parameters.head_size;
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
-    // ONNX spec: is_causal means upper-left alignment in the full attention matrix.
-    // When past_sequence_length == 0 and S_q != S_kv (cross-attention without KV cache),
-    // queries start at absolute position 0, so causal mask is upper-left.
-    // When past_sequence_length > 0 (decode with KV cache), queries start at position
-    // past_seq, so causal mask is effectively lower-right on the [S_q x total_kv] sub-matrix.
+    // Causal alignment: same logic as above — upper-left when no past.
     p.causal_from_top_left = (parameters.past_sequence_length == 0);
     p.scale = parameters.scale;
     p.softcap = parameters.softcap;
@@ -1309,15 +1306,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // softmax_precision=0 (default) is also fine since higher precision is always
   // acceptable per the ONNX spec.
 
-#if USE_FLASH_ATTENTION
   // Flash Attention uses lower-right (bottom-right) causal alignment with no option for
   // upper-left. The ONNX spec requires upper-left alignment when there is no past context:
   // query[0] attends only to key[0]. The difference only manifests when S_q != S_kv
   // (cross-attention shape) with no past. Skip Flash for this case; MEA handles it correctly
   // via the causal_from_top_left flag, and Unified Unfused uses past_kv_length=0.
+  // Defined here for visibility — only Flash needs this guard (MEA/Unfused handle upper-left natively).
   const bool causal_cross_no_past = parameters.is_causal &&
                                     parameters.q_sequence_length != parameters.total_sequence_length &&
                                     parameters.past_sequence_length == 0;
+
+#if USE_FLASH_ATTENTION
   {
     auto& device_prop = GetDeviceProp();
     bool flash_eligible =

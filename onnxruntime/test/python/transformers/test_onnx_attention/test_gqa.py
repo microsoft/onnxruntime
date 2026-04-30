@@ -912,9 +912,8 @@ class TestONNXAttentionPaddingMaskMEAGQA(unittest.TestCase):
     """
     Test ONNX Attention op (opset 23) GQA path with boolean padding masks.
 
-    SKIPPED: Flash now requires attn_mask == nullptr. GQA + bool attn_mask +
-    past_key currently has no runner (Flash rejected,
-    MEA blocked by past_key != nullptr). Will be re-enabled when PR #27851 lands.
+    GQA + bool attn_mask + past_key uses the MEA decode path (Flash requires
+    attn_mask == nullptr). MEA handles bool masks via additive bias conversion.
 
     These tests verify that the boolean attn_mask is correctly converted to
     sequence lengths on GPU and that the attention computation respects the
