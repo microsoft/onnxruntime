@@ -13,7 +13,7 @@ fi
 docker run -e SYSTEM_COLLECTIONURI --rm \
 --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" --volume "$BUILD_BINARIESDIRECTORY:/build" \
 -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
--e "PIP_INDEX_URL=${PIPINDEXURL}" \
+-e "PIP_INDEX_URL=${PIP_INDEX_URL}" \
 --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
 --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
 --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
