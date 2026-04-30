@@ -2,22 +2,18 @@ parameters:
 - name: build_windows_x64
   displayName: 'Build Windows x64'
   type: boolean
-  default: true
 
 - name: build_windows_arm64
   displayName: 'Build Windows ARM64'
   type: boolean
-  default: false
 
 - name: build_linux_x64
   displayName: 'Build Linux x64'
   type: boolean
-  default: false
 
 - name: build_macos_arm64
   displayName: 'Build macOS ARM64'
   type: boolean
-  default: false
 
 - name: package_version
   displayName: 'Package Version'
@@ -77,3 +73,130 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # Create zip packages for Foundry Local consumption
+    - stage: Package_Foundry_Local_WebGPU_Zips
+      displayName: 'Package Foundry Local WebGPU Plugin-EP Zips'
+      dependsOn:
+        - ${{ if eq(parameters.build_windows_x64, true) }}:
+          - Win_plugin_webgpu_x64_Build
+        - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+          - Win_plugin_webgpu_arm64_Build
+        - ${{ if eq(parameters.build_linux_x64, true) }}:
+          - Linux_plugin_webgpu_x64_Build
+        - ${{ if eq(parameters.build_macos_arm64, true) }}:
+          - MacOS_plugin_webgpu_arm64_Build
+      jobs:
+      - job: CreateZipPackages
+        displayName: 'Create Foundry Local WebGPU Plugin-EP Zip Packages'
+        pool:
+          name: 'onnxruntime-Win-CPU-VS2022-Latest'
+          os: windows
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)/webgpu-deps-package
+            artifactName: webgpu-deps-zip
+        steps:
+        - checkout: none
+
+        - ${{ if eq(parameters.build_windows_x64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_win_x64'
+            inputs:
+              artifactName: webgpu_plugin_win_x64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-win-x64
+
+        # Windows ARM64
+        # ARM64 build requires the x64 tblgen.exe (used during the build), which is not correctly
+        # generated in a cross build. So we require x64 to be built first and download tblgen.exe from it.
+        - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_win_arm64'
+            inputs:
+              artifactName: webgpu_plugin_win_arm64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-win-arm64
+
+        - ${{ if eq(parameters.build_linux_x64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_linux_x64'
+            inputs:
+              artifactName: webgpu_plugin_linux_x64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-linux-x64
+
+        - ${{ if eq(parameters.build_macos_arm64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_macos_arm64'
+            inputs:
+              artifactName: webgpu_plugin_macos_arm64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-macos-arm64
+
+        - task: PowerShell@2
+          displayName: 'Create version.json and zip packages for each platform'
+          inputs:
+            targetType: inline
+            script: |
+              $now = Get-Date
+              $timestamp = $now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+              $timestampForFilename = $now.ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+              $outputDir = '$(Build.ArtifactStagingDirectory)/webgpu-deps-package'
+              New-Item -ItemType Directory -Path $outputDir -Force
+
+              $platforms = @(
+                @{ name = 'win-x64';      dir = '$(Build.SourcesDirectory)/webgpu-plugin-win-x64' },
+                @{ name = 'win-arm64';    dir = '$(Build.SourcesDirectory)/webgpu-plugin-win-arm64' },
+                @{ name = 'linux-x64';    dir = '$(Build.SourcesDirectory)/webgpu-plugin-linux-x64' },
+                @{ name = 'macos-arm64';  dir = '$(Build.SourcesDirectory)/webgpu-plugin-macos-arm64' }
+              )
+
+              foreach ($platform in $platforms) {
+                $depsDir = $platform.dir
+                $platformName = $platform.name
+
+                if (-not (Test-Path $depsDir)) {
+                  Write-Host "Skipping $platformName (not built)"
+                  continue
+                }
+
+                $binDir = Join-Path $depsDir "bin"
+                $versionDir = Join-Path $depsDir "version"
+
+                if (-not (Test-Path $binDir)) {
+                  throw "Bin directory not found for $platformName $binDir"
+                }
+
+                Write-Host "--- Processing $platformName ---"
+
+                $versionString = "Unknown"
+                if (Test-Path $versionDir) {
+                   $versionFile = Get-ChildItem -Path $versionDir -File | Select-Object -First 1
+                   if ($versionFile) {
+                       $versionString = $versionFile.Name.Trim()
+                   }
+                }
+
+                $versionInfo = @{
+                  timestamp = $timestamp
+                  version = $versionString
+                }
+
+                $json = $versionInfo | ConvertTo-Json
+                $versionPath = Join-Path $binDir "version.json"
+                Set-Content -Path $versionPath -Value $json -Encoding UTF8
+                Write-Host "Created version.json:"
+                Write-Host $json
+
+                # Collect the binaries (dll, so, dylib) and version.json
+                $filesToZip = Get-ChildItem -Path $binDir -File | Where-Object {
+                  $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -match '^(dxil\.dll|dxcompiler\.dll|version\.json)$'
+                }
+
+                $zipPath = Join-Path $outputDir "webgpu_ep_${timestampForFilename}_${platformName}.zip"
+                if ($filesToZip) {
+                  $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
+                  Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
+                } else {
+                  throw "No files found to zip for $platformName in $binDir"
+                }
+                Write-Host ""
+              }
