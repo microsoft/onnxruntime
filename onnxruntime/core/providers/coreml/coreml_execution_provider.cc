@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/tensorprotoutils.h"
@@ -88,9 +89,36 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return MakeString(user_provided_key, "_", COREML, "_", model_hash, "_", metadef_id);
       };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
+  // Drop CoreML partitions that consist entirely of trivial shape / cheap-elementwise ops.
+  // These ops can each be claimed individually but the CPU↔CoreML round-trip cost
+  // (~50-100us marshalling) outweighs the saving when the partition has no compute-heavy
+  // op to amortise it over. Per-op CoreML dispatch cost is ~10-14us on M3 Max even for
+  // trivial ops (Identity/Ceil/Tile etc.), and CPU runs them in <1us each.
+  // A partition is kept iff it contains at least one node that is NOT in this trivial set.
+  static const InlinedHashSet<std::string_view> kTrivialOpTypes = {
+      "Identity",
+      "Cast",
+      "Reshape",
+      "Squeeze",
+      "Unsqueeze",
+      "Flatten",
+      "Transpose",
+      "Tile",
+      "Ceil",
+  };
+  const auto is_node_supported = [&](const Node& node) -> bool {
+    return supported_nodes.find(&node) != supported_nodes.end();
+  };
+  const auto on_group_closed = [&](const std::vector<const Node*>& group) -> bool {
+    // Keep the partition only if at least one node is non-trivial.
+    return std::any_of(group.begin(), group.end(), [](const Node* node) {
+      return kTrivialOpTypes.find(std::string_view{node->OpType()}) == kTrivialOpTypes.end();
+    });
+  };
+
+  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, COREML, kCoreMLExecutionProvider,
-                                            nullptr,
+                                            /*node_unit_map*/ nullptr,
                                             /*drop_constant_initializers*/ true);
 
   const auto num_of_partitions = result.size();
