@@ -9,18 +9,12 @@
 
 #include "core/common/common.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/graph/schema_registry.h"
-#include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 
 namespace onnxruntime::kernel_type_str_resolver_utils {
 
 static constexpr auto* kStandaloneKernelTypeStrResolverFileIdentifier = "ktsr";
 
 #if !defined(ORT_MINIMAL_BUILD)
-
-gsl::span<const OpIdentifierWithStringViews> GetLayoutTransformationRequiredOpIdentifiers() {
-  return kLayoutTransformationPotentiallyAddedOps;
-}
 
 Status SaveKernelTypeStrResolverToBuffer(const KernelTypeStrResolver& kernel_type_str_resolver,
                                          flatbuffers::DetachedBuffer& buffer, gsl::span<const uint8_t>& buffer_span) {
@@ -46,18 +40,6 @@ Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_st
 }
 
 Status AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver) {
-#if !defined(ORT_MINIMAL_BUILD)
-  const auto required_op_ids = GetLayoutTransformationRequiredOpIdentifiers();
-  const auto schema_registry = SchemaRegistryManager{};
-  for (const auto& op_id : required_op_ids) {
-    const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
-                                                      std::string{op_id.domain});
-    ORT_RETURN_IF(op_schema == nullptr, "Failed to get op schema.");
-    ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
-  }
-
-  return Status::OK();
-#else
   KernelTypeStrResolver resolver_with_required_ops{};
 
   // to generate kLayoutTransformationRequiredOpsKernelTypeStrResolverBytes, run the test:
@@ -444,7 +426,6 @@ Status AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(KernelTypeStrRe
                                                           kLayoutTransformationRequiredOpsKernelTypeStrResolverBytes));
   kernel_type_str_resolver.Merge(std::move(resolver_with_required_ops));
   return Status::OK();
-#endif
 }
 
 }  // namespace onnxruntime::kernel_type_str_resolver_utils

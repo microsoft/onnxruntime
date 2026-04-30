@@ -12,6 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/graph/schema_registry.h"
+#include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
@@ -23,9 +24,8 @@
 namespace onnxruntime::test {
 
 static Status LoadLayoutTransformationRequiredOpsFromOpSchemas(KernelTypeStrResolver& kernel_type_str_resolver) {
-  const auto required_op_ids = kernel_type_str_resolver_utils::GetLayoutTransformationRequiredOpIdentifiers();
   const auto schema_registry = SchemaRegistryManager{};
-  for (const auto& op_id : required_op_ids) {
+  for (const auto& op_id : kLayoutTransformationPotentiallyAddedOps) {
     const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
                                                       std::string{op_id.domain});
     ORT_RETURN_IF(op_schema == nullptr,
