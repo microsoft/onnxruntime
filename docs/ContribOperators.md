@@ -3569,7 +3569,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.NhwcFusedConv"></a><a name="com.microsoft.nhwcfusedconv">**com.microsoft.NhwcFusedConv**</a>
 
   NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
-  Only has fp16 implementation as of 2023/04/15.
 
 #### Version
 
@@ -3600,26 +3599,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd></dd>
+<dd>Input activation tensor in channels-last layout. For 2D convolution this is [N, H, W, C], where N is batch size, H/W are spatial dimensions, and C is the number of input channels.</dd>
 <dt><tt>W</tt> : T</dt>
-<dd></dd>
+<dd>Convolution weight tensor in the standard ONNX Conv filter layout [M, C/group, kH, kW], where M is the number of output channels.</dd>
 <dt><tt>B</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional 1D bias tensor of shape [M].</dd>
 <dt><tt>Z</tt> (optional) : T</dt>
-<dd>Tensor to be added to the output, must be the same shape and format as the output tensor.</dd>
+<dd>Optional residual/add tensor in the same channels-last layout and shape as the output tensor Y. For 2D convolution this is [N, out_H, out_W, M].</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd></dd>
+<dd>Output tensor in channels-last layout. For 2D convolution this is [N, out_H, out_W, M], where M is the number of output channels.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain input and output types to float tensors</dd>
 </dl>
 
