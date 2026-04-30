@@ -71,6 +71,16 @@ if (-not (Test-Path $csproj)) {
     exit 1
 }
 
+# Resolve the minimum-required ORT version file to an absolute path. Passed to MSBuild
+# via -p:OnnxRuntimeMinVersionFile so the staged project (which builds out of a copy
+# under $StagingDir) can still find the file in the original source tree.
+$ortMinVersionFile = Join-Path $PSScriptRoot '..\MIN_ONNXRUNTIME_VERSION'
+if (-not (Test-Path $ortMinVersionFile)) {
+    Write-Error "MIN_ONNXRUNTIME_VERSION file not found: $ortMinVersionFile"
+    exit 1
+}
+$ortMinVersionFile = (Resolve-Path $ortMinVersionFile).Path
+
 $OutputDir = [System.IO.Path]::GetFullPath($OutputDir)
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 
@@ -189,7 +199,8 @@ if ($BuildOnly) {
     $buildArgs = @(
         $stagedCsproj,
         '--configuration', $Configuration,
-        "-p:Version=$Version"
+        "-p:Version=$Version",
+        "-p:OnnxRuntimeMinVersionFile=$ortMinVersionFile"
     )
     if ($NuGetConfig) {
         $buildArgs += @('--configfile', $NuGetConfig)
@@ -220,6 +231,7 @@ $packArgs = @(
     $stagedCsproj,
     '--configuration', $Configuration,
     "-p:Version=$Version",
+    "-p:OnnxRuntimeMinVersionFile=$ortMinVersionFile",
     '--output', $OutputDir
 )
 if ($PackOnly) {

@@ -25,8 +25,26 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
+  <!--
+    Minimum required Microsoft.ML.OnnxRuntime version is read from a file (single source
+    of truth, shared with the Python wheel build). The path is overridable via
+    -p:OnnxRuntimeMinVersionFile=<absolute path> so callers (e.g. pack_nuget.ps1, which
+    builds out of a staged copy) can point at the original file in the source tree.
+  -->
+  <PropertyGroup>
+    <OnnxRuntimeMinVersionFile Condition="'$(OnnxRuntimeMinVersionFile)' == ''">$(MSBuildThisFileDirectory)..\..\MIN_ONNXRUNTIME_VERSION</OnnxRuntimeMinVersionFile>
+    <OnnxRuntimeMinVersion Condition="Exists('$(OnnxRuntimeMinVersionFile)')">$([System.IO.File]::ReadAllText('$(OnnxRuntimeMinVersionFile)').Trim())</OnnxRuntimeMinVersion>
+  </PropertyGroup>
+
+  <Target Name="_ValidateOnnxRuntimeMinVersion" BeforeTargets="CollectPackageReferences">
+    <Error Condition="!Exists('$(OnnxRuntimeMinVersionFile)')"
+           Text="OnnxRuntimeMinVersionFile not found: '$(OnnxRuntimeMinVersionFile)'. Set -p:OnnxRuntimeMinVersionFile=&lt;absolute path&gt; or restore the file at the default location." />
+    <Error Condition="'$(OnnxRuntimeMinVersion)' == ''"
+           Text="OnnxRuntimeMinVersion resolved to an empty value from '$(OnnxRuntimeMinVersionFile)'." />
+  </Target>
+
   <ItemGroup>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.24.4" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(OnnxRuntimeMinVersion)" />
   </ItemGroup>
 
   <ItemGroup>
