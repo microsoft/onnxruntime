@@ -3,6 +3,10 @@ parameters:
   type: string
   default: dev
 
+- name: version_file
+  type: string
+  default: VERSION_NUMBER
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -70,6 +74,7 @@ stages:
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
 
       - script: |
           python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
@@ -207,3 +212,53 @@ stages:
           vstsFeedPackagePublish: "onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-win-x64"
           versionOption: custom
           versionPublish: '$(PluginUniversalPackageVersion)'
+
+    - job: Win_plugin_cuda_x64_Python_Package
+      dependsOn: Win_plugin_cuda_x64_Build
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      templateContext:
+        outputs:
+        - output: pipelineArtifact
+          targetPath: '$(Build.ArtifactStagingDirectory)\python'
+          artifactName: cuda_plugin_python_win_x64
+      variables:
+      - template: ../templates/common-variables.yml
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: ${{ parameters.python_version }}
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
+
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download plugin build artifacts'
+        inputs:
+          artifactName: cuda_plugin_win_x64
+          targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
+
+      - task: PowerShell@2
+        displayName: 'Build Python wheel'
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: |
+            python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
+            python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
+              --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
+              --version "$(PluginPythonPackageVersion)" `
+              --output_dir "$(Build.ArtifactStagingDirectory)\python"
