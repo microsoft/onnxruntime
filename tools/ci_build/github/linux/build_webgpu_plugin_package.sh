@@ -26,9 +26,10 @@ docker run --rm \
     --volume /data/models:/build/models:ro \
     --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
     -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+    -e PIP_INDEX_URL \
     --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
-    --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
-    --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
+    --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
+    --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     -e SYSTEM_COLLECTIONURI \

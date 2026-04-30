@@ -57,6 +57,7 @@ parameters:
     - MinSizeRel
 
 variables:
+  # Path (relative to the repository root) of the VERSION_NUMBER file used for plugin package versioning.
   - name: epVersionFile
     value: VERSION_NUMBER
   # Non-dev package versions (release, RC) must use Release build type

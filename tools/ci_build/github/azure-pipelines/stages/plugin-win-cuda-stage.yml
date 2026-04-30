@@ -5,7 +5,6 @@ parameters:
 
 - name: version_file
   type: string
-  default: VERSION_NUMBER
 
 - name: cmake_build_type
   type: string

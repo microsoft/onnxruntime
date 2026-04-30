@@ -116,12 +116,16 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Default plugin library is not on the path and is therefore ignored";
   }
   try {
-    int num_plugin_creator = 0;
-    auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
+    // getAllCreators() is the TRT 10+ replacement for the removed getPluginCreatorList().
+    // It returns IPluginCreatorInterface* const*; cast each entry to the deprecated-but-present
+    // IPluginCreator* to access getPluginName()/getPluginVersion().
+    int32_t num_plugin_creator = 0;
+    auto plugin_creators = getPluginRegistry()->getAllCreators(&num_plugin_creator);
     std::unordered_set<std::string> registered_plugin_names;
 
-    for (int i = 0; i < num_plugin_creator; i++) {
-      auto plugin_creator = plugin_creators[i];
+    for (int32_t i = 0; i < num_plugin_creator; i++) {
+      auto* plugin_creator = dynamic_cast<nvinfer1::IPluginCreator*>(plugin_creators[i]);
+      if (!plugin_creator) continue;  // skip IPluginCreatorV3One entries that lack these accessors
       std::string plugin_name(plugin_creator->getPluginName());
       LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
 

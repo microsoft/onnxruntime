@@ -352,7 +352,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 //
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || \
-    defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X)
+    defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X) || \
+    defined(MLAS_TARGET_RISCV64)
 
 typedef
 size_t
@@ -1018,6 +1019,36 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelLasx;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
+#elif defined(MLAS_TARGET_RISCV64)
+#if defined(MLAS_USE_RVV)
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelRvv;
+    void MlasSgemmCopyPackBRvv(
+        float* D,
+        const float* B,
+        size_t ldb,
+        size_t CountX,
+        size_t CountY);
+#endif
+    size_t MLASCALL MlasSgemmKernelZero(
+        const float* A,
+        const float* B,
+        float* C,
+        size_t CountK,
+        size_t CountM,
+        size_t CountN,
+        size_t lda,
+        size_t ldc,
+        float alpha);
+    size_t MLASCALL MlasSgemmKernelAdd(
+        const float* A,
+        const float* B,
+        float* C,
+        size_t CountK,
+        size_t CountM,
+        size_t CountN,
+        size_t lda,
+        size_t ldc,
+        float alpha);
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -1167,6 +1198,12 @@ extern "C" {
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelRvv;
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelRvv;
+    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelRvv;
+    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelRvv;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx512F;
@@ -1442,7 +1479,7 @@ struct MLAS_PLATFORM {
 #endif
 
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_RISCV64)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
 #endif
 #if defined(MLAS_TARGET_LARCH64)
@@ -1507,7 +1544,7 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
 #endif
 
-#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;

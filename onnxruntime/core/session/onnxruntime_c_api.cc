@@ -432,6 +432,112 @@ union PtrConvert {
   const char** strings;
 };
 
+// Shared validation for COO indices used by both FillSparseTensorCoo and UseCooIndices.
+// Returns nullptr on success, OrtStatus* on validation failure.
+OrtStatus* ValidateCooIndices(const int64_t* indices_data, size_t indices_num,
+                              size_t values_size, const TensorShape& dense_shape) {
+  if (indices_num > 0 && indices_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "indices_data must not be null when indices_num > 0.");
+  }
+  if ((values_size == 0) != (indices_num == 0)) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        values_size == 0
+            ? "COO indices must be empty when the sparse tensor has no values."
+            : "COO indices must be provided when the sparse tensor has values.");
+  }
+  if (values_size > 0 && indices_num > 0) {
+    if (indices_num == values_size) {
+      const auto dense_size = dense_shape.Size();
+      for (size_t i = 0; i < indices_num; ++i) {
+        if (indices_data[i] < 0 || indices_data[i] >= dense_size) {
+          return OrtApis::CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              MakeString("COO linear index out of bounds: ", indices_data[i],
+                         " must be in [0, ", dense_size, ")")
+                  .c_str());
+        }
+      }
+    } else if (indices_num / 2 == values_size && indices_num % 2 == 0) {
+      if (dense_shape.NumDimensions() != 2) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                     "COO 2D indices require dense shape of 2 dimensions");
+      }
+      const auto rows = dense_shape.GetDims()[0];
+      const auto cols = dense_shape.GetDims()[1];
+      size_t tuple_idx = 0;
+      for (size_t i = 0; i < values_size; ++i, tuple_idx += 2) {
+        auto r = indices_data[tuple_idx];
+        auto c = indices_data[tuple_idx + 1];
+        if (r < 0 || r >= rows || c < 0 || c >= cols) {
+          return OrtApis::CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              MakeString("COO 2D index out of bounds: (", r, ", ", c,
+                         ") must be in [0, ", rows, ") x [0, ", cols, ")")
+                  .c_str());
+        }
+      }
+    } else {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "COO indices count must be equal to or twice the values count.");
+    }
+  }
+  return nullptr;
+}
+
+// Shared validation for CSR indices used by both FillSparseTensorCsr and UseCsrIndices.
+// Returns nullptr on success, OrtStatus* on validation failure.
+OrtStatus* ValidateCsrIndices(const int64_t* inner_data, size_t inner_num,
+                              const int64_t* outer_data, size_t outer_num,
+                              const TensorShape& dense_shape) {
+  if (inner_num > 0 && inner_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "inner index data must not be null when inner index count > 0.");
+  }
+  if (outer_num > 0 && outer_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "outer index data must not be null when outer index count > 0.");
+  }
+  if (dense_shape.NumDimensions() == 2 && inner_num > 0) {
+    const auto cols = dense_shape.GetDims()[1];
+    for (size_t i = 0; i < inner_num; ++i) {
+      if (inner_data[i] < 0 || inner_data[i] >= cols) {
+        return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            MakeString("CSR inner index out of bounds: ", inner_data[i],
+                       " must be in [0, ", cols, ")")
+                .c_str());
+      }
+    }
+  }
+  if (outer_num > 0) {
+    if (outer_data[0] != 0) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index must start at 0, got: ", outer_data[0]).c_str());
+    }
+    if (outer_data[outer_num - 1] != static_cast<int64_t>(inner_num)) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index last element must equal inner index count (",
+                     inner_num, "), got: ", outer_data[outer_num - 1])
+              .c_str());
+    }
+    int64_t prev = 0;
+    for (size_t i = 0; i < outer_num; ++i) {
+      auto val = outer_data[i];
+      if (val < prev || val > static_cast<int64_t>(inner_num)) {
+        return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            MakeString("CSR outer index out of bounds or not monotonically non-decreasing: ", val).c_str());
+      }
+      prev = val;
+    }
+  }
+  return nullptr;
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace
 
@@ -445,6 +551,11 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
 
   auto values_size = narrow<size_t>(values_t_shape.Size());
   auto indices_span = gsl::make_span(indices_data, indices_num);
+
+  if (auto* status = ValidateCooIndices(indices_data, indices_num, values_size,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
 
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
@@ -481,6 +592,13 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
 
   auto inner_indices_span = gsl::make_span(inner_indices_data, inner_indices_num);
   auto outer_indices_span = gsl::make_span(outer_indices_data, outer_indices_num);
+
+  if (auto* status = ValidateCsrIndices(inner_indices_data, inner_indices_num,
+                                        outer_indices_data, outer_indices_num,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
     ORT_THROW_IF_ERROR(sparse_tensor.MakeCsrStrings(values_size, conv.strings, inner_indices_span, outer_indices_span));
@@ -592,6 +710,12 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
                           ? gsl::span<int64_t>()
                           : gsl::make_span(indices_data, indices_num);
 
+  if (auto* status = ValidateCooIndices(indices_data, indices_num,
+                                        sparse_tensor.NumValues(),
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCooIndices(indices_span));
   return nullptr;
 #else
@@ -616,6 +740,12 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
   auto outer_span = (outer_num == 0 || outer_data == nullptr)
                         ? gsl::span<int64_t>()
                         : gsl::make_span(outer_data, outer_num);
+
+  if (auto* status = ValidateCsrIndices(inner_data, inner_num, outer_data, outer_num,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCsrIndices(inner_span, outer_span));
   return nullptr;
 #else

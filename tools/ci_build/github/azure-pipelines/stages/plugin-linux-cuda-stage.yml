@@ -20,7 +20,6 @@ parameters:
 
 - name: version_file
   type: string
-  default: VERSION_NUMBER
 
 - name: cmake_build_type
   type: string
@@ -98,6 +97,7 @@ stages:
           DockerBuildArgs: "
           --network=host
           --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+          --build-arg PIP_INDEX_URL=$(PIP_INDEX_URL)
           --build-arg TRT_VERSION=
           --build-arg BUILD_UID=$( id -u )
           "
@@ -196,6 +196,7 @@ stages:
           DockerBuildArgs: "
           --network=host
           --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+          --build-arg PIP_INDEX_URL=$(PIP_INDEX_URL)
           --build-arg TRT_VERSION=
           --build-arg BUILD_UID=$( id -u )
           "

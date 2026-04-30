@@ -28,13 +28,14 @@ docker run --rm \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume "${BUILD_ARTIFACTSTAGINGDIRECTORY}:/staging" \
     --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+    --env "ORT_CUDA_PLUGIN_EP_VERSION=${VERSION}" \
     "$DOCKER_IMAGE" \
-    /bin/bash -c "
+    /bin/bash -c '
       set -e -x
-      PATH=${PYTHON_BIN_DIR}:\$PATH
-      ${PYTHON_EXE} -m pip install -r /onnxruntime_src/plugin-ep-cuda/python/requirements-build-wheel.txt
-      ${PYTHON_EXE} /onnxruntime_src/plugin-ep-cuda/python/build_wheel.py \
+      PATH="'"${PYTHON_BIN_DIR}"'":$PATH
+      "'"${PYTHON_EXE}"'" -m pip install -r /onnxruntime_src/plugin-ep-cuda/python/requirements-build-wheel.txt
+      "'"${PYTHON_EXE}"'" /onnxruntime_src/plugin-ep-cuda/python/build_wheel.py \
         --binary_dir /build/plugin_artifacts/bin \
-        --version "${VERSION}" \
+        --version "$ORT_CUDA_PLUGIN_EP_VERSION" \
         --output_dir /staging/python
-    "
+    '
