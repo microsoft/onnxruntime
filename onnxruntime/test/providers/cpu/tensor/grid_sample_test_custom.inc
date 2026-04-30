@@ -105,3 +105,192 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_extre
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
   RunTests(test, GetExecutionProviders());
 }
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_nan_coords) {
+  // Regression test: NaN grid coordinates would otherwise propagate into
+  // static_cast<int64_t>(std::nearbyint(NaN)), which is undefined behavior.
+  // The Compute loop now sanitizes such coordinates to the in-range border
+  // before performing the cast, producing defined sampling.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(1.0f),
+                                          TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  const float nan_val = std::numeric_limits<float>::quiet_NaN();
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(nan_val), TypeParam(nan_val),
+      TypeParam(0.0f), TypeParam(nan_val)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // With a constant-valued image any reflected pixel returns 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_infinity_coords) {
+  // Regression test: Inf grid coordinates would otherwise reach
+  // static_cast<int64_t>(std::floor(Inf)), which is undefined behavior.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(1.0f),
+                                          TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  const float inf_val = std::numeric_limits<float>::infinity();
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(inf_val), TypeParam(-inf_val),
+      TypeParam(-inf_val), TypeParam(inf_val)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // Constant-valued image: any reflected sample returns 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_extreme_coords) {
+  // Bilinear interpolation path: the four corner indices are computed via
+  // static_cast<int64_t>(std::floor(x)). With a constant-valued image the
+  // expected output is 1.0 regardless of which reflected pixel is hit.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(1.0f),
+                                          TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+20f), TypeParam(1.0e+20f),
+      TypeParam(-1.0e+20f), TypeParam(-1.0e+20f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // With a constant-valued image any sampled pixel is 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_cubic_reflection_extreme_coords) {
+  // Cubic interpolation path: the 4x4 neighborhood is computed via
+  // static_cast<int64_t>(std::floor(x)) - 1, exercising the same UB-prone cast.
+  // Cubic only supports float (T1 type constraint), so this test is float-only.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("cubic"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 4, 4};
+  std::initializer_list<TypeParam> X_data{
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+10f), TypeParam(-1.0e+10f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // Constant-valued image: cubic interpolation of all-1.0 neighborhood is 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_nearest_reflection_extreme_coords) {
+  // 3D / 5-D input: the reflection branch in PixelAtGrid3D received the same
+  // safety clamp as PixelAtGrid; this test exercises that path.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2, 2};
+  std::initializer_list<TypeParam> X_data{
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+10f), TypeParam(1.0e+10f), TypeParam(1.0e+10f),
+      TypeParam(-1.0e+10f), TypeParam(-1.0e+10f), TypeParam(-1.0e+10f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_dim1_align_corners) {
+  // With a 1x1 image and align_corners=true, x_min == x_max so the reflection
+  // range is zero. GsReflect must not divide by zero on any out-of-range coord.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{1});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 1, 1};
+  std::initializer_list<TypeParam> X_data{TypeParam(7.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.5f), TypeParam(0.5f),
+      TypeParam(-0.5f), TypeParam(-0.5f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // The single input pixel is the only valid sample for any reflected coordinate.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(7.0f), TypeParam(7.0f)});
+  RunTests(test, GetExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_border_extreme_coords) {
+  // Border padding mode is independently safe via std::clamp; this regression
+  // test ensures it stays safe with extreme grid coordinates.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(1.0f),
+                                          TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+20f), TypeParam(1.0e+20f),
+      TypeParam(-1.0e+20f), TypeParam(-1.0e+20f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // Constant-valued image: any clamped border sample is 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunTests(test, GetExecutionProviders());
+}
