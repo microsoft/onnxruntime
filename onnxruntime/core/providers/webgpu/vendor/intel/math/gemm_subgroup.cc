@@ -85,10 +85,11 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
 }  // namespace
 
 bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64_t K, bool transA, bool transB) {
-  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    bool use_subgroup = context.HasFeature(wgpu::FeatureName::Subgroups) &&
-                        M >= 64 && N >= 512 && K >= 32 && !transA && !transB;
-    return use_subgroup;
+  if (!transA && !transB && context.AdapterInfo().vendor == std::string_view{"intel"} &&
+      context.HasFeature(wgpu::FeatureName::Subgroups)) {
+    // Ensure enough parallelism for good performance. The thresholds (24) are based on testing and may need to
+    // be adjusted in the future when more performance data is collected.
+    return M >= 64 && N > 64 && K >= 32 && (((M + 63) / 64) * ((N + 127) / 128)) >= 24;
   }
 
   return false;
