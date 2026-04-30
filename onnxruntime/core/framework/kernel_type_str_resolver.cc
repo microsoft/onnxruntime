@@ -35,8 +35,8 @@ static OpKernelTypeStrMap::const_iterator LookUpOpId(const OpIdentifier& op_id,
       }
     }
   }
-  return op_it;
 
+  return op_it;
 }
 
 Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
