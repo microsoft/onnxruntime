@@ -184,9 +184,9 @@ TimingStats TimeCase(size_t rows, size_t d, size_t repeats, bool log_softmax, bo
 
   TimingStats stats;
   stats.scalar_ms =
-      std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(scalar_end - scalar_begin).count();
+      std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(scalar_end - scalar_begin).count();
   stats.rvv_ms =
-      std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(rvv_end - rvv_begin).count();
+      std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(rvv_end - rvv_begin).count();
   return stats;
 }
 
