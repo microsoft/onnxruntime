@@ -434,6 +434,9 @@ common::Status LaunchUnfusedAttention(
 
   // Copy scaled QK to output_qk BEFORE softcap/mask/softmax.
   // output_qk[i] = T(qk_fp32[i] * scale) — this is "kQK" mode (scale * Q @ K^T).
+  // Note: When seqlens_k is provided, positions [seqlens_k[b], total_kv) in output_qk
+  // may contain stale KV cache data. Consumers of output_qk should only read positions
+  // [0, seqlens_k[b]) for batch b.
   if (output_qk != nullptr) {
     const int64_t total = static_cast<int64_t>(elems);
     constexpr int kTPB = 256;
