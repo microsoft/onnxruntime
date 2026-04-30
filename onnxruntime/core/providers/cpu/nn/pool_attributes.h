@@ -81,8 +81,14 @@ struct PoolAttributes {
     }
 
     ORT_ENFORCE(strides.size() == kernel_shape.size());
+    for (auto stride : strides) {
+      ORT_ENFORCE(stride > 0, "All stride values must be positive, got: ", stride);
+    }
     ORT_ENFORCE(dilations.size() == kernel_shape.size(),
                 "Dilations dimensions should match kernel shape");
+    for (auto dilation : dilations) {
+      ORT_ENFORCE(dilation > 0, "All dilation values must be positive, got: ", dilation);
+    }
   }
 
   const bool global_pooling;

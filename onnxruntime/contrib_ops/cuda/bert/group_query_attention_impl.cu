@@ -38,6 +38,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/gqa_unfused_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_qkv.cuh"
@@ -1030,12 +1031,123 @@ Status EfficientAttention(
 }
 #endif
 
+// ============================================================================
+// UnfusedGqaAttention: fallback path that handles GQA natively and fixes the
+// fp16 head_size > 256 NaN (issue #28195).
+//
+// Dispatched when Flash / MEA / XQA are all ineligible. Supports:
+//   - Any head_size up to H (FP32 QK accumulation avoids fp16 overflow).
+//   - GQA (num_heads != kv_num_heads) via reshape-Q trick in the GEMM.
+//   - Different Q / K sequence lengths (first prompt or decode with past).
+//   - Causal, sliding window (local_window_size), softcap, per-batch seqlens.
+//
+// Not supported (caller falls through elsewhere):
+//   - Quantized KV cache (U != T): hit by the original NOT_IMPLEMENTED path.
+//   - attention_bias input: rejected by op-level ComputeInternal.
+//   - Smooth softmax / head_sink: Flash-only feature.
+// ============================================================================
+template <typename T, typename U>
+Status UnfusedGqaAttention(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t cublas,
+    cudaStream_t stream,
+    GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<T, U>& data,
+    float scale) {
+  static_assert(std::is_same<T, U>::value,
+                "UnfusedGqaAttention requires non-quantized KV cache (T == U).");
+
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int num_heads = parameters.num_heads;
+  const int kv_num_heads = parameters.kv_num_heads;
+  const int head_size = parameters.head_size;
+  const int max_kv = parameters.seqlen_present_kv_cache;
+
+  ORT_RETURN_IF(data.unfused_q_bnsh == nullptr || data.unfused_y_bnsh == nullptr ||
+                    data.unfused_workspace == nullptr,
+                "Unfused GQA scratch buffers are not allocated.");
+  ORT_RETURN_IF(parameters.past_kv_format != AttentionQkvFormat::Q_K_V_BNSH,
+                "Unfused GQA fallback requires BNSH KV cache layout.");
+
+  ORT_GQA_TRACE("UnfusedGqaAttention");
+
+  // Step 1: unpack Q (optionally RoPE), append new K/V into present_key/value (BNSH).
+  const T* q_prep = nullptr;
+  ORT_RETURN_IF_ERROR((PrepareQKV<T, U>(stream, max_threads_per_block, parameters, data, q_prep)));
+
+  // Step 2: transpose Q from BSNH (PrepareQKV output) to BNSH.
+  // Transpose_BSNH_to_BNSH has overloads for half/BFloat16/float; bridge via reinterpret_cast.
+  // GQA only registers half and bf16 types; guard against accidental float instantiation.
+  static_assert(std::is_same<T, __half>::value || std::is_same<T, __nv_bfloat16>::value,
+                "UnfusedGqaAttention transpose only supports __half and __nv_bfloat16.");
+  if constexpr (std::is_same<T, __half>::value) {
+    ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(batch_size, sequence_length, num_heads, head_size,
+                                                reinterpret_cast<const half*>(q_prep),
+                                                reinterpret_cast<half*>(data.unfused_q_bnsh),
+                                                stream, max_threads_per_block)));
+  } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
+    ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(batch_size, sequence_length, num_heads, head_size,
+                                                reinterpret_cast<const onnxruntime::BFloat16*>(q_prep),
+                                                reinterpret_cast<onnxruntime::BFloat16*>(data.unfused_q_bnsh),
+                                                stream, max_threads_per_block)));
+  }
+
+  // Step 3: run unfused attention with FP32 QK accumulation.
+  GqaUnfusedAttentionParams p;
+  p.batch_size = batch_size;
+  p.num_heads = num_heads;
+  p.kv_num_heads = kv_num_heads;
+  p.head_size = head_size;
+  ORT_ENFORCE(head_size == parameters.v_head_size || parameters.v_head_size == 0,
+              "UnfusedGqaAttention requires head_size == v_head_size");
+  p.v_head_size = head_size;  // GQA op has head_size == v_head_size
+  p.q_sequence_length = sequence_length;
+  // For the decode/prompt, data.total_seq_lens[b] <= seqlen_present_kv_cache.
+  // Use seqlen_present_kv_cache as the upper bound for the GEMM and pass per-batch
+  // seqlens to the softmax so positions beyond the valid length are masked.
+  p.total_kv_length = parameters.total_sequence_length;
+  p.max_kv_length = max_kv;
+  p.broadcast_attn_bias_dim_0 = false;
+  p.broadcast_attn_bias_dim_1 = false;
+  p.is_causal = parameters.is_unidirectional;
+  p.local_window_size = parameters.local_window_size;  // -1 disables
+  p.scale = scale;
+  p.softcap = parameters.softcap;
+  p.seqlens_k = data.total_seq_lens;
+
+  ORT_RETURN_IF_ERROR((LaunchGqaUnfusedAttention<T>(
+      device_prop, cublas, stream, p,
+      data.unfused_q_bnsh,
+      reinterpret_cast<const T*>(data.present_key),
+      reinterpret_cast<const T*>(data.present_value),
+      /*attn_bias=*/nullptr,
+      data.unfused_y_bnsh,
+      data.unfused_workspace)));
+
+  // Step 4: transpose output BNSH → BSNH into data.output.
+  // Use p.v_head_size (== head_size per ORT_ENFORCE) for semantic correctness.
+  if constexpr (std::is_same<T, __half>::value) {
+    ORT_RETURN_IF_ERROR((Transpose_BNSH_to_BSNH(batch_size, sequence_length, num_heads, p.v_head_size,
+                                                reinterpret_cast<const half*>(data.unfused_y_bnsh),
+                                                reinterpret_cast<half*>(data.output),
+                                                stream, max_threads_per_block)));
+  } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
+    ORT_RETURN_IF_ERROR((Transpose_BNSH_to_BSNH(batch_size, sequence_length, num_heads, p.v_head_size,
+                                                reinterpret_cast<const onnxruntime::BFloat16*>(data.unfused_y_bnsh),
+                                                reinterpret_cast<onnxruntime::BFloat16*>(data.output),
+                                                stream, max_threads_per_block)));
+  }
+  return Status::OK();
+}
+
 ////////// API Functions
 
 template <typename T, typename U>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
-    cublasHandle_t& /*cublas*/,
+    cublasHandle_t& cublas,
     Stream* ort_stream,
     GroupQueryAttentionParameters& parameters,
     GroupQueryAttentionData<T, U>& data) {
@@ -1068,6 +1180,15 @@ Status QkvToContext(
     return EfficientAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
+
+  if (data.use_unfused) {
+    if constexpr (std::is_same<T, U>::value) {
+      return UnfusedGqaAttention<T, U>(device_prop, cublas, stream, parameters, data, scale);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Unfused GQA fallback does not support quantized KV cache.");
+    }
+  }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");
 }

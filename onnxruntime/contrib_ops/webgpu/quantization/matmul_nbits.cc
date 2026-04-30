@@ -90,6 +90,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                             WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_),
                              WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                              WGSL_TEMPLATE_PARAMETER(component_b, components_b),
                              WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
@@ -167,7 +168,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
  * @return Status indicating whether the operation was successful or if an error occurred.
  *
  * @note Special optimizations are considered:
- *       - Subgroup matrix multiplication for eligible Apple/Intel GPUs.
+ *       - Subgroup matrix multiplication for GPUs with supported configs.
  *       - DP4A-based multiplication on FP32-only GPUs for specific dimensions and conditions.
  *       - A wide tile program is used when block size, component count, and other criteria are met.
  *       - Otherwise, a default matmul program is used.
@@ -181,7 +182,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                         onnxruntime::webgpu::ComputeContext& context,
                         Tensor* y,
                         const uint32_t weight_index,
-                        const Tensor* weight_index_indirect) {
+                        const Tensor* weight_index_indirect,
+                        uint32_t override_M) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -196,6 +198,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
   const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t dispatch_M = (override_M > 0) ? override_M : M;
+  const bool broadcast_a = dispatch_M > M;
   const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
@@ -229,7 +233,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                                            context,
                                                            y,
                                                            has_weight_idx_indirect,
-                                                           &subgroup_matrix_config_index)) {
+                                                           &subgroup_matrix_config_index,
+                                                           override_M)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
   }
 #endif
@@ -244,7 +249,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                                  context,
                                                  y,
                                                  has_weight_idx_indirect)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
   }
 
   // WideTileProgram
@@ -264,7 +269,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
     const uint32_t num_N_tile = CeilDiv(N, tile_n);
-    const uint32_t num_M_tile = CeilDiv(M, tile_m);
+    const uint32_t num_M_tile = CeilDiv(dispatch_M, tile_m);
 
     MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits)};
     program.SetWorkgroupSize(workgroup_size);
@@ -298,7 +303,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                        ProgramTensorMetadataDependency::TypeAndRank,
                        onnxruntime::narrow<int>(components)});
     program.AddUniformVariables({{batch_count},
-                                 {M},
+                                 {dispatch_M},
                                  {N},
                                  {K_of_a},
                                  {K_of_b},
@@ -322,10 +327,10 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec};
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
-  program.SetDispatchGroupSize(num_N_tile, M, batch_count);
+  program.SetDispatchGroupSize(num_N_tile, dispatch_M, batch_count);
   program
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
@@ -341,8 +346,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {zero_blocks_per_col},
                             {num_N_tile},
                             {batch_count},
-                            {weight_index}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec);
+                            {weight_index},
+                            {dispatch_M}})
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

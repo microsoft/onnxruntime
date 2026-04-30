@@ -67,6 +67,17 @@ class Ep : public onnxruntime::ep::adapter::Ep {
   static OrtStatus* ORT_API_CALL IsConcurrentRunSupportedImpl(_In_ OrtEp* this_ptr,
                                                               _Out_ bool* is_concurrent_run_supported) noexcept;
 
+  static bool ORT_API_CALL IsGraphCaptureEnabledImpl(_In_ const OrtEp* this_ptr) noexcept;
+
+  static bool ORT_API_CALL IsGraphCapturedImpl(_In_ const OrtEp* this_ptr,
+                                               _In_ int graph_annotation_id) noexcept;
+
+  static OrtStatus* ORT_API_CALL ReplayGraphImpl(_In_ OrtEp* this_ptr,
+                                                 _In_ int graph_annotation_id) noexcept;
+
+  static OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL GetGraphCaptureNodeAssignmentPolicyImpl(
+      _In_ const OrtEp* this_ptr) noexcept;
+
   Factory& factory_;
   const OrtLogger& logger_;
   Config config_{};

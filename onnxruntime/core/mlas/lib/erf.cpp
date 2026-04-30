@@ -266,3 +266,23 @@ Return Value:
     MlasErfKernel(Input, Output, N);
 #endif
 }
+
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
+    size_t N
+    )
+{
+    if(GetMlasPlatform().ErfFP16KernelRoutine){
+        GetMlasPlatform().ErfFP16KernelRoutine(Input, Output, N);
+        return;
+    }
+
+    MlasConvertHalfToFloatBuffer(Input, Input_tmp_fp32, N);
+    MlasComputeErf(Input_tmp_fp32, Output_tmp_fp32, N);
+    MlasConvertFloatToHalfBuffer(Output_tmp_fp32, Output, N);
+}

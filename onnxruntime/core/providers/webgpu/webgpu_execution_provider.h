@@ -97,6 +97,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+  }
   webgpu::BufferManager& BufferManager() const;
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
@@ -126,7 +129,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool is_graph_captured_ = false;
   bool graph_buffer_mgr_active_ = false;
   int regular_run_count_before_graph_capture_ = 0;
-  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+  const int min_num_runs_before_cuda_graph_capture_ = 1;  // Required regular runs before graph capture for any necessary allocations.
   int m_current_graph_annotation_id = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)

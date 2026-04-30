@@ -77,7 +77,8 @@ bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(const Tensor* a,
                                                           onnxruntime::webgpu::ComputeContext& context,
                                                           Tensor* y,
                                                           bool has_weight_idx_indirect,
-                                                          int32_t* subgroup_matrix_config_index) {
+                                                          int32_t* subgroup_matrix_config_index,
+                                                          uint32_t override_M) {
   TensorShape b_shape({N_op, K_op});
   MatMulComputeHelper helper;
   if (!helper.Compute(a->Shape(), b_shape, false, true).IsOK()) {
@@ -86,15 +87,18 @@ bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(const Tensor* a,
 
   const uint32_t batch_count = onnxruntime::narrow<uint32_t>(helper.OutputOffsets().size());
   const uint32_t M = onnxruntime::narrow<uint32_t>(helper.M());
+  const uint32_t dispatch_M = override_M > 0 ? override_M : M;
   const uint32_t N = onnxruntime::narrow<uint32_t>(helper.N());
   const uint32_t K = onnxruntime::narrow<uint32_t>(helper.K());
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_op);
 
 #if !defined(__wasm__)
   int32_t local_subgroup_matrix_config_index = -1;
+  if (dispatch_M != M) {
+    return false;
+  }
+
   return (M >= kMinMForTileOptimization && !has_weight_idx_indirect) &&
-         (context.AdapterInfo().vendor == std::string_view{"apple"} ||
-          context.AdapterInfo().vendor == std::string_view{"intel"}) &&
          CanApplySubgroupMatrixMatMulNBits(context,
                                            accuracy_level,
                                            block_size,

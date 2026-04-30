@@ -45,7 +45,8 @@ bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(const Tensor* a,
                                                           onnxruntime::webgpu::ComputeContext& context,
                                                           Tensor* y,
                                                           bool has_weight_idx_indirect = false,
-                                                          int32_t* subgroup_matrix_config_index = nullptr);
+                                                          int32_t* subgroup_matrix_config_index = nullptr,
+                                                          uint32_t override_M = 0);
 
 bool WouldApplyDP4AMatMulNBitsInCurrentDispatch(const Tensor* a,
                                                 int64_t K_op,
