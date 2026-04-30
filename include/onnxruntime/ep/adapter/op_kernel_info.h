@@ -8,14 +8,16 @@
 #endif
 
 #include <memory>
+#include <shared_mutex>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/common/status.h"
 #include "core/framework/config_options.h"
-#include "core/framework/op_kernel_info.h"
 #include "core/framework/tensor_shape.h"
 #include "core/framework/tensor.h"
 
+#include "allocator.h"
 #include "node.h"
 #include "kernel_def.h"
 #include "tensor_helper.h"
@@ -43,12 +45,11 @@ struct OpKernelInfo {
   // to manage the lifetime of the cached data.
   struct KernelInfoCache {
     explicit KernelInfoCache(const OrtKernelInfo* kernel_info) : kernel_info_(kernel_info) {
-      const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(kernel_info);
-      execution_provider_ = core_kernel_info->GetExecutionProvider();
-      ort_ep_ = execution_provider_ != nullptr ? execution_provider_->GetOrtEp() : nullptr;
-      ep_impl_ = ort_ep_ != nullptr ? (static_cast<const Ep*>(ort_ep_))->EpImpl() : execution_provider_;
-
       Ort::ConstKernelInfo info{kernel_info};
+      ort_ep_ = info.GetEp();
+      ORT_ENFORCE(ort_ep_ != nullptr, "Plugin EP adapter requires a non-null OrtEp");
+      ep_impl_ = static_cast<const Ep*>(ort_ep_)->EpImpl();
+
       const size_t input_count = info.GetInputCount();
       constant_input_tensors.resize(input_count);
       for (size_t i = 0; i < input_count; ++i) {
@@ -60,10 +61,13 @@ struct OpKernelInfo {
       }
     }
     const OrtKernelInfo* kernel_info_;
-    const ::onnxruntime::IExecutionProvider* execution_provider_{};
     const OrtEp* ort_ep_{};
     const ::onnxruntime::IExecutionProvider* ep_impl_{};
     std::vector<Tensor> constant_input_tensors;
+
+    mutable std::shared_mutex allocator_cache_mutex_;
+    mutable InlinedHashMap<OrtMemType, AllocatorPtr> allocator_cache_;
+
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(KernelInfoCache);
   };
 
@@ -74,11 +78,34 @@ struct OpKernelInfo {
     return (static_cast<const Ep*>(cache_->ort_ep_))->GetDataTransferManager();
   }
 
-  // Delegates to the core OpKernelInfo::GetAllocator so the adapter returns
-  // exactly the same allocator the framework would provide for each OrtMemType.
   AllocatorPtr GetAllocator(OrtMemType mem_type) const {
-    const auto* core_kernel_info = reinterpret_cast<const ::onnxruntime::OpKernelInfo*>(cache_->kernel_info_);
-    return core_kernel_info->GetAllocator(mem_type);
+    {
+      std::shared_lock lock(cache_->allocator_cache_mutex_);
+      auto it = cache_->allocator_cache_.find(mem_type);
+      if (it != cache_->allocator_cache_.end()) {
+        return it->second;
+      }
+    }
+
+    std::unique_lock lock(cache_->allocator_cache_mutex_);
+    // Double-check after acquiring exclusive lock
+    auto it = cache_->allocator_cache_.find(mem_type);
+    if (it != cache_->allocator_cache_.end()) {
+      return it->second;
+    }
+
+    OrtAllocator* ort_allocator_raw = nullptr;
+    Ort::Status status(Ort::GetApi().KernelInfoGetAllocator(cache_->kernel_info_, mem_type, &ort_allocator_raw));
+
+    if (!status.IsOK() || ort_allocator_raw == nullptr) {
+      cache_->allocator_cache_.emplace(mem_type, nullptr);
+      return nullptr;
+    }
+
+    Ort::Allocator ort_allocator{ort_allocator_raw};
+    auto allocator = std::make_shared<IAllocatorWrappingOrtAllocator>(std::move(ort_allocator));
+    cache_->allocator_cache_.emplace(mem_type, allocator);
+    return allocator;
   }
 
   Node node() const noexcept {

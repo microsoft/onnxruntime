@@ -23,6 +23,10 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders() {
   execution_providers.push_back(DefaultCoreMLExecutionProvider(/*use_mlprogram*/ true));
 #endif
 
+#ifdef USE_WEBGPU
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+#endif
+
   return execution_providers;
 }
 
