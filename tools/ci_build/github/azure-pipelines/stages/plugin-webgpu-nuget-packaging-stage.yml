@@ -125,7 +125,7 @@ stages:
     - template: ../templates/win-esrp-dll.yml
       parameters:
         FolderPath: '$(WebGpuPackStagingDir)'
-        Pattern: '**\Microsoft.ML.OnnxRuntime.EP.WebGpu.dll'
+        Pattern: 'Microsoft.ML.OnnxRuntime.EP.WebGpu.dll'
         DisplayName: 'ESRP - Sign managed DLL'
         DoEsrp: ${{ parameters.DoEsrp }}
 
