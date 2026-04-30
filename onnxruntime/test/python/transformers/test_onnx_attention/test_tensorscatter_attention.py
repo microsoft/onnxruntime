@@ -981,5 +981,71 @@ class TestTensorScatterAttentionWithMaskCUDA(unittest.TestCase):
         numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
+class TestCausalTensorScatterRejected(unittest.TestCase):
+    """Test that is_causal=1 + TensorScatter decode (S_q != S_kv, no past) is rejected.
+
+    Per ONNX spec, is_causal without past_key means upper-left alignment: q[i] attends
+    only to kv[0..i]. For decode with external cache (S_q=1, S_kv=cache_size), this means
+    q[0] sees only kv[0] — not meaningful for autoregressive generation.
+
+    The dispatch guard should return NOT_IMPLEMENTED for this combination.
+    Models should use is_causal=0 for TensorScatter decode.
+    """
+
+    @unittest.skipUnless("CUDAExecutionProvider" in get_available_providers(), "CUDA not available")
+    def test_is_causal_with_tensorscatter_no_past_rejected(self):
+        """Verify NOT_IMPLEMENTED is raised for is_causal=1 + TensorScatter + S_q != S_kv."""
+        batch_size = 1
+        q_seq_len = 1
+        total_kv_seq_len = 8
+        q_num_heads = 2
+        kv_num_heads = 2
+        head_size = 32
+
+        # Build model with is_causal=1 (the rejected combination)
+        model_bytes = build_tensorscatter_attention_graph(
+            batch_size=batch_size,
+            total_kv_seq_len=total_kv_seq_len,
+            q_seq_len=q_seq_len,
+            q_num_heads=q_num_heads,
+            kv_num_heads=kv_num_heads,
+            head_size=head_size,
+            ort_type=TensorProto.FLOAT16,
+            is_causal=1,
+        )
+
+        sess_opts = SessionOptions()
+        session = InferenceSession(model_bytes, sess_opts, providers=["CUDAExecutionProvider"])
+
+        kv_hidden = kv_num_heads * head_size
+        q_hidden = q_num_heads * head_size
+        key_cache = numpy.random.randn(batch_size, total_kv_seq_len, kv_hidden).astype(numpy.float16)
+        value_cache = numpy.random.randn(batch_size, total_kv_seq_len, kv_hidden).astype(numpy.float16)
+        new_k = numpy.random.randn(batch_size, q_seq_len, kv_hidden).astype(numpy.float16)
+        new_v = numpy.random.randn(batch_size, q_seq_len, kv_hidden).astype(numpy.float16)
+        write_indices = numpy.array([4], dtype=numpy.int64)
+        query = numpy.random.randn(batch_size, q_seq_len, q_hidden).astype(numpy.float16)
+        nonpad_kv_seqlen = numpy.array([5], dtype=numpy.int64)
+
+        feeds = {
+            "key_cache": key_cache,
+            "value_cache": value_cache,
+            "new_k": new_k,
+            "new_v": new_v,
+            "write_indices": write_indices,
+            "query": query,
+            "nonpad_kv_seqlen": nonpad_kv_seqlen,
+        }
+
+        with self.assertRaises(Exception) as ctx:
+            session.run(None, feeds)
+
+        error_msg = str(ctx.exception)
+        self.assertTrue(
+            "NOT_IMPLEMENTED" in error_msg or "nonpad_kv_seqlen" in error_msg,
+            f"Expected NOT_IMPLEMENTED error for is_causal + TensorScatter decode, got: {error_msg}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
