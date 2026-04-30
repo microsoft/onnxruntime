@@ -372,9 +372,9 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     return Status::OK();
   }
 
-  // Prefer the naive ReduceMean path when the shared path would pay extra overhead (transposing non-innermost reduce axes).
-  constexpr size_t kReduceMeanNaiveMaxReduceSize = 128;
-  constexpr size_t kReduceMeanNaiveMinOutputSize = 20000;
+  // Prefer the naive Reduce path when the shared path would pay extra overhead (transposing non-innermost reduce axes).
+  constexpr size_t kReduceNaiveMaxReduceSize = 128;
+  constexpr size_t kReduceNaiveMinOutputSize = 20000;
   bool are_axes_innermost = true;
   size_t axes_rank = input_axes.size();
   for (size_t i = 0; i < input_axes.size() && are_axes_innermost; ++i) {
@@ -384,9 +384,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     }
   }
   bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) ||
-                             (name_ == "ReduceMean" && !are_axes_innermost &&
-                              reduce_size <= kReduceMeanNaiveMaxReduceSize &&
-                              output_size > kReduceMeanNaiveMinOutputSize) ||
+                             (!are_axes_innermost && reduce_size <= kReduceNaiveMaxReduceSize &&
+                              output_size > kReduceNaiveMinOutputSize) ||
                              is_input_empty || input_tensor->Shape().NumDimensions() == 0;
 
   if (use_naive_reduction) {
