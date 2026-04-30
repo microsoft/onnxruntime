@@ -23,6 +23,16 @@ namespace cuda {
 
 namespace {
 
+// Local reduction functors that work with all CUB/CCCL versions.
+// In CCCL 2.x (CUDA 13+), cub::Max and cub::Sum were removed from the cub namespace.
+struct MaxOp {
+  __device__ __forceinline__ float operator()(float a, float b) const { return a > b ? a : b; }
+};
+
+struct SumOp {
+  __device__ __forceinline__ float operator()(float a, float b) const { return a + b; }
+};
+
 constexpr size_t kAlign = 256;
 
 inline SafeInt<size_t> AlignTo(SafeInt<size_t> a, size_t b) { return ((a + (b - 1)) / b) * b; }
@@ -134,7 +144,7 @@ __global__ void GqaUnfusedSoftmaxKernel(
     }
     if (x > thread_max) thread_max = x;
   }
-  float block_max = BlockReduce(tmp_storage).Reduce(thread_max, cub::Max());
+  float block_max = BlockReduce(tmp_storage).Reduce(thread_max, MaxOp());
   if (threadIdx.x == 0) s_max = block_max;
   __syncthreads();
 
@@ -159,7 +169,7 @@ __global__ void GqaUnfusedSoftmaxKernel(
     }
     thread_sum += expf(x - s_max);
   }
-  float block_sum = BlockReduce(tmp_storage).Reduce(thread_sum, cub::Sum());
+  float block_sum = BlockReduce(tmp_storage).Reduce(thread_sum, SumOp());
   if (threadIdx.x == 0) s_inv_sum = (block_sum > 0.f) ? (1.f / block_sum) : 0.f;
   __syncthreads();
 
