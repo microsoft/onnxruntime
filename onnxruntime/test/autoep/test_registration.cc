@@ -70,6 +70,8 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   auto metadata = test_ep_device->EpMetadata();
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), "0.1.0");
   ASSERT_STREQ(metadata.GetValue("supported_devices"), "CrackGriffin 7+");
+  // Verify the os_driver_version is a 4-part dot-separated version string
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_OSDriverVersion), "31.0.101.1000");
 
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetValue("run_really_fast"), "true");
