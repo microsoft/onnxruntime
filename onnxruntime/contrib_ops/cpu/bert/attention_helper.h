@@ -168,11 +168,11 @@ T* ConcatStateChunkGQA(const T* past,
   T* p = start;
   if (!past_present_share_buffer && past_chunk_length > 0) {
     const T* src_past = past + i * past_buff_chunk_length;
-    memcpy(p, src_past, past_chunk_length * sizeof(T));
+    memcpy(p, src_past, SafeInt<size_t>(past_chunk_length) * sizeof(T));
   }
   p += past_chunk_length;
 
-  memcpy(p, chunk, new_chunk_length * sizeof(T));
+  memcpy(p, chunk, SafeInt<size_t>(new_chunk_length) * sizeof(T));
   return start;
 }
 

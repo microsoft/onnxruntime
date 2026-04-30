@@ -82,6 +82,9 @@ OrtStatus* CudaMempoolOrtAllocator::Create(const OrtMemoryInfo* memory_info,
   int cuda_rt_version = 0;
   cudaError_t cuda_err = cudaRuntimeGetVersion(&cuda_rt_version);
   if (cuda_err != cudaSuccess || cuda_rt_version < 11020) {
+    if (cuda_err != cudaSuccess) {
+      static_cast<void>(cudaGetLastError());
+    }
     return api.CreateStatus(
         ORT_NOT_IMPLEMENTED,
         "CUDA mempool requires CUDA runtime 11.2 or later.");
@@ -90,6 +93,9 @@ OrtStatus* CudaMempoolOrtAllocator::Create(const OrtMemoryInfo* memory_info,
   int cuda_driver_version = 0;
   cuda_err = cudaDriverGetVersion(&cuda_driver_version);
   if (cuda_err != cudaSuccess || cuda_driver_version < 11020) {
+    if (cuda_err != cudaSuccess) {
+      static_cast<void>(cudaGetLastError());
+    }
     return api.CreateStatus(
         ORT_NOT_IMPLEMENTED,
         "CUDA mempool requires CUDA driver 11.2 or later.");
@@ -105,6 +111,7 @@ OrtStatus* CudaMempoolOrtAllocator::Create(const OrtMemoryInfo* memory_info,
   cudaMemPool_t pool = nullptr;
   cuda_err = cudaMemPoolCreate(&pool, &props);
   if (cuda_err != cudaSuccess) {
+    static_cast<void>(cudaGetLastError());
     std::string msg = "cudaMemPoolCreate failed for device " + std::to_string(device_id) +
                       ": " + cudaGetErrorName(cuda_err) + ": " + cudaGetErrorString(cuda_err);
     return api.CreateStatus(ORT_EP_FAIL, msg.c_str());
@@ -114,6 +121,7 @@ OrtStatus* CudaMempoolOrtAllocator::Create(const OrtMemoryInfo* memory_info,
     cuda_err = cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold,
                                        &pool_release_threshold);
     if (cuda_err != cudaSuccess) {
+      static_cast<void>(cudaGetLastError());
       cudaMemPoolDestroy(pool);
       std::string msg = "cudaMemPoolSetAttribute(ReleaseThreshold) failed: " +
                         std::string(cudaGetErrorName(cuda_err));

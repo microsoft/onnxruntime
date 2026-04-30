@@ -40,6 +40,10 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   CreateSyncStreamForDevice = nullptr;          // Not stream aware
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
+  IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
+  IsGraphCaptured = IsGraphCapturedImpl;
+  ReplayGraph = ReplayGraphImpl;
+  GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
 }
 
 // OrtEp interface implementations
@@ -251,6 +255,34 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
 OrtStatus* ORT_API_CALL Ep::IsConcurrentRunSupportedImpl(_In_ OrtEp* /*this_ptr*/, _Out_ bool* is_concurrent_run_supported) noexcept {
   *is_concurrent_run_supported = false;
   return nullptr;
+}
+
+bool ORT_API_CALL Ep::IsGraphCaptureEnabledImpl(_In_ const OrtEp* this_ptr) noexcept {
+  auto* ep = static_cast<const Ep*>(this_ptr);
+  return ep->EpImpl()->IsGraphCaptureEnabled();
+}
+
+bool ORT_API_CALL Ep::IsGraphCapturedImpl(_In_ const OrtEp* this_ptr, _In_ int graph_annotation_id) noexcept {
+  auto* ep = static_cast<const Ep*>(this_ptr);
+  return ep->EpImpl()->IsGraphCaptured(graph_annotation_id);
+}
+
+OrtStatus* ORT_API_CALL Ep::ReplayGraphImpl(_In_ OrtEp* this_ptr, _In_ int graph_annotation_id) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto* ep = static_cast<Ep*>(this_ptr);
+  auto status = ep->EpImpl()->ReplayGraph(graph_annotation_id);
+  if (!status.IsOK()) {
+    return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
+                                  status.ErrorMessage().c_str());
+  }
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
+}
+
+OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL Ep::GetGraphCaptureNodeAssignmentPolicyImpl(
+    _In_ const OrtEp* this_ptr) noexcept {
+  auto* ep = static_cast<const Ep*>(this_ptr);
+  return ep->EpImpl()->GetGraphCaptureNodeAssignmentPolicy();
 }
 
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,

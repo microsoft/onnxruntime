@@ -80,6 +80,13 @@ def get_cuda_plugin_device_id(device):
         raise unittest.SkipTest(f"CUDA plugin EP device metadata had non-integer device_id={device_id!r}") from exc
 
 
+def is_cuda_mempool_unsupported_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "cudaMemPoolCreate failed" in message and (
+        "cudaErrorNotSupported" in message or "operation not supported" in message
+    )
+
+
 def _create_session_options(session_config=None):
     sess_options = onnxrt.SessionOptions()
     if session_config:
@@ -337,6 +344,22 @@ def run_operator_test(
 
 def run_provider_options_test(provider_options, expect_plugin_provider=True):
     require_cuda_plugin_ep()
+
+    # When we expect the plugin provider to work, verify that at least one plugin device is available.
+    # Device enumeration can fail in some CI environments even when the plugin library loads successfully.
+    if expect_plugin_provider:
+        try:
+            devices = onnxrt.get_ep_devices()
+            plugin_devices = [d for d in devices if d.ep_name == CUDA_PLUGIN_EP_NAME]
+            if not plugin_devices:
+                raise unittest.SkipTest(
+                    f"{CUDA_PLUGIN_EP_NAME} registered but no plugin devices enumerated in this environment"
+                )
+        except unittest.SkipTest:
+            raise
+        except Exception as exc:
+            raise unittest.SkipTest(f"Failed to enumerate plugin EP devices: {exc}") from exc
+
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
         model_path = tmp.name
     try:
@@ -1937,6 +1960,352 @@ class TestCudaPluginEP(unittest.TestCase):
             lambda f: np.maximum(f["X"], 0),
         )
         self.assertEqual(result, TEST_PASS, "Explicit MemcpyFromHost→Relu→MemcpyToHost roundtrip test failed")
+
+    # ---- CUDA Graph capture/replay tests ----
+
+    def _create_cuda_graph_session(self, model_path, extra_session_config=None, provider_options=None):
+        """Create a session with CUDA graph capture enabled for the plugin EP."""
+        sess_options = _create_session_options()
+        sess_options.add_session_config_entry("ep.cudapluginexecutionprovider.enable_cuda_graph", "1")
+        if extra_session_config:
+            for key, value in extra_session_config.items():
+                sess_options.add_session_config_entry(key, value)
+        provider_options = {"enable_cuda_graph": "1", **(provider_options or {})}
+        providers = [(CUDA_PLUGIN_EP_NAME, provider_options), "CPUExecutionProvider"]
+        return onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+
+    def _setup_cuda_graph_io(self, session, input_shapes, output_shapes, device_id=0):
+        """Pre-allocate GPU OrtValues and set up IOBinding for graph capture."""
+        io_binding = session.io_binding()
+        input_ort_values = {}
+        output_ort_values = {}
+
+        for inp in session.get_inputs():
+            shape = input_shapes[inp.name]
+            ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", device_id)
+            input_ort_values[inp.name] = ort_value
+            io_binding.bind_ortvalue_input(inp.name, ort_value)
+
+        for out in session.get_outputs():
+            shape = output_shapes[out.name]
+            ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", device_id)
+            output_ort_values[out.name] = ort_value
+            io_binding.bind_ortvalue_output(out.name, ort_value)
+
+        return io_binding, input_ort_values, output_ort_values
+
+    def test_cuda_graph_capture_and_replay(self):
+        """Test CUDA graph warmup → capture → replay with default arena allocator."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            session = self._create_cuda_graph_session(model_path)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            # Set deterministic input data.
+            rng = np.random.default_rng(0)
+            a = rng.random((3, 4), dtype=np.float32)
+            b = rng.random((4, 5), dtype=np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            # First run: ORT handles warmup + capture + first replay automatically.
+            session.run_with_iobinding(io_binding)
+            result = output_vals["Y"].numpy()
+            np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
+
+            # Second run: should take the graph replay fast path.
+            session.run_with_iobinding(io_binding)
+            result = output_vals["Y"].numpy()
+            np.testing.assert_allclose(result, a @ b, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_replay_with_updated_input(self):
+        """Test that CUDA graph replay produces correct results after in-place input update."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            session = self._create_cuda_graph_session(model_path)
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            # Initial data.
+            a1 = np.random.rand(3, 4).astype(np.float32)
+            b1 = np.random.rand(4, 5).astype(np.float32)
+            input_vals["A"].update_inplace(a1)
+            input_vals["B"].update_inplace(b1)
+
+            # First run: warmup + capture + replay.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a1 @ b1, rtol=1e-3, atol=1e-3)
+
+            # Update inputs in-place (same shape, different data) and replay.
+            a2 = np.random.rand(3, 4).astype(np.float32) * 10
+            b2 = np.random.rand(4, 5).astype(np.float32) * 10
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_with_mempool(self):
+        """Test CUDA graph capture/replay with CUDA native mempool allocator."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            try:
+                session = self._create_cuda_graph_session(
+                    model_path,
+                    extra_session_config={"ep.cudapluginexecutionprovider.arena.use_cuda_mempool": "1"},
+                )
+            except Exception as exc:
+                if is_cuda_mempool_unsupported_error(exc):
+                    self.skipTest("CUDA mempool is not supported on this device/driver configuration")
+                raise
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            # First run: warmup + capture + replay via mempool path.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a @ b, rtol=1e-3, atol=1e-3)
+
+            # Replay fast path.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a @ b, rtol=1e-3, atol=1e-3)
+
+            # Update and replay.
+            a2 = np.random.rand(3, 4).astype(np.float32) * 5
+            b2 = np.random.rand(4, 5).astype(np.float32) * 5
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_annotation_id(self):
+        """Test multiple CUDA graphs captured with different annotation IDs and input shapes.
+
+        This simulates the common use case where an application captures separate
+        graphs for different input shapes (e.g., different batch sizes or sequence
+        lengths) and replays the appropriate graph based on a runtime annotation ID.
+        """
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        # Build a MatMul model with dynamic dimensions so different shapes can be used.
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            node_def = helper.make_node("MatMul", ["A", "B"], ["Y"])
+            graph_def = helper.make_graph(
+                [node_def],
+                "test-matmul-dynamic",
+                [
+                    helper.make_tensor_value_info("A", TensorProto.FLOAT, ["M", "K"]),
+                    helper.make_tensor_value_info("B", TensorProto.FLOAT, ["K", "N"]),
+                ],
+                [helper.make_tensor_value_info("Y", TensorProto.FLOAT, ["M", "N"])],
+            )
+            model_def = helper.make_model(graph_def, producer_name="onnx-example")
+            save(model_def, model_path)
+
+            session = self._create_cuda_graph_session(model_path)
+
+            # --- Graph 1: shape [2, 3] @ [3, 4] ---
+            shapes1_in = {"A": [2, 3], "B": [3, 4]}
+            shapes1_out = {"Y": [2, 4]}
+            io1, iv1, ov1 = self._setup_cuda_graph_io(session, shapes1_in, shapes1_out, cuda_device_id)
+
+            a1 = np.random.rand(2, 3).astype(np.float32)
+            b1 = np.random.rand(3, 4).astype(np.float32)
+            iv1["A"].update_inplace(a1)
+            iv1["B"].update_inplace(b1)
+
+            ro1 = onnxrt.RunOptions()
+            ro1.add_run_config_entry("gpu_graph_id", "1")
+            session.run_with_iobinding(io1, ro1)
+            np.testing.assert_allclose(ov1["Y"].numpy(), a1 @ b1, rtol=1e-3, atol=1e-3)
+
+            # --- Graph 2: different shape [4, 5] @ [5, 6] ---
+            shapes2_in = {"A": [4, 5], "B": [5, 6]}
+            shapes2_out = {"Y": [4, 6]}
+            io2, iv2, ov2 = self._setup_cuda_graph_io(session, shapes2_in, shapes2_out, cuda_device_id)
+
+            a2 = np.random.rand(4, 5).astype(np.float32)
+            b2 = np.random.rand(5, 6).astype(np.float32)
+            iv2["A"].update_inplace(a2)
+            iv2["B"].update_inplace(b2)
+
+            ro2 = onnxrt.RunOptions()
+            ro2.add_run_config_entry("gpu_graph_id", "2")
+            session.run_with_iobinding(io2, ro2)
+            np.testing.assert_allclose(ov2["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+
+            # --- Replay graph 1 with updated data (same shape) ---
+            a3 = np.random.rand(2, 3).astype(np.float32) * 7
+            b3 = np.random.rand(3, 4).astype(np.float32) * 7
+            iv1["A"].update_inplace(a3)
+            iv1["B"].update_inplace(b3)
+            session.run_with_iobinding(io1, ro1)
+            np.testing.assert_allclose(ov1["Y"].numpy(), a3 @ b3, rtol=1e-3, atol=1e-3)
+
+            # --- Replay graph 2 with updated data (same shape) ---
+            a4 = np.random.rand(4, 5).astype(np.float32) * 3
+            b4 = np.random.rand(5, 6).astype(np.float32) * 3
+            iv2["A"].update_inplace(a4)
+            iv2["B"].update_inplace(b4)
+            session.run_with_iobinding(io2, ro2)
+            np.testing.assert_allclose(ov2["Y"].numpy(), a4 @ b4, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_second_device(self):
+        """Test CUDA graph capture/replay on a non-default plugin device."""
+        plugin_devices = get_cuda_plugin_devices()
+        if len(plugin_devices) < 2:
+            self.skipTest("Multi-GPU CUDA graph test requires at least two plugin devices")
+
+        target_device = get_cuda_plugin_device_by_id(1)
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_matmul_model(model_path)
+            session = self._create_cuda_graph_session(model_path, provider_options={"device_id": "1"})
+
+            provider_options = session.get_provider_options()
+            self.assertEqual(
+                provider_options[CUDA_PLUGIN_EP_NAME].get("device_id"),
+                "1",
+                f"Expected provider option device_id=1, got {provider_options[CUDA_PLUGIN_EP_NAME]}",
+            )
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 4], "B": [4, 5]}
+            output_shapes = {"Y": [3, 5]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            a = np.random.rand(3, 4).astype(np.float32)
+            b = np.random.rand(4, 5).astype(np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a @ b, rtol=1e-3, atol=1e-3)
+
+            a2 = np.random.rand(3, 4).astype(np.float32) * 11
+            b2 = np.random.rand(4, 5).astype(np.float32) * 11
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 @ b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+
+    def test_cuda_graph_add_model(self):
+        """Test CUDA graph capture/replay with a simple Add model (arena-backed)."""
+        target_device = get_cuda_plugin_device()
+        cuda_device_id = get_cuda_plugin_device_id(target_device)
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+            model_path = tmp.name
+        try:
+            create_add_model(model_path)
+            session = self._create_cuda_graph_session(model_path)
+
+            assigned_nodes, assignment_info = _get_assigned_nodes(session, CUDA_PLUGIN_EP_NAME)
+            self.assertTrue(
+                assigned_nodes,
+                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}",
+            )
+
+            input_shapes = {"A": [3, 2], "B": [3, 2]}
+            output_shapes = {"Y": [3, 2]}
+            io_binding, input_vals, output_vals = self._setup_cuda_graph_io(
+                session, input_shapes, output_shapes, cuda_device_id
+            )
+
+            a = np.random.rand(3, 2).astype(np.float32)
+            b = np.random.rand(3, 2).astype(np.float32)
+            input_vals["A"].update_inplace(a)
+            input_vals["B"].update_inplace(b)
+
+            # Warmup + capture + replay.
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a + b, rtol=1e-3, atol=1e-3)
+
+            # Replay with updated data.
+            a2 = np.random.rand(3, 2).astype(np.float32) * 100
+            b2 = np.random.rand(3, 2).astype(np.float32) * 100
+            input_vals["A"].update_inplace(a2)
+            input_vals["B"].update_inplace(b2)
+            session.run_with_iobinding(io_binding)
+            np.testing.assert_allclose(output_vals["Y"].numpy(), a2 + b2, rtol=1e-3, atol=1e-3)
+        finally:
+            if os.path.exists(model_path):
+                os.remove(model_path)
 
     # ---- IOBinding / Sync tests ----
 
