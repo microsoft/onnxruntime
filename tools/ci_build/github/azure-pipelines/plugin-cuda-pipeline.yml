@@ -57,6 +57,9 @@ parameters:
     - MinSizeRel
 
 variables:
+  # Path (relative to the repository root) of the VERSION_NUMBER file used for plugin package versioning.
+  - name: epVersionFile
+    value: VERSION_NUMBER
   # Non-dev package versions (release, RC) must use Release build type
   - name: invalidBuildTypeConfig
     value: ${{ and(ne(parameters.package_type, 'dev'), ne(parameters.cmake_build_type, 'Release')) }}
@@ -124,6 +127,7 @@ extends:
             build_linux_aarch64: ${{ parameters.build_linux_aarch64 }}
             cuda_version: ${{ parameters.cuda_version }}
             package_type: ${{ parameters.package_type }}
+            version_file: ${{ variables.epVersionFile }}
             cmake_build_type: ${{ parameters.cmake_build_type }}
             ${{ if eq(parameters.cuda_version, '12.8') }}:
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
