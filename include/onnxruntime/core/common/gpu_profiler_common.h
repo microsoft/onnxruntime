@@ -446,11 +446,16 @@ class GPUProfilerBase : public EpProfiler {
   TimePoint profiling_start_time_;
 
  public:
-  virtual bool StartProfiling(TimePoint profiling_start_time) override {
+  virtual Status StartProfiling(TimePoint profiling_start_time) override {
     auto& manager = TManager::GetInstance();
     manager.StartLogging();
     profiling_start_time_ = profiling_start_time;
-    return true;
+    if (!manager.IsTracingEnabled()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "GPU activity tracing failed to start. "
+                             "The tracing library may be unavailable or blocked by system policy.");
+    }
+    return Status::OK();
   }
 
   virtual void EndProfiling(TimePoint start_time, Events& events) override {
