@@ -1,5 +1,5 @@
 # This file is used to set variables for plugin build stages. It sets the package version
-# variable based on the build type (nightly, official, or dev).
+# variable based on the package_version parameter ('release', 'RC', or 'dev').
 
 parameters:
 # The package version type: 'release', 'RC', or 'dev'. Controls how the final version
@@ -31,6 +31,10 @@ steps:
 
       package_version = "${{ parameters.package_version }}"
       version_file_rel = "${{ parameters.version_file }}"
+
+      if not version_file_rel:
+          print("##vso[task.logissue type=error]version_file parameter is empty.")
+          sys.exit(1)
 
       src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
       version_file = os.path.join(src_root, version_file_rel)

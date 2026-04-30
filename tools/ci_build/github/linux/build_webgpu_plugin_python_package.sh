@@ -28,13 +28,14 @@ docker run --rm \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume "${BUILD_ARTIFACTSTAGINGDIRECTORY}:/staging" \
     --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+    --env "PLUGIN_VERSION=${VERSION}" \
     "$DOCKER_IMAGE" \
-    /bin/bash -c "
+    /bin/bash -c '
       set -e -x
       python3 -m ensurepip
       python3 -m pip install -r /onnxruntime_src/plugin-ep-webgpu/python/requirements-build-wheel.txt
       python3 /onnxruntime_src/plugin-ep-webgpu/python/build_wheel.py \
         --binary_dir /build/plugin_artifacts/bin \
-        --version "${VERSION}" \
+        --version "$PLUGIN_VERSION" \
         --output_dir /staging/python
-    "
+    '

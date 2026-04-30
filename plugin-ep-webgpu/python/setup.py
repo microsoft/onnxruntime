@@ -6,8 +6,8 @@ This means a single wheel works across all supported Python versions.
 """
 
 from setuptools import setup
+from setuptools.command.bdist_wheel import bdist_wheel
 from setuptools.dist import Distribution
-from wheel.bdist_wheel import bdist_wheel
 
 
 class PlatformBdistWheel(bdist_wheel):
