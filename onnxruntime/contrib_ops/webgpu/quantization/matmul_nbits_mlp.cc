@@ -503,12 +503,6 @@ ONNX_OPERATOR_KERNEL_EX(
     uint32_t tile_size_k_vec =
       (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
 
-    if (context.AdapterInfo().vendor != std::string_view{"intel"} && N <= 2048) {
-      workgroup_size = 64;
-      tile_size = 4;
-      tile_size_k_vec = 16;
-    }
-
     const uint32_t elements_in_value_b = components_b * (32u / onnxruntime::narrow<uint32_t>(bits_));
     const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
     const uint32_t k_tile_iterations = K / tile_size_k;
