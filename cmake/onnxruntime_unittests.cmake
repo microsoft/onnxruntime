@@ -1400,6 +1400,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     SET(MLAS_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench)
     file(GLOB_RECURSE MLAS_BENCH_SOURCE_FILES "${MLAS_BENCH_DIR}/*.cpp" "${MLAS_BENCH_DIR}/*.h")
+    list(FILTER MLAS_BENCH_SOURCE_FILES EXCLUDE REGEX "${MLAS_BENCH_DIR}/riscv64/.*")
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES} ${ONNXRUNTIME_ROOT}/core/framework/error_code.cc)
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
@@ -1418,6 +1419,33 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  endif()
+
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+    set(MLAS_RISCV64_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench/riscv64)
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_sgemm_riscv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/sgemm_riscv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_sgemm_riscv_bench PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_link_libraries(
+      onnxruntime_mlas_sgemm_riscv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_sgemm_riscv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_sgemm_riscv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_softmax_riscv_compare
+      ${MLAS_RISCV64_BENCH_DIR}/softmax_rvv_compare.cpp)
+    target_include_directories(
+      onnxruntime_mlas_softmax_riscv_compare
+      PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_link_libraries(
+      onnxruntime_mlas_softmax_riscv_compare
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_softmax_riscv_compare PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_softmax_riscv_compare PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   if(WIN32)
