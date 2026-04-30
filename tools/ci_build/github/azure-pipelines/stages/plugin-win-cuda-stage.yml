@@ -3,6 +3,9 @@ parameters:
   type: string
   default: dev
 
+- name: version_file
+  type: string
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -70,6 +73,7 @@ stages:
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
 
       - script: |
           python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"

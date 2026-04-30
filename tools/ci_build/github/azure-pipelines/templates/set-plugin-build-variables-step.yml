@@ -1,8 +1,20 @@
 # This file is used to set variables for plugin build stages. It sets the package version
-# variable based on the build type (nightly, official, or dev).
+# variable based on the package_version parameter ('release', 'RC', or 'dev').
 
 parameters:
+# The package version type: 'release', 'RC', or 'dev'. Controls how the final version
+# string is derived from the contents of the version_file.
 - name: package_version
+  type: string
+  values:
+  - release
+  - RC
+  - dev
+
+# Path, relative to the repository root, of the file containing the base version number
+# (e.g. "plugin-ep-webgpu/VERSION_NUMBER"). The file should contain a single semver-like
+# version string (e.g. "1.2.3").
+- name: version_file
   type: string
 
 steps:
@@ -18,11 +30,16 @@ steps:
       import sys
 
       package_version = "${{ parameters.package_version }}"
+      version_file_rel = "${{ parameters.version_file }}"
+
+      if not version_file_rel:
+          print("##vso[task.logissue type=error]version_file parameter is empty.")
+          sys.exit(1)
 
       src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
-      version_file = os.path.join(src_root, "VERSION_NUMBER")
+      version_file = os.path.join(src_root, version_file_rel)
       if not os.path.isfile(version_file):
-          print("##vso[task.logissue type=error]Cannot find VERSION_NUMBER at: {}".format(version_file))
+          print("##vso[task.logissue type=error]Cannot find version number file at: {}".format(version_file))
           sys.exit(1)
 
       with open(version_file, "r") as f:
@@ -38,6 +55,7 @@ steps:
       if package_version == "release":
           version_string = original_ver
           universal_version = original_ver
+          python_version = original_ver
 
       elif package_version == "RC":
           # RC versioning is not yet implemented. Fail the build to prevent publishing
@@ -63,6 +81,7 @@ steps:
           # non-digit. Otherwise, an all-numeric short SHA with a leading zero (e.g. "01234567")
           # would violate SemVer 2.0.0's rule against leading zeros in numeric identifiers.
           universal_version = "{}-dev.{}.commit-{}".format(original_ver, date_str, commit_sha)
+          python_version = "{}.dev{}".format(original_ver, date_str)
 
       else:
           print("##vso[task.logissue type=error]Unknown package_version '{}'. Must be 'release', 'RC', or 'dev'.".format(package_version))
@@ -70,6 +89,7 @@ steps:
 
       print("Plugin package version string: {}".format(version_string))
       print("Plugin universal package version string: {}".format(universal_version))
+      print("Plugin Python package version string: {}".format(python_version))
 
       # Validate semver 2.0.0 format
       semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
@@ -83,6 +103,13 @@ steps:
           print("##vso[task.logissue type=error]Universal version string '{}' is not valid semver 2.0.0 (without build metadata).".format(universal_version))
           sys.exit(1)
 
+      # Validate Python version (PEP 440)
+      pep440_pattern = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$"
+      if not re.match(pep440_pattern, python_version):
+          print("##vso[task.logissue type=error]Python version string '{}' is not valid PEP 440.".format(python_version))
+          sys.exit(1)
+
       print("##vso[task.setvariable variable=PluginPackageVersion]{}".format(version_string))
       print("##vso[task.setvariable variable=PluginUniversalPackageVersion]{}".format(universal_version))
+      print("##vso[task.setvariable variable=PluginPythonPackageVersion]{}".format(python_version))
       print("##vso[task.setvariable variable=PluginEpVersionDefine]onnxruntime_PLUGIN_EP_VERSION={}".format(version_string))

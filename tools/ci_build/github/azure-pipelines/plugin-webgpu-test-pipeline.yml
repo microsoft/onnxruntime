@@ -1,0 +1,97 @@
+# This pipeline runs tests against artifacts produced by the WebGPU
+# plugin packaging pipeline. It is resource-triggered on successful
+# packaging runs and can also be queued manually against any prior
+# packaging run.
+#
+# Split from the packaging pipeline so the test side (Dockerfile, Vulkan
+# configuration, test scripts) can be iterated on without rebuilding
+# Dawn/WebGPU from source.
+
+trigger: none
+
+variables:
+- name: DisableDockerDetector
+  value: true
+- name: skipNugetSecurityAnalysis
+  value: true
+- name: Codeql.SkipTaskAutoInjection
+  value: true
+
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'WebGPU Plugin EP Packaging Pipeline'
+    trigger: true
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+parameters:
+- name: test_windows_x64
+  displayName: 'Test Windows x64'
+  type: boolean
+  default: true
+
+# Note: Windows ARM64 is not tested here because the test runs on an x64
+# build agent, which cannot execute ARM64 binaries.
+
+- name: test_linux_x64
+  displayName: 'Test Linux x64'
+  type: boolean
+  default: true
+
+- name: test_macos_arm64
+  displayName: 'Test macOS ARM64'
+  type: boolean
+  default: true
+
+extends:
+  # The pipeline extends the 1ES PT which will inject SDL and compliance
+  # tasks. Uses "Official" to stay consistent with the companion
+  # WebGPU plugin packaging pipeline.
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    settings:
+      networkIsolationPolicy: Permissive
+    sdl:
+      # No top-level `pool:` is declared for this pipeline (each stage
+      # template pins its own pool), so source analysis needs an
+      # explicit pool.
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+        alertWarningLevel: High
+        failOnAlert: false
+        verbosity: Normal
+        timeout: 3600
+      tsa:
+        enabled: true
+      # codeSignValidation is intentionally omitted: this pipeline does
+      # not produce or publish binaries. The wheels it consumes were
+      # already signed-and-validated by the packaging pipeline.
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+
+    stages:
+      # Windows x64
+      - ${{ if eq(parameters.test_windows_x64, true) }}:
+        - template: stages/plugin-win-webgpu-test-stage.yml
+          parameters:
+            arch: 'x64'
+
+      # Linux x64
+      - ${{ if eq(parameters.test_linux_x64, true) }}:
+        - template: stages/plugin-linux-webgpu-test-stage.yml
+
+      # macOS ARM64
+      - ${{ if eq(parameters.test_macos_arm64, true) }}:
+        - template: stages/plugin-mac-webgpu-test-stage.yml
