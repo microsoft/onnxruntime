@@ -617,10 +617,10 @@ Status Attention<T>::RunMemoryEfficientAttention(
     T* present_k_data = nullptr;
     T* present_v_data = nullptr;
 
-    size_t present_k_bytes = sizeof(T) * parameters.batch_size * parameters.kv_num_heads *
-                             parameters.total_sequence_length * parameters.head_size;
-    size_t present_v_bytes = sizeof(T) * parameters.batch_size * parameters.kv_num_heads *
-                             parameters.total_sequence_length * parameters.v_head_size;
+    SafeInt<size_t> present_k_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
+                                     parameters.total_sequence_length * parameters.head_size * sizeof(T);
+    SafeInt<size_t> present_v_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.kv_num_heads *
+                                     parameters.total_sequence_length * parameters.v_head_size * sizeof(T);
 
     if (present_key != nullptr) {
       present_k_data = present_key->MutableData<T>();
