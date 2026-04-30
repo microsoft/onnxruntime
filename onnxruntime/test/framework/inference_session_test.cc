@@ -3088,7 +3088,9 @@ TEST(InferenceSessionTests, SessionLoggerOutlivesEPsOnDestruction) {
       LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
-  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
+  OrtThreadingOptions tp_options;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env, &tp_options,
+                                       true /*create_global_thread_pools*/));
 
   bool logger_was_valid_in_dtor = false;
 
@@ -3128,7 +3130,9 @@ TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithMultipleEPs) {
       LoggingManager::InstanceType::Temporal);
 
   std::unique_ptr<Environment> env;
-  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
+  OrtThreadingOptions tp_options;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env, &tp_options,
+                                       true /*create_global_thread_pools*/));
 
   bool logger_valid_ep1 = false;
   bool logger_valid_ep2 = false;
