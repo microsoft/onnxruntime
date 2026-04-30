@@ -188,7 +188,7 @@ TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, CpuEp_ReturnsEmptyDetail
 
   const char* notes = "...";  // Initialize to non-null to verify it gets set
   ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetNotes(details, &notes));
-  EXPECT_TRUE(notes == nullptr || strlen(notes) == 0);
+  EXPECT_TRUE(notes == nullptr || *notes == '\0');
 
   api->ReleaseDeviceEpIncompatibilityDetails(details);
   api->ReleaseEnv(env);
@@ -429,5 +429,5 @@ TEST(HardwareDeviceCompatibilityCxxApiTest, GetHardwareDeviceEpIncompatibilityDe
   EXPECT_EQ(details.GetErrorCode(), 0);
   // Notes should be null or empty
   const char* notes = details.GetNotes();
-  EXPECT_TRUE(notes == nullptr || strlen(notes) == 0);
+  EXPECT_TRUE(notes == nullptr || *notes == '\0');
 }

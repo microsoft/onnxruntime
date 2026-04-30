@@ -622,7 +622,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtGetNumHardwareDevices(Handle, out UIntPtr numDevices));
-            return (int)numDevices;
+            return checked((int)numDevices);
         }
 
         /// <summary>
@@ -634,7 +634,7 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtGetNumHardwareDevices(Handle, out UIntPtr numDevices));
 
-            int count = (int)numDevices;
+            int count = checked((int)numDevices);
             if (count == 0)
             {
                 return Array.Empty<OrtHardwareDevice>();

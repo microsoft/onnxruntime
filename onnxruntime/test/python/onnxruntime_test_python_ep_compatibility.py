@@ -179,8 +179,8 @@ class TestHardwareDeviceCompatibility(unittest.TestCase):
         self.assertEqual(OrtDeviceEpIncompatibilityReason.DRIVER_INCOMPATIBLE.value, 1)
         self.assertEqual(OrtDeviceEpIncompatibilityReason.DEVICE_INCOMPATIBLE.value, 2)
         self.assertEqual(OrtDeviceEpIncompatibilityReason.MISSING_DEPENDENCY.value, 4)
-        # UNKNOWN is signed int32, so -2147483648 is equivalent to 0x80000000
-        self.assertEqual(OrtDeviceEpIncompatibilityReason.UNKNOWN.value, -2147483648)
+        # UNKNOWN is the high-bit flag (0x80000000) and may be exposed as signed or unsigned.
+        self.assertEqual(OrtDeviceEpIncompatibilityReason.UNKNOWN.value & 0xFFFFFFFF, 0x80000000)
 
 
 if __name__ == "__main__":
