@@ -1,8 +1,11 @@
 variables:
   cuda12_trt_version: '10.14.1.48'
   cuda13_trt_version: '10.14.1.48'
+  aarch64_trt_version: '10.15.1.29'
   # As for Debian installation, replace '-1.' by '-1+' when assigning trt version below
   linux_trt_version_cuda13: ${{ variables.cuda13_trt_version }}-1.cuda13.0
   linux_trt_version_cuda12: ${{ variables.cuda12_trt_version }}-1.cuda12.9
+  # aarch64 TRT tar download (no RPMs available for aarch64)
+  aarch64_trt_download_url_cuda13: https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.15.1/tars/TensorRT-${{ variables.aarch64_trt_version }}.Linux.aarch64-gnu.cuda-13.1.tar.gz
   win_trt_folder_cuda13: TensorRT-${{ variables.cuda13_trt_version }}.Windows.win10.cuda-13.0
   win_trt_folder_cuda12: TensorRT-${{ variables.cuda12_trt_version }}.Windows.win10.cuda-12.9
