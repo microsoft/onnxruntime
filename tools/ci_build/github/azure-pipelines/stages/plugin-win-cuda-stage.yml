@@ -23,6 +23,9 @@ parameters:
   type: string
   default: '12.8'
 
+- name: python_package_name
+  type: string
+
 - name: cmake_cuda_archs
   type: string
   default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
@@ -224,7 +227,7 @@ stages:
         outputs:
         - output: pipelineArtifact
           targetPath: '$(Build.ArtifactStagingDirectory)\python'
-          artifactName: cuda_plugin_python_win_x64
+          artifactName: cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
       variables:
       - template: ../templates/common-variables.yml
       steps:
@@ -260,4 +263,5 @@ stages:
             python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
               --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
               --version "$(PluginPythonPackageVersion)" `
+              --package_name "${{ parameters.python_package_name }}" `
               --output_dir "$(Build.ArtifactStagingDirectory)\python"

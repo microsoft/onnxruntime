@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "onnxruntime-ep-cuda"
+name = "@package_name@"
 version = "@version@"
 description = "ONNX Runtime CUDA Plugin Execution Provider"
 readme = "onnxruntime_ep_cuda/README.md"

@@ -45,7 +45,7 @@ def gen_file_from_template(template_file: Path, output_file: Path, variable_subs
     output_file.write_text(content, encoding="utf-8")
 
 
-def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str) -> None:
+def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, package_name: str) -> None:
     staging_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SCRIPT_DIR / "setup.py", staging_dir / "setup.py")
     shutil.copytree(SCRIPT_DIR / "onnxruntime_ep_cuda", staging_dir / "onnxruntime_ep_cuda")
@@ -68,7 +68,7 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str) -> No
     gen_file_from_template(
         SCRIPT_DIR / "pyproject.toml.in",
         staging_dir / "pyproject.toml",
-        {"version": version, "min_onnxruntime_version": min_ort_version},
+        {"package_name": package_name, "version": version, "min_onnxruntime_version": min_ort_version},
     )
 
 
@@ -89,11 +89,11 @@ def build_wheel(source_dir: Path, wheel_dir: Path) -> None:
     subprocess.check_call(cmd)
 
 
-def auditwheel_repair(wheel_dir: Path) -> None:
+def auditwheel_repair(wheel_dir: Path, wheel_name_prefix: str) -> None:
     if platform.system() != "Linux":
         return
 
-    original_wheels = list(wheel_dir.glob("onnxruntime_ep_cuda-*.whl"))
+    original_wheels = list(wheel_dir.glob(f"{wheel_name_prefix}-*.whl"))
     if not original_wheels:
         raise RuntimeError(f"No wheel found in {wheel_dir} to repair with auditwheel")
 
@@ -115,8 +115,8 @@ def auditwheel_repair(wheel_dir: Path) -> None:
             repaired_wheel.replace(wheel_dir / repaired_wheel.name)
 
 
-def collect_wheels(wheel_dir: Path, output_dir: Path) -> None:
-    wheels = list(wheel_dir.glob("onnxruntime_ep_cuda-*.whl"))
+def collect_wheels(wheel_dir: Path, output_dir: Path, wheel_name_prefix: str) -> None:
+    wheels = list(wheel_dir.glob(f"{wheel_name_prefix}-*.whl"))
     if not wheels:
         raise RuntimeError("No wheel was produced")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -130,19 +130,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build onnxruntime-ep-cuda wheel")
     parser.add_argument("--binary_dir", required=True, type=Path, help="Directory containing built plugin EP binaries")
     parser.add_argument("--version", required=True, help="Package version string (PEP 440 format)")
+    parser.add_argument("--package_name", required=True, help="Python distribution name to write into pyproject.toml")
     parser.add_argument("--output_dir", required=True, type=Path, help="Directory to place the built wheel")
     args = parser.parse_args()
 
     if not args.binary_dir.is_dir():
         raise FileNotFoundError(f"Binary directory does not exist: {args.binary_dir}")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", args.package_name):
+        raise ValueError(f"Invalid package name: {args.package_name}")
+
+    wheel_name_prefix = args.package_name.replace("-", "_").replace(".", "_")
 
     with tempfile.TemporaryDirectory(prefix="ort_cuda_wheel_") as tmp:
         staging_dir = Path(tmp) / "package"
         wheel_dir = Path(tmp) / "wheels"
-        prepare_staging_dir(staging_dir, args.binary_dir, args.version)
+        prepare_staging_dir(staging_dir, args.binary_dir, args.version, args.package_name)
         build_wheel(staging_dir, wheel_dir)
-        auditwheel_repair(wheel_dir)
-        collect_wheels(wheel_dir, args.output_dir)
+        auditwheel_repair(wheel_dir, wheel_name_prefix)
+        collect_wheels(wheel_dir, args.output_dir, wheel_name_prefix)
 
 
 if __name__ == "__main__":
