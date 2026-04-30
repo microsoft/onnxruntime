@@ -31,8 +31,6 @@ stages:
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - template: set-version-number-variables-step.yml
@@ -86,7 +84,15 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'AnyCPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentTime=$(BuildTime) -p:CurrentDate=$(BuildDate) -p:IncludeMobileTargets=false'
+        msbuildArguments: >-
+          -t:CreatePackage
+          "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
+          -p:OrtPackageId=Microsoft.ML.OnnxRuntime
+          "-p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}"
+          "-p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)"
+          "-p:CurrentTime=$(ORT_CI_BUILD_TIME)"
+          "-p:CurrentDate=$(ORT_CI_BUILD_DATE)"
+          -p:IncludeMobileTargets=false
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
