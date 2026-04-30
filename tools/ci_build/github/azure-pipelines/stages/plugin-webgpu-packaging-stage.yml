@@ -96,7 +96,7 @@ stages:
           outputs:
           - output: pipelineArtifact
             targetPath: $(Build.ArtifactStagingDirectory)/webgpu-deps-package
-            artifactName: webgpu-deps-zip
+            artifactName: foundry-local-webgpu-plugin-ep-zips
         steps:
         - checkout: none
 
