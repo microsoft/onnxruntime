@@ -39,7 +39,7 @@ docker run --rm \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume /data/models:/build/models:ro \
     --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
-    -e PIP_INDEX_URL=$(PipIndexUrl) \
+    -e PIP_INDEX_URL \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     -e SYSTEM_COLLECTIONURI \
