@@ -76,6 +76,35 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
             ortvalue_gpu.update_inplace(x1)
             np.testing.assert_allclose(ortvalue_gpu.numpy(), x1)
 
+    def test_ort_value_update_in_place_from_ortvalue(self):
+        # Test CPU to CPU copy via OrtValue
+        x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        x1 = np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32)
+
+        ortvalue_dst = onnxrt.OrtValue.ortvalue_from_numpy(x0)
+        ortvalue_src = onnxrt.OrtValue.ortvalue_from_numpy(x1)
+        ortvalue_dst.update_inplace(ortvalue_src)
+        np.testing.assert_allclose(ortvalue_dst.numpy(), x1)
+
+        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            # Test GPU to GPU copy via OrtValue
+            ortvalue_gpu_dst = onnxrt.OrtValue.ortvalue_from_numpy(x0, "cuda", 0)
+            ortvalue_gpu_src = onnxrt.OrtValue.ortvalue_from_numpy(x1, "cuda", 0)
+            ortvalue_gpu_dst.update_inplace(ortvalue_gpu_src)
+            np.testing.assert_allclose(ortvalue_gpu_dst.numpy(), x1)
+
+            # Test CPU OrtValue to GPU OrtValue copy
+            ortvalue_gpu_dst2 = onnxrt.OrtValue.ortvalue_from_numpy(x0, "cuda", 0)
+            ortvalue_cpu_src = onnxrt.OrtValue.ortvalue_from_numpy(x1)
+            ortvalue_gpu_dst2.update_inplace(ortvalue_cpu_src)
+            np.testing.assert_allclose(ortvalue_gpu_dst2.numpy(), x1)
+
+            # Test GPU OrtValue to CPU OrtValue copy
+            ortvalue_cpu_dst = onnxrt.OrtValue.ortvalue_from_numpy(x0)
+            ortvalue_gpu_src2 = onnxrt.OrtValue.ortvalue_from_numpy(x1, "cuda", 0)
+            ortvalue_cpu_dst.update_inplace(ortvalue_gpu_src2)
+            np.testing.assert_allclose(ortvalue_cpu_dst.numpy(), x1)
+
     def test_select_ep_to_run_cuda_graph(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
             providers = [("TensorrtExecutionProvider", {"trt_cuda_graph_enable": True})]
