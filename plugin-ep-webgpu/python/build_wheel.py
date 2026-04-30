@@ -86,6 +86,7 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
     shutil.copytree(SCRIPT_DIR / "onnxruntime_ep_webgpu", staging_dir / "onnxruntime_ep_webgpu")
 
     # Copy plugin binaries into the package directory
+    # Note: The binaries are assumed to be directly under `binary_dir`.
     package_dir = staging_dir / "onnxruntime_ep_webgpu"
     copied = []
     for pattern in BINARY_PATTERNS:
