@@ -59,7 +59,8 @@ def build_perf_test_cmd(perf_test_exe: str, model_path: str, session_configs: di
     if session_configs:
         config_str = " ".join(f"{k}|{v}" for k, v in session_configs.items())
         cmd.extend(["-C", config_str])
-    cmd.extend(["-n", model_path])
+    cmd.append("-n")
+    cmd.append(model_path)
     return cmd
 
 
