@@ -48,32 +48,39 @@ struct LhsCacheKey {
     size_t padding, sh, sw;
     size_t kh, kw;
     size_t dilationh, dilationw;
-    size_t data_hash;
 
     bool operator==(const LhsCacheKey& other) const {
         return ci == other.ci && ih == other.ih && iw == other.iw &&
                padding == other.padding && sh == other.sh && sw == other.sw &&
                kh == other.kh && kw == other.kw &&
-               dilationh == other.dilationh && dilationw == other.dilationw &&
-               data_hash == other.data_hash;
+               dilationh == other.dilationh && dilationw == other.dilationw;
     }
 };
 
-// Derived from 2^32 * (sqrt(5) - 1) / 2 ≈ 0.6180339887 (reciprocal of the golden ratio)
-// Based on Knuth's multiplicative hashing method
-constexpr size_t HASH_GOLDEN_RATIO_CONST = 0x9e3779b9;
+constexpr size_t kFnvOffsetBasis = sizeof(size_t) == 8
+                                       ? 14695981039346656037ull
+                                       : 2166136261u;
+constexpr size_t kFnvPrime = sizeof(size_t) == 8
+                                 ? 1099511628211ull
+                                 : 16777619u;
 
-size_t HashTensorPrefix(const float* data, size_t element_count, size_t prefix_count = 16) {
-    if (data == nullptr || element_count == 0 || prefix_count == 0) {
+size_t HashBytes(const void* data, size_t byte_count) {
+    if (data == nullptr || byte_count == 0) {
         return 0;
     }
 
-    const size_t count = std::min(element_count, prefix_count);
-    size_t h = 0;
-    for (size_t i = 0; i < count; ++i) {
-        h ^= std::hash<float>()(data[i]) + HASH_GOLDEN_RATIO_CONST + (h << 6) + (h >> 2);
+    const auto* bytes = static_cast<const unsigned char*>(data);
+    size_t h = kFnvOffsetBasis;
+    for (size_t i = 0; i < byte_count; ++i) {
+        h ^= static_cast<size_t>(bytes[i]);
+        h *= kFnvPrime;
     }
+
     return h;
+}
+
+size_t HashTensorContents(const float* data, size_t element_count) {
+    return HashBytes(data, element_count * sizeof(float));
 }
 
 namespace std {
@@ -99,17 +106,16 @@ namespace std {
     template<>
     struct hash<LhsCacheKey> {
         size_t operator()(const LhsCacheKey& k) const {
-            return k.data_hash ^
-                (std::hash<size_t>()(k.ci) << 1) ^
-                (std::hash<size_t>()(k.ih) << 2) ^
-                (std::hash<size_t>()(k.iw) << 3) ^
-                (std::hash<size_t>()(k.padding) << 4) ^
-                (std::hash<size_t>()(k.sh) << 5) ^
-                (std::hash<size_t>()(k.sw) << 6) ^
-                (std::hash<size_t>()(k.kh) << 7) ^
-                (std::hash<size_t>()(k.kw) << 8) ^
-                (std::hash<size_t>()(k.dilationh) << 9) ^
-                (std::hash<size_t>()(k.dilationw) << 10);
+            return std::hash<size_t>()(k.ci) ^
+                (std::hash<size_t>()(k.ih) << 1) ^
+                (std::hash<size_t>()(k.iw) << 2) ^
+                (std::hash<size_t>()(k.padding) << 3) ^
+                (std::hash<size_t>()(k.sh) << 4) ^
+                (std::hash<size_t>()(k.sw) << 5) ^
+                (std::hash<size_t>()(k.kh) << 6) ^
+                (std::hash<size_t>()(k.kw) << 7) ^
+                (std::hash<size_t>()(k.dilationh) << 8) ^
+                (std::hash<size_t>()(k.dilationw) << 9);
         }
     };
 
@@ -345,9 +351,9 @@ static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const
     thread_local std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
 
     // The packed RHS buffer includes both weights and bias, so both must participate in the cache key.
-    const size_t weights_hash = HashTensorPrefix(weights, co * ci * kh * kw);
+    const size_t weights_hash = HashTensorContents(weights, co * ci * kh * kw);
     const bool has_bias = bias != nullptr;
-    const size_t bias_hash = has_bias ? HashTensorPrefix(bias, co) : 0;
+    const size_t bias_hash = has_bias ? HashTensorContents(bias, co) : 0;
     RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, has_bias, weights_hash, bias_hash };
 
     auto found = rhs_cache.find(key);
@@ -521,8 +527,7 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
         ci, ih, iw,
         padding, sh, sw,
         kh, kw,
-        1, 1,
-        HashTensorPrefix(in, ci * ih * iw)
+        1, 1
     };
 
     auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
