@@ -278,7 +278,6 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     pre_sum_activation.ActivationKind = MlasIdentityActivation;
   }
 
-  std::vector<float> sum_manual_buffer;
   const float* sum_manual_data = nullptr;
 
   float Beta = 0.0f;
@@ -286,9 +285,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     if (manual_sum) {
-      auto sum_span = Sum->DataAsSpan<float>();
-      sum_manual_buffer.assign(sum_span.begin(), sum_span.end());
-      sum_manual_data = sum_manual_buffer.data();
+      sum_manual_data = Sum->Data<float>();
     } else {
       auto sum_span = Sum->DataAsSpan<float>();
       if (Ydata.data() != sum_span.data()) {
