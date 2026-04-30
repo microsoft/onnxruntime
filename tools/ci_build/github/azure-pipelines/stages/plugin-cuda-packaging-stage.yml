@@ -79,7 +79,7 @@ stages:
         parameters:
           stage_name: Linux_plugin_cuda_x64
           arch: 'x64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           cuda_version: ${{ parameters.cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
           package_version: ${{ parameters.package_type }}
