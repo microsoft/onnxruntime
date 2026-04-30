@@ -32,18 +32,6 @@
 
 namespace onnxruntime {
 
-static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices);
-
-// Single source of truth for the OrtEp::GetMemoryInfoByMemType callback (added in EP API
-// version 26): version-gated, null-checked. Returns nullptr if the EP did not opt in or if
-// the EP returned nullptr to defer to ORT's built-in fallback.
-static const OrtMemoryInfo* TryGetEpMemoryInfo(const OrtEp& ep, OrtMemType mem_type) {
-  if (ep.ort_version_supported >= 26 && ep.GetMemoryInfoByMemType != nullptr) {
-    return ep.GetMemoryInfoByMemType(&ep, mem_type);
-  }
-  return nullptr;
-}
-
 //
 // PluginExecutionProviderFactory
 //
@@ -100,17 +88,10 @@ Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
   std::shared_ptr<KernelRegistry> kernel_registry;
   ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
 
-  // The EP is the single source of truth for its default device when it opts in; otherwise
-  // GetOrtDeviceForPluginEp throws on heterogeneous ep_devices. Resolved here once and
-  // forwarded to PluginExecutionProvider's IExecutionProvider base.
-  const OrtMemoryInfo* default_info = TryGetEpMemoryInfo(*ort_ep, OrtMemTypeDefault);
-  OrtDevice default_device = default_info ? default_info->device : GetOrtDeviceForPluginEp(devices_);
-
   plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
                                                         session_options, ep_factory_, devices_,
                                                         kernel_registry,
-                                                        *logger.ToInternal(),
-                                                        default_device);
+                                                        *logger.ToInternal());
   return Status::OK();
 }
 
@@ -140,11 +121,25 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
-  // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
+// Single source of truth for the OrtEp::GetMemoryInfoByMemType callback (added in EP API
+// version 26): version-gated, null-checked. Returns nullptr if the EP did not opt in or if
+// the EP returned nullptr to defer to ORT's built-in fallback.
+static const OrtMemoryInfo* TryGetEpMemoryInfo(const OrtEp& ep, OrtMemType mem_type) {
+  if (ep.ort_version_supported >= 26 && ep.GetMemoryInfoByMemType != nullptr) {
+    return ep.GetMemoryInfoByMemType(&ep, mem_type);
+  }
+  return nullptr;
+}
+
+static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ep, gsl::span<const OrtEpDevice* const> ep_devices) {
+  // Get the OrtDevice from the Ep's default memory info. Otherwise, we set it to CPU.
   // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
 
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
+
+  if (const OrtMemoryInfo* info = TryGetEpMemoryInfo(ep, OrtMemTypeDefault)) {
+    return info->device;
+  }
 
   const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
 
@@ -187,9 +182,8 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
-                                                 const logging::Logger& logger,
-                                                 OrtDevice default_device)
-    : IExecutionProvider(ep->GetName(ep.get()), default_device,
+                                                 const logging::Logger& logger)
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices),
                          std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
