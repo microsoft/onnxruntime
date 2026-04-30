@@ -286,7 +286,7 @@ if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-if(NOT APPLE AND NOT WIN32)
+if(NOT WIN32)
   if(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set_target_properties(onnxruntime PROPERTIES
       PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
@@ -302,7 +302,7 @@ if(NOT APPLE AND NOT WIN32)
       FOLDER "ONNXRuntime")
   endif()
 else()
-  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
+  # Omit the SOVERSION setting in Windows build
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}

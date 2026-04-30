@@ -35,7 +35,11 @@ stages:
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'parameters_artifact'
     steps:
-    - checkout: none
+    # TSA Upload needs this config directory.
+    # Better fix is to disable TSA Upload for jobs like this but TBD how to do that.
+    # TSA is deprecated anyway so that may happen with migration to WiM.
+    - checkout: self
+      sparseCheckoutDirectories: .config
     - bash: |
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x

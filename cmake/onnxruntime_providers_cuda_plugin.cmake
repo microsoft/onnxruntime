@@ -265,8 +265,13 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     ${PROTOBUF_LIB}
 )
 
+# Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
+if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
+  set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
+endif()
+
 # Symbol visibility — only export CreateEpFactories and ReleaseEpFactory
-target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1)
+target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
 
 if (onnxruntime_USE_CUDA_NHWC_OPS)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_NHWC_OPS)

@@ -88,6 +88,9 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
   static OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL GetGraphCaptureNodeAssignmentPolicyImpl(
       const OrtEp* this_ptr) noexcept;
 
+  static OrtStatus* ORT_API_CALL GetAvailableResourceImpl(
+      const OrtEp* this_ptr, OrtResourceCount* available) noexcept;
+
   /// Helper to parse the graph annotation ID from run options.
   CudaGraphAnnotation_t GetGraphAnnotationId(const OrtRunOptions* run_options) const;
 
