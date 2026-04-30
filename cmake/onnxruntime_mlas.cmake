@@ -910,7 +910,8 @@ endif()
           "${MLAS_SRC_DIR}/scalar/*.cpp")
 
         if(onnxruntime_USE_RVV)
-          set(CMAKE_REQUIRED_FLAGS "-march=rv64gcv -mabi=lp64d")
+          set(OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS} -march=rv64gcv -mabi=lp64d")
           check_cxx_source_compiles("
             #include <stddef.h>
             #include <riscv_vector.h>
@@ -920,7 +921,8 @@ endif()
             }"
             HAS_RISCV64_RVV
           )
-          unset(CMAKE_REQUIRED_FLAGS)
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS}")
+          unset(OLD_CMAKE_REQUIRED_FLAGS)
 
           if(HAS_RISCV64_RVV)
             list(APPEND mlas_platform_srcs

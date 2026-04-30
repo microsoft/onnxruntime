@@ -1020,6 +1020,7 @@ extern "C" {
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
 #elif defined(MLAS_TARGET_RISCV64)
+#if defined(MLAS_USE_RVV)
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelRvv;
     void MlasSgemmCopyPackBRvv(
         float* D,
@@ -1027,6 +1028,7 @@ extern "C" {
         size_t ldb,
         size_t CountX,
         size_t CountY);
+#endif
     size_t MLASCALL MlasSgemmKernelZero(
         const float* A,
         const float* B,
@@ -1196,7 +1198,7 @@ extern "C" {
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
-#if defined(MLAS_TARGET_RISCV64)
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelRvv;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelRvv;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelRvv;
