@@ -8,6 +8,8 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace test {
@@ -91,8 +93,12 @@ static void AddInputs(OpTester& test,
     test.AddOutput<float>("Y", y_shape, y, false, 0, 3e-5f);
     if (!present_key.empty())
       test.AddOutput<float>("present_key", present_key_shape, present_key);
+    else if (!qk_matmul_output.empty())
+      test.AddOptionalOutputEdge<float>();  // present_key placeholder
     if (!present_value.empty())
       test.AddOutput<float>("present_value", present_value_shape, present_value);
+    else if (!qk_matmul_output.empty())
+      test.AddOptionalOutputEdge<float>();  // present_value placeholder
     if (!qk_matmul_output.empty())
       test.AddOutput<float>("qk_matmul_output", qk_matmul_output_shape, qk_matmul_output);
   } else if (tensor_type == TensorType::kFloat16) {
@@ -120,8 +126,12 @@ static void AddInputs(OpTester& test,
     test.AddOutput<MLFloat16>("Y", y_shape, ToFloat16(y), false, 0, 3e-3f);
     if (!present_key.empty())
       test.AddOutput<MLFloat16>("present_key", present_key_shape, ToFloat16(present_key));
+    else if (!qk_matmul_output.empty())
+      test.AddOptionalOutputEdge<MLFloat16>();  // present_key placeholder
     if (!present_value.empty())
       test.AddOutput<MLFloat16>("present_value", present_value_shape, ToFloat16(present_value));
+    else if (!qk_matmul_output.empty())
+      test.AddOptionalOutputEdge<MLFloat16>();  // present_value placeholder
     if (!qk_matmul_output.empty())
       test.AddOutput<MLFloat16>("qk_matmul_output", qk_matmul_output_shape, ToFloat16(qk_matmul_output));
   } else {
@@ -149,8 +159,12 @@ static void AddInputs(OpTester& test,
     test.AddOutput<BFloat16>("Y", y_shape, FloatsToBFloat16s(y), false, 0, 3e-3f);
     if (!present_key.empty())
       test.AddOutput<BFloat16>("present_key", present_key_shape, FloatsToBFloat16s(present_key));
+    else if (!qk_matmul_output.empty())
+      test.AddOptionalOutputEdge<BFloat16>();  // present_key placeholder
     if (!present_value.empty())
       test.AddOutput<BFloat16>("present_value", present_value_shape, FloatsToBFloat16s(present_value));
+    else if (!qk_matmul_output.empty())
+      test.AddOptionalOutputEdge<BFloat16>();  // present_value placeholder
     if (!qk_matmul_output.empty())
       test.AddOutput<BFloat16>("qk_matmul_output", qk_matmul_output_shape, FloatsToBFloat16s(qk_matmul_output));
   }
@@ -516,11 +530,10 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
 
 // Regression guard: all-false bool mask in decode mode (past_sequence_length > 0).
 // Guards against a bug where fully-masked batches produce NaN or incorrect output.
-// Expected behavior: uniform softmax over past KV values produces Y = mean-of-V.
-// With past_v = [10,20,30,40] and [20,40,60,80] per head, and all positions masked out,
-// softmax(all -inf + constant mask_filter_value) → uniform weights → Y = {25, 50}.
-// This test originally came from upstream/main and validates that both CPU and CUDA
-// (unfused path) handle the all-false mask case identically.
+// Expected behavior: uniform softmax over all KV values produces Y = mean-of-V.
+// On CUDA, MEA decode handles this config (total_seq=4, 4-aligned). The capped
+// mask_filter_value (-1e+30) in ConvertAttnMaskToBias prevents CUTLASS overflow,
+// producing correct uniform softmax → mean(V).
 TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
   int batch_size = 1;
   int q_num_heads = 2;
@@ -609,8 +622,9 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
   );
 }
 
-// Unfused decode path with fp16 and all-true bool attention mask.
-// Flash rejects attn_mask (requires attn_mask==nullptr), so CUDA routes to unfused.
+// Decode path with fp16 and all-true bool attention mask.
+// Flash rejects attn_mask (requires attn_mask==nullptr). MEA handles decode with
+// bool mask via additive bias (past_key concat + ConvertAttnMaskToBias).
 // head_size=64. Uniform keys make output analytically verifiable:
 // all attention scores are equal, so softmax is uniform over all positions.
 TEST(AttentionTest, Attention4DAttnMaskBoolDecodeWithPastFloat16) {
@@ -695,8 +709,8 @@ TEST(AttentionTest, Attention4DAttnMaskBoolDecodeWithPastFloat16) {
 
 // Decode with partial bool mask [T,T,T,F]: the new token is masked out.
 // With mask [T,T,T,F] past_seq=3 total=4: only positions 0,1,2 are attended (past only).
-// Flash is ineligible (bool+past_key rejected), so CUDA uses unfused which handles this
-// spec-correctly via standard ConcatPastToPresent + element-wise mask application.
+// Flash is ineligible (bool+past_key rejected). MEA handles decode with bool mask
+// via additive bias (past_key concat + ConvertAttnMaskToBias).
 // Y = uniform mean over the 3 attended past values (Q=K=constant → uniform softmax).
 // CPU always runs; CUDA runs when SM 5.3+ is available.
 TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
@@ -781,7 +795,8 @@ TEST(AttentionTest, Attention4DAttnMaskBoolPartialMaskDecodeFloat16) {
 
 // Multi-batch decode with per-batch partial bool masks.
 // batch_size=2: batch 0 [T,T,T,F,F,F] (3 leading trues), batch 1 [T,T,T,T,T,T] (all true).
-// Flash is ineligible (bool+past_key rejected), CUDA uses unfused.
+// Flash is ineligible (bool+past_key rejected). MEA rejected by CUTLASS bias alignment
+// (total_seq=6, 6%4≠0), so CUDA falls through to unfused.
 // Unfused applies standard ConcatPastToPresent (new token at position past_sequence_length=5
 // for all batches) and element-wise mask in softmax.
 // Runs on both CPU and CUDA to verify cross-EP consistency.
@@ -988,9 +1003,8 @@ TEST(AttentionTest, Attention4DSoftCap) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), 2.0f, -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             ys, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            // disable_cuda: head_size(8) != v_head_size(10) blocks Flash, past_key blocks MEA,
-            // unfused path doesn't support softcap. Needs test with head_size == v_head_size and no past.
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            // head_size(8) != v_head_size(10) blocks Flash and MEA decode; falls to unfused which now supports softcap.
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -1018,9 +1032,8 @@ TEST(AttentionTest, Attention4DSoftCapFloat16) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), 2.0f, -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             ys, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            // disable_cuda: head_size(8) != v_head_size(10) blocks Flash, past_key blocks MEA,
-            // unfused path doesn't support softcap. Needs test with head_size == v_head_size and no past.
-            false, true, true  // disable_cpu, disable_cuda, disable_dml
+            // head_size(8) != v_head_size(10) blocks Flash and MEA decode; falls to unfused which now supports softcap.
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -1160,7 +1173,6 @@ TEST(AttentionTest, Attention4DAttnPastPresent) {
   );
 }
 
-// TODO(titaiwang, xadupre): Do we really need cross attention + causal mask test case?
 TEST(AttentionTest, Attention4DAttnIsCausal) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 3;           // Q.shape[1]
@@ -1250,7 +1262,6 @@ TEST(AttentionTest, Attention4DAttnIsCausalBasicFloat16) {
   );
 }
 
-// TODO(titaiwang, xadupre): Do we really need cross attention + causal mask test case?
 TEST(AttentionTest, Attention4DAttnIsCausalBasicDifferentSequenceLength) {
   int batch_size = 2;            // Q.shape[0]
   int q_num_heads = 1;           // Q.shape[1]
@@ -2308,10 +2319,10 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithFloatAttnMask_MultiBatch) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// GQA unfused attention with FP32 QK accumulation for large head_size (> 128).
-// This exercises the RunGqaUnfusedAttention path in attention.cc which uses
+// Unfused attention with FP32 QK accumulation for large head_size (> 128).
+// This exercises the RunUnfusedAttention path in attention.cc which uses
 // an FP32 scratch buffer for QK matmul to prevent overflow in fp16.
-TEST(AttentionTest, Attention_GqaUnfused_LargeHeadSize_FP16) {
+TEST(AttentionTest, Attention_Unfused_LargeHeadSize_FP16) {
   if (!HasCudaEnvironment(530)) {
     return;  // fp16 requires SM 5.3+
   }
@@ -2371,9 +2382,9 @@ TEST(AttentionTest, Attention_GqaUnfused_LargeHeadSize_FP16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// GQA unfused attention with causal mask and large head_size.
-// Verifies that is_causal works correctly in the unfused GQA path.
-TEST(AttentionTest, Attention_GqaUnfused_LargeHeadSize_Causal_FP16) {
+// Unfused attention with causal mask and large head_size.
+// Verifies that is_causal works correctly in the unfused path.
+TEST(AttentionTest, Attention_Unfused_LargeHeadSize_Causal_FP16) {
   if (!HasCudaEnvironment(530)) {
     return;  // fp16 requires SM 5.3+
   }
@@ -2440,8 +2451,8 @@ TEST(AttentionTest, Attention_GqaUnfused_LargeHeadSize_Causal_FP16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// GQA unfused with past_key + attn_mask: exercises concat + bias path together.
-TEST(AttentionTest, Attention_GqaUnfused_PastKey_AttnMask_FP16) {
+// Unfused with past_key + attn_mask: exercises concat + bias path together.
+TEST(AttentionTest, Attention_Unfused_PastKey_AttnMask_FP16) {
   if (!HasCudaEnvironment(530)) {
     return;
   }
@@ -2519,8 +2530,8 @@ TEST(AttentionTest, Attention_GqaUnfused_PastKey_AttnMask_FP16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// GQA unfused with softcap + attn_mask: verifies the softcap + bias interaction.
-TEST(AttentionTest, Attention_GqaUnfused_Softcap_AttnMask_FP16) {
+// Unfused with softcap + attn_mask: verifies the softcap + bias interaction.
+TEST(AttentionTest, Attention_Unfused_Softcap_AttnMask_FP16) {
   if (!HasCudaEnvironment(530)) {
     return;
   }
@@ -2572,8 +2583,8 @@ TEST(AttentionTest, Attention_GqaUnfused_Softcap_AttnMask_FP16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// GQA unfused with BSNH (3D) input: previous tests all use 4D BNSH input.
-TEST(AttentionTest, Attention_GqaUnfused_BSNH_FP16) {
+// Unfused with BSNH (3D) input: previous tests all use 4D BNSH input.
+TEST(AttentionTest, Attention_Unfused_BSNH_FP16) {
   if (!HasCudaEnvironment(530)) {
     return;
   }
@@ -2622,8 +2633,8 @@ TEST(AttentionTest, Attention_GqaUnfused_BSNH_FP16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// GQA unfused with fp32: exercises the float template instantiation.
-TEST(AttentionTest, Attention_GqaUnfused_FP32) {
+// Unfused with fp32: exercises the float template instantiation.
+TEST(AttentionTest, Attention_Unfused_FP32) {
   if (!HasCudaEnvironment(0)) {
     return;
   }
@@ -2671,6 +2682,295 @@ TEST(AttentionTest, Attention_GqaUnfused_FP32) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test MEA decode path by disabling Flash Attention.
+// Uses the same Attention4DDefaultBasic data (head_size == v_head_size, fp16 with past_key)
+// but forces MEA runner via environment variable.
+TEST(AttentionTest, Attention4DMEADecodeFloat16) {
+  int batch_size = 2;
+  int q_num_heads = 3;
+  int q_sequence_length = 4;
+  int head_size = 8;
+  int kv_sequence_length = 6;
+  int kv_num_heads = 3;
+  int v_head_size = 8;
+  int past_sequence_length = 5;
+
+  // Simple test data: one-hot Q/K/V to make expected output predictable
+  size_t q_size = batch_size * q_num_heads * q_sequence_length * head_size;
+  size_t k_size = batch_size * kv_num_heads * kv_sequence_length * head_size;
+  size_t v_size = batch_size * kv_num_heads * kv_sequence_length * v_head_size;
+
+  std::vector<float> q(q_size, 0.0f);
+  q[0] = 1.0f;  // first element of first query is 1
+  std::vector<float> k(k_size, 0.0f);
+  k[0] = 1.0f;  // first element of first key is 1
+  std::vector<float> v(v_size, 0.0f);
+  v[0] = 1.0f;  // first element of first value is 1
+
+  // Expected output matches Attention4DDefaultBasic (same data, same math regardless of runner)
+  std::vector<float> y = {0.221683f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.166667f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.166667f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.166667f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f};
+
+  // Force MEA by disabling Flash Attention
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{onnxruntime::contrib::attention::kDisableFlashAttention, "1"}}};
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,
+            y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            true, false, true  // disable_cpu, disable_cuda=false (test CUDA MEA), disable_dml
+  );
+}
+
+// Regression test for output_qk + softcap: verifies that qk_matmul_output_mode=0 (kQK)
+// returns RAW Q*K logits (before softcap), not softcapped values.
+// This test would FAIL if CopyQK were moved after ApplySoftcap:
+//   - Correct (CopyQK before softcap): output_qk = 2.0 (raw dot product)
+//   - Wrong (CopyQK after softcap): output_qk = tanh(2.0) ≈ 0.964 (clamped by softcap=1.0)
+// Uses constant Q=1, K=1 with head_size=4 so QK = scale * dot(Q,K) = 0.5 * 4 = 2.0.
+// v_head_size(6) != head_size(4) blocks Flash Attention and MEA decode, forcing unfused path.
+TEST(AttentionTest, Attention4DSoftCapOutputQkRawLogits) {
+  int batch_size = 1;
+  int q_num_heads = 2;
+  int q_sequence_length = 2;
+  int head_size = 4;
+  int kv_sequence_length = 3;
+  int kv_num_heads = 2;
+  int v_head_size = 6;
+  int past_sequence_length = 0;
+  int total_sequence_length = past_sequence_length + kv_sequence_length;
+
+  // Constant Q and K: all 1.0
+  // QK = scale * dot(Q[i], K[j]) = (1/sqrt(4)) * 4 = 2.0 for all (i,j) pairs
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 1.0f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 1.0f);
+
+  // V: position j gets value (j+1)*0.1 across all v_head_size dims
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size);
+  for (int n = 0; n < kv_num_heads; n++) {
+    for (int s = 0; s < kv_sequence_length; s++) {
+      float val = static_cast<float>(s + 1) * 0.1f;
+      for (int h = 0; h < v_head_size; h++) {
+        v[(n * kv_sequence_length + s) * v_head_size + h] = val;
+      }
+    }
+  }
+
+  // Expected output_qk: raw QK logits = 2.0 for all entries
+  // Shape: [batch, q_num_heads, q_seq, total_seq] = [1, 2, 2, 3] = 12 values
+  std::vector<float> expected_qk(batch_size * q_num_heads * q_sequence_length * total_sequence_length, 2.0f);
+
+  // Expected Y: softcap(2.0) ≈ 0.964 for all QK → uniform softmax → Y = mean(V) = 0.2
+  // Shape: [batch, q_num_heads, q_seq, v_head_size] = [1, 2, 2, 6] = 24 values
+  std::vector<float> ys(batch_size * q_num_heads * q_sequence_length * v_head_size, 0.2f);
+
+  // present_key = K (no past), present_value = V (no past)
+  // These must be provided so the OpTester has all 4 outputs for correct index mapping.
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
+            -1, 0, std::numeric_limits<float>::quiet_NaN(), 1.0f, -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode=kQK, scale=default, softcap=1.0
+            ys, k, v, expected_qk,
+            false, false, true  // disable_cpu, disable_cuda, disable_dml — runs on both CPU and CUDA unfused (v_head_size != head_size blocks Flash/MEA)
+  );
+}
+
+// ============================================================================
+// Causal alignment tests: verify upper-left (no past) vs lower-right (with past)
+// These are CUDA-only tests that validate the causal masking fix.
+// ============================================================================
+
+// Test: Causal + cross-attention (S_q=3, S_kv=5, no past)
+// ONNX spec mandates upper-left alignment: q_i attends to kv[0..i].
+// V is identity-like so output directly reveals which KV positions were attended.
+// Exercises MEA (fp32, head_size divisible by 4) or Unfused kernel on CUDA.
+TEST(AttentionTest, Attention4DCausalCrossAttentionUpperLeft) {
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 3;
+  int head_size = 4;
+  int kv_sequence_length = 5;
+  int kv_num_heads = 1;
+  int v_head_size = 4;
+  int past_sequence_length = 0;
+
+  // clang-format off
+  std::vector<float> q = {1.0f, 0.5f, 0.3f, 0.2f,
+                          0.4f, 0.8f, 0.1f, 0.6f,
+                          0.7f, 0.3f, 0.9f, 0.5f};
+  std::vector<float> k = {0.2f, 0.4f, 0.6f, 0.8f,
+                          0.1f, 0.3f, 0.5f, 0.7f,
+                          0.9f, 0.1f, 0.2f, 0.3f,
+                          0.5f, 0.6f, 0.7f, 0.8f,
+                          0.3f, 0.2f, 0.1f, 0.4f};
+  std::vector<float> v = {1.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 1.0f, 0.0f, 0.0f,
+                          0.0f, 0.0f, 1.0f, 0.0f,
+                          0.0f, 0.0f, 0.0f, 1.0f,
+                          0.5f, 0.5f, 0.5f, 0.5f};
+  // Upper-left causal (scale=0.5): q0→v[0]=[1,0,0,0], q1→softmax([0.47,0.375])@v[0:2], q2→softmax([0.6,0.48,0.495])@v[0:3]
+  std::vector<float> y = {1.000000f, 0.000000f, 0.000000f, 0.000000f,
+                          0.523732f, 0.476268f, 0.000000f, 0.000000f,
+                          0.358777f, 0.318207f, 0.323016f, 0.000000f};
+  // clang-format on
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(y.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
+            1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+  );
+}
+
+// Test: Causal + cross-attention (S_q=3, S_kv=5, no past) with head_size=8.
+// ONNX spec mandates upper-left alignment: q_i attends to kv[0..i].
+// head_size=8 satisfies MEA's head_size%8==0 requirement, so this exercises
+// MEA's CausalFromTopLeft path (via causal_from_top_left=true when past_seq==0).
+// V is identity-like so output directly reveals which KV positions were attended.
+TEST(AttentionTest, Attention4DCausalCrossAttentionUpperLeftMEA) {
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 3;
+  int head_size = 8;
+  int kv_sequence_length = 5;
+  int kv_num_heads = 1;
+  int v_head_size = 8;
+  int past_sequence_length = 0;
+
+  // clang-format off
+  std::vector<float> q = {1.0f, 0.5f, 0.3f, 0.2f, 0.8f, 0.4f, 0.6f, 0.1f,
+                          0.4f, 0.8f, 0.1f, 0.6f, 0.3f, 0.7f, 0.2f, 0.9f,
+                          0.7f, 0.3f, 0.9f, 0.5f, 0.1f, 0.6f, 0.4f, 0.8f};
+  std::vector<float> k = {0.2f, 0.4f, 0.6f, 0.8f, 0.1f, 0.3f, 0.5f, 0.7f,
+                          0.1f, 0.3f, 0.5f, 0.7f, 0.9f, 0.2f, 0.4f, 0.6f,
+                          0.9f, 0.1f, 0.2f, 0.3f, 0.4f, 0.8f, 0.7f, 0.5f,
+                          0.5f, 0.6f, 0.7f, 0.8f, 0.2f, 0.4f, 0.3f, 0.1f,
+                          0.3f, 0.2f, 0.1f, 0.4f, 0.6f, 0.5f, 0.8f, 0.9f};
+  std::vector<float> v = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+  // Upper-left causal (scale=1/sqrt(8)): q0→v[0], q1→softmax(scaled_scores[0:2])@v[0:2], q2→softmax(scaled_scores[0:3])@v[0:3]
+  std::vector<float> y = {1.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f,
+                          0.511488f, 0.488512f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f,
+                          0.344711f, 0.305668f, 0.349621f, 0.000000f, 0.000000f, 0.000000f, 0.000000f, 0.000000f};
+  // clang-format on
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(y.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
+            1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+  );
+}
+// Lower-right alignment: q0 at absolute position 4 attends to all 5 KV positions.
+// Exercises Unfused or MEA decode path on CUDA.
+TEST(AttentionTest, Attention4DCausalDecodeWithPastLowerRight) {
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 1;
+  int head_size = 4;
+  int kv_sequence_length = 1;  // new KV tokens
+  int kv_num_heads = 1;
+  int v_head_size = 4;
+  int past_sequence_length = 4;  // total = 4 + 1 = 5
+
+  // clang-format off
+  std::vector<float> q = {0.7f, 0.3f, 0.9f, 0.5f};
+  std::vector<float> k = {0.3f, 0.2f, 0.1f, 0.4f};  // new key
+  std::vector<float> v = {0.5f, 0.5f, 0.5f, 0.5f};  // new value
+  std::vector<float> past_key = {0.2f, 0.4f, 0.6f, 0.8f,
+                                 0.1f, 0.3f, 0.5f, 0.7f,
+                                 0.9f, 0.1f, 0.2f, 0.3f,
+                                 0.5f, 0.6f, 0.7f, 0.8f};
+  std::vector<float> past_value = {1.0f, 0.0f, 0.0f, 0.0f,
+                                   0.0f, 1.0f, 0.0f, 0.0f,
+                                   0.0f, 0.0f, 1.0f, 0.0f,
+                                   0.0f, 0.0f, 0.0f, 1.0f};
+  // Lower-right: q0 at pos 4 sees all 5 positions. scores=[0.6,0.48,0.495,0.78,0.28]*scale=0.5 already applied
+  std::vector<float> y = {0.289363f, 0.265357f, 0.268203f, 0.331229f};
+  // present = concat(past, new) in BNSH layout
+  std::vector<float> present_key = {0.2f, 0.4f, 0.6f, 0.8f,
+                                    0.1f, 0.3f, 0.5f, 0.7f,
+                                    0.9f, 0.1f, 0.2f, 0.3f,
+                                    0.5f, 0.6f, 0.7f, 0.8f,
+                                    0.3f, 0.2f, 0.1f, 0.4f};
+  std::vector<float> present_value = {1.0f, 0.0f, 0.0f, 0.0f,
+                                      0.0f, 1.0f, 0.0f, 0.0f,
+                                      0.0f, 0.0f, 1.0f, 0.0f,
+                                      0.0f, 0.0f, 0.0f, 1.0f,
+                                      0.5f, 0.5f, 0.5f, 0.5f};
+  // clang-format on
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(y.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(), past_key, past_value,
+            1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            y, present_key, present_value, std::vector<float>(),
+            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+  );
+}
+
+// Test: Causal + square (S_q=S_kv=4, no past)
+// Upper-left == lower-right for square matrices. Verifies correctness on both paths.
+// Exercises MEA or Unfused kernel depending on GPU capability.
+TEST(AttentionTest, Attention4DCausalSquareNoPast) {
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 4;
+  int head_size = 4;
+  int kv_sequence_length = 4;
+  int kv_num_heads = 1;
+  int v_head_size = 4;
+  int past_sequence_length = 0;
+
+  // clang-format off
+  std::vector<float> q = {1.0f, 0.5f, 0.3f, 0.2f,
+                          0.4f, 0.8f, 0.1f, 0.6f,
+                          0.7f, 0.3f, 0.9f, 0.5f,
+                          0.2f, 0.6f, 0.4f, 0.8f};
+  std::vector<float> k = {0.2f, 0.4f, 0.6f, 0.8f,
+                          0.1f, 0.3f, 0.5f, 0.7f,
+                          0.9f, 0.1f, 0.2f, 0.3f,
+                          0.5f, 0.6f, 0.7f, 0.8f};
+  std::vector<float> v = {1.0f, 0.0f, 0.0f, 0.0f,
+                          0.0f, 1.0f, 0.0f, 0.0f,
+                          0.0f, 0.0f, 1.0f, 0.0f,
+                          0.0f, 0.0f, 0.0f, 1.0f};
+  // Both alignments give identical result for square (no past).
+  std::vector<float> y = {1.000000f, 0.000000f, 0.000000f, 0.000000f,
+                          0.523732f, 0.476268f, 0.000000f, 0.000000f,
+                          0.358777f, 0.318207f, 0.323016f, 0.000000f,
+                          0.265821f, 0.240525f, 0.196925f, 0.296730f};
+  // clang-format on
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(y.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
+            1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+  );
 }
 
 }  // namespace test

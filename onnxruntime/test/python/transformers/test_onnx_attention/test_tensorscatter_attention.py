@@ -460,16 +460,22 @@ def cpu_test_cases():
 
 
 def cuda_fp16_test_cases():
-    """CUDA fp16: both GQA and MHA cases. Flash attention handles external KV cache directly."""
+    """CUDA fp16: both GQA and MHA cases. Flash attention handles external KV cache directly.
+    TensorScatter manages KV cache externally with nonpad_kv_seqlen bounding the active range.
+    Per ONNX spec, is_causal with S_q!=S_kv and no past_key gives upper-left alignment
+    (q[0] sees only kv[0]), which is not meaningful for decode. KV bounds are enforced by
+    nonpad_kv_seqlen instead, so is_causal=0 is the correct setting for TensorScatter decode."""
     yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=0)
-    yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=1)
 
 
 def cuda_fp32_test_cases():
     """CUDA fp32: MHA only. GQA requires fp16/bf16, and flash attention requires fp16/bf16.
-    fp32 MHA uses the unfused attention_bias fallback path."""
+    fp32 MHA uses the unfused attention_bias fallback path.
+    TensorScatter manages KV cache externally with nonpad_kv_seqlen bounding the active range.
+    Per ONNX spec, is_causal with S_q!=S_kv and no past_key gives upper-left alignment
+    (q[0] sees only kv[0]), which is not meaningful for decode. KV bounds are enforced by
+    nonpad_kv_seqlen instead, so is_causal=0 is the correct setting for TensorScatter decode."""
     yield from _make_test_params(_MHA_CASES, is_causal=0)
-    yield from _make_test_params(_MHA_CASES, is_causal=1)
 
 
 # #################################################################################################

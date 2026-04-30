@@ -33,6 +33,7 @@ struct AttentionParameters {
   bool broadcast_attn_bias_dim_1 = false;
   float mask_filter_value = 0.0f;
   float scale = 0.0f;
+  float softcap = 0.0f;
   bool use_tf32 = false;
   bool is_output_bnsh = false;  // whether the output format is BNSH
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
