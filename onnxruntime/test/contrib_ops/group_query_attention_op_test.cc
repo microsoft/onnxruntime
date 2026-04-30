@@ -374,8 +374,8 @@ TEST(GroupQueryAttentionTest, SeqlensKWithinCosCache_Rotary) {
 
   constexpr int cos_cache_max_seq = 16;  // rotary cache large enough
   constexpr int past_seq_len = 16;
-  constexpr int seqlens_k_val = 3;       // valid: 3 < 16 (cos cache) and 3 < 16 (KV cache)
-  constexpr int total_seq_len = 4;       // seqlens_k + 1
+  constexpr int seqlens_k_val = 3;  // valid: 3 < 16 (cos cache) and 3 < 16 (KV cache)
+  constexpr int total_seq_len = 4;  // seqlens_k + 1
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
