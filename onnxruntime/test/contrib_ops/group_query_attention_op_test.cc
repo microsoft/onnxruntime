@@ -318,10 +318,10 @@ TEST(GroupQueryAttentionTest, SeqlensKExceedsCosCache_OOB) {
   constexpr int kv_hidden_size = kv_num_heads * head_size;
   constexpr int rotary_half_dim = head_size / 2;  // cos/sin cache dim-1 = 8
 
-  constexpr int cos_cache_max_seq = 4;   // small rotary cache
-  constexpr int past_seq_len = 16;       // large KV cache
-  constexpr int seqlens_k_val = 10;      // valid for KV (10 < 16) but OOB for cos (10 >= 4)
-  constexpr int total_seq_len = 11;      // seqlens_k + 1
+  constexpr int cos_cache_max_seq = 4;  // small rotary cache
+  constexpr int past_seq_len = 16;      // large KV cache
+  constexpr int seqlens_k_val = 10;     // valid for KV (10 < 16) but OOB for cos (10 >= 4)
+  constexpr int total_seq_len = 11;     // seqlens_k + 1
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));

@@ -148,7 +148,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     // Use the minimum of cos_cache and sin_cache dim-0 since CheckRotaryCaches does not enforce equality.
     {
       const int rotary_cache_max_seq = static_cast<int>(std::min(cos_cache->Shape().GetDims()[0],
-                                                                  sin_cache->Shape().GetDims()[0]));
+                                                                 sin_cache->Shape().GetDims()[0]));
       const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
       for (int b = 0; b < batch_size; b++) {
         // position_id = seqlens_k[b] (in token generation), must be < cache rows
