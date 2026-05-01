@@ -36,9 +36,11 @@ Abstract:
 #if defined(__linux__)
 #include <sys/auxv.h>
 #elif defined(_AIX)
+#include <sys/systemcfg.h>
+#if !defined(POWER_10)
 #define POWER_10       0x40000
 #define POWER_10_ANDUP (POWER_10)
-#include <sys/systemcfg.h>
+#endif
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
 #elif defined(__FreeBSD__)
 #include <machine/cpu.h>
