@@ -22,8 +22,12 @@ An `OrtMemoryDevice` represents a **specific memory space** on a device. It comb
 | **Device ID** | Index of the device | 0, 1, 2 |
 | **Memory type** | The kind of memory on that device | `DEFAULT`, `HOST_ACCESSIBLE` |
 
-Two `OrtMemoryDevice` values are equal if all four properties match (device type, vendor ID,
-device ID, and memory type). Use `OrtEpApi::MemoryDevice_AreEqual()` to compare them.
+Two `OrtMemoryDevice` values are equal if all five properties match (device type, vendor ID,
+device ID, memory type, and alignment). Use `OrtEpApi::MemoryDevice_AreEqual()` to compare them.
+
+> **Important**: Alignment participates in equality checks and allocator map lookups. If you create
+> two `OrtMemoryInfo` instances that differ only in alignment, they will have different
+> `OrtMemoryDevice` values and require separate allocators.
 
 **Query functions** (all in `OrtEpApi`):
 
