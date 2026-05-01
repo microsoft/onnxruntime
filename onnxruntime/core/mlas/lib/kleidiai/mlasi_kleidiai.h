@@ -201,15 +201,29 @@ MlasConv(
     MLAS_THREADPOOL* ThreadPool
     );
 
-#if defined(MLAS_ENABLE_TEST_HOOKS)
 size_t
 MLASCALL
-MlasConvLhsCacheEntryCountForTest();
+MlasConvSymmetricChannelsLast2DFloatPackWSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape
+    );
 
 void
 MLASCALL
-MlasConvClearLhsCacheForTest();
-#endif
+MlasConvSymmetricChannelsLast2DFloatPackW(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    size_t GroupCount,
+    const float* Filter,
+    const float* Bias,
+    void* PackedFilter,
+    size_t PackedFilterGroupStride,
+    MLAS_THREADPOOL* ThreadPool
+    );
 }
 
 /*++
