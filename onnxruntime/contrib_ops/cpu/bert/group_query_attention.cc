@@ -152,10 +152,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
       for (int b = 0; b < batch_size; b++) {
         // position_id = seqlens_k[b] (in token generation), must be < cache rows
-        if (seqlens_k_data[b] >= rotary_cache_max_seq) {
+        if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= rotary_cache_max_seq) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "seqlens_k[", b, "] = ", seqlens_k_data[b],
-                                 " exceeds rotary cache dimension 0 (", rotary_cache_max_seq, ")");
+                                 " is out of range for rotary cache dimension 0 (", rotary_cache_max_seq, ")");
         }
       }
     }
