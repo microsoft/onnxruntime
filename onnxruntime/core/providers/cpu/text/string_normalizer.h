@@ -29,8 +29,14 @@ class StringNormalizer : public OpKernel {
  private:
   bool is_case_sensitive_{true};
   CaseAction case_change_action_{NONE};
-  // Set this to lower because some characters do not have upper case.
-  // used for case-insensitive compare
+  // Hardcoded to LOWER for case-insensitive stopword comparison.
+  // Lowercase is used because:
+  // - Some characters have no uppercase form or uppercase to multiple characters
+  //   (e.g., ß → SS), which std::transform cannot handle (it's 1:1 per character).
+  // - Lowercasing is almost always a 1:1 mapping in Unicode, making it safe
+  //   for per-character transforms.
+  // The ideal approach would be Unicode case folding (ICU), but that's not
+  // warranted for this operator.
   CaseAction compare_caseaction_{LOWER};
   std::string locale_name_;
   // Either if these are populated but not both

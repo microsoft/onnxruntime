@@ -232,5 +232,281 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
 }
 #endif
 
+// ============================================================
+// Additional tests for coverage gaps
+// ============================================================
+
+TEST(ContribOpTest, StringNormalizerInsensitiveFilterOutLower) {
+  // Case-insensitive filtering + LOWER case change.
+  // This exercises the can_reuse_wide fast path (compare_caseaction_ == LOWER == case_change_action_).
+  // Tests French (accented), German (umlaut/eszett), Russian, Chinese.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "LOWER", false, {"Понедельник", "Besançon"}, test_locale);
+  std::vector<int64_t> dims{6};
+  std::vector<std::string> input = {"ПОНЕДЕЛЬНИК",  // matches "Понедельник" case-insensitively
+                                    "BESANÇON",     // matches "Besançon" case-insensitively
+                                    "École élémentaire",
+                                    "mit freundlichen grüßen",
+                                    "中文",
+                                    "Tuesday"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"école élémentaire",
+                                     "mit freundlichen grüßen",  // ß stays ß when lowercased
+                                     "中文",                     // Chinese has no case
+                                     "tuesday"};
+  test.AddOutput<std::string>("Y", {4}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerInsensitiveFilterOutNone) {
+  // Case-insensitive filtering + NO case change.
+  // Strings matching stopwords are removed; survivors keep original case.
+  // Tests that Cyrillic and accented Latin stopwords match case-insensitively.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", false, {"понедельник", "école élémentaire"}, test_locale);
+  std::vector<int64_t> dims{5};
+  std::vector<std::string> input = {"Понедельник",        // matches "понедельник"
+                                    "École Élémentaire",  // matches "école élémentaire"
+                                    "Besançon",
+                                    "中文",
+                                    "Thursday"};
+  test.AddInput<std::string>("T", dims, input);
+
+  // Filtered strings are removed; survivors keep original case
+  std::vector<std::string> output = {"Besançon", "中文", "Thursday"};
+  test.AddOutput<std::string>("Y", {3}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerInsensitiveNoStopwordsLower) {
+  // Case-insensitive, no stopwords, LOWER case change.
+  // Exercises output_no_filtering path with multilingual input.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "LOWER", false, {}, test_locale);
+  std::vector<int64_t> dims{5};
+  std::vector<std::string> input = {"BESANÇON",
+                                    "ÉCOLE ÉLÉMENTAIRE",
+                                    "ПОНЕДЕЛЬНИК",
+                                    "MIT FREUNDLICHEN GRÜßEN",
+                                    "中文"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"besançon",
+                                     "école élémentaire",
+                                     "понедельник",
+                                     "mit freundlichen grüßen",
+                                     "中文"};
+  test.AddOutput<std::string>("Y", {5}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerInsensitiveFilterUpperMultilingual) {
+  // Case-insensitive filtering + UPPER case change (case_change != compare_caseaction_).
+  // Exercises the output_filtered_with_wide fallback (cannot reuse cached lowercase wide forms).
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "UPPER", false, {"besançon", "中文"}, test_locale);
+  std::vector<int64_t> dims{5};
+  std::vector<std::string> input = {"Besançon",  // matches "besançon"
+                                    "École élémentaire",
+                                    "Понедельник",
+                                    "mit freundlichen grüßen",
+                                    "中文"};  // matches "中文" (no case, exact match)
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"ÉCOLE ÉLÉMENTAIRE",
+                                     "ПОНЕДЕЛЬНИК",
+  // Eszett behavior differs by platform
+#ifdef __wasm__
+                                     "MIT FREUNDLICHEN GRÜẞEN"
+#else
+                                     "MIT FREUNDLICHEN GRÜßEN"
+#endif
+  };
+  test.AddOutput<std::string>("Y", {3}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerEmptyStringInInput) {
+  // Input contains empty strings — should not crash or produce invalid output.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "UPPER", true, {}, test_locale);
+  std::vector<int64_t> dims{3};
+  std::vector<std::string> input = {"hello", "", "world"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"HELLO", "", "WORLD"};
+  test.AddOutput<std::string>("Y", {3}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerSingleElement) {
+  // Single-element input tensor with multi-byte UTF-8.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "LOWER", true, {}, test_locale);
+  std::vector<int64_t> dims{1};
+  std::vector<std::string> input = {"ÉCOLE"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"école"};
+  test.AddOutput<std::string>("Y", {1}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerInsensitiveAllFilteredOutMultilingual) {
+  // Case-insensitive: all strings match stopwords → output is [1] with empty string.
+  // Uses Cyrillic and Chinese stopwords.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "UPPER", false, {"понедельник", "中文", "grüßen"}, test_locale);
+  std::vector<int64_t> dims{3};
+  std::vector<std::string> input = {"ПОНЕДЕЛЬНИК", "中文", "Grüßen"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output{""};
+  test.AddOutput<std::string>("Y", {1}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerInsensitiveMixedCaseStopwords) {
+  // Stopwords given in mixed case with accented characters should still match.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", false, {"ПОНЕДЕЛЬНИК", "École Élémentaire"}, test_locale);
+  std::vector<int64_t> dims{4};
+  std::vector<std::string> input = {"понедельник",        // matches "ПОНЕДЕЛЬНИК"
+                                    "école élémentaire",  // matches "École Élémentaire"
+                                    "Besançon",
+                                    "中文"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"Besançon", "中文"};
+  test.AddOutput<std::string>("Y", {2}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizer2DInputWithFilteringMultilingual) {
+  // 2D shape [1, C] with filtering using multilingual input.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "LOWER", true, {"Понедельник"}, test_locale);
+  std::vector<int64_t> dims{1, 4};
+  std::vector<std::string> input = {"Понедельник", "BESANÇON", "中文", "ÉCOLE"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"besançon", "中文", "école"};
+  test.AddOutput<std::string>("Y", {1, 3}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizer2DInputAllFilteredOut) {
+  // 2D shape [1, C] with all filtered → output shape [1, 1] with empty string.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {"中文", "Понедельник"}, test_locale);
+  std::vector<int64_t> dims{1, 2};
+  std::vector<std::string> input = {"中文", "Понедельник"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output{""};
+  test.AddOutput<std::string>("Y", {1, 1}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerInvalidDimensions3D) {
+  // Input with 3 dimensions → should fail.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {}, test_locale);
+  std::vector<int64_t> dims{1, 1, 2};
+  std::vector<std::string> input = {"hello", "world"};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", {1, 1, 2}, input);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+}
+
+TEST(ContribOpTest, StringNormalizerInvalidDimensions2DFirstNotOne) {
+  // 2D input with first dim != 1 → should fail.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {}, test_locale);
+  std::vector<int64_t> dims{2, 2};
+  std::vector<std::string> input = {"a", "b", "c", "d"};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", {2, 2}, input);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+}
+
+TEST(ContribOpTest, StringNormalizerGermanEszettLower) {
+  // German Eszett (ß) lowercasing: ß should remain ß.
+  // This tests the converter and case logic with the problematic German character.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "LOWER", true, {}, test_locale);
+  std::vector<int64_t> dims{2};
+  std::vector<std::string> input = {"GRÜßEN", "STRAßE"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"grüßen", "straße"};
+  test.AddOutput<std::string>("Y", {2}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerGermanEszettUpper) {
+  // German Eszett (ß) uppercasing: platform-dependent behavior.
+  // On wasm, ß uppercases to ẞ (capital eszett U+1E9E).
+  // On other platforms, ß remains ß (no single-char uppercase form recognized).
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "UPPER", true, {}, test_locale);
+  std::vector<int64_t> dims{2};
+  std::vector<std::string> input = {"grüßen", "straße"};
+  test.AddInput<std::string>("T", dims, input);
+
+#ifdef __wasm__
+  std::vector<std::string> output = {"GRÜẞEN", "STRAẞE"};
+#else
+  std::vector<std::string> output = {"GRÜßEN", "STRAßE"};
+#endif
+  test.AddOutput<std::string>("Y", {2}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerInsensitiveGermanEszettFilter) {
+  // Case-insensitive filtering with German Eszett in stopwords.
+  // "grüßen" lowercased stays "grüßen", should match stopword "grüßen".
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", false, {"grüßen"}, test_locale);
+  std::vector<int64_t> dims{3};
+  std::vector<std::string> input = {"Grüßen", "Straße", "中文"};
+  test.AddInput<std::string>("T", dims, input);
+
+  // "Grüßen" lowercased → "grüßen" → matches stopword
+  std::vector<std::string> output = {"Straße", "中文"};
+  test.AddOutput<std::string>("Y", {2}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerCyrillicCaseChange) {
+  // Full Cyrillic case conversion test.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "UPPER", true, {}, test_locale);
+  std::vector<int64_t> dims{3};
+  std::vector<std::string> input = {"понедельник", "Вторник", "среда"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"ПОНЕДЕЛЬНИК", "ВТОРНИК", "СРЕДА"};
+  test.AddOutput<std::string>("Y", {3}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(ContribOpTest, StringNormalizerNoStopwordsNoCaseChange) {
+  // No stopwords, NONE case change → pure passthrough (fast path).
+  // Tests with multilingual content to ensure passthrough preserves bytes exactly.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {}, test_locale);
+  std::vector<int64_t> dims{4};
+  std::vector<std::string> input = {"Besançon", "Понедельник", "中文", "grüßen"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"Besançon", "Понедельник", "中文", "grüßen"};
+  test.AddOutput<std::string>("Y", {4}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

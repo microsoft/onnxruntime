@@ -6,24 +6,14 @@
 #include "string_normalizer.h"
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
-// Used below HAS_DEPRECATED_DECLARATIONS
-#include "onnxruntime_config.h"
 
 #ifdef _MSC_VER
 #include <Windows.h>
 #include <locale.h>
 #endif  // _MSC_VER
 
-#include <codecvt>
 #include <locale>
 #include <functional>
-
-#if defined(__GNUC__)
-// Allow deprecated-declarations warning - std::codecvt_utf8 is deprecatedd
-#if defined(HAS_DEPRECATED_DECLARATIONS)
-#pragma GCC diagnostic warning "-Wdeprecated-declarations"
-#endif  // defined(HAS_DEPRECATED_DECLARATIONS)
-#endif  // defined(__GNUC__)
 
 namespace onnxruntime {
 
@@ -36,7 +26,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace string_normalizer {
 
-// codecvt_utf8 is deprecated, we will want to replace it with our class
+// Manual UTF-8 <-> wchar_t (UTF-32 on non-Windows) converter.
+// Replaces the deprecated std::codecvt_utf8<wchar_t>.
 class Utf8ConverterGeneric {
  public:
   size_t ComputeRequiredSizeToUtf8(const std::wstring& wstr) const {
@@ -45,82 +36,59 @@ class Utf8ConverterGeneric {
     }
 
     size_t result = 0;
-    std::mbstate_t state = std::mbstate_t();
-
-    const wchar_t* src = wstr.data();
-    const wchar_t* src_end = src + wstr.length();
-
-    char dummy_dest[128] = {0};
-
-    char* char_next = dummy_dest;
-    const wchar_t* wchar_next = src;
-
-    size_t converted = 0;
-
-    std::codecvt_base::result ret_code = std::codecvt_base::ok;
-
-    // Continue while we exhaust the sequence
-    while (converted < wstr.length()) {
-      ret_code = converter_.out(state,
-                                wchar_next,
-                                src_end,
-                                wchar_next,
-                                std::begin(dummy_dest),
-                                std::end(dummy_dest),
-                                char_next);
-      result += (char_next - dummy_dest);
-      converted = (wchar_next - src);
-
-      if (ret_code != std::codecvt_base::partial &&
-          ret_code != std::codecvt_base::ok) {
-        break;
+    for (wchar_t wc : wstr) {
+      char32_t cp = static_cast<char32_t>(wc);
+      if (cp <= 0x7F) {
+        result += 1;
+      } else if (cp <= 0x7FF) {
+        result += 2;
+      } else if (cp <= 0xFFFF) {
+        result += 3;
+      } else if (cp <= 0x10FFFF) {
+        result += 4;
+      } else {
+        ORT_THROW("Invalid Unicode codepoint U+", std::hex, static_cast<uint32_t>(cp));
       }
     }
-
-    ORT_ENFORCE(ret_code != std::codecvt_base::noconv, "Conversion is expected");
-
-    if (ret_code != std::codecvt_base::ok) {
-      ORT_THROW("Failed to compute size for UTF-8. Converted only first: ",
-                converted, " codepoints out of: ", wstr.length());
-    }
-
     return result;
   }
 
-  // We assume the caller pre-allocated the correct length
   Status ConvertToUtf8(const std::wstring& wstr, std::string& str) const {
     if (wstr.empty()) {
       str.clear();
       return Status::OK();
     }
 
-    std::mbstate_t state = std::mbstate_t();
-
-    const wchar_t* src = wstr.data();
-    const wchar_t* src_end = src + wstr.length();
-
     char* dest = str.data();
-    char* dest_end = dest + str.length();
+    char* dest_end = dest + str.size();
 
-    char* char_next = dest;
-    const wchar_t* wchar_next = src;
-
-    std::codecvt_base::result ret_code = converter_.out(state,
-                                                        src,
-                                                        src_end,
-                                                        wchar_next,
-                                                        dest,
-                                                        dest_end,
-                                                        char_next);
-
-    if (ret_code != std::codecvt_base::ok) {
-      size_t converted = narrow<size_t>(wchar_next - wstr.data());
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to convert to UTF-8. Converted only first: ",
-                             converted, " codepoints out of: ", wstr.length());
+    for (wchar_t wc : wstr) {
+      char32_t cp = static_cast<char32_t>(wc);
+      if (cp <= 0x7F) {
+        if (dest >= dest_end) break;
+        *dest++ = static_cast<char>(cp);
+      } else if (cp <= 0x7FF) {
+        if (dest + 1 >= dest_end) break;
+        *dest++ = static_cast<char>(0xC0 | (cp >> 6));
+        *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
+      } else if (cp <= 0xFFFF) {
+        if (dest + 2 >= dest_end) break;
+        *dest++ = static_cast<char>(0xE0 | (cp >> 12));
+        *dest++ = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
+      } else if (cp <= 0x10FFFF) {
+        if (dest + 3 >= dest_end) break;
+        *dest++ = static_cast<char>(0xF0 | (cp >> 18));
+        *dest++ = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        *dest++ = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Invalid Unicode codepoint during UTF-8 conversion");
+      }
     }
 
-    str.resize(char_next - dest);
-
+    str.resize(static_cast<size_t>(dest - str.data()));
     return Status::OK();
   }
 
@@ -131,83 +99,89 @@ class Utf8ConverterGeneric {
     }
 
     size_t result = 0;
-    std::mbstate_t state = std::mbstate_t();
+    const auto* src = reinterpret_cast<const unsigned char*>(str.data());
+    const auto* src_end = src + str.size();
 
-    const char* src = str.data();
-    const char* src_end = src + str.length();
-
-    wchar_t dummy_dest[128] = {0};
-    const char* char_next = src;
-    wchar_t* wchar_next = dummy_dest;
-
-    size_t converted = 0;
-
-    std::codecvt_base::result ret_code = std::codecvt_base::ok;
-    while (converted < str.length()) {
-      ret_code = converter_.in(state,
-                               char_next,
-                               src_end,
-                               char_next,
-                               std::begin(dummy_dest),
-                               std::end(dummy_dest),
-                               wchar_next);
-      result += (wchar_next - dummy_dest);
-      converted = (char_next - src);
-
-      if (ret_code != std::codecvt_base::partial &&
-          ret_code != std::codecvt_base::ok) {
-        break;
+    while (src < src_end) {
+      size_t byte_len = 0;
+      if ((*src & 0x80) == 0) {
+        byte_len = 1;
+      } else if ((*src & 0xE0) == 0xC0) {
+        byte_len = 2;
+      } else if ((*src & 0xF0) == 0xE0) {
+        byte_len = 3;
+      } else if ((*src & 0xF8) == 0xF0) {
+        byte_len = 4;
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Invalid UTF-8 lead byte at offset ",
+                               static_cast<size_t>(src - reinterpret_cast<const unsigned char*>(str.data())));
       }
-    }
 
-    ORT_ENFORCE(ret_code != std::codecvt_base::noconv, "Conversion is expected");
+      if (static_cast<size_t>(src_end - src) < byte_len) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Truncated UTF-8 sequence at offset ",
+                               static_cast<size_t>(src - reinterpret_cast<const unsigned char*>(str.data())));
+      }
 
-    if (ret_code != std::codecvt_base::ok) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Failed to compute buffer size for wchar_t. Converted only first: ",
-                             converted, " bytes out of: ", str.length(),
-                             " Source: ", src);
+      src += byte_len;
+      ++result;
     }
 
     wchars = result;
     return Status::OK();
   }
 
-  // We assume the destination buffer is preallocated correctly
   Status ConvertToWideChar(const std::string& str, std::wstring& wstr) {
     if (str.empty()) {
-      // Preserve the buffer for re-use, just set size to 0
       wstr.clear();
       return Status::OK();
     }
 
-    std::mbstate_t state = std::mbstate_t();
-    const char* src = str.data();
-    const char* src_end = src + str.length();
-
+    const auto* src = reinterpret_cast<const unsigned char*>(str.data());
+    const auto* src_end = src + str.size();
     wchar_t* dest = wstr.data();
-    wchar_t* dest_end = dest + wstr.length();
 
-    const char* char_next = src;
-    wchar_t* wchar_next = dest;
+    while (src < src_end) {
+      char32_t cp = 0;
+      size_t byte_len = 0;
 
-    std::codecvt_base::result ret_code = converter_.in(state,
-                                                       src,
-                                                       src_end,
-                                                       char_next,
-                                                       dest,
-                                                       dest_end,
-                                                       wchar_next);
+      if ((*src & 0x80) == 0) {
+        cp = *src;
+        byte_len = 1;
+      } else if ((*src & 0xE0) == 0xC0) {
+        byte_len = 2;
+        if (static_cast<size_t>(src_end - src) < 2) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Truncated UTF-8 sequence");
+        }
+        cp = (static_cast<char32_t>(src[0] & 0x1F) << 6) |
+             static_cast<char32_t>(src[1] & 0x3F);
+      } else if ((*src & 0xF0) == 0xE0) {
+        byte_len = 3;
+        if (static_cast<size_t>(src_end - src) < 3) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Truncated UTF-8 sequence");
+        }
+        cp = (static_cast<char32_t>(src[0] & 0x0F) << 12) |
+             (static_cast<char32_t>(src[1] & 0x3F) << 6) |
+             static_cast<char32_t>(src[2] & 0x3F);
+      } else if ((*src & 0xF8) == 0xF0) {
+        byte_len = 4;
+        if (static_cast<size_t>(src_end - src) < 4) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Truncated UTF-8 sequence");
+        }
+        cp = (static_cast<char32_t>(src[0] & 0x07) << 18) |
+             (static_cast<char32_t>(src[1] & 0x3F) << 12) |
+             (static_cast<char32_t>(src[2] & 0x3F) << 6) |
+             static_cast<char32_t>(src[3] & 0x3F);
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid UTF-8 lead byte");
+      }
 
-    if (ret_code != std::codecvt_base::ok) {
-      size_t converted = narrow<size_t>(char_next - str.data());
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to convert to wchar_t. Converted only first: ",
-                             converted, " bytes out of: ", str.length(),
-                             " Source: ", src);
+      *dest++ = static_cast<wchar_t>(cp);
+      src += byte_len;
     }
 
-    wstr.resize(wchar_next - dest);
-
+    wstr.resize(static_cast<size_t>(dest - wstr.data()));
     return Status::OK();
   }
 
@@ -221,9 +195,6 @@ class Utf8ConverterGeneric {
     ORT_THROW_IF_ERROR(ConvertToWideChar(s, result));
     return result;
   }
-
- private:
-  std::codecvt_utf8<wchar_t> converter_;
 };
 
 // We need to specialize for MS as there is
@@ -416,15 +387,7 @@ class Locale {
   std::locale loc_;
 };
 
-#if defined(__APPLE__) || defined(__ANDROID__)
-
 using Utf8Converter = Utf8ConverterGeneric;
-
-#else
-
-using Utf8Converter = Utf8ConverterGeneric;
-
-#endif
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -528,18 +491,25 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   Locale locale(locale_name_);
   Utf8Converter converter;
 
-  // Compute the largest widestring buffer needed.
+  // Determine whether we need wchar conversion at all.
+  // We need it if: (a) case change is requested, or (b) case-insensitive filtering.
+  const bool needs_wchar = (case_change_action_ != NONE) || !is_case_sensitive_;
+
   size_t max_wide_buffer_len = 0;
-  for (const auto& s : input_span) {
-    size_t wchars = 0;
-    // Checks for invalid UTF-8 characters on Windows
-    ORT_RETURN_IF_ERROR(converter.ComputeRequiredSizeToWideChar(s, wchars));
-    max_wide_buffer_len = std::max(max_wide_buffer_len, wchars);
+  if (needs_wchar) {
+    // UTF-8 byte count is an upper bound on wchar_t count: each codepoint requires
+    // at least 1 byte but produces exactly 1 wchar_t (UTF-32) or at most 2 (UTF-16).
+    // This avoids a full UTF-8 decode pass just to compute buffer sizes.
+    for (const auto& s : input_span) {
+      max_wide_buffer_len = std::max(max_wide_buffer_len, s.size());
+    }
   }
 
   // Reuse reserved space
   std::wstring wchar_buffer;
-  wchar_buffer.reserve(max_wide_buffer_len);
+  if (needs_wchar) {
+    wchar_buffer.reserve(max_wide_buffer_len);
+  }
 
   // Output everything and change case as required
   auto output_no_filtering = [&](const TensorShape& output_shape) {
@@ -580,6 +550,31 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   };
 
+  // Output filtered strings with pre-computed wide forms (avoids double conversion).
+  auto output_filtered_with_wide = [&](const TensorShape& output_shape,
+                                       gsl::span<const size_t> filtered_indices,
+                                       InlinedVector<std::wstring>& wide_forms) {
+    auto output_tensor = ctx->Output(0, output_shape);
+    auto output_data = output_tensor->MutableData<std::string>();
+    for (size_t idx = 0; idx < filtered_indices.size(); ++idx) {
+      if (case_change_action_ != NONE) {
+        // wide_forms were lowercased for comparison; re-convert from original and apply target case
+        const std::string& s = input_span[filtered_indices[idx]];
+        wchar_buffer.resize(max_wide_buffer_len);
+        ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
+        locale.ChangeCase(case_change_action_, wchar_buffer);
+
+        auto& dest = *output_data++;
+        size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wchar_buffer);
+        dest.resize(utf8_buffer_len);
+        ORT_RETURN_IF_ERROR(converter.ConvertToUtf8(wchar_buffer, dest));
+      } else {
+        *output_data++ = input_span[filtered_indices[idx]];
+      }
+    }
+    return Status::OK();
+  };
+
   Status status;
 
   if (is_case_sensitive_) {
@@ -588,7 +583,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       output_shape.push_back(C);
       status = output_no_filtering(output_shape);
     } else {
-      // we need to filter
+      // Case-sensitive filtering: direct string compare, no wchar needed for comparison.
       InlinedVector<size_t> filtered_strings_indices;
       filtered_strings_indices.reserve(input_span.size());
 
@@ -599,8 +594,6 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         }
       }
 
-      // According to the spec, if all strings are filtered out
-      // the output must have a shape of {1} with a single empty string.
       const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indices.size()));
       output_shape.push_back(filtered_count);
       status = output_filtered(output_shape, filtered_strings_indices);
@@ -611,11 +604,18 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       output_shape.push_back(C);
       status = output_no_filtering(output_shape);
     } else {
-      // Case insensitive filtering is performed by converting the input strings
-      // to compare_caseaction_. For that we convert to wchar_t UNICODE.
-      // Otherwise, we need to pull ICU library on all platforms.
+      // Case insensitive filtering: convert to wchar_t and case-fold for comparison.
+      // If case_change_action_ matches compare_caseaction_, we can reuse the wide form
+      // directly for output, avoiding a second conversion.
+      const bool can_reuse_wide = (case_change_action_ == compare_caseaction_);
+
       InlinedVector<size_t> filtered_strings_indices;
+      InlinedVector<std::wstring> filtered_wide_forms;
       filtered_strings_indices.reserve(input_span.size());
+      if (can_reuse_wide) {
+        filtered_wide_forms.reserve(input_span.size());
+      }
+
       for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
         const std::string& s = input_span[i];
         wchar_buffer.resize(max_wide_buffer_len);
@@ -623,14 +623,30 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         locale.ChangeCase(compare_caseaction_, wchar_buffer);
         if (wstopwords_.count(wchar_buffer) == 0) {
           filtered_strings_indices.push_back(i);
+          if (can_reuse_wide) {
+            filtered_wide_forms.push_back(wchar_buffer);
+          }
         }
       }
 
-      // According to the spec, if all strings are filtered out
-      // the output must have a shape of {1} with a single empty string.
       const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indices.size()));
       output_shape.push_back(filtered_count);
-      status = output_filtered(output_shape, filtered_strings_indices);
+
+      if (can_reuse_wide && case_change_action_ != NONE) {
+        // Reuse the already case-converted wide forms directly for output
+        auto output_tensor = ctx->Output(0, output_shape);
+        auto output_data = output_tensor->MutableData<std::string>();
+        for (size_t idx = 0; idx < filtered_strings_indices.size(); ++idx) {
+          const std::wstring& wide = filtered_wide_forms[idx];
+          auto& dest = *output_data++;
+          size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wide);
+          dest.resize(utf8_buffer_len);
+          ORT_RETURN_IF_ERROR(converter.ConvertToUtf8(wide, dest));
+        }
+        status = Status::OK();
+      } else {
+        status = output_filtered_with_wide(output_shape, filtered_strings_indices, filtered_wide_forms);
+      }
     }
   }
 
