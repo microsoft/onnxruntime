@@ -74,10 +74,11 @@ class TestQuantIssues(unittest.TestCase):
         `quantize_dynamic(per_channel=True)` previously constructed QuantizedValue
         with axis=None and built DequantizeLinear without an axis attribute, producing
         an invalid per-tensor dequantization for per-channel quantized weights.
-        When the per-channel quantized weight also appears as a graph output,
-        _dequantize_outputs calls _dequantize_value, which triggered an assertion
-        error (scale not scalar) and would have emitted a DequantizeLinear lacking
-        the required axis attribute.
+        The quantizer encounters the unsupported `Identity` op consuming `weight`
+        and dequantizes the (now-quantized) per-channel weight initializer back to
+        float for it. That `_dequantize_value` call previously triggered an
+        assertion error (scale not scalar) and would have emitted a
+        DequantizeLinear lacking the required axis attribute.
         """
         try:
             import numpy as np  # noqa: PLC0415
@@ -89,9 +90,11 @@ class TestQuantIssues(unittest.TestCase):
             raise unittest.SkipTest(f"Required import missing: {exc}") from exc
 
         # Build a model: input (5, 4) @ weight (4, 8) -> output (5, 8).
-        # The weight is also passed through Identity and exposed as a second graph
-        # output so that _dequantize_outputs calls _dequantize_value on the
-        # per-channel-quantized weight initializer.
+        # The weight is also fed through Identity (an op the quantizer does not
+        # support); when the quantizer processes that Identity it dequantizes
+        # the per-channel-quantized weight initializer via _dequantize_value
+        # so the Identity input remains float. Exposing the Identity output as
+        # a graph output keeps the Identity reachable from the optimized graph.
         # Weight axis=1 is the output-feature axis (per-channel quantization target).
         np.random.seed(42)
         weight_data = np.random.normal(0, 0.1, (4, 8)).astype(np.float32)
