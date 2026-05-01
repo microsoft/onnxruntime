@@ -763,6 +763,17 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
+  // Reject fusion if the weight or scale initializer is shared (consumed by more than one node).
+  // When two DQ nodes reference the same initializer (tied embedding pattern, issue #28306),
+  // the first fusion would consume the initializer, leaving the second DQ unable to find it —
+  // causing a crash in TransposeDQWeightsForMatMulNBits with "Missing required scale".
+  const auto* weight_arg = weight_dq->InputDefs()[0];
+  const auto* scale_arg = weight_dq->InputDefs()[1];
+  if (graph.GetConsumerNodes(weight_arg->Name()).size() > 1 ||
+      graph.GetConsumerNodes(scale_arg->Name()).size() > 1) {
+    return false;
+  }
+
   if (is_gemm) {
     // If there's a second DQ node (for bias), it must feed input 2
     if (dq_nodes.size() == 2) {
