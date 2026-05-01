@@ -24,24 +24,6 @@
 const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
 
 
-// Right-hand-side (weights) cache key
-struct RhsCacheKey {
-    size_t co, ci, kh, kw, dilationh, dilationw;
-    bool has_bias;
-    size_t weights_hash;
-    size_t bias_hash;
-
-    bool operator==(const RhsCacheKey& other) const {
-        return co == other.co && ci == other.ci &&
-               kh == other.kh && kw == other.kw &&
-               dilationh == other.dilationh && dilationw == other.dilationw &&
-               has_bias == other.has_bias &&
-               weights_hash == other.weights_hash &&
-               bias_hash == other.bias_hash;
-    }
-};
-
-
 // Left-hand-side (input indirection) cache key
 struct LhsCacheKey {
     size_t ci, ih, iw;
@@ -57,52 +39,11 @@ struct LhsCacheKey {
     }
 };
 
-constexpr size_t kFnvOffsetBasis = sizeof(size_t) == 8
-                                       ? 14695981039346656037ull
-                                       : 2166136261u;
-constexpr size_t kFnvPrime = sizeof(size_t) == 8
-                                 ? 1099511628211ull
-                                 : 16777619u;
-
-size_t HashBytes(const void* data, size_t byte_count) {
-    if (data == nullptr || byte_count == 0) {
-        return 0;
-    }
-
-    const auto* bytes = static_cast<const unsigned char*>(data);
-    size_t h = kFnvOffsetBasis;
-    for (size_t i = 0; i < byte_count; ++i) {
-        h ^= static_cast<size_t>(bytes[i]);
-        h *= kFnvPrime;
-    }
-
-    return h;
-}
-
-size_t HashTensorContents(const float* data, size_t element_count) {
-    return HashBytes(data, element_count * sizeof(float));
-}
-
 namespace std {
     // Specialize hash type for cache keys and do it within namespace std.
     // Doing this allows standard containers like std::unordered_map to find
     // the appropriate hash function via template specialization, as ADL
     // (argument-dependent lookup) does not apply to std::hash.
-    template<>
-    struct hash<RhsCacheKey> {
-        size_t operator()(const RhsCacheKey& k) const {
-            return k.weights_hash ^
-                (std::hash<size_t>()(k.co) << 1) ^
-                (std::hash<size_t>()(k.ci) << 2) ^
-                (std::hash<size_t>()(k.kh) << 3) ^
-                (std::hash<size_t>()(k.kw) << 4) ^
-                (std::hash<size_t>()(k.dilationh) << 5) ^
-                (std::hash<size_t>()(k.dilationw) << 6) ^
-                (std::hash<bool>()(k.has_bias) << 7) ^
-                (std::hash<size_t>()(k.bias_hash) << 8);
-        }
-    };
-
     template<>
     struct hash<LhsCacheKey> {
         size_t operator()(const LhsCacheKey& k) const {
@@ -341,56 +282,65 @@ static void MultiThreadedLHSPackSme(MLAS_THREADPOOL* ThreadPool, const size_t ci
     });
 }
 
-static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const size_t ci,
-                                                          const size_t kh, const size_t kw,
-                                                          const size_t dilationh, const size_t dilationw,
-                                                          const float* weights, const float* bias,
-                                                          MLAS_THREADPOOL* ThreadPool)
-{
-    // Cache of prepacked kai rhs weights and biases. thread_local to prevent interference from parallel sessions.
-    thread_local std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
+size_t
+MLASCALL
+ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackWSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape) {
+    const auto d_kh = ComputeKernelSize(static_cast<size_t>(DilationShape[0]), static_cast<size_t>(KernelShape[0]));
+    const auto d_kw = ComputeKernelSize(static_cast<size_t>(DilationShape[1]), static_cast<size_t>(KernelShape[1]));
+    return kai_get_rhs_packed_size_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme(FilterCount, d_kh * d_kw,
+                                                                                InputChannels);
+}
 
-    // The packed RHS buffer includes both weights and bias, so both must participate in the cache key.
-    const size_t weights_hash = HashTensorContents(weights, co * ci * kh * kw);
-    const bool has_bias = bias != nullptr;
-    const size_t bias_hash = has_bias ? HashTensorContents(bias, co) : 0;
-    RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, has_bias, weights_hash, bias_hash };
+void
+MLASCALL
+ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackW(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    size_t GroupCount,
+    const float* Filter,
+    const float* Bias,
+    void* PackedFilter,
+    size_t PackedFilterGroupStride,
+    MLAS_THREADPOOL* ThreadPool) {
+    const size_t kh = static_cast<size_t>(KernelShape[0]);
+    const size_t kw = static_cast<size_t>(KernelShape[1]);
+    const size_t dilationh = static_cast<size_t>(DilationShape[0]);
+    const size_t dilationw = static_cast<size_t>(DilationShape[1]);
+    const auto d_kh = ComputeKernelSize(dilationh, kh);
+    const auto d_kw = ComputeKernelSize(dilationw, kw);
 
-    auto found = rhs_cache.find(key);
-    if (found != rhs_cache.end()) {
-        return found->second;
-    } else {
+    for (size_t group_idx = 0; group_idx < GroupCount; ++group_idx) {
+        const float* weights = Filter + group_idx * FilterCount * InputChannels * kh * kw;
+        const float* bias = Bias ? Bias + group_idx * FilterCount : nullptr;
+        auto* packed_group = reinterpret_cast<std::byte*>(PackedFilter) + group_idx * PackedFilterGroupStride;
+
         // prepare mlas filter weights for kai rhs packing
         // dilated nhwc format
-        auto nhwc = NChwToNhwc(co, ci, kh, kw, weights, dilationh, dilationw, true, ThreadPool);
-
-
-        //dilation, axis swap (n x k -> k x n) where n == co, k == d_kh x d_kw x ci
-        const auto d_kh = ComputeKernelSize(dilationh,kh);
-        const auto d_kw = ComputeKernelSize(dilationw,kw);
+        auto nhwc = NChwToNhwc(FilterCount, InputChannels, kh, kw, weights, dilationh, dilationw, true, ThreadPool);
 
         //t_weights[d_kh][d_kw][ci][co] = nhwc[co][d_kh][d_kw][ci]
-        auto t_weights = Transpose4D({co,d_kh,d_kw,ci},&nhwc[0],{1,2,3,0});
-
-        const auto packed_size = kai_get_rhs_packed_size_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme(co,d_kh*d_kw,ci);
-        auto packed = std::shared_ptr<std::byte[]>(new std::byte[packed_size], std::default_delete<std::byte[]>());
-
-        rhs_cache[key] = packed;
+        auto t_weights = Transpose4D({FilterCount, d_kh, d_kw, InputChannels}, &nhwc[0], {1, 2, 3, 0});
 
         std::vector<float> bias_copy;
         if (bias) {
-            bias_copy.assign(bias, bias + co);
+            bias_copy.assign(bias, bias + FilterCount);
         } else {
-            bias_copy.resize(co, 0.0f);
+            bias_copy.resize(FilterCount, 0.0f);
         }
 
         KLEIDIAI_KERNEL_LOG("kai_run_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme"
-                            << " N=" << co << " k_chunk_count=" << (d_kh*d_kw) << " k_chunk_length=" << ci << " rhs_stride_row=" << (co * sizeof(float)));
+                            << " N=" << FilterCount << " k_chunk_count=" << (d_kh * d_kw)
+                            << " k_chunk_length=" << InputChannels
+                            << " rhs_stride_row=" << (FilterCount * sizeof(float)));
         kai_run_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme(
-            co, d_kh*d_kw, ci, co * sizeof(float), &t_weights[0], bias_copy.data(), packed.get()
-        );
-
-        return packed;
+            FilterCount, d_kh * d_kw, InputChannels, FilterCount * sizeof(float), &t_weights[0], bias_copy.data(),
+            packed_group);
     }
 }
 
@@ -559,6 +509,8 @@ static void ConvolveSme(const size_t co, //channels out
                         const size_t groups,       //number of filter groups
                         const float* weights,      //kernel weights [co,ci,ih,iw]
                         const float* bias,         //kernel biases
+                        const std::byte* packed_rhs,
+                        const size_t packed_rhs_group_stride,
                         const float* in,           //in image data
                         float* out,                //out image data
                         float* tmp_mlas_aligned,   //intermediate buffer if we need to perform a transpose
@@ -607,7 +559,20 @@ static void ConvolveSme(const size_t co, //channels out
         }
 
         auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, in, input_is_channels_last, ThreadPool);
-        auto rhs = RhsPackWeightsBiasSme(co, ci, kh, kw, dilationh, dilationw, weights, bias, ThreadPool);
+        const std::byte* rhs_data = packed_rhs ? packed_rhs + g * packed_rhs_group_stride : nullptr;
+        std::unique_ptr<std::byte[]> rhs_storage;
+        if (rhs_data == nullptr) {
+            const std::array<int64_t, 2> kernel_shape{static_cast<int64_t>(kh), static_cast<int64_t>(kw)};
+            const std::array<int64_t, 2> dilation_shape{static_cast<int64_t>(dilationh), static_cast<int64_t>(dilationw)};
+            const size_t packed_size =
+                ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackWSize(co, ci, kernel_shape.data(),
+                                                                           dilation_shape.data());
+            rhs_storage = std::make_unique<std::byte[]>(packed_size);
+            ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackW(co, ci, kernel_shape.data(), dilation_shape.data(), 1,
+                                                                   weights, bias, rhs_storage.get(), packed_size,
+                                                                   ThreadPool);
+            rhs_data = rhs_storage.get();
+        }
 
         MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [&](ptrdiff_t tid) {
             //compute B,M,N index from iteration index
@@ -620,7 +585,7 @@ static void ConvolveSme(const size_t co, //channels out
                 imatmul_conv.ukernel.get_rhs_packed_offset(NIdx * n_step, d_kh * d_kw, ci);
 
             auto BTile = reinterpret_cast<const void*>(
-                reinterpret_cast<const std::byte*>(rhs.get()) + rhs_packed_offset
+                rhs_data + rhs_packed_offset
             );
 
             // Get lhs tile, A
@@ -769,7 +734,10 @@ ArmKleidiAI::MlasConv(
                 Parameters->DilationShape[0], Parameters->DilationShape[1],  // kernel dilation
                 Parameters->Padding[0],                                      // image padding
                 Parameters->GroupCount,                                      // filter groups
-                Filter, Bias, Input, Output, WorkingBuffer, Parameters->ChannelsLast, ThreadPool);
+                Filter, Bias,
+                reinterpret_cast<const std::byte*>(Parameters->PackedFilter),
+                Parameters->PackedFilterGroupStride,
+                Input, Output, WorkingBuffer, Parameters->ChannelsLast, ThreadPool);
 
     MlasActivation(Parameters->Activation, Output, nullptr, Parameters->FilterCount, Parameters->OutputSize,
                    Parameters->OutputSize);

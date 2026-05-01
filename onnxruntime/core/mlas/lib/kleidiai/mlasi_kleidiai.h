@@ -200,6 +200,30 @@ MlasConv(
     float* Output,
     MLAS_THREADPOOL* ThreadPool
     );
+
+size_t
+MLASCALL
+MlasConvSymmetricChannelsLast2DFloatPackWSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape
+    );
+
+void
+MLASCALL
+MlasConvSymmetricChannelsLast2DFloatPackW(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    size_t GroupCount,
+    const float* Filter,
+    const float* Bias,
+    void* PackedFilter,
+    size_t PackedFilterGroupStride,
+    MLAS_THREADPOOL* ThreadPool
+    );
 }
 
 /*++

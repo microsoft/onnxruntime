@@ -907,6 +907,9 @@ struct MLAS_CONV_PARAMETERS {
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    const void* PackedFilter = nullptr;
+    size_t PackedFilterGroupStride = 0;
+    bool FilterIsPacked = false;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;

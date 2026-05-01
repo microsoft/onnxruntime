@@ -23,6 +23,10 @@
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
+#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
+#endif
+
 namespace onnxruntime {
 using ConvPadVector = ConvAttributes::ConvPadVector;
 
@@ -187,6 +191,58 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+Status Conv<float>::EnsurePackedChannelsLastFilter(concurrency::ThreadPool* thread_pool,
+                                                   size_t filter_count_per_group,
+                                                   size_t input_channels_per_group,
+                                                   const TensorShapeVector& kernel_shape,
+                                                   const TensorShapeVector& dilations) const {
+  if (!can_cache_packed_filter_) {
+    return Status::OK();
+  }
+
+  std::call_once(packed_filter_once_, [&] {
+    packed_filter_status_ = Status::OK();
+
+    auto alloc = Info().GetAllocator(OrtMemTypeDefault);
+    if (alloc == nullptr) {
+      packed_filter_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                              "Failed to get allocator for cached KleidiAI packed filter.");
+      return;
+    }
+
+    packed_filter_group_stride_ =
+        ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackWSize(filter_count_per_group,
+                                                                   input_channels_per_group,
+                                                                   kernel_shape.data(),
+                                                                   dilations.data());
+    if (packed_filter_group_stride_ == 0) {
+      packed_filter_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                              "Failed to get KleidiAI packed filter size.");
+      return;
+    }
+
+    const size_t packed_filter_size =
+        packed_filter_group_stride_ * onnxruntime::narrow<size_t>(conv_attrs_.group);
+    packed_filter_ = IAllocator::MakeUniquePtr<void>(alloc, packed_filter_size, true);
+    memset(packed_filter_.get(), 0, packed_filter_size);
+
+    ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackW(filter_count_per_group,
+                                                           input_channels_per_group,
+                                                           kernel_shape.data(),
+                                                           dilations.data(),
+                                                           onnxruntime::narrow<size_t>(conv_attrs_.group),
+                                                           constant_filter_tensor_->Data<float>(),
+                                                           constant_bias_tensor_ ? constant_bias_tensor_->Data<float>() : nullptr,
+                                                           packed_filter_.get(),
+                                                           packed_filter_group_stride_,
+                                                           thread_pool);
+  });
+
+  return packed_filter_status_;
+}
+#endif
+
 Status Conv<float>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   const Tensor* X = context->Input<Tensor>(0);
@@ -272,6 +328,17 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
           strides_size_t.data(),
           narrow<size_t>(M / conv_attrs_.group),
           /*Beta*/ 0.0f);
+
+#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+  if (nhwc_fastpath && can_cache_packed_filter_) {
+    ORT_RETURN_IF_ERROR(EnsurePackedChannelsLastFilter(thread_pool,
+                                                       narrow<size_t>(M / conv_attrs_.group),
+                                                       narrow<size_t>(C / conv_attrs_.group),
+                                                       kernel_shape,
+                                                       dilations));
+  }
+#endif
+
   const bool manual_sum = wants_channels_last && !nhwc_fastpath && sum_present;
   MLAS_ACTIVATION pre_sum_activation = activation_;
   if (manual_sum) {
@@ -296,7 +363,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   }
 
   if (kernel_rank >= 1 && kernel_rank <= 3) {
-    MLAS_CONV_PARAMETERS Parameters;
+    MLAS_CONV_PARAMETERS Parameters{};
     Parameters.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
     size_t WorkingBufferSize;
@@ -317,6 +384,14 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     nhwc_fastpath,
                     nhwc_fastpath ? 0.0f : Beta,
                     thread_pool);
+
+#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+    if (nhwc_fastpath && packed_filter_ != nullptr) {
+      Parameters.FilterIsPacked = true;
+      Parameters.PackedFilter = packed_filter_.get();
+      Parameters.PackedFilterGroupStride = packed_filter_group_stride_;
+    }
+#endif
 
     float* working_data = nullptr;
     BufferUniquePtr working_buffer;
