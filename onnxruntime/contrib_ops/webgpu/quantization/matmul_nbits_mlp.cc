@@ -124,21 +124,6 @@ Status ApplySkipSimplifiedLayerNorm(const Tensor* x,
   return context.RunProgram(program);
 }
 
-Status ApplyUnfusedSiluMul(const Tensor* a,
-                           const Tensor* gate_b,
-                           const Tensor* gate_scales,
-                           const Tensor* gate_bias,
-                           const Tensor* up_b,
-                           const Tensor* up_scales,
-                           const Tensor* up_bias,
-                           int64_t K,
-                           int64_t N,
-                           int64_t block_size,
-                           int64_t accuracy_level,
-                           int64_t bits,
-                           onnxruntime::webgpu::ComputeContext& context,
-                           Tensor* y);
-
 class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodeProgram> {
  public:
   MatMulNBitsMlpDecodeProgram(uint32_t tile_size,

@@ -32,7 +32,6 @@ extern OrtEnv* env;
 extern const OrtApi* g_ort;
 
 namespace {
-constexpr const char* kMatMulNBitsAutoTunerEnvVar = "ORT_WEBGPU_MATMUL_NBITS_ENABLE_AUTO_TUNER";
 constexpr const char* kDecodeBenchmarkModeEnvVar = "ORT_WEBGPU_MATMUL_NBITS_BENCHMARK_MODE";
 constexpr const char* kDecodeBenchmarkGraphCaptureEnvVar = "ORT_WEBGPU_MATMUL_NBITS_ENABLE_GRAPH_CAPTURE";
 constexpr const char* kDecodeBenchmarkOptimizedModelPathEnvVar = "ORT_WEBGPU_MATMUL_NBITS_OPTIMIZED_MODEL_PATH";
@@ -46,7 +45,7 @@ enum class DecodeBenchmarkMode {
   kCorrectness,
 };
 
-bool IsMatMulNBitsAutoTunerEnabled();
+bool IsGraphCaptureBenchmarkEnabled();
 bool IsGraphCaptureBenchmarkEnabled();
 bool IsVerboseSessionLogEnabled();
 std::string GetOptimizedModelPath();
@@ -167,7 +166,6 @@ bool IsDecodeBenchmarkPerfMode() {
 
 std::string GetDecodeBenchmarkLabel(const char* shape_label = nullptr) {
   const char* mode_label = IsDecodeBenchmarkPerfMode() ? "perf" : "correctness";
-  const char* tuner_label = IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off";
   const char* graph_label = IsGraphCaptureBenchmarkEnabled() ? "graph_on" : "graph_off";
 
   std::ostringstream stream;
@@ -175,19 +173,8 @@ std::string GetDecodeBenchmarkLabel(const char* shape_label = nullptr) {
   if (shape_label != nullptr && shape_label[0] != '\0') {
     stream << '_' << shape_label;
   }
-  stream << '_' << mode_label << "_auto_gpu_" << tuner_label << '_' << graph_label;
+  stream << '_' << mode_label << "_auto_gpu_" << graph_label;
   return stream.str();
-}
-
-bool IsMatMulNBitsAutoTunerEnabled() {
-  std::string auto_tuner_env = onnxruntime::Env::Default().GetEnvironmentVar(kMatMulNBitsAutoTunerEnvVar);
-  if (auto_tuner_env.empty()) {
-    return false;
-  }
-
-  std::transform(auto_tuner_env.begin(), auto_tuner_env.end(), auto_tuner_env.begin(),
-                 [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
-  return auto_tuner_env != "0" && auto_tuner_env != "false" && auto_tuner_env != "off";
 }
 
 bool IsGraphCaptureBenchmarkEnabled() {
@@ -803,7 +790,6 @@ std::string GetMlpDecodeBenchmarkLabel(MlpDecodeBenchmarkVariant variant, MlpNor
   stream << "fp16_mlp_decode_" << GetMlpNormKindLabel(norm_kind) << '_' << GetMlpVariantLabel(variant) << '_'
          << (IsDecodeBenchmarkPerfMode() ? "perf" : "correctness") << '_'
          << "auto_gpu_"
-         << (IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off") << '_'
          << (IsGraphCaptureBenchmarkEnabled() ? "graph_on" : "graph_off");
   return stream.str();
 }
@@ -830,7 +816,6 @@ std::string GetQkvDecodeBenchmarkLabel(QkvDecodeBenchmarkVariant variant, QkvNor
   stream << "fp16_qkv_norm_" << GetQkvNormKindLabel(norm_kind) << '_' << GetQkvVariantLabel(variant) << '_'
          << (IsDecodeBenchmarkPerfMode() ? "perf" : "correctness") << '_'
          << "auto_gpu_"
-         << (IsMatMulNBitsAutoTunerEnabled() ? "tuner_on" : "tuner_off") << '_'
          << (IsGraphCaptureBenchmarkEnabled() ? "graph_on" : "graph_off");
   return stream.str();
 }
