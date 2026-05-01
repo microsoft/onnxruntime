@@ -128,7 +128,28 @@ static OrtDevice GetOrtDeviceForPluginEp(const OrtEp* ort_ep, gsl::span<const Or
   if (ort_ep->ort_version_supported >= 26 && ort_ep->GetDefaultMemoryDevice != nullptr) {
     const OrtMemoryDevice* memory_device = ort_ep->GetDefaultMemoryDevice(ort_ep);
     if (memory_device != nullptr) {
-      return *static_cast<const OrtDevice*>(memory_device);
+      OrtDevice default_device = *static_cast<const OrtDevice*>(memory_device);
+
+      // Validate that the returned device matches one of the EP's published memory infos.
+      bool matches_published_device = std::any_of(
+          ep_devices.begin(), ep_devices.end(),
+          [&default_device](const OrtEpDevice* ep_device) {
+            if (ep_device->device_memory_info != nullptr &&
+                ep_device->device_memory_info->device == default_device) {
+              return true;
+            }
+            if (ep_device->host_accessible_memory_info != nullptr &&
+                ep_device->host_accessible_memory_info->device == default_device) {
+              return true;
+            }
+            return false;
+          });
+      ORT_ENFORCE(matches_published_device,
+                  "Error creating execution provider '", ep_devices[0]->ep_name,
+                  "': GetDefaultMemoryDevice returned a device that does not match any "
+                  "OrtEpDevice::device_memory_info or OrtEpDevice::host_accessible_memory_info.");
+
+      return default_device;
     }
   }
 
@@ -728,6 +749,17 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
               "OrtEp::GetPreferredDataLayout() returned an invalid data layout: ", static_cast<int>(api_data_layout));
 
   return data_layout_mapping->data_layout;
+}
+
+OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (ort_ep_->ort_version_supported >= 26 && ort_ep_->GetMemoryDeviceByMemType != nullptr) {
+    const OrtMemoryDevice* memory_device = ort_ep_->GetMemoryDeviceByMemType(ort_ep_.get(), mem_type);
+    if (memory_device != nullptr) {
+      return *static_cast<const OrtDevice*>(memory_device);
+    }
+  }
+
+  return Base::GetOrtDeviceByMemType(mem_type);
 }
 
 std::optional<bool> PluginExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,

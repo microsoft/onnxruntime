@@ -2569,6 +2569,42 @@ struct OrtEp {
    * \since Version 1.26.
    */
   ORT_API_T(const OrtMemoryDevice*, GetDefaultMemoryDevice, _In_ const OrtEp* this_ptr);
+
+  /** \brief Get the OrtMemoryDevice for a given OrtMemType.
+   *
+   * Maps an OrtMemType (e.g., OrtMemTypeCPUInput, OrtMemTypeCPUOutput, OrtMemTypeDefault) to the
+   * appropriate OrtMemoryDevice. This is the plugin EP equivalent of
+   * IExecutionProvider::GetOrtDeviceByMemType().
+   *
+   * For GPU-like EPs, a typical implementation returns:
+   * - OrtMemTypeCPUInput → NULL (fall back to CPU)
+   * - OrtMemTypeCPUOutput → a device with HOST_ACCESSIBLE memory (e.g., pinned memory)
+   * - OrtMemTypeDefault → the EP's default device
+   *
+   * The returned pointer must remain valid for the lifetime of the OrtEp instance
+   * (typically by storing the source OrtMemoryInfo objects as members of the EP).
+   *
+   * Returned devices should correspond to one of the EP's published memory infos
+   * (e.g., `OrtEpDevice::device_memory_info` or `OrtEpDevice::host_accessible_memory_info`).
+   *
+   * For OrtMemTypeDefault, the returned device should be consistent with the EP's identity device
+   * (as returned by GetDefaultMemoryDevice or inferred from `OrtEpDevice::device_memory_info`).
+   *
+   * This function may be called concurrently from multiple threads. Implementations must be
+   * thread-safe and return pointers to immutable storage.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] mem_type The memory type to get the device for.
+   * \return The OrtMemoryDevice for the given memory type, or NULL to fall back to the base class
+   *         default behavior for that memory type.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT uses the base class default:
+   *       OrtMemTypeCPUInput/OrtMemTypeCPUOutput → CPU device, OrtMemTypeDefault → EP's default device.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(const OrtMemoryDevice*, GetMemoryDeviceByMemType, _In_ const OrtEp* this_ptr,
+            _In_ OrtMemType mem_type);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
