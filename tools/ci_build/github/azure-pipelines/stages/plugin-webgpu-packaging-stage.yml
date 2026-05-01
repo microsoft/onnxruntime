@@ -100,6 +100,27 @@ stages:
         steps:
         - checkout: none
 
+        # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
+        # Since we skip checkout for this packaging job, create a minimal config.
+        - task: PowerShell@2
+          displayName: 'Create tsaoptions.json for SDL'
+          inputs:
+            targetType: inline
+            script: |
+              $configDir = "$(Build.SourcesDirectory)/.config"
+              New-Item -ItemType Directory -Path $configDir -Force
+              $tsaConfig = @{
+                codebaseName = "onnxruntime"
+                instanceUrl = "https://aiinfra.visualstudio.com/"
+                projectName = "ONNX Runtime"
+                areaPath = "ONNX Runtime\\Engineering Systems"
+                notificationAliases = @("ort-engsys@microsoft.com")
+                ignoreBranchName = $true
+                template = "AIINFRA_TSA"
+              } | ConvertTo-Json
+              Set-Content -Path "$configDir/tsaoptions.json" -Value $tsaConfig -Encoding UTF8
+              Write-Host "Created tsaoptions.json at $configDir/tsaoptions.json"
+
         - ${{ if eq(parameters.build_windows_x64, true) }}:
           - task: DownloadPipelineArtifact@2
             displayName: 'Download webgpu_plugin_win_x64'
