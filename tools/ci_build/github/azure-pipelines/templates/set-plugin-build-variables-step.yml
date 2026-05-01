@@ -17,11 +17,11 @@ parameters:
 - name: version_file
   type: string
 
-# Python executable used to run the helper script. This is platform-specific:
-# Windows/Linux agents expose `python`, while macOS jobs in this pipeline use `python3`.
+# Python executable used to run the helper script. Default is python3 which works on
+# Linux (including aarch64) and macOS. Windows callers must override with 'python'.
 - name: python_command
   type: string
-  default: 'python'
+  default: 'python3'
 
 steps:
 # Set package version string

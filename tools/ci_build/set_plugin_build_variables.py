@@ -20,7 +20,7 @@ import sys
 
 def main():
     if len(sys.argv) != 3:
-        print("Usage: {} <package_version> <version_file_rel>".format(sys.argv[0]))
+        print(f"Usage: {sys.argv[0]} <package_version> <version_file_rel>")
         sys.exit(1)
 
     package_version = sys.argv[1]
@@ -33,18 +33,18 @@ def main():
     src_root = os.environ.get("BUILD_SOURCESDIRECTORY", "")
     version_file = os.path.join(src_root, version_file_rel)
     if not os.path.isfile(version_file):
-        print("##vso[task.logissue type=error]Cannot find version number file at: {}".format(version_file))
+        print(f"##vso[task.logissue type=error]Cannot find version number file at: {version_file}")
         sys.exit(1)
 
-    with open(version_file, "r") as f:
+    with open(version_file) as f:
         original_ver = f.read().strip()
 
     if not original_ver:
         print("##vso[task.logissue type=error]VERSION_NUMBER is empty.")
         sys.exit(1)
 
-    print("Original version: {}".format(original_ver))
-    print("Package version type: {}".format(package_version))
+    print(f"Original version: {original_ver}")
+    print(f"Package version type: {package_version}")
 
     if package_version == "release":
         version_string = original_ver
@@ -59,64 +59,66 @@ def main():
 
     elif package_version == "dev":
         try:
-            commit_sha = subprocess.check_output(
-                ["git", "rev-parse", "--short=8", "HEAD"],
-                cwd=src_root,
-            ).decode("utf-8").strip()
-            date_str = subprocess.check_output(
-                ["git", "show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"],
-                cwd=src_root,
-            ).decode("utf-8").strip()
+            commit_sha = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "--short=8", "HEAD"],
+                    cwd=src_root,
+                )
+                .decode("utf-8")
+                .strip()
+            )
+            date_str = (
+                subprocess.check_output(
+                    ["git", "show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"],
+                    cwd=src_root,
+                )
+                .decode("utf-8")
+                .strip()
+            )
         except Exception as e:
-            print("##vso[task.logissue type=error]Failed to get git info: {}".format(e))
+            print(f"##vso[task.logissue type=error]Failed to get git info: {e}")
             sys.exit(1)
-        version_string = "{}-dev.{}+{}".format(original_ver, date_str, commit_sha)
+        version_string = f"{original_ver}-dev.{date_str}+{commit_sha}"
         # Prefix the SHA with "commit-" so the pre-release identifier always contains a
         # non-digit. Otherwise, an all-numeric short SHA with a leading zero (e.g. "01234567")
         # would violate SemVer 2.0.0's rule against leading zeros in numeric identifiers.
-        universal_version = "{}-dev.{}.commit-{}".format(original_ver, date_str, commit_sha)
-        python_version = "{}.dev{}".format(original_ver, date_str)
+        universal_version = f"{original_ver}-dev.{date_str}.commit-{commit_sha}"
+        python_version = f"{original_ver}.dev{date_str}"
 
     else:
         print(
-            "##vso[task.logissue type=error]Unknown package_version '{}'. Must be 'release', 'RC', or 'dev'.".format(
-                package_version
-            )
+            f"##vso[task.logissue type=error]Unknown package_version '{package_version}'. Must be 'release', 'RC', or 'dev'."
         )
         sys.exit(1)
 
-    print("Plugin package version string: {}".format(version_string))
-    print("Plugin universal package version string: {}".format(universal_version))
-    print("Plugin Python package version string: {}".format(python_version))
+    print(f"Plugin package version string: {version_string}")
+    print(f"Plugin universal package version string: {universal_version}")
+    print(f"Plugin Python package version string: {python_version}")
 
     # Validate semver 2.0.0 format
     semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
     if not re.match(semver_pattern, version_string):
-        print("##vso[task.logissue type=error]Version string '{}' is not valid semver 2.0.0.".format(version_string))
+        print(f"##vso[task.logissue type=error]Version string '{version_string}' is not valid semver 2.0.0.")
         sys.exit(1)
 
     # Validate universal version (SemVer 2.0.0, without build metadata)
     universal_semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
     if not re.match(universal_semver_pattern, universal_version):
         print(
-            "##vso[task.logissue type=error]Universal version string '{}' is not valid semver 2.0.0 (without build metadata).".format(
-                universal_version
-            )
+            f"##vso[task.logissue type=error]Universal version string '{universal_version}' is not valid semver 2.0.0 (without build metadata)."
         )
         sys.exit(1)
 
     # Validate Python version (PEP 440)
     pep440_pattern = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?$"
     if not re.match(pep440_pattern, python_version):
-        print(
-            "##vso[task.logissue type=error]Python version string '{}' is not valid PEP 440.".format(python_version)
-        )
+        print(f"##vso[task.logissue type=error]Python version string '{python_version}' is not valid PEP 440.")
         sys.exit(1)
 
-    print("##vso[task.setvariable variable=PluginPackageVersion]{}".format(version_string))
-    print("##vso[task.setvariable variable=PluginUniversalPackageVersion]{}".format(universal_version))
-    print("##vso[task.setvariable variable=PluginPythonPackageVersion]{}".format(python_version))
-    print("##vso[task.setvariable variable=PluginEpVersionDefine]onnxruntime_PLUGIN_EP_VERSION={}".format(version_string))
+    print(f"##vso[task.setvariable variable=PluginPackageVersion]{version_string}")
+    print(f"##vso[task.setvariable variable=PluginUniversalPackageVersion]{universal_version}")
+    print(f"##vso[task.setvariable variable=PluginPythonPackageVersion]{python_version}")
+    print(f"##vso[task.setvariable variable=PluginEpVersionDefine]onnxruntime_PLUGIN_EP_VERSION={version_string}")
 
 
 if __name__ == "__main__":
