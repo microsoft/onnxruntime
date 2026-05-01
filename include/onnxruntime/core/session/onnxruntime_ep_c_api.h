@@ -2583,12 +2583,19 @@ struct OrtEp {
   /** \brief Get the OrtMemoryDevice for a given OrtMemType.
    *
    * Maps an OrtMemType (e.g., OrtMemTypeCPUInput, OrtMemTypeCPUOutput, OrtMemTypeDefault) to the
-   * appropriate OrtMemoryDevice.
+   * appropriate OrtMemoryDevice. ORT's allocation planner uses this to determine where tensors
+   * should be placed based on how they are consumed.
    *
-   * For GPU-like EPs, a typical implementation returns:
-   * - OrtMemTypeCPUInput → NULL (fall back to CPU)
-   * - OrtMemTypeCPUOutput → a device with HOST_ACCESSIBLE memory (e.g., pinned memory)
-   * - OrtMemTypeDefault → the EP's default device
+   * Semantics of each OrtMemType:
+   * - OrtMemTypeDefault: The device where the EP's kernels operate (its primary compute device).
+   *   Typically the same device returned by GetDefaultMemoryDevice().
+   * - OrtMemTypeCPUInput: The device for inputs that a kernel declares as "on CPU" (e.g., shape
+   *   tensors). Returning an OrtMemoryDevice with HOST_ACCESSIBLE memory (e.g., pinned memory)
+   *   can reduce copy overhead when data flows from CPU nodes into the EP. Returning NULL falls
+   *   back to plain CPU.
+   * - OrtMemTypeCPUOutput: The device for outputs that must be CPU-accessible. Returning an
+   *   OrtMemoryDevice with HOST_ACCESSIBLE memory allows both CPU and device access without
+   *   requiring explicit copies.
    *
    * The returned pointer must remain valid for the lifetime of the OrtEp instance
    * (typically by storing the source OrtMemoryInfo objects as members of the EP).
