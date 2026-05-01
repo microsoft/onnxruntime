@@ -44,8 +44,9 @@ The plugin DLL will be at `build/webgpu.plugin/Release/Release/onnxruntime_provi
 ## Building the NuGet Package
 
 Use `pack_nuget.py` to stage native binaries and run `dotnet pack`. The script copies
-everything into a temporary staging directory under the output folder — the source tree
-is never modified.
+everything into a staging directory before building — the source tree is never modified.
+By default, an auto-cleaned temporary directory is used; pass `--staging-dir` to use an
+explicit one (required when running with `--build-only` or `--pack-only`).
 
 ### Pack with a local build (single platform)
 
@@ -78,7 +79,7 @@ python pack_nuget.py --version 0.1.0-dev `
 | `--binary-dir-win-arm64` | No | — | Path to directory containing win-arm64 binaries |
 | `--binary-dir-linux-x64` | No | — | Path to directory containing linux-x64 binaries |
 | `--binary-dir-macos-arm64` | No | — | Path to directory containing osx-arm64 (macOS arm64) binaries |
-| `--staging-dir` | No | `<output-dir>/_staging` | Explicit staging directory. Caller owns its lifecycle (no auto-cleanup) |
+| `--staging-dir` | No | auto-cleaned temp dir | Explicit staging directory. Required with `--build-only` / `--pack-only`; caller owns its lifecycle (no auto-cleanup) |
 | `--build-only` | No | `false` | Stage and build the managed DLL only; skip `dotnet pack`. Preserves the staging directory for a later `--pack-only` run |
 | `--pack-only` | No | `false` | Skip staging/build and run `dotnet pack` against an existing staging directory (mutually exclusive with `--build-only`) |
 | `--required-platforms` | No | — | Comma-separated list of platforms that MUST be staged successfully (CI-mode safety net) |
