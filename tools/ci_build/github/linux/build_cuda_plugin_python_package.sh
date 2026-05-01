@@ -34,7 +34,7 @@ docker run --rm \
     --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume "${BUILD_ARTIFACTSTAGINGDIRECTORY}:/staging" \
-    --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+    --env PIP_INDEX_URL \
     --env "ORT_CUDA_PLUGIN_EP_VERSION=${VERSION}" \
     --env "ORT_CUDA_PLUGIN_EP_PACKAGE_NAME=${PACKAGE_NAME}" \
     "$DOCKER_IMAGE" \

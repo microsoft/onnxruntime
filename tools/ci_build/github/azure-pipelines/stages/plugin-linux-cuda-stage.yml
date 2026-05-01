@@ -84,26 +84,25 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
+      - template: ../templates/setup-feeds-and-python-steps.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
+
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
 
-      - template: ../templates/setup-feeds-and-python-steps.yml
-        parameters:
-          architecture: ${{ parameters.arch }}
-
       - template: ../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "
-          --network=host
-          --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
-          --build-arg PIP_INDEX_URL=$(PIP_INDEX_URL)
-          --build-arg TRT_VERSION=
-          --build-arg BUILD_UID=$( id -u )
-          "
+          DockerBuildArgs: >-
+            --network=host
+            --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+            --build-arg PIP_INDEX_URL
+            --build-arg TRT_VERSION=
+            --build-arg BUILD_UID=$( id -u )
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
 
       - script: >-
@@ -183,26 +182,25 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
+      - template: ../templates/setup-feeds-and-python-steps.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
+
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
 
-      - template: ../templates/setup-feeds-and-python-steps.yml
-        parameters:
-          architecture: ${{ parameters.arch }}
-
       - template: ../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "
-          --network=host
-          --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
-          --build-arg PIP_INDEX_URL=$(PIP_INDEX_URL)
-          --build-arg TRT_VERSION=
-          --build-arg BUILD_UID=$( id -u )
-          "
+          DockerBuildArgs: >-
+            --network=host
+            --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+            --build-arg PIP_INDEX_URL
+            --build-arg TRT_VERSION=
+            --build-arg BUILD_UID=$( id -u )
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
 
       - task: DownloadPipelineArtifact@2

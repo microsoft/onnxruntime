@@ -69,6 +69,7 @@ parameters:
 - name: python_package_name
   type: string
   displayName: 'Python package distribution name'
+  default: ''
 
 stages:
     # Windows x64
