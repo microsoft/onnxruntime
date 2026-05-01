@@ -14,7 +14,7 @@
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
-#include "contrib_ops/cuda/bert/gqa_unfused_attention.h"
+#include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
@@ -513,7 +513,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // GQA-capable unfused fallback (issue #28195).
   // Activates when Flash / MEA / XQA are all ineligible and KV is not quantized.
   // Supports any head_size (FP32 QK accumulation), GQA, sliding window, softcap.
-  // See LaunchGqaUnfusedAttention in contrib_ops/cuda/bert/gqa_unfused_attention.h.
+  // See LaunchUnfusedAttention in contrib_ops/cuda/bert/unfused_attention.h.
   // ---------------------------------------------------------------------
   IAllocatorUniquePtr<void> unfused_scratch;
   if (!data.use_xqa && !data.use_flash_attention && !data.use_memory_efficient_attention &&
@@ -538,7 +538,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
     const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H_v * sizeof(T));
     const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
-        onnxruntime::contrib::cuda::GetGqaUnfusedAttentionWorkspaceSize(
+        onnxruntime::contrib::cuda::GetUnfusedAttentionWorkspaceSize(
             static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
     const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
 

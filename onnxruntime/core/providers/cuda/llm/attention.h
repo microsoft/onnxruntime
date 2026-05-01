@@ -31,6 +31,11 @@ class Attention final : public CudaKernel {
       Tensor* Y, Tensor* present_key, Tensor* present_value,
       const attention_helper::AttentionParameters& parameters) const;
 
+  // Unified unfused fallback. Handles:
+  //   - GQA (q_num_heads != kv_num_heads) without K/V head replication.
+  //   - fp16/bf16 with large head_size (FP32 QK accumulation, fixes #28195).
+  //   - past_key+past_value, attn_mask (bool/float), nonpad_kv_seqlen.
+  //   - output_qk (kQK mode: scale * Q @ K^T, before softcap/mask/softmax).
   Status RunUnfusedAttention(
       OpKernelContext* context,
       const Tensor* Q, const Tensor* K, const Tensor* V,
@@ -38,20 +43,6 @@ class Attention final : public CudaKernel {
       const Tensor* nonpad_kv_seqlen,
       Tensor* Y, Tensor* present_key, Tensor* present_value,
       Tensor* output_qk,
-      const attention_helper::AttentionParameters& parameters) const;
-
-  // GQA-capable unfused fallback. Handles:
-  //   - GQA (q_num_heads != kv_num_heads) without K/V head replication.
-  //   - fp16/bf16 with large head_size (FP32 QK accumulation, fixes #28195).
-  //   - past_key+past_value, attn_mask (bool/float), nonpad_kv_seqlen.
-  // Does not support: output_qk
-  // (output_qk modes other than kNone are rejected upstream).
-  Status RunGqaUnfusedAttention(
-      OpKernelContext* context,
-      const Tensor* Q, const Tensor* K, const Tensor* V,
-      const Tensor* attn_mask, const Tensor* past_key, const Tensor* past_value,
-      const Tensor* nonpad_kv_seqlen,
-      Tensor* Y, Tensor* present_key, Tensor* present_value,
       const attention_helper::AttentionParameters& parameters) const;
 
   Status ConvertAttnMaskToBias(

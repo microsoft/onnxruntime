@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// GQA-capable unfused CUDA attention kernel. See header for contract.
+// Unified unfused CUDA attention kernel. See header for contract.
 
+#include <algorithm>
 #include <math_constants.h>
 #include <cub/cub.cuh>
 #include <cuda_bf16.h>
@@ -13,7 +14,7 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "contrib_ops/cuda/bert/gqa_unfused_attention.h"
+#include "contrib_ops/cuda/bert/unfused_attention.h"
 
 using onnxruntime::cuda::OrtToCudaType;
 
@@ -38,8 +39,35 @@ __device__ __forceinline__ float ToFloat<__half>(__half v) { return __half2float
 template <>
 __device__ __forceinline__ float ToFloat<__nv_bfloat16>(__nv_bfloat16 v) { return __bfloat162float(v); }
 
+// Device helper: convert float to T.
+template <typename T>
+__device__ __forceinline__ T FromFloat(float v);
+template <>
+__device__ __forceinline__ float FromFloat<float>(float v) { return v; }
+template <>
+__device__ __forceinline__ __half FromFloat<__half>(float v) { return __float2half(v); }
+template <>
+__device__ __forceinline__ __nv_bfloat16 FromFloat<__nv_bfloat16>(float v) { return __float2bfloat16(v); }
+
 inline size_t QkElementCount(int batch_size, int num_heads, int q_seq, int total_kv) {
   return SafeInt<size_t>(batch_size) * num_heads * q_seq * total_kv;
+}
+
+// ---------------------------------------------------------------------------
+// CopyQK kernel: copies FP32 QK scratch to T output with scale applied.
+// output_qk[i] = T(qk_fp32[i] * scale)   for i in [0, total_elements).
+// ---------------------------------------------------------------------------
+template <typename T, int TPB = 256>
+__global__ void ScaledCopyQkKernel(
+    const float* __restrict__ qk_fp32,
+    T* __restrict__ output_qk,
+    const float scale,
+    const int64_t total_elements) {
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * TPB + threadIdx.x;
+       idx < total_elements;
+       idx += static_cast<int64_t>(gridDim.x) * TPB) {
+    output_qk[idx] = FromFloat<T>(qk_fp32[idx] * scale);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -56,7 +84,7 @@ inline size_t QkElementCount(int batch_size, int num_heads, int q_seq, int total
 // total_kv_length. Handles fully-masked rows by emitting zeros (no NaN).
 // ---------------------------------------------------------------------------
 template <typename T, int TPB>
-__global__ void GqaUnfusedSoftmaxKernel(
+__global__ void UnfusedSoftmaxKernel(
     const int q_sequence_length,
     const int total_kv_length,
     const int num_heads,  // N_q
@@ -68,6 +96,7 @@ __global__ void GqaUnfusedSoftmaxKernel(
     const int* __restrict__ seqlens_k,
     const bool is_causal,
     const int local_window_size,
+    const int past_kv_length,
     const float scale,
     const float softcap,
     T* __restrict__ softmax_out) {
@@ -82,12 +111,13 @@ __global__ void GqaUnfusedSoftmaxKernel(
     if (v < kv_end) kv_end = v;
     if (v < 0) kv_end = 0;
   }
-  // past (number of KV positions before the current query tokens) must be
-  // per-batch when seqlens_k is provided, since different batches can have
-  // different amounts of valid past context. Using the global total_kv_length
-  // would over-estimate past for short batches and shift the sliding-window
-  // start past kv_end, producing an all-masked (zero) row.
-  const int past = kv_end - q_sequence_length;
+  // past_kv_length is the number of KV positions that precede the current query
+  // tokens. For upper-left causal alignment (ONNX Attention with no past),
+  // this is 0. For lower-right alignment (decode with past), this is
+  // total_kv_length - q_sequence_length.
+  // When seqlens_k varies per batch (GQA sliding window), derive per-batch
+  // so the window cutoff stays within the valid range for shorter batches.
+  const int past = (seqlens_k != nullptr) ? (kv_end - q_sequence_length) : past_kv_length;
   const int q_pos = past + q_in_head;
 
   int end = kv_end;
@@ -191,16 +221,16 @@ __global__ void GqaUnfusedSoftmaxKernel(
 }
 
 template <typename T>
-void LaunchGqaUnfusedSoftmax(
+void LaunchUnfusedSoftmax(
     cudaStream_t stream,
-    const GqaUnfusedAttentionParams& params,
+    const UnfusedAttentionParams& params,
     const float* qk_in,
     const T* attn_bias,
     T* softmax_out) {
   const dim3 grid(params.num_heads * params.q_sequence_length, params.batch_size, 1);
   const bool has_bias = (attn_bias != nullptr);
   constexpr int TPB = 256;
-  GqaUnfusedSoftmaxKernel<T, TPB><<<grid, TPB, 0, stream>>>(
+  UnfusedSoftmaxKernel<T, TPB><<<grid, TPB, 0, stream>>>(
       params.q_sequence_length,
       params.total_kv_length,
       params.num_heads,
@@ -212,6 +242,7 @@ void LaunchGqaUnfusedSoftmax(
       params.seqlens_k,
       params.is_causal,
       params.local_window_size,
+      params.past_kv_length,
       params.scale,
       params.softcap,
       softmax_out);
@@ -250,7 +281,7 @@ template <typename T>
 common::Status LaunchQkGemmFp32(
     const cudaDeviceProp& /*device_prop*/,
     cublasHandle_t cublas,
-    const GqaUnfusedAttentionParams& params,
+    const UnfusedAttentionParams& params,
     const T* query,
     const T* key,
     float* qk_out) {
@@ -292,7 +323,7 @@ common::Status LaunchQkGemmFp32(
       CUBLAS_GEMM_DEFAULT);
 
   if (status != CUBLAS_STATUS_SUCCESS) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GqaUnfusedAttention QK GEMM failed: ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "UnfusedAttention QK GEMM failed: ", status);
   }
   return common::Status::OK();
 }
@@ -312,7 +343,7 @@ common::Status LaunchQkGemmFp32(
 template <typename T>
 common::Status LaunchAttnVGemm(
     cublasHandle_t cublas,
-    const GqaUnfusedAttentionParams& params,
+    const UnfusedAttentionParams& params,
     const T* softmax_out,
     const T* value,
     T* output) {
@@ -347,7 +378,7 @@ common::Status LaunchAttnVGemm(
       CUBLAS_COMPUTE_32F,
       CUBLAS_GEMM_DEFAULT);
   if (status != CUBLAS_STATUS_SUCCESS) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GqaUnfusedAttention AV GEMM failed: ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "UnfusedAttention AV GEMM failed: ", status);
   }
   return common::Status::OK();
 }
@@ -357,10 +388,10 @@ common::Status LaunchAttnVGemm(
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-size_t GetGqaUnfusedAttentionWorkspaceSize(int batch_size,
-                                           int num_heads,
-                                           int q_sequence_length,
-                                           int total_kv_length) {
+size_t GetUnfusedAttentionWorkspaceSize(int batch_size,
+                                        int num_heads,
+                                        int q_sequence_length,
+                                        int total_kv_length) {
   const size_t elems = QkElementCount(batch_size, num_heads, q_sequence_length, total_kv_length);
   // FP32 QK scratch + T softmax scratch. We always allocate sizeof(float) per
   // element for the T scratch too (upper bound); caller can cast appropriately.
@@ -370,26 +401,27 @@ size_t GetGqaUnfusedAttentionWorkspaceSize(int batch_size,
 }
 
 template <typename T>
-common::Status LaunchGqaUnfusedAttention(
+common::Status LaunchUnfusedAttention(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,
-    const GqaUnfusedAttentionParams& params,
+    const UnfusedAttentionParams& params,
     const T* query,
     const T* key,
     const T* value,
     const T* attn_bias,
     T* output,
-    void* workspace) {
+    void* workspace,
+    T* output_qk) {
   ORT_RETURN_IF_NOT(params.batch_size > 0 && params.num_heads > 0 && params.kv_num_heads > 0 &&
                         params.head_size > 0 && params.v_head_size > 0 &&
                         params.q_sequence_length > 0 && params.total_kv_length > 0 &&
                         params.max_kv_length >= params.total_kv_length,
-                    "GqaUnfusedAttention: invalid params.");
+                    "UnfusedAttention: invalid params.");
   ORT_RETURN_IF_NOT(params.num_heads % params.kv_num_heads == 0,
-                    "GqaUnfusedAttention: num_heads (", params.num_heads,
+                    "UnfusedAttention: num_heads (", params.num_heads,
                     ") must be a multiple of kv_num_heads (", params.kv_num_heads, ").");
-  ORT_RETURN_IF(workspace == nullptr, "GqaUnfusedAttention: workspace is null.");
+  ORT_RETURN_IF(workspace == nullptr, "UnfusedAttention: workspace is null.");
 
   const size_t elems = QkElementCount(params.batch_size, params.num_heads,
                                       params.q_sequence_length, params.total_kv_length);
@@ -400,7 +432,21 @@ common::Status LaunchGqaUnfusedAttention(
 
   ORT_RETURN_IF_ERROR((LaunchQkGemmFp32<T>(device_prop, cublas, params, query, key, qk_fp32)));
 
-  LaunchGqaUnfusedSoftmax<T>(stream, params, qk_fp32, attn_bias, softmax_T);
+  // Copy scaled QK to output_qk BEFORE softcap/mask/softmax.
+  // output_qk[i] = T(qk_fp32[i] * scale) — this is "kQK" mode (scale * Q @ K^T).
+  // Note: When seqlens_k is provided, positions [seqlens_k[b], total_kv) in output_qk
+  // may contain stale KV cache data. Consumers of output_qk should only read positions
+  // [0, seqlens_k[b]) for batch b.
+  if (output_qk != nullptr) {
+    const int64_t total = static_cast<int64_t>(elems);
+    constexpr int kTPB = 256;
+    constexpr int kMaxBlocks = 65535;
+    const int blocks = static_cast<int>(std::min(static_cast<int64_t>(kMaxBlocks), (total + kTPB - 1) / kTPB));
+    ScaledCopyQkKernel<T, kTPB><<<blocks, kTPB, 0, stream>>>(qk_fp32, output_qk, params.scale, total);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  }
+
+  LaunchUnfusedSoftmax<T>(stream, params, qk_fp32, attn_bias, softmax_T);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   ORT_RETURN_IF_ERROR((LaunchAttnVGemm<T>(cublas, params, softmax_T, value, output)));
@@ -409,18 +455,18 @@ common::Status LaunchGqaUnfusedAttention(
 }
 
 // Explicit template instantiations.
-template common::Status LaunchGqaUnfusedAttention<__half>(
+template common::Status LaunchUnfusedAttention<__half>(
     const cudaDeviceProp&, cublasHandle_t, cudaStream_t,
-    const GqaUnfusedAttentionParams&, const __half*, const __half*, const __half*,
-    const __half*, __half*, void*);
-template common::Status LaunchGqaUnfusedAttention<__nv_bfloat16>(
+    const UnfusedAttentionParams&, const __half*, const __half*, const __half*,
+    const __half*, __half*, void*, __half*);
+template common::Status LaunchUnfusedAttention<__nv_bfloat16>(
     const cudaDeviceProp&, cublasHandle_t, cudaStream_t,
-    const GqaUnfusedAttentionParams&, const __nv_bfloat16*, const __nv_bfloat16*,
-    const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, void*);
-template common::Status LaunchGqaUnfusedAttention<float>(
+    const UnfusedAttentionParams&, const __nv_bfloat16*, const __nv_bfloat16*,
+    const __nv_bfloat16*, const __nv_bfloat16*, __nv_bfloat16*, void*, __nv_bfloat16*);
+template common::Status LaunchUnfusedAttention<float>(
     const cudaDeviceProp&, cublasHandle_t, cudaStream_t,
-    const GqaUnfusedAttentionParams&, const float*, const float*, const float*,
-    const float*, float*, void*);
+    const UnfusedAttentionParams&, const float*, const float*, const float*,
+    const float*, float*, void*, float*);
 
 }  // namespace cuda
 }  // namespace contrib

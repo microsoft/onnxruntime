@@ -31,34 +31,6 @@ Status LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
     cudaStream_t stream,
     int max_threads_per_block);
 
-// Convert nonpad_kv_seqlen to an additive attention bias for the MHA unfused path.
-// Generates a (batch_size, q_seq_len, total_seq_len) tensor where:
-//   position t < nonpad_kv_seqlen[b] → 0.0 (attend)
-//   position t >= nonpad_kv_seqlen[b] → mask_filter_value (mask out)
-template <typename T>
-Status LaunchConvertNonpadKvSeqlenToAttentionBias(
-    const int64_t* nonpad_kv_seqlen,
-    T* attention_bias,
-    int batch_size,
-    int q_seq_len,
-    int total_seq_len,
-    float mask_filter_value,
-    cudaStream_t stream,
-    int max_threads_per_block);
-
-// Additively compose an addend bias into an existing bias buffer in-place.
-// Supports cyclic broadcasting: addend of size [q, t] is repeated over batch
-// to compose with a bias of size [B, q, t]. When both have the same number
-// of elements (e.g. 4D mask [B, 1, q, t]), it performs a direct element-wise add.
-template <typename T>
-Status LaunchAddBiasInPlace(
-    T* bias,
-    const T* addend,
-    int64_t total_elements,
-    int64_t addend_elements,
-    cudaStream_t stream,
-    int max_threads_per_block);
-
 // Zero output elements for batches where seqlens_k == 0 (fully masked).
 // Used in the MEA path only: CUTLASS epilogue computes 1/s_prime where s_prime=0,
 // producing NaN for fully-masked batches. This kernel overwrites those NaN outputs

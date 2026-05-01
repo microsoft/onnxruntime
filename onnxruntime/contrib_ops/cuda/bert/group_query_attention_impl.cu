@@ -38,7 +38,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
-#include "contrib_ops/cuda/bert/gqa_unfused_attention.h"
+#include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_qkv.cuh"
@@ -1095,7 +1095,7 @@ Status UnfusedGqaAttention(
   }
 
   // Step 3: run unfused attention with FP32 QK accumulation.
-  GqaUnfusedAttentionParams p;
+  UnfusedAttentionParams p;
   p.batch_size = batch_size;
   p.num_heads = num_heads;
   p.kv_num_heads = kv_num_heads;
@@ -1113,18 +1113,20 @@ Status UnfusedGqaAttention(
   p.broadcast_attn_bias_dim_1 = false;
   p.is_causal = parameters.is_unidirectional;
   p.local_window_size = parameters.local_window_size;  // -1 disables
+  p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.seqlens_k = data.total_seq_lens;
 
-  ORT_RETURN_IF_ERROR((LaunchGqaUnfusedAttention<T>(
+  ORT_RETURN_IF_ERROR((LaunchUnfusedAttention<T>(
       device_prop, cublas, stream, p,
       data.unfused_q_bnsh,
       reinterpret_cast<const T*>(data.present_key),
       reinterpret_cast<const T*>(data.present_value),
       /*attn_bias=*/nullptr,
       data.unfused_y_bnsh,
-      data.unfused_workspace)));
+      data.unfused_workspace,
+      /*output_qk=*/nullptr)));
 
   // Step 4: transpose output BNSH → BSNH into data.output.
   // Use p.v_head_size (== head_size per ORT_ENFORCE) for semantic correctness.

@@ -205,11 +205,11 @@ struct GroupQueryAttentionData {
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
 
-  // Unfused fallback buffers (see LaunchGqaUnfusedAttention in gqa_unfused_attention.h):
+  // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
   //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
   //   unfused_y_bnsh : [B, N_q, S_q, H_v] (output BNSH, transposed to BSNH before leaving op)
   //   unfused_workspace: FP32 QK scratch + T softmax scratch (sized by
-  //                      GetGqaUnfusedAttentionWorkspaceSize)
+  //                      GetUnfusedAttentionWorkspaceSize)
   T* unfused_q_bnsh = nullptr;
   T* unfused_y_bnsh = nullptr;
   void* unfused_workspace = nullptr;
