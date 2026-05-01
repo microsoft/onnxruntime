@@ -9,6 +9,9 @@ set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 # mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
 # use internal MLAS headers like mlasi.h.
 set(mlas_private_compile_definitions)
+if(onnxruntime_BUILD_UNIT_TESTS)
+  list(APPEND mlas_private_compile_definitions MLAS_ENABLE_TEST_HOOKS)
+endif()
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
