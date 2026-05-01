@@ -325,6 +325,25 @@ For plugin EPs, this resolution works as follows:
 > which the `PluginExecutionProvider` wrapper overrides to delegate to the OrtEp hooks described
 > above.
 
+#### Downstream consumer CPU location override
+
+When a producer node's output is placed on CPU, the planner additionally consults **downstream
+consumer** nodes. For each consumer, it calls `GetMemoryDeviceByMemType(OrtMemTypeCPUInput)` to
+ask: "Where would you prefer this CPU-resident data to live?" This allows an EP to express a
+preference for a specific CPU-accessible memory type (e.g., pinned host memory) without requiring
+an explicit copy node.
+
+If the consumer's suggested device is CPU-typed, the planner selects the "best" device among all
+consumers. If the suggested device uses CPU-accessible memory but is not strictly a CPU device
+(e.g., pinned memory on a GPU device), the planner uses that device directly.
+
+> **Compiling EPs with a CPU default device**: Because the fused node's kernel definition does not
+> declare per-input memory types, the planner resolves the fused node's own inputs with
+> `OrtMemTypeDefault`. However, if the compiling EP uses a CPU default memory device (and thus no
+> Memcpy nodes are inserted), the consumer override path above still applies — the planner calls
+> `GetMemoryDeviceByMemType(OrtMemTypeCPUInput)` to determine the preferred CPU-accessible
+> placement for upstream CPU outputs consumed by the fused node.
+
 ### 5. Initializer Allocation
 
 Model initializers (weights, biases, etc.) are allocated during session initialization — before
@@ -353,6 +372,24 @@ where it needs to be placed.
 
 If the EP registered a read-only allocator (`OrtReadOnlyAllocator`), ORT uses it preferentially
 for initializers instead of the standard device allocator.
+
+#### Compiling EPs and `drop_constant_initializers`
+
+A compiling EP (one that implements `OrtEp::Compile()`) fuses supported nodes into a single
+compiled subgraph. The `OrtNodeFusionOptions.drop_constant_initializers` field controls how
+initializers used by the fused subgraph are handled:
+
+- **`drop_constant_initializers = false`** (default): Constant initializers are listed as inputs
+  to the fused node. ORT allocates and retains the initializer OrtValues so they can be passed
+  to the fused node's `Compute` function at inference time.
+
+- **`drop_constant_initializers = true`**: The EP signals that it has internally copied or
+  embedded the initializer data within its compiled representation. ORT excludes these constant
+  initializers from the fused node's input list. If no other EP or node references the
+  initializer, ORT can release the associated OrtValue, freeing memory.
+
+> For more details on graph partitioning, node fusion, and the `Compile` workflow, refer to
+> a separate graph partitioning document (TODO).
 
 ---
 
