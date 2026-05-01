@@ -799,6 +799,68 @@ TEST(ModelEditorAPITest, SymbolicDimensions_DistinctNamesPreserved) {
   EXPECT_STREQ(queried_sym[2], "W") << "dim 2 name must be preserved (bug would yield \"N\")";
 }
 
+// Regression test: partially-named symbolic dimensions. Covers the case where
+// only some dimensions carry a symbolic name and others are unnamed (or static).
+// This is the exact example given in the Basic_CApi test's doc comment:
+//   "call SetDimensions with {-1, 3, 2} and SetSymbolicDimensions with
+//    {\"N\", nullptr, nullptr} to create a shape of {\"N\", 3, 2}"
+// The C++ API wrapper represents "no name" as an empty string.
+TEST(ModelEditorAPITest, SymbolicDimensions_PartiallyNamedDimensions) {
+  // Shape: [N, 3, -1]
+  //   dim 0 = dynamic, named "N"
+  //   dim 1 = static, size 3
+  //   dim 2 = dynamic, unnamed
+  Ort::Graph graph;
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
+
+  std::vector<int64_t> dims = {-1, 3, -1};
+  std::vector<std::string> sym = {"N", "", ""};  // static and unnamed dims get empty strings
+
+  TensorTypeAndShapeInfo input_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims, &sym);
+  auto input_type_info = TypeInfo::CreateTensorInfo(input_info.GetConst());
+  graph_inputs.emplace_back("x", input_type_info.GetConst());
+
+  TensorTypeAndShapeInfo output_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims, &sym);
+  auto output_type_info = TypeInfo::CreateTensorInfo(output_info.GetConst());
+  graph_outputs.emplace_back("y", output_type_info.GetConst());
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  Ort::Node identity("Identity", onnxruntime::kOnnxDomain, "id", {"x"}, {"y"});
+  graph.AddNode(identity);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 21}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  auto session = CreateSession(*ort_env, model);
+
+  auto queried_type_info = session.GetInputTypeInfo(0);
+  auto queried_tensor_info = queried_type_info.GetTensorTypeAndShapeInfo();
+
+  auto queried_dims = queried_tensor_info.GetShape();
+  ASSERT_EQ(queried_dims.size(), 3u);
+  EXPECT_EQ(queried_dims[0], -1);
+  EXPECT_EQ(queried_dims[1], 3);  // static
+  EXPECT_EQ(queried_dims[2], -1);
+
+  auto queried_sym = queried_tensor_info.GetSymbolicDimensions();
+  ASSERT_EQ(queried_sym.size(), 3u);
+
+  // Dim 0 retains its symbolic name.
+  ASSERT_NE(queried_sym[0], nullptr);
+  EXPECT_STREQ(queried_sym[0], "N") << "dim 0 name must be preserved";
+  // Dim 1 is static; dim 2 is dynamic but unnamed. In both cases, the
+  // corresponding dim_proto should not have a dim_param set, so the C API
+  // returns an empty string.
+  ASSERT_NE(queried_sym[1], nullptr);
+  EXPECT_STREQ(queried_sym[1], "") << "dim 1 is static; no dim_param expected";
+  ASSERT_NE(queried_sym[2], nullptr);
+  EXPECT_STREQ(queried_sym[2], "") << "dim 2 is dynamic but unnamed; no dim_param expected";
+}
+
 //
 // Tests for Model Editor API + Compile API integration
 //
