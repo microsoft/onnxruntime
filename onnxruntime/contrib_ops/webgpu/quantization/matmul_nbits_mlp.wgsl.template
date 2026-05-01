@@ -16,6 +16,8 @@
 #param has_gate_bias
 #param has_up_bias
 #param k_unroll_tiles
+#param use_dp4a
+#param use_dp4a_external
 
 #use .getByOffset .setByOffset
 
@@ -23,6 +25,17 @@
 var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
 #endif
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
+#if use_dp4a || use_dp4a_external
+// One i8 per byte; tile_size_k elements packed as u32 quads. component_a is required
+// to be 4 on this path so a_length_per_tile * 4 == tile_size_k.
+var<workgroup> tile_A_q : array<u32, tile_size_k / 4u>;
+// One fp16 scale per block-32 of A.
+var<workgroup> tile_A_block_scales : array<output_element_t, tile_size_k / 32u>;
+#endif
+#if use_dp4a
+// Per-block-32 absmax reduction scratch. tile_size_k / 32 blocks; 8 vec4 lanes per block.
+var<workgroup> tile_A_block_absmax : array<array<output_element_t, 8u>, tile_size_k / 32u>;
+#endif
 var<workgroup> gate_inter_results : array<array<output_element_t, tile_size_k_vec + 1>, tile_size>;
 var<workgroup> up_inter_results : array<array<output_element_t, tile_size_k_vec + 1>, tile_size>;
 
@@ -130,19 +143,165 @@ fn compute_gate_up_sums(b_global: u32, kidx: u32, idx: u32, k_offset: u32) -> ve
   return vec2<output_element_t>(gate_sum, up_sum);
 }
 
+#if use_dp4a
+// Quantize a single block-32 of tile_A (already loaded in fp16/component_a=4 form) into 8
+// packed-int8 u32 entries in tile_A_q, plus one fp16 scale in tile_A_block_scales.
+// Each of the 8 lanes that visit this block contributes one vec4<output_element_t> of A
+// (i.e. 4 elements). Lane 0 of the block writes the scale.
+//
+// Caller contract: this function must be invoked by exactly the workgroup_size_x lanes
+// after `loadSHMA` has populated tile_A and a workgroupBarrier has been issued. It uses
+// tile_A_block_absmax as a per-block reduction scratch and emits a workgroupBarrier
+// internally before returning (so the caller can immediately read tile_A_q / tile_A_block_scales).
+fn quantize_tile_A_dp4a(thread_idx: u32) {
+  let total_vec4 : u32 = u32(a_length_per_tile);  // == tile_size_k / 4 (component_a == 4)
+  let blocks_per_tile : u32 = u32(tile_size_k) / 32u;
+
+  // Step 1: each lane computes its element absmax (vec4 -> scalar) and stashes into the
+  // block's scratch slot. Threads that map to the same (block, sub-lane) overwrite (last
+  // wins, but they all see identical data because tile_A is now stable in shmem).
+  for (var v = thread_idx; v < total_vec4; v += workgroup_size_x) {
+    let a = tile_A[v];
+    let absvec = abs(vec4<output_element_t>(a));
+    let m = max(max(absvec.x, absvec.y), max(absvec.z, absvec.w));
+    let block = v / 8u;       // 8 vec4 lanes per block-32
+    let sub_lane = v % 8u;
+    tile_A_block_absmax[block][sub_lane] = m;
+  }
+  workgroupBarrier();
+
+  // Step 2: one lane per block reduces 8 sub-lane absmaxes into a scale and stores it.
+  for (var b = thread_idx; b < blocks_per_tile; b += workgroup_size_x) {
+    var bm = tile_A_block_absmax[b][0];
+    for (var s = 1u; s < 8u; s++) {
+      bm = max(bm, tile_A_block_absmax[b][s]);
+    }
+    // Match dp4a_quantize.wgsl.template convention: scale = absmax / 127.
+    // Guard against zero blocks to keep the divide finite; the resulting i8 quants
+    // will be zero anyway so any non-zero scale is safe.
+    let safe_max = max(bm, output_element_t(1.0e-6));
+    tile_A_block_scales[b] = safe_max / output_element_t(127.0);
+  }
+  workgroupBarrier();
+
+  // Step 3: each lane quantizes its vec4 of A using the block scale and packs to one u32.
+  for (var v = thread_idx; v < total_vec4; v += workgroup_size_x) {
+    let block = v / 8u;
+    let scale = tile_A_block_scales[block];
+    let inv_scale = output_element_t(1.0) / scale;
+    let a = tile_A[v];
+    let scaled = vec4<output_element_t>(a) * inv_scale;
+    // pack4x8snorm divides by 127 internally; we want raw int8s in [-127,127] so we
+    // pre-scale and use pack4xI8 instead. Round half-to-nearest for symmetry.
+    let q = vec4<i32>(round(vec4<f32>(scaled)));
+    let qclamped = clamp(q, vec4<i32>(-127), vec4<i32>(127));
+    tile_A_q[v] = pack4xI8(qclamped);
+  }
+  workgroupBarrier();
+}
+
+#if use_dp4a_external
+// Populate tile_A_q and tile_A_block_scales from pre-quantized external buffers.
+// input_a_q is array<u32> with K/4 entries per row.
+// input_a_scales is array<output_element_t> with K/32 entries per row.
+fn loadSHMA_dp4a_external(batch: u32, kidx: u32, thread_idx: u32) {
+  let q_per_row : u32 = uniforms.K / 4u;
+  let s_per_row : u32 = uniforms.K / 32u;
+  let q_base : u32 = batch * q_per_row + kidx / 4u;
+  let s_base : u32 = batch * s_per_row + kidx / 32u;
+  let q_count : u32 = u32(tile_size_k) / 4u;
+  let s_count : u32 = u32(tile_size_k) / 32u;
+  for (var v = thread_idx; v < q_count; v += workgroup_size_x) {
+    if ((kidx + v * 4u) < uniforms.K) {
+      tile_A_q[v] = input_a_q.getByOffset(q_base + v);
+    } else {
+      tile_A_q[v] = 0u;
+    }
+  }
+  for (var b = thread_idx; b < s_count; b += workgroup_size_x) {
+    if ((kidx + b * 32u) < uniforms.K) {
+      tile_A_block_scales[b] = input_a_scales.getByOffset(s_base + b);
+    } else {
+      tile_A_block_scales[b] = output_element_t(0);
+    }
+  }
+}
+#endif
+
+// dp4a equivalent of compute_gate_up_sums. Requires component_a == 4 and component_b == 4
+// (i.e. each weight value covers one full block_size=32, which is the production layout
+// for bits=4/block_size=32). The fp16 scale fold is `gate_scale_b * a_block_scale` and
+// likewise for up; applied once per block-32.
+fn compute_gate_up_sums_dp4a(b_global: u32, kidx: u32, idx: u32, k_offset: u32) -> vec2<output_element_t> {
+  // With component_b == 4 and elements_in_value_b == 32, each call processes exactly one
+  // K block-32 at this idx. Therefore there is exactly one weight scale and one A scale.
+  let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
+#if !single_scale_weights
+  let gate_scale_b = gate_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
+  let up_scale_b = up_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
+#endif
+  // tile_A_q index: one block of 32 fp16 = 8 vec4 = 8 packed-i8 u32s. The block position
+  // within the K-tile is (idx * elements_in_value_b) / 32 == idx (since both are 32).
+  let a_block_scale = tile_A_block_scales[idx];
+  let a_q_offset = idx * 8u;
+
+  let gate_b_value = gate_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+  let up_b_value = up_b.getByOffset(b_global * uniforms.K_of_b + k_offset);
+
+  // Repack each vec4<u32> of nibble-pairs into 8 packed-i8 u32s (4 i8 each).
+  // Layout matches DequantizedFrom4BitsTo8Bits in dp4a_matmul_common.wgsl.template:
+  // for each input u32 of 8 nibbles, emit 2 packed-i8 u32s containing 8 zero-centered i8s.
+  let zero = vec4<i32>(8);
+  var gate_sum_i32: i32 = 0;
+  var up_sum_i32: i32 = 0;
+  for (var i = 0u; i < 4u; i++) {
+    let gw_lo = vec4<i32>(unpack4xU8(gate_b_value[i] & 0x0F0F0F0Fu)) - zero;
+    let gw_hi = vec4<i32>(unpack4xU8((gate_b_value[i] >> 4u) & 0x0F0F0F0Fu)) - zero;
+    let uw_lo = vec4<i32>(unpack4xU8(up_b_value[i] & 0x0F0F0F0Fu)) - zero;
+    let uw_hi = vec4<i32>(unpack4xU8((up_b_value[i] >> 4u) & 0x0F0F0F0Fu)) - zero;
+    let gw0 = pack4xI8(vec4<i32>(gw_lo[0], gw_hi[0], gw_lo[1], gw_hi[1]));
+    let gw1 = pack4xI8(vec4<i32>(gw_lo[2], gw_hi[2], gw_lo[3], gw_hi[3]));
+    let uw0 = pack4xI8(vec4<i32>(uw_lo[0], uw_hi[0], uw_lo[1], uw_hi[1]));
+    let uw1 = pack4xI8(vec4<i32>(uw_lo[2], uw_hi[2], uw_lo[3], uw_hi[3]));
+    let aq0 = tile_A_q[a_q_offset + i * 2u];
+    let aq1 = tile_A_q[a_q_offset + i * 2u + 1u];
+    gate_sum_i32 += dot4I8Packed(aq0, gw0) + dot4I8Packed(aq1, gw1);
+    up_sum_i32 += dot4I8Packed(aq0, uw0) + dot4I8Packed(aq1, uw1);
+  }
+
+  let scale = a_block_scale;
+  let gate_sum = output_element_t(f32(gate_sum_i32)) * scale * gate_scale_b;
+  let up_sum = output_element_t(f32(up_sum_i32)) * scale * up_scale_b;
+  return vec2<output_element_t>(gate_sum, up_sum);
+}
+#endif
+
 fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy: u32, kidx: u32, inv_std: f32) {
+#if use_dp4a_external
+  loadSHMA_dp4a_external(batch, kidx, thread_idx);
+  workgroupBarrier();
+#else
   for (var id = thread_idx; id < a_length_per_tile; id += workgroup_size_x)
   {
     loadSHMA(batch, b_global_base, kidx, id, inv_std);
   }
   workgroupBarrier();
 
+#if use_dp4a
+  quantize_tile_A_dp4a(thread_idx);
+#endif
+#endif
+
   for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count)
   {
     let b_global = b_global_base + local_row_offset + idy;
     let k_offset = kidx / elements_in_value_b + idx;
     if (b_global < uniforms.N && k_offset < uniforms.K_of_b) {
+#if use_dp4a || use_dp4a_external
+      let sums = compute_gate_up_sums_dp4a(b_global, kidx, idx, k_offset);
+#else
       let sums = compute_gate_up_sums(b_global, kidx, idx, k_offset);
+#endif
       gate_inter_results[local_row_offset + idy][idx] += sums[0];
       up_inter_results[local_row_offset + idy][idx] += sums[1];
     }

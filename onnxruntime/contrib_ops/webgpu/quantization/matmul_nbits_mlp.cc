@@ -3,12 +3,18 @@
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits_mlp.h"
 
+#include <algorithm>
+#include <cctype>
+#include <optional>
+#include <string>
+
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/bert/skip_layer_norm.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
+#include "core/platform/env.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -23,6 +29,39 @@ namespace {
 
 constexpr uint32_t kFusedDecodeFastPathBits = 4u;
 constexpr uint32_t kFusedDecodeFastPathBlockSize = 32u;
+
+// Override env var for the fused MLP decode kernel's dp4a inner-loop path:
+//   "1" / "true" / "on"  -> force dp4a when the eligibility checks pass (default behavior).
+//   "0" / "false" / "off" -> never use dp4a; fall back to the fp16 inner loop.
+// Anything else (or unset) leaves the default policy in place. Intended for A/B perf and
+// correctness comparisons without a rebuild.
+constexpr const char* kFusedMlpDp4aEnvVar = "ORT_WEBGPU_MATMUL_NBITS_MLP_FUSED_DP4A";
+
+// Override env var for the fused MLP decode kernel's external-quantize-A dp4a path:
+// when enabled (and the variant has no fused norm/skip and dp4a is otherwise eligible),
+// a small pre-pass quantizes A to int8 + fp16 scales and writes them to GPU memory; the
+// fused matmul then reads pre-quantized A directly, skipping the in-kernel quantize step
+// (and its workgroup barriers). Defaults to OFF until perf is validated.
+//   "1" / "true" / "on"  -> force on when eligible.
+//   "0" / "false" / "off" -> never use external-quantize path.
+constexpr const char* kFusedMlpDp4aExternalEnvVar = "ORT_WEBGPU_MATMUL_NBITS_MLP_FUSED_DP4A_EXTERNAL";
+
+// Tri-state env override: returns std::nullopt if unset/unrecognized, otherwise the parsed bool.
+std::optional<bool> ParseBoolEnv(const char* name) {
+  std::string raw = onnxruntime::Env::Default().GetEnvironmentVar(name);
+  if (raw.empty()) {
+    return std::nullopt;
+  }
+  std::transform(raw.begin(), raw.end(), raw.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (raw == "1" || raw == "true" || raw == "on" || raw == "yes") {
+    return true;
+  }
+  if (raw == "0" || raw == "false" || raw == "off" || raw == "no") {
+    return false;
+  }
+  return std::nullopt;
+}
 
 TensorShape GetOverrideShape(const TensorShape& shape, int components) {
   return TensorShape{shape.Size() / components};
@@ -124,6 +163,30 @@ Status ApplySkipSimplifiedLayerNorm(const Tensor* x,
   return context.RunProgram(program);
 }
 
+// Block-32 quantize-A pre-pass for the fused MLP decode kernel.
+// Outputs:
+//   - q_a:  array<u32>, K/4 entries per row (each u32 = pack4xI8 of 4 i8s)
+//   - a_scales: array<fp16>, K/32 entries per row
+// Layout matches the in-kernel `quantize_tile_A_dp4a` path so the matmul shader
+// can consume these buffers without other changes. Requires subgroup_size >= 32.
+class MatMulNBitsMlpQuantizeAProgram final : public Program<MatMulNBitsMlpQuantizeAProgram> {
+ public:
+  MatMulNBitsMlpQuantizeAProgram() : Program{"MatMulNBitsMlpQuantizeA"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& input_a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+    const auto& output_q = shader.AddOutput("output_q", ShaderUsage::UseUniform);
+    const auto& output_scales = shader.AddOutput("output_scales", ShaderUsage::UseUniform);
+    return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp_quantize_a.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(input_a, input_a),
+                               WGSL_TEMPLATE_VARIABLE(output_q, output_q),
+                               WGSL_TEMPLATE_VARIABLE(output_scales, output_scales));
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"total_blocks", ProgramUniformVariableDataType::Uint32});
+};
+
 class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodeProgram> {
  public:
   MatMulNBitsMlpDecodeProgram(uint32_t tile_size,
@@ -134,7 +197,9 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                               bool has_skip_output,
                               bool single_scale_weights,
                               uint32_t tile_size_k_vec,
-                              uint32_t k_unroll_tiles)
+                              uint32_t k_unroll_tiles,
+                              bool use_dp4a,
+                              bool use_dp4a_external)
       : Program{"MatMulNBitsMlpDecode"},
         tile_size_(tile_size),
         has_gate_bias_(has_gate_bias),
@@ -144,7 +209,9 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
         has_skip_output_(has_skip_output),
         single_scale_weights_(single_scale_weights),
         tile_size_k_vec_(tile_size_k_vec),
-        k_unroll_tiles_(k_unroll_tiles) {}
+        k_unroll_tiles_(k_unroll_tiles),
+        use_dp4a_(use_dp4a),
+        use_dp4a_external_(use_dp4a_external) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -160,6 +227,9 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
     if (has_up_bias_) {
       shader.AddInput("up_bias", ShaderUsage::UseUniform);
     }
+    // Pre-quantized A inputs (only present when use_dp4a_external_ is enabled).
+    const auto* input_a_q = use_dp4a_external_ ? &shader.AddInput("input_a_q", ShaderUsage::UseUniform) : nullptr;
+    const auto* input_a_scales = use_dp4a_external_ ? &shader.AddInput("input_a_scales", ShaderUsage::UseUniform) : nullptr;
     const auto& output = shader.AddOutput("output",
                                           ShaderUsage::UseElementTypeAlias);
     const auto* input_skip_bias_sum = has_skip_output_
@@ -170,6 +240,11 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
     const auto& skip_var = skip != nullptr ? *skip : a;
     const auto& norm_scale_var = norm_scale != nullptr ? *norm_scale : a;
     const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : output;
+    // Placeholder bindings for the optional pre-quantized A inputs. Their template
+    // variable references are only emitted under `#if use_dp4a_external`, so when the
+    // path is disabled the placeholder is never referenced in generated WGSL.
+    const auto& input_a_q_var = input_a_q != nullptr ? *input_a_q : a;
+    const auto& input_a_scales_var = input_a_scales != nullptr ? *input_a_scales : a;
 
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = gate_b.NumComponents() / 4;
@@ -197,6 +272,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                    WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                                    WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                                    WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                                   WGSL_TEMPLATE_PARAMETER(use_dp4a, use_dp4a_),
+                                   WGSL_TEMPLATE_PARAMETER(use_dp4a_external, false),
                                    WGSL_TEMPLATE_VARIABLE(a, a),
                                    WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                    WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
@@ -225,6 +302,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                    WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                                    WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                                    WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                                   WGSL_TEMPLATE_PARAMETER(use_dp4a, use_dp4a_),
+                                   WGSL_TEMPLATE_PARAMETER(use_dp4a_external, false),
                                    WGSL_TEMPLATE_VARIABLE(a, a),
                                    WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                    WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
@@ -254,6 +333,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                  WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                                  WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                                  WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                                 WGSL_TEMPLATE_PARAMETER(use_dp4a, use_dp4a_),
+                                 WGSL_TEMPLATE_PARAMETER(use_dp4a_external, false),
                                  WGSL_TEMPLATE_VARIABLE(a, a),
                                  WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                  WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
@@ -281,9 +362,13 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
                                WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                                WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
+                               WGSL_TEMPLATE_PARAMETER(use_dp4a, use_dp4a_),
+                               WGSL_TEMPLATE_PARAMETER(use_dp4a_external, use_dp4a_external_),
                                WGSL_TEMPLATE_VARIABLE(a, a),
                                WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
+                               WGSL_TEMPLATE_VARIABLE(input_a_q, input_a_q_var),
+                               WGSL_TEMPLATE_VARIABLE(input_a_scales, input_a_scales_var),
                                WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
                                WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
                                WGSL_TEMPLATE_VARIABLE(output, output),
@@ -314,6 +399,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
   bool single_scale_weights_;
   uint32_t tile_size_k_vec_;
   uint32_t k_unroll_tiles_;
+  bool use_dp4a_;
+  bool use_dp4a_external_;
 };
 
 class MatMulNBitsMlpProgram final : public Program<MatMulNBitsMlpProgram> {
@@ -502,6 +589,58 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
 
     const uint32_t num_N_tile = CeilDiv(N, tile_size);
 
+    // The dp4a fast path quantizes tile_A on-the-fly to int8 and uses dot4I8Packed in the
+    // inner loop. It requires:
+    //   - components_a == 4 (the per-block-32 absmax + pack4xI8 path assumes vec4 lanes);
+    //   - components_b == 4 (each weight value covers exactly one block_size=32, so there
+    //     is one weight scale and one A-block scale per inner-loop call);
+    //   - tile_size_k % 32 == 0 (block-32 alignment for the absmax reduction);
+    //   - the device feature gate already proven by the existing DP4A path.
+    const bool dp4a_eligible =
+        components_a == 4 &&
+        components_b == 4 &&
+        (tile_size_k % 32u) == 0u &&
+        CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, N, K, components_a);
+    // Allow A/B testing at runtime via env var. Default policy is "on when eligible".
+    const std::optional<bool> dp4a_env = ParseBoolEnv(kFusedMlpDp4aEnvVar);
+    const bool use_dp4a = dp4a_eligible && dp4a_env.value_or(true);
+
+    // External-quantize path: pre-quantize A in a separate pass, then feed q_a + a_scales
+    // into the matmul. Only enabled for the Simplified variant (no fused norm/skip) so
+    // we can quantize the activation directly without un-fusing the norm. Defaults OFF.
+    const std::optional<bool> dp4a_external_env = ParseBoolEnv(kFusedMlpDp4aExternalEnvVar);
+    const bool dp4a_external_eligible =
+        dp4a_eligible &&
+        !has_norm_input &&
+        !has_skip_input &&
+        !has_skip_output &&
+        (K % 32u) == 0u &&
+        batch_count == 1u &&  // single token decode; pre-quantize sized for batch=1
+        M == 1u;
+    const bool use_dp4a_external = dp4a_external_eligible && dp4a_external_env.value_or(false);
+    // When use_dp4a_external is on, the in-kernel dp4a path is not needed.
+    const bool effective_use_dp4a = use_dp4a && !use_dp4a_external;
+
+    // Pre-quantize A if requested.
+    Tensor a_quant;
+    Tensor a_scale;
+    if (use_dp4a_external) {
+      const uint32_t total_blocks = K / 32u;
+      TensorShape a_quant_shape{static_cast<int64_t>(K / 4u)};
+      a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
+      TensorShape a_scale_shape{static_cast<int64_t>(total_blocks)};
+      a_scale = context.CreateGPUTensor(a->DataType(), a_scale_shape);
+      MatMulNBitsMlpQuantizeAProgram quantize_program;
+      quantize_program.SetWorkgroupSize(32);
+      quantize_program.SetDispatchGroupSize(total_blocks, 1, 1);
+      quantize_program
+          .AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, 1})
+          .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, 1},
+                       {&a_scale, ProgramTensorMetadataDependency::Rank, 1}})
+          .AddUniformVariable({total_blocks});
+      ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
+    }
+
     MatMulNBitsMlpDecodeProgram program{tile_size,
                                         has_gate_bias,
                                         has_up_bias,
@@ -510,7 +649,9 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         has_skip_output,
                                         single_scale_weights,
                                         tile_size_k_vec,
-                                        k_unroll_tiles};
+                                        k_unroll_tiles,
+                                        effective_use_dp4a,
+                                        use_dp4a_external};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
     program.AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
@@ -544,6 +685,8 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                    has_skip_output,
                    tile_size_k_vec,
                    k_unroll_tiles,
+                   effective_use_dp4a,
+                   use_dp4a_external,
                    "decode_4bit");
     if (has_skip_output) {
       program.AddOutput({input_skip_bias_sum,
@@ -555,6 +698,10 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     }
     if (has_up_bias) {
       program.AddInput({up_bias, ProgramTensorMetadataDependency::None});
+    }
+    if (use_dp4a_external) {
+      program.AddInput({&a_quant, ProgramTensorMetadataDependency::Rank, 1});
+      program.AddInput({&a_scale, ProgramTensorMetadataDependency::Rank, 1});
     }
 
     return context.RunProgram(program);

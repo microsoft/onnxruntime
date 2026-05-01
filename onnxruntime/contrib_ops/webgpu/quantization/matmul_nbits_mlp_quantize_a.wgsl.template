@@ -1,0 +1,48 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Block-32 quantize-A pre-pass for the fused MatMulNBitsMlp decode kernel.
+// Layout matches the in-kernel `quantize_tile_A_dp4a` path exactly so the
+// matmul shader can consume these buffers without any other changes:
+//   - output_q   : array<u32>, K/4 entries per row (each u32 = pack4xI8 of 4 i8s)
+//   - output_scales : array<output_element_t>, K/32 entries per row
+//
+// Convention (mirrors quantize_tile_A_dp4a in matmul_nbits_mlp.wgsl.template):
+//   scale = max(absmax, 1e-6) / 127
+//   q     = clamp(round(value / scale), -127, 127)
+//
+// Workgroup = 32 threads = 1 block-of-32. Requires subgroup_size >= 32 so
+// that subgroupMax/Shuffle cover the whole block. The C++ side rejects
+// devices that don't satisfy this.
+
+#use .getByOffset .setByOffset
+
+$MAIN {
+  let block_idx = workgroup_idx;
+  if (block_idx >= uniforms.total_blocks) {
+    return;
+  }
+  let elem_idx = block_idx * 32u + local_idx;
+  let val = input_a.getByOffset(elem_idx);
+  let absmax = subgroupMax(abs(val));
+  let safe_max = max(absmax, input_a_element_t(1.0e-6));
+  let scale = safe_max / input_a_element_t(127.0);
+  let inv_scale = input_a_element_t(1.0) / scale;
+  let scaled = val * inv_scale;
+  let q = i32(round(f32(scaled)));
+  let qclamped = clamp(q, -127, 127);
+
+  // Pack 4 consecutive lanes into one u32 via subgroupShuffle. Lanes (0,1,2,3),
+  // (4,5,6,7), ... produce one packed u32 each. Only lane 0 of each group writes.
+  let group_base = local_idx & 0xFFFFFFFCu;
+  let q0 = subgroupShuffle(qclamped, group_base);
+  let q1 = subgroupShuffle(qclamped, group_base + 1u);
+  let q2 = subgroupShuffle(qclamped, group_base + 2u);
+  let q3 = subgroupShuffle(qclamped, group_base + 3u);
+  if ((local_idx & 3u) == 0u) {
+    output_q.setByOffset(elem_idx / 4u, pack4xI8(vec4<i32>(q0, q1, q2, q3)));
+  }
+  if (local_idx == 0u) {
+    output_scales.setByOffset(block_idx, scale);
+  }
+}
