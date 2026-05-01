@@ -508,6 +508,11 @@ TEST(GroupQueryAttentionTest, OptionalPresent_RejectWithPast) {
 // attention output as when present outputs are connected. The CUDA path allocates
 // internal scratch buffers to serve as KV workspace for flash/MEA/unfused kernels.
 TEST(GroupQueryAttentionTest, OptionalPresent_CudaOmitMatchesConnected) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   constexpr int batch_size = 1;
   constexpr int sequence_length = 4;
   constexpr int num_heads = 2;
