@@ -8,6 +8,7 @@
 #include "contrib_ops/webgpu/bert/rotary_embedding.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 
+#include "core/common/narrow.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/shader_helper.h"
 
@@ -212,7 +213,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 scale_,
                                                                 softcap_,
                                                                 0,
-                                                                static_cast<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup)));
+                                                                onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup)));
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 

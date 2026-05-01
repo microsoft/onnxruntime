@@ -313,6 +313,7 @@ TEST(GroupQueryAttentionTest, SeqlensKWrongLength) {
 
 // Run GQA with the given inputs and return the output tensor as a vector.
 // This lets us compare outputs between present-connected and present-omitted runs.
+// When use_cuda=true, runs on CUDA EP instead of CPU EP.
 static std::vector<float> RunGQAAndGetOutput(
     int batch_size,
     int sequence_length,
@@ -322,7 +323,8 @@ static std::vector<float> RunGQAAndGetOutput(
     int num_heads,
     int kv_num_heads,
     int head_size,
-    bool omit_present) {
+    bool omit_present,
+    bool use_cuda = false) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_seq_len = sequence_length;  // first-prompt: no past
@@ -367,7 +369,11 @@ static std::vector<float> RunGQAAndGetOutput(
   tester.SetOutputTolerance(1e6f);  // We compare fetched outputs ourselves
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
+  if (use_cuda) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  } else {
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   // Extract the output tensor values
@@ -376,9 +382,9 @@ static std::vector<float> RunGQAAndGetOutput(
   return std::vector<float>(out_data, out_data + output_size);
 }
 
-// Core correctness test: output must be identical whether present outputs
-// are connected or omitted (first-prompt, no past KV).
-TEST(GroupQueryAttentionTest, OptionalPresent_OutputMatchesWithAndWithout) {
+// Regression: omitting optional present outputs must not change the attention output
+// compared to when present outputs are connected (first-prompt, no past KV).
+TEST(GroupQueryAttentionTest, OptionalPresent_OmittingDoesNotChangeOutput) {
   constexpr int batch_size = 1;
   constexpr int sequence_length = 4;
   constexpr int num_heads = 2;
@@ -420,8 +426,8 @@ TEST(GroupQueryAttentionTest, OptionalPresent_OutputMatchesWithAndWithout) {
   EXPECT_FALSE(all_zero) << "Output should not be all zeros";
 }
 
-// Batched: same correctness check with batch_size > 1
-TEST(GroupQueryAttentionTest, OptionalPresent_BatchedOutputMatch) {
+// Regression (batched): same equivalence check with batch_size > 1
+TEST(GroupQueryAttentionTest, OptionalPresent_BatchedOmitMatchesConnected) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 3;
   constexpr int num_heads = 2;
@@ -496,6 +502,49 @@ TEST(GroupQueryAttentionTest, OptionalPresent_RejectWithPast) {
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "present_key and present_value outputs are required when past state exists",
              {}, nullptr, &execution_providers);
+}
+
+// Regression (CUDA): omitting present outputs on CUDA EP must produce the same
+// attention output as when present outputs are connected. The CUDA path allocates
+// internal scratch buffers to serve as KV workspace for flash/MEA/unfused kernels.
+TEST(GroupQueryAttentionTest, OptionalPresent_CudaOmitMatchesConnected) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key_data.size(); i++) key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value_data.size(); i++) value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto output_with = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/false, /*use_cuda=*/true);
+
+  auto output_without = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/true, /*use_cuda=*/true);
+
+  ASSERT_EQ(output_with.size(), output_without.size());
+  for (size_t i = 0; i < output_with.size(); i++) {
+    EXPECT_NEAR(output_with[i], output_without[i], 1e-5f)
+        << "CUDA output mismatch at index " << i;
+  }
+
+  bool all_zero = true;
+  for (float v : output_with) {
+    if (v != 0.0f) {
+      all_zero = false;
+      break;
+    }
+  }
+  EXPECT_FALSE(all_zero) << "CUDA output should not be all zeros";
 }
 
 }  // namespace test

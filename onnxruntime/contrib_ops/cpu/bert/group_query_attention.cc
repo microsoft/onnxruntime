@@ -113,14 +113,20 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
-  // Optional present outputs are only safe for first-prompt with no past KV.
-  // When past exists or total_sequence_length > sequence_length, the attention
-  // GEMMs use total_seqlen which requires a concatenated past+current KV buffer
-  // that only ConcatStateChunkGQA builds into present_key/present_value.
+  // present_key and present_value must be both present or both absent.
+  if ((present_k == nullptr) != (present_v == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value must be both provided or both omitted.");
+  }
+
+  // Optional present outputs are only safe when is_first_prompt
+  // (sequence_length == total_sequence_length, i.e., no past KV to concatenate).
+  // When past exists, the attention GEMMs use total_seqlen which requires a
+  // concatenated past+current KV buffer built by ConcatStateChunkGQA into present.
   if ((present_k == nullptr || present_v == nullptr) && !parameters.is_first_prompt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "present_key and present_value outputs are required when past state exists "
-                           "(total_sequence_length > sequence_length). Omitting present outputs is only "
+                           "(sequence_length != total_sequence_length). Omitting present outputs is only "
                            "supported for first-prompt inference with no past KV cache.");
   }
 

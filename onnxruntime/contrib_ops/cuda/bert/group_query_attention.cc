@@ -267,10 +267,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   Tensor* present_key_output = context->Output(1, present_shape);    // present_key
   Tensor* present_value_output = context->Output(2, present_shape);  // present_value
 
-  // Optional present outputs are only safe for first-prompt with no past KV.
+  // present_key and present_value must be both present or both absent.
+  if ((present_key_output == nullptr) != (present_value_output == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value must be both provided or both omitted.");
+  }
+
+  // Optional present outputs are only safe when is_first_prompt
+  // (sequence_length == total_sequence_length, i.e., no past KV to concatenate).
   if ((present_key_output == nullptr || present_value_output == nullptr) && !parameters.is_first_prompt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value outputs are required when past state exists. "
+                           "present_key and present_value outputs are required when past state exists "
+                           "(sequence_length != total_sequence_length). "
                            "Omitting present outputs is only supported for first-prompt inference.");
   }
 

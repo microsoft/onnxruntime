@@ -87,7 +87,7 @@ class GQAAttentionBase {
     }
     int seqlen_present_kv_cache = present_key != nullptr
                                       ? static_cast<int>(present_key->Shape().GetDims()[2])
-                                      : parameters.seqlen_present_kv_cache;
+                                      : parameters.total_sequence_length;
 
     // Compute the attention score.
     bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
