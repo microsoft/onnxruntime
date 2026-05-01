@@ -1636,7 +1636,7 @@ TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_PrecedenceOverDeviceMem
   EXPECT_EQ(device.Id(), 2);
 }
 
-// GetDefaultMemoryDevice: version < 26 → falls back to device_memory_info even if function is set.
+// GetDefaultMemoryDevice: version < 27 → falls back to device_memory_info even if function is set.
 TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_OldVersionFallsBack) {
   auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
   auto gpu_mem_info = Ort::MemoryInfo{"TestGPU",
@@ -1806,7 +1806,7 @@ TEST(PluginExecutionProviderTest, GetMemoryDeviceByMemType_ReturnsNullFallsBackP
   EXPECT_EQ(device_cpu_output.Type(), OrtDevice::CPU);
 }
 
-// GetMemoryDeviceByMemType: version < 26 → falls back to base class even if function is set.
+// GetMemoryDeviceByMemType: version < 27 → falls back to base class even if function is set.
 TEST(PluginExecutionProviderTest, GetMemoryDeviceByMemType_OldVersionFallsBack) {
   auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
   auto gpu_mem_info = Ort::MemoryInfo{"TestGPU",

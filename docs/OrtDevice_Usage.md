@@ -177,7 +177,7 @@ The allocation planner calls `GetOrtDeviceByMemType()` at these points:
 2. **Node outputs** (line 914): `ep->GetOrtDeviceByMemType(kernel_def->OutputMemoryType(i))` → always `DEFAULT` for fused/compiled nodes.
 3. **Downstream consumer optimization** (lines 927-928): `consumer_ep->GetOrtDeviceByMemType(OrtMemTypeCPUInput)` — only when producer output is on CPU.
 4. **Node inputs** (line 957): `ep->GetOrtDeviceByMemType(IsInputOnCpu() ? CPUInput : DEFAULT)` → always `DEFAULT` for fused/compiled nodes.
-5. **Never** calls with `OrtMemTypeCPUOutput` — that value is only used by EP-internal code.
+5. **Node outputs** (line 914): `ep->GetOrtDeviceByMemType(kernel_def->OutputMemoryType(i))` — for non-fused kernels, `OutputMemoryType` can return `OrtMemTypeCPUOutput`; for fused/compiled nodes it is always `DEFAULT`.
 
 ### Compiling EP Constraints
 
@@ -186,7 +186,7 @@ For compiling EPs (those using `IExecutionProvider::Compile()`):
 - `BuildFusedKernelDef()` in `graph_partitioner.cc` sets **NO** memory type annotations on fused kernel defs (only name/domain/version/provider).
 - All fused node I/O defaults to `OrtMemTypeDefault`.
 - Only `DEFAULT` and `CPUInput` (as consumer of upstream CPU output) are ever queried via `GetOrtDeviceByMemType()`.
-- `OrtMemTypeCPUOutput` is never queried by the planner for any EP.
+- `OrtMemTypeCPUOutput` is never queried by the planner for compiling/fused EPs.
 
 ### Initializer Allocator Bypass for CPU-Default EPs
 
