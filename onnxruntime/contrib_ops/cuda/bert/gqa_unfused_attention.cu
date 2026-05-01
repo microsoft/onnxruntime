@@ -4,7 +4,7 @@
 // GQA-capable unfused CUDA attention kernel. See header for contract.
 
 #include <math_constants.h>
-#include <cub/cub.cuh>
+#include "core/providers/cuda/cu_inc/cub.cuh"
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include "core/common/safeint.h"
