@@ -109,6 +109,49 @@ stages:
           artifactName: webgpu_plugin_macos_arm64
           targetPath: '$(Build.BinariesDirectory)\artifacts\macos_arm64'
 
+    # Compute the set of required platforms from the pipeline parameters and verify the
+    # corresponding artifact directories actually downloaded. This catches renamed/moved
+    # upstream artifacts loudly before any pack work, and feeds pack_nuget.ps1 the same
+    # list so it fails fast if any required platform's binaries are missing.
+    - task: PythonScript@0
+      displayName: 'Compute required platforms'
+      inputs:
+        scriptSource: inline
+        script: |
+          import os
+          import sys
+
+          # The string literals below are filled in by ADO template expansion at queue
+          # time and resolve to 'True' or 'False'.
+          platforms_enabled = {
+              "win_x64":     "${{ parameters.platforms.win_x64 }}" == "True",
+              "win_arm64":   "${{ parameters.platforms.win_arm64 }}" == "True",
+              "linux_x64":   "${{ parameters.platforms.linux_x64 }}" == "True",
+              "macos_arm64": "${{ parameters.platforms.macos_arm64 }}" == "True",
+          }
+          expected = [name for name, enabled in platforms_enabled.items() if enabled]
+
+          if not expected:
+              print("##vso[task.logissue type=error]No platforms enabled in 'platforms' parameter — nothing to pack.")
+              sys.exit(1)
+
+          artifacts_dir = r"$(Build.BinariesDirectory)\artifacts"
+          missing = [
+              f"{p} ({d})"
+              for p in expected
+              for d in [os.path.join(artifacts_dir, p, "bin")]
+              if not os.path.isdir(d)
+          ]
+          if missing:
+              print("##vso[task.logissue type=error]Expected artifact directories not found:")
+              for m in missing:
+                  print(f"##vso[task.logissue type=error]  {m}")
+              sys.exit(1)
+
+          required = ",".join(expected)
+          print(f"Required platforms: {required}")
+          print(f"##vso[task.setvariable variable=WebGpuRequiredPlatforms]{required}")
+
     # Stage binaries and build the managed assembly (so it can be ESRP-signed before packing).
     - task: PowerShell@2
       displayName: 'Build managed DLL'
@@ -119,6 +162,7 @@ stages:
         arguments: >-
           $(WebGpuPackNuGetCommonArgs)
           -ArtifactsDir "$(Build.BinariesDirectory)\artifacts"
+          -RequiredPlatforms $(WebGpuRequiredPlatforms)
           -BuildOnly
 
     # ESRP-sign the managed DLL before it gets embedded in the .nupkg.

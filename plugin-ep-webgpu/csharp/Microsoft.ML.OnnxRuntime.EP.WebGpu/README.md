@@ -39,7 +39,3 @@ using var session = new InferenceSession("model.onnx", sessionOptions);
 | win-arm64 | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
 | linux-x64 | `libonnxruntime_providers_webgpu.so` |
 | osx-arm64 | `libonnxruntime_providers_webgpu.dylib` |
-
-### Requirements
-
-- [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) >= 1.24.4

@@ -9,8 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Microsoft.ML.OnnxRuntime is pulled in transitively via the EP package. -->
     <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.WebGpu" Version="*-*" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.24.4" />
   </ItemGroup>
 
   <ItemGroup>

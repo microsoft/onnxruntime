@@ -48,12 +48,55 @@ param(
     # (so it can be ESRP-signed), then pack with --no-build in a later task.
     # When neither is set, the script does the full build+pack end-to-end.
     [switch]$BuildOnly,
-    [switch]$PackOnly
+    [switch]$PackOnly,
+
+    # Optional list of platforms that MUST be staged successfully. CI passes the set
+    # of enabled platforms (derived from the pipeline parameters) so that a renamed
+    # or missing upstream artifact fails fast instead of silently producing a partial
+    # multi-RID package. When omitted (typical for local dev) the script just requires
+    # at least one platform to be staged.
+    # Accepted as a comma-separated string for compatibility with how Azure Pipelines
+    # expands variables into PowerShell arguments.
+    [string]$RequiredPlatforms
 )
 
 if ($BuildOnly -and $PackOnly) {
     Write-Error "-BuildOnly and -PackOnly are mutually exclusive."
     exit 1
+}
+
+# --- Platform definitions ---
+$platforms = [ordered]@{
+    win_x64 = @{
+        rid   = 'win-x64'
+        files = @('onnxruntime_providers_webgpu.dll', 'dxil.dll', 'dxcompiler.dll')
+        param = $BinaryDir_WinX64
+    }
+    win_arm64 = @{
+        rid   = 'win-arm64'
+        files = @('onnxruntime_providers_webgpu.dll', 'dxil.dll', 'dxcompiler.dll')
+        param = $BinaryDir_WinArm64
+    }
+    linux_x64 = @{
+        rid   = 'linux-x64'
+        files = @('libonnxruntime_providers_webgpu.so')
+        param = $BinaryDir_LinuxX64
+    }
+    macos_arm64 = @{
+        rid   = 'osx-arm64'
+        files = @('libonnxruntime_providers_webgpu.dylib')
+        param = $BinaryDir_OsxArm64
+    }
+}
+
+$requiredPlatformList = @()
+if ($RequiredPlatforms) {
+    $requiredPlatformList = $RequiredPlatforms.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    $invalid = @($requiredPlatformList | Where-Object { $_ -notin $platforms.Keys })
+    if ($invalid.Count -gt 0) {
+        Write-Error "Unknown platform(s) in -RequiredPlatforms: $($invalid -join ', '). Valid: $($platforms.Keys -join ', ')."
+        exit 1
+    }
 }
 
 if ($NuGetConfig -and -not (Test-Path $NuGetConfig)) {
@@ -108,43 +151,22 @@ else {
     }
     New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
 
-    # Copy project sources to staging
+    # Copy project sources to staging. Exclude bin/obj so a stale local build of the
+    # in-tree project doesn't get dragged into the staged copy (CI is unaffected since
+    # the workspace is clean per run).
     Write-Host "Staging project files to $StagingDir"
-    Copy-Item -Path (Join-Path $projectDir "*") -Destination $StagingDir -Recurse -Force
-}
-
-# --- Platform definitions ---
-$platforms = [ordered]@{
-    win_x64 = @{
-        rid   = 'win-x64'
-        files = @('onnxruntime_providers_webgpu.dll', 'dxil.dll', 'dxcompiler.dll')
-        param = $BinaryDir_WinX64
-    }
-    win_arm64 = @{
-        rid   = 'win-arm64'
-        files = @('onnxruntime_providers_webgpu.dll', 'dxil.dll', 'dxcompiler.dll')
-        param = $BinaryDir_WinArm64
-    }
-    linux_x64 = @{
-        rid   = 'linux-x64'
-        files = @('libonnxruntime_providers_webgpu.so')
-        param = $BinaryDir_LinuxX64
-    }
-    macos_arm64 = @{
-        rid   = 'osx-arm64'
-        files = @('libonnxruntime_providers_webgpu.dylib')
-        param = $BinaryDir_OsxArm64
-    }
+    Copy-Item -Path (Join-Path $projectDir "*") -Destination $StagingDir -Recurse -Force -Exclude bin,obj
 }
 
 # --- Stage binaries ---
 if (-not $PackOnly) {
-    $anyStaged = $false
+    $stagedPlatforms = [System.Collections.Generic.HashSet[string]]::new()
 
     foreach ($entry in $platforms.GetEnumerator()) {
         $name  = $entry.Key
         $info  = $entry.Value
         $rid   = $info.rid
+        $isRequired = $requiredPlatformList -and ($requiredPlatformList -contains $name)
 
         # Resolve source directory: explicit param > ArtifactsDir > skip
         $sourceDir = $info.param
@@ -153,9 +175,17 @@ if (-not $PackOnly) {
             if (Test-Path $candidate) {
                 $sourceDir = $candidate
             }
+            elseif ($isRequired) {
+                Write-Error "Required platform '$name' artifact directory not found: $candidate"
+                exit 1
+            }
         }
 
         if (-not $sourceDir) {
+            if ($isRequired) {
+                Write-Error "Required platform '$name' has no binary directory (pass -BinaryDir_$($name -replace '_','') or -ArtifactsDir)."
+                exit 1
+            }
             Write-Host "Skipping $name (no binary directory provided)"
             continue
         }
@@ -178,10 +208,17 @@ if (-not $PackOnly) {
             Copy-Item -Path $src -Destination $targetDir -Force
             Write-Host "  $file"
         }
-        $anyStaged = $true
+        [void]$stagedPlatforms.Add($name)
     }
 
-    if (-not $anyStaged) {
+    if ($requiredPlatformList) {
+        $missing = @($requiredPlatformList | Where-Object { -not $stagedPlatforms.Contains($_) })
+        if ($missing.Count -gt 0) {
+            Write-Error "Required platforms not staged: $($missing -join ', ')"
+            exit 1
+        }
+    }
+    elseif ($stagedPlatforms.Count -eq 0) {
         Write-Error "No platform binaries were staged. Provide at least one -BinaryDir_* parameter or -ArtifactsDir."
         exit 1
     }
