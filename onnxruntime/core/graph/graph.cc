@@ -6693,10 +6693,10 @@ ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInf
   if (tensor_info.HasShape()) {
     auto& shape = *tensor->mutable_shape();
 
-    size_t idx = 0;
     const auto dims = tensor_info.GetShape()->GetDims();
     const auto& dim_params = *tensor_info.GetDimParams();
-    for (auto dim : dims) {
+    for (size_t idx = 0; idx < dims.size(); ++idx) {
+      const auto dim = dims[idx];
       auto& dim_proto = *shape.add_dim();
       if (dim >= 0) {
         dim_proto.set_dim_value(dim);
