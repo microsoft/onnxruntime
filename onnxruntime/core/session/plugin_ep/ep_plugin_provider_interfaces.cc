@@ -126,7 +126,9 @@ static OrtDevice GetOrtDeviceForPluginEp(const OrtEp* ort_ep, gsl::span<const Or
 
   // If the EP provides GetDefaultMemoryDevice, use it.
   if (ort_ep->ort_version_supported >= 26 && ort_ep->GetDefaultMemoryDevice != nullptr) {
-    const OrtMemoryDevice* memory_device = ort_ep->GetDefaultMemoryDevice(ort_ep);
+    const OrtMemoryDevice* memory_device = nullptr;
+    ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep->GetDefaultMemoryDevice(ort_ep, &memory_device)));
+
     if (memory_device != nullptr) {
       OrtDevice default_device = *static_cast<const OrtDevice*>(memory_device);
 
@@ -753,7 +755,8 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
 
 OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   if (ort_ep_->ort_version_supported >= 26 && ort_ep_->GetMemoryDeviceByMemType != nullptr) {
-    const OrtMemoryDevice* memory_device = ort_ep_->GetMemoryDeviceByMemType(ort_ep_.get(), mem_type);
+    const OrtMemoryDevice* memory_device = nullptr;
+    ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetMemoryDeviceByMemType(ort_ep_.get(), mem_type, &memory_device)));
     if (memory_device != nullptr) {
       return *static_cast<const OrtDevice*>(memory_device);
     }

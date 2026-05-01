@@ -1576,9 +1576,11 @@ TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_ReturnsCustomDevice) {
                                                       OrtDeviceMemoryType_DEFAULT,
                                                       /*alignment*/ 0,
                                                       OrtAllocatorType::OrtDeviceAllocator};
-        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr) noexcept -> const OrtMemoryDevice* {
+        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr,
+                                            const OrtMemoryDevice** device) noexcept -> OrtStatus* {
           auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
-          return test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+          *device = test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+          return nullptr;
         };
       });
 
@@ -1619,9 +1621,11 @@ TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_PrecedenceOverDeviceMem
                                                       OrtDeviceMemoryType_DEFAULT,
                                                       /*alignment*/ 0,
                                                       OrtAllocatorType::OrtDeviceAllocator};
-        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr) noexcept -> const OrtMemoryDevice* {
+        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr,
+                                            const OrtMemoryDevice** device) noexcept -> OrtStatus* {
           auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
-          return test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+          *device = test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+          return nullptr;
         };
       });
 
@@ -1653,9 +1657,11 @@ TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_OldVersionFallsBack) {
                                                       OrtDeviceMemoryType_DEFAULT,
                                                       /*alignment*/ 0,
                                                       OrtAllocatorType::OrtDeviceAllocator};
-        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr) noexcept -> const OrtMemoryDevice* {
+        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr,
+                                            const OrtMemoryDevice** device) noexcept -> OrtStatus* {
           auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
-          return test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+          *device = test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+          return nullptr;
         };
       });
 
@@ -1720,13 +1726,16 @@ TEST(PluginExecutionProviderTest, GetMemoryDeviceByMemType_ReturnsHostAccessible
                             /*alignment*/ 0,
                             OrtAllocatorType::OrtDeviceAllocator});
         raw_ep->GetMemoryDeviceByMemType = [](const OrtEp* this_ptr,
-                                              OrtMemType mem_type) noexcept -> const OrtMemoryDevice* {
+                                              OrtMemType mem_type,
+                                              const OrtMemoryDevice** device) noexcept -> OrtStatus* {
           auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
           auto it = test_ep->mem_type_devices.find(mem_type);
           if (it != test_ep->mem_type_devices.end()) {
-            return test_ep->ep_api->MemoryInfo_GetMemoryDevice(it->second);
+            *device = test_ep->ep_api->MemoryInfo_GetMemoryDevice(it->second);
+          } else {
+            *device = nullptr;
           }
-          return nullptr;  // fall back to base class for other mem types
+          return nullptr;
         };
       });
 
@@ -1769,11 +1778,14 @@ TEST(PluginExecutionProviderTest, GetMemoryDeviceByMemType_ReturnsNullFallsBackP
                             /*alignment*/ 0,
                             OrtAllocatorType::OrtDeviceAllocator});
         raw_ep->GetMemoryDeviceByMemType = [](const OrtEp* this_ptr,
-                                              OrtMemType mem_type) noexcept -> const OrtMemoryDevice* {
+                                              OrtMemType mem_type,
+                                              const OrtMemoryDevice** device) noexcept -> OrtStatus* {
           auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
           auto it = test_ep->mem_type_devices.find(mem_type);
           if (it != test_ep->mem_type_devices.end()) {
-            return test_ep->ep_api->MemoryInfo_GetMemoryDevice(it->second);
+            *device = test_ep->ep_api->MemoryInfo_GetMemoryDevice(it->second);
+          } else {
+            *device = nullptr;
           }
           return nullptr;
         };
@@ -1818,11 +1830,14 @@ TEST(PluginExecutionProviderTest, GetMemoryDeviceByMemType_OldVersionFallsBack) 
                             /*alignment*/ 0,
                             OrtAllocatorType::OrtDeviceAllocator});
         raw_ep->GetMemoryDeviceByMemType = [](const OrtEp* this_ptr,
-                                              OrtMemType mem_type) noexcept -> const OrtMemoryDevice* {
+                                              OrtMemType mem_type,
+                                              const OrtMemoryDevice** device) noexcept -> OrtStatus* {
           auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
           auto it = test_ep->mem_type_devices.find(mem_type);
           if (it != test_ep->mem_type_devices.end()) {
-            return test_ep->ep_api->MemoryInfo_GetMemoryDevice(it->second);
+            *device = test_ep->ep_api->MemoryInfo_GetMemoryDevice(it->second);
+          } else {
+            *device = nullptr;
           }
           return nullptr;
         };
