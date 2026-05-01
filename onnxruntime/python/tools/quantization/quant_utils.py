@@ -965,10 +965,18 @@ def get_opset_version(model: ModelProto) -> int:
     return opset_version
 
 
-def update_opset_version(model: ModelProto, weight_type: QuantType) -> ModelProto:
+def update_opset_version(
+    model: ModelProto, weight_type: QuantType, activation_type: QuantType | None = None
+) -> ModelProto:
     opset_version = get_opset_version(model)
     target_opset_version = opset_version
     weight_quant_type = getattr(weight_type, "tensor_type", weight_type)
+    activation_quant_type = (
+        getattr(activation_type, "tensor_type", activation_type) if activation_type is not None else None
+    )
+
+    _int16_types = (onnx.TensorProto.UINT16, onnx.TensorProto.INT16)
+    needs_opset21_for_16bit = weight_quant_type in _int16_types or activation_quant_type in _int16_types
 
     if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
         logging.warning(
@@ -978,7 +986,7 @@ def update_opset_version(model: ModelProto, weight_type: QuantType) -> ModelProt
         )
         target_opset_version = 19
 
-    elif opset_version < 21 and weight_quant_type in (onnx.TensorProto.UINT16, onnx.TensorProto.INT16):
+    elif opset_version < 21 and needs_opset21_for_16bit:
         logging.warning(
             f"The original model opset version is {opset_version}, which does not support 16-bit integer "
             "quantization with native ONNX QuantizeLinear/DequantizeLinear. "

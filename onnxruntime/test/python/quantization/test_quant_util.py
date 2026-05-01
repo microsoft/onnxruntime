@@ -178,7 +178,7 @@ class TestQuantUtil(unittest.TestCase):
     def test_update_opset_version_16bit(self):
         graph = helper.make_graph([], "test_graph", [], [])
 
-        # 16-bit types should auto-bump opset < 21 -> 21
+        # 16-bit weight type alone should auto-bump opset < 21 -> 21
         for weight_type, label in (
             (QuantType.QUInt16, "QUInt16"),
             (QuantType.QInt16, "QInt16"),
@@ -199,6 +199,24 @@ class TestQuantUtil(unittest.TestCase):
                 result = update_opset_version(model, weight_type)
                 result_opset = result.opset_import[0].version
                 self.assertEqual(result_opset, 21)
+
+        # 16-bit activation type with 8-bit weight should also bump opset < 21 -> 21
+        for activation_type, label in (
+            (QuantType.QUInt16, "QUInt16"),
+            (QuantType.QInt16, "QInt16"),
+        ):
+            with self.subTest(activation_type=label, weight_type="QInt8", opset=20):
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+                result = update_opset_version(model, QuantType.QInt8, activation_type)
+                result_opset = result.opset_import[0].version
+                self.assertEqual(result_opset, 21)
+
+        # Both 8-bit should NOT bump to 21
+        with self.subTest(weight_type="QInt8", activation_type="QUInt8", opset=20):
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+            result = update_opset_version(model, QuantType.QInt8, QuantType.QUInt8)
+            result_opset = result.opset_import[0].version
+            self.assertNotEqual(result_opset, 21)
 
 
 if __name__ == "__main__":

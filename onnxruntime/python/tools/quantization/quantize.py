@@ -699,7 +699,7 @@ def quantize_static(
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
-    updated_model = update_opset_version(model, weight_type)
+    updated_model = update_opset_version(model, weight_type, activation_type)
     is_model_updated = updated_model is not model
     if is_model_updated:
         model = updated_model
