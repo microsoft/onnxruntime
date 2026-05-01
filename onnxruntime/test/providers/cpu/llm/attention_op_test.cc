@@ -2824,7 +2824,7 @@ TEST(AttentionTest, Attention4DCausalCrossAttentionUpperLeft) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -2874,7 +2874,7 @@ TEST(AttentionTest, Attention4DCausalCrossAttentionUpperLeftSmallHead) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 // Lower-right alignment: q0 at absolute position 4 attends to all 5 KV positions.
@@ -2925,7 +2925,7 @@ TEST(AttentionTest, Attention4DCausalDecodeWithPastLowerRight) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), past_key, past_value,
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, present_key, present_value, std::vector<float>(),
-            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
@@ -2971,7 +2971,7 @@ TEST(AttentionTest, Attention4DCausalSquareNoPast) {
             q, k, v, std::vector<float>(), std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
             1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            true, false, true  // disable_cpu, disable_cuda, disable_dml — CUDA only
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
 
