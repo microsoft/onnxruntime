@@ -113,6 +113,17 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
+  // Optional present outputs are only safe for first-prompt with no past KV.
+  // When past exists or total_sequence_length > sequence_length, the attention
+  // GEMMs use total_seqlen which requires a concatenated past+current KV buffer
+  // that only ConcatStateChunkGQA builds into present_key/present_value.
+  if ((present_k == nullptr || present_v == nullptr) && !parameters.is_first_prompt) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value outputs are required when past state exists "
+                           "(total_sequence_length > sequence_length). Omitting present outputs is only "
+                           "supported for first-prompt inference with no past KV cache.");
+  }
+
   std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};
   Tensor* output_qk = context->Output(3, output_qk_shape);
 

@@ -410,5 +410,16 @@ TEST(GroupQueryAttentionTest, OptionalPresent_Batched) {
       "");
 }
 
+// Reject: omitting present outputs when total_seq_len > sequence_length (decode with past)
+TEST(GroupQueryAttentionTest, OptionalPresent_RejectWithPast) {
+  RunGQAOptionalPresentTest(
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      /*total_seq_len=*/5,
+      /*omit_present=*/true,
+      OpTester::ExpectResult::kExpectFailure,
+      "present_key and present_value outputs are required when past state exists");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
