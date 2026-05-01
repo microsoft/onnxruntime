@@ -13,7 +13,7 @@ how they are used during session initialization and execution.
 
 ### OrtMemoryDevice
 
-An `OrtMemoryDevice` represents a **specific memory space** on a device. It combines four properties:
+An `OrtMemoryDevice` represents a **specific memory space** on a device. It combines five properties:
 
 | Property | Description | Example |
 |----------|-------------|---------|
@@ -21,9 +21,10 @@ An `OrtMemoryDevice` represents a **specific memory space** on a device. It comb
 | **Vendor ID** | PCI vendor or custom identifier | `0x10DE` (NVIDIA), `0xBE57` (custom) |
 | **Device ID** | Index of the device | 0, 1, 2 |
 | **Memory type** | The kind of memory on that device | `DEFAULT`, `HOST_ACCESSIBLE` |
+| **Alignment** | Required memory alignment (bytes) | 0 (default), 256 |
 
-Two `OrtMemoryDevice` values are equal if all five properties match (device type, vendor ID,
-device ID, memory type, and alignment). Use `OrtEpApi::MemoryDevice_AreEqual()` to compare them.
+Two `OrtMemoryDevice` values are equal if all five properties match. Use
+`OrtEpApi::MemoryDevice_AreEqual()` to compare them.
 
 > **Important**: Alignment participates in equality checks and allocator map lookups. If you create
 > two `OrtMemoryInfo` instances that differ only in alignment, they will have different
