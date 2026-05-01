@@ -7,7 +7,8 @@
 
     <!-- Package info -->
     <PackageId>Microsoft.ML.OnnxRuntime.EP.WebGpu</PackageId>
-    <Version>1.0.0</Version>
+    <!-- Sentinel default; overridden via -p:Version=<x.y.z> when packing (see pack_nuget.py). -->
+    <Version>0.0.0-dev</Version>
     <Authors>Microsoft</Authors>
     <Company>Microsoft</Company>
     <Description>WebGPU plugin Execution Provider for ONNX Runtime. Provides GPU acceleration via WebGPU (Dawn) with D3D12 and Vulkan backends.</Description>
