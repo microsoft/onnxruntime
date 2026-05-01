@@ -219,9 +219,18 @@ If an OrtEp uses `OrtDevice()` (CPU) as its default device and registers an init
 │     └─ Uses GetOrtDeviceByMemType() for precise tensor placement    │
 │     └─ Each OrtValue gets an assigned OrtDevice location            │
 │                                                                     │
-│  5. Execution                                                       │
-│     └─ GetAllocator(OrtDevice) → allocate tensors                   │
-│     └─ Stream::GetDevice() → thread device binding                  │
+│  5. Initializer Allocation                                           │
+│     └─ GetAllocator(OrtDevice) → allocate weights/initializers      │
+│     └─ DataTransfer copies initializer data to target device        │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                             Execution                                │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  6. Tensor Allocation & Kernel Execution                             │
+│     └─ GetAllocator(OrtDevice) → allocate intermediate/output       │
+│        tensors per allocation plan                                   │
+│     └─ Stream::GetDevice() → stream/device binding                  │
 │     └─ DataTransfer triggered when source/dest OrtDevices differ    │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
