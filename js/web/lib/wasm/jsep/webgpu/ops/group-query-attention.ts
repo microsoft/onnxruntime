@@ -202,9 +202,7 @@ export const validateInputs = (
     }
     const seqlLenSize = seqlLens.dims.reduce((a, b) => a * b, 1);
     if (seqlLenSize !== batchSize) {
-      throw new Error(
-        `seqlens_k must have batch_size (${batchSize}) elements, got ${seqlLenSize}.`,
-      );
+      throw new Error(`seqlens_k must have batch_size (${batchSize}) elements, got ${seqlLenSize}.`);
     }
     for (let i = 0; i < seqlLens.dims.length; i++) {
       if (seqlLens.dims[i] !== 1 && seqlLens.dims[i] !== batchSize) {
