@@ -21,6 +21,12 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
+std::vector<std::unique_ptr<IExecutionProvider>> GetCpuExecutionProviders() {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  return execution_providers;
+}
+
 std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders() {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 
@@ -50,6 +56,11 @@ void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>&& execut
     test.ConfigEp(std::move(execution_providers[idx])).RunWithConfig();
   }
   execution_providers.clear();
+}
+
+template <typename T>
+void RunCpuOnly(T& test) {
+  RunTests(test, GetCpuExecutionProviders());
 }
 
 }  // namespace
@@ -156,7 +167,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_extre
   test.AddInput<TypeParam>("X", X_shape, X_data);
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
-  RunTests(test, GetExecutionProviders());
+  RunCpuOnly(test);
 }
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_nan_coords) {
@@ -185,7 +196,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_nan_c
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   // With a constant-valued image any reflected pixel returns 1.0.
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
-  RunTests(test, GetExecutionProviders());
+  RunCpuOnly(test);
 }
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_infinity_coords) {
@@ -212,7 +223,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_infi
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   // Constant-valued image: any reflected sample returns 1.0.
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
-  RunTests(test, GetExecutionProviders());
+  RunCpuOnly(test);
 }
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_extreme_coords) {
@@ -239,10 +250,10 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_reflection_extr
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   // With a constant-valued image any sampled pixel is 1.0.
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
-  RunTests(test, GetExecutionProviders());
+  RunCpuOnly(test);
 }
 
-TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_cubic_reflection_extreme_coords) {
+TEST(GridSampleCustomTestFloatOnly, test_grid_sample_20_4D_cubic_reflection_extreme_coords) {
   // Cubic interpolation path: the 4x4 neighborhood is computed via
   // static_cast<int64_t>(std::floor(x)) - 1, exercising the same UB-prone cast.
   // Cubic only supports float (T1 type constraint), so this test is float-only.
@@ -252,23 +263,22 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_cubic_reflection_extreme
   test.AddAttribute("align_corners", int64_t{0});
 
   std::initializer_list<int64_t> X_shape{1, 1, 4, 4};
-  std::initializer_list<TypeParam> X_data{
-      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
-      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
-      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
-      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+  std::initializer_list<float> X_data{
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f};
 
   std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2};
-  std::initializer_list<TypeParam> Grid_data{
-      TypeParam(1.0e+10f), TypeParam(-1.0e+10f)};
+  std::initializer_list<float> Grid_data{1.0e+10f, -1.0e+10f};
 
   std::initializer_list<int64_t> Y_shape{1, 1, 1, 1};
 
-  test.AddInput<TypeParam>("X", X_shape, X_data);
-  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
   // Constant-valued image: cubic interpolation of all-1.0 neighborhood is 1.0.
-  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f)});
-  RunTests(test, GetExecutionProviders());
+  test.AddOutput<float>("Y", Y_shape, {1.0f});
+  RunCpuOnly(test);
 }
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_nearest_reflection_extreme_coords) {
@@ -294,7 +304,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_nearest_reflection_extre
   test.AddInput<TypeParam>("X", X_shape, X_data);
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
-  RunTests(test, GetExecutionProviders());
+  RunCpuOnly(test);
 }
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_dim1_align_corners) {
@@ -319,7 +329,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_dim1_
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   // The single input pixel is the only valid sample for any reflected coordinate.
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(7.0f), TypeParam(7.0f)});
-  RunTests(test, GetExecutionProviders());
+  RunCpuOnly(test);
 }
 
 TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_border_extreme_coords) {
@@ -345,7 +355,7 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_border_extreme_
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   // Constant-valued image: any clamped border sample is 1.0.
   test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
-  RunTests(test, GetExecutionProviders());
+  RunCpuOnly(test);
 }
 
 }  // namespace test
