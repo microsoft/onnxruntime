@@ -14,7 +14,7 @@ Examples
 --------
 Local: pack win-x64 only from a local build:
 
-    python pack_nuget.py --version 1.26.0-dev \\
+    python pack_nuget.py --version 0.1.0-dev \\
         --binary-dir-win-x64 ../../build/webgpu.plugin/Release/Release
 
 CI: pack all platforms from downloaded artifacts:
@@ -60,7 +60,7 @@ def parse_args() -> argparse.Namespace:
         description="Build the Microsoft.ML.OnnxRuntime.EP.WebGpu NuGet package.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--version", required=True, help="Package version (e.g. 1.26.0-dev).")
+    p.add_argument("--version", required=True, help="Package version (e.g. 0.1.0-dev).")
     p.add_argument(
         "--output-dir",
         type=_absolute_path,
