@@ -23,6 +23,27 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
+    /// Reasons why an execution provider might not be compatible with a device.
+    /// </summary>
+    /// <remarks>
+    /// This is a flags enum. Multiple reasons can be combined using bitwise OR.
+    /// </remarks>
+    [Flags]
+    public enum OrtDeviceEpIncompatibilityReason : uint
+    {
+        /// <summary>No incompatibility.</summary>
+        None = 0,
+        /// <summary>Driver is incompatible with the execution provider.</summary>
+        DriverIncompatible = 1 << 0,
+        /// <summary>Device itself is incompatible with the execution provider.</summary>
+        DeviceIncompatible = 1 << 1,
+        /// <summary>Required dependency is missing.</summary>
+        MissingDependency = 1 << 2,
+        /// <summary>Unknown incompatibility reason.</summary>
+        Unknown = 1u << 31
+    }
+
+    /// <summary>
     /// Delegate for logging function callback.
     /// Supply your function and register it with the environment to receive logging callbacks via
     /// EnvironmentCreationOptions
@@ -593,6 +614,76 @@ namespace Microsoft.ML.OnnxRuntime
             return NativeOnnxValueHelper.StringFromNativeUtf8(compatInfoPtr, allocator);
         }
 
+        /// <summary>
+        /// Get the number of available hardware devices.
+        /// </summary>
+        /// <returns>The number of hardware devices discovered on the system.</returns>
+        public int GetNumHardwareDevices()
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetNumHardwareDevices(Handle, out UIntPtr numDevices));
+            return checked((int)numDevices);
+        }
+
+        /// <summary>
+        /// Get the list of available hardware devices.
+        /// </summary>
+        /// <returns>A list of OrtHardwareDevice objects. The underlying native handles are owned by ORT and should not be released.</returns>
+        public IReadOnlyList<OrtHardwareDevice> GetHardwareDevices()
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetNumHardwareDevices(Handle, out UIntPtr numDevices));
+
+            int count = checked((int)numDevices);
+            if (count == 0)
+            {
+                return Array.Empty<OrtHardwareDevice>();
+            }
+
+            var devicePtrs = new IntPtr[count];
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetHardwareDevices(Handle, devicePtrs, numDevices));
+
+            var devices = new OrtHardwareDevice[count];
+            for (int i = 0; i < count; i++)
+            {
+                devices[i] = new OrtHardwareDevice(devicePtrs[i]);
+            }
+            return devices;
+        }
+
+        /// <summary>
+        /// Check for known incompatibility issues between a hardware device and a specific execution provider.
+        /// </summary>
+        /// <param name="epName">The name of the execution provider to check.</param>
+        /// <param name="hardwareDevice">The hardware device to check for incompatibility.</param>
+        /// <returns>Details about incompatibility including reasons and notes.</returns>
+        /// <remarks>
+        /// This method can be used with built-in execution providers without calling
+        /// RegisterExecutionProviderLibrary.
+        /// For execution providers supplied by external libraries, the provider library must be
+        /// registered before calling this method.
+        /// If the returned details have non-zero reasons, the device is not compatible.
+        /// However, zero reasons don't guarantee 100% compatibility for all models.
+        /// </remarks>
+        public OrtDeviceEpIncompatibilityDetails GetHardwareDeviceEpIncompatibilityDetails(
+            string epName, OrtHardwareDevice hardwareDevice)
+        {
+            if (epName == null)
+                throw new ArgumentNullException(nameof(epName));
+            if (epName.Length == 0)
+                throw new ArgumentException("epName must be non-empty", nameof(epName));
+            if (hardwareDevice == null)
+                throw new ArgumentNullException(nameof(hardwareDevice));
+
+            var epNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(epName);
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetHardwareDeviceEpIncompatibilityDetails(
+                    Handle, epNameUtf8, hardwareDevice.Handle, out IntPtr details));
+
+            return new OrtDeviceEpIncompatibilityDetails(details);
+        }
+
 
         /// <summary>
         /// Get/Set log level property of OrtEnv instance
@@ -737,5 +828,121 @@ namespace Microsoft.ML.OnnxRuntime
             return true;
         }
         #endregion
+    }
+
+    /// <summary>
+    /// Contains details about why an execution provider is incompatible with a hardware device.
+    /// </summary>
+    /// <remarks>
+    /// This class wraps the native OrtDeviceEpIncompatibilityDetails object.
+    /// Use the properties to query specific incompatibility information.
+    /// </remarks>
+    public sealed class OrtDeviceEpIncompatibilityDetails : IDisposable
+    {
+        private IntPtr _handle;
+        private bool _disposed = false;
+
+        /// <summary>
+        /// Creates a new OrtDeviceEpIncompatibilityDetails wrapper.
+        /// </summary>
+        /// <param name="handle">The native handle to wrap.</param>
+        internal OrtDeviceEpIncompatibilityDetails(IntPtr handle)
+        {
+            _handle = handle;
+        }
+
+        /// <summary>
+        /// Gets the bitmask of incompatibility reasons.
+        /// </summary>
+        /// <remarks>
+        /// If this value is 0 (None), there are no known incompatibility issues.
+        /// However, this doesn't guarantee 100% compatibility for all models.
+        /// </remarks>
+        public OrtDeviceEpIncompatibilityReason ReasonsBitmask
+        {
+            get
+            {
+                if (_disposed)
+                    throw new ObjectDisposedException(nameof(OrtDeviceEpIncompatibilityDetails));
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtDeviceEpIncompatibilityDetails_GetReasonsBitmask(_handle, out uint bitmask));
+                return (OrtDeviceEpIncompatibilityReason)bitmask;
+            }
+        }
+
+        /// <summary>
+        /// Gets human-readable notes about the incompatibility.
+        /// </summary>
+        /// <remarks>
+        /// May be null if no notes are available.
+        /// </remarks>
+        public string Notes
+        {
+            get
+            {
+                if (_disposed)
+                    throw new ObjectDisposedException(nameof(OrtDeviceEpIncompatibilityDetails));
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtDeviceEpIncompatibilityDetails_GetNotes(_handle, out IntPtr notesPtr));
+                
+                if (notesPtr == IntPtr.Zero)
+                    return null;
+
+                return NativeOnnxValueHelper.StringFromNativeUtf8(notesPtr);
+            }
+        }
+
+        /// <summary>
+        /// Gets the EP-specific error code.
+        /// </summary>
+        /// <remarks>
+        /// This allows Independent Hardware Vendors (IHVs) to define their own error codes
+        /// to provide additional details about device incompatibility.
+        /// A value of 0 indicates no error code was set.
+        /// </remarks>
+        public int ErrorCode
+        {
+            get
+            {
+                if (_disposed)
+                    throw new ObjectDisposedException(nameof(OrtDeviceEpIncompatibilityDetails));
+
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtDeviceEpIncompatibilityDetails_GetErrorCode(_handle, out int errorCode));
+                return errorCode;
+            }
+        }
+
+        /// <summary>
+        /// Disposes the native resources.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (_handle != IntPtr.Zero)
+                {
+                    NativeMethods.OrtReleaseDeviceEpIncompatibilityDetails(_handle);
+                    _handle = IntPtr.Zero;
+                }
+                _disposed = true;
+            }
+        }
+
+        /// <summary>
+        /// Finalizer.
+        /// </summary>
+        ~OrtDeviceEpIncompatibilityDetails()
+        {
+            Dispose(false);
+        }
     }
 }
