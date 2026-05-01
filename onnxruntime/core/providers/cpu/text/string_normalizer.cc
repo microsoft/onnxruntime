@@ -5,6 +5,7 @@
 
 #include "string_normalizer.h"
 #include "core/common/common.h"
+#include "core/common/utf8_util.h"
 #include "core/framework/tensor.h"
 
 #ifdef _MSC_VER
@@ -26,176 +27,34 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace string_normalizer {
 
-// Manual UTF-8 <-> wchar_t (UTF-32 on non-Windows) converter.
-// Replaces the deprecated std::codecvt_utf8<wchar_t>.
+#ifndef _MSC_VER
+// Thin wrapper around the common utf8_util functions, providing the same interface
+// as Utf8ConverterWindows so the code below can use either via the Utf8Converter alias.
 class Utf8ConverterGeneric {
  public:
   size_t ComputeRequiredSizeToUtf8(const std::wstring& wstr) const {
-    if (wstr.empty()) {
-      return 0;
-    }
-
-    size_t result = 0;
-    for (wchar_t wc : wstr) {
-      char32_t cp = static_cast<char32_t>(wc);
-      if (cp <= 0x7F) {
-        result += 1;
-      } else if (cp <= 0x7FF) {
-        result += 2;
-      } else if (cp <= 0xFFFF) {
-        result += 3;
-      } else if (cp <= 0x10FFFF) {
-        result += 4;
-      } else {
-        ORT_THROW("Invalid Unicode codepoint U+", std::hex, static_cast<uint32_t>(cp));
-      }
-    }
-    return result;
+    return WideToUtf8RequiredSize(wstr);
   }
 
   Status ConvertToUtf8(const std::wstring& wstr, std::string& str) const {
-    if (wstr.empty()) {
-      str.clear();
-      return Status::OK();
-    }
-
-    char* dest = str.data();
-    char* dest_end = dest + str.size();
-
-    for (wchar_t wc : wstr) {
-      char32_t cp = static_cast<char32_t>(wc);
-      if (cp <= 0x7F) {
-        if (dest >= dest_end) break;
-        *dest++ = static_cast<char>(cp);
-      } else if (cp <= 0x7FF) {
-        if (dest + 1 >= dest_end) break;
-        *dest++ = static_cast<char>(0xC0 | (cp >> 6));
-        *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
-      } else if (cp <= 0xFFFF) {
-        if (dest + 2 >= dest_end) break;
-        *dest++ = static_cast<char>(0xE0 | (cp >> 12));
-        *dest++ = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
-      } else if (cp <= 0x10FFFF) {
-        if (dest + 3 >= dest_end) break;
-        *dest++ = static_cast<char>(0xF0 | (cp >> 18));
-        *dest++ = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-        *dest++ = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Invalid Unicode codepoint during UTF-8 conversion");
-      }
-    }
-
-    str.resize(static_cast<size_t>(dest - str.data()));
-    return Status::OK();
+    return WideToUtf8(wstr, str);
   }
 
   Status ComputeRequiredSizeToWideChar(const std::string& str, size_t& wchars) {
-    if (str.empty()) {
-      wchars = 0;
-      return Status::OK();
-    }
-
-    size_t result = 0;
-    const auto* src = reinterpret_cast<const unsigned char*>(str.data());
-    const auto* src_end = src + str.size();
-
-    while (src < src_end) {
-      size_t byte_len = 0;
-      if ((*src & 0x80) == 0) {
-        byte_len = 1;
-      } else if ((*src & 0xE0) == 0xC0) {
-        byte_len = 2;
-      } else if ((*src & 0xF0) == 0xE0) {
-        byte_len = 3;
-      } else if ((*src & 0xF8) == 0xF0) {
-        byte_len = 4;
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Invalid UTF-8 lead byte at offset ",
-                               static_cast<size_t>(src - reinterpret_cast<const unsigned char*>(str.data())));
-      }
-
-      if (static_cast<size_t>(src_end - src) < byte_len) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Truncated UTF-8 sequence at offset ",
-                               static_cast<size_t>(src - reinterpret_cast<const unsigned char*>(str.data())));
-      }
-
-      src += byte_len;
-      ++result;
-    }
-
-    wchars = result;
+    // UTF-8 byte count is an upper bound on wchar_t count; use it directly.
+    wchars = str.size();
     return Status::OK();
   }
 
   Status ConvertToWideChar(const std::string& str, std::wstring& wstr) {
-    if (str.empty()) {
-      wstr.clear();
-      return Status::OK();
-    }
-
-    const auto* src = reinterpret_cast<const unsigned char*>(str.data());
-    const auto* src_end = src + str.size();
-    wchar_t* dest = wstr.data();
-
-    while (src < src_end) {
-      char32_t cp = 0;
-      size_t byte_len = 0;
-
-      if ((*src & 0x80) == 0) {
-        cp = *src;
-        byte_len = 1;
-      } else if ((*src & 0xE0) == 0xC0) {
-        byte_len = 2;
-        if (static_cast<size_t>(src_end - src) < 2) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Truncated UTF-8 sequence");
-        }
-        cp = (static_cast<char32_t>(src[0] & 0x1F) << 6) |
-             static_cast<char32_t>(src[1] & 0x3F);
-      } else if ((*src & 0xF0) == 0xE0) {
-        byte_len = 3;
-        if (static_cast<size_t>(src_end - src) < 3) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Truncated UTF-8 sequence");
-        }
-        cp = (static_cast<char32_t>(src[0] & 0x0F) << 12) |
-             (static_cast<char32_t>(src[1] & 0x3F) << 6) |
-             static_cast<char32_t>(src[2] & 0x3F);
-      } else if ((*src & 0xF8) == 0xF0) {
-        byte_len = 4;
-        if (static_cast<size_t>(src_end - src) < 4) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Truncated UTF-8 sequence");
-        }
-        cp = (static_cast<char32_t>(src[0] & 0x07) << 18) |
-             (static_cast<char32_t>(src[1] & 0x3F) << 12) |
-             (static_cast<char32_t>(src[2] & 0x3F) << 6) |
-             static_cast<char32_t>(src[3] & 0x3F);
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid UTF-8 lead byte");
-      }
-
-      *dest++ = static_cast<wchar_t>(cp);
-      src += byte_len;
-    }
-
-    wstr.resize(static_cast<size_t>(dest - wstr.data()));
-    return Status::OK();
+    return Utf8ToWide(str, wstr);
   }
 
   std::wstring from_bytes(const std::string& s) {
-    std::wstring result;
-
-    size_t wchars = 0;
-    ORT_THROW_IF_ERROR(ComputeRequiredSizeToWideChar(s, wchars));
-
-    result.resize(wchars);
-    ORT_THROW_IF_ERROR(ConvertToWideChar(s, result));
-    return result;
+    return Utf8ToWideString(s);
   }
 };
+#endif  // !_MSC_VER
 
 // We need to specialize for MS as there is
 // a std::locale creation bug that affects different
@@ -550,31 +409,6 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   };
 
-  // Output filtered strings with pre-computed wide forms (avoids double conversion).
-  auto output_filtered_with_wide = [&](const TensorShape& output_shape,
-                                       gsl::span<const size_t> filtered_indices,
-                                       InlinedVector<std::wstring>& wide_forms) {
-    auto output_tensor = ctx->Output(0, output_shape);
-    auto output_data = output_tensor->MutableData<std::string>();
-    for (size_t idx = 0; idx < filtered_indices.size(); ++idx) {
-      if (case_change_action_ != NONE) {
-        // wide_forms were lowercased for comparison; re-convert from original and apply target case
-        const std::string& s = input_span[filtered_indices[idx]];
-        wchar_buffer.resize(max_wide_buffer_len);
-        ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
-        locale.ChangeCase(case_change_action_, wchar_buffer);
-
-        auto& dest = *output_data++;
-        size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wchar_buffer);
-        dest.resize(utf8_buffer_len);
-        ORT_RETURN_IF_ERROR(converter.ConvertToUtf8(wchar_buffer, dest));
-      } else {
-        *output_data++ = input_span[filtered_indices[idx]];
-      }
-    }
-    return Status::OK();
-  };
-
   Status status;
 
   if (is_case_sensitive_) {
@@ -605,16 +439,10 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       status = output_no_filtering(output_shape);
     } else {
       // Case insensitive filtering: convert to wchar_t and case-fold for comparison.
-      // If case_change_action_ matches compare_caseaction_, we can reuse the wide form
-      // directly for output, avoiding a second conversion.
-      const bool can_reuse_wide = (case_change_action_ == compare_caseaction_);
-
+      // Re-conversion during output is cheaper than caching N wide strings (each requiring
+      // a heap allocation), especially under multi-threaded contention for the allocator lock.
       InlinedVector<size_t> filtered_strings_indices;
-      InlinedVector<std::wstring> filtered_wide_forms;
       filtered_strings_indices.reserve(input_span.size());
-      if (can_reuse_wide) {
-        filtered_wide_forms.reserve(input_span.size());
-      }
 
       for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
         const std::string& s = input_span[i];
@@ -623,30 +451,12 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         locale.ChangeCase(compare_caseaction_, wchar_buffer);
         if (wstopwords_.count(wchar_buffer) == 0) {
           filtered_strings_indices.push_back(i);
-          if (can_reuse_wide) {
-            filtered_wide_forms.push_back(wchar_buffer);
-          }
         }
       }
 
       const int64_t filtered_count = std::max<int64_t>(1, narrow<int64_t>(filtered_strings_indices.size()));
       output_shape.push_back(filtered_count);
-
-      if (can_reuse_wide && case_change_action_ != NONE) {
-        // Reuse the already case-converted wide forms directly for output
-        auto output_tensor = ctx->Output(0, output_shape);
-        auto output_data = output_tensor->MutableData<std::string>();
-        for (size_t idx = 0; idx < filtered_strings_indices.size(); ++idx) {
-          const std::wstring& wide = filtered_wide_forms[idx];
-          auto& dest = *output_data++;
-          size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wide);
-          dest.resize(utf8_buffer_len);
-          ORT_RETURN_IF_ERROR(converter.ConvertToUtf8(wide, dest));
-        }
-        status = Status::OK();
-      } else {
-        status = output_filtered_with_wide(output_shape, filtered_strings_indices, filtered_wide_forms);
-      }
+      status = output_filtered(output_shape, filtered_strings_indices);
     }
   }
 
