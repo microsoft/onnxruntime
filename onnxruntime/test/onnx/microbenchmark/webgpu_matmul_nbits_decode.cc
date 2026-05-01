@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// This benchmark uses Dawn (WebGPU) headers directly, which are only available
+// when the WebGPU EP is built (USE_WEBGPU is defined for that EP). On other
+// builds the file compiles to an empty translation unit so the benchmark
+// target can still link.
+#ifdef USE_WEBGPU
+
 #include <benchmark/benchmark.h>
 
 #include <algorithm>
@@ -1663,3 +1669,5 @@ BENCHMARK(BM_WebGpuMatMulNBitsMlpSkipPassthroughDecodeFused)
     ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 }  // namespace
+
+#endif  // USE_WEBGPU
