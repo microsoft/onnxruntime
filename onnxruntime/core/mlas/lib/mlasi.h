@@ -352,7 +352,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 //
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || \
-    defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X)
+    defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X) || \
+    defined(MLAS_TARGET_RISCV64)
 
 typedef
 size_t
@@ -609,6 +610,31 @@ void
     float* Output,
     size_t N
     );
+
+typedef
+void
+(MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+typedef
+void
+(MLASCALL MLAS_COMPUTE_GELU_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    MLAS_FP16* Temp,
+    size_t N,
+    MLAS_GELU_ALGORITHM Algo
+);
+
+typedef void
+(MLASCALL MLAS_COMPUTE_TANH_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
 
 typedef
 float
@@ -993,6 +1019,36 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelLasx;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
+#elif defined(MLAS_TARGET_RISCV64)
+#if defined(MLAS_USE_RVV)
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelRvv;
+    void MlasSgemmCopyPackBRvv(
+        float* D,
+        const float* B,
+        size_t ldb,
+        size_t CountX,
+        size_t CountY);
+#endif
+    size_t MLASCALL MlasSgemmKernelZero(
+        const float* A,
+        const float* B,
+        float* C,
+        size_t CountK,
+        size_t CountM,
+        size_t CountN,
+        size_t lda,
+        size_t ldc,
+        float alpha);
+    size_t MLASCALL MlasSgemmKernelAdd(
+        const float* A,
+        const float* B,
+        float* C,
+        size_t CountK,
+        size_t CountM,
+        size_t CountN,
+        size_t lda,
+        size_t ldc,
+        float alpha);
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -1024,7 +1080,10 @@ extern "C" {
     // AArch64 assembly micro-kernel for pointwise NCHWc convolution
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
 #endif
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    // AArch64 assembly fast-math micro-kernels
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwBf16KernelNeon;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseBf16KernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
 #endif
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
@@ -1116,6 +1175,7 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
     MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
@@ -1138,6 +1198,12 @@ extern "C" {
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelRvv;
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelRvv;
+    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelRvv;
+    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelRvv;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx512F;
@@ -1413,7 +1479,7 @@ struct MLAS_PLATFORM {
 #endif
 
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_RISCV64)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
 #endif
 #if defined(MLAS_TARGET_LARCH64)
@@ -1448,7 +1514,9 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwBf16Kernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseBf16Kernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseBf16Kernel;
 #endif
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
@@ -1476,7 +1544,7 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
 #endif
 
-#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;
@@ -1484,6 +1552,11 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
 #endif
+
+MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;

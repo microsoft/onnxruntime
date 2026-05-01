@@ -738,6 +738,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
+  /// This MUST be declared before execution_providers_ so the logger outlives EPs during destruction
+  /// (C++ destroys members in reverse declaration order), allowing EP teardown callbacks to safely
+  /// use the logger pointer.
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
+
   // The list of execution providers.
   // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
   // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
@@ -767,6 +773,20 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  // Maximum number of internal run attempts allowed (within a single session.Run()) for EP graph capture.
+  // If the number of run attempts exceeds this limit, the session.Run() returns an error status.
+  // This prevents running an unbounded number of runs due to buggy EPs that never return true from
+  // IsGraphCaptured(). Note that EPs typically need at most two runs to capture a graph (e.g., CUDA EP).
+  static constexpr int kMaxGraphCaptureRunAttempts = 8;
+
+  // Internal implementation of Run() with graph capture recursion depth tracking.
+  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                                       gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                       std::vector<OrtValue>* p_fetches,
+                                       const std::vector<OrtDevice>* p_fetches_device_info,
+                                       int graph_capture_depth);
+
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
@@ -886,9 +906,6 @@ class InferenceSession {
 
   /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
   std::unique_ptr<logging::LoggingManager> user_logging_manager_;
-
-  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
@@ -1062,6 +1079,8 @@ class InferenceSession {
     }
 
     const std::string& Type() const {
+      ORT_ENFORCE(cached_execution_provider_for_graph_replay_ != nullptr,
+                  "No EP registered for graph replay yet");
       return cached_execution_provider_for_graph_replay_->Type();
     }
 

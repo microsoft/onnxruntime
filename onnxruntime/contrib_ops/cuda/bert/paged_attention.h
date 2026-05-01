@@ -29,6 +29,7 @@ class PagedAttention final : public CudaKernel {
   float scale_;
   float softcap_;
   bool disable_flash_attention_;
+  bool disable_memory_efficient_attention_;
   const AttentionKernelOptions* kernel_options_;
 };
 

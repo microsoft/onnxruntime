@@ -509,6 +509,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
     )
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
 
+  if (onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    file(GLOB onnxruntime_test_providers_cuda_plugin_src CONFIGURE_DEPENDS
+      "${TEST_SRC_DIR}/providers/cuda/plugin/*.cc"
+    )
+    list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_plugin_src})
+  endif()
+
   if (onnxruntime_USE_CUDA_NHWC_OPS AND CUDNN_MAJOR_VERSION GREATER 8)
     file(GLOB onnxruntime_test_providers_cuda_nhwc_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/providers/cuda/nhwc/*.cc"
@@ -1393,6 +1400,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     SET(MLAS_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench)
     file(GLOB_RECURSE MLAS_BENCH_SOURCE_FILES "${MLAS_BENCH_DIR}/*.cpp" "${MLAS_BENCH_DIR}/*.h")
+    list(FILTER MLAS_BENCH_SOURCE_FILES EXCLUDE REGEX "${MLAS_BENCH_DIR}/riscv64/.*")
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES} ${ONNXRUNTIME_ROOT}/core/framework/error_code.cc)
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
@@ -1411,6 +1419,33 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  endif()
+
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+    set(MLAS_RISCV64_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench/riscv64)
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_sgemm_riscv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/sgemm_riscv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_sgemm_riscv_bench PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_link_libraries(
+      onnxruntime_mlas_sgemm_riscv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_sgemm_riscv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_sgemm_riscv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_softmax_riscv_compare
+      ${MLAS_RISCV64_BENCH_DIR}/softmax_rvv_compare.cpp)
+    target_include_directories(
+      onnxruntime_mlas_softmax_riscv_compare
+      PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_link_libraries(
+      onnxruntime_mlas_softmax_riscv_compare
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_softmax_riscv_compare PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_softmax_riscv_compare PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   if(WIN32)
@@ -2269,45 +2304,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_USE_OPENVINO AND
 
   set_property(TARGET custom_op_openvino_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_CUSTOM_OP_OPENVINO_WRAPPER_LIB_LINK_FLAG})
-endif()
-
-# limit to only test on windows first, due to a runtime path issue on linux
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
-                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  file(GLOB_RECURSE test_execution_provider_srcs
-    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
-    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
-  )
-
-  onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx ${ABSEIL_LIBS})
-  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    target_link_options(test_execution_provider PRIVATE -Wl,-brtl -lonnxruntime_providers_shared)
-    target_link_libraries(test_execution_provider PRIVATE ${ABSEIL_LIBS} Boost::mp11)
-  else()
-    target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared ${ABSEIL_LIBS} Boost::mp11)
-  endif()
-  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
-  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
-  target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    target_link_libraries(test_execution_provider PRIVATE Python::Python)
-  endif()
-  if(APPLE)
-    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
-  elseif(UNIX)
-    if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
-     endif()
-  elseif(WIN32)
-    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
-  else()
-    message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
-  endif()
 endif()
 
 if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)

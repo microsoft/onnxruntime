@@ -348,16 +348,7 @@ stages:
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: true
 
-    - task: UsePythonVersion@0
-      displayName: 'Use Python'
-      inputs:
-        versionSpec: 3.12
-
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'Lotus'
-
+    - template: setup-feeds-and-python-steps.yml
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

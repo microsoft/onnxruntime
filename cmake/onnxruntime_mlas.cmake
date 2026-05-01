@@ -351,7 +351,7 @@ function (setup_arm_neon_nchwc)
      ${MLAS_SRC_DIR}/aarch64/SconvNchwcKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
      ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
-    )
+     )
   endif()
   list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
   set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
@@ -435,6 +435,8 @@ else()
           set(X86 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
           set(X86_64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+          set(RISCV64 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
           set(LOONGARCH64 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
@@ -510,7 +512,10 @@ else()
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlas_sve_fp16.h)
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
@@ -548,7 +553,18 @@ else()
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/erf_neon_fp16.h
+            ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/gelu_neon_fp16.h
+            ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
           )
+          if (onnxruntime_USE_ARM_NEON_NCHWC)
+            list(APPEND mlas_platform_srcs
+              ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S
+              ${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S
+              ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S
+            )
+          endif()
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
@@ -565,6 +581,13 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          if (onnxruntime_USE_ARM_NEON_NCHWC)
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          endif()
+          set_source_files_properties(${MLAS_SRC_DIR}/erf_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/gelu_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -877,6 +900,48 @@ endif()
         set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
         set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mvx -mzvector -march=z15")
+
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(RISCV64 AND MLAS_SOURCE_IS_NOT_SET)
+        file(GLOB_RECURSE mlas_platform_srcs CONFIGURE_DEPENDS
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
+
+        if(onnxruntime_USE_RVV)
+          set(OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS} -march=rv64gcv -mabi=lp64d")
+          check_cxx_source_compiles("
+            #include <stddef.h>
+            #include <riscv_vector.h>
+            int main() {
+              size_t vl = __riscv_vsetvl_e32m1(4);
+              return static_cast<int>(vl == 0);
+            }"
+            HAS_RISCV64_RVV
+          )
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS}")
+          unset(OLD_CMAKE_REQUIRED_FLAGS)
+
+          if(HAS_RISCV64_RVV)
+            list(APPEND mlas_platform_srcs
+              ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+            )
+            set_source_files_properties(
+              ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
+            list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
+          else()
+            message(
+              WARNING
+              "onnxruntime_USE_RVV was requested, but the compiler does not support rv64gcv RVV intrinsics. Falling back to scalar MLAS kernels.")
+          endif()
+        endif()
 
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)

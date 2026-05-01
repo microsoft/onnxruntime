@@ -56,9 +56,17 @@ template <typename T>
 Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
 
-  ptrdiff_t num_features = X->Shape().NumDimensions() == 1 ? narrow<ptrdiff_t>(X->Shape()[0]) : narrow<ptrdiff_t>(X->Shape()[1]);
-  ptrdiff_t num_batches = X->Shape().NumDimensions() == 1 ? 1 : narrow<ptrdiff_t>(X->Shape()[0]);
-  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0, "Invalid argument");
+  const auto& x_shape = X->Shape();
+  const auto input_rank = x_shape.NumDimensions();
+  ORT_RETURN_IF_NOT(input_rank > 0 && input_rank <= 2, "Input shape must have 1 or 2 dimensions. Dims=", input_rank);
+
+  ptrdiff_t num_features = input_rank == 1 ? narrow<ptrdiff_t>(x_shape[0]) : narrow<ptrdiff_t>(x_shape[1]);
+  ptrdiff_t num_batches = input_rank == 1 ? 1 : narrow<ptrdiff_t>(x_shape[0]);
+  ORT_RETURN_IF_NOT(num_features == feature_count_ && num_features >= 0 && num_batches >= 0,
+                    "Invalid input for SVMRegressor: expected feature_count=", feature_count_,
+                    ", actual num_features=", num_features,
+                    ", input_rank=", input_rank,
+                    ", num_batches=", num_batches);
 
   // X: [num_batches, feature_count_] where features could be coefficients or support vectors
   // coefficients_: [vector_count_]

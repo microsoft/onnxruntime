@@ -24,6 +24,10 @@ DeferredCpuAllocator::DeferredCpuAllocator(CudaStream& cuda_stream) : cuda_strea
         auto self = reinterpret_cast<const DeferredCpuAllocator*>(this_);
         return &self->cuda_stream_.GetCpuAllocator()->Info();
       };
+  OrtAllocator::Reserve = nullptr;
+  OrtAllocator::GetStats = nullptr;
+  OrtAllocator::AllocOnStream = nullptr;
+  OrtAllocator::Shrink = nullptr;
 }
 
 struct CudaNotification : public synchronize::Notification {

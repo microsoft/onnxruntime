@@ -10,15 +10,7 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX ASM)
 
-# Set C/C++ standard versions
-if (NOT CMAKE_C_STANDARD)
-  # Needed for Java
-  set(CMAKE_C_STANDARD 99)
-endif()
-
-if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
-endif()
+include(onnxruntime_language_standard_versions.cmake)
 
 # We don't use C++20 modules yet.
 # There are some known issues to address first:
@@ -97,6 +89,7 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
+option(onnxruntime_USE_RVV "Build with RISC-V Vector support in MLAS" OFF)
 option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
@@ -1243,6 +1236,11 @@ function(onnxruntime_configure_target target_name)
     target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>")
   endif()
 
+  # Add compile features for minimum required language standard versions.
+  # Wrap in $<BUILD_INTERFACE:...> so the requirement is not exported to consumers of installed ORT targets.
+  target_compile_features(${target_name} PUBLIC
+                          $<BUILD_INTERFACE:${onnxruntime_c_std_compile_feature}>
+                          $<BUILD_INTERFACE:${onnxruntime_cxx_std_compile_feature}>)
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)

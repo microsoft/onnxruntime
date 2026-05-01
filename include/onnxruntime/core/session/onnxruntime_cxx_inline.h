@@ -225,6 +225,19 @@ inline void* AllocatorImpl<T>::Alloc(size_t size) {
 }
 
 template <typename T>
+inline void* AllocatorImpl<T>::Reserve(size_t size) {
+  // Reserve was added in version 18. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 18 && this->p_->Reserve) {
+    return this->p_->Reserve(this->p_, size);
+  }
+  // Fall back to Alloc() for allocators that don't implement Reserve,
+  // matching the ORT-core adapter behavior (IAllocatorImplWrappingOrtAllocator,
+  // IArenaImplWrappingOrtAllocator).
+  return this->p_->Alloc(this->p_, size);
+}
+
+template <typename T>
 inline MemoryAllocation AllocatorImpl<T>::GetAllocation(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
@@ -249,6 +262,15 @@ inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
   OrtKeyValuePairs* out;
   ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
   return KeyValuePairs(out);
+}
+
+template <typename T>
+inline void AllocatorImpl<T>::Shrink() {
+  // Shrink was added in version 25. For older allocators the field may be
+  // uninitialized, so we must not dereference it.
+  if (this->p_->version >= 25 && this->p_->Shrink) {
+    ThrowOnError(this->p_->Shrink(this->p_));
+  }
 }
 }  // namespace detail
 
@@ -1017,6 +1039,57 @@ inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
   return devices;
 }
 
+inline size_t Env::GetNumHardwareDevices() const {
+  size_t num_devices = 0;
+  ThrowOnError(GetApi().GetNumHardwareDevices(p_, &num_devices));
+  return num_devices;
+}
+
+inline std::vector<ConstHardwareDevice> Env::GetHardwareDevices() const {
+  size_t num_devices = 0;
+  ThrowOnError(GetApi().GetNumHardwareDevices(p_, &num_devices));
+
+  std::vector<ConstHardwareDevice> devices;
+  if (num_devices > 0) {
+    std::vector<const OrtHardwareDevice*> device_ptrs(num_devices);
+    ThrowOnError(GetApi().GetHardwareDevices(p_, device_ptrs.data(), num_devices));
+    devices.reserve(num_devices);
+    for (size_t i = 0; i < num_devices; ++i) {
+      devices.emplace_back(device_ptrs[i]);
+    }
+  }
+
+  return devices;
+}
+
+inline DeviceEpIncompatibilityDetails Env::GetHardwareDeviceEpIncompatibilityDetails(
+    const char* ep_name, ConstHardwareDevice hw) const {
+  OrtDeviceEpIncompatibilityDetails* details = nullptr;
+  ThrowOnError(GetApi().GetHardwareDeviceEpIncompatibilityDetails(p_, ep_name, hw, &details));
+  return DeviceEpIncompatibilityDetails{details};
+}
+
+template <typename T>
+inline uint32_t detail::DeviceEpIncompatibilityDetailsImpl<T>::GetReasonsBitmask() const {
+  uint32_t reasons_bitmask = 0;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetReasonsBitmask(this->p_, &reasons_bitmask));
+  return reasons_bitmask;
+}
+
+template <typename T>
+inline const char* detail::DeviceEpIncompatibilityDetailsImpl<T>::GetNotes() const {
+  const char* notes = nullptr;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetNotes(this->p_, &notes));
+  return notes;
+}
+
+template <typename T>
+inline int32_t detail::DeviceEpIncompatibilityDetailsImpl<T>::GetErrorCode() const {
+  int32_t error_code = 0;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetErrorCode(this->p_, &error_code));
+  return error_code;
+}
+
 inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
                                const std::vector<Value>& dst_tensors,
                                OrtSyncStream* stream) const {
@@ -1030,6 +1103,11 @@ inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
   const OrtValue* const* src_tensors_ptr = reinterpret_cast<const OrtValue* const*>(src_tensors.data());
   OrtValue* const* dst_tensors_ptr = reinterpret_cast<OrtValue* const*>(dst_tensors.data());
   OrtStatus* status = GetApi().CopyTensors(p_, src_tensors_ptr, dst_tensors_ptr, stream, src_tensors.size());
+  return Status(status);
+}
+
+inline Status Env::CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const {
+  OrtStatus* status = GetApi().CopyTensors(p_, &src_tensor, &dst_tensor, stream, 1);
   return Status(status);
 }
 
@@ -4147,4 +4225,5 @@ inline OpSchema GetOpSchema(const char* name, int max_inclusive_version, const c
   ThrowOnError(GetEpApi().GetOpSchema(name, max_inclusive_version, domain, &schema));
   return OpSchema{schema};
 }
+
 }  // namespace Ort

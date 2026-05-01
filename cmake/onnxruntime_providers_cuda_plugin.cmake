@@ -111,6 +111,10 @@ onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CC_SRCS}
     ${CUDA_PLUGIN_EP_CU_SRCS}
 )
+
+# Mirror directory structure in the Visual Studio solution tree under "onnxruntime".
+source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_EP_CC_SRCS} ${CUDA_EP_CU_SRCS})
+source_group(TREE ${ONNXRUNTIME_ROOT} PREFIX "onnxruntime" FILES ${CUDA_CONTRIB_OPS_CC_SRCS} ${CUDA_CONTRIB_OPS_CU_SRCS})
 # Keep the plugin CUDA target aligned with the repo-wide C++20 baseline.
 # Forcing CUDA C++17 here breaks newer protobuf/absl headers used by the plugin
 # build, as absl::compare expects standard ordering support in this configuration.
@@ -143,21 +147,13 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--std c++20>"
     "$<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr;-Xcudafe;--diag_suppress=550>"
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
+    # Force-include adapters.h and cuda_kernel_adapter.h for CXX sources.
+    # GCC/Clang use -include, MSVC uses /FI.
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-include;${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/FI${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
+    "$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/FI${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
 )
-
-# Force-include adapter headers for CXX files.
-# MSVC uses /FI; GCC/Clang use -include.
-if (MSVC)
-    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
-        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FI \"${REPO_ROOT}/include/onnxruntime/ep/adapters.h\">"
-        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:/FI \"${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h\">"
-    )
-else()
-    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
-        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${REPO_ROOT}/include/onnxruntime/ep/adapters.h>"
-        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${CUDA_PLUGIN_EP_DIR}/cuda_kernel_adapter.h>"
-    )
-endif()
 
 if (MSVC)
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
@@ -170,6 +166,11 @@ if (MSVC)
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
+        "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
+        # /permissive disables C++ alternative tokens (or, and, not, etc.).
+        # Force-include iso646.h to restore them as macros.
+        "$<$<COMPILE_LANGUAGE:CXX>:/FIiso646.h>"
         "$<$<COMPILE_LANGUAGE:CXX>:/wd4127>"
     )
 endif()
@@ -264,8 +265,18 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     ${PROTOBUF_LIB}
 )
 
+if (onnxruntime_ENABLE_CUDA_PROFILING)
+    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE CUDA::cupti)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_PROFILING)
+endif()
+
+# Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
+if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
+  set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
+endif()
+
 # Symbol visibility — only export CreateEpFactories and ReleaseEpFactory
-target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1)
+target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
 
 if (onnxruntime_USE_CUDA_NHWC_OPS)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_NHWC_OPS)
@@ -287,9 +298,10 @@ endif()
 
 
 
-# Set output name
+# Set output name and solution folder
 set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES
     OUTPUT_NAME "onnxruntime_providers_cuda_plugin"
+    FOLDER "ONNXRuntime"
 )
 
 # Install
