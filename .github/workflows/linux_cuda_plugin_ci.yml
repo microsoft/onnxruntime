@@ -36,6 +36,7 @@ jobs:
         --cuda_version=12.8
         --cuda_home=/usr/local/cuda-12.8
         --cudnn_home=/usr/local/cuda-12.8
+        --enable_cuda_profiling
         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
