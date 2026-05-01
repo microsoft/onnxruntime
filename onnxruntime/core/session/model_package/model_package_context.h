@@ -69,15 +69,31 @@ class ModelPackageOptions;  // forward declaration
 
 class ModelPackageContext {
  public:
-  explicit ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root,
-                               std::vector<VariantSelectionEpInfo> ep_infos);
+  explicit ModelPackageContext(const std::filesystem::path& package_root);
 
-  ModelPackageContext(const onnxruntime::Environment& env, const std::filesystem::path& package_root,
-                      const ModelPackageOptions& options);
+  size_t GetComponentModelCount() const noexcept;
+  Status GetComponentModelNames(gsl::span<const std::string>& out_names) const;
+
+  Status GetModelVariantCount(const std::string& component_name, size_t& out_count) const;
+  Status GetModelVariantNames(const std::string& component_name,
+                              gsl::span<const std::string>& out_variant_names) const;
+
+  Status GetFileCount(const std::string& component_name,
+                      const std::string& variant_name,
+                      size_t& out_count) const;
+  Status GetFileIdentifiers(const std::string& component_name,
+                            const std::string& variant_name,
+                            gsl::span<const std::string>& out_file_identifiers) const;
+  Status GetFilePath(const std::string& component_name,
+                     const std::string& variant_name,
+                     const char* file_identifier /*may be null*/,
+                     std::filesystem::path& out_path) const;
+
+  Status ResolveVariant(const ModelPackageOptions* options);
+
+  Status ResolveVariant(gsl::span<const VariantSelectionEpInfo> ep_infos);
 
   const ModelPackageOptions* Options() const noexcept;
-
-  Status ResolveVariant();
 
   const ModelPackageInfo& GetModelPackageInfo() const noexcept {
     return model_package_info_;
@@ -87,8 +103,6 @@ class ModelPackageContext {
     return model_variant_infos_;
   }
 
-  size_t GetComponentModelCount() const noexcept;
-  Status GetComponentModelName(size_t component_index, const std::string*& out_name) const;
   Status GetSelectedVariantModelInfo(const std::string& component_name,
                                      const char* file_identifier /*may be null*/,
                                      const VariantModelInfo*& out_model_info) const;
@@ -118,15 +132,15 @@ class ModelPackageContext {
                                                gsl::span<const std::string>& out_values) const;
 
  private:
-  const onnxruntime::Environment& env_;
   const ModelPackageOptions* options_{};  // non-owning, immutable config source
   std::vector<ModelVariantInfo> model_variant_infos_;
 
-  // Hierarchical package/component/variant cache used by query APIs.
   ModelPackageInfo model_package_info_{};
   std::unordered_map<std::string, size_t> component_name_to_index_{};
+  std::vector<std::string> component_names_cache_{};
+  mutable std::unordered_map<std::string, std::vector<std::string>> component_to_variant_names_cache_{};
+  mutable std::unordered_map<std::string, std::vector<std::string>> variant_to_file_identifiers_cache_{};
 
-  // Cached file identifiers for the currently selected variant (for query APIs).
   mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
   mutable std::vector<std::string> selected_variant_session_option_keys_cache_{};
   mutable std::vector<std::string> selected_variant_session_option_values_cache_{};
@@ -140,7 +154,7 @@ class ModelPackageContext {
   bool from_policy_{false};
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
 
-  void BuildComponentModelCache();
+  Status ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos);
 
   Status GetSelectedVariantForComponent(const std::string& component_name,
                                         const ModelVariantInfo*& out_variant) const;

@@ -25,7 +25,7 @@ class ModelVariantSelector {
 
   // Select model variant (finest granularity).
   Status SelectVariant(const ModelPackageContext& context,
-                       gsl::span<VariantSelectionEpInfo> ep_infos,
+                       gsl::span<const VariantSelectionEpInfo> ep_infos,
                        std::optional<ModelVariantInfo>& selected_variant) const;
 
  private:

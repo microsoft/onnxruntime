@@ -800,17 +800,25 @@ TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
   model_pkg_options.reset(raw_options);
 
   OrtModelPackageContext* raw_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(*ort_env, package_root.c_str(),
-                                                         model_pkg_options.get(), &raw_context));
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
   model_pkg_context.reset(raw_context);
 
   size_t component_count = 0;
   ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageContext_GetComponentModelCount(model_pkg_context.get(), &component_count));
   ASSERT_EQ(component_count, 1u);
 
-  const char* component_name = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageContext_GetComponentModelName(model_pkg_context.get(), 0, &component_name));
-  ASSERT_NE(component_name, nullptr);
+  const char* const* component_names = nullptr;
+  size_t component_name_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageContext_GetComponentModelNames(
+      model_pkg_context.get(),
+      &component_names,
+      &component_name_count));
+
+  ASSERT_EQ(component_name_count, 1u);
+  ASSERT_NE(component_names, nullptr);
+  ASSERT_NE(component_names[0], nullptr);
+
+  const char* component_name = component_names[0];
   EXPECT_STREQ(component_name, "model_1");
 
   size_t selected_file_count = 0;

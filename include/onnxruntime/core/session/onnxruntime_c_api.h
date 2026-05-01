@@ -8582,30 +8582,48 @@ struct OrtModelPackageApi {
   ORT_CLASS_RELEASE(ModelPackageContext);
 
   ORT_API2_STATUS(CreateModelPackageContext,
-                  _In_ const OrtEnv* env,
                   _In_ const ORTCHAR_T* package_root,
-                  _In_ const OrtModelPackageOptions* options,
                   _Outptr_ OrtModelPackageContext** out);
 
   ORT_API2_STATUS(ModelPackageContext_GetComponentModelCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackageContext_GetComponentModelName,
+  ORT_API2_STATUS(ModelPackageContext_GetComponentModelNames,
                   _In_ const OrtModelPackageContext* ctx,
-                  _In_ size_t component_index,
-                  _Outptr_ const char** out_name);
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
+                  _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileCount,
+  ORT_API2_STATUS(ModelPackageContext_GetModelVariantCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileIdentifier,
+  ORT_API2_STATUS(ModelPackageContext_GetModelVariantNames,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
-                  _In_ size_t index,
-                  _Outptr_ const char** out_file_identifier);
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetFileCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetFileIdentifiers,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_file_identifiers,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetFilePath,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _In_opt_ const char* file_identifier,
+                  _Outptr_ const ORTCHAR_T** out_path);
 
   /** \brief Get session options for a selected file as flat key/value entries.
    *
@@ -8637,6 +8655,21 @@ struct OrtModelPackageApi {
                   _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
                   _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
                   _Out_ size_t* num_entries);
+
+  ORT_API2_STATUS(ResolveVariant,
+                  _Inout_ OrtModelPackageContext* ctx,
+                  _In_ const OrtModelPackageOptions* options);
+
+  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Out_ size_t* out_count);
+  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileIdentifier,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ size_t index,
+                  _Outptr_ const char** out_file_identifier);
+
   /// @}
   /** \brief Create an OrtSession for a selected file within a component model variant.
    *

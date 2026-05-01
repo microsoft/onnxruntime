@@ -16,6 +16,22 @@
 #include "core/session/utils.h"
 #endif
 
+namespace {
+void BuildCStringArray(gsl::span<const std::string> in,
+                       std::vector<const char*>& cache,
+                       const char* const** out,
+                       size_t* out_count) {
+  cache.clear();
+  cache.reserve(in.size());
+  for (const auto& s : in) {
+    cache.push_back(s.c_str());
+  }
+
+  *out_count = in.size();
+  *out = cache.empty() ? nullptr : cache.data();
+}
+}  // namespace
+
 using namespace onnxruntime;
 
 #define RETURN_NOT_IMPL_IN_MINIMAL_BUILD()          \
@@ -63,34 +79,20 @@ ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageContext,
 }
 
 ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageContext,
-                    _In_ const OrtEnv* env,
                     _In_ const ORTCHAR_T* package_root,
-                    _In_ const OrtModelPackageOptions* options,
                     _Outptr_ OrtModelPackageContext** out) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  if (env == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must be non-null");
-  }
 
   if (package_root == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "package_root must be non-null");
-  }
-
-  if (options == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "options must be non-null");
   }
 
   if (out == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "out must be non-null");
   }
 
-  const auto& cxx_options = *reinterpret_cast<const onnxruntime::ModelPackageOptions*>(options);
-
-  auto ctx = std::make_unique<onnxruntime::ModelPackageContext>(env->GetEnvironment(),
-                                                                std::filesystem::path{package_root}, cxx_options);
-
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ctx->ResolveVariant());
+  auto ctx = std::make_unique<onnxruntime::ModelPackageContext>(std::filesystem::path{package_root});
 
   *out = reinterpret_cast<OrtModelPackageContext*>(ctx.release());
   return nullptr;
@@ -103,10 +105,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageContext,
 #endif
   API_IMPL_END
 }
-
-// ---------- Query APIs (skeletons) ----------------------------------------
-// These forward to ModelPackageContext accessors. Fill in once the
-// descriptor parser exposes per-component grouping + file identifiers.
 
 ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetComponentModelCount,
                     _In_ const OrtModelPackageContext* ctx,
@@ -126,30 +124,189 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetComponentModelCou
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetComponentModelName,
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetComponentModelNames,
                     _In_ const OrtModelPackageContext* ctx,
-                    _In_ size_t component_index,
-                    _Outptr_ const char** out_name) {
+                    _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
+                    _Out_ size_t* out_count) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || out_name == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_name must be non-null");
+  if (ctx == nullptr || out_names == nullptr || out_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, out_names, and out_count must be non-null");
   }
 
-  const std::string* component_name = nullptr;
+  gsl::span<const std::string> names;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentModelName(component_index, component_name));
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentModelNames(names));
 
-  if (component_name == nullptr) {
-    return OrtApis::CreateStatus(ORT_FAIL, "Component model name lookup returned null.");
-  }
-
-  *out_name = component_name->c_str();
+  static thread_local std::vector<const char*> name_ptrs;
+  BuildCStringArray(names, name_ptrs, out_names, out_count);
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(component_index);
-  ORT_UNUSED_PARAMETER(out_name);
+  ORT_UNUSED_PARAMETER(out_names);
+  ORT_UNUSED_PARAMETER(out_count);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetModelVariantCount,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _Out_ size_t* out_count) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || out_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, component_name, and out_count must be non-null");
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetModelVariantCount(component_name, *out_count));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(out_count);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetModelVariantNames,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
+                    _Out_ size_t* out_count) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || out_variant_names == nullptr || out_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, out_variant_names, and out_count must be non-null");
+  }
+
+  gsl::span<const std::string> variant_names;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetModelVariantNames(component_name, variant_names));
+
+  static thread_local std::vector<const char*> variant_name_ptrs;
+  BuildCStringArray(variant_names, variant_name_ptrs, out_variant_names, out_count);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(out_variant_names);
+  ORT_UNUSED_PARAMETER(out_count);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetFileCount,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ const char* variant_name,
+                    _Out_ size_t* out_count) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr || out_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, variant_name, and out_count must be non-null");
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetFileCount(component_name, variant_name, *out_count));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(variant_name);
+  ORT_UNUSED_PARAMETER(out_count);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetFileIdentifiers,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ const char* variant_name,
+                    _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_file_identifiers,
+                    _Out_ size_t* out_count) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr ||
+      out_file_identifiers == nullptr || out_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, variant_name, out_file_identifiers, and out_count must be non-null");
+  }
+
+  gsl::span<const std::string> file_ids;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetFileIdentifiers(component_name, variant_name, file_ids));
+
+  static thread_local std::vector<const char*> file_id_ptrs;
+  BuildCStringArray(file_ids, file_id_ptrs, out_file_identifiers, out_count);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(variant_name);
+  ORT_UNUSED_PARAMETER(out_file_identifiers);
+  ORT_UNUSED_PARAMETER(out_count);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetFilePath,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ const char* variant_name,
+                    _In_opt_ const char* file_identifier,
+                    _Outptr_ const ORTCHAR_T** out_path) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr || out_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, variant_name, and out_path must be non-null");
+  }
+
+  std::filesystem::path path;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetFilePath(component_name, variant_name, file_identifier, path));
+
+  static thread_local std::filesystem::path path_cache;
+  path_cache = std::move(path);
+  *out_path = path_cache.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(variant_name);
+  ORT_UNUSED_PARAMETER(file_identifier);
+  ORT_UNUSED_PARAMETER(out_path);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ResolveVariant,
+                    _Inout_ OrtModelPackageContext* ctx,
+                    _In_ const OrtModelPackageOptions* options) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and options must be non-null");
+  }
+
+  auto* cxx_ctx = reinterpret_cast<onnxruntime::ModelPackageContext*>(ctx);
+  const auto* cxx_options = reinterpret_cast<const onnxruntime::ModelPackageOptions*>(options);
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(cxx_ctx->ResolveVariant(cxx_options));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(options);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END
@@ -448,21 +605,29 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     &OrtModelPackageAPI::ReleaseModelPackageContext,
     &OrtModelPackageAPI::CreateModelPackageContext,
 
-    // Query
+    // Generic metadata queries
     &OrtModelPackageAPI::ModelPackageContext_GetComponentModelCount,
-    &OrtModelPackageAPI::ModelPackageContext_GetComponentModelName,
-    &OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileCount,
-    &OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileIdentifier,
+    &OrtModelPackageAPI::ModelPackageContext_GetComponentModelNames,
+    &OrtModelPackageAPI::ModelPackageContext_GetModelVariantCount,
+    &OrtModelPackageAPI::ModelPackageContext_GetModelVariantNames,
+    &OrtModelPackageAPI::ModelPackageContext_GetFileCount,
+    &OrtModelPackageAPI::ModelPackageContext_GetFileIdentifiers,
+    &OrtModelPackageAPI::ModelPackageContext_GetFilePath,
     &OrtModelPackageAPI::ModelPackageGetFileSessionOptions,
     &OrtModelPackageAPI::ModelPackageGetFileProviderOptions,
+
+    // Variant selection
+    &OrtModelPackageAPI::ResolveVariant,
+    &OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileCount,
+    &OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileIdentifier,
 
     // Session
     &OrtModelPackageAPI::CreateSession,
 
-    // End of Version X - DO NOT MODIFY ABOVE
+    // End of Version 1.26 - DO NOT MODIFY ABOVE
 };
 
-static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 10,
+static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 16,
               "Size of initial OrtModelPackageApi cannot change");
 
 ORT_API(const OrtModelPackageApi*, OrtModelPackageAPI::GetModelPackageApi) {

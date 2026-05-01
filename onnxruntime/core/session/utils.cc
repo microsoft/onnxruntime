@@ -421,8 +421,8 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       }
 
       // Select the most suitable model variant based on EP info and model constraints.
-      ModelPackageContext model_package_context(env, package_root, ep_infos);
-      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.ResolveVariant());
+      ModelPackageContext model_package_context(package_root);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.ResolveVariant(ep_infos));
 
       ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.GetSelectedVariantFilePath(selected_model_variant_path));
       model_path_to_use = selected_model_variant_path.c_str();

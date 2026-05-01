@@ -25,35 +25,6 @@ namespace onnxruntime {
 
 namespace {
 
-Status FillOptionCachesFromJsonObject(const std::optional<json>& options_json,
-                                      std::vector<std::string>& key_cache,
-                                      std::vector<std::string>& value_cache,
-                                      gsl::span<const std::string>& out_keys,
-                                      gsl::span<const std::string>& out_values) {
-  key_cache.clear();
-  value_cache.clear();
-
-  if (!options_json.has_value()) {
-    out_keys = gsl::span<const std::string>{};
-    out_values = gsl::span<const std::string>{};
-    return Status::OK();
-  }
-
-  ORT_RETURN_IF(!options_json->is_object(), "Options JSON must be an object.");
-
-  key_cache.reserve(options_json->size());
-  value_cache.reserve(options_json->size());
-
-  for (auto it = options_json->begin(); it != options_json->end(); ++it) {
-    key_cache.push_back(it.key());
-    value_cache.push_back(it.value().is_string() ? it.value().get<std::string>() : it.value().dump());
-  }
-
-  out_keys = gsl::span<const std::string>(key_cache.data(), key_cache.size());
-  out_values = gsl::span<const std::string>(value_cache.data(), value_cache.size());
-  return Status::OK();
-}
-
 Status FillOptionCachesFromMap(
     const std::optional<std::unordered_map<std::string, std::string>>& options_map,
     std::vector<std::string>& key_cache,
@@ -84,20 +55,41 @@ Status FillOptionCachesFromMap(
 
 }  // namespace
 
-ModelPackageContext::ModelPackageContext(const onnxruntime::Environment& env,
-                                         const std::filesystem::path& package_root,
-                                         std::vector<VariantSelectionEpInfo> ep_infos) : env_(env), ep_infos_(std::move(ep_infos)) {
+ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, model_variant_infos_));
-  BuildComponentModelCache();
-}
+  std::vector<ModelVariantInfo>& variants = model_variant_infos_;
+  ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, variants));
 
-ModelPackageContext::ModelPackageContext(const onnxruntime::Environment& env,
-                                         const std::filesystem::path& package_root,
-                                         const ModelPackageOptions& options) : env_(env), options_(&options) {
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  ORT_THROW_IF_ERROR(parser.ParseVariantsFromPackageRoot(package_root, model_variant_infos_));
-  BuildComponentModelCache();
+  model_package_info_.component_models.clear();
+  component_name_to_index_.clear();
+
+  // Create model package info cache
+  for (const auto& variant : variants) {
+    const auto& name = variant.component_model_name;
+    size_t component_idx = 0;
+    auto it = component_name_to_index_.find(name);
+    if (it == component_name_to_index_.end()) {
+      component_idx = model_package_info_.component_models.size();
+      component_name_to_index_[name] = component_idx;
+
+      ComponentModelInfo component{};
+      component.component_model_name = name;
+      component.selected_variant_index.reset();  // no selection state used anymore
+      model_package_info_.component_models.push_back(std::move(component));
+    } else {
+      component_idx = it->second;
+    }
+
+    model_package_info_.component_models[component_idx].model_variants.push_back(variant);
+  }
+
+  // Create component names cache for quick lookup.
+  component_names_cache_.clear();
+  component_names_cache_.reserve(model_package_info_.component_models.size());
+
+  for (const auto& component : model_package_info_.component_models) {
+    component_names_cache_.push_back(component.component_model_name);
+  }
 }
 
 const ModelPackageOptions* ModelPackageContext::Options() const noexcept {
@@ -124,19 +116,19 @@ bool ModelPackageContext::IsFromPolicy() const {
   return options_->FromPolicy();
 }
 
-Status ModelPackageContext::ResolveVariant() {
-  // Determine EP infos source:
-  // 1) explicit ep_infos passed to context ctor, or
-  // 2) resolved infos from options.
-  std::vector<VariantSelectionEpInfo> ep_infos;
-  if (!ep_infos_.empty()) {
-    ep_infos = ep_infos_;
-  } else {
-    ORT_RETURN_IF(options_ == nullptr,
-                  "ModelPackageContext requires either explicit ep_infos or associated ModelPackageOptions.");
-    ep_infos = options_->EpInfos();
-  }
+Status ModelPackageContext::ResolveVariant(const ModelPackageOptions* options) {
+  ORT_RETURN_IF(options == nullptr,
+                "ModelPackageContext::ResolveVariant requires non-null ModelPackageOptions.");
 
+  options_ = options;
+  return ResolveVariantImpl(options_->EpInfos());
+}
+
+Status ModelPackageContext::ResolveVariant(gsl::span<const VariantSelectionEpInfo> ep_infos) {
+  return ResolveVariantImpl(ep_infos);
+}
+
+Status ModelPackageContext::ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos) {
   std::optional<ModelVariantInfo> selected_variant;
   ModelVariantSelector selector;
   ORT_RETURN_IF_ERROR(selector.SelectVariant(*this, ep_infos, selected_variant));
@@ -176,43 +168,142 @@ size_t ModelPackageContext::GetComponentModelCount() const noexcept {
   return model_package_info_.component_models.size();
 }
 
-Status ModelPackageContext::GetComponentModelName(size_t component_index, const std::string*& out_name) const {
-  out_name = nullptr;
-
-  if (component_index >= model_package_info_.component_models.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "component_index out of range: ", component_index,
-                           ", component count: ", model_package_info_.component_models.size());
-  }
-
-  out_name = &model_package_info_.component_models[component_index].component_model_name;
+Status ModelPackageContext::GetComponentModelNames(gsl::span<const std::string>& out_names) const {
+  out_names = gsl::span<const std::string>(component_names_cache_.data(),
+                                           component_names_cache_.size());
   return Status::OK();
 }
 
-void ModelPackageContext::BuildComponentModelCache() {
-  model_package_info_.component_models.clear();
-  component_name_to_index_.clear();
+Status ModelPackageContext::GetModelVariantCount(const std::string& component_name, size_t& out_count) const {
+  out_count = 0;
 
-  for (const auto& variant : model_variant_infos_) {
-    const auto& name = variant.component_model_name;
+  auto it = component_name_to_index_.find(component_name);
+  if (it == component_name_to_index_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
+  }
 
-    size_t component_idx = 0;
-    auto it = component_name_to_index_.find(name);
-    if (it == component_name_to_index_.end()) {
-      component_idx = model_package_info_.component_models.size();
-      component_name_to_index_[name] = component_idx;
+  out_count = model_package_info_.component_models[it->second].model_variants.size();
+  return Status::OK();
+}
 
-      ComponentModelInfo component{};
-      component.component_model_name = name;
-      component.selected_variant_index = std::nullopt;
-      model_package_info_.component_models.push_back(std::move(component));
-    } else {
-      component_idx = it->second;
+Status ModelPackageContext::GetModelVariantNames(const std::string& component_name,
+                                                 gsl::span<const std::string>& out_variant_names) const {
+  out_variant_names = gsl::span<const std::string>{};
+
+  auto it = component_name_to_index_.find(component_name);
+  if (it == component_name_to_index_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
+  }
+
+  const auto& variants = model_package_info_.component_models[it->second].model_variants;
+  component_to_variant_names_cache_[component_name].clear();
+  component_to_variant_names_cache_[component_name].reserve(variants.size());
+
+  for (const auto& variant : variants) {
+    component_to_variant_names_cache_[component_name].push_back(variant.variant_name);
+  }
+
+  out_variant_names = gsl::span<const std::string>(component_to_variant_names_cache_[component_name].data(),
+                                                   component_to_variant_names_cache_[component_name].size());
+  return Status::OK();
+}
+
+Status ModelPackageContext::GetFileCount(const std::string& component_name,
+                                         const std::string& variant_name,
+                                         size_t& out_count) const {
+  out_count = 0;
+
+  auto it = component_name_to_index_.find(component_name);
+  if (it == component_name_to_index_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
+  }
+
+  const auto& variants = model_package_info_.component_models[it->second].model_variants;
+  for (const auto& variant : variants) {
+    if (variant.variant_name == variant_name) {
+      out_count = variant.model_info.size();
+      return Status::OK();
+    }
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Variant '", variant_name, "' not found for component '", component_name, "'.");
+}
+
+Status ModelPackageContext::GetFileIdentifiers(const std::string& component_name,
+                                               const std::string& variant_name,
+                                               gsl::span<const std::string>& out_file_identifiers) const {
+  out_file_identifiers = gsl::span<const std::string>{};
+
+  auto it = component_name_to_index_.find(component_name);
+  if (it == component_name_to_index_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
+  }
+
+  const auto& variants = model_package_info_.component_models[it->second].model_variants;
+  for (const auto& variant : variants) {
+    if (variant.variant_name == variant_name) {
+      std::string key = component_name + ":" + variant_name;
+      variant_to_file_identifiers_cache_[key].clear();
+      variant_to_file_identifiers_cache_[key].reserve(variant.model_info.size());
+
+      for (const auto& mi : variant.model_info) {
+        variant_to_file_identifiers_cache_[key].push_back(mi.identifier);
+      }
+
+      out_file_identifiers = gsl::span<const std::string>(variant_to_file_identifiers_cache_[key].data(),
+                                                          variant_to_file_identifiers_cache_[key].size());
+      return Status::OK();
+    }
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Variant '", variant_name, "' not found for component '", component_name, "'.");
+}
+
+Status ModelPackageContext::GetFilePath(const std::string& component_name,
+                                        const std::string& variant_name,
+                                        const char* file_identifier,
+                                        std::filesystem::path& out_path) const {
+  out_path.clear();
+
+  auto it = component_name_to_index_.find(component_name);
+  if (it == component_name_to_index_.end()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Component model not found: ", component_name);
+  }
+
+  const auto& variants = model_package_info_.component_models[it->second].model_variants;
+  for (const auto& variant : variants) {
+    if (variant.variant_name != variant_name) {
+      continue;
     }
 
-    auto& component = model_package_info_.component_models[component_idx];
-    component.model_variants.push_back(variant);
+    if (file_identifier == nullptr || std::string_view(file_identifier).empty()) {
+      if (variant.model_info.size() == 1) {
+        out_path = variant.model_info.front().model_file_path;
+        return Status::OK();
+      }
+
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "file_identifier is required when variant has multiple files. component='",
+                             component_name, "', variant='", variant_name, "'.");
+    }
+
+    for (const auto& mi : variant.model_info) {
+      if (mi.identifier == file_identifier) {
+        out_path = mi.model_file_path;
+        return Status::OK();
+      }
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Unknown file_identifier '", file_identifier,
+                           "' for component '", component_name,
+                           "', variant '", variant_name, "'.");
   }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Variant '", variant_name, "' not found for component '", component_name, "'.");
 }
 
 Status ModelPackageContext::GetSelectedVariantForComponent(const std::string& component_name,
@@ -322,21 +413,23 @@ Status ModelPackageContext::GetSelectedVariantFilePath(std::filesystem::path& ou
                            component_count);
   }
 
-  const std::string* component_name = nullptr;
-  ORT_RETURN_IF_ERROR(GetComponentModelName(0, component_name));
-  ORT_RETURN_IF(component_name == nullptr || component_name->empty(),
-                "Single component model name is null or empty.");
+  gsl::span<const std::string> component_names;
+  ORT_RETURN_IF_ERROR(GetComponentModelNames(component_names));
+  ORT_RETURN_IF(component_names.empty(),
+                "Single component model name is missing.");
+
+  const std::string& component_name = component_names.front();
 
   const ModelVariantInfo* selected_variant = nullptr;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantForComponent(*component_name, selected_variant));
+  ORT_RETURN_IF_ERROR(GetSelectedVariantForComponent(component_name, selected_variant));
   ORT_RETURN_IF(selected_variant == nullptr,
-                "Selected variant is null for single component model: ", *component_name);
+                "Selected variant is null for single component model: ", component_name);
 
   if (selected_variant->model_info.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "ResolveSelectedVariantFileForSingleComponent requires selected variant to have exactly one model_info entry, found: ",
                            selected_variant->model_info.size(),
-                           ", component: ", *component_name,
+                           ", component: ", component_name,
                            ", variant: ", selected_variant->variant_name);
   }
 

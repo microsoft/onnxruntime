@@ -264,7 +264,7 @@ int ModelVariantSelector::CalculateVariantScore(const ModelVariantInfo& variant)
 }
 
 Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
-                                           gsl::span<VariantSelectionEpInfo> ep_infos,
+                                           gsl::span<const VariantSelectionEpInfo> ep_infos,
                                            std::optional<ModelVariantInfo>& selected_variant) const {
   selected_variant.reset();
 
