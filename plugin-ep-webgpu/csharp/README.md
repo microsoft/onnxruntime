@@ -48,6 +48,10 @@ everything into a staging directory before building — the source tree is never
 By default, an auto-cleaned temporary directory is used; pass `--staging-dir` to use an
 explicit one (required when running with `--build-only` or `--pack-only`).
 
+At least one binary directory (or `--artifacts-dir` with matching subdirectories) must be
+provided. Platforms without a binary directory are skipped. Run
+`python pack_nuget.py --help` for the full list of options and their defaults.
+
 ### Pack with a local build (single platform)
 
 ```powershell
@@ -66,13 +70,6 @@ python pack_nuget.py --version 0.1.0-dev `
   --binary-dir-linux-x64 /mnt/builds/linux_x64 `
   --binary-dir-macos-arm64 /mnt/builds/macos_arm64
 ```
-
-### Script Parameters
-
-Run `python pack_nuget.py --help` for the full list of options and their defaults.
-
-At least one binary directory (or `--artifacts-dir` with matching subdirectories) must be provided.
-Platforms without a binary directory are skipped.
 
 ## Versioning
 
