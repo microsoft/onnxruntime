@@ -804,7 +804,10 @@ TEST(ModelEditorAPITest, SymbolicDimensions_DistinctNamesPreserved) {
 // This is the exact example given in the Basic_CApi test's doc comment:
 //   "call SetDimensions with {-1, 3, 2} and SetSymbolicDimensions with
 //    {\"N\", nullptr, nullptr} to create a shape of {\"N\", 3, 2}"
-// The C++ API wrapper represents "no name" as an empty string.
+// This test uses the C++ wrapper, which takes `std::vector<std::string>*` and
+// therefore represents "no name" as an empty string. A companion test below
+// (SymbolicDimensions_CApi_NullNames) exercises the raw C API with nullptr
+// entries to cover the nullptr path documented in Basic_CApi's comment.
 TEST(ModelEditorAPITest, SymbolicDimensions_PartiallyNamedDimensions) {
   // Shape: [N, 3, -1]
   //   dim 0 = dynamic, named "N"
@@ -859,6 +862,119 @@ TEST(ModelEditorAPITest, SymbolicDimensions_PartiallyNamedDimensions) {
   EXPECT_STREQ(queried_sym[1], "") << "dim 1 is static; no dim_param expected";
   ASSERT_NE(queried_sym[2], nullptr);
   EXPECT_STREQ(queried_sym[2], "") << "dim 2 is dynamic but unnamed; no dim_param expected";
+}
+
+// Regression test: raw C API with nullptr entries in SetSymbolicDimensions.
+// Covers two things the other tests don't:
+//   1. That multiple distinct symbolic names on different dynamic dims all
+//      round-trip correctly through the raw C API (this path also exhibited
+//      the bug before the fix).
+//   2. The nullptr-for-unnamed-dim convention from the Basic_CApi doc comment:
+//        "call SetDimensions with {-1, 3, 2} and SetSymbolicDimensions with
+//         {\"N\", nullptr, nullptr} to create a shape of {\"N\", 3, 2}"
+// The C++ TensorTypeAndShapeInfo wrapper takes std::vector<std::string>* and
+// cannot pass nullptr entries, so this test drops to the raw C API.
+TEST(ModelEditorAPITest, SymbolicDimensions_CApi_NullNames) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  // Shape: [N, 3, H, W]
+  //   dim 0 = dynamic, named "N"
+  //   dim 1 = static, size 3 (nullptr in names list to match the doc example)
+  //   dim 2 = dynamic, named "H"
+  //   dim 3 = dynamic, named "W"
+  // Before the fix, dims 2 and 3 would both come back as "N" (always
+  // reading dim_params[0]).
+  OrtTensorTypeAndShapeInfo* input_tensor_info = nullptr;
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&input_tensor_info));
+  Ort::ThrowOnError(api.SetTensorElementType(input_tensor_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  std::vector<int64_t> dims = {-1, 3, -1, -1};
+  Ort::ThrowOnError(api.SetDimensions(input_tensor_info, dims.data(), dims.size()));
+  std::vector<const char*> sym = {"N", nullptr, "H", "W"};
+  Ort::ThrowOnError(api.SetSymbolicDimensions(input_tensor_info, sym.data(), sym.size()));
+
+  OrtTypeInfo* input_type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(input_tensor_info, &input_type_info));
+  api.ReleaseTensorTypeAndShapeInfo(input_tensor_info);
+
+  OrtValueInfo* input_value_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("x", input_type_info, &input_value_info));
+  api.ReleaseTypeInfo(input_type_info);
+
+  // Output has the same shape (Identity op).
+  OrtTensorTypeAndShapeInfo* output_tensor_info = nullptr;
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&output_tensor_info));
+  Ort::ThrowOnError(api.SetTensorElementType(output_tensor_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  Ort::ThrowOnError(api.SetDimensions(output_tensor_info, dims.data(), dims.size()));
+  Ort::ThrowOnError(api.SetSymbolicDimensions(output_tensor_info, sym.data(), sym.size()));
+
+  OrtTypeInfo* output_type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(output_tensor_info, &output_type_info));
+  api.ReleaseTensorTypeAndShapeInfo(output_tensor_info);
+
+  OrtValueInfo* output_value_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("y", output_type_info, &output_value_info));
+  api.ReleaseTypeInfo(output_type_info);
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+  std::vector<OrtValueInfo*> graph_inputs = {input_value_info};
+  std::vector<OrtValueInfo*> graph_outputs = {output_value_info};
+  Ort::ThrowOnError(model_editor_api.SetGraphInputs(graph, graph_inputs.data(), graph_inputs.size()));
+  Ort::ThrowOnError(model_editor_api.SetGraphOutputs(graph, graph_outputs.data(), graph_outputs.size()));
+
+  std::vector<const char*> node_inputs = {"x"};
+  std::vector<const char*> node_outputs = {"y"};
+  OrtNode* identity_node = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateNode("Identity", onnxruntime::kOnnxDomain, "id",
+                                                node_inputs.data(), node_inputs.size(),
+                                                node_outputs.data(), node_outputs.size(),
+                                                nullptr, 0, &identity_node));
+  Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, identity_node));
+
+  std::vector<const char*> opset_domains = {onnxruntime::kOnnxDomain};
+  std::vector<int> opset_versions = {21};
+  OrtModel* model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(opset_domains.data(), opset_versions.data(),
+                                                 opset_domains.size(), &model));
+  Ort::ThrowOnError(model_editor_api.AddGraphToModel(model, graph));
+
+  Ort::SessionOptions session_options;
+  OrtSession* session = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateSessionFromModel(*ort_env, model, session_options, &session));
+  api.ReleaseModel(model);
+
+  // Query back and verify each dim.
+  OrtTypeInfo* queried_type_info = nullptr;
+  Ort::ThrowOnError(api.SessionGetInputTypeInfo(session, 0, &queried_type_info));
+
+  const OrtTensorTypeAndShapeInfo* queried_tensor_info = nullptr;
+  Ort::ThrowOnError(api.CastTypeInfoToTensorInfo(queried_type_info, &queried_tensor_info));
+
+  size_t dim_count = 0;
+  Ort::ThrowOnError(api.GetDimensionsCount(queried_tensor_info, &dim_count));
+  ASSERT_EQ(dim_count, 4u);
+
+  std::vector<int64_t> queried_dims(dim_count, -42);
+  Ort::ThrowOnError(api.GetDimensions(queried_tensor_info, queried_dims.data(), queried_dims.size()));
+  EXPECT_EQ(queried_dims[0], -1);
+  EXPECT_EQ(queried_dims[1], 3);
+  EXPECT_EQ(queried_dims[2], -1);
+  EXPECT_EQ(queried_dims[3], -1);
+
+  std::vector<const char*> queried_sym(dim_count, nullptr);
+  Ort::ThrowOnError(api.GetSymbolicDimensions(queried_tensor_info, queried_sym.data(), queried_sym.size()));
+  ASSERT_NE(queried_sym[0], nullptr);
+  EXPECT_STREQ(queried_sym[0], "N") << "dim 0 keeps its symbolic name";
+  ASSERT_NE(queried_sym[1], nullptr);
+  EXPECT_STREQ(queried_sym[1], "") << "dim 1 is static (nullptr name); no dim_param expected";
+  ASSERT_NE(queried_sym[2], nullptr);
+  EXPECT_STREQ(queried_sym[2], "H") << "dim 2 name must be preserved (bug would yield \"N\")";
+  ASSERT_NE(queried_sym[3], nullptr);
+  EXPECT_STREQ(queried_sym[3], "W") << "dim 3 name must be preserved (bug would yield \"N\")";
+
+  api.ReleaseTypeInfo(queried_type_info);
+  api.ReleaseSession(session);
 }
 
 //
