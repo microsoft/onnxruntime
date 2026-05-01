@@ -63,12 +63,16 @@ python pack_nuget.py --version 0.1.0-dev `
 
 ### Pack multiple platforms
 
+Each `--binary-dir-*` points at the directory containing that platform's already-built
+native binaries. In practice the four binaries are produced on different machines and
+combined in CI; locally you'd typically only set the one(s) you have available.
+
 ```powershell
 python pack_nuget.py --version 0.1.0-dev `
-  --binary-dir-win-x64 C:\builds\win_x64 `
-  --binary-dir-win-arm64 C:\builds\win_arm64 `
-  --binary-dir-linux-x64 /mnt/builds/linux_x64 `
-  --binary-dir-macos-arm64 /mnt/builds/macos_arm64
+  --binary-dir-win-x64 <path-to-win-x64-binaries> `
+  --binary-dir-win-arm64 <path-to-win-arm64-binaries> `
+  --binary-dir-linux-x64 <path-to-linux-x64-binaries> `
+  --binary-dir-macos-arm64 <path-to-macos-arm64-binaries>
 ```
 
 ## Versioning

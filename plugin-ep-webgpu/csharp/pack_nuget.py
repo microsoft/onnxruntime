@@ -231,6 +231,7 @@ def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace, m
     print("+ " + " ".join(cmd))
     subprocess.run(cmd, check=True)
 
+    # Note: "netstandard2.0" must match <TargetFramework> in Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj.
     managed_dll = staging_dir / "bin" / args.configuration / "netstandard2.0" / "Microsoft.ML.OnnxRuntime.EP.WebGpu.dll"
     if not managed_dll.is_file():
         raise PackError(f"managed DLL not found after build: {managed_dll}")
