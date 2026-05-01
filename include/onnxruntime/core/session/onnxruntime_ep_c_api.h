@@ -2581,7 +2581,7 @@ struct OrtEp {
    * \note Implementation of this function is optional. If set to NULL (not implemented), ORT
    *       infers the default memory device using the default behavior described above.
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    */
   ORT_API2_STATUS(GetDefaultMemoryDevice, _In_ const OrtEp* this_ptr,
                   _Outptr_result_maybenull_ const OrtMemoryDevice** device);
@@ -2627,7 +2627,7 @@ struct OrtEp {
    * \note Implementation of this function is optional. If set to NULL, ORT uses the default
    *       behavior described above for all memory types.
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    */
   ORT_API2_STATUS(GetMemoryDeviceByMemType, _In_ const OrtEp* this_ptr,
                   _In_ OrtMemType mem_type,

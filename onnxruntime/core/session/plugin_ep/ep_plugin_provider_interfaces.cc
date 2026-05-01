@@ -125,7 +125,7 @@ static OrtDevice GetOrtDeviceForPluginEp(const OrtEp* ort_ep, gsl::span<const Or
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
 
   // If the EP provides GetDefaultMemoryDevice, use it.
-  if (ort_ep->ort_version_supported >= 26 && ort_ep->GetDefaultMemoryDevice != nullptr) {
+  if (ort_ep->ort_version_supported >= 27 && ort_ep->GetDefaultMemoryDevice != nullptr) {
     const OrtMemoryDevice* memory_device = nullptr;
     ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep->GetDefaultMemoryDevice(ort_ep, &memory_device)));
 
@@ -133,6 +133,9 @@ static OrtDevice GetOrtDeviceForPluginEp(const OrtEp* ort_ep, gsl::span<const Or
       OrtDevice default_device = *static_cast<const OrtDevice*>(memory_device);
 
       // Validate that the returned device matches one of the EP's published memory infos.
+      // We check device_memory_info and host_accessible_memory_info only. read_only_device_memory_info
+      // is excluded because it is used exclusively for initializer allocators and is not a valid
+      // identity device for the EP.
       bool matches_published_device = std::any_of(
           ep_devices.begin(), ep_devices.end(),
           [&default_device](const OrtEpDevice* ep_device) {
@@ -754,7 +757,11 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
 }
 
 OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (ort_ep_->ort_version_supported >= 26 && ort_ep_->GetMemoryDeviceByMemType != nullptr) {
+  // No validation is performed on the returned device. This is consistent with built-in EPs,
+  // which are free to return any OrtDevice from GetOrtDeviceByMemType(). If the returned device
+  // does not correspond to a registered allocator, the allocator lookup at execution time will fail
+  // with a clear error message.
+  if (ort_ep_->ort_version_supported >= 27 && ort_ep_->GetMemoryDeviceByMemType != nullptr) {
     const OrtMemoryDevice* memory_device = nullptr;
     ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetMemoryDeviceByMemType(ort_ep_.get(), mem_type, &memory_device)));
     if (memory_device != nullptr) {

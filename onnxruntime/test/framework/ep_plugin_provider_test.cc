@@ -139,13 +139,14 @@ MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {
   static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
   static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
 
-  auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
+  auto ort_ep_owner = std::make_unique<TestOrtEp>();
 
   if (configure_ort_ep) {
-    configure_ort_ep(ort_ep_raw);
+    configure_ort_ep(ort_ep_owner.get());
   }
 
-  auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
+  auto* ort_ep_raw = ort_ep_owner.get();
+  auto ort_ep = UniqueOrtEp(ort_ep_owner.release(), OrtEpDeleter{g_test_ort_ep_factory});
   auto ort_session_options = Ort::SessionOptions{};
 
   if (ep_devices.empty()) {
@@ -1650,7 +1651,7 @@ TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_OldVersionFallsBack) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
       {ep_device.get()},
       [](test_plugin_ep::TestOrtEp* raw_ep) {
-        raw_ep->ort_version_supported = 25;  // older than 26
+        raw_ep->ort_version_supported = 26;  // older than 27
         raw_ep->default_memory_info = Ort::MemoryInfo{"TestGPU5",
                                                       OrtMemoryInfoDeviceType_GPU,
                                                       /*vendor*/ 0xBE57, /*device_id*/ 5,
@@ -1820,7 +1821,7 @@ TEST(PluginExecutionProviderTest, GetMemoryDeviceByMemType_OldVersionFallsBack) 
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
       {ep_device.get()},
       [](test_plugin_ep::TestOrtEp* raw_ep) {
-        raw_ep->ort_version_supported = 25;  // older than 26
+        raw_ep->ort_version_supported = 26;  // older than 27
         raw_ep->mem_type_devices.emplace(
             OrtMemTypeCPUOutput,
             Ort::MemoryInfo{"TestGPU_Pinned",

@@ -146,22 +146,28 @@ The MemcpyTransformer decides **whether a copy is needed** and makes it explicit
 
 ---
 
-## Gap: Plugin EPs (OrtEp) and `GetOrtDeviceByMemType()`
+## Plugin EPs (OrtEp) and `GetOrtDeviceByMemType()`
 
-### The Problem
+### Current Behavior
 
-`PluginExecutionProvider` (the internal wrapper for plugin EPs using the OrtEp C API) does **NOT** override `GetOrtDeviceByMemType()`. This means:
+`PluginExecutionProvider` (the internal wrapper for plugin EPs using the OrtEp C API) **overrides** `GetOrtDeviceByMemType()` by delegating to two optional OrtEp hooks:
 
-- The base class implementation always returns `default_device_` for `OrtMemTypeDefault` and plain `OrtDevice()` (CPU) for `OrtMemTypeCPUInput`/`OrtMemTypeCPUOutput`.
-- Even if the plugin EP registers a host-accessible allocator (via `OrtEpDevice::host_accessible_memory_info`), the allocation planner will never route tensors to it — it's registered in the `AllocatorMap` but never selected.
+1. **`OrtEp::GetDefaultMemoryDevice()`** — explicit control over the EP's default memory device (used as the EP's identity for memcpy decisions, stream binding, etc.). If not implemented, ORT infers it from `OrtEpDevice::device_memory_info`.
+2. **`OrtEp::GetMemoryDeviceByMemType(OrtMemType)`** — allows the plugin EP to map each `OrtMemType` to a specific device. If not implemented, ORT uses the default behavior (CPU for `OrtMemTypeCPUInput`/`OrtMemTypeCPUOutput`, EP's default device for `OrtMemTypeDefault`).
+
+Both hooks are optional (NULL = use default behavior). They are version-gated at ORT API version 27+.
 
 ### What's Registered vs. What's Used
 
 | OrtEpDevice field | Allocator registered? | Selected by planner? |
 |---|---|---|
-| `device_memory_info` | ✅ Yes (in `allocators_`) | ✅ Yes — `GetOrtDeviceByMemType(DEFAULT)` returns `default_device_`, which matches |
-| `host_accessible_memory_info` | ✅ Yes (in `allocators_`) | ❌ No — `GetOrtDeviceByMemType(CPUOutput)` returns plain CPU, not the host-accessible device |
+| `device_memory_info` | ✅ Yes (in `allocators_`) | ✅ Yes — selected when `GetOrtDeviceByMemType()` returns the EP's default device |
+| `host_accessible_memory_info` | ✅ Yes (in `allocators_`) | ✅ Yes — selected when `GetOrtDeviceByMemType()` returns the host-accessible device (e.g., for `OrtMemTypeCPUOutput`) |
 | `read_only_device_memory_info` | ✅ Yes (in `initializer_allocators_`) | Partially — see below |
+
+### Background: Previous Limitation
+
+Prior to the addition of these hooks, `PluginExecutionProvider` did **not** override `GetOrtDeviceByMemType()`. The base class always returned `default_device_` for `OrtMemTypeDefault` and plain CPU for `OrtMemTypeCPUInput`/`OrtMemTypeCPUOutput`. This meant that even if a plugin EP registered a host-accessible allocator, the allocation planner would never route tensors to it.
 
 ### Allocation Planner Call Patterns
 
@@ -188,15 +194,6 @@ If an OrtEp uses `OrtDevice()` (CPU) as its default device and registers an init
 
 - In `session_state_utils.cc`, `DeserializeTensorProto()` checks if `device == OrtDevice()` AND `HasExternalData()` → memory-maps the file directly, ignoring any provided allocator.
 - The initializer allocator IS used for: PrePack operations, and inline initializers routed through the memory pattern planner.
-
-### Proposed API Additions
-
-To close this gap, two new optional C API hooks are proposed:
-
-1. **`OrtEp::GetDefaultOrtDevice()`** — explicit control over the EP's identity device (currently inferred from `OrtEpDevice::device_memory_info`).
-2. **`OrtEp::GetOrtDeviceByMemType(OrtMemType)` (or `GetMemInfoByMemType`)** — allows the plugin EP to express how different memory types map to devices.
-
-Both would be optional (NULL = use existing inference/base class behavior). For compiling EPs using opaque dispatch (EP internally manages multiple devices), these two APIs are sufficient. Per-node heterogeneous device placement would require a larger architectural refactor.
 
 ---
 
