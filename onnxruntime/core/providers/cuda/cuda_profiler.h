@@ -32,7 +32,7 @@ class CudaProfiler final : public EpProfiler {
   CudaProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudaProfiler);
   ~CudaProfiler() {}
-  bool StartProfiling(TimePoint) override { return true; }
+  Status StartProfiling(TimePoint) override { return Status::OK(); }
   void EndProfiling(TimePoint, Events&) override {}
   void Start(uint64_t) override {}
   void Stop(uint64_t, const EventRecord&) override {}
