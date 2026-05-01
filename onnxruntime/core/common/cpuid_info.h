@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include "core/common/common.h"
 #include "core/common/cpuid_arch_definition.h"
 
@@ -11,8 +12,7 @@ namespace onnxruntime {
 class CPUIDInfo {
  public:
   static const CPUIDInfo& GetCPUIDInfo() {
-    static CPUIDInfo cpuid_info;
-    return cpuid_info;
+    return Instance();
   }
 
   std::string_view GetCPUVendor() const {
@@ -104,12 +104,31 @@ class CPUIDInfo {
     return has_fp16_;
   }
 
+  static void ShutdownCpuInfo() {
+    // Don't create the singleton during DLL unload.
+    if (!InstanceCreated().load(std::memory_order_acquire)) return;
+    Instance().ShutDown();
+  }
+
  private:
   // Log function that uses ORT logging if available or writes to stderr.
   // This enables us to log even before ORT logging has been initialized.
   static void LogEarlyWarning(std::string_view message);
 
   CPUIDInfo();
+
+  static std::atomic<bool>& InstanceCreated() {
+    static std::atomic<bool> created{false};
+    return created;
+  }
+
+  static CPUIDInfo& Instance() {
+    static CPUIDInfo cpuid_info;
+    InstanceCreated().store(true, std::memory_order_release);
+    return cpuid_info;
+  }
+
+  void ShutDown();
 
   void VendorInfoInit();
 
