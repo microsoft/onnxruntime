@@ -738,6 +738,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
+  /// This MUST be declared before execution_providers_ so the logger outlives EPs during destruction
+  /// (C++ destroys members in reverse declaration order), allowing EP teardown callbacks to safely
+  /// use the logger pointer.
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
+
   // The list of execution providers.
   // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
   // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
@@ -900,9 +906,6 @@ class InferenceSession {
 
   /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
   std::unique_ptr<logging::LoggingManager> user_logging_manager_;
-
-  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
