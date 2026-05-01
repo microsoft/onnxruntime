@@ -1331,12 +1331,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // explicit attn_mask instead of is_causal.
   if (causal_cross_no_past && nonpad_kv_seqlen != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-        "Causal attention with TensorScatter (nonpad_kv_seqlen) and S_q != S_kv without "
-        "past_key is not supported. Per ONNX spec, is_causal without past_key produces "
-        "upper-left alignment where q[i] only attends to kv[0..i], which for decode (S_q=1) "
-        "means q[0] sees only kv[0]. Use is_causal=0 for TensorScatter decode; the KV bounds "
-        "are already enforced by nonpad_kv_seqlen without needing a causal mask. For chunked "
-        "prefill with external cache, use an explicit attn_mask instead.");
+                           "Causal attention with TensorScatter (nonpad_kv_seqlen) and S_q != S_kv without "
+                           "past_key is not supported. Per ONNX spec, is_causal without past_key produces "
+                           "upper-left alignment where q[i] only attends to kv[0..i], which for decode (S_q=1) "
+                           "means q[0] sees only kv[0]. Use is_causal=0 for TensorScatter decode; the KV bounds "
+                           "are already enforced by nonpad_kv_seqlen without needing a causal mask. For chunked "
+                           "prefill with external cache, use an explicit attn_mask instead.");
   }
 
 #if USE_FLASH_ATTENTION
