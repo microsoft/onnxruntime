@@ -240,7 +240,15 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
-  parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
+
+  // WebGPU flash attention requires present_key/present_value as working KV buffers.
+  if (present_key == nullptr || present_value == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "WebGPU GroupQueryAttention requires present_key and present_value outputs. "
+                           "Optional present outputs are supported on CPU and CUDA EPs only.");
+  }
+
+  parameters.past_present_share_buffer_ = past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
 
