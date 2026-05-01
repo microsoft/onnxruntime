@@ -69,20 +69,7 @@ python pack_nuget.py --version 0.1.0-dev `
 
 ### Script Parameters
 
-| Parameter | Required | Default | Description |
-|---|---|---|---|
-| `--version` | Yes | — | Package version string (e.g. `0.1.0`, `0.1.0-dev`) |
-| `--output-dir` | No | `./nuget_output` | Directory for the `.nupkg` and `.snupkg` output |
-| `--configuration` | No | `Release` | Build configuration |
-| `--artifacts-dir` | No | — | CI mode: root directory with `win_x64/bin/`, `linux_x64/bin/`, etc. |
-| `--binary-dir-win-x64` | No | — | Path to directory containing win-x64 binaries |
-| `--binary-dir-win-arm64` | No | — | Path to directory containing win-arm64 binaries |
-| `--binary-dir-linux-x64` | No | — | Path to directory containing linux-x64 binaries |
-| `--binary-dir-macos-arm64` | No | — | Path to directory containing osx-arm64 (macOS arm64) binaries |
-| `--staging-dir` | No | auto-cleaned temp dir | Explicit staging directory. Required with `--build-only` / `--pack-only`; caller owns its lifecycle (no auto-cleanup) |
-| `--build-only` | No | `false` | Stage and build the managed DLL only; skip `dotnet pack`. Preserves the staging directory for a later `--pack-only` run |
-| `--pack-only` | No | `false` | Skip staging/build and run `dotnet pack` against an existing staging directory (mutually exclusive with `--build-only`) |
-| `--required-platforms` | No | — | Comma-separated list of platforms that MUST be staged successfully (CI-mode safety net) |
+Run `python pack_nuget.py --help` for the full list of options and their defaults.
 
 At least one binary directory (or `--artifacts-dir` with matching subdirectories) must be provided.
 Platforms without a binary directory are skipped.
