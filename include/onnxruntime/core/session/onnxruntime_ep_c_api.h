@@ -2551,6 +2551,24 @@ struct OrtEp {
    * \since Version 1.26.
    */
   ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
+
+  /** \brief Get the EP's default memory device (identity device).
+   *
+   * If implemented, ORT uses the returned OrtMemoryDevice as the EP's identity device
+   * instead of inferring it from `OrtEpDevice::device_memory_info`.
+   *
+   * The returned pointer must remain valid for the lifetime of the OrtEp instance
+   * (typically by storing the source OrtMemoryInfo as a member of the EP).
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \return The EP's default OrtMemoryDevice, or NULL to use the default inference from device_memory_info.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT infers the default device
+   *       from `OrtEpDevice::device_memory_info` (existing behavior).
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(const OrtMemoryDevice*, GetDefaultMemoryDevice, _In_ const OrtEp* this_ptr);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

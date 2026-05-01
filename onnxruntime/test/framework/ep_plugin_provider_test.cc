@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
+#include <optional>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
@@ -69,6 +71,9 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
     // Individual tests should fill out the other function pointers as needed.
   }
 
+  // Optional member for tests that need GetDefaultMemoryDevice to return a specific device.
+  std::optional<Ort::MemoryInfo> default_memory_info;
+
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) noexcept {
     constexpr const char* ep_name = "TestOrtEp";
     return ep_name;
@@ -123,12 +128,19 @@ struct MakeTestOrtEpResult {
 
 // Creates an IExecutionProvider that wraps a TestOrtEp.
 // The TestOrtEp is also exposed so that tests can manipulate its function pointers directly.
-MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {}) {
+// An optional `configure_ort_ep` callback is invoked on the TestOrtEp before constructing the PluginExecutionProvider.
+MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {},
+                                  std::function<void(TestOrtEp*)> configure_ort_ep = nullptr) {
   // Default OrtHardwareDevice and OrtEpDevice used if the caller does not explicitly provide ep_devices.
   static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
   static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
 
   auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
+
+  if (configure_ort_ep) {
+    configure_ort_ep(ort_ep_raw);
+  }
+
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
   auto ort_session_options = Ort::SessionOptions{};
 
@@ -1511,6 +1523,126 @@ TEST(PluginExecutionProviderTest, GetAvailableResource_NullCallbackLeavesThresho
   auto* accountant = CallGetCapabilityWithAccountant(*ep, ort_ep, acc_map);
 
   EXPECT_FALSE(accountant->GetThreshold().has_value());
+}
+
+// GetDefaultMemoryDevice: NULL function pointer → default device inferred from device_memory_info.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_NullUsesDeviceMemoryInfo) {
+  // Create with a GPU device_memory_info
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+
+  auto gpu_mem_info = Ort::MemoryInfo{"TestGPU",
+                                      OrtMemoryInfoDeviceType_GPU,
+                                      /*vendor*/ 0xBE57, /*device_id*/ 0,
+                                      OrtDeviceMemoryType_DEFAULT,
+                                      /*alignment*/ 0,
+                                      OrtAllocatorType::OrtDeviceAllocator};
+
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get(),
+                                                       /*device_memory_info*/ gpu_mem_info);
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp({ep_device.get()});
+
+  // GetDefaultMemoryDevice is NULL (default from value initialization)
+  ASSERT_EQ(ort_ep->GetDefaultMemoryDevice, nullptr);
+
+  // EP should use the device from device_memory_info (GPU type)
+  const auto& device = ep->GetDevice();
+  EXPECT_EQ(device.Type(), OrtDevice::GPU);
+}
+
+// GetDefaultMemoryDevice: returns a specific device → EP uses that device.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_ReturnsCustomDevice) {
+  // device_memory_info says CPU, but GetDefaultMemoryDevice will say GPU
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get(), /*device_memory_info*/ nullptr);
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
+      {ep_device.get()},
+      [](test_plugin_ep::TestOrtEp* raw_ep) {
+        raw_ep->default_memory_info = Ort::MemoryInfo{"CustomGPU",
+                                                      OrtMemoryInfoDeviceType_GPU,
+                                                      /*vendor*/ 0xBE57, /*device_id*/ 1,
+                                                      OrtDeviceMemoryType_DEFAULT,
+                                                      /*alignment*/ 0,
+                                                      OrtAllocatorType::OrtDeviceAllocator};
+        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr) noexcept -> const OrtMemoryDevice* {
+          auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
+          return test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+        };
+      });
+
+  // EP should use the device from GetDefaultMemoryDevice (GPU, device_id=1)
+  const auto& device = ep->GetDevice();
+  EXPECT_EQ(device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(device.Id(), 1);
+}
+
+// GetDefaultMemoryDevice: takes precedence over device_memory_info when both are set.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_PrecedenceOverDeviceMemoryInfo) {
+  // device_memory_info says GPU device_id=0
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto gpu_mem_info_0 = Ort::MemoryInfo{"TestGPU0",
+                                        OrtMemoryInfoDeviceType_GPU,
+                                        /*vendor*/ 0xBE57, /*device_id*/ 0,
+                                        OrtDeviceMemoryType_DEFAULT,
+                                        /*alignment*/ 0,
+                                        OrtAllocatorType::OrtDeviceAllocator};
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get(),
+                                                       /*device_memory_info*/ gpu_mem_info_0);
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
+      {ep_device.get()},
+      [](test_plugin_ep::TestOrtEp* raw_ep) {
+        raw_ep->default_memory_info = Ort::MemoryInfo{"TestGPU2",
+                                                      OrtMemoryInfoDeviceType_GPU,
+                                                      /*vendor*/ 0xBE57, /*device_id*/ 2,
+                                                      OrtDeviceMemoryType_DEFAULT,
+                                                      /*alignment*/ 0,
+                                                      OrtAllocatorType::OrtDeviceAllocator};
+        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr) noexcept -> const OrtMemoryDevice* {
+          auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
+          return test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+        };
+      });
+
+  // GetDefaultMemoryDevice should take precedence: device_id=2, not 0
+  const auto& device = ep->GetDevice();
+  EXPECT_EQ(device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(device.Id(), 2);
+}
+
+// GetDefaultMemoryDevice: version < 26 → falls back to device_memory_info even if function is set.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_OldVersionFallsBack) {
+  auto hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto gpu_mem_info = Ort::MemoryInfo{"TestGPU",
+                                      OrtMemoryInfoDeviceType_GPU,
+                                      /*vendor*/ 0xBE57, /*device_id*/ 0,
+                                      OrtDeviceMemoryType_DEFAULT,
+                                      /*alignment*/ 0,
+                                      OrtAllocatorType::OrtDeviceAllocator};
+  auto ep_device = test_plugin_ep::MakeTestOrtEpDevice(hw_device.get(),
+                                                       /*device_memory_info*/ gpu_mem_info);
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(
+      {ep_device.get()},
+      [](test_plugin_ep::TestOrtEp* raw_ep) {
+        raw_ep->ort_version_supported = 25;  // older than 26
+        raw_ep->default_memory_info = Ort::MemoryInfo{"TestGPU5",
+                                                      OrtMemoryInfoDeviceType_GPU,
+                                                      /*vendor*/ 0xBE57, /*device_id*/ 5,
+                                                      OrtDeviceMemoryType_DEFAULT,
+                                                      /*alignment*/ 0,
+                                                      OrtAllocatorType::OrtDeviceAllocator};
+        raw_ep->GetDefaultMemoryDevice = [](const OrtEp* this_ptr) noexcept -> const OrtMemoryDevice* {
+          auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
+          return test_ep->ep_api->MemoryInfo_GetMemoryDevice(*test_ep->default_memory_info);
+        };
+      });
+
+  // Should fall back to device_memory_info (device_id=0), not GetDefaultMemoryDevice (device_id=5)
+  const auto& device = ep->GetDevice();
+  EXPECT_EQ(device.Type(), OrtDevice::GPU);
+  EXPECT_EQ(device.Id(), 0);
 }
 
 }  // namespace onnxruntime::test
