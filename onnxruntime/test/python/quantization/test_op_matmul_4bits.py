@@ -410,6 +410,21 @@ class TestOpMatMul4Bits(unittest.TestCase):
         model.ir_version = 10
         onnx.save(model, output_model_path)
 
+    # The output-restoration helper builds an ONNX-broadcast-correct target shape
+    # dynamically (Shape/Size/Sub/Max/ConstantOfShape/Slice/Concat → Reshape) so it
+    # works for arbitrary activation rank. The op-count expectations below reflect
+    # those helper ops.
+    _RESHAPE_HELPER_OP_COUNTS = {
+        "Reshape": 3,
+        "Shape": 1,
+        "Size": 1,
+        "Sub": 2,
+        "Max": 1,
+        "ConstantOfShape": 1,
+        "Slice": 1,
+        "Concat": 1,
+    }
+
     def test_quantize_matmul_int4_3d_weight_default(self):
         """Test that Default quantizer handles weight with unit leading dim, e.g. shape [1, K, N]."""
         np.random.seed(42)
@@ -417,7 +432,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_default.onnx").absolute())
         self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
-        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes={"Reshape": 1})
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
 
     def test_quantize_matmul_int4_3d_weight_default_qdq(self):
         """Test QDQ format with unit leading dim 3D weight."""
@@ -427,7 +442,12 @@ class TestOpMatMul4Bits(unittest.TestCase):
         self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
         self.quant_test(
-            model_fp32_path, data_reader, 32, True, quant_utils.QuantFormat.QDQ, extra_quant_nodes={"Reshape": 1}
+            model_fp32_path,
+            data_reader,
+            32,
+            True,
+            quant_utils.QuantFormat.QDQ,
+            extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS,
         )
 
     def test_quantize_matmul_int4_3d_weight_hqq(self):
@@ -439,7 +459,57 @@ class TestOpMatMul4Bits(unittest.TestCase):
         model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_hqq.onnx").absolute())
         self.construct_model_matmul_3d(model_fp32_path, symmetric=False, weight_shape=weight_shape)
         data_reader = self.input_feeds(1, {"input": (100, 52)})
-        self.quant_test_with_algo("HQQ", model_fp32_path, data_reader, 32, False, extra_quant_nodes={"Reshape": 1})
+        self.quant_test_with_algo(
+            "HQQ", model_fp32_path, data_reader, 32, False, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS
+        )
+
+    def construct_model_matmul_3d_activation(
+        self, output_model_path: str, symmetric: bool, weight_shape: tuple, batch: int = 2, seq: int = 100
+    ) -> None:
+        """Build a model with batched 3-D activation [batch, seq, K] and 3-D weight [1, K, N].
+
+        ONNX MatMul([batch, seq, K], [1, K, N]) -> [batch, seq, N]. The quantized graph
+        must preserve this shape; a naive reshape that flattens batch dims would
+        produce [1, batch*seq, N] and is observably wrong.
+        """
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+        weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(weight_data, name="linear1.weight"))
+        matmul_node = onnx.helper.make_node(
+            "MatMul",
+            [input_name, "linear1.weight"],
+            [output_name],
+            "MatMul_0",
+        )
+        k = weight_shape[-2]
+        n = weight_shape[-1]
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [batch, seq, k])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [batch, seq, n])
+        graph = helper.make_graph(
+            [matmul_node], "matmul_4bits_3d_activation_test", [input_tensor], [output_tensor], initializer=initializers
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.save(model, output_model_path)
+
+    def test_quantize_matmul_int4_3d_weight_3d_activation_preserves_shape(self):
+        """ONNX MatMul([B,S,K],[1,K,N]) must yield [B,S,N] after quantization, not [1,B*S,N]."""
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        batch, seq = 2, 100
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_3d_act.onnx").absolute())
+        self.construct_model_matmul_3d_activation(
+            model_fp32_path, symmetric=True, weight_shape=weight_shape, batch=batch, seq=seq
+        )
+        data_reader = self.input_feeds(1, {"input": (batch, seq, weight_shape[-2])})
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
+
+        # The check_model_correctness inside quant_test runs both the FP32 and
+        # quantized models on the same input and compares outputs. If the
+        # quantized graph collapsed batch dims (output [1, B*S, N] instead of
+        # [B, S, N]), that comparison would fail before we even reach here.
 
 
 if __name__ == "__main__":

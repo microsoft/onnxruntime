@@ -781,21 +781,21 @@ class HQQWeightOnlyQuantizer:
 
         output_nodes = [matmul_q_node]
         if b_original_shape is not None:
-            # Restore the batch leading dims on the MatMul output.
-            # MatMulNBits output shape: [...batch_A, N]; we need [...batch_A, *leading, N]
-            # Since all leading dims of B are 1, the output is equivalent in value.
-            # We append a Reshape that re-introduces the unit dims: output shape [-1, *leading, N]
-            target_shape = [*b_original_shape[:-2], -1, b_original_shape[-1]]
-            shape_init_name = b_pb.name + "_reshape_shape_Q" + str(bits)
-            shape_init = onnx.numpy_helper.from_array(np.array(target_shape, dtype=np.int64), name=shape_init_name)
-            bs_graph.initializer.append(shape_init)
-            reshape_node = onnx.helper.make_node(
-                "Reshape",
-                inputs=[matmul_q_output, shape_init_name],
-                outputs=[node.output[0]],
-                name=(node.name + "_Q" + str(bits) + "_reshape") if node.name else "",
+            # Restore ONNX MatMul broadcast shape on the output.
+            # MatMul(A, B_orig) output shape (with B_orig leading dims all 1) is:
+            #   [1] * max(rank(B_orig) - rank(A), 0) + A.shape[:-1] + [N]
+            # MatMulNBits with squeezed B produces [...A.shape[:-1], N] (rank=rank(A)),
+            # so we only need to prepend leading 1s when rank(B_orig) > rank(A).
+            output_nodes.extend(
+                _build_nbits_output_reshape(
+                    a_input_name=node.input[0],
+                    b_original_shape=b_original_shape,
+                    target_graph=bs_graph,
+                    name_prefix=(node.name + "_Q" + str(bits)) if node.name else (b_pb.name + "_Q" + str(bits)),
+                    pre_reshape_output=matmul_q_output,
+                    final_output=node.output[0],
+                )
             )
-            output_nodes.append(reshape_node)
 
         logger.info(f"complete quantization of {node.name} ...")
 
@@ -809,6 +809,120 @@ def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, Gr
             if tensor.name == name:
                 return tensor, graph
     return None, None
+
+
+def _build_nbits_output_reshape(
+    a_input_name: str,
+    b_original_shape: tuple,
+    target_graph: GraphProto,
+    name_prefix: str,
+    pre_reshape_output: str,
+    final_output: str,
+) -> list[NodeProto]:
+    """Build the reshape chain that restores the ONNX MatMul-broadcast output shape.
+
+    MatMulNBits produces shape ``[...A_batch_dims, M, N]`` (rank = rank(A)). To match
+    the original ``MatMul(A, B_orig)`` output, where B_orig has all-unit leading
+    dims, we need:
+
+        out_shape = [1] * max(rank(B_orig) - rank(A), 0) + A.shape[:-1] + [N]
+
+    This is built dynamically via Shape/Size/Sub/Max/ConstantOfShape/Slice/Concat
+    so it works regardless of A's static rank (handles rank(A) == 2 — the common
+    transformer case — as well as rank(A) >= rank(B_orig) where no leading-1
+    prepending is needed).
+
+    Args:
+        a_input_name: name of the activation input edge (A) feeding MatMulNBits.
+        b_original_shape: the original (pre-squeeze) shape of B, e.g. ``(1, K, N)``.
+        target_graph: graph proto to append helper initializers into.
+        name_prefix: unique prefix for generated node/initializer names.
+        pre_reshape_output: name of the MatMulNBits output edge (the input of the
+            generated Reshape).
+        final_output: name of the final edge produced by the generated Reshape
+            (must match the original MatMul output edge).
+
+    Returns:
+        List of nodes to append to the consumer's ``output_nodes`` after the
+        MatMulNBits node. Initializers are appended to ``target_graph`` in place.
+    """
+    rank_b_orig = len(b_original_shape)
+    n_dim = b_original_shape[-1]
+
+    p = name_prefix
+    init_zero = p + "_zero"
+    init_one = p + "_one"
+    init_one_vec = p + "_one_vec"
+    init_rank_b = p + "_rank_b"
+    init_n_vec = p + "_n_vec"
+    init_zero_vec = p + "_zero_vec"
+    init_one_value_template = p + "_one_value"
+
+    target_graph.initializer.extend(
+        [
+            onnx.numpy_helper.from_array(np.array(0, dtype=np.int64), name=init_zero),
+            onnx.numpy_helper.from_array(np.array(1, dtype=np.int64), name=init_one),
+            onnx.numpy_helper.from_array(np.array([1], dtype=np.int64), name=init_one_vec),
+            onnx.numpy_helper.from_array(np.array(rank_b_orig, dtype=np.int64), name=init_rank_b),
+            onnx.numpy_helper.from_array(np.array([n_dim], dtype=np.int64), name=init_n_vec),
+            onnx.numpy_helper.from_array(np.array([0], dtype=np.int64), name=init_zero_vec),
+        ]
+    )
+
+    a_shape = p + "_a_shape"
+    a_rank = p + "_a_rank"
+    extra_raw = p + "_extra_raw"
+    extra_count = p + "_extra_count"
+    extra_count_vec = p + "_extra_count_vec"
+    extra_ones = p + "_extra_ones"
+    a_rank_minus_one = p + "_a_rank_m1"
+    a_rank_minus_one_vec = p + "_a_rank_m1_vec"
+    a_prefix_shape = p + "_a_prefix_shape"
+    target_shape = p + "_target_shape"
+
+    nodes = [
+        onnx.helper.make_node("Shape", [a_input_name], [a_shape], name=p + "_shape_a"),
+        onnx.helper.make_node("Size", [a_shape], [a_rank], name=p + "_size_a"),
+        onnx.helper.make_node("Sub", [init_rank_b, a_rank], [extra_raw], name=p + "_sub"),
+        onnx.helper.make_node("Max", [extra_raw, init_zero], [extra_count], name=p + "_max"),
+        onnx.helper.make_node("Reshape", [extra_count, init_one_vec], [extra_count_vec], name=p + "_reshape_extra"),
+        onnx.helper.make_node(
+            "ConstantOfShape",
+            [extra_count_vec],
+            [extra_ones],
+            name=p + "_const_ones",
+            value=onnx.helper.make_tensor(
+                name=init_one_value_template,
+                data_type=TensorProto.INT64,
+                dims=[1],
+                vals=[1],
+            ),
+        ),
+        onnx.helper.make_node("Sub", [a_rank, init_one], [a_rank_minus_one], name=p + "_sub_one"),
+        onnx.helper.make_node(
+            "Reshape", [a_rank_minus_one, init_one_vec], [a_rank_minus_one_vec], name=p + "_reshape_rank_m1"
+        ),
+        onnx.helper.make_node(
+            "Slice",
+            [a_shape, init_zero_vec, a_rank_minus_one_vec, init_zero_vec],
+            [a_prefix_shape],
+            name=p + "_slice_a_prefix",
+        ),
+        onnx.helper.make_node(
+            "Concat",
+            [extra_ones, a_prefix_shape, init_n_vec],
+            [target_shape],
+            name=p + "_concat_target",
+            axis=0,
+        ),
+        onnx.helper.make_node(
+            "Reshape",
+            [pre_reshape_output, target_shape],
+            [final_output],
+            name=p + "_reshape_out",
+        ),
+    ]
+    return nodes
 
 
 # transpose int4 matrix (packed as uint8)
@@ -990,17 +1104,16 @@ class DefaultWeightOnlyQuantizer:
 
             output_nodes.append(matmul_qbit_node)
             if b_original_shape is not None:
-                target_shape = [*b_original_shape[:-2], -1, b_original_shape[-1]]
-                shape_init_name = b_tensor.name + f"_reshape_shape_Q{bits}"
-                shape_init = onnx.numpy_helper.from_array(np.array(target_shape, dtype=np.int64), name=shape_init_name)
-                b_graph.initializer.append(shape_init)
-                reshape_node = onnx.helper.make_node(
-                    "Reshape",
-                    inputs=[qop_output, shape_init_name],
-                    outputs=[node.output[0]],
-                    name=(node.name + f"_Q{bits}_reshape") if node.name else "",
+                output_nodes.extend(
+                    _build_nbits_output_reshape(
+                        a_input_name=node.input[0],
+                        b_original_shape=b_original_shape,
+                        target_graph=b_graph,
+                        name_prefix=(node.name + f"_Q{bits}") if node.name else (b_tensor.name + f"_Q{bits}"),
+                        pre_reshape_output=qop_output,
+                        final_output=node.output[0],
+                    )
                 )
-                output_nodes.append(reshape_node)
         else:
             dq_input_names = [b_quant.name, scales_tensor.name]
             dq_output_names = [b_quant.name + "_output"]
@@ -1047,17 +1160,16 @@ class DefaultWeightOnlyQuantizer:
             else:
                 output_nodes.extend([dq_node, matmul_node])
             if b_original_shape is not None:
-                target_shape = [*b_original_shape[:-2], -1, b_original_shape[-1]]
-                shape_init_name = b_tensor.name + f"_DQ_reshape_shape_Q{bits}"
-                shape_init = onnx.numpy_helper.from_array(np.array(target_shape, dtype=np.int64), name=shape_init_name)
-                b_graph.initializer.append(shape_init)
-                reshape_node = onnx.helper.make_node(
-                    "Reshape",
-                    inputs=[qdq_matmul_out, shape_init_name],
-                    outputs=[node.output[0]],
-                    name=(node.name + f"_Q{bits}_qdq_reshape") if node.name else "",
+                output_nodes.extend(
+                    _build_nbits_output_reshape(
+                        a_input_name=node.input[0],
+                        b_original_shape=b_original_shape,
+                        target_graph=b_graph,
+                        name_prefix=(node.name + f"_DQ_Q{bits}") if node.name else (b_tensor.name + f"_DQ_Q{bits}"),
+                        pre_reshape_output=qdq_matmul_out,
+                        final_output=node.output[0],
+                    )
                 )
-                output_nodes.append(reshape_node)
 
         return output_nodes
 
