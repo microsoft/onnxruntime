@@ -2552,10 +2552,12 @@ struct OrtEp {
    */
   ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
 
-  /** \brief Get the EP's default memory device (identity device).
+  /** \brief Get the EP's default memory device.
    *
-   * If implemented, ORT uses the returned OrtMemoryDevice as the EP's identity device
-   * instead of inferring it from memory infos registered with OrtEpDevice.
+   * The EP's default memory device identifies the hardware the EP operates on. ORT uses it to:
+   * - Determine if data copies are needed between EPs (inserting memcpy nodes at EP boundaries)
+   * - Determine if the EP is CPU-based (which affects synchronization and data transfer decisions)
+   * - Bind execution streams to the correct device
    *
    * An OrtMemoryDevice is obtained from an OrtMemoryInfo via `OrtEpApi::MemoryInfo_GetMemoryDevice()`.
    * Typically, an EP creates OrtMemoryInfo instances and registers them with its OrtEpDevice(s) via
