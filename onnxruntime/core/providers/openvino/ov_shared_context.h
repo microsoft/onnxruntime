@@ -46,12 +46,22 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
   }
 
   void AddExternalWeight(const std::string& name, size_t offset, size_t size, const std::filesystem::path& location) {
+    std::unique_lock lock(mutex_);
+    auto it = metadata_.find(name);
+    if (it != metadata_.end()) {
+      const auto& existing = it->second.serialized;
+      ORT_ENFORCE(existing.data_offset == offset && existing.size == size && existing.location == location,
+                  "AddExternalWeight: Mismatch for existing weight '", name,
+                  "'. Expected offset=", existing.data_offset, " size=", existing.size,
+                  " location=", existing.location.string(),
+                  ", got offset=", offset, " size=", size, " location=", location.string());
+      return;
+    }
     Metadata::Value value;
     value.serialized.data_offset = offset;
     value.serialized.size = size;
     value.serialized.location = location;
-    std::unique_lock lock(mutex_);
-    metadata_[name] = std::move(value);
+    metadata_.emplace(name, std::move(value));
   }
 
   Metadata::Map GetMetadataCopy() const {
@@ -103,6 +113,7 @@ class SharedContext : public std::enable_shared_from_this<SharedContext> {
       const void* ptr_{nullptr};
       ov::Tensor tensor_;
     };
+    mutable std::mutex mutex_;
     std::map<std::string, MappingContainer> imported_device_tensors_;
   };
 

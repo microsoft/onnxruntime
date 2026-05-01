@@ -159,8 +159,8 @@ BackendManager::BackendManager(SessionContext& session_context,
     } else {
       ORT_THROW(
           "Exporting dynamically compiled models at runtime is not supported. "
-          "Cannot export blobs of dynamic models that request static shape inference. "
-          "To export this model, set disable_dynamic_shapes to False");
+          "If appropriate, use the reshape_input provider option to compile with lower/upper bounds "
+          "to create a concrete backend which can be exported");
     }
   }
 }
@@ -286,6 +286,7 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
   return false;
 }
 
+#if ((OPENVINO_VERSION_MAJOR < 2026) || ((OPENVINO_VERSION_MAJOR == 2026) && (OPENVINO_VERSION_MINOR < 1)))
 static bool Is16BitTensor(const onnxruntime::NodeArg* node_arg) {
   const auto* type_proto = node_arg ? node_arg->TypeAsProto() : nullptr;
   return type_proto && type_proto->has_tensor_type() &&
@@ -323,10 +324,14 @@ static bool IsQDQGraphWithUint16OrInt16(const onnxruntime::GraphViewer& graph_vi
   }
   return false;
 }
+#endif
 
 static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
                                 [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
-                                [[maybe_unused]] const onnxruntime::Node& fused_node) {
+                                [[maybe_unused]] const onnxruntime::Node& fused_node,
+                                [[maybe_unused]] const onnxruntime::GraphViewer& subgraph,
+                                [[maybe_unused]] const logging::Logger& logger,
+                                [[maybe_unused]] bool initializer_data_in_proto) {
 #ifndef RELEASE
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
@@ -339,8 +344,21 @@ static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& on
       model_name.replace_extension(".onnx");
     }
 
-    std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(dump);
+    // When initializer data was omitted from the proto (ORT_MEM_ADDR references), build a
+    // self-contained proto for the dump so the saved .onnx file can be reloaded standalone.
+    if (!initializer_data_in_proto) {
+      auto model_for_dump = subgraph.CreateModel(logger);
+      auto model_proto_for_dump = model_for_dump->ToProto();
+      model_proto_for_dump->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+      subgraph.ToProto(*model_proto_for_dump->mutable_graph(), /*include_initializers*/ true,
+                       /*include_outer_scope_args*/ true, /*execution_order*/ 0,
+                       /*include_initializer_data*/ true);
+      std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto_for_dump->SerializeToOstream(dump);
+    } else {
+      std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
+      model_proto->SerializeToOstream(dump);
+    }
   }
 #endif
 }
@@ -456,10 +474,6 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   }
 #endif
 
-  // Check if the graph is QDQ and has int16 or uint16 quantization
-  // If so, we will apply the QDQ scales fix transformation (for GPU device only)
-  bool is_qdq_graph_uint16_or_int16 = IsQDQGraphWithUint16OrInt16(subgraph);
-
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU and experimentally on the GPU
   if ((session_context_.device_type.find("NPU") != std::string::npos) &&
@@ -469,21 +483,26 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, /*initializer_data_in_proto*/ true);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
-  } else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
-             is_qdq_graph_uint16_or_int16) {
+  }
+#if ((OPENVINO_VERSION_MAJOR < 2026) || ((OPENVINO_VERSION_MAJOR == 2026) && (OPENVINO_VERSION_MINOR < 1)))
+  // Enable OVEP-level QDQ stripping only for OV versions that don't have it
+  else if ((session_context_.device_type.find("GPU") != std::string::npos) &&
+           IsQDQGraphWithUint16OrInt16(subgraph)) {
     // Create a copy of the model
     std::unique_ptr<onnxruntime::Model> model;
     Status status = qdq_scales_fix::Transform(subgraph, logger, model);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, /*initializer_data_in_proto*/ true);
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
-  } else {
+  }
+#endif
+  else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
 
     // scan ext initializers:
@@ -503,15 +522,12 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
       }
     }
 
-    // when we have external weights in memory, the model proto will actually embed those
+    // when we have external weights in memory, by default the model proto will embed those
     // and bloat the serialized string. We can avoid that by not including the data in the proto
-    // but then we have to update those initializers and set the external_data fields to mem_addr tag...
-    // proto is limited to 2GB, but let's use 32MB as threshold to be conservative and still gain some memory reductions.
+    // and use external initializers with external_data fields set to mem_addr tag...
 #if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2025))
-    constexpr size_t MAX_EMBEDDED_INITIALIZER_SIZE = 1024 * 1024 * 32;
     const bool include_initializer_data_in_proto = !(session_context_.has_external_weights &&
-                                                     external_initializers_offset_and_length.size() > 1 &&
-                                                     extInitializerTotalSize >= MAX_EMBEDDED_INITIALIZER_SIZE);
+                                                     external_initializers_offset_and_length.size() > 1);
 #else
     const bool include_initializer_data_in_proto = true;
 #endif
@@ -581,7 +597,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
       }
     }
 
-    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node);
+    DumpOpenVINOEPModel(onnx_model_path_name, model_proto.get(), fused_node, subgraph, logger, include_initializer_data_in_proto);
 
     return model_proto;
   }
@@ -779,9 +795,9 @@ void BackendManager::RewindKVCache(size_t index) {
   }
 }
 
-void BackendManager::ReorderKVCache(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+void BackendManager::SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
   if (concrete_backend_) {
-    concrete_backend_->ReorderKVCache(src_indices, dst_indices);
+    concrete_backend_->SetReorderKVCacheStatus(src_indices, dst_indices);
   }
 }
 
