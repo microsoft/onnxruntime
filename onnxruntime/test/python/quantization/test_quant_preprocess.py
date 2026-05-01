@@ -182,20 +182,35 @@ class TestSkipSymbolicShape(unittest.TestCase):
         """
         When skip_symbolic_shape=True, quant_pre_process must not attempt to
         import onnxruntime.tools.symbolic_shape_infer (which requires sympy).
-        We verify this by temporarily hiding the module from sys.modules and
-        confirming the call succeeds without it.
+        We verify this by installing a meta_path finder that raises
+        ModuleNotFoundError for those modules — guaranteeing any fresh import
+        attempt fails — and asserting the call succeeds without ever loading
+        them.
         """
+
+        class _BlockSympyAndSymbolicFinder:
+            blocked_prefixes = ("sympy",)
+            blocked_substrings = ("symbolic_shape_infer",)
+
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname == "sympy" or fullname.startswith("sympy."):
+                    raise ModuleNotFoundError(f"blocked by test: {fullname}")
+                if "symbolic_shape_infer" in fullname:
+                    raise ModuleNotFoundError(f"blocked by test: {fullname}")
+                return None
+
         model = self.build_simple_model()
         input_path = self.temp_path / "simple_model.onnx"
         output_path = self.temp_path / "out_model.onnx"
         onnx.save_model(model, str(input_path))
 
-        # Remove sympy and symbolic_shape_infer from sys.modules to simulate absence
         saved = {}
         for key in list(sys.modules.keys()):
             if key == "sympy" or key.startswith("sympy.") or "symbolic_shape_infer" in key:
                 saved[key] = sys.modules.pop(key)
 
+        blocker = _BlockSympyAndSymbolicFinder()
+        sys.meta_path.insert(0, blocker)
         try:
             quant_pre_process(
                 input_model=str(input_path),
@@ -204,7 +219,19 @@ class TestSkipSymbolicShape(unittest.TestCase):
                 skip_onnx_shape=True,
                 skip_symbolic_shape=True,
             )
+
+            for mod_name in list(sys.modules):
+                self.assertFalse(
+                    mod_name == "sympy" or mod_name.startswith("sympy."),
+                    f"sympy was imported despite skip_symbolic_shape=True: {mod_name}",
+                )
+                self.assertNotIn(
+                    "symbolic_shape_infer",
+                    mod_name,
+                    f"symbolic_shape_infer was imported despite skip_symbolic_shape=True: {mod_name}",
+                )
         finally:
+            sys.meta_path.remove(blocker)
             sys.modules.update(saved)
 
         self.assertTrue(output_path.exists(), "Output model should be created even without sympy")
