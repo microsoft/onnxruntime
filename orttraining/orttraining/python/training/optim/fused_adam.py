@@ -105,15 +105,17 @@ class FusedAdam(torch.optim.Optimizer):
                 stacklevel=2,
             )
             # Build an equivalent standard PyTorch optimizer for the CPU path.
-            # Retrieve the flat list of parameters from the already-registered param_groups.
-            _params = [p for group in self.param_groups for p in group["params"]]
+            # Pass self.param_groups directly so per-group lr/betas/eps/weight_decay
+            # (and any other group-level options the caller set) are preserved
+            # rather than collapsed into the top-level kwargs.
+            fallback_param_groups = self.param_groups
             if adam_w_mode == AdamWMode.ADAM_L2_REGULARIZATION:
                 self._cpu_fallback_optimizer = torch.optim.Adam(
-                    _params, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay
+                    fallback_param_groups, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay
                 )
             elif adam_w_mode == AdamWMode.ADAMW_TORCH:
                 self._cpu_fallback_optimizer = torch.optim.AdamW(
-                    _params, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay
+                    fallback_param_groups, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay
                 )
             else:
                 # AdamWMode.ADAMW_TRANSFORMERS (default): prefer transformers.AdamW
@@ -121,7 +123,7 @@ class FusedAdam(torch.optim.Optimizer):
                     from transformers import AdamW as _TransformersAdamW  # noqa: PLC0415
 
                     self._cpu_fallback_optimizer = _TransformersAdamW(
-                        _params,
+                        fallback_param_groups,
                         lr=lr,
                         betas=betas,
                         eps=eps,
@@ -129,15 +131,46 @@ class FusedAdam(torch.optim.Optimizer):
                         correct_bias=bias_correction,
                     )
                 except ImportError:
+                    if not bias_correction:
+                        # torch.optim.AdamW always applies bias correction; with
+                        # bias_correction=False the math diverges silently.
+                        raise RuntimeError(
+                            "FusedAdam CPU fallback for AdamWMode.ADAMW_TRANSFORMERS with "
+                            "bias_correction=False requires the 'transformers' package "
+                            "(install with: pip install transformers). torch.optim.AdamW "
+                            "cannot represent the bias-correction-disabled variant."
+                        ) from None
                     warnings.warn(
                         "transformers package not available; using torch.optim.AdamW as CPU fallback "
-                        "for AdamWMode.ADAMW_TRANSFORMERS.",
+                        "for AdamWMode.ADAMW_TRANSFORMERS. Math is equivalent because bias_correction=True.",
                         UserWarning,
                         stacklevel=2,
                     )
                     self._cpu_fallback_optimizer = torch.optim.AdamW(
-                        _params, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay
+                        fallback_param_groups, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay
                     )
+
+            # Make this object's view of param_groups/state share storage with the
+            # fallback's so user-visible state_dict/load_state_dict and runtime
+            # mutations like ``opt.param_groups[0]['lr']=...`` reach the optimizer
+            # whose ``step()`` we delegate to.
+            self.param_groups = self._cpu_fallback_optimizer.param_groups
+            self.state = self._cpu_fallback_optimizer.state
+
+    def state_dict(self):
+        if self._cpu_fallback_optimizer is not None:
+            return self._cpu_fallback_optimizer.state_dict()
+        return super().state_dict()
+
+    def load_state_dict(self, state_dict):
+        if self._cpu_fallback_optimizer is not None:
+            return self._cpu_fallback_optimizer.load_state_dict(state_dict)
+        return super().load_state_dict(state_dict)
+
+    def add_param_group(self, param_group):
+        if getattr(self, "_cpu_fallback_optimizer", None) is not None:
+            return self._cpu_fallback_optimizer.add_param_group(param_group)
+        return super().add_param_group(param_group)
 
     def zero_grad(self, set_to_none=True):
         if self._cpu_fallback_optimizer is not None:

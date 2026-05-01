@@ -6,12 +6,15 @@ These tests patch torch.cuda.is_available to return False so they run
 deterministically on both CPU-only and CUDA machines.
 
 Import strategy:
-  * Add the optim/ source directory to sys.path.
-  * Pre-register "_multi_tensor_apply" in sys.modules by importing it
-    directly (it is pure Python with no external deps).
-  * Load fused_adam.py via importlib with __package__ set to the name we
-    used for the pre-registered _multi_tensor_apply module so that the
-    relative import resolves correctly.
+  * Load ``_multi_tensor_apply.py`` directly from the optim/ source
+    directory via ``importlib.util.spec_from_file_location`` (it is pure
+    Python with no external deps). ``sys.path`` is not modified.
+  * Pre-register that module in ``sys.modules`` under a synthetic package
+    name so the relative ``from ._multi_tensor_apply import ...`` inside
+    ``fused_adam.py`` can resolve.
+  * Load ``fused_adam.py`` via ``importlib.util.spec_from_file_location``
+    with ``__package__`` set to that synthetic package name so the
+    relative import binds to the entry from the previous step.
 
 This avoids touching the training/__init__.py which requires the compiled
 onnxruntime C extension (not available in the source-tree environment).
