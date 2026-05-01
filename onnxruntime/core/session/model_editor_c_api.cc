@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <algorithm>
 #include <variant>
 
 #include "core/common/inlined_containers.h"
@@ -225,7 +226,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
 }
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort_graph, _In_ const char* name,
-                    _Inout_ OrtValue* tensor, bool data_is_external) {
+                    _In_ OrtValue* tensor, bool data_is_external) {
   API_IMPL_BEGIN
   if (name == nullptr || *name == '\0') {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name cannot be null or empty string");
@@ -321,10 +322,12 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
   }
 
   // All validation done. Take ownership.
-  // Reserve first so push_back won't reallocate — if reserve() throws, node is not yet
-  // owned by a unique_ptr and the caller still safely owns it.
+  // Reserve with geometric growth so emplace_back won't reallocate.
+  // If reserve() throws, node is not yet owned by a unique_ptr and the caller still safely owns it.
   node->id = graph->nodes.size();
-  graph->nodes.reserve(graph->nodes.size() + 1);
+  if (graph->nodes.size() == graph->nodes.capacity()) {
+    graph->nodes.reserve(std::max(graph->nodes.capacity() * 2, size_t{1}));
+  }
   graph->nodes.emplace_back(node);  // constructs unique_ptr in-place; won't reallocate
   node->owned_ = true;
   return nullptr;
