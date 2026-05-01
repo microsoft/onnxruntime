@@ -136,9 +136,9 @@ Status CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph(const Graph& graph) {
 void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
                                           NormAnchorKind norm_anchor_kind,
                                           SkipOutputKind skip_output_kind = SkipOutputKind::kNone) {
-  constexpr int64_t k = 16;
+  constexpr int64_t k = 32;
   constexpr int64_t n = 8;
-  constexpr int64_t block_size = 16;
+  constexpr int64_t block_size = 32;
   constexpr int64_t bits = 4;
   constexpr int64_t accuracy_level = 4;
   constexpr int64_t blob_size = block_size * bits / 8;
@@ -146,6 +146,10 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
   NodeArg* input = builder.MakeInput<MLFloat16>(
       std::vector<int64_t>{1, k},
       std::vector<MLFloat16>{
+          MLFloat16(-1.0f), MLFloat16(-0.875f), MLFloat16(-0.75f), MLFloat16(-0.625f),
+          MLFloat16(-0.5f), MLFloat16(-0.375f), MLFloat16(-0.25f), MLFloat16(-0.125f),
+          MLFloat16(0.125f), MLFloat16(0.25f), MLFloat16(0.375f), MLFloat16(0.5f),
+          MLFloat16(0.625f), MLFloat16(0.75f), MLFloat16(0.875f), MLFloat16(1.0f),
           MLFloat16(-1.0f), MLFloat16(-0.875f), MLFloat16(-0.75f), MLFloat16(-0.625f),
           MLFloat16(-0.5f), MLFloat16(-0.375f), MLFloat16(-0.25f), MLFloat16(-0.125f),
           MLFloat16(0.125f), MLFloat16(0.25f), MLFloat16(0.375f), MLFloat16(0.5f),
