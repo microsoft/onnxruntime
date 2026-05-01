@@ -2555,16 +2555,26 @@ struct OrtEp {
   /** \brief Get the EP's default memory device (identity device).
    *
    * If implemented, ORT uses the returned OrtMemoryDevice as the EP's identity device
-   * instead of inferring it from `OrtEpDevice::device_memory_info`.
+   * instead of inferring it from memory infos registered with OrtEpDevice.
+   *
+   * An OrtMemoryDevice is obtained from an OrtMemoryInfo via `OrtEpApi::MemoryInfo_GetMemoryDevice()`.
+   * Typically, an EP creates OrtMemoryInfo instances and registers them with its OrtEpDevice(s) via
+   * `OrtEpApi::EpDevice_AddAllocatorInfo()`. The OrtMemoryDevice returned here must correspond to one
+   * of those registered OrtMemoryInfo instances (i.e., the OrtMemoryInfo used to obtain the returned
+   * OrtMemoryDevice should have been previously registered with an OrtEpDevice via
+   * `EpDevice_AddAllocatorInfo`).
    *
    * The returned pointer must remain valid for the lifetime of the OrtEp instance
    * (typically by storing the source OrtMemoryInfo as a member of the EP).
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \return The EP's default OrtMemoryDevice, or NULL to use the default inference from device_memory_info.
+   * \return The EP's default OrtMemoryDevice, or NULL to use the default inference.
    *
-   * \note Implementation of this function is optional. If set to NULL, ORT infers the default device
-   *       from `OrtEpDevice::device_memory_info` (existing behavior).
+   * \note Implementation of this function is optional. If set to NULL (or not implemented), ORT
+   *       infers the default device from the `OrtDeviceMemoryType_DEFAULT` OrtMemoryInfo registered
+   *       via `EpDevice_AddAllocatorInfo`. In this fallback case, all OrtEpDevice instances must use
+   *       the same default OrtMemoryInfo (or ORT cannot determine which device to use as the EP's
+   *       identity). If no default OrtMemoryInfo is registered, the EP defaults to CPU.
    *
    * \since Version 1.26.
    */
@@ -2573,8 +2583,7 @@ struct OrtEp {
   /** \brief Get the OrtMemoryDevice for a given OrtMemType.
    *
    * Maps an OrtMemType (e.g., OrtMemTypeCPUInput, OrtMemTypeCPUOutput, OrtMemTypeDefault) to the
-   * appropriate OrtMemoryDevice. This is the plugin EP equivalent of
-   * IExecutionProvider::GetOrtDeviceByMemType().
+   * appropriate OrtMemoryDevice.
    *
    * For GPU-like EPs, a typical implementation returns:
    * - OrtMemTypeCPUInput → NULL (fall back to CPU)
@@ -2584,11 +2593,8 @@ struct OrtEp {
    * The returned pointer must remain valid for the lifetime of the OrtEp instance
    * (typically by storing the source OrtMemoryInfo objects as members of the EP).
    *
-   * Returned devices should correspond to one of the EP's published memory infos
-   * (e.g., `OrtEpDevice::device_memory_info` or `OrtEpDevice::host_accessible_memory_info`).
-   *
-   * For OrtMemTypeDefault, the returned device should be consistent with the EP's identity device
-   * (as returned by GetDefaultMemoryDevice or inferred from `OrtEpDevice::device_memory_info`).
+   * Returned devices should correspond to OrtMemoryInfo instances registered with OrtEpDevice
+   * via `OrtEpApi::EpDevice_AddAllocatorInfo()`.
    *
    * This function may be called concurrently from multiple threads. Implementations must be
    * thread-safe and return pointers to immutable storage.
