@@ -36,6 +36,8 @@ globalAgentBootstrap();
 //
 // --onnxruntime-node-install=cuda12       Force install the CUDA EP binaries for CUDA 12.
 //
+// --onnxruntime-node-install=cuda13       Force install the CUDA EP binaries for CUDA 13.
+//
 // --onnxruntime-node-install-cuda         Force install the CUDA EP binaries.
 //                                         (deprecated, use --onnxruntime-node-install=cuda12)
 //
