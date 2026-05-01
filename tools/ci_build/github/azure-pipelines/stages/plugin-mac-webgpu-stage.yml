@@ -56,6 +56,7 @@ stages:
       parameters:
         package_version: ${{ parameters.package_version }}
         version_file: ${{ parameters.version_file }}
+        python_command: python3
 
     - script: |
         set -e -x
@@ -166,6 +167,7 @@ stages:
       parameters:
         package_version: ${{ parameters.package_version }}
         version_file: ${{ parameters.version_file }}
+        python_command: python3
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download plugin build artifacts'
