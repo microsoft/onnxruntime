@@ -28,6 +28,9 @@ parameters:
   - release
   - RC
 
+- name: version_file
+  type: string
+
 - name: cmake_build_type
   type: string
   displayName: 'CMake build type'
@@ -45,6 +48,7 @@ stages:
         parameters:
           arch: 'x64'
           package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # Windows ARM64
@@ -55,6 +59,7 @@ stages:
         parameters:
           arch: 'arm64'
           package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # Linux x64
@@ -62,6 +67,7 @@ stages:
       - template: plugin-linux-webgpu-stage.yml
         parameters:
           package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # macOS ARM64
@@ -69,4 +75,5 @@ stages:
       - template: plugin-mac-webgpu-stage.yml
         parameters:
           package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}

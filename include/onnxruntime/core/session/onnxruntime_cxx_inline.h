@@ -1039,6 +1039,57 @@ inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
   return devices;
 }
 
+inline size_t Env::GetNumHardwareDevices() const {
+  size_t num_devices = 0;
+  ThrowOnError(GetApi().GetNumHardwareDevices(p_, &num_devices));
+  return num_devices;
+}
+
+inline std::vector<ConstHardwareDevice> Env::GetHardwareDevices() const {
+  size_t num_devices = 0;
+  ThrowOnError(GetApi().GetNumHardwareDevices(p_, &num_devices));
+
+  std::vector<ConstHardwareDevice> devices;
+  if (num_devices > 0) {
+    std::vector<const OrtHardwareDevice*> device_ptrs(num_devices);
+    ThrowOnError(GetApi().GetHardwareDevices(p_, device_ptrs.data(), num_devices));
+    devices.reserve(num_devices);
+    for (size_t i = 0; i < num_devices; ++i) {
+      devices.emplace_back(device_ptrs[i]);
+    }
+  }
+
+  return devices;
+}
+
+inline DeviceEpIncompatibilityDetails Env::GetHardwareDeviceEpIncompatibilityDetails(
+    const char* ep_name, ConstHardwareDevice hw) const {
+  OrtDeviceEpIncompatibilityDetails* details = nullptr;
+  ThrowOnError(GetApi().GetHardwareDeviceEpIncompatibilityDetails(p_, ep_name, hw, &details));
+  return DeviceEpIncompatibilityDetails{details};
+}
+
+template <typename T>
+inline uint32_t detail::DeviceEpIncompatibilityDetailsImpl<T>::GetReasonsBitmask() const {
+  uint32_t reasons_bitmask = 0;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetReasonsBitmask(this->p_, &reasons_bitmask));
+  return reasons_bitmask;
+}
+
+template <typename T>
+inline const char* detail::DeviceEpIncompatibilityDetailsImpl<T>::GetNotes() const {
+  const char* notes = nullptr;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetNotes(this->p_, &notes));
+  return notes;
+}
+
+template <typename T>
+inline int32_t detail::DeviceEpIncompatibilityDetailsImpl<T>::GetErrorCode() const {
+  int32_t error_code = 0;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetErrorCode(this->p_, &error_code));
+  return error_code;
+}
+
 inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
                                const std::vector<Value>& dst_tensors,
                                OrtSyncStream* stream) const {
