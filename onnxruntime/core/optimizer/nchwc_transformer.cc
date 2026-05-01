@@ -6,6 +6,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -13,7 +14,12 @@ namespace onnxruntime {
 
 class NchwcTransformerImpl {
  public:
-  NchwcTransformerImpl(Graph& graph) noexcept : graph_(graph) {}
+  NchwcTransformerImpl(Graph& graph,
+                       bool disable_nchwc_layout_for_large_conv,
+                       const logging::Logger& logger) noexcept
+      : graph_(graph),
+        disable_nchwc_layout_for_large_conv_(disable_nchwc_layout_for_large_conv),
+        logger_(logger) {}
 
   void Transform(Node& node);
   void Finalize(bool& modified);
@@ -161,6 +167,11 @@ class NchwcTransformerImpl {
   // NHWC to NCHW format.
   Node* transpose_from_nhwc_node_{nullptr};
   NodeArg* transpose_from_nhwc_output_arg_{nullptr};
+
+  // If true, avoid NCHWc transformation for large convolutions and keep NCHW layout.
+  const bool disable_nchwc_layout_for_large_conv_;
+
+  const logging::Logger& logger_;
 };
 
 size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
@@ -336,6 +347,39 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
   const int64_t output_channels = conv_W_tensor_proto->dims(0);
   const int64_t input_channels = conv_W_tensor_proto->dims(1);
+  const int64_t kernel_height = conv_W_tensor_proto->dims(2);
+  const int64_t kernel_width = conv_W_tensor_proto->dims(3);
+
+  // For large kernels with a large number of input and output channels, some platforms may perform better with the NCHWc transformation disabled.
+  // For example, on some AVX platforms, the direct convolution implementation used for NCHWc tensors makes the kernels extremely memory bound and
+  // perform poorly on these platforms and that coupled with potential under-clocking on Intel's AVX512 results in extremely poor performance
+  // (sometimes to the order of 10x slower than the NCHW implementation).
+  // In these cases, it's better to skip the NCHWc transformation and allow the convolution to be optimized as a standard NCHW convolution which may
+  // use a more efficient algorithm for large kernels. The thresholds here are based on empirical testing and may need to be adjusted based
+  // on the specific model and hardware characteristics.
+  // Although the re-ordering overhead for running the conv as NCHW exists, given the perf difference for large kernels, it is worth trying the option.
+  if (kernel_height >= 7 && kernel_width >= 7 && input_channels >= 64 && output_channels >= 32) {
+    if (disable_nchwc_layout_for_large_conv_) {
+      LOGS(logger_, INFO) << "NchwcTransformer: keeping Conv node '" << node.Name()
+                          << "' in NCHW layout due to large kernel/channel dimensions.";
+      return;
+    } else {
+      LOGS(logger_, WARNING) << "NCHWc Conv with large kernel (" << kernel_height << "x" << kernel_width
+                             << ") and large channel counts (input: " << input_channels << ", output: " << output_channels
+                             << ") detected in node '" << node.Name()
+                             << "'. Please try measuring performance with the '"
+                             << kOrtSessionOptionsUseNchwLayoutForLargeConv
+                             << "' session option set to '1' to disable NCHWc data layout "
+                             << "only for such large convolutions in the model. "
+                             << "On certain hardware, large kernel convolutions may perform "
+                             << "worse with NCHWc data layout."
+                             << " Using this session option may introduce some re-ordering overhead for these convolutions, "
+                             << "but it may be worth trying if you see poor performance and have such large convolutions in your model."
+                             << " To avoid re-ordering overheads and to totally disable NCHWc layout transformation for operations, you can set the '"
+                             << kOrtSessionOptionsDisableNchwcLayoutTransformation
+                             << "' session option to '1' which disables NCHWc layout transformation for all operations in the model.";
+    }
+  }
 
   int64_t group_count;
   const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
@@ -1332,7 +1376,7 @@ void NchwcTransformerImpl::Finalize(bool& modified) {
 }
 
 Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  NchwcTransformerImpl impl(graph);
+  NchwcTransformerImpl impl(graph, disable_nchwc_layout_for_large_conv_, logger);
   GraphViewer graph_viewer(graph);
 
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
