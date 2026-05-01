@@ -358,5 +358,225 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_bilinear_border_extreme_
   RunCpuOnly(test);
 }
 
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_extreme_nan_inf_coords) {
+  // Zeros padding is safe by design, but the IsSafeForInt64Conversion sanitization
+  // (in PrecomputeBilinearSamplePlan2D) replaces NaN/Inf/extreme values with the
+  // lower border (-0.5) before the floor cast. Verify the optimized bilinear
+  // zeros-padding fast path still produces a deterministic, well-defined output
+  // for those inputs.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("zeros"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(1.0f),
+                                          TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 3, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(std::numeric_limits<float>::quiet_NaN()),
+      TypeParam(std::numeric_limits<float>::quiet_NaN()),
+      TypeParam(std::numeric_limits<float>::infinity()),
+      TypeParam(-std::numeric_limits<float>::infinity()),
+      TypeParam(1.0e+20f), TypeParam(-1.0e+20f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 3};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // Each unsafe coord is sanitized to (-0.5, -0.5); only the bottom-right neighbor
+  // (pixel(0, 0) = 1.0) is in-bounds with weight 0.5*0.5 = 0.25, others are zeros.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(0.25f), TypeParam(0.25f), TypeParam(0.25f)});
+  RunCpuOnly(test);
+}
+
+TEST(GridSampleCustomTestFloatOnly, test_grid_sample_20_4D_cubic_reflection_nan_inf_coords) {
+  // Cubic interpolation also goes through static_cast<int64_t>(std::floor(x)) - 1.
+  // Cover the NaN / +Inf / -Inf paths through the cubic kernel; constant-valued
+  // image makes the output trivially 1.0 regardless of which 4x4 neighborhood is
+  // selected after sanitization.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("cubic"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 4, 4};
+  std::initializer_list<float> X_data{
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 3, 2};
+  std::initializer_list<float> Grid_data{
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      -std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::infinity()};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 3};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {1.0f, 1.0f, 1.0f});
+  RunCpuOnly(test);
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_linear_reflection_extreme_coords) {
+  // 3D trilinear path: exercises std::floor cast for x, y, and z with extreme
+  // finite coordinates. Sanitization replaces the unsafe components with the
+  // lower borders before any int64 cast.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2, 2};
+  std::initializer_list<TypeParam> X_data{
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+20f), TypeParam(1.0e+20f), TypeParam(1.0e+20f),
+      TypeParam(-1.0e+20f), TypeParam(-1.0e+20f), TypeParam(-1.0e+20f)};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // Constant-valued image: trilinear interpolation of all-1.0 neighborhood is 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunCpuOnly(test);
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_nearest_reflection_nan_inf_coords) {
+  // 3D path with NaN / Inf / -Inf in different spatial dimensions. Verifies
+  // that the 3D sanitization branch handles non-finite values along any axis.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2, 2};
+  std::initializer_list<TypeParam> X_data{
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(std::numeric_limits<float>::quiet_NaN()),
+      TypeParam(std::numeric_limits<float>::infinity()),
+      TypeParam(-std::numeric_limits<float>::infinity()),
+      TypeParam(std::numeric_limits<float>::infinity()),
+      TypeParam(std::numeric_limits<float>::quiet_NaN()),
+      TypeParam(-std::numeric_limits<float>::infinity())};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunCpuOnly(test);
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_align_corners_extreme) {
+  // align_corners=1 on a non-degenerate (3x3) image. With align_corners=1 the
+  // lower border becomes 0 (not -0.5), so unsafe coords are sanitized to (0, 0)
+  // and resolve to the top-left pixel of the image.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{1});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 3, 3};
+  std::initializer_list<TypeParam> X_data{
+      TypeParam(1.0f), TypeParam(2.0f), TypeParam(3.0f),
+      TypeParam(4.0f), TypeParam(5.0f), TypeParam(6.0f),
+      TypeParam(7.0f), TypeParam(8.0f), TypeParam(9.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(1.0e+20f), TypeParam(1.0e+20f),
+      TypeParam(std::numeric_limits<float>::quiet_NaN()),
+      TypeParam(-std::numeric_limits<float>::infinity())};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // Both unsafe coords sanitize to (0, 0) -> pixel(0, 0) = 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunCpuOnly(test);
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_negative_only_extreme) {
+  // Asymmetry: all extreme coordinates are negative. Sanitization replaces them
+  // with x_min/y_min = -0.5, and nearbyint(-0.5) rounds to 0 (banker's rounding),
+  // so each output samples pixel(0, 0) of a non-constant image.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 3, 3};
+  std::initializer_list<TypeParam> X_data{
+      TypeParam(1.0f), TypeParam(2.0f), TypeParam(3.0f),
+      TypeParam(4.0f), TypeParam(5.0f), TypeParam(6.0f),
+      TypeParam(7.0f), TypeParam(8.0f), TypeParam(9.0f)};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(-1.0e+20f), TypeParam(-1.0e+20f),
+      TypeParam(-std::numeric_limits<float>::infinity()),
+      TypeParam(-std::numeric_limits<float>::infinity())};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  // Sanitized to (-0.5, -0.5); nearbyint -> (0, 0); pixel(0, 0) = 1.0.
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(1.0f), TypeParam(1.0f)});
+  RunCpuOnly(test);
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_mixed_normal_pathological) {
+  // Mixed normal and pathological grid coordinates in the same call. Validates
+  // that the sanitization only replaces unsafe values and leaves normal grid
+  // points untouched, sampling them correctly from a non-constant image.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{1});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 3, 3};
+  std::initializer_list<TypeParam> X_data{
+      TypeParam(1.0f), TypeParam(2.0f), TypeParam(3.0f),
+      TypeParam(4.0f), TypeParam(5.0f), TypeParam(6.0f),
+      TypeParam(7.0f), TypeParam(8.0f), TypeParam(9.0f)};
+
+  // align_corners=1 on a 3x3 image maps normalized [-1, 1] -> pixel coords [0, 2].
+  // Mix four points: center, top-left, NaN (sanitized -> (0,0)), and asymmetric
+  // extreme (sanitized -> (0,0)).
+  std::initializer_list<int64_t> Grid_shape{1, 1, 4, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f),     // -> pixel(1, 1) = 5
+      TypeParam(-1.0f), TypeParam(-1.0f),   // -> pixel(0, 0) = 1
+      TypeParam(std::numeric_limits<float>::quiet_NaN()),
+      TypeParam(std::numeric_limits<float>::quiet_NaN()),  // sanitized -> pixel(0, 0) = 1
+      TypeParam(1.0e+20f), TypeParam(-1.0e+20f)};          // sanitized -> pixel(0, 0) = 1
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 4};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(5.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)});
+  RunCpuOnly(test);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
