@@ -263,13 +263,6 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                  "An initializer with this name has already been added to the graph.");
   }
 
-  // Reject if this OrtValue pointer was already added (prevents double-free via same pointer, different name)
-  if (graph->owned_initializer_ptrs_.count(tensor) != 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "This tensor has already been added as an initializer. "
-                                 "Each OrtValue can only be added once.");
-  }
-
   if (data_is_external) {
     // enforce that an external initializer is not used if the data size is < 128 bytes.
     // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
@@ -282,20 +275,13 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     }
   }
 
-  // All validation done. Take ownership with exception-safe rollback.
-  // Insert into tracking set first, then try to insert into the map.
-  // If the map insertion throws, roll back the tracking set so the caller can retry.
-  // The actual ownership transfer (reset) is noexcept.
-  graph->owned_initializer_ptrs_.insert(tensor);
-  try {
-    auto& m = data_is_external ? graph->external_initializers : graph->initializers;
-    auto [it, inserted] = m.try_emplace(name, nullptr);
-    ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
-    it->second.reset(tensor);  // noexcept ownership transfer
-  } catch (...) {
-    graph->owned_initializer_ptrs_.erase(tensor);
-    throw;  // API_IMPL_END converts to OrtStatus
-  }
+  // All validation done. Copy the OrtValue into the graph.
+  // OrtValue uses shared_ptr internally, so copying is cheap (refcount increment, no data copy).
+  // The caller retains their original OrtValue and is responsible for releasing it.
+  auto& m = data_is_external ? graph->external_initializers : graph->initializers;
+  auto copy = std::make_unique<OrtValue>(*tensor);  // may throw; caller's tensor is untouched
+  auto [it, inserted] = m.emplace(name, std::move(copy));
+  ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
 
   return nullptr;
   API_IMPL_END

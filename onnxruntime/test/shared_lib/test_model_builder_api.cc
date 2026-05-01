@@ -235,7 +235,7 @@ TEST(ModelEditorAPITest, Basic_CApi) {
                                                      &y_tensor));
 
     Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "Y", y_tensor, /*data is external*/ true));
-    y_tensor = nullptr;  // graph now owns
+    api.ReleaseValue(y_tensor);  // caller releases; graph holds its own copy
 
     if (use_constant_node) {
       // Test that a Constant node is converted to an initializer
@@ -1116,12 +1116,13 @@ TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicateName_Fails) {
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
 
-  // Clean up tensor2 since ownership was NOT transferred
+  // Clean up — caller retains ownership under copy semantics
+  api.ReleaseValue(tensor1);
   api.ReleaseValue(tensor2);
   api.ReleaseGraph(graph);
 }
 
-TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicatePointer_Fails) {
+TEST(ModelEditorAPITest, AddInitializerToGraph_SamePointerDifferentName_Succeeds) {
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
@@ -1136,14 +1137,12 @@ TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicatePointer_Fails) {
   Ort::ThrowOnError(api.CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor));
 
-  // First add should succeed
+  // Both adds succeed — each creates an independent copy sharing the same underlying data
   ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W1", tensor, false));
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W2", tensor, false));
 
-  // Second add with same pointer but different name should fail (prevents double-free)
-  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W2", tensor, false)};
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
-
+  // Caller retains ownership and releases
+  api.ReleaseValue(tensor);
   api.ReleaseGraph(graph);
 }
 
