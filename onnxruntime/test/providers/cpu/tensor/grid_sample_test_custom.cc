@@ -563,8 +563,8 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_mixed
   // extreme (sanitized -> (0,0)).
   std::initializer_list<int64_t> Grid_shape{1, 1, 4, 2};
   std::initializer_list<TypeParam> Grid_data{
-      TypeParam(0.0f), TypeParam(0.0f),     // -> pixel(1, 1) = 5
-      TypeParam(-1.0f), TypeParam(-1.0f),   // -> pixel(0, 0) = 1
+      TypeParam(0.0f), TypeParam(0.0f),    // -> pixel(1, 1) = 5
+      TypeParam(-1.0f), TypeParam(-1.0f),  // -> pixel(0, 0) = 1
       TypeParam(std::numeric_limits<float>::quiet_NaN()),
       TypeParam(std::numeric_limits<float>::quiet_NaN()),  // sanitized -> pixel(0, 0) = 1
       TypeParam(1.0e+20f), TypeParam(-1.0e+20f)};          // sanitized -> pixel(0, 0) = 1
