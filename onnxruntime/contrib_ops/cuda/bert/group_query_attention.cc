@@ -274,6 +274,17 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                            "Omitting present outputs is only supported for first-prompt inference.");
   }
 
+  // When present outputs are omitted, allocate internal scratch buffers so the
+  // CUDA kernels (flash attention, MEA, unfused) have a valid KV workspace.
+  // This keeps behavior consistent with the CPU EP.
+  IAllocatorUniquePtr<void> present_key_scratch;
+  IAllocatorUniquePtr<void> present_value_scratch;
+  if (present_key_output == nullptr || present_value_output == nullptr) {
+    size_t present_kv_bytes = present_shape.Size() * sizeof(U);
+    present_key_scratch = GetScratchBuffer<void>(present_kv_bytes, context->GetComputeStream());
+    present_value_scratch = GetScratchBuffer<void>(present_kv_bytes, context->GetComputeStream());
+  }
+
   IAllocatorUniquePtr<void> k_buffer;
   IAllocatorUniquePtr<void> v_buffer;
   IAllocatorUniquePtr<void> rotary_buffer;
@@ -299,8 +310,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
-  data.present_key = (present_key_output != nullptr) ? reinterpret_cast<CudaU*>(present_key_output->MutableData<U>()) : nullptr;
-  data.present_value = (present_value_output != nullptr) ? reinterpret_cast<CudaU*>(present_value_output->MutableData<U>()) : nullptr;
+  data.present_key = (present_key_output != nullptr)
+                         ? reinterpret_cast<CudaU*>(present_key_output->MutableData<U>())
+                         : reinterpret_cast<CudaU*>(present_key_scratch.get());
+  data.present_value = (present_value_output != nullptr)
+                           ? reinterpret_cast<CudaU*>(present_value_output->MutableData<U>())
+                           : reinterpret_cast<CudaU*>(present_value_scratch.get());
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   parameters.past_present_share_buffer = (data.past_key != nullptr && data.past_key == data.present_key);
 

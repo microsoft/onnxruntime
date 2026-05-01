@@ -98,14 +98,6 @@ Status PrepareQKV(
     q_out = nullptr;
   }
 
-  // present_key/present_value are required for the CUDA path since flash attention
-  // and memory-efficient attention read directly from the present KV buffers.
-  // The CPU path supports optional present outputs for KV-shared layers.
-  if (data.present_key == nullptr || data.present_value == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value outputs are required for the CUDA GroupQueryAttention kernel.");
-  }
-
   U* k = reinterpret_cast<U*>(data.present_key);
   U* v = reinterpret_cast<U*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;
