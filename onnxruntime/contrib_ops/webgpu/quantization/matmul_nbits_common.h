@@ -12,7 +12,7 @@ class Tensor;
 namespace webgpu {
 class ComputeContext;
 }  // namespace webgpu
-}
+}  // namespace onnxruntime
 
 namespace onnxruntime {
 namespace contrib {

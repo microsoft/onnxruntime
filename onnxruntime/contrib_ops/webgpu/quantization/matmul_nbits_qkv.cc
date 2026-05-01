@@ -212,14 +212,14 @@ class MatMulNBitsQkvDecodeProgram final
     const auto& v_b = shader.AddInput("v_b");
     const auto& v_scales_b = shader.AddInput("v_scales_b");
     const auto& q_output = shader.AddOutput("q_output",
-                        ShaderUsage::UseValueTypeAlias |
-                          ShaderUsage::UseElementTypeAlias);
+                                            ShaderUsage::UseValueTypeAlias |
+                                                ShaderUsage::UseElementTypeAlias);
     const auto& k_output = shader.AddOutput("k_output",
-                        ShaderUsage::UseValueTypeAlias |
-                          ShaderUsage::UseElementTypeAlias);
+                                            ShaderUsage::UseValueTypeAlias |
+                                                ShaderUsage::UseElementTypeAlias);
     const auto& v_output = shader.AddOutput("v_output",
-                        ShaderUsage::UseValueTypeAlias |
-                          ShaderUsage::UseElementTypeAlias);
+                                            ShaderUsage::UseValueTypeAlias |
+                                                ShaderUsage::UseElementTypeAlias);
     const auto* input_skip_bias_sum = has_skip_output_ ? &shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
     const auto& skip_var = skip != nullptr ? *skip : a;
     const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : q_output;

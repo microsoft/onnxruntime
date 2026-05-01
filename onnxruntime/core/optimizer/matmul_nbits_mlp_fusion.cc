@@ -94,6 +94,11 @@ int64_t GetIntAttr(const Node& node, const char* name, int64_t default_value, bo
   return attr->i();
 }
 
+float GetFloatAttr(const Node& node, const char* name, float default_value) {
+  const auto* attr = graph_utils::GetNodeAttribute(node, name);
+  return attr == nullptr ? default_value : attr->f();
+}
+
 bool HasSingleNonGraphConsumer(const Graph& graph, const Node& node) {
   return !graph.NodeProducesGraphOutput(node) && optimizer_utils::CheckOutputEdges(graph, node, 1);
 }
@@ -186,7 +191,9 @@ bool IsFuseCandidate(const Graph& graph,
   const int64_t gate_accuracy_level = GetIntAttr(gate_matmul, "accuracy_level", 0);
   const int64_t up_accuracy_level = GetIntAttr(up_matmul, "accuracy_level", 0);
 
-  return gate_k == up_k && gate_n == up_n && gate_bits == up_bits && gate_block_size == up_block_size &&
+  return gate_k == up_k && gate_n == up_n &&
+         gate_bits == up_bits && gate_bits == 4 &&
+         gate_block_size == up_block_size && gate_block_size == 32 &&
          gate_accuracy_level == up_accuracy_level;
 }
 
@@ -256,14 +263,14 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: matched candidate output_mul='" << node.Name()
-          << "' gate='" << gate_matmul->Name() << "' up='" << up_matmul->Name()
-          << "' sigmoid='" << sigmoid->Name() << "' activation_mul='" << silu_mul->Name()
-                << "' attrs={K=" << GetIntAttr(*gate_matmul, "K", -1, true)
-                << ", N=" << GetIntAttr(*gate_matmul, "N", -1, true)
-                << ", bits=" << GetIntAttr(*gate_matmul, "bits", 4)
-                << ", block_size=" << GetIntAttr(*gate_matmul, "block_size", -1, true)
-                << ", accuracy_level=" << GetIntAttr(*gate_matmul, "accuracy_level", 0)
-                << "}";
+                          << "' gate='" << gate_matmul->Name() << "' up='" << up_matmul->Name()
+                          << "' sigmoid='" << sigmoid->Name() << "' activation_mul='" << silu_mul->Name()
+                          << "' attrs={K=" << GetIntAttr(*gate_matmul, "K", -1, true)
+                          << ", N=" << GetIntAttr(*gate_matmul, "N", -1, true)
+                          << ", bits=" << GetIntAttr(*gate_matmul, "bits", 4)
+                          << ", block_size=" << GetIntAttr(*gate_matmul, "block_size", -1, true)
+                          << ", accuracy_level=" << GetIntAttr(*gate_matmul, "accuracy_level", 0)
+                          << "}";
 
     if ((!gate_matmul->GetExecutionProviderType().empty() && gate_matmul->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
         (!up_matmul->GetExecutionProviderType().empty() && up_matmul->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
@@ -289,6 +296,7 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", GetIntAttr(*gate_matmul, "block_size", -1, true)), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("accuracy_level", GetIntAttr(*gate_matmul, "accuracy_level", 0)), attrs);
     utils::SetNodeAttribute(utils::MakeAttribute(kActivationAttrName, std::string{kSupportedActivation}), attrs);
+    utils::SetNodeAttribute(utils::MakeAttribute("epsilon", GetFloatAttr(*norm, "epsilon", 1e-5f)), attrs);
 
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
     const bool is_skip_sln = norm != nullptr && IsSupportedSkipSimplifiedLayerNormalization(*norm);
@@ -318,6 +326,8 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     const auto norm_output_edges = preserve_skip_output ? graph_utils::GraphEdge::GetNodeOutputEdges(*norm)
                                                         : std::vector<graph_utils::GraphEdge>{};
 
+    const std::string output_mul_name = node.Name();
+
     graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*norm));
     graph.RemoveNode(norm->Index());
     graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*gate_matmul));
@@ -332,8 +342,8 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     graph.RemoveNode(node.Index());
 
     Node& fused_node = graph.AddNode(graph.GenerateNodeName("MatMulNBitsMlp"),
-                     "MatMulNBitsMlp",
-                     "fused MatMulNBits gated MLP projections",
+                                     "MatMulNBitsMlp",
+                                     "fused MatMulNBits gated MLP projections",
                                      fused_inputs,
                                      fused_outputs,
                                      &attrs,
@@ -341,7 +351,7 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     fused_node.SetExecutionProviderType(kWebGpuExecutionProvider);
 
     LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: created fused node '" << fused_node.Name()
-          << "' from output_mul='" << node.Name() << "'";
+                          << "' from output_mul='" << output_mul_name << "'";
 
     for (const auto& input_edge : norm_input_edges) {
       int fused_input_index = input_edge.dst_arg_index;

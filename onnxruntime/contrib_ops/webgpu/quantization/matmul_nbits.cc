@@ -255,11 +255,11 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
   const bool use_wide_tile_program = WouldApplyWideTileMatMulNBitsInCurrentDispatch(a,
-                                                                                     K_op,
-                                                                                     N_op,
-                                                                                     block_size_op,
-                                                                                     nbits,
-                                                                                     has_weight_idx_indirect);
+                                                                                    K_op,
+                                                                                    N_op,
+                                                                                    block_size_op,
+                                                                                    nbits,
+                                                                                    has_weight_idx_indirect);
 
   if (use_wide_tile_program) {
     // Enforce output components to 1.

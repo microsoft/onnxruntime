@@ -149,8 +149,8 @@ bool IsFuseCandidate(const Node& norm, const QkvNodes& qkv) {
   const int64_t v_accuracy_level = GetIntAttr(*qkv.v, "accuracy_level", 0);
 
   return q_k == k_k && q_k == v_k &&
-         q_bits == k_bits && q_bits == v_bits &&
-         q_block_size == k_block_size && q_block_size == v_block_size &&
+         q_bits == k_bits && q_bits == v_bits && q_bits == 4 &&
+         q_block_size == k_block_size && q_block_size == v_block_size && q_block_size == 32 &&
          q_accuracy_level == k_accuracy_level && q_accuracy_level == v_accuracy_level;
 }
 
@@ -190,11 +190,11 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     const bool is_skip_sln = IsSupportedSkipSimplifiedLayerNormalization(node);
 
     LOGS(logger, VERBOSE) << "MatMulNBitsQkvFusion: matched norm='" << node.Name()
-                << "' q='" << qkv_nodes->q->Name() << "' k='" << qkv_nodes->k->Name()
-                << "' v='" << qkv_nodes->v->Name() << "' attrs={K=" << K
-                << ", Nq=" << Nq << ", Nkv=" << Nkv << ", bits=" << bits
-                << ", block_size=" << block_size << ", accuracy_level=" << accuracy_level
-                << ", epsilon=" << epsilon << ", skip_sln=" << is_skip_sln << "}";
+                          << "' q='" << qkv_nodes->q->Name() << "' k='" << qkv_nodes->k->Name()
+                          << "' v='" << qkv_nodes->v->Name() << "' attrs={K=" << K
+                          << ", Nq=" << Nq << ", Nkv=" << Nkv << ", bits=" << bits
+                          << ", block_size=" << block_size << ", accuracy_level=" << accuracy_level
+                          << ", epsilon=" << epsilon << ", skip_sln=" << is_skip_sln << "}";
 
     NodeAttributes attrs;
     utils::SetNodeAttribute(utils::MakeAttribute("K", K), attrs);
@@ -228,11 +228,17 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       fused_outputs.push_back(const_cast<NodeArg*>(node.OutputDefs()[3]));
     }
 
+    const bool has_residual_output = is_skip_sln && HasProducedOutput(node, 3);
+    const std::string norm_name = node.Name();
+    const std::string q_name = qkv_nodes->q->Name();
+    const std::string k_name = qkv_nodes->k->Name();
+    const std::string v_name = qkv_nodes->v->Name();
+
     const auto norm_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(node);
     const auto q_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*qkv_nodes->q);
     const auto k_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*qkv_nodes->k);
     const auto v_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*qkv_nodes->v);
-    const auto norm_output_edges = is_skip_sln && HasProducedOutput(node, 3)
+    const auto norm_output_edges = has_residual_output
                                        ? graph_utils::GraphEdge::GetNodeOutputEdges(node)
                                        : std::vector<graph_utils::GraphEdge>{};
     graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*qkv_nodes->q));
@@ -245,7 +251,7 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     graph.RemoveNode(node.Index());
 
     Node& fused_node = graph.AddNode(graph.GenerateNodeName("MatMulNBitsQkv"),
-                     "MatMulNBitsQkv",
+                                     "MatMulNBitsQkv",
                                      "fused SimplifiedLayerNormalization with Q/K/V MatMulNBits projections",
                                      fused_inputs,
                                      fused_outputs,
@@ -254,8 +260,8 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     fused_node.SetExecutionProviderType(kWebGpuExecutionProvider);
 
     LOGS(logger, VERBOSE) << "MatMulNBitsQkvFusion: created fused node '" << fused_node.Name()
-                          << "' from norm='" << node.Name() << "' q='" << qkv_nodes->q->Name()
-                          << "' k='" << qkv_nodes->k->Name() << "' v='" << qkv_nodes->v->Name() << "'";
+                          << "' from norm='" << norm_name << "' q='" << q_name
+                          << "' k='" << k_name << "' v='" << v_name << "'";
 
     for (const auto& input_edge : norm_input_edges) {
       int fused_input_index = input_edge.dst_arg_index;
@@ -275,7 +281,7 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     for (const auto& output_edge : v_output_edges) {
       graph.AddEdge(fused_node.Index(), output_edge.dst_node, 2, output_edge.dst_arg_index);
     }
-    if (is_skip_sln && HasProducedOutput(node, 3)) {
+    if (has_residual_output) {
       for (const auto& output_edge : norm_output_edges) {
         if (output_edge.src_arg_index == 3) {
           graph.AddEdge(fused_node.Index(), output_edge.dst_node, 3, output_edge.dst_arg_index);

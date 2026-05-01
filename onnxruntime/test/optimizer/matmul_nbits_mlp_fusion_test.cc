@@ -69,11 +69,11 @@ Status CheckMatMulNBitsMlpFusedGraphImpl(const Graph& graph, NormAnchorKind norm
       const bool has_skip = node.InputDefs()[1] != nullptr && !node.InputDefs()[1]->Name().empty();
       const bool has_norm_scale = node.InputDefs()[2] != nullptr && !node.InputDefs()[2]->Name().empty();
       ORT_RETURN_IF_NOT(has_skip == (norm_anchor_kind == NormAnchorKind::kSkipSimplified),
-            "Unexpected skip input presence on fused node.");
+                        "Unexpected skip input presence on fused node.");
       ORT_RETURN_IF_NOT(has_norm_scale,
-        "Expected norm_scale input on fused node.");
+                        "Expected norm_scale input on fused node.");
       ORT_RETURN_IF_NOT(node.OutputDefs().size() == 1u,
-            "Non-passthrough fusion should expose only the Y output.");
+                        "Non-passthrough fusion should expose only the Y output.");
 
       const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
       ORT_RETURN_IF_NOT(activation_attr != nullptr && activation_attr->s() == kExpectedActivation,

@@ -23,7 +23,6 @@ namespace {
 
 constexpr uint32_t kFusedDecodeFastPathBits = 4u;
 constexpr uint32_t kFusedDecodeFastPathBlockSize = 32u;
-constexpr float kSkipSimplifiedLayerNormEpsilon = 1e-05f;
 
 TensorShape GetOverrideShape(const TensorShape& shape, int components) {
   return TensorShape{shape.Size() / components};
@@ -177,11 +176,11 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
       shader.AddInput("up_bias", ShaderUsage::UseUniform);
     }
     const auto& output = shader.AddOutput("output",
-                        ShaderUsage::UseElementTypeAlias);
+                                          ShaderUsage::UseElementTypeAlias);
     const auto* input_skip_bias_sum = has_skip_output_
                                           ? &shader.AddOutput("input_skip_bias_sum",
-                                  ShaderUsage::UseValueTypeAlias |
-                                    ShaderUsage::UseElementTypeAlias)
+                                                              ShaderUsage::UseValueTypeAlias |
+                                                                  ShaderUsage::UseElementTypeAlias)
                                           : nullptr;
     const auto& skip_var = skip != nullptr ? *skip : a;
     const auto& norm_scale_var = norm_scale != nullptr ? *norm_scale : a;
@@ -395,7 +394,7 @@ Status ApplyUnfusedMlp(const Tensor* a,
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
-  MatMulNBitsMlp,
+    MatMulNBitsMlp,
     kMSDomain,
     1,
     kWebGpuExecutionProvider,
@@ -404,7 +403,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
     MatMulNBitsMlp);
 
-  Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
+Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input<Tensor>(0);
   const Tensor* skip = context.Input<Tensor>(1);
   const Tensor* norm_scale = context.Input<Tensor>(2);
@@ -479,10 +478,10 @@ ONNX_OPERATOR_KERNEL_EX(
                                                  y);
   const bool would_use_wide_tile_unfused =
       WouldApplyWideTileMatMulNBitsInCurrentDispatch(a,
-                             K_,
-                             N_,
-                             block_size_,
-                             bits_);
+                                                     K_,
+                                                     N_,
+                                                     block_size_,
+                                                     bits_);
 
   const bool can_use_decode_fast_path =
       is_decode_fast_path_candidate &&
@@ -501,7 +500,7 @@ ONNX_OPERATOR_KERNEL_EX(
     uint32_t workgroup_size = 128;
     uint32_t tile_size = 8;
     uint32_t tile_size_k_vec =
-      (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
+        (context.AdapterInfo().vendor == std::string_view{"intel"}) ? 16u : 32u;
 
     const uint32_t elements_in_value_b = components_b * (32u / onnxruntime::narrow<uint32_t>(bits_));
     const uint32_t tile_size_k = tile_size_k_vec * elements_in_value_b;
@@ -519,14 +518,14 @@ ONNX_OPERATOR_KERNEL_EX(
     const uint32_t num_N_tile = CeilDiv(N, tile_size);
 
     MatMulNBitsMlpDecodeProgram program{tile_size,
-              has_gate_bias,
-              has_up_bias,
-              has_norm_input,
-              has_skip_input,
-                      has_skip_output,
-              single_scale_weights,
-              tile_size_k_vec,
-                            k_unroll_tiles};
+                                        has_gate_bias,
+                                        has_up_bias,
+                                        has_norm_input,
+                                        has_skip_input,
+                                        has_skip_output,
+                                        single_scale_weights,
+                                        tile_size_k_vec,
+                                        k_unroll_tiles};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
     program.AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
@@ -551,7 +550,7 @@ ONNX_OPERATOR_KERNEL_EX(
                               {num_N_tile},
                               {batch_count},
                               {has_skip_input ? onnxruntime::narrow<uint32_t>(skip->Shape().Size()) : 0u},
-                              {kSkipSimplifiedLayerNormEpsilon}})
+                              {epsilon_}})
         .CacheHint(single_scale_weights,
                    has_gate_bias,
                    has_up_bias,
@@ -578,57 +577,57 @@ ONNX_OPERATOR_KERNEL_EX(
 
   if (skip != nullptr) {
     Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
-    ORT_RETURN_IF_ERROR(ApplySkipSimplifiedLayerNorm(a, skip, norm_scale, kSkipSimplifiedLayerNormEpsilon,
+    ORT_RETURN_IF_ERROR(ApplySkipSimplifiedLayerNorm(a, skip, norm_scale, epsilon_,
                                                      context, &normalized_a, input_skip_bias_sum));
     return ApplyUnfusedMlp(&normalized_a,
-                               gate_b,
-                               gate_scales,
-                               gate_bias,
-                               up_b,
-                               up_scales,
-                               up_bias,
-                               K_,
-                               N_,
-                               block_size_,
-                               accuracy_level_,
-                               bits_,
-                               context,
-                               y);
+                           gate_b,
+                           gate_scales,
+                           gate_bias,
+                           up_b,
+                           up_scales,
+                           up_bias,
+                           K_,
+                           N_,
+                           block_size_,
+                           accuracy_level_,
+                           bits_,
+                           context,
+                           y);
   }
 
   if (norm_scale != nullptr) {
     Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
-    ORT_RETURN_IF_ERROR(ApplySimplifiedLayerNorm(a, norm_scale, kSkipSimplifiedLayerNormEpsilon, context, &normalized_a));
+    ORT_RETURN_IF_ERROR(ApplySimplifiedLayerNorm(a, norm_scale, epsilon_, context, &normalized_a));
     return ApplyUnfusedMlp(&normalized_a,
-                               gate_b,
-                               gate_scales,
-                               gate_bias,
-                               up_b,
-                               up_scales,
-                               up_bias,
-                               K_,
-                               N_,
-                               block_size_,
-                               accuracy_level_,
-                               bits_,
-                               context,
-                               y);
+                           gate_b,
+                           gate_scales,
+                           gate_bias,
+                           up_b,
+                           up_scales,
+                           up_bias,
+                           K_,
+                           N_,
+                           block_size_,
+                           accuracy_level_,
+                           bits_,
+                           context,
+                           y);
   }
 
   return ApplyUnfusedMlp(a,
-                             gate_b,
-                             gate_scales,
-                             gate_bias,
-                             up_b,
-                             up_scales,
-                             up_bias,
-                             K_,
-                             N_,
-                             block_size_,
-                             accuracy_level_,
-                             bits_,
-                             context,
-                             y);
+                         gate_b,
+                         gate_scales,
+                         gate_bias,
+                         up_b,
+                         up_scales,
+                         up_bias,
+                         K_,
+                         N_,
+                         block_size_,
+                         accuracy_level_,
+                         bits_,
+                         context,
+                         y);
 }
 
 }  // namespace webgpu

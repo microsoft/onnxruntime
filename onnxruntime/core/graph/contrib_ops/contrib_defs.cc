@@ -3666,6 +3666,9 @@ When fused from SkipSimplifiedLayerNormalization, the optional residual-sum outp
       .Attr("activation",
             "Activation applied to the gate projection.",
             AttributeProto::STRING)
+      .Attr("epsilon",
+            "Epsilon used by the optional fused (Skip)SimplifiedLayerNormalization. Defaults to 1e-5.",
+            AttributeProto::FLOAT, 1e-5f)
       .Input(0, "A", "The shared input tensor.", "T1")
       .Input(1, "skip", "Optional skip input used by SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
       .Input(2, "norm_scale", "Optional RMSNorm scale with shape [K] used by SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
@@ -3786,7 +3789,7 @@ This operator is intended as a decode-oriented QKV fusion primitive.
                       "Constrain input and output types to float tensors.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        for (int output_index = 0; output_index < ctx.getNumOutputs(); ++output_index) {
+        for (size_t output_index = 0; output_index < ctx.getNumOutputs(); ++output_index) {
           propagateElemTypeFromInputToOutput(ctx, 0, output_index);
         }
 

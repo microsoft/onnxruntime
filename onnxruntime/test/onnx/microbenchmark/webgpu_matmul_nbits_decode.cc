@@ -1678,4 +1678,3 @@ BENCHMARK(BM_WebGpuMatMulNBitsMlpSkipPassthroughDecodeFused)
     ->Unit(benchmark::TimeUnit::kMicrosecond);
 
 }  // namespace
-
