@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a wheel for the onnxruntime-ep-cuda package."""
+"""Build a wheel for the onnxruntime-ep-cuda12 or onnxruntime-ep-cuda13 package."""
 
 import argparse
 import platform

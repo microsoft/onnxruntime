@@ -9,7 +9,7 @@ For more information about plugin EPs, see the documentation
 ## Contents
 
 - [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) - Minimum compatible ONNX Runtime version for the Python package.
-- [`python/`](python/) - Sources and build script for the `onnxruntime-ep-cuda` Python wheel.
+- [`python/`](python/) - Sources and build script for the `onnxruntime-ep-cuda12`/`onnxruntime-ep-cuda13` Python wheels.
 
 ## Usage
 

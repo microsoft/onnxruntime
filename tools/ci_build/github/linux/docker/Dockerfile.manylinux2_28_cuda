@@ -6,7 +6,6 @@ ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
 ARG TRT_VERSION=10.14.1.48-1.cuda12.9
-ARG PIP_INDEX_URL
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "$TRT_VERSION" ]; then  \
@@ -36,7 +35,8 @@ fi
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 
 ADD scripts /tmp/scripts
-RUN if [ -z "${PIP_INDEX_URL:-}" ]; then unset PIP_INDEX_URL; fi && \
+RUN --mount=type=secret,id=PIP_INDEX_URL \
+    if [ -f /run/secrets/PIP_INDEX_URL ]; then export PIP_INDEX_URL=$(cat /run/secrets/PIP_INDEX_URL); fi && \
     cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001

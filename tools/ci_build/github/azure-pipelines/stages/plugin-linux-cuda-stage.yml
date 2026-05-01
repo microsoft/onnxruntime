@@ -99,8 +99,8 @@ stages:
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --network=host
+            --secret id=PIP_INDEX_URL
             --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
-            --build-arg PIP_INDEX_URL
             --build-arg TRT_VERSION=
             --build-arg BUILD_UID=$( id -u )
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
@@ -197,8 +197,8 @@ stages:
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --network=host
+            --secret id=PIP_INDEX_URL
             --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
-            --build-arg PIP_INDEX_URL
             --build-arg TRT_VERSION=
             --build-arg BUILD_UID=$( id -u )
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
