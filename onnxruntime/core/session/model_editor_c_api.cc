@@ -142,6 +142,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
     }
   }
 
+  graph->inputs.reserve(inputs_len);  // pre-allocate so push_back won't reallocate during ownership transfer
   graph->inputs.clear();
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
@@ -201,6 +202,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
     }
   }
 
+  graph->outputs.reserve(outputs_len);  // pre-allocate so push_back won't reallocate during ownership transfer
   graph->outputs.clear();
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
