@@ -687,6 +687,11 @@ def quantize_static(
     }
 
     if extra_options.get("SmoothQuant", False):
+        if calibration_data_reader is None:
+            raise ValueError(
+                "SmoothQuant requires a non-None calibration_data_reader; the calibration cache "
+                "stores per-tensor ranges only and cannot drive the SmoothQuant transform."
+            )
         import importlib  # noqa: PLC0415
 
         try:
@@ -719,7 +724,9 @@ def quantize_static(
         model = updated_model
 
     _cache_path = Path(calibration_cache_path) if calibration_cache_path is not None else None
-    _cache_hit = _cache_path is not None and _cache_path.exists()
+    if _cache_path is not None and _cache_path.exists() and not _cache_path.is_file():
+        raise ValueError(f"calibration_cache_path is not a file: {_cache_path}")
+    _cache_hit = _cache_path is not None and _cache_path.is_file()
 
     if _cache_hit:
         tensors_range = load_tensors_data(_cache_path)

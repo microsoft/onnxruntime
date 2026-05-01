@@ -243,6 +243,8 @@ def load_tensors_data(path: "str | Path") -> "TensorsData":
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Calibration cache not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"Calibration cache path is not a file: {path}")
     with path.open("r") as f:
         d = json.load(f)
     return TensorsData.from_dict(d)
