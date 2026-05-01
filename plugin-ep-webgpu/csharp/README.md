@@ -6,7 +6,7 @@ This directory contains the C# NuGet package project and test app for the WebGPU
 
 ```
 csharp/
-├── pack_nuget.ps1                                  # Helper script to build the NuGet package
+├── pack_nuget.py                                   # Helper script to build the NuGet package
 ├── Microsoft.ML.OnnxRuntime.EP.WebGpu/
 │   ├── Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj   # NuGet package project (netstandard2.0)
 │   ├── WebGpuEp.cs                                 # Helper class for native library resolution
@@ -43,7 +43,7 @@ The plugin DLL will be at `build/webgpu.plugin/Release/Release/onnxruntime_provi
 
 ## Building the NuGet Package
 
-Use `pack_nuget.ps1` to stage native binaries and run `dotnet pack`. The script copies
+Use `pack_nuget.py` to stage native binaries and run `dotnet pack`. The script copies
 everything into a temporary staging directory under the output folder — the source tree
 is never modified.
 
@@ -52,42 +52,43 @@ is never modified.
 ```powershell
 cd plugin-ep-webgpu/csharp
 
-.\pack_nuget.ps1 -Version 0.1.0-dev `
-  -BinaryDir_WinX64 ..\..\build\webgpu.plugin\Release\Release
+python pack_nuget.py --version 0.1.0-dev `
+  --binary-dir-win-x64 ..\..\build\webgpu.plugin\Release\Release
 ```
 
 ### Pack multiple platforms
 
 ```powershell
-.\pack_nuget.ps1 -Version 0.1.0-dev `
-  -BinaryDir_WinX64 C:\builds\win_x64 `
-  -BinaryDir_WinArm64 C:\builds\win_arm64 `
-  -BinaryDir_LinuxX64 /mnt/builds/linux_x64 `
-  -BinaryDir_OsxArm64 /mnt/builds/osx_arm64
+python pack_nuget.py --version 0.1.0-dev `
+  --binary-dir-win-x64 C:\builds\win_x64 `
+  --binary-dir-win-arm64 C:\builds\win_arm64 `
+  --binary-dir-linux-x64 /mnt/builds/linux_x64 `
+  --binary-dir-macos-arm64 /mnt/builds/macos_arm64
 ```
 
 ### Script Parameters
 
 | Parameter | Required | Default | Description |
 |---|---|---|---|
-| `-Version` | Yes | — | Package version string (e.g. `0.1.0`, `0.1.0-dev`) |
-| `-OutputDir` | No | `./nuget_output` | Directory for the `.nupkg` and `.snupkg` output |
-| `-Configuration` | No | `Release` | Build configuration |
-| `-ArtifactsDir` | No | — | CI mode: root directory with `win_x64/bin/`, `linux_x64/bin/`, etc. |
-| `-BinaryDir_WinX64` | No | — | Path to directory containing win-x64 binaries |
-| `-BinaryDir_WinArm64` | No | — | Path to directory containing win-arm64 binaries |
-| `-BinaryDir_LinuxX64` | No | — | Path to directory containing linux-x64 binaries |
-| `-BinaryDir_OsxArm64` | No | — | Path to directory containing osx-arm64 binaries |
-| `-StagingDir` | No | `<OutputDir>/_staging` | Explicit staging directory. Caller owns its lifecycle (no auto-cleanup) |
-| `-BuildOnly` | No | `false` | Stage and build the managed DLL only; skip `dotnet pack`. Preserves the staging directory for a later `-PackOnly` run |
-| `-PackOnly` | No | `false` | Skip staging/build and run `dotnet pack` against an existing staging directory (mutually exclusive with `-BuildOnly`) |
+| `--version` | Yes | — | Package version string (e.g. `0.1.0`, `0.1.0-dev`) |
+| `--output-dir` | No | `./nuget_output` | Directory for the `.nupkg` and `.snupkg` output |
+| `--configuration` | No | `Release` | Build configuration |
+| `--artifacts-dir` | No | — | CI mode: root directory with `win_x64/bin/`, `linux_x64/bin/`, etc. |
+| `--binary-dir-win-x64` | No | — | Path to directory containing win-x64 binaries |
+| `--binary-dir-win-arm64` | No | — | Path to directory containing win-arm64 binaries |
+| `--binary-dir-linux-x64` | No | — | Path to directory containing linux-x64 binaries |
+| `--binary-dir-macos-arm64` | No | — | Path to directory containing osx-arm64 (macOS arm64) binaries |
+| `--staging-dir` | No | `<output-dir>/_staging` | Explicit staging directory. Caller owns its lifecycle (no auto-cleanup) |
+| `--build-only` | No | `false` | Stage and build the managed DLL only; skip `dotnet pack`. Preserves the staging directory for a later `--pack-only` run |
+| `--pack-only` | No | `false` | Skip staging/build and run `dotnet pack` against an existing staging directory (mutually exclusive with `--build-only`) |
+| `--required-platforms` | No | — | Comma-separated list of platforms that MUST be staged successfully (CI-mode safety net) |
 
-At least one binary directory (or `-ArtifactsDir` with matching subdirectories) must be provided.
+At least one binary directory (or `--artifacts-dir` with matching subdirectories) must be provided.
 Platforms without a binary directory are skipped.
 
 ## Versioning
 
-The package version is supplied to `pack_nuget.ps1` via `-Version`. In the packaging pipeline, the release or
+The package version is supplied to `pack_nuget.py` via `--version`. In the packaging pipeline, the release or
 pre-release version is derived from [`plugin-ep-webgpu/VERSION_NUMBER`](../VERSION_NUMBER).
 
 ## Inspecting the Package
@@ -154,7 +155,7 @@ The NuGet packaging is integrated into the WebGPU plugin pipeline:
 - **Packaging stage:** `tools/ci_build/github/azure-pipelines/stages/plugin-webgpu-nuget-packaging-stage.yml`
 
 The CI stage downloads build artifacts from all enabled platform stages, invokes
-`pack_nuget.ps1`, ESRP-signs the package, and runs the test app on a GPU agent.
+`pack_nuget.py`, ESRP-signs the package, and runs the test app on a GPU agent.
 
 ## Native Binaries Per Platform
 

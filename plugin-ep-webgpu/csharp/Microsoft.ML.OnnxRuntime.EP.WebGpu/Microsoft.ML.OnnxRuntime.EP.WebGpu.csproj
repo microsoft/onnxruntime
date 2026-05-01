@@ -28,7 +28,7 @@
   <!--
     Minimum required Microsoft.ML.OnnxRuntime version is read from a file (single source
     of truth, shared with the Python wheel build). The path is overridable via
-    -p:OnnxRuntimeMinVersionFile=<absolute path> so callers (e.g. pack_nuget.ps1, which
+    -p:OnnxRuntimeMinVersionFile=<absolute path> so callers (e.g. pack_nuget.py, which
     builds out of a staged copy) can point at the original file in the source tree.
   -->
   <PropertyGroup>
@@ -53,7 +53,7 @@
   </ItemGroup>
 
   <!-- Native binaries per platform. Each ItemGroup is conditioned on the runtimes/ directory
-       existing so the project can build cleanly from the source tree. At pack time, pack_nuget.ps1
+       existing so the project can build cleanly from the source tree. At pack time, pack_nuget.py
        populates the staging directory with whichever platforms are available. -->
   <ItemGroup>
     <None Include="runtimes\win-x64\native\**"

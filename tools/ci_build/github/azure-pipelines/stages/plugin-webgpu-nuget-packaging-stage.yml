@@ -56,14 +56,14 @@ stages:
     - template: ../templates/common-variables.yml
     - name: WebGpuPackStagingDir
       value: '$(Build.BinariesDirectory)\webgpu_pack_staging'
-    # Common arguments shared by the Build and Pack invocations of pack_nuget.ps1.
+    # Common arguments shared by the Build and Pack invocations of pack_nuget.py.
     - name: WebGpuPackNuGetCommonArgs
       value: >-
-        -Version "$(PluginPackageVersion)"
-        -OutputDir "$(Build.ArtifactStagingDirectory)\nuget"
-        -StagingDir "$(WebGpuPackStagingDir)"
-        -Configuration Release
-        -NuGetConfig "$(Build.SourcesDirectory)\NuGet.config"
+        --version "$(PluginPackageVersion)"
+        --output-dir "$(Build.ArtifactStagingDirectory)\nuget"
+        --staging-dir "$(WebGpuPackStagingDir)"
+        --configuration Release
+        --nuget-config "$(Build.SourcesDirectory)\NuGet.config"
     steps:
     - checkout: self
       clean: true
@@ -111,7 +111,7 @@ stages:
 
     # Compute the set of required platforms from the pipeline parameters and verify the
     # corresponding artifact directories actually downloaded. This catches renamed/moved
-    # upstream artifacts loudly before any pack work, and feeds pack_nuget.ps1 the same
+    # upstream artifacts loudly before any pack work, and feeds pack_nuget.py the same
     # list so it fails fast if any required platform's binaries are missing.
     - task: PythonScript@0
       displayName: 'Compute required platforms'
@@ -153,17 +153,16 @@ stages:
           print(f"##vso[task.setvariable variable=WebGpuRequiredPlatforms]{required}")
 
     # Stage binaries and build the managed assembly (so it can be ESRP-signed before packing).
-    - task: PowerShell@2
+    - task: PythonScript@0
       displayName: 'Build managed DLL'
       inputs:
-        targetType: filePath
-        filePath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.ps1'
-        pwsh: true
+        scriptSource: filePath
+        scriptPath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.py'
         arguments: >-
           $(WebGpuPackNuGetCommonArgs)
-          -ArtifactsDir "$(Build.BinariesDirectory)\artifacts"
-          -RequiredPlatforms $(WebGpuRequiredPlatforms)
-          -BuildOnly
+          --artifacts-dir "$(Build.BinariesDirectory)\artifacts"
+          --required-platforms $(WebGpuRequiredPlatforms)
+          --build-only
 
     # ESRP-sign the managed DLL before it gets embedded in the .nupkg.
     - template: ../templates/win-esrp-dll.yml
@@ -174,15 +173,14 @@ stages:
         DoEsrp: ${{ parameters.DoEsrp }}
 
     # Pack the (now-signed) managed DLL plus native binaries into the .nupkg.
-    - task: PowerShell@2
+    - task: PythonScript@0
       displayName: 'Pack NuGet package'
       inputs:
-        targetType: filePath
-        filePath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.ps1'
-        pwsh: true
+        scriptSource: filePath
+        scriptPath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.py'
         arguments: >-
           $(WebGpuPackNuGetCommonArgs)
-          -PackOnly
+          --pack-only
 
     # ESRP sign
     - template: ../templates/esrp_nuget.yml
