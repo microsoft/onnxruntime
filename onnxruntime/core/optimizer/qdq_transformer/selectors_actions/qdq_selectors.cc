@@ -450,20 +450,22 @@ static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
   const auto b_scales = b_scale_init.DataAsSpan<float>();
 
   const float x_scale = x_scales[0];
-  const size_t num_channels = w_scales.size();  // 1 for per-tensor, C_out for per-channel
-  const size_t b_num = b_scales.size();
+  const size_t w_num = w_scales.size();  // 1 for per-tensor weight scale, C_out for per-channel
+  const size_t b_num = b_scales.size();  // 1 for scalar bias scale, C_out for per-channel
 
-  // b_scale must be scalar or match num_channels.
-  if (b_num != 1 && b_num != num_channels) {
+  // Each scale tensor must be either scalar or per-channel (C_out). When one is
+  // per-channel and the other is scalar, broadcast the scalar across channels.
+  if (w_num != 1 && b_num != 1 && w_num != b_num) {
     return false;
   }
+  const size_t num_channels = std::max(w_num, b_num);
 
   // Tolerance values matching convention in optimizer/utils.cc.
   constexpr float atol = 1e-6f;
   constexpr float rtol = 1e-2f;
 
   for (size_t i = 0; i < num_channels; ++i) {
-    const float w_scale = w_scales[i];
+    const float w_scale = (w_num == 1) ? w_scales[0] : w_scales[i];
     const float b_scale = (b_num == 1) ? b_scales[0] : b_scales[i];
     const float expected = x_scale * w_scale;
     if (std::abs(b_scale - expected) > (atol + rtol * std::abs(expected))) {

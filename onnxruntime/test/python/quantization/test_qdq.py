@@ -2327,15 +2327,30 @@ class TestConvBiasScaleValidation(unittest.TestCase):
         model = onnx.shape_inference.infer_shapes(model)
         return model
 
-    def _run_model(self, model_path: str, inputs: dict, optimize: bool) -> list:
-        """Run model with the given optimization level and return outputs."""
+    def _run_model(self, model_path: str, inputs: dict, optimize: bool, optimized_save_path: str | None = None) -> list:
+        """Run model with the given optimization level and return outputs.
+
+        If ``optimized_save_path`` is provided and ``optimize`` is True, the
+        optimized graph is saved there so callers can inspect the resulting
+        op set (e.g., assert whether QLinearConv fusion fired).
+        """
         sess_opts = ort.SessionOptions()
         if optimize:
             sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            if optimized_save_path is not None:
+                sess_opts.optimized_model_filepath = optimized_save_path
         else:
             sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
         sess = ort.InferenceSession(model_path, sess_options=sess_opts, providers=["CPUExecutionProvider"])
         return sess.run(None, inputs)
+
+    @staticmethod
+    def _op_counts(model_path: str) -> dict[str, int]:
+        m = onnx.load(model_path)
+        counts: dict[str, int] = {}
+        for n in m.graph.node:
+            counts[n.op_type] = counts.get(n.op_type, 0) + 1
+        return counts
 
     def test_mismatched_bias_scale_skips_fusion(self):
         """When bias_scale != input_scale * weight_scale, fusion must be skipped.
@@ -2361,7 +2376,8 @@ class TestConvBiasScaleValidation(unittest.TestCase):
         input_data = rng.integers(100, 200, size=inp_shape, dtype=np.uint8)
         inputs = {"input_q": input_data}
 
-        out_optimized = self._run_model(model_path, inputs, optimize=True)
+        optimized_path = os.path.join(self._tmp_dir_path, "conv_mismatched_bias_scale.opt.onnx")
+        out_optimized = self._run_model(model_path, inputs, optimize=True, optimized_save_path=optimized_path)
         out_unoptimized = self._run_model(model_path, inputs, optimize=False)
 
         # Both should produce the same uint8 output (fusion was skipped or fallback path is correct).
@@ -2370,6 +2386,14 @@ class TestConvBiasScaleValidation(unittest.TestCase):
             out_unoptimized[0],
             err_msg="Mismatched bias scale: optimized and unoptimized outputs differ, "
             "indicating silent numerical corruption from incorrect fusion.",
+        )
+
+        # Direct check: fusion must NOT have produced a QLinearConv when bias scale is wrong.
+        op_counts = self._op_counts(optimized_path)
+        self.assertEqual(
+            op_counts.get("QLinearConv", 0),
+            0,
+            f"Expected no QLinearConv when bias scale is mismatched, got: {op_counts}",
         )
 
     def test_matching_bias_scale_allows_fusion(self):
@@ -2392,13 +2416,27 @@ class TestConvBiasScaleValidation(unittest.TestCase):
         input_data = rng.integers(100, 200, size=inp_shape, dtype=np.uint8)
         inputs = {"input_q": input_data}
 
-        out_optimized = self._run_model(model_path, inputs, optimize=True)
+        optimized_path = os.path.join(self._tmp_dir_path, "conv_matching_bias_scale.opt.onnx")
+        out_optimized = self._run_model(model_path, inputs, optimize=True, optimized_save_path=optimized_path)
         out_unoptimized = self._run_model(model_path, inputs, optimize=False)
 
         np.testing.assert_array_equal(
             out_optimized[0],
             out_unoptimized[0],
             err_msg="Matching bias scale: optimized and unoptimized outputs differ.",
+        )
+
+        # Direct check: fusion DID produce a QLinearConv (and removed the QDQ/Conv group).
+        op_counts = self._op_counts(optimized_path)
+        self.assertGreaterEqual(
+            op_counts.get("QLinearConv", 0),
+            1,
+            f"Expected QLinearConv after fusion when bias scale matches, got: {op_counts}",
+        )
+        self.assertEqual(
+            op_counts.get("Conv", 0),
+            0,
+            f"Expected the float Conv to be consumed by QLinearConv fusion, got: {op_counts}",
         )
 
 
