@@ -35,6 +35,27 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
+IS_WINDOWS = sys.platform == "win32"
+
+
+def _get_private_and_ws(ps: "psutil.Process") -> tuple[int, int]:
+    """Get private memory and working set for a process.
+
+    On Windows, memory_info() exposes 'private' and 'wset' directly.
+    On POSIX, use memory_full_info().uss for true private (unique set size),
+    falling back to RSS if memory_full_info() is unavailable.
+    """
+    if IS_WINDOWS:
+        mem = ps.memory_info()
+        return getattr(mem, "private", mem.rss), getattr(mem, "wset", mem.rss)
+    # POSIX: prefer USS (unique set size) for accurate private memory
+    try:
+        mem_full = ps.memory_full_info()
+        return mem_full.uss, mem_full.rss
+    except (psutil.AccessDenied, AttributeError):
+        mem = ps.memory_info()
+        return mem.rss, mem.rss
+
 
 # -- Helpers --
 
@@ -77,18 +98,23 @@ def run_session_benchmark(perf_test_exe: str, model_path: str, session_configs: 
         try:
             while proc.poll() is None:
                 try:
-                    mem = ps.memory_info()
-                    peak_private = max(peak_private, getattr(mem, "private", mem.rss))
-                    peak_ws = max(peak_ws, getattr(mem, "wset", mem.rss))
+                    private, ws = _get_private_and_ws(ps)
+                    peak_private = max(peak_private, private)
+                    peak_ws = max(peak_ws, ws)
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     break
-                time.sleep(0.001)
+                time.sleep(0.005)
         except psutil.NoSuchProcess:
             pass  # process exited during polling, peak already captured
-        stdout, _ = proc.communicate(timeout=30)
+        try:
+            stdout, _ = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            return {}
         if proc.returncode != 0:
             return {}
-        metrics = parse_perf_test_output(stdout.decode() if isinstance(stdout, bytes) else stdout)
+        metrics = parse_perf_test_output(stdout.decode(errors="replace") if isinstance(stdout, bytes) else stdout)
         if peak_private > 0:
             metrics["peak_private_bytes"] = peak_private
             metrics["peak_working_set_bytes"] = peak_ws
@@ -178,51 +204,52 @@ def run_multi_process_benchmark(
 
     # Launch all processes
     ps_processes = []
-    for i in range(num_processes):
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        try:
-            ps = psutil.Process(proc.pid)
-        except psutil.NoSuchProcess:
-            ps = None
-        ps_processes.append((i, proc, ps))
-        print(f"  Started process {i + 1} (PID={proc.pid})")
-
-    # Wait for each process to signal SESSION_READY
-    for i, proc, _ps in ps_processes:
-        for line in proc.stdout:
-            if b"SESSION_READY" in line:
-                print(f"  Process {i + 1}: ready")
-                break
-
-    time.sleep(0.5)  # stabilization
-
-    # Measure memory (all processes alive with loaded sessions)
-    total_private = 0
-    total_ws = 0
-    per_process = []
-    for i, proc, ps in ps_processes:
-        if ps and proc.poll() is None:
+    try:
+        for i in range(num_processes):
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
-                mem = ps.memory_info()
-                private = getattr(mem, "private", mem.rss) / 1024 / 1024
-                ws = getattr(mem, "wset", mem.rss) / 1024 / 1024
-                total_private += private
-                total_ws += ws
-                per_process.append({"pid": proc.pid, "private_mb": private, "ws_mb": ws})
-                print(f"  Process {i + 1} (PID={proc.pid}): private={private:.1f}MB, ws={ws:.1f}MB")
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                print(f"  Process {i + 1}: could not read memory ({e})")
-        else:
-            print(f"  Process {i + 1}: not running")
+                ps = psutil.Process(proc.pid)
+            except psutil.NoSuchProcess:
+                ps = None
+            ps_processes.append((i, proc, ps))
+            print(f"  Started process {i + 1} (PID={proc.pid})")
 
-    # Cleanup
-    for _, proc, _ in ps_processes:
-        proc.terminate()
-    for _, proc, _ in ps_processes:
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        # Wait for each process to signal SESSION_READY
+        for i, proc, _ps in ps_processes:
+            for line in proc.stdout:
+                if b"SESSION_READY" in line:
+                    print(f"  Process {i + 1}: ready")
+                    break
+
+        time.sleep(0.5)  # stabilization
+
+        # Measure memory (all processes alive with loaded sessions)
+        total_private = 0
+        total_ws = 0
+        per_process = []
+        for i, proc, ps in ps_processes:
+            if ps and proc.poll() is None:
+                try:
+                    private, ws = _get_private_and_ws(ps)
+                    private_mb = private / 1024 / 1024
+                    ws_mb = ws / 1024 / 1024
+                    total_private += private_mb
+                    total_ws += ws_mb
+                    per_process.append({"pid": proc.pid, "private_mb": private_mb, "ws_mb": ws_mb})
+                    print(f"  Process {i + 1} (PID={proc.pid}): private={private_mb:.1f}MB, ws={ws_mb:.1f}MB")
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    print(f"  Process {i + 1}: could not read memory ({e})")
+            else:
+                print(f"  Process {i + 1}: not running")
+    finally:
+        # Cleanup: ensure all child processes are terminated
+        for _, proc, _ in ps_processes:
+            proc.terminate()
+        for _, proc, _ in ps_processes:
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
     return {
         "config_name": config_name,
