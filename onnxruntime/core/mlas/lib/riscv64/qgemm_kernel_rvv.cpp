@@ -72,6 +72,75 @@ MlasGemmQuantFixupZeroPointB<MLAS_GEMM_QUANT_KERNEL_RVV>(
     return ZeroPointB;
 }
 
+/* ── M=1 GEMV fast path (U8 × S8 → S32) ──
+ *
+ * Invoked from MlasGemmQuantOperation when RangeCountM == 1 and all
+ * zero-point conditions hold (see qgemm.h). Skips the full PackA/PackB
+ * pipeline since A is a single row and B does not need to be reused.
+ *
+ * Output contract: C[n] = sum_k(A[k] * B[k*ldb + n]) only — plain dot
+ * product, no zero-point or row/column-sum bias folding. This matches
+ * the AVX2 specialization (MlasGemvU8S8KernelAvx2). The caller in
+ * qgemm.h gates entry on ZeroPointA == 0 && ZeroPointB == 0 (and no
+ * per-column ZpB and no OutputProcessor), so the bias terms
+ * (RowSum*ZpB + ColSum*ZpA + K*ZpA*ZpB) all vanish and the bare dot
+ * product equals the final result.
+ *
+ * Strategy: K-outer, N-tiled with LMUL=m4 e32 i32 accumulator. For each
+ * K iteration broadcast A[k] as i16, sign-extend B[k*ldb + n..n+vl) from
+ * i8 to i16, widen-mul-accumulate into the i32 acc. Casting u8(A[k]) to
+ * i16 zero-extends, which keeps the signed-mul correct since u8 is
+ * always representable as a non-negative i16.
+ */
+static void
+MlasGemvU8S8KernelRvv(
+    const uint8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb)
+{
+    size_t n = 0;
+    while (n < CountN) {
+        const size_t vl = __riscv_vsetvl_e32m4(CountN - n);
+        vint32m4_t vacc = __riscv_vmv_v_x_i32m4(0, vl);
+        const int8_t* bcol = B + n;
+        for (size_t k = 0; k < CountK; ++k) {
+            vint8m1_t  vb   = __riscv_vle8_v_i8m1(bcol, vl);
+            vint16m2_t vb16 = __riscv_vsext_vf2_i16m2(vb, vl);
+            const int16_t a = (int16_t)(uint16_t)A[k];
+            vacc = __riscv_vwmacc_vx_i32m4(vacc, a, vb16, vl);
+            bcol += ldb;
+        }
+        __riscv_vse32_v_i32m4(C + n, vacc, vl);
+        n += vl;
+    }
+}
+
+template<>
+MLAS_FORCEINLINE
+bool
+MlasGemmQuantTryGemvKernel<MLAS_GEMM_QUANT_KERNEL_RVV>(
+    const uint8_t* A,
+    const uint8_t* B,
+    size_t ldb,
+    int32_t* C,
+    size_t CountK,
+    size_t CountN,
+    bool AIsSigned,
+    bool BIsSigned)
+{
+    /* Match the AVX2 contract: only the U8 × S8 combination is wired up.
+     * For other signedness combinations fall back to the packed kernel. */
+    if (!AIsSigned && BIsSigned) {
+        MlasGemvU8S8KernelRvv(A, reinterpret_cast<const int8_t*>(B), C,
+                              CountK, CountN, ldb);
+        return true;
+    }
+    return false;
+}
+
 /* ── Pack A: row-major copy with row sum computation ── */
 
 template<>
