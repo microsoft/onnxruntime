@@ -7729,8 +7729,7 @@ struct OrtModelEditorApi {
   /** \brief Add an initializer to the OrtGraph
    *
    * ORT will copy the OrtValue internally. The caller retains ownership of the OrtValue and should
-   * release it with ReleaseValue when done. The underlying tensor data is shared via reference counting,
-   * so the copy is cheap and the data remains valid as long as either the caller or the graph holds a reference.
+   * release it with ReleaseValue when done.
    *
    * Two options:
    *
