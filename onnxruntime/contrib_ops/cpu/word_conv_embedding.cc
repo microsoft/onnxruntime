@@ -202,6 +202,11 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
 
   ORT_RETURN_IF_ERROR(ValidateInputShape(sequence_shape, w_conv_shape, w_char_embedding_shape));
 
+  const TensorShape& b_conv_shape = b_conv.Shape();
+  ORT_RETURN_IF_NOT(b_conv_shape.NumDimensions() == 1 && b_conv_shape[0] == w_conv_shape[0],
+                    "WordConvEmbedding: conv bias B must be a 1-D tensor of length ",
+                    w_conv_shape[0], ", but got shape ", b_conv_shape);
+
   int64_t seq_len = sequence_shape[0];
   int64_t word_len = sequence_shape[1];
   int64_t char_embedding_size = w_char_embedding_shape[1];
