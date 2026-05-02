@@ -2551,6 +2551,89 @@ struct OrtEp {
    * \since Version 1.26.
    */
   ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
+
+  /** \brief Get the EP's default memory device.
+   *
+   * The EP's default memory device identifies the hardware the EP operates on. ORT uses it to:
+   * - Determine if data copies are needed between EPs (inserting memcpy nodes at EP boundaries)
+   * - Determine if the EP is CPU-based (which affects synchronization and data transfer decisions)
+   * - Bind execution streams to the correct device
+   *
+   * An OrtMemoryDevice is obtained from an OrtMemoryInfo via `OrtEpApi::MemoryInfo_GetMemoryDevice()`.
+   * Typically, an EP creates OrtMemoryInfo instances and registers them with its OrtEpDevice(s) via
+   * `OrtEpApi::EpDevice_AddAllocatorInfo()`. The OrtMemoryDevice returned here must correspond to an
+   * OrtMemoryInfo registered as an `OrtDeviceAllocator` entry (either `OrtDeviceMemoryType_DEFAULT` or
+   * `OrtDeviceMemoryType_HOST_ACCESSIBLE`). An OrtMemoryDevice from an `OrtReadOnlyAllocator` entry is
+   * not accepted as the EP's default/identity device.
+   *
+   * The returned pointer must remain valid for the lifetime of the OrtEp instance
+   * (typically by storing the parent OrtMemoryInfo as a member of the EP).
+   *
+   * If this function is not implemented (NULL), or if it sets `device` to NULL, ORT infers
+   * the default memory device from the `OrtDeviceAllocator` entry with `OrtDeviceMemoryType_DEFAULT`
+   * registered via `EpDevice_AddAllocatorInfo`. In this fallback case, all OrtEpDevice instances must
+   * use the same `OrtDeviceMemoryType_DEFAULT` OrtMemoryInfo (or ORT cannot determine which device to
+   * use). If no such entry is registered, the EP defaults to a CPU memory device.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] device Set to the EP's default OrtMemoryDevice, or NULL to use the default behavior (described above).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL (not implemented), ORT
+   *       infers the default memory device using the default behavior described above.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(GetDefaultMemoryDevice, _In_ const OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ const OrtMemoryDevice** device);
+
+  /** \brief Get the OrtMemoryDevice for a given OrtMemType.
+   *
+   * Maps an OrtMemType (e.g., OrtMemTypeCPUInput, OrtMemTypeCPUOutput, OrtMemTypeDefault) to the
+   * appropriate OrtMemoryDevice. ORT's allocation planner uses this to determine where tensors
+   * should be placed based on how they are consumed.
+   *
+   * If this function is not implemented (NULL), or if it sets `device` to NULL for a given
+   * OrtMemType, ORT applies the following default behavior:
+   * - OrtMemTypeCPUInput/OrtMemTypeCPUOutput -> CPU device
+   * - OrtMemTypeDefault -> the EP's default device (from GetDefaultMemoryDevice or inferred)
+   *
+   * Semantics of each OrtMemType:
+   * - OrtMemTypeDefault: The device where the EP's kernels operate (its primary compute device).
+   *   Typically the same device returned by GetDefaultMemoryDevice().
+   * - OrtMemTypeCPUInput: The device for inputs that a kernel declares as "on CPU" (e.g., shape
+   *   tensors). Returning an OrtMemoryDevice with HOST_ACCESSIBLE memory (e.g., pinned memory)
+   *   can reduce copy overhead when data flows from CPU nodes into the EP. Setting `device` to
+   *   NULL falls back to the default behavior (plain CPU).
+   * - OrtMemTypeCPUOutput: The device for outputs that must be CPU-accessible. Returning an
+   *   OrtMemoryDevice with HOST_ACCESSIBLE memory allows both CPU and device access without
+   *   requiring explicit copies.
+   *
+   * The returned pointer must remain valid for the lifetime of the OrtEp instance
+   * (typically by storing the source OrtMemoryInfo objects as members of the EP).
+   *
+   * Returned devices should correspond to OrtMemoryInfo instances registered with OrtEpDevice
+   * via `OrtEpApi::EpDevice_AddAllocatorInfo()`.
+   *
+   * This function may be called concurrently from multiple threads. Implementations must be
+   * thread-safe and return pointers to immutable storage.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] mem_type The memory type to get the device for.
+   * \param[out] device Set to the OrtMemoryDevice for the given memory type, or NULL to use the
+   *             default behavior for that memory type (described above).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT uses the default
+   *       behavior described above for all memory types.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(GetMemoryDeviceByMemType, _In_ const OrtEp* this_ptr,
+                  _In_ OrtMemType mem_type,
+                  _Outptr_result_maybenull_ const OrtMemoryDevice** device);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

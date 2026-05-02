@@ -121,11 +121,45 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
-  // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
-  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
-
+static OrtDevice GetOrtDeviceForPluginEp(const OrtEp* ort_ep, gsl::span<const OrtEpDevice* const> ep_devices) {
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
+
+  // If the EP provides GetDefaultMemoryDevice, use it.
+  if (ort_ep->ort_version_supported >= 27 && ort_ep->GetDefaultMemoryDevice != nullptr) {
+    const OrtMemoryDevice* memory_device = nullptr;
+    ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep->GetDefaultMemoryDevice(ort_ep, &memory_device)));
+
+    if (memory_device != nullptr) {
+      OrtDevice default_device = *static_cast<const OrtDevice*>(memory_device);
+
+      // Validate that the returned device matches one of the EP's published memory infos.
+      // We check device_memory_info and host_accessible_memory_info only. read_only_device_memory_info
+      // is excluded because it is used exclusively for initializer allocators and is not a valid
+      // identity device for the EP.
+      bool matches_published_device = std::any_of(
+          ep_devices.begin(), ep_devices.end(),
+          [&default_device](const OrtEpDevice* ep_device) {
+            if (ep_device->device_memory_info != nullptr &&
+                ep_device->device_memory_info->device == default_device) {
+              return true;
+            }
+            if (ep_device->host_accessible_memory_info != nullptr &&
+                ep_device->host_accessible_memory_info->device == default_device) {
+              return true;
+            }
+            return false;
+          });
+      ORT_ENFORCE(matches_published_device,
+                  "Error creating execution provider '", ep_devices[0]->ep_name,
+                  "': GetDefaultMemoryDevice returned a device that does not match any "
+                  "OrtEpDevice::device_memory_info or OrtEpDevice::host_accessible_memory_info.");
+
+      return default_device;
+    }
+  }
+
+  // Fallback: Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
+  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
 
   const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
 
@@ -169,7 +203,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep.get(), ep_devices),
                          std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
@@ -720,6 +754,22 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
               "OrtEp::GetPreferredDataLayout() returned an invalid data layout: ", static_cast<int>(api_data_layout));
 
   return data_layout_mapping->data_layout;
+}
+
+OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  // No validation is performed on the returned device. This is consistent with built-in EPs,
+  // which are free to return any OrtDevice from GetOrtDeviceByMemType(). If the returned device
+  // does not correspond to a registered allocator, the allocator lookup at execution time will fail
+  // with a clear error message.
+  if (ort_ep_->ort_version_supported >= 27 && ort_ep_->GetMemoryDeviceByMemType != nullptr) {
+    const OrtMemoryDevice* memory_device = nullptr;
+    ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetMemoryDeviceByMemType(ort_ep_.get(), mem_type, &memory_device)));
+    if (memory_device != nullptr) {
+      return *static_cast<const OrtDevice*>(memory_device);
+    }
+  }
+
+  return Base::GetOrtDeviceByMemType(mem_type);
 }
 
 std::optional<bool> PluginExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
