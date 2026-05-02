@@ -209,11 +209,11 @@ stages:
                 }
 
                 # Version formats (full -> filename):
-                #   release: 1.25.0 -> 1.25.0
-                #   dev:     1.25.0-dev.20260401+2a1ffff2 -> 1.25.0.dev.20260401.2a1ffff2
+                #   release: 0.1.0 -> 0.1.0
+                #   dev:     0.1.0-dev.20260401+2a1ffff2 -> 0.1.0.dev.20260401.2a1ffff2
                 # Dev versions have - and + replaced with . for filename compatibility.
                 # Full version string is preserved in version.json.
-                # TODO: RC versioning (e.g. 1.25.0-rc1) is not yet implemented
+                # TODO: RC versioning (e.g. 0.1.0-rc1) is not yet implemented
                 $filenameVersion = $versionString -replace '[-+]', '.'
                 $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
                 if ($filesToZip) {
