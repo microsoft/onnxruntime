@@ -433,11 +433,12 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                            " fail, errcode = ", error_code,
                            " - ", std::system_category().message(error_code));
   }
-  ORT_RETURN_IF(static_cast<ULONGLONG>(actual_size.QuadPart) < static_cast<ULONGLONG>(offset) + length,
+  const size_t requested_end = SafeInt<size_t>(offset) + length;
+  ORT_RETURN_IF(static_cast<ULONGLONG>(actual_size.QuadPart) < requested_end,
                 "File ", ToUTF8String(Basename(file_path)),
                 " is too small for the requested mapping (file size: ",
                 actual_size.QuadPart, " bytes, requested offset + length: ",
-                static_cast<size_t>(offset) + length, " bytes).");
+                requested_end, " bytes).");
 
   wil::unique_hfile file_mapping_handle{
       CreateFileMappingW(file_handle.get(),
