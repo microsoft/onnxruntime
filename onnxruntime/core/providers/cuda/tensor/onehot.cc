@@ -3,6 +3,7 @@
 
 #include "core/providers/cuda/tensor/onehot.h"
 
+#include <algorithm>
 #include <limits>
 
 using namespace onnxruntime::common;

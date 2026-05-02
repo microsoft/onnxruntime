@@ -563,7 +563,9 @@ TEST(OneHotOpTest, ScalarIndicesRejected) {
   test.AddInput<int64_t>("depth", {1}, {5});
   test.AddInput<int64_t>("values", {2}, {0, 1});
   test.AddOutput<int64_t>("output", {5}, {0, 0, 1, 0, 0});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Indices tensor must have rank >= 1");
+  // Match either the ONNX shape-inference error ("Indices tensor must have rank >= 1") or the
+  // explicit kernel-level rejection ("OneHot: indices tensor must have rank >= 1.").
+  test.Run(OpTester::ExpectResult::kExpectFailure, "ndices tensor must have rank >= 1");
 }
 
 // Test with opset 9.

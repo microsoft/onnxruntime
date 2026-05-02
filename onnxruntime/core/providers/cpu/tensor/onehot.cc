@@ -94,6 +94,13 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
   const auto& indices_shape = indices->Shape();
   const auto indices_dims = indices_shape.GetDims();
   const auto indices_num_dims = indices_shape.NumDimensions();
+
+  // ONNX spec requires indices to have rank >= 1.
+  if (indices_num_dims == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "OneHot: indices tensor must have rank >= 1.");
+  }
+
   output_shape = indices_shape.AsShapeVector();
 
   // output rank is always 1 more than the input rank as a new dimension is added to the input shape
