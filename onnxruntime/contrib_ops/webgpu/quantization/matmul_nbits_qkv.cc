@@ -392,31 +392,32 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
 
   ORT_ENFORCE(norm_scale->Shape().Size() == K_, "norm_scale must have shape [K].");
 
+  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
   const bool would_use_subgroup_unfused =
-      WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(a,
-                                                           K_,
-                                                           Nq_,
-                                                           block_size_,
+      WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(M,
+                                                           Nq,
+                                                           K,
+                                                           batch_count,
+                                                           block_size,
                                                            accuracy_level_,
                                                            bits_,
                                                            context,
                                                            q_output);
   const bool would_use_dp4a_unfused =
       !would_use_subgroup_unfused &&
-      WouldApplyDP4AMatMulNBitsInCurrentDispatch(a,
-                                                 K_,
-                                                 Nq_,
-                                                 block_size_,
+      WouldApplyDP4AMatMulNBitsInCurrentDispatch(M,
+                                                 Nq,
+                                                 K,
+                                                 block_size,
                                                  accuracy_level_,
                                                  context,
                                                  q_output);
   const bool would_use_wide_tile_unfused =
       !would_use_subgroup_unfused &&
       !would_use_dp4a_unfused &&
-      WouldApplyWideTileMatMulNBitsInCurrentDispatch(a,
-                                                     K_,
-                                                     Nq_,
-                                                     block_size_,
+      WouldApplyWideTileMatMulNBitsInCurrentDispatch(M,
+                                                     K,
+                                                     block_size,
                                                      bits_);
 
   if (would_use_subgroup_unfused || would_use_dp4a_unfused || would_use_wide_tile_unfused || M != 1) {
@@ -464,7 +465,6 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                               v_output);
   }
 
-  const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t block_size_per_col = block_size;
   const uint32_t n_blocks_per_col = (K + block_size_per_col - 1) / block_size_per_col;

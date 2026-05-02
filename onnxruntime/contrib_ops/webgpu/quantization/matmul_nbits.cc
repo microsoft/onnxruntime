@@ -224,10 +224,11 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 #if !defined(__wasm__)
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   int32_t subgroup_matrix_config_index = -1;
-  if (WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(a,
-                                                           K_op,
-                                                           N_op,
-                                                           block_size_op,
+  if (WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(M,
+                                                           N,
+                                                           K,
+                                                           batch_count,
+                                                           block_size,
                                                            accuracy_level,
                                                            nbits,
                                                            context,
@@ -241,10 +242,10 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
-  if (WouldApplyDP4AMatMulNBitsInCurrentDispatch(a,
-                                                 K_op,
-                                                 N_op,
-                                                 block_size_op,
+  if (WouldApplyDP4AMatMulNBitsInCurrentDispatch(M,
+                                                 N,
+                                                 K,
+                                                 block_size,
                                                  accuracy_level,
                                                  context,
                                                  y,
@@ -254,10 +255,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  const bool use_wide_tile_program = WouldApplyWideTileMatMulNBitsInCurrentDispatch(a,
-                                                                                    K_op,
-                                                                                    N_op,
-                                                                                    block_size_op,
+  const bool use_wide_tile_program = WouldApplyWideTileMatMulNBitsInCurrentDispatch(M,
+                                                                                    K,
+                                                                                    block_size,
                                                                                     nbits,
                                                                                     has_weight_idx_indirect);
 

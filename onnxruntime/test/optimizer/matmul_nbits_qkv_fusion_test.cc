@@ -36,7 +36,7 @@ NodeAttributes MakeMatMulNBitsAttrs(int64_t k, int64_t n, int64_t block_size, in
   return attrs;
 }
 
-Status CheckMatMulNBitsQkvFusedGraphImpl(const Graph& graph, bool expect_skip_sln_output) {
+Status CheckMatMulNBitsQkvFusedGraphImpl(const Graph& graph, bool expect_skip_sln_output, bool expect_skip_input) {
   const auto op_to_count = CountOpsInGraph(graph);
   if (OpCount(op_to_count, "com.microsoft.MatMulNBitsQkv") != 1 ||
       OpCount(op_to_count, "SimplifiedLayerNormalization") != 0 ||
@@ -54,6 +54,12 @@ Status CheckMatMulNBitsQkvFusedGraphImpl(const Graph& graph, bool expect_skip_sl
       ORT_RETURN_IF_NOT(node.InputDefs().size() == 9, "Fused node must expose the 9-input contract.");
       ORT_RETURN_IF_NOT(node.OutputDefs().size() == (expect_skip_sln_output ? 4u : 3u),
                         "Fused node outputs did not match the expected simplified vs skip-simplified contract.");
+      // skip is at input index 1; for the SkipSimplifiedLayerNormalization-anchored pattern it
+      // must be wired to a real NodeArg, otherwise it must be the empty optional.
+      const auto* skip_def = node.InputDefs()[1];
+      const bool skip_present = skip_def != nullptr && skip_def->Exists();
+      ORT_RETURN_IF_NOT(skip_present == expect_skip_input,
+                        "Fused node skip-input presence did not match the expected pattern variant.");
     }
   }
 
@@ -61,15 +67,21 @@ Status CheckMatMulNBitsQkvFusedGraphImpl(const Graph& graph, bool expect_skip_sl
 }
 
 Status CheckMatMulNBitsQkvFusedGraph(Graph& graph) {
-  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph), false);
+  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph),
+                                           /*expect_skip_sln_output=*/false,
+                                           /*expect_skip_input=*/false);
 }
 
 Status CheckMatMulNBitsQkvSkipFusedGraph(Graph& graph) {
-  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph), false);
+  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph),
+                                           /*expect_skip_sln_output=*/false,
+                                           /*expect_skip_input=*/true);
 }
 
 Status CheckMatMulNBitsQkvSkipOutputPassthroughFusedGraph(Graph& graph) {
-  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph), true);
+  return CheckMatMulNBitsQkvFusedGraphImpl(static_cast<const Graph&>(graph),
+                                           /*expect_skip_sln_output=*/true,
+                                           /*expect_skip_input=*/true);
 }
 
 void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_skip_input, bool with_skip_output) {
@@ -176,7 +188,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults
   }
 
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(), false));
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(),
+                                                       /*expect_skip_sln_output=*/false,
+                                                       /*expect_skip_input=*/false));
   };
 
   TransformerTester(
@@ -212,7 +226,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
   }
 
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(), false));
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(),
+                                                       /*expect_skip_sln_output=*/false,
+                                                       /*expect_skip_input=*/true));
   };
 
   TransformerTester(
@@ -253,7 +269,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
   };
 
   auto check_transformed_graph = [](InferenceSessionWrapper& session) {
-    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(), true));
+    ASSERT_STATUS_OK(CheckMatMulNBitsQkvFusedGraphImpl(session.GetGraph(),
+                                                       /*expect_skip_sln_output=*/true,
+                                                       /*expect_skip_input=*/true));
   };
 
   TransformerTester(

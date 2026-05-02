@@ -7,19 +7,23 @@
 
 namespace onnxruntime {
 
-// Fuses the SwiGLU MLP block (gate / up / down MatMulNBits projections around a
+// Fuses the SwiGLU gated-activation subgraph (gate / up MatMulNBits projections around a
 // SimplifiedLayerNormalization anchor) into a single MatMulNBitsMlp contrib op:
 //
 //   ... -> [Skip]SimplifiedLayerNormalization -+-> MatMulNBits (gate) -+-> Sigmoid -+
 //                              |               |                       |            v
 //                              |               |                       +----------> Mul (silu) -+
-//                              |               +-> MatMulNBits (up) ---------------------------+--> Mul -> MatMulNBits (down) -> out
+//                              |               +-> MatMulNBits (up) ---------------------------+--> Mul -> out
 //                              +--> (optional) skip residual passthrough --> downstream consumers
 //
 // becomes
 //
-//   ... -> [Skip]SimplifiedLayerNormalization --> MatMulNBitsMlp(activation="silu") -+-> out
-//                                                                                    +-> (optional) residual passthrough
+//   ... -> MatMulNBitsMlp(activation="silu") -+-> out
+//                                             +-> (optional) residual passthrough
+//
+// The downstream "down" projection (a third MatMulNBits that follows the gated-activation
+// output) is intentionally NOT part of this fusion -- it remains a separate MatMulNBits node
+// in the resulting graph.
 //
 // Only activation="silu" (i.e. x * Sigmoid(x)) is matched / emitted, and the fusion is restricted
 // to the WebGPU EP because MatMulNBitsMlp is a WebGPU-only contrib op.

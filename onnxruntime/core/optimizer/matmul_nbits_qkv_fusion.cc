@@ -60,8 +60,40 @@ struct QkvNodes {
   const Node* v = nullptr;
 };
 
+bool IsGraphOutput(const Graph& graph, const Node& node, size_t index) {
+  if (!HasProducedOutput(node, index)) {
+    return false;
+  }
+  const auto& output_name = node.OutputDefs()[index]->Name();
+  for (const auto* graph_output : graph.GetOutputs()) {
+    if (graph_output != nullptr && graph_output->Name() == output_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Output 0 of the norm is consumed by the fused op, so it must not be a graph output.
+// For SkipSimplifiedLayerNormalization the optional residual sum at output 3 is
+// preserved by the fused MatMulNBitsQkv op, so it is allowed to remain a graph output.
+// Outputs 1 and 2 (mean / inv_std_var) are not exposed by the fused op.
+bool IsSupportedNormGraphOutputsForFusion(const Graph& graph, const Node& norm) {
+  if (IsGraphOutput(graph, norm, 0)) {
+    return false;
+  }
+  for (size_t i = 1; i < norm.OutputDefs().size(); ++i) {
+    if (!IsGraphOutput(graph, norm, i)) {
+      continue;
+    }
+    if (!(IsSupportedSkipSimplifiedLayerNormalization(norm) && i == 3)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::optional<QkvNodes> GetQkvNodes(const Graph& graph, const Node& norm) {
-  if (!HasProducedOutput(norm, 0) || graph.NodeProducesGraphOutput(norm)) {
+  if (!HasProducedOutput(norm, 0) || !IsSupportedNormGraphOutputsForFusion(graph, norm)) {
     return std::nullopt;
   }
 
@@ -235,6 +267,9 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     const std::string v_name = qkv_nodes->v->Name();
 
     const auto norm_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(node);
+    const auto q_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*qkv_nodes->q);
+    const auto k_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*qkv_nodes->k);
+    const auto v_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*qkv_nodes->v);
     const auto q_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*qkv_nodes->q);
     const auto k_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*qkv_nodes->k);
     const auto v_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(*qkv_nodes->v);
@@ -271,6 +306,25 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
       graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, fused_input_index);
     }
+
+    // Q/K/V weight + scale tensors are usually initializers, but if any of them is produced
+    // by an upstream node we must rewire that producer edge to the fused input slot.
+    auto add_input_edge_if_present = [&](const std::vector<graph_utils::GraphEdge>& edges,
+                                         int source_input_index,
+                                         int fused_input_index) {
+      for (const auto& input_edge : edges) {
+        if (input_edge.dst_arg_index == source_input_index) {
+          graph.AddEdge(input_edge.src_node, fused_node.Index(), input_edge.src_arg_index, fused_input_index);
+        }
+      }
+    };
+
+    add_input_edge_if_present(q_input_edges, 1, 3);  // q_weight
+    add_input_edge_if_present(q_input_edges, 2, 4);  // q_scales
+    add_input_edge_if_present(k_input_edges, 1, 5);  // k_weight
+    add_input_edge_if_present(k_input_edges, 2, 6);  // k_scales
+    add_input_edge_if_present(v_input_edges, 1, 7);  // v_weight
+    add_input_edge_if_present(v_input_edges, 2, 8);  // v_scales
 
     for (const auto& output_edge : q_output_edges) {
       graph.AddEdge(fused_node.Index(), output_edge.dst_node, 0, output_edge.dst_arg_index);

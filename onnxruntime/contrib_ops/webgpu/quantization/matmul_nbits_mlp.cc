@@ -445,27 +445,27 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const bool has_norm_input = norm_scale != nullptr;
 
   const bool would_use_subgroup_unfused =
-      WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(a,
-                                                           K_,
-                                                           N_,
-                                                           block_size_,
+      WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(M,
+                                                           N,
+                                                           K,
+                                                           batch_count,
+                                                           block_size,
                                                            accuracy_level_,
                                                            bits_,
                                                            context,
                                                            y);
   const bool would_use_dp4a_unfused =
-      WouldApplyDP4AMatMulNBitsInCurrentDispatch(a,
-                                                 K_,
-                                                 N_,
-                                                 block_size_,
+      WouldApplyDP4AMatMulNBitsInCurrentDispatch(M,
+                                                 N,
+                                                 K,
+                                                 block_size,
                                                  accuracy_level_,
                                                  context,
                                                  y);
   const bool would_use_wide_tile_unfused =
-      WouldApplyWideTileMatMulNBitsInCurrentDispatch(a,
-                                                     K_,
-                                                     N_,
-                                                     block_size_,
+      WouldApplyWideTileMatMulNBitsInCurrentDispatch(M,
+                                                     K,
+                                                     block_size,
                                                      bits_);
 
   const bool can_use_decode_fast_path =
