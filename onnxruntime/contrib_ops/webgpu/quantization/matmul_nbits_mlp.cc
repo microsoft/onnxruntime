@@ -3,6 +3,8 @@
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits_mlp.h"
 
+#include <optional>
+
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
@@ -482,6 +484,59 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
 
     const bool has_gate_bias = gate_bias != nullptr;
     const bool has_up_bias = up_bias != nullptr;
+
+    // The fully-fused MLP decode shader binds every weight/scale/bias plus the norm/skip
+    // tensors as storage buffers. Devices with a tight maxStorageBuffersPerShaderStage
+    // (notably macOS Metal at 10) cannot bind that many. For those devices we run the layer
+    // norm separately into a scratch tensor and then dispatch a no-norm variant of the
+    // decode program (which omits the norm_scale, skip, and skip-output bindings, dropping
+    // the storage-buffer count from up to 11 down to 8).
+    //
+    // Storage-buffer count: input_a + (skip?) + (norm_scale?) + 2 * (weight + scales)
+    //                       + output + (skip output?) + (gate_bias?) + (up_bias?)
+    const uint32_t required_storage_buffers =
+        1u                             // input_a
+        + (has_skip_input ? 1u : 0u)   // skip
+        + (has_norm_input ? 1u : 0u)   // norm_scale
+        + 4u                           // gate/up weights + scales
+        + 1u                           // output
+        + (has_skip_output ? 1u : 0u)  // skip output
+        + (has_gate_bias ? 1u : 0u)    // gate bias
+        + (has_up_bias ? 1u : 0u);     // up bias
+    const bool exceeds_storage_buffer_limit =
+        required_storage_buffers > context.DeviceLimits().maxStorageBuffersPerShaderStage;
+
+    // Optionally pre-normalize a into a scratch tensor and drop the norm/skip bindings
+    // from the decode program. The user-visible residual passthrough (input_skip_bias_sum)
+    // is produced by the skip-norm op directly in this path.
+    std::optional<Tensor> normalized_a_storage;
+    const Tensor* decode_a = a;
+    if (exceeds_storage_buffer_limit && has_norm_input) {
+      normalized_a_storage.emplace(context.CreateGPUTensor(a->DataType(), a->Shape()));
+      if (has_skip_input) {
+        ORT_RETURN_IF_ERROR(ApplySkipSimplifiedLayerNorm(a,
+                                                         skip,
+                                                         norm_scale,
+                                                         epsilon_,
+                                                         context,
+                                                         &*normalized_a_storage,
+                                                         input_skip_bias_sum));
+      } else {
+        ORT_RETURN_IF_ERROR(ApplySimplifiedLayerNorm(a,
+                                                     norm_scale,
+                                                     epsilon_,
+                                                     context,
+                                                     &*normalized_a_storage));
+      }
+      decode_a = &*normalized_a_storage;
+    }
+
+    // Decode-program-level norm/skip bindings: only used when the device has spare
+    // storage-buffer slots. Otherwise they are wired to the pre-normalized input above.
+    const bool decode_has_norm_input = has_norm_input && !exceeds_storage_buffer_limit;
+    const bool decode_has_skip_input = has_skip_input && !exceeds_storage_buffer_limit;
+    const bool decode_has_skip_output = has_skip_output && !exceeds_storage_buffer_limit;
+
     uint32_t workgroup_size = 128;
     uint32_t tile_size = 8;
     uint32_t tile_size_k_vec =
@@ -505,19 +560,19 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     MatMulNBitsMlpDecodeProgram program{tile_size,
                                         has_gate_bias,
                                         has_up_bias,
-                                        has_norm_input,
-                                        has_skip_input,
-                                        has_skip_output,
+                                        decode_has_norm_input,
+                                        decode_has_skip_input,
+                                        decode_has_skip_output,
                                         single_scale_weights,
                                         tile_size_k_vec,
                                         k_unroll_tiles};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
-    program.AddInput({a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
-    if (has_skip_input) {
+    program.AddInput({decode_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
+    if (decode_has_skip_input) {
       program.AddInput({skip, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
     }
-    if (has_norm_input) {
+    if (decode_has_norm_input) {
       program.AddInput({norm_scale, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
     }
     program
@@ -534,18 +589,18 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                               {n_blocks_per_col},
                               {num_N_tile},
                               {batch_count},
-                              {has_skip_input ? onnxruntime::narrow<uint32_t>(skip->Shape().Size()) : 0u},
+                              {decode_has_skip_input ? onnxruntime::narrow<uint32_t>(skip->Shape().Size()) : 0u},
                               {epsilon_}})
         .CacheHint(single_scale_weights,
                    has_gate_bias,
                    has_up_bias,
-                   has_norm_input,
-                   has_skip_input,
-                   has_skip_output,
+                   decode_has_norm_input,
+                   decode_has_skip_input,
+                   decode_has_skip_output,
                    tile_size_k_vec,
                    k_unroll_tiles,
                    "decode_4bit");
-    if (has_skip_output) {
+    if (decode_has_skip_output) {
       program.AddOutput({input_skip_bias_sum,
                          ProgramTensorMetadataDependency::TypeAndRank,
                          static_cast<int>(components_a)});

@@ -5,6 +5,7 @@
 #param component_a
 #param component_b
 #param elements_in_value_b
+#param has_norm
 #param has_skip_input
 #param has_skip_output
 #param k_unroll_tiles
@@ -16,7 +17,9 @@
 
 #use .getByOffset .setByOffset
 
+#if has_norm
 var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
+#endif
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
 var<workgroup> q_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
 var<workgroup> k_inter_results : array<array<q_output_element_t, tile_size_k_vec + 1>, tile_size>;
@@ -71,6 +74,7 @@ fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32) {
   let k_offset = kidx / component_a + col;
   let input_offset = batch * uniforms.K_of_a + k_offset;
   if (k_offset < uniforms.K_of_a) {
+#if has_norm
     let merged_value = load_merged_input(input_offset);
 #if has_skip_output
     if (b_global_base == 0u) {
@@ -78,6 +82,12 @@ fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32) {
     }
 #endif
     tile_A[col] = merged_value * input_a_value_t(input_a_element_t(inv_std)) * norm_scale.getByOffset(k_offset);
+#else
+    // Layer norm has already been applied to `a` upstream; load the pre-normalized value directly.
+    _ = b_global_base;
+    _ = inv_std;
+    tile_A[col] = a.getByOffset(input_offset);
+#endif
   } else {
     tile_A[col] = input_a_value_t(0);
   }
@@ -183,6 +193,7 @@ $MAIN {
     }
   }
 
+#if has_norm
   var sum_squared_local = 0.0;
   for (var a_idx = local_idx; a_idx < uniforms.K_of_a; a_idx += workgroup_size_x) {
     let a_value = load_merged_input(batch * uniforms.K_of_a + a_idx);
@@ -210,6 +221,10 @@ $MAIN {
   }
 
   let inv_std = inverseSqrt(sum_squared_shared[0] / f32(uniforms.K) + uniforms.epsilon);
+#else
+  // Layer norm already applied upstream; inv_std is unused but kept in the loadSHMA signature.
+  let inv_std = 1.0;
+#endif
 
 #if single_scale_weights
   let q_scale_b = q_output_element_t(q_scales_b.getByOffset(0));

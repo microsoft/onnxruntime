@@ -35,6 +35,11 @@ enum class SkipOutputKind {
   kGraphOutput,
 };
 
+enum class BiasKind {
+  kWithBias,
+  kNoBias,
+};
+
 void SetWebGpuProvider(Node& node) {
   node.SetExecutionProviderType(kWebGpuExecutionProvider);
 }
@@ -135,7 +140,8 @@ Status CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph(const Graph& graph) {
 
 void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
                                           NormAnchorKind norm_anchor_kind,
-                                          SkipOutputKind skip_output_kind = SkipOutputKind::kNone) {
+                                          SkipOutputKind skip_output_kind = SkipOutputKind::kNone,
+                                          BiasKind bias_kind = BiasKind::kWithBias) {
   constexpr int64_t k = 32;
   constexpr int64_t n = 8;
   constexpr int64_t block_size = 32;
@@ -158,10 +164,14 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
 
   NodeArg* gate_weight = builder.MakeInitializer<uint8_t>({n, 1, blob_size}, uint8_t{0}, uint8_t{15});
   NodeArg* gate_scale = builder.MakeInitializer<MLFloat16>({n, 1}, MLFloat16(1.0f), MLFloat16(1.0f));
-  NodeArg* gate_bias = builder.MakeInitializer<MLFloat16>({n}, MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* gate_bias = (bias_kind == BiasKind::kWithBias)
+                           ? builder.MakeInitializer<MLFloat16>({n}, MLFloat16(0.0f), MLFloat16(0.0f))
+                           : optional_tensor;
   NodeArg* up_weight = builder.MakeInitializer<uint8_t>({n, 1, blob_size}, uint8_t{0}, uint8_t{15});
   NodeArg* up_scale = builder.MakeInitializer<MLFloat16>({n, 1}, MLFloat16(1.0f), MLFloat16(1.0f));
-  NodeArg* up_bias = builder.MakeInitializer<MLFloat16>({n}, MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* up_bias = (bias_kind == BiasKind::kWithBias)
+                         ? builder.MakeInitializer<MLFloat16>({n}, MLFloat16(0.0f), MLFloat16(0.0f))
+                         : optional_tensor;
 
   NodeArg* normalized_input = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k});
   NodeArg* gate_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, n});
@@ -225,6 +235,21 @@ void BuildMatMulNBitsMlpSkipWebGpuPattern(ModelTestBuilder& builder) {
 
 void BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPattern(ModelTestBuilder& builder) {
   BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput);
+}
+
+void BuildMatMulNBitsMlpSimplifiedWebGpuPatternNoBias(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSimplified, SkipOutputKind::kNone,
+                                       BiasKind::kNoBias);
+}
+
+void BuildMatMulNBitsMlpSkipWebGpuPatternNoBias(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kNone,
+                                       BiasKind::kNoBias);
+}
+
+void BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPatternNoBias(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kGraphOutput,
+                                       BiasKind::kNoBias);
 }
 
 }  // namespace
@@ -330,6 +355,83 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuRes
 
   TransformerTester(
       BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPattern,
+      check_transformed_graph,
+      TransformerLevel::Level1,
+      TransformerLevel::Level2,
+      21,
+      1e-3,
+      1e-3,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      add_session_options,
+      {},
+      std::move(webgpu_ep));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWebGpuResultsNoBias) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckMatMulNBitsMlpSimplifiedFusedGraph(session.GetGraph()));
+  };
+
+  TransformerTester(
+      BuildMatMulNBitsMlpSimplifiedWebGpuPatternNoBias,
+      check_transformed_graph,
+      TransformerLevel::Level1,
+      TransformerLevel::Level2,
+      21,
+      1e-3,
+      1e-3,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      {},
+      {},
+      std::move(webgpu_ep));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuResultsNoBias) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckMatMulNBitsMlpSkipFusedGraph(session.GetGraph()));
+  };
+
+  TransformerTester(
+      BuildMatMulNBitsMlpSkipWebGpuPatternNoBias,
+      check_transformed_graph,
+      TransformerLevel::Level1,
+      TransformerLevel::Level2,
+      21,
+      1e-3,
+      1e-3,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      {},
+      {},
+      std::move(webgpu_ep));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuResultsWithResidualOutputPassthroughNoBias) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  auto add_session_options = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers,
+                                                      "EliminateIdentity"));
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    ASSERT_STATUS_OK(CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph(session.GetGraph()));
+  };
+
+  TransformerTester(
+      BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPatternNoBias,
       check_transformed_graph,
       TransformerLevel::Level1,
       TransformerLevel::Level2,
