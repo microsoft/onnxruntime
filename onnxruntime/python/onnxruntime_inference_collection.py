@@ -315,7 +315,7 @@ class Session:
 
             sess.run([output_name], {input_name: x})
         """
-        self._validate_input(list(input_feed.keys()))
+        self._validate_input(input_feed.keys())
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -355,7 +355,7 @@ class Session:
 
             sess.run_async([output_name], {input_name: x}, callback)
         """
-        self._validate_input(list(input_feed.keys()))
+        self._validate_input(input_feed.keys())
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         return self._sess.run_async(output_names, input_feed, callback, user_data, run_options)
@@ -386,7 +386,7 @@ class Session:
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
-        self._validate_input(list(input_dict_ort_values.keys()))
+        self._validate_input(input_dict_ort_values.keys())
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
