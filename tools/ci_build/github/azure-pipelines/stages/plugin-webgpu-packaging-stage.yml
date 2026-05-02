@@ -22,7 +22,7 @@ parameters:
   values:
   - dev
   - release
-  - RC
+  # TODO: release candidate (RC) versioning is not yet implemented
 
 - name: version_file
   type: string
@@ -157,9 +157,6 @@ stages:
           inputs:
             targetType: inline
             script: |
-              $now = Get-Date
-              $timestamp = $now.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-              $timestampForFilename = $now.ToUniversalTime().ToString("yyyyMMdd-HHmmss")
               $outputDir = '$(Build.ArtifactStagingDirectory)/webgpu-deps-package'
               New-Item -ItemType Directory -Path $outputDir -Force
 
@@ -197,7 +194,6 @@ stages:
                 }
 
                 $versionInfo = @{
-                  timestamp = $timestamp
                   version = $versionString
                 }
 
@@ -212,7 +208,14 @@ stages:
                   $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -match '^(dxil\.dll|dxcompiler\.dll|version\.json)$'
                 }
 
-                $zipPath = Join-Path $outputDir "webgpu_ep_${timestampForFilename}_${platformName}.zip"
+                # Version formats (full -> filename):
+                #   release: 1.25.0 -> 1.25.0
+                #   dev:     1.25.0-dev.20260401+2a1ffff2 -> 1.25.0.dev.20260401.2a1ffff2
+                # Dev versions have - and + replaced with . for filename compatibility.
+                # Full version string is preserved in version.json.
+                # TODO: RC versioning (e.g. 1.25.0-rc1) is not yet implemented
+                $filenameVersion = $versionString -replace '[-+]', '.'
+                $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
                 if ($filesToZip) {
                   $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
                   Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
