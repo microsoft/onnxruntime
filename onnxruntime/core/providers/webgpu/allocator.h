@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <functional>
-
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
 
@@ -21,7 +19,6 @@ inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
 class GpuBufferAllocator : public IAllocator {
  public:
   GpuBufferAllocator(const BufferManager& buffer_manager, bool is_read_only_allocator);
-  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter, bool is_read_only_allocator);
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
@@ -29,7 +26,7 @@ class GpuBufferAllocator : public IAllocator {
 
  private:
   AllocatorStats stats_;
-  std::function<const BufferManager&()> buffer_manager_getter_;
+  const BufferManager& buffer_manager_;
   bool mapped_at_creation_;
 };
 

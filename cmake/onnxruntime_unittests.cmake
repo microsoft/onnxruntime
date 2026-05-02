@@ -1373,8 +1373,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/activation.cc
       ${BENCHMARK_DIR}/quantize.cc
       ${BENCHMARK_DIR}/reduceminmax.cc
-      ${BENCHMARK_DIR}/layer_normalization.cc
-      ${BENCHMARK_DIR}/webgpu_matmul_nbits_decode.cc)
+      ${BENCHMARK_DIR}/layer_normalization.cc)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     target_compile_definitions(onnxruntime_benchmark PRIVATE ${mlas_private_compile_definitions})
@@ -1396,16 +1395,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
     target_link_libraries(onnxruntime_benchmark PRIVATE onnx_test_runner_common benchmark::benchmark ${onnx_test_libs})
-    if (onnxruntime_USE_WEBGPU AND
-        NOT onnxruntime_USE_EP_API_ADAPTERS AND
-        NOT onnxruntime_BUILD_DAWN_SHARED_LIBRARY AND
-        NOT onnxruntime_USE_EXTERNAL_DAWN AND
-        NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      # webgpu_matmul_nbits_decode.cc uses Dawn's native API directly to create the
-      # WebGPU device shared with ORT, so we need the Dawn headers and libs visible
-      # to this benchmark target (they are linked PRIVATE to onnxruntime_providers_webgpu).
-      target_link_libraries(onnxruntime_benchmark PRIVATE dawn::dawn_native dawn::dawn_proc)
-    endif()
     add_dependencies(onnxruntime_benchmark ${onnxruntime_EXTERNAL_DEPENDENCIES})
     set_target_properties(onnxruntime_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
 

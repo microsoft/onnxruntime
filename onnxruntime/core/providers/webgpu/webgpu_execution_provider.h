@@ -127,7 +127,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   bool is_graph_captured_ = false;
-  bool graph_buffer_mgr_active_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // Required regular runs before graph capture for any necessary allocations.
   int m_current_graph_annotation_id = 0;

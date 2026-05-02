@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <string>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -13,72 +12,6 @@
 
 namespace onnxruntime {
 namespace webgpu {
-
-namespace {
-
-const char* CompilationMessageTypeToString(wgpu::CompilationMessageType type) {
-  switch (type) {
-    case wgpu::CompilationMessageType::Error:
-      return "error";
-    case wgpu::CompilationMessageType::Warning:
-      return "warning";
-    case wgpu::CompilationMessageType::Info:
-      return "info";
-    default:
-      return "unknown";
-  }
-}
-
-std::string GetShaderCompilationDiagnostics(WebGpuContext& webgpu_context, const wgpu::ShaderModule& shader_module) {
-  struct CompilationInfoContext {
-    std::string diagnostics;
-  } compilation_info_context;
-
-  auto future = shader_module.GetCompilationInfo(
-      wgpu::CallbackMode::WaitAnyOnly,
-      [](wgpu::CompilationInfoRequestStatus status, const wgpu::CompilationInfo* compilation_info, CompilationInfoContext* context) {
-        if (status != wgpu::CompilationInfoRequestStatus::Success) {
-          context->diagnostics = std::string{"Shader compilation info unavailable. Request status: "} +
-                                 (status == wgpu::CompilationInfoRequestStatus::CallbackCancelled ? "callback cancelled" : "unknown");
-          return;
-        }
-
-        if (compilation_info == nullptr || compilation_info->messageCount == 0 || compilation_info->messages == nullptr) {
-          return;
-        }
-
-        std::string diagnostics;
-        diagnostics.reserve(compilation_info->messageCount * 96);
-        for (size_t i = 0; i < compilation_info->messageCount; ++i) {
-          const auto& message = compilation_info->messages[i];
-          diagnostics += "\n  [";
-          diagnostics += CompilationMessageTypeToString(message.type);
-          diagnostics += "]";
-          if (message.lineNum > 0) {
-            diagnostics += " line ";
-            diagnostics += std::to_string(message.lineNum);
-            if (message.linePos > 0) {
-              diagnostics += ':';
-              diagnostics += std::to_string(message.linePos);
-            }
-          }
-          diagnostics += ": ";
-          diagnostics += std::string_view{message.message};
-        }
-
-        context->diagnostics = std::move(diagnostics);
-      },
-      &compilation_info_context);
-
-  const Status wait_status = webgpu_context.Wait(future);
-  if (!wait_status.IsOK()) {
-    return std::string{"Shader compilation info wait failed: "} + wait_status.ErrorMessage();
-  }
-
-  return compilation_info_context.diagnostics;
-}
-
-}  // namespace
 
 ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks)
     : name{program.Name()},
@@ -264,7 +197,7 @@ Status ProgramManager::Build(const ProgramBase& program,
 
   struct CreateComputePipelineContext {
     wgpu::ComputePipeline& pipeline;
-    std::string error_message;
+    Status status;
   } create_pipeline_context{compute_pipeline, {}};
 
   ORT_RETURN_IF_ERROR(
@@ -276,23 +209,12 @@ Status ProgramManager::Build(const ProgramBase& program,
                 if (status == wgpu::CreatePipelineAsyncStatus::Success) {
                   context->pipeline = std::move(pipeline);
                 } else {
-                  context->error_message = "Failed to create a WebGPU compute pipeline: ";
-                  context->error_message.append(message.data, message.length);
+                  context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ", std::string_view{message});
                 }
               },
               &create_pipeline_context)));
 
-  if (create_pipeline_context.error_message.empty()) {
-    return Status::OK();
-  }
-
-  const std::string compilation_diagnostics = GetShaderCompilationDiagnostics(webgpu_context_, shader_module);
-  if (compilation_diagnostics.empty()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, create_pipeline_context.error_message);
-  }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, create_pipeline_context.error_message,
-                         "\nShader compilation diagnostics:", compilation_diagnostics);
+  return create_pipeline_context.status;
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {
