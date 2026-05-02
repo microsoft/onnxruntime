@@ -194,9 +194,14 @@ TEST(OrtModelTest, RejectsInvalidEdgeEndNodeIndex) {
   // An EdgeEnd referencing a non-existent node should be rejected gracefully
   // rather than crashing via ORT_ENFORCE or nullptr dereference.
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
-    // Create a valid node at index 0
+    // Create a valid node at index 0 with empty inputs/outputs so it passes node-loading validation.
+    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<int32_t> empty_arg_counts;
     std::vector<flatbuffers::Offset<fbs::Node>> nodes{
-        fbs::CreateNodeDirect(builder, "n0", "", "", 1, 0, "Identity")};
+        fbs::CreateNodeDirect(builder, "n0", "", "", 1, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &empty_args, &empty_args, nullptr,
+                              &empty_arg_counts, &empty_args)};
     // Create a NodeEdge for node 0 with an input edge referencing non-existent node 99
     std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(99, 0, 0)};
     std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
