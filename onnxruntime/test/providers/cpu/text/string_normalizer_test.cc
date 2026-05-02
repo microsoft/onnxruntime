@@ -236,6 +236,19 @@ TEST(ContribOpTest, StringNormalizerSensitiveFilterOutUpperSameOutput) {
 // Additional tests for coverage gaps
 // ============================================================
 
+TEST(ContribOpTest, StringNormalizerDefaultIsCaseSensitiveIsFalse) {
+  // Omit is_case_sensitive and rely on the schema default of false.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  test.AddAttribute("stopwords", std::vector<std::string>{"monday"});
+  std::vector<int64_t> dims{3};
+  std::vector<std::string> input = {"Monday", "Tuesday", "Wednesday"};
+  test.AddInput<std::string>("T", dims, input);
+
+  std::vector<std::string> output = {"Tuesday", "Wednesday"};
+  test.AddOutput<std::string>("Y", {2}, output);
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+}
+
 TEST(ContribOpTest, StringNormalizerInsensitiveFilterOutLower) {
   // Case-insensitive filtering + LOWER case change.
   // This exercises the can_reuse_wide fast path (compare_caseaction_ == LOWER == case_change_action_).
@@ -418,7 +431,7 @@ TEST(ContribOpTest, StringNormalizerInvalidDimensions3D) {
   test.AddInput<std::string>("T", dims, input);
   test.AddOutput<std::string>("Y", {1, 1, 2}, input);
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+           "Input shape must have either [C] or [1,C] dimensions where C > 0");
 }
 
 TEST(ContribOpTest, StringNormalizerInvalidDimensions2DFirstNotOne) {
@@ -430,7 +443,55 @@ TEST(ContribOpTest, StringNormalizerInvalidDimensions2DFirstNotOne) {
   test.AddInput<std::string>("T", dims, input);
   test.AddOutput<std::string>("Y", {2, 2}, input);
   test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input shape must have either [C] or [1,C] dimensions where C > 0");
+}
+
+TEST(ContribOpTest, StringNormalizerEmpty1DInputRejectedForCompatibility) {
+  // Preserve current ORT behavior for empty 1D input.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {}, test_locale);
+  std::vector<int64_t> dims{0};
+  std::vector<std::string> input{};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", {0}, input);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Single dimension value must be greater than 0");
+}
+
+TEST(ContribOpTest, StringNormalizerEmpty2DInputRejectedForCompatibility) {
+  // Preserve current ORT behavior for empty [1, 0] input.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {}, test_locale);
+  std::vector<int64_t> dims{1, 0};
+  std::vector<std::string> input{};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", {1, 0}, input);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
            "Input dimensions are either[C > 0] or [1][C > 0] allowed");
+}
+
+TEST(ContribOpTest, StringNormalizerInvalidCaseChangeAction) {
+  // Invalid case_change_action should be rejected during kernel construction.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "TITLE", true, {}, test_locale);
+  std::vector<int64_t> dims{1};
+  std::vector<std::string> input{"hello"};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", dims, input);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "attribute case_change_action has invalid value");
+}
+
+TEST(ContribOpTest, StringNormalizerInvalidLocale) {
+  // Invalid locale should be rejected when locale-sensitive processing is required.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", false, {}, "ort_invalid_locale_for_test");
+  std::vector<int64_t> dims{1};
+  std::vector<std::string> input{"hello"};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", dims, input);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Failed to construct locale with name:");
 }
 
 TEST(ContribOpTest, StringNormalizerGermanEszettLower) {
