@@ -330,6 +330,13 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
                   "Input dimensions are either[C > 0] or [1][C > 0] allowed");
   }
 
+  auto validate_utf8 = [](const std::string& value) {
+    size_t utf8_chars = 0;
+    ORT_RETURN_IF_NOT(utf8_util::utf8_validate(reinterpret_cast<const unsigned char*>(value.data()), value.size(), utf8_chars),
+                      "Input strings must be valid UTF-8");
+    return Status::OK();
+  };
+
   // Special case, no filtering and no case change
   if (case_change_action_ == NONE &&
       ((is_case_sensitive_ && stopwords_.empty()) ||
@@ -337,7 +344,10 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
     output_shape.push_back(C);
     auto output_tensor = ctx->Output(0, output_shape);
     auto const output_data = output_tensor->MutableData<std::string>();
-    std::copy(input_span.begin(), input_span.end(), output_data);
+    for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
+      ORT_RETURN_IF_ERROR(validate_utf8(input_span[i]));
+      output_data[i] = input_span[i];
+    }
     return Status::OK();
   }
 
@@ -423,6 +433,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
 
       for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
         const std::string& s = input_span[i];
+        ORT_RETURN_IF_ERROR(validate_utf8(s));
         if (stopwords_.count(s) == 0) {
           filtered_strings_indices.push_back(i);
         }

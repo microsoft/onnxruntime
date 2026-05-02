@@ -65,6 +65,11 @@ inline bool utf8_validate(const unsigned char* s, size_t len, size_t& utf8_chars
         case 1:
           break;
         case 2: {
+          // Reject overlong 2-byte sequences. Valid Unicode 2-byte encodings
+          // start at U+0080, so lead bytes 0xC0 and 0xC1 are invalid.
+          if (ch < 0xC2u) {
+            return false;
+          }
           if (++idx >= len || s[idx] < 0x80u || s[idx] > 0xBFu) {
             return false;
           }
@@ -150,10 +155,19 @@ inline bool utf8_validate(const unsigned char* s, size_t len, size_t& utf8_chars
 
 }  // namespace utf8_util
 
-// UTF-8 <-> wchar_t (UTF-32 on non-Windows) conversion utilities.
-// These assume wchar_t is at least 32 bits (Linux, macOS, wasm).
+// UTF-8 <-> wchar_t conversion utilities for non-Windows builds.
+// These helpers operate on one wchar_t code unit per Unicode scalar value.
+// They are fully Unicode-correct on platforms where wchar_t stores scalar values
+// directly, which is commonly the case for 32-bit wchar_t builds such as Linux,
+// macOS, and wasm.
+// They do not implement UTF-16 surrogate-pair handling, so non-Windows builds
+// with 16-bit wchar_t cannot represent supplementary-plane characters correctly
+// via these helpers.
 // On Windows, use the Win32 MultiByteToWideChar/WideCharToMultiByte APIs instead.
 #ifndef _WIN32
+
+static_assert(sizeof(wchar_t) >= 4,
+              "Non-Windows UTF-8/wchar_t conversion helpers require wchar_t to be at least 32 bits.");
 
 /// Compute the number of UTF-8 bytes required to encode a wide string.
 inline size_t WideToUtf8RequiredSize(const std::wstring& wstr) {

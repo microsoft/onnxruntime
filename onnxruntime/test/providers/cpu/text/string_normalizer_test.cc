@@ -494,6 +494,30 @@ TEST(ContribOpTest, StringNormalizerInvalidLocale) {
            "Failed to construct locale with name:");
 }
 
+TEST(ContribOpTest, StringNormalizerPassthroughRejectsInvalidUtf8) {
+  // Byte-only passthrough path should still validate UTF-8 input.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {}, test_locale);
+  std::vector<int64_t> dims{1};
+  std::vector<std::string> input{std::string("\xF0\x28\x8C\x28", 4)};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", dims, input);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input strings must be valid UTF-8");
+}
+
+TEST(ContribOpTest, StringNormalizerSensitiveFilteringRejectsInvalidUtf8) {
+  // Case-sensitive filtering path should validate UTF-8 even when no wchar conversion is needed.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "NONE", true, {"keep"}, test_locale);
+  std::vector<int64_t> dims{2};
+  std::vector<std::string> input{"keep", std::string("\xF0\x28\x8C\x28", 4)};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", {1}, std::vector<std::string>{std::string("\xF0\x28\x8C\x28", 4)});
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input strings must be valid UTF-8");
+}
+
 TEST(ContribOpTest, StringNormalizerGermanEszettLower) {
   // German Eszett (ß) lowercasing: ß should remain ß.
   // This tests the converter and case logic with the problematic German character.
