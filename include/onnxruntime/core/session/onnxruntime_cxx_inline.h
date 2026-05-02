@@ -3868,8 +3868,7 @@ inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
 
 template <typename T>
 inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
-  // Graph copies the OrtValue internally (shared_ptr refcount increment).
-  // Caller retains ownership of initializer and should let it destruct normally.
+  // Graph copies the OrtValue internally. Caller retains ownership of initializer.
   ThrowOnError(GetModelEditorApi().AddInitializerToGraph(this->p_, name.c_str(), initializer, data_is_external));
 }
 
