@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
+#include "core/flatbuffers/ort_format_version.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
@@ -40,6 +43,46 @@ struct OrtModelTestInfo {
   bool use_memory_mapped_load{false};
   TransformerLevel optimization_level = TransformerLevel::Level3;
 };
+
+namespace {
+
+flatbuffers::Offset<fbs::TypeInfo> CreateFloatTensorTypeInfo(flatbuffers::FlatBufferBuilder& builder,
+                                                             int64_t dim_value) {
+  const auto dim_value_off =
+      fbs::CreateDimensionValue(builder, fbs::DimensionValueType::VALUE, dim_value);
+  std::vector<flatbuffers::Offset<fbs::Dimension>> dims{
+      fbs::CreateDimension(builder, dim_value_off)};
+  const auto shape = fbs::CreateShapeDirect(builder, &dims);
+  const auto tensor_type =
+      fbs::CreateTensorTypeAndShape(builder, fbs::TensorDataType::FLOAT, shape);
+  return fbs::CreateTypeInfoDirect(builder, nullptr, fbs::TypeInfoValue::tensor_type, tensor_type.Union());
+}
+
+std::vector<uint8_t> BuildOrtModelBuffer(
+    const std::function<flatbuffers::Offset<fbs::Graph>(flatbuffers::FlatBufferBuilder&)>& create_graph) {
+  flatbuffers::FlatBufferBuilder builder;
+
+  const auto graph = create_graph(builder);
+  std::vector<flatbuffers::Offset<fbs::OperatorSetId>> opset_imports{
+      fbs::CreateOperatorSetIdDirect(builder, "", 18)};
+  const auto model = fbs::CreateModelDirect(builder, 8, &opset_imports, "ort-model-test", "1", "",
+                                            1, "", graph, "");
+  const auto session = fbs::CreateInferenceSessionDirect(builder,
+                                                         std::to_string(kOrtModelVersion).c_str(), model);
+  fbs::FinishInferenceSessionBuffer(builder, session);
+
+  return std::vector<uint8_t>(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
+}
+
+Status LoadOrtBuffer(const std::vector<uint8_t>& buffer) {
+  SessionOptions so;
+  ORT_RETURN_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  return session_object.Load(buffer.data(), static_cast<int>(buffer.size()));
+}
+
+}  // namespace
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
   SessionOptions so;
@@ -83,6 +126,94 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object.Run(test_info.inputs, test_info.output_names, &fetches));
   test_info.output_verifier(fetches);
+}
+
+TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<int64_t> dims{1};
+    std::vector<uint8_t> raw_data(sizeof(float) * 2, 0);
+    std::vector<flatbuffers::Offset<fbs::Tensor>> initializers{
+        fbs::CreateTensorDirect(builder, "bad_initializer", "", &dims, fbs::TensorDataType::FLOAT, &raw_data)};
+    return fbs::CreateGraphDirect(builder, &initializers);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw data size mismatch"));
+}
+
+TEST(OrtModelTest, RejectsNullNodeArgTableEntry) {
+  auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "X", "", CreateFloatTensorTypeInfo(builder, 1))};
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args);
+  });
+
+  const auto* fbs_session = fbs::GetInferenceSession(buffer.data());
+  ASSERT_NE(fbs_session, nullptr);
+  const auto* fbs_node_args = fbs_session->model()->graph()->node_args();
+  ASSERT_NE(fbs_node_args, nullptr);
+
+  auto* raw_offsets = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(fbs_node_args->Data()));
+  std::fill_n(raw_offsets, sizeof(flatbuffers::uoffset_t), 0);
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::AnyOf(testing::HasSubstr("Null node arg entry"),
+                             testing::HasSubstr("verification failed")));
+}
+
+TEST(OrtModelTest, RejectsDanglingNodeEdge) {
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
+        fbs::CreateNodeEdgeDirect(builder, 0)};
+    return fbs::CreateGraphDirect(builder, nullptr, nullptr, nullptr, 1, &node_edges);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("references missing node"));
+}
+
+TEST(OrtModelTest, RejectsAdversarialLargeNodeIndex) {
+  // A single node with a huge index should be rejected to prevent memory amplification.
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    const uint32_t huge_index = 100'000'000;
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n", "", "", 1, huge_index, "Identity")};
+    return fbs::CreateGraphDirect(builder, nullptr, nullptr, &nodes, huge_index + 1);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("unreasonably large"));
+}
+
+TEST(OrtModelTest, RejectsInvalidEdgeEndNodeIndex) {
+  // An EdgeEnd referencing a non-existent node should be rejected gracefully
+  // rather than crashing via ORT_ENFORCE or nullptr dereference.
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    // Create a valid node at index 0 with empty inputs/outputs so it passes node-loading validation.
+    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<int32_t> empty_arg_counts;
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 1, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &empty_args, &empty_args, nullptr,
+                              &empty_arg_counts, &empty_args)};
+    // Create a NodeEdge for node 0 with an input edge referencing non-existent node 99
+    std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(99, 0, 0)};
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
+        fbs::CreateNodeEdgeDirect(builder, 0, &input_edges)};
+    return fbs::CreateGraphDirect(builder, nullptr, nullptr, &nodes, 100, &node_edges);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::AnyOf(testing::HasSubstr("out-of-range node index"),
+                             testing::HasSubstr("references missing node")));
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
