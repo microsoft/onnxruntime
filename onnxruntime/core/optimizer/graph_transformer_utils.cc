@@ -13,7 +13,6 @@
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
-#include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/platform/threadpool.h"
 
@@ -101,10 +100,6 @@
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime::optimizer_utils {
-
-namespace {
-
-}  // namespace
 
 static void FilterTransformers(InlinedVector<std::unique_ptr<GraphTransformer>>& transformers,
                                const InlinedHashSet<std::string>& transformers_to_disable) {
