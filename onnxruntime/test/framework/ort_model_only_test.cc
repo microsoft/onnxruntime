@@ -68,7 +68,7 @@ std::vector<uint8_t> BuildOrtModelBuffer(
   const auto model = fbs::CreateModelDirect(builder, 8, &opset_imports, "ort-model-test", "1", "",
                                             1, "", graph, "");
   const auto session = fbs::CreateInferenceSessionDirect(builder,
-                                                          std::to_string(kOrtModelVersion).c_str(), model);
+                                                         std::to_string(kOrtModelVersion).c_str(), model);
   fbs::FinishInferenceSessionBuffer(builder, session);
 
   return std::vector<uint8_t>(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
@@ -188,6 +188,27 @@ TEST(OrtModelTest, RejectsAdversarialLargeNodeIndex) {
   const auto status = LoadOrtBuffer(buffer);
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("unreasonably large"));
+}
+
+TEST(OrtModelTest, RejectsInvalidEdgeEndNodeIndex) {
+  // An EdgeEnd referencing a non-existent node should be rejected gracefully
+  // rather than crashing via ORT_ENFORCE or nullptr dereference.
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    // Create a valid node at index 0
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n0", "", "", 1, 0, "Identity")};
+    // Create a NodeEdge for node 0 with an input edge referencing non-existent node 99
+    std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(99, 0, 0)};
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
+        fbs::CreateNodeEdgeDirect(builder, 0, &input_edges)};
+    return fbs::CreateGraphDirect(builder, nullptr, nullptr, &nodes, 100, &node_edges);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::AnyOf(testing::HasSubstr("out-of-range node index"),
+                             testing::HasSubstr("references missing node")));
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
