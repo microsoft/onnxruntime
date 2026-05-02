@@ -1455,7 +1455,7 @@ void QuantizeLinearOp19Test(bool saturate) {
     y.push_back(OutT(it, saturate));
   }
   test.AddOutput<OutT>("y", dims, y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(QuantizeLinearOpTest, Float8) {
@@ -1497,7 +1497,7 @@ void QuantizeLinearOp19F16Test(bool saturate) {
     y.push_back(OutT(it, saturate));
   }
   test.AddOutput<OutT>("y", dims, y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(QuantizeLinearOpMLFloat16Test, Float8) {

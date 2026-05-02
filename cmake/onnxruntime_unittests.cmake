@@ -1025,7 +1025,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
   list(REMOVE_ITEM all_tests
     "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
-    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
+    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc"
+    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test_custom.cc")
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)

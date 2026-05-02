@@ -15,6 +15,7 @@
 #endif
 #include <atomic>
 
+#include "ov_interface.h"
 // Reuse the global shutdown indicator (do NOT set it here; that is owned by the core DLL).
 extern std::atomic<bool> g_is_shutting_down;
 
@@ -42,6 +43,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
       } else {
         // Dynamic unload: safe to clean up.
         ::google::protobuf::ShutdownProtobufLibrary();
+        ov::shutdown();
       }
       break;
   }
