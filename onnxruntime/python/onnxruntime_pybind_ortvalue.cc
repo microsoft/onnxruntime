@@ -89,7 +89,7 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndTypeWithMemoryInfo(const std::vect
   AllocatorPtr allocator = env.GetRegisteredSharedAllocator(memory_info);
 
   if (!allocator) {
-    throw std::runtime_error("No shared allocator found for the given OrtMemoryInfo.");
+    throw std::runtime_error("No shared allocator found for: " + memory_info.ToString());
   }
 
   auto ml_value = std::make_unique<OrtValue>();

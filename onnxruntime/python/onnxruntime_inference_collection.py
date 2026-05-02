@@ -1083,7 +1083,7 @@ class OrtValue:
         device_type: str = "cpu",
         device_id: int = 0,
         vendor_id: int | OrtDeviceVendorId = -1,
-        memory_info=None,
+        memory_info: C.OrtMemoryInfo | None = None,
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -1097,6 +1097,11 @@ class OrtValue:
         """
 
         if memory_info is not None:
+            if device_type != "cpu" or device_id != 0 or vendor_id != -1:
+                warnings.warn(
+                    "device_type, device_id, and vendor_id are ignored when memory_info is provided.",
+                    stacklevel=2,
+                )
             if isinstance(element_type, int):
                 return cls(
                     C.OrtValue.ortvalue_from_shape_and_onnx_type_for_memory_info(
