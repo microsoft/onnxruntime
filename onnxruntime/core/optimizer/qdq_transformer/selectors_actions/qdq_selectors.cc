@@ -476,6 +476,40 @@ static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
   return true;
 }
 
+// Validates that the bias DQ's zero point is absent or a constant int32 initializer whose every
+// element is zero. ONNX QLinearConv (int32 bias path) assumes bias_zero_point == 0; a nonzero value
+// would shift all output activations silently after fusion since QLinearConv has no bias_zero_point
+// input.
+// Returns false (conservative) if a zero-point name is set but not a constant, or if any element is
+// nonzero or the dtype is unexpected.
+static bool CheckConvBiasZeroPoint(const GraphViewer& graph_viewer, const Node& bias_dq) {
+  const auto& bias_dq_inputs = bias_dq.InputDefs();
+  // Zero-point is optional input at index 2.
+  if (bias_dq_inputs.size() < 3 || !bias_dq_inputs[QDQ::InputIndex::ZERO_POINT_ID] ||
+      !bias_dq_inputs[QDQ::InputIndex::ZERO_POINT_ID]->Exists()) {
+    return true;  // absent zero-point is implicitly zero — allow fusion
+  }
+
+  const auto* zp_arg = bias_dq_inputs[QDQ::InputIndex::ZERO_POINT_ID];
+  const auto* zp_proto = graph_viewer.GetConstantInitializer(zp_arg->Name(), true);
+  if (!zp_proto) {
+    return false;  // zero-point present but not constant — cannot verify
+  }
+
+  const Initializer zp_init{graph_viewer.GetGraph(), *zp_proto, graph_viewer.ModelPath()};
+  if (zp_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    return false;  // unexpected dtype for bias zero-point
+  }
+
+  for (const int32_t v : zp_init.DataAsSpan<int32_t>()) {
+    if (v != 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
@@ -510,6 +544,12 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     // Verify bias scale == input_scale * weight_scale[i] per ONNX QLinearConv spec.
     // If scales don't match within tolerance, skip fusion to avoid silent numerical errors.
     if (!CheckConvBiasScale(graph_viewer, *dq_nodes[0], *dq_nodes[1], *dq_nodes[2])) {
+      return false;
+    }
+
+    // Verify bias zero-point is absent or all-zero. A nonzero bias zero-point would silently
+    // shift all output activations after fusion since QLinearConv has no bias_zero_point input.
+    if (!CheckConvBiasZeroPoint(graph_viewer, *dq_nodes[2])) {
       return false;
     }
   }

@@ -2249,11 +2249,17 @@ class TestConvBiasScaleValidation(unittest.TestCase):
         b_scale: float,
         x_zp: int = 128,
         w_zp: int = 0,
+        b_zp_val: int = 0,
     ) -> onnx.ModelProto:
         """Builds a QDQ Conv model (DQ->Conv->Q) with the given quantization scales.
 
-        The bias is encoded as int32 with the provided b_scale. When b_scale != x_scale * w_scale
-        the model is non-conformant and fusion must be skipped.
+        The bias is encoded as int32 with the provided b_scale. The model is
+        non-conformant — and fusion must be skipped — in two distinct cases:
+
+        - ``b_scale != x_scale * w_scale``: violates the ONNX QLinearConv bias-scale
+          constraint (bias_scale must equal input_scale * weight_scale).
+        - ``b_zp_val != 0``: QLinearConv has no bias_zero_point input, so a nonzero
+          b_zp would produce silently shifted outputs if fusion were allowed.
         """
         num_out_channels = weight_shape[0]
         np_x_scale = np.float32(x_scale)
@@ -2274,7 +2280,7 @@ class TestConvBiasScaleValidation(unittest.TestCase):
         w_scale_tensor = onnx.numpy_helper.from_array(np.array(np_w_scale, dtype=np.float32), "w_scale")
         w_zp_tensor = onnx.numpy_helper.from_array(np.array(w_zp, dtype=np.int8), "w_zp")
         b_scale_tensor = onnx.numpy_helper.from_array(np.array(np_b_scale, dtype=np.float32), "b_scale")
-        b_zp_tensor = onnx.numpy_helper.from_array(np.array(0, dtype=np.int32), "b_zp")
+        b_zp_tensor = onnx.numpy_helper.from_array(np.array(b_zp_val, dtype=np.int32), "b_zp")
 
         # Bias as int32 (quantized with b_scale)
         bias_float = np.ones(num_out_channels, dtype=np.float32)
@@ -2437,6 +2443,62 @@ class TestConvBiasScaleValidation(unittest.TestCase):
             op_counts.get("Conv", 0),
             0,
             f"Expected the float Conv to be consumed by QLinearConv fusion, got: {op_counts}",
+        )
+
+    def test_nonzero_bias_zp_skips_fusion(self):
+        """When bias_zp != 0 (even if bias_scale is correct), fusion must be skipped.
+
+        QLinearConv has no bias_zero_point input, so a nonzero b_zp would produce silently
+        shifted outputs if fusion were allowed. The optimizer must conservatively reject it.
+        """
+        inp_shape = [1, 1, 4, 4]
+        weight_shape = [1, 1, 1, 1]
+
+        x_scale = 0.05
+        w_scale = 0.02
+        correct_b_scale = x_scale * w_scale  # scale is correct — only zp is wrong
+        # Any nonzero value triggers the check; 1 is the minimal representable nonzero int32.
+        nonzero_b_zp = 1
+
+        model = self.build_qdq_conv_model(
+            inp_shape, weight_shape, x_scale, w_scale, correct_b_scale, b_zp_val=nonzero_b_zp
+        )
+        model_path = os.path.join(self._tmp_dir_path, "conv_nonzero_bias_zp.qdq.onnx")
+        onnx.save_model(model, model_path)
+
+        rng = np.random.default_rng(0)
+        input_data = rng.integers(100, 200, size=inp_shape, dtype=np.uint8)
+        inputs = {"input_q": input_data}
+
+        optimized_path = os.path.join(self._tmp_dir_path, "conv_nonzero_bias_zp.opt.onnx")
+        out_optimized = self._run_model(model_path, inputs, optimize=True, optimized_save_path=optimized_path)
+        out_unoptimized = self._run_model(model_path, inputs, optimize=False)
+
+        # --- Primary structural check ---
+        # This is the definitive guard: fusion to QLinearConv must be rejected when the
+        # bias zero-point is nonzero. ConvMoves discards the bias zero-point during the
+        # rewrite (QLinearConv has no bias_zp input). A nonzero b_zp would otherwise
+        # produce silently shifted outputs.
+        op_counts = self._op_counts(optimized_path)
+        self.assertEqual(
+            op_counts.get("QLinearConv", 0),
+            0,
+            "Fusion to QLinearConv must be rejected when bias zero-point is nonzero, "
+            "because ConvMoves discards the bias zero-point during the rewrite "
+            "(QLinearConv has no bias_zp input). A nonzero b_zp would otherwise "
+            f"produce silently shifted outputs. Op counts: {op_counts}",
+        )
+
+        # --- Secondary defense-in-depth: numeric regression guard ---
+        # Requires the C++ fix to be present. Intentionally weaker than the structural
+        # check above: for small b_zp and b_scale the numeric divergence may not survive
+        # uint8 requantization, so this assertion can pass even when fusion incorrectly
+        # fires on certain inputs.
+        np.testing.assert_array_equal(
+            out_optimized[0],
+            out_unoptimized[0],
+            err_msg="Nonzero bias zp: optimized and unoptimized outputs differ, "
+            "indicating silent numerical corruption from incorrect fusion.",
         )
 
 
