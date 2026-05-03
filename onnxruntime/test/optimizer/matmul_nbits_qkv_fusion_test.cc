@@ -12,6 +12,7 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
+#include "test/optimizer/webgpu_fusion_test_util.h"
 
 #include "gtest/gtest.h"
 
@@ -182,8 +183,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesWebGpuPattern) {
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
+  if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
@@ -193,7 +193,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults
                                                        /*expect_skip_input=*/false));
   };
 
-  TransformerTester(
+  RunWebGpuFusionTransformerTest(
       BuildMatMulNBitsQkvWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
@@ -202,9 +202,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults
       1e-3,
       1e-3,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
-      {},
-      {},
-      std::move(webgpu_ep));
+      []() { return DefaultWebGpuExecutionProvider(); });
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesSkipWebGpuPattern) {
@@ -220,8 +218,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesSkipWebGpuPattern) {
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuResults) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
+  if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
@@ -231,7 +228,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
                                                        /*expect_skip_input=*/true));
   };
 
-  TransformerTester(
+  RunWebGpuFusionTransformerTest(
       BuildMatMulNBitsQkvSkipWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
@@ -240,9 +237,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
       1e-3,
       1e-3,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
-      {},
-      {},
-      std::move(webgpu_ep));
+      []() { return DefaultWebGpuExecutionProvider(); });
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesSkipWebGpuPatternWithResidualOutputPassthrough) {
@@ -258,8 +253,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionFusesSkipWebGpuPatternWithR
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuResultsWithResidualOutputPassthrough) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
+  if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
   }
 
@@ -274,7 +268,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
                                                        /*expect_skip_input=*/true));
   };
 
-  TransformerTester(
+  RunWebGpuFusionTransformerTest(
       BuildMatMulNBitsQkvSkipOutputPassthroughWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
@@ -283,9 +277,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
       1e-3,
       1e-3,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
-      add_session_options,
-      {},
-      std::move(webgpu_ep));
+      []() { return DefaultWebGpuExecutionProvider(); },
+      add_session_options);
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
