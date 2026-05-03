@@ -43,7 +43,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Shape||
 |ai.onnx:Slice|starts/ends/axes/steps must be constant initializers.|
 |ai.onnx:Softplus||
-|ai.onnx:Split|If provided, `splits` must be constant.|
+|ai.onnx:Split|If provided, `splits` must be constant. Pre-opset-13 `split` attribute is also supported.|
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
 |ai.onnx:Softmax||
