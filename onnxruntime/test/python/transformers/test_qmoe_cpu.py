@@ -176,7 +176,7 @@ def quant_dequant(weights, quant_bits: int = 4, asymmetric: bool = False):
     if asymmetric:
         dequantized = (clamped_quantized.float() - zero_point_int.float()) * scale.float()
     else:
-        # Symmetric: convert storage [0, 15] back to [-8, 7]
+        # Symmetric: convert unsigned storage back to signed values.
         signed_vals = clamped_quantized.float() - zero_point_int.float()
         dequantized = signed_vals * scale.float()
 
