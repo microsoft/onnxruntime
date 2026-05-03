@@ -2551,6 +2551,32 @@ struct OrtEp {
    * \since Version 1.26.
    */
   ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
+
+  /** \brief Returns the OrtMemoryInfo the EP wants used for the given OrtMemType.
+   *
+   * Lets an EP declare, per OrtMemType, the memory the runtime should associate with that
+   * role (default device memory, CPU-side inputs, CPU-side outputs). ORT may consult this
+   * any time it needs to resolve placement for the EP.
+   *
+   * Implementations should be deterministic: a given OrtMemType should always map to the
+   * same OrtMemoryInfo for the lifetime of the OrtEp. Caching the answer up front is the
+   * recommended pattern; returned pointers must remain valid while the OrtEp is alive.
+   *
+   * Return nullptr for any OrtMemType to defer to ORT's built-in resolution for that type.
+   * Plugins may opt in selectively.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] mem_type The memory type to query.
+   * \return The OrtMemoryInfo the EP wants associated with the given mem_type, or nullptr
+   *         to defer to ORT.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT applies its
+   *       built-in resolution for every OrtMemType.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API_T(const OrtMemoryInfo*, GetMemoryInfoByMemType, _In_ const OrtEp* this_ptr,
+            _In_ OrtMemType mem_type);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
