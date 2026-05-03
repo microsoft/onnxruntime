@@ -776,11 +776,29 @@ else()
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
         )
-        if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
+
+        include(CheckCSourceCompiles)
+
+        set(MLAS_OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+        if(CMAKE_REQUIRED_FLAGS)
+          set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -mavx512fp16")
+        else()
+          set(CMAKE_REQUIRED_FLAGS "-mavx512fp16")
+        endif()
+        check_c_source_compiles("
+        int main() {
+            __asm__ volatile(\"vcvtneeph2ps %ymm0, %ymm1\");
+            return 0;
+        }
+        " COMPILER_SUPPORTS_AVX512FP16)
+        set(CMAKE_REQUIRED_FLAGS "${MLAS_OLD_CMAKE_REQUIRED_FLAGS}")
+
+        if(COMPILER_SUPPORTS_AVX512FP16 AND NOT APPLE)
           set(mlas_platform_srcs_avx2
             ${mlas_platform_srcs_avx2}
             ${MLAS_SRC_DIR}/x86_64/cvtfp16Avx.S
           )
+          list(APPEND mlas_private_compile_definitions MLAS_SUPPORTS_AVX512FP16)
         endif()
 
 message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
