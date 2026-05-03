@@ -22,6 +22,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:GridSample|4D input.<br/>'mode' of 'linear' or 'zeros'.<br/>(mode==linear && padding_mode==reflection && align_corners==0) is not supported.|
 |ai.onnx:GroupNormalization||
+|ai.onnx:HardSigmoid||
 |ai.onnx:InstanceNormalization||
 |ai.onnx:LayerNormalization||
 |ai.onnx:LeakyRelu||
@@ -51,3 +52,4 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
 |ai.onnx:Unsqueeze||
+|com.microsoft:QuickGelu|Produced by ORT's `QuickGeluFusion` optimizer pass. Decomposed into `mul` / `sigmoid` / `mul`.|

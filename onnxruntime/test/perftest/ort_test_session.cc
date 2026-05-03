@@ -11,6 +11,7 @@
 #include <list>
 #include <type_traits>
 #include <core/framework/allocator.h>
+#include <core/platform/threadpool_config.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
@@ -74,6 +75,14 @@ RunTiming OnnxRuntimeTestSession::Run() {
     io_binding.SynchronizeOutputs();
     timing.total_timing = std::chrono::high_resolution_clock::now() - start;
   } else {
+    // For outputs with data-dependent shapes (e.g. NonZero), the shape changes
+    // between runs. ORT caches the allocated tensor and fails shape verification
+    // on the next run. Reset outputs so ORT always allocates fresh buffers.
+    // Only do this for models with dynamic output shapes to avoid the allocation
+    // overhead on fixed-shape models.
+    if (has_dynamic_output_shapes_) {
+      for (auto& output : outputs_) output = Ort::Value(nullptr);
+    }
     session_.Run(run_options, input_names_.data(), input.data(), input_names_.size(),
                  output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
@@ -669,6 +678,32 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     }
   }
 
+  if (performance_test_config.run_config.spin_backoff_max_set &&
+      performance_test_config.run_config.spin_backoff_max >= 1) {
+    if (performance_test_config.run_config.disable_spinning) {
+      fprintf(stdout, "Ignoring intra-op spin backoff max because spinning is disabled\n");
+    } else {
+      warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax);
+      const auto requested_spin_backoff_max = performance_test_config.run_config.spin_backoff_max;
+      const auto effective_spin_backoff_max =
+          std::min(static_cast<unsigned int>(requested_spin_backoff_max), concurrency::kSpinBackoffMaxLimit);
+      if (effective_spin_backoff_max != static_cast<unsigned int>(requested_spin_backoff_max)) {
+        fprintf(stdout,
+                "Requested intra-op spin backoff max %d exceeds the runtime limit %u; clamping to %u\n",
+                requested_spin_backoff_max,
+                concurrency::kSpinBackoffMaxLimit,
+                effective_spin_backoff_max);
+      }
+      auto val = std::to_string(effective_spin_backoff_max);
+      fprintf(stdout, "Setting intra-op spin backoff max to %s\n", val.c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, val.c_str());
+    }
+  } else if (performance_test_config.run_config.spin_backoff_max_set) {
+    fprintf(stderr,
+            "Warning: --spin_backoff_max must be >= 1; got %d. Ignoring (using default).\n",
+            performance_test_config.run_config.spin_backoff_max);
+  }
+
   if (performance_test_config.run_config.disable_spinning_between_run) {
     warn_dup_config_entry(kOrtSessionOptionsConfigForceSpinningStop);
     fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
@@ -956,6 +991,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
     auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic) {
+      has_dynamic_output_shapes_ = true;
+    }
     if (is_dynamic || device_memory_name_.empty()) {
       outputs_.emplace_back(Ort::Value(nullptr));
     } else {

@@ -3041,5 +3041,123 @@ TEST(DeviceStreamCollection, TestOverride) {
 
 #endif  // ORT_ENABLE_STREAM
 
+// Test that the session logger outlives execution providers during session destruction.
+// This validates the fix for the use-after-free bug where owned_session_logger_ was declared
+// after execution_providers_ in InferenceSession, causing the logger to be destroyed before
+// EP teardown callbacks could safely use it. See https://github.com/microsoft/onnxruntime/issues/28234.
+
+// An EP that logs via its stored logger pointer during destruction.
+// If the logger has been destroyed before the EP, dereferencing the logger is undefined behavior.
+class LoggingOnDestroyExecutionProvider : public IExecutionProvider {
+ public:
+  static constexpr const char* kEpType = "LoggingOnDestroyExecutionProvider";
+
+  // logger_was_valid_in_dtor will be set to true if the logger pointer was non-null
+  // when the destructor ran.
+  explicit LoggingOnDestroyExecutionProvider(bool* logger_was_valid_in_dtor,
+                                             const std::string& type = kEpType)
+      : IExecutionProvider{type},
+        logger_was_valid_in_dtor_(logger_was_valid_in_dtor) {
+  }
+
+  ~LoggingOnDestroyExecutionProvider() override {
+    const logging::Logger* logger = GetLogger();
+    if (logger != nullptr) {
+      // Actually use the logger to ensure the pointer is valid (not use-after-free).
+      // Under AddressSanitizer or similar tools, this would detect a dangling pointer.
+      LOGS(*logger, VERBOSE) << "LoggingOnDestroyExecutionProvider teardown";
+      *logger_was_valid_in_dtor_ = true;
+    } else {
+      *logger_was_valid_in_dtor_ = false;
+    }
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    return std::make_shared<KernelRegistry>();
+  }
+
+ private:
+  bool* logger_was_valid_in_dtor_;
+};
+
+TEST(InferenceSessionTests, SessionLoggerOutlivesEPsOnDestruction) {
+  // Create a logging manager with VERBOSE level so the logger is non-null and active.
+  auto capturing_sink = new CapturingSink();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  OrtThreadingOptions tp_options;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env, &tp_options,
+                                       true /*create_global_thread_pools*/));
+
+  bool logger_was_valid_in_dtor = false;
+
+  {
+    SessionOptions so;
+    so.session_logid = "SessionLoggerOutlivesEPs";
+    so.session_log_severity_level = static_cast<int>(logging::Severity::kVERBOSE);
+
+    InferenceSession session{so, *env};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<LoggingOnDestroyExecutionProvider>(&logger_was_valid_in_dtor)));
+    ASSERT_STATUS_OK(session.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    // Session goes out of scope here. Destruction order must be:
+    // 1. execution_providers_ destroyed (EP teardown logs via logger — must still be valid)
+    // 2. owned_session_logger_ destroyed (logger freed after all users are done)
+  }
+
+  // The EP's destructor should have found a valid logger and logged successfully.
+  ASSERT_TRUE(logger_was_valid_in_dtor);
+
+  // Verify the EP's teardown log message was actually captured.
+  auto& msgs = capturing_sink->Messages();
+  bool found_teardown_msg = std::any_of(msgs.begin(), msgs.end(), [](const std::string& msg) {
+    return msg.find("LoggingOnDestroyExecutionProvider teardown") != std::string::npos;
+  });
+  ASSERT_TRUE(found_teardown_msg)
+      << "Expected EP teardown log message not found. Logger may have been destroyed before EP.";
+}
+
+TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithMultipleEPs) {
+  // Test with multiple EPs to ensure all EPs can log during teardown.
+  auto capturing_sink = new CapturingSink();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  OrtThreadingOptions tp_options;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env, &tp_options,
+                                       true /*create_global_thread_pools*/));
+
+  bool logger_valid_ep1 = false;
+  bool logger_valid_ep2 = false;
+
+  {
+    SessionOptions so;
+    so.session_logid = "SessionLoggerMultipleEPs";
+    so.session_log_severity_level = static_cast<int>(logging::Severity::kVERBOSE);
+
+    InferenceSession session{so, *env};
+
+    // Register two EPs with different type names (EP registry requires unique types).
+    // Both should be able to log safely during teardown.
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<LoggingOnDestroyExecutionProvider>(&logger_valid_ep1, "LoggingOnDestroyEP_1")));
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<LoggingOnDestroyExecutionProvider>(&logger_valid_ep2, "LoggingOnDestroyEP_2")));
+
+    ASSERT_STATUS_OK(session.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+
+  ASSERT_TRUE(logger_valid_ep1);
+  ASSERT_TRUE(logger_valid_ep2);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

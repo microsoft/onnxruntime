@@ -53,7 +53,7 @@ class PluginEpProfiler final : public profiling::EpProfiler {
   ~PluginEpProfiler() override;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PluginEpProfiler);
 
-  bool StartProfiling(TimePoint profiling_start_time) override;
+  Status StartProfiling(TimePoint profiling_start_time) override;
   void EndProfiling(TimePoint start_time, profiling::Events& events) override;
 
   void Start(uint64_t relative_ort_event_id) override;

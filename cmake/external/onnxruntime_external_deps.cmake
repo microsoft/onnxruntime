@@ -274,6 +274,8 @@ onnxruntime_fetchcontent_declare(
   URL ${DEP_URL_date}
   URL_HASH SHA1=${DEP_SHA1_date}
   EXCLUDE_FROM_ALL
+  PATCH_COMMAND
+    ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/date/date.patch
   FIND_PACKAGE_ARGS 3...<4 NAMES date
 )
 onnxruntime_fetchcontent_makeavailable(date)
@@ -372,6 +374,18 @@ if (CPUINFO_SUPPORTED)
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
         # https://github.com/pytorch/cpuinfo/pull/348
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
+      FIND_PACKAGE_ARGS NAMES cpuinfo
+    )
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
+    onnxruntime_fetchcontent_declare(
+      pytorch_cpuinfo
+      URL ${DEP_URL_pytorch_cpuinfo}
+      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+      EXCLUDE_FROM_ALL
+      PATCH_COMMAND
+        # https://github.com/microsoft/onnxruntime/issues/10038
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   else()

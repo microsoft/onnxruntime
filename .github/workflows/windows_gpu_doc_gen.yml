@@ -5,24 +5,30 @@ on:
     branches:
       - main
       - rel-*
-    paths-ignore:
-      - 'docs/**'
-      - README.md
-      - CONTRIBUTING.md
-      - BUILD.md
-      - 'js/web/**'
-      - 'onnxruntime/core/providers/js/**'
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/OperatorKernels.md'
+      - 'docs/ContribOperators.md'
+      - '!README.md'
+      - '!CONTRIBUTING.md'
+      - '!BUILD.md'
+      - '!js/web/**'
+      - '!onnxruntime/core/providers/js/**'
   pull_request:
     branches:
       - main
       - rel-*
-    paths-ignore:
-      - 'docs/**'
-      - README.md
-      - CONTRIBUTING.md
-      - BUILD.md
-      - 'js/web/**'
-      - 'onnxruntime/core/providers/js/**'
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/OperatorKernels.md'
+      - 'docs/ContribOperators.md'
+      - '!README.md'
+      - '!CONTRIBUTING.md'
+      - '!BUILD.md'
+      - '!js/web/**'
+      - '!onnxruntime/core/providers/js/**'
   workflow_dispatch:
 
 concurrency:

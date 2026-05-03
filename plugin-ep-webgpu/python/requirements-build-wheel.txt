@@ -1,0 +1,5 @@
+setuptools>=70.1
+wheel
+# Linux-only (auditwheel + patchelf are needed for manylinux compliance)
+auditwheel; sys_platform == "linux"
+patchelf; sys_platform == "linux"

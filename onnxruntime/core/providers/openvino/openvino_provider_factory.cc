@@ -32,9 +32,11 @@ void ParseConfigOptions(ProviderInfo& pi) {
   pi.so_stop_share_ep_contexts = pi.config_options->GetConfigOrDefault(kOrtSessionOptionStopShareEpContexts, "0") == "1";
 
   if (pi.so_share_ep_contexts) {
-    ov::AnyMap map;
-    map["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
-    pi.load_config["NPU"] = std::move(map);
+    // Set default NPU compilation params only if user hasn't provided them
+    auto& npu_config = pi.load_config["NPU"];
+    if (npu_config.find("NPU_COMPILATION_MODE_PARAMS") == npu_config.end()) {
+      npu_config["NPU_COMPILATION_MODE_PARAMS"] = "enable-wd-blockarg-input=true compute-layers-with-higher-precision=Sqrt,Power,ReduceSum";
+    }
   }
 }
 
@@ -372,13 +374,15 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 
   // Should likely account for meta devices as well, but for now keep the current behavior.
-  bool target_devices_support_dynamic_shapes =
-      pi.device_type.find("GPU") != std::string::npos ||
-      pi.device_type.find("CPU") != std::string::npos ||
-      (pi.device_type.find("NPU") != std::string::npos &&
-       pi.enable_causallm);
-
-  pi.disable_dynamic_shapes = !target_devices_support_dynamic_shapes;
+  // Keep the user setting for CPU/GPU. For NPU, disable dynamic shapes by default and enable them when CausalLM is enabled.
+  const bool is_npu_device = pi.device_type.find("NPU") != std::string::npos;
+  if (is_npu_device) {
+    pi.disable_dynamic_shapes = true;
+    if (pi.enable_causallm) {
+      LOGS_DEFAULT(WARNING) << "Enabling dynamic shapes for NPU because CausalLM is enabled.";
+      pi.disable_dynamic_shapes = false;
+    }
+  }
 }
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
@@ -416,6 +420,12 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
       if (key.rfind(key_prefix, 0) == 0) {
         provider_options[key.substr(key_prefix.size())] = value;
       }
+    }
+
+    if (provider_options.find("device_type") == provider_options.end()) {
+      // Preserve the device selected during factory creation unless the session-level
+      // OpenVINO provider options explicitly override it.
+      provider_options["device_type"] = provider_info_.device_type;
     }
 
     ProviderInfo provider_info = provider_info_;

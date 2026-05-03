@@ -49,6 +49,7 @@
     "ios/*.mm",
     "onnxruntime-react-native.podspec",
     "app.plugin.js",
+    "react-native.config.js",
     "unimodule.json",
     "!dist/commonjs/*.js.map",
     "!dist/module/*.js.map",

@@ -54,6 +54,7 @@ limitations under the License.
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 
@@ -430,9 +431,21 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
+    // Validate that the file is large enough for the requested mapping.
+    struct stat file_stat;
+    if (fstat(file_descriptor.Get(), &file_stat) != 0) {
+      return ReportSystemError("fstat", file_path);
+    }
+    const size_t requested_end = SafeInt<size_t>(offset) + length;
+    ORT_RETURN_IF(static_cast<size_t>(file_stat.st_size) < requested_end,
+                  "File \"", file_path,
+                  "\" is too small for the requested mapping (file size: ",
+                  file_stat.st_size, " bytes, requested offset + length: ",
+                  requested_end, " bytes).");
+
     static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-    const size_t mapped_length = length + static_cast<size_t>(offset_to_page);
+    const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
     void* const mapped_base =
         mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);
@@ -618,7 +631,17 @@ class PosixEnv : public Env {
   PosixEnv() {
     cpuinfo_available_ = cpuinfo_initialize();
     if (!cpuinfo_available_) {
-      LOGS_DEFAULT(INFO) << "cpuinfo_initialize failed";
+      // PosixEnv may be constructed before the logging system is initialized
+      // (e.g. via a static Env::Default() reference in the Python bindings).
+      // Using LOGS_DEFAULT here would crash with "Attempt to use DefaultLogger
+      // but none has been registered". Fall back to stderr when no logger exists.
+      if (logging::LoggingManager::HasDefaultLogger()) {
+        LOGS_DEFAULT(WARNING) << "cpuinfo_initialize failed. "
+                                 "May cause CPU EP performance degradation due to undetected CPU features.";
+      } else {
+        std::cerr << "onnxruntime warning: cpuinfo_initialize failed. "
+                     "May cause CPU EP performance degradation due to undetected CPU features.\n";
+      }
     }
   }
   bool cpuinfo_available_{false};

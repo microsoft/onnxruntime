@@ -480,7 +480,6 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
  private:
   const std::vector<int64_t>& class_labels_;
   bool binary_case_;
-  bool weights_are_all_positive_;
   int64_t positive_label_;
   int64_t negative_label_;
 
@@ -491,13 +490,11 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
                            const std::vector<ThresholdType>& base_values,
                            const std::vector<int64_t>& class_labels,
                            bool binary_case,
-                           bool weights_are_all_positive,
                            int64_t positive_label = 1,
                            int64_t negative_label = 0) : TreeAggregatorSum<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
                                                                                                                  post_transform, base_values),
                                                          class_labels_(class_labels),
                                                          binary_case_(binary_case),
-                                                         weights_are_all_positive_(weights_are_all_positive),
                                                          positive_label_(positive_label),
                                                          negative_label_(negative_label) {}
 
@@ -526,22 +523,12 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
                             ThresholdType score1, unsigned char has_score1) const {
     ThresholdType pos_weight = has_score1 ? score1 : (has_score0 ? score0 : 0);  // only 1 class
     if (binary_case_) {
-      if (weights_are_all_positive_) {
-        if (pos_weight > 0.5) {
-          write_additional_scores = 0;
-          return class_labels_[1];  // positive label
-        } else {
-          write_additional_scores = 1;
-          return class_labels_[0];  // negative label
-        }
+      if (pos_weight > 0) {
+        write_additional_scores = 2;
+        return class_labels_[1];  // positive label
       } else {
-        if (pos_weight > 0) {
-          write_additional_scores = 2;
-          return class_labels_[1];  // positive label
-        } else {
-          write_additional_scores = 3;
-          return class_labels_[0];  // negative label
-        }
+        write_additional_scores = 3;
+        return class_labels_[0];  // negative label
       }
     }
     return (pos_weight > 0)
