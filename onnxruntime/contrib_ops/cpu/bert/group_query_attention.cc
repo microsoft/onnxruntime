@@ -113,6 +113,23 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
+  // present_key and present_value must be both present or both absent.
+  if ((present_k == nullptr) != (present_v == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value must be both provided or both omitted.");
+  }
+
+  // Optional present outputs are only safe when is_first_prompt
+  // (sequence_length == total_sequence_length, i.e., no past KV to concatenate).
+  // When past exists, the attention GEMMs use total_seqlen which requires a
+  // concatenated past+current KV buffer built by ConcatStateChunkGQA into present.
+  if ((present_k == nullptr || present_v == nullptr) && !parameters.is_first_prompt) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value outputs are required when past state exists "
+                           "(sequence_length != total_sequence_length). Omitting present outputs is only "
+                           "supported for first-prompt inference with no past KV cache.");
+  }
+
   std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
@@ -233,7 +250,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
+  const T* k_data = packed_qkv ? nullptr : k_rotary;
+  const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
+  return ApplyAttention(q_rotary, k_data, v_data,
                         head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
                         output_qk, seqlens_k, parameters, allocator, context);
 }

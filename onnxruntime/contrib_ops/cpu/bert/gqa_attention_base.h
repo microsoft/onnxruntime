@@ -85,7 +85,9 @@ class GQAAttentionBase {
     if (past_key != nullptr && past_value != nullptr) {
       seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
     }
-    int seqlen_present_kv_cache = static_cast<int>(present_key->Shape().GetDims()[2]);
+    int seqlen_present_kv_cache = present_key != nullptr
+                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
+                                      : parameters.total_sequence_length;
 
     // Compute the attention score.
     bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
@@ -175,7 +177,7 @@ class GQAAttentionBase {
     const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;        // L x H
     const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
-    if (!past_present_share_buffer) {
+    if (present_key && !past_present_share_buffer) {
       memset((void*)present_key,
              0,
              batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));
@@ -402,7 +404,7 @@ class GQAAttentionBase {
     const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;        // L x H
     const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
 
-    if (!past_present_share_buffer) {
+    if (present_value && !past_present_share_buffer) {
       memset((void*)present_value,
              0,
              batch_size * kv_num_heads_ * present_buffer_sequence_length * head_size * sizeof(T));

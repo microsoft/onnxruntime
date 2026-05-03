@@ -227,6 +227,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
+
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
   parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;
@@ -266,6 +267,32 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   Tensor* present_key_output = context->Output(1, present_shape);    // present_key
   Tensor* present_value_output = context->Output(2, present_shape);  // present_value
 
+  // present_key and present_value must be both present or both absent.
+  if ((present_key_output == nullptr) != (present_value_output == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value must be both provided or both omitted.");
+  }
+
+  // Optional present outputs are only safe when is_first_prompt
+  // (sequence_length == total_sequence_length, i.e., no past KV to concatenate).
+  if ((present_key_output == nullptr || present_value_output == nullptr) && !parameters.is_first_prompt) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "present_key and present_value outputs are required when past state exists "
+                           "(sequence_length != total_sequence_length). "
+                           "Omitting present outputs is only supported for first-prompt inference.");
+  }
+
+  // When present outputs are omitted, allocate internal scratch buffers so the
+  // CUDA kernels (flash attention, MEA, unfused) have a valid KV workspace.
+  // This keeps behavior consistent with the CPU EP.
+  IAllocatorUniquePtr<void> present_key_scratch;
+  IAllocatorUniquePtr<void> present_value_scratch;
+  if (present_key_output == nullptr || present_value_output == nullptr) {
+    size_t present_kv_bytes = present_shape.Size() * sizeof(U);
+    present_key_scratch = GetScratchBuffer<void>(present_kv_bytes, context->GetComputeStream());
+    present_value_scratch = GetScratchBuffer<void>(present_kv_bytes, context->GetComputeStream());
+  }
+
   IAllocatorUniquePtr<void> k_buffer;
   IAllocatorUniquePtr<void> v_buffer;
   IAllocatorUniquePtr<void> rotary_buffer;
@@ -291,13 +318,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
-
-  data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
-  data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
-
+  data.present_key = (present_key_output != nullptr)
+                         ? reinterpret_cast<CudaU*>(present_key_output->MutableData<U>())
+                         : reinterpret_cast<CudaU*>(present_key_scratch.get());
+  data.present_value = (present_value_output != nullptr)
+                           ? reinterpret_cast<CudaU*>(present_value_output->MutableData<U>())
+                           : reinterpret_cast<CudaU*>(present_value_scratch.get());
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
-  // This compares the final pointer values after quantization handling.
-  parameters.past_present_share_buffer = (data.past_key == data.present_key);
+  parameters.past_present_share_buffer = (data.past_key != nullptr && data.past_key == data.present_key);
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
@@ -562,10 +590,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 
   // Validate past_value pointer consistency (past_present_share_buffer was computed early after pointer setup)
-  if (parameters.past_present_share_buffer) {
-    ORT_ENFORCE(data.past_value == data.present_value, "past_value and present_value must be the same tensor when past_present_share_buffer is true");
-  } else {
-    ORT_ENFORCE(data.past_value != data.present_value, "past_value and present_value must be different tensors when past_present_share_buffer is false");
+  if (data.present_value != nullptr) {
+    if (parameters.past_present_share_buffer) {
+      ORT_ENFORCE(data.past_value == data.present_value, "past_value and present_value must be the same tensor when past_present_share_buffer is true");
+    } else {
+      ORT_ENFORCE(data.past_value != data.present_value, "past_value and present_value must be different tensors when past_present_share_buffer is false");
+    }
   }
 
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());

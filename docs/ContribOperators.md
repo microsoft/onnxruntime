@@ -2671,14 +2671,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scale tensor for past_value.</dd>
 </dl>
 
-#### Outputs (3 - 4)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>present_key</tt> : T_CACHE</dt>
+<dt><tt>present_key</tt> (optional) : T_CACHE</dt>
 <dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
-<dt><tt>present_value</tt> : T_CACHE</dt>
+<dt><tt>present_value</tt> (optional) : T_CACHE</dt>
 <dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>output_qk</tt> (optional) : T</dt>
 <dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>

@@ -242,7 +242,7 @@ Status CheckInputs(const T* query,
   int q_hidden_size = 0;
   int kv_hidden_size = 0;
   int head_size = 0;
-  const bool is_packed_qkv = key == nullptr;
+  const bool is_packed_qkv = (key == nullptr);
   if (!is_packed_qkv) {
     ORT_RETURN_IF_ERROR(Check_Q_K_V(query, key, value, num_heads, kv_num_heads, batch_size, sequence_length,
                                     q_hidden_size, kv_hidden_size, head_size));

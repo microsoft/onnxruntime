@@ -335,5 +335,250 @@ TEST(GroupQueryAttentionTest, SeqlensKScalarRejected) {
       /*seqlens_k_shape=*/std::vector<int64_t>{});
 }
 
+// ============================================================================
+// Optional present_key/present_value output tests
+// ============================================================================
+
+// Run GQA with the given inputs and return the output tensor as a vector.
+// This lets us compare outputs between present-connected and present-omitted runs.
+// When use_cuda=true, runs on CUDA EP instead of CPU EP.
+static std::vector<float> RunGQAAndGetOutput(
+    int batch_size,
+    int sequence_length,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    bool omit_present,
+    bool use_cuda = false) {
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int total_seq_len = sequence_length;  // first-prompt: no past
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size}, query_data);
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size}, key_data);
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size}, value_data);
+
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+
+  // First-prompt: seqlens_k = total_seq_len - 1 per GQA convention
+  std::vector<int32_t> seqlens_k_data(batch_size, static_cast<int32_t>(total_seq_len - 1));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k_data);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(total_seq_len)});
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  // Use a placeholder output with large tolerance — we extract the actual values below.
+  const int output_size = batch_size * sequence_length * hidden_size;
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(output_size, 0.0f));
+
+  if (omit_present) {
+    tester.AddOptionalOutputEdge<float>();  // present_key
+    tester.AddOptionalOutputEdge<float>();  // present_value
+  } else {
+    const int present_size = batch_size * kv_num_heads * total_seq_len * head_size;
+    tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_seq_len, head_size},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_seq_len, head_size},
+                            std::vector<float>(present_size, 0.0f));
+  }
+  tester.SetOutputTolerance(1e6f);  // We compare fetched outputs ourselves
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (use_cuda) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  } else {
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  // Extract the output tensor values
+  auto fetches = tester.GetFetches();
+  const float* out_data = fetches[0].Get<Tensor>().Data<float>();
+  return std::vector<float>(out_data, out_data + output_size);
+}
+
+// Regression: omitting optional present outputs must not change the attention output
+// compared to when present outputs are connected (first-prompt, no past KV).
+TEST(GroupQueryAttentionTest, OptionalPresent_OmittingDoesNotChangeOutput) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  // Deterministic non-trivial inputs
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key_data.size(); i++) key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value_data.size(); i++) value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto output_with_present = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/false);
+
+  auto output_without_present = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/true);
+
+  ASSERT_EQ(output_with_present.size(), output_without_present.size());
+  for (size_t i = 0; i < output_with_present.size(); i++) {
+    EXPECT_NEAR(output_with_present[i], output_without_present[i], 1e-5f)
+        << "Output mismatch at index " << i;
+  }
+
+  // Sanity: output should not be all zeros (proves the kernel actually computed something)
+  bool all_zero = true;
+  for (float v : output_with_present) {
+    if (v != 0.0f) {
+      all_zero = false;
+      break;
+    }
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+}
+
+// Regression (batched): same equivalence check with batch_size > 1
+TEST(GroupQueryAttentionTest, OptionalPresent_BatchedOmitMatchesConnected) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 3;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.15f * static_cast<float>(i % 11 + 1);
+  for (size_t i = 0; i < key_data.size(); i++) key_data[i] = 0.25f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < value_data.size(); i++) value_data[i] = 0.35f * static_cast<float>(i % 5 + 1);
+
+  auto output_with = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/false);
+
+  auto output_without = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/true);
+
+  ASSERT_EQ(output_with.size(), output_without.size());
+  for (size_t i = 0; i < output_with.size(); i++) {
+    EXPECT_NEAR(output_with[i], output_without[i], 1e-5f)
+        << "Batched output mismatch at index " << i;
+  }
+}
+
+// Reject: omitting present outputs when total_seq_len > sequence_length (decode with past)
+TEST(GroupQueryAttentionTest, OptionalPresent_RejectWithPast) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int total_seq_len = 5;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 1.0f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.5f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.5f));
+
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {static_cast<int32_t>(total_seq_len - 1)});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(total_seq_len)});
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOptionalOutputEdge<float>();  // present_key — omitted
+  tester.AddOptionalOutputEdge<float>();  // present_value — omitted
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "present_key and present_value outputs are required when past state exists",
+             {}, nullptr, &execution_providers);
+}
+
+// Regression (CUDA): omitting present outputs on CUDA EP must produce the same
+// attention output as when present outputs are connected. The CUDA path allocates
+// internal scratch buffers to serve as KV workspace for flash/MEA/unfused kernels.
+TEST(GroupQueryAttentionTest, OptionalPresent_CudaOmitMatchesConnected) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key_data.size(); i++) key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value_data.size(); i++) value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto output_with = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/false, /*use_cuda=*/true);
+
+  auto output_without = RunGQAAndGetOutput(
+      batch_size, sequence_length, query_data, key_data, value_data,
+      num_heads, kv_num_heads, head_size, /*omit_present=*/true, /*use_cuda=*/true);
+
+  ASSERT_EQ(output_with.size(), output_without.size());
+  for (size_t i = 0; i < output_with.size(); i++) {
+    EXPECT_NEAR(output_with[i], output_without[i], 1e-5f)
+        << "CUDA output mismatch at index " << i;
+  }
+
+  bool all_zero = true;
+  for (float v : output_with) {
+    if (v != 0.0f) {
+      all_zero = false;
+      break;
+    }
+  }
+  EXPECT_FALSE(all_zero) << "CUDA output should not be all zeros";
+}
+
 }  // namespace test
 }  // namespace onnxruntime
