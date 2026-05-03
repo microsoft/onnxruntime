@@ -2194,6 +2194,114 @@ class TestInferenceSession(unittest.TestCase):
             str(context.exception),
         )
 
+    def test_tree_ensemble_logistic(self):
+        try:
+            import onnx  # noqa: PLC0415
+        except ImportError:
+            # onnx is not installed on ARM build.
+            self.skipTest("onnx is not installed")
+        # issue https://github.com/microsoft/onnxruntime/issues/27533
+        x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [None, 3])
+        label_out = onnx.helper.make_tensor_value_info("label", onnx.TensorProto.INT64, [None])
+        prob_out = onnx.helper.make_tensor_value_info("probs", onnx.TensorProto.FLOAT, [None, 2])
+
+        def make_model(
+            nodes_modes,
+            nodes_values,
+            nodes_truenodeids,
+            nodes_falsenodeids,
+            class_treeids,
+            class_nodeids,
+            class_weights,
+            **node_kwargs,
+        ):
+            """Build a minimal TreeEnsembleClassifier ONNX model."""
+            n_nodes = len(nodes_modes)
+            if "base_values" not in node_kwargs:
+                node_kwargs["base_values"] = [-0.405]  # logit(0.4)
+            node = onnx.helper.make_node(
+                "TreeEnsembleClassifier",
+                inputs=["X"],
+                outputs=["label", "probs"],
+                domain="ai.onnx.ml",
+                nodes_treeids=[0] * n_nodes,
+                nodes_nodeids=list(range(n_nodes)),
+                nodes_featureids=[0] * n_nodes,
+                nodes_values=nodes_values,
+                nodes_modes=nodes_modes,
+                nodes_truenodeids=nodes_truenodeids,
+                nodes_falsenodeids=nodes_falsenodeids,
+                nodes_missing_value_tracks_true=[0] * n_nodes,
+                nodes_hitrates=[1.0] * n_nodes,
+                class_treeids=class_treeids,
+                class_nodeids=class_nodeids,
+                class_ids=[0] * len(class_weights),
+                class_weights=class_weights,
+                classlabels_int64s=[0, 1],
+                post_transform="LOGISTIC",
+                **node_kwargs,
+            )
+            graph = onnx.helper.make_graph([node], "test", [x], [label_out, prob_out])
+            return onnx.helper.make_model(
+                graph,
+                opset_imports=[
+                    onnx.helper.make_opsetid("", 15),
+                    onnx.helper.make_opsetid("ai.onnx.ml", 3),
+                ],
+            )
+
+        test_input = {"X": np.array([[0.1, 0.0, 0.0]], dtype=np.float32)}
+
+        # Case 1: Tree with a real split (root splits on feature 0 at 0.5)
+        model_split = make_model(
+            nodes_modes=["BRANCH_LT", "LEAF", "LEAF"],
+            nodes_values=[0.5, 0.0, 0.0],
+            nodes_truenodeids=[1, 0, 0],
+            nodes_falsenodeids=[2, 0, 0],
+            class_treeids=[0, 0],
+            class_nodeids=[1, 2],
+            class_weights=[0.3, -0.3],  # mixed positive/negative
+        )
+        sess_split = onnxrt.InferenceSession(model_split.SerializeToString())
+        result_split = sess_split.run(None, test_input)
+        # x[0]=0.1 < 0.5, so left leaf (weight=0.3), aggregate = -0.405 + 0.3 = -0.105
+        expected_p1 = 1 / (1 + np.exp(0.105))  # sigmoid(-0.105)
+        with self.subTest(case="Case 1: Tree with a real split"):
+            np.testing.assert_allclose(result_split[1][0][1], expected_p1, atol=1e-5)
+
+        # Case 2: Leaf-only tree (single LEAF node, no splits)
+        model_leaf = make_model(
+            nodes_modes=["LEAF"],
+            nodes_values=[0.0],
+            nodes_truenodeids=[0],
+            nodes_falsenodeids=[0],
+            class_treeids=[0],
+            class_nodeids=[0],
+            class_weights=[0.0],  # non-negative weight
+        )
+        sess_leaf = onnxrt.InferenceSession(model_leaf.SerializeToString())
+        result_leaf = sess_leaf.run(None, test_input)
+        # aggregate = -0.405 + 0 = -0.405
+        expected_p1_leaf = 1 / (1 + np.exp(0.405))  # sigmoid(-0.405) ≈ 0.400
+        with self.subTest(case="Case 2: Leaf-only tree (single LEAF node, no splits)"):
+            np.testing.assert_allclose(result_leaf[1][0][1], expected_p1_leaf, atol=1e-5)
+
+        # Case 3: Same leaf-only tree but with a negative weight (workaround)
+        model_leaf_neg = make_model(
+            nodes_modes=["LEAF"],
+            nodes_values=[0.0],
+            nodes_truenodeids=[0],
+            nodes_falsenodeids=[0],
+            class_treeids=[0],
+            class_nodeids=[0],
+            class_weights=[-0.405],  # negative weight (move base_values into weight)
+            base_values=[0.0],  # zero base
+        )
+        sess_leaf_neg = onnxrt.InferenceSession(model_leaf_neg.SerializeToString())
+        result_leaf_neg = sess_leaf_neg.run(None, test_input)
+        with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
+            np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

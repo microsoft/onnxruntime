@@ -3,7 +3,10 @@
 
 // onnxruntime dependencies
 #include <core/session/onnxruntime_c_api.h>
+#include <chrono>
+#include <iostream>
 #include <random>
+#include <thread>
 #include "command_args_parser.h"
 #include "performance_runner.h"
 #include "utils.h"
@@ -127,6 +130,11 @@ int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_confi
   // Exit if user enabled -n option so that user can measure session creation time
   if (test_config.run_config.exit_after_session_creation) {
     perf_runner.LogSessionCreationTime();
+    if (test_config.run_config.hold_ms_after_session_creation > 0) {
+      std::cout << "SESSION_READY" << std::endl;
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(test_config.run_config.hold_ms_after_session_creation));
+    }
     return 0;
   }
 

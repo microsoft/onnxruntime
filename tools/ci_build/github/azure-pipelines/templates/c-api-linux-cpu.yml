@@ -47,7 +47,7 @@ jobs:
     submodules: none
 
   # Authenticate to Lotus to pull pip in UsePythonVersion task
-  - template: ../templates/setup-feeds-and-python-steps.yml
+  - template: setup-feeds-and-python-steps.yml
     parameters:
       architecture: ${{ parameters.OnnxruntimeArch }}
 

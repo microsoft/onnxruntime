@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <optional>
 
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -22,7 +23,8 @@ static void RunGQASeqlensKTest(
     OpTester::ExpectResult expect,
     const std::string& expected_message,
     bool provide_past = false,
-    int past_seq_len = 0) {
+    int past_seq_len = 0,
+    const std::optional<std::vector<int64_t>>& seqlens_k_shape = std::nullopt) {
   constexpr int num_heads = 1;
   constexpr int kv_num_heads = 1;
   constexpr int head_size = 8;
@@ -52,7 +54,10 @@ static void RunGQASeqlensKTest(
     tester.AddOptionalInputEdge<float>();  // past_value
   }
 
-  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k_data);
+  std::vector<int64_t> shape = seqlens_k_shape.has_value()
+                                   ? *seqlens_k_shape
+                                   : std::vector<int64_t>{batch_size};
+  tester.AddInput<int32_t>("seqlens_k", shape, seqlens_k_data);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len});
 
   tester.AddOptionalInputEdge<float>();    // cos_cache
@@ -73,8 +78,7 @@ static void RunGQASeqlensKTest(
                           {batch_size, kv_num_heads, declared_present_seqlen, head_size},
                           std::vector<float>(batch_size * kv_num_heads * declared_present_seqlen * head_size, 0.0f));
 
-  // For success tests, we only care that validation passes without crash;
-  // exact output values are not the focus of these security regression tests.
+  // Tolerance is intentionally loose: these tests validate shape acceptance, not output values.
   if (expect == OpTester::ExpectResult::kExpectSuccess) {
     tester.SetOutputTolerance(1e6f);
   }
@@ -231,80 +235,104 @@ TEST(GroupQueryAttentionTest, TotalSeqLenNegative) {
       "total_sequence_length must be positive");
 }
 
-// Shape validation: seqlens_k with wrong rank (2D instead of 1D) must be rejected.
-TEST(GroupQueryAttentionTest, SeqlensKWrongRank) {
-  constexpr int num_heads = 1;
-  constexpr int kv_num_heads = 1;
-  constexpr int head_size = 8;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
-
-  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
-
-  tester.AddInput<float>("query", {1, 1, hidden_size}, std::vector<float>(hidden_size, 1.0f));
-  tester.AddInput<float>("key", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
-  tester.AddInput<float>("value", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
-  tester.AddOptionalInputEdge<float>();  // past_key
-  tester.AddOptionalInputEdge<float>();  // past_value
-  // 2D shape {1, 1} instead of {1}
-  tester.AddInput<int32_t>("seqlens_k", {1, 1}, {0});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
-  tester.AddOptionalInputEdge<float>();    // cos_cache
-  tester.AddOptionalInputEdge<float>();    // sin_cache
-  tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
-
-  tester.AddOutput<float>("output", {1, 1, hidden_size}, std::vector<float>(hidden_size, 0.0f));
-  tester.AddOutput<float>("present_key", {1, kv_num_heads, 1, head_size},
-                          std::vector<float>(kv_num_heads * head_size, 0.0f));
-  tester.AddOutput<float>("present_value", {1, kv_num_heads, 1, head_size},
-                          std::vector<float>(kv_num_heads * head_size, 0.0f));
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "seqlens_k must be shape (batch_size)",
-             {}, nullptr, &execution_providers);
+// Backward compat: seqlens_k shape {1, 1} accepted for batch_size=1.
+// Older model builders (e.g. qwen3-0.6b) emit this instead of {1}.
+TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShape) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{1, 1});
 }
 
-// Shape validation: seqlens_k with wrong length (2 elements for batch_size=1) must be rejected.
+// Backward compat: seqlens_k shape {2, 1} accepted for batch_size=2.
+TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShapeMultiBatch) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0, 0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/2,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{2, 1});
+}
+
+// Backward compat: seqlens_k shape {1, 2} accepted for batch_size=2.
+// Batch dimension in trailing position.
+TEST(GroupQueryAttentionTest, SeqlensKLegacy2DShapeTrailingBatch) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0, 0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/2,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{1, 2});
+}
+
+// Shape {2, 2} with batch_size=4: correct element count but invalid factored shape.
+TEST(GroupQueryAttentionTest, SeqlensKInvalidFactoredShape) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0, 0, 0, 0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/4,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k has unexpected shape",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{2, 2});
+}
+
+// Wrong element count (1D): 2 elements for batch_size=1.
 TEST(GroupQueryAttentionTest, SeqlensKWrongLength) {
-  constexpr int num_heads = 1;
-  constexpr int kv_num_heads = 1;
-  constexpr int head_size = 8;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0, 0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k must have batch_size",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{2});
+}
 
-  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+// Wrong element count (2D): shape {2, 1} has 2 elements but batch_size=1.
+TEST(GroupQueryAttentionTest, SeqlensKWrongElementCount2D) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0, 0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k must have batch_size",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{2, 1});
+}
 
-  tester.AddInput<float>("query", {1, 1, hidden_size}, std::vector<float>(hidden_size, 1.0f));
-  tester.AddInput<float>("key", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
-  tester.AddInput<float>("value", {1, 1, kv_hidden_size}, std::vector<float>(kv_hidden_size, 1.0f));
-  tester.AddOptionalInputEdge<float>();  // past_key
-  tester.AddOptionalInputEdge<float>();  // past_value
-  // Length 2 instead of 1 for batch_size=1
-  tester.AddInput<int32_t>("seqlens_k", {2}, {0, 0});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
-  tester.AddOptionalInputEdge<float>();    // cos_cache
-  tester.AddOptionalInputEdge<float>();    // sin_cache
-  tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
-
-  tester.AddOutput<float>("output", {1, 1, hidden_size}, std::vector<float>(hidden_size, 0.0f));
-  tester.AddOutput<float>("present_key", {1, kv_num_heads, 1, head_size},
-                          std::vector<float>(kv_num_heads * head_size, 0.0f));
-  tester.AddOutput<float>("present_value", {1, kv_num_heads, 1, head_size},
-                          std::vector<float>(kv_num_heads * head_size, 0.0f));
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "seqlens_k must be shape (batch_size)",
-             {}, nullptr, &execution_providers);
+// Scalar seqlens_k must be rejected even when batch_size=1.
+TEST(GroupQueryAttentionTest, SeqlensKScalarRejected) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{0},
+      /*total_seq_len=*/1,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "seqlens_k must be at least 1D",
+      /*provide_past=*/false,
+      /*past_seq_len=*/0,
+      /*seqlens_k_shape=*/std::vector<int64_t>{});
 }
 
 }  // namespace test
