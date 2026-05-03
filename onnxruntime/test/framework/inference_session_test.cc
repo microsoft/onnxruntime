@@ -3159,5 +3159,47 @@ TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithMultipleEPs) {
   ASSERT_TRUE(logger_valid_ep2);
 }
 
+TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithUserLoggingFunction) {
+  // Test the user_logging_function path, where the session owns a per-session LoggingManager
+  // (user_logging_manager_). Both the LoggingManager and its Logger must outlive EPs during
+  // session destruction.
+  std::vector<std::string> log_msgs;
+  bool logger_was_valid_in_dtor = false;
+
+  {
+    SessionOptions so;
+    so.session_logid = "SessionLoggerUserLoggingFn";
+    so.session_log_severity_level = static_cast<int>(logging::Severity::kVERBOSE);
+    so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
+                                  const char* logid, const char* code_location, const char* message) {
+      ORT_UNUSED_PARAMETER(severity);
+      ORT_UNUSED_PARAMETER(category);
+      ORT_UNUSED_PARAMETER(logid);
+      ORT_UNUSED_PARAMETER(code_location);
+      auto* msgs = reinterpret_cast<std::vector<std::string>*>(param);
+      msgs->push_back(std::string(message));
+    };
+    so.user_logging_param = &log_msgs;
+
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<LoggingOnDestroyExecutionProvider>(&logger_was_valid_in_dtor)));
+    ASSERT_STATUS_OK(session.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    // Session goes out of scope here. user_logging_manager_ and owned_session_logger_ must
+    // outlive execution_providers_ so EP teardown logging is safe.
+  }
+
+  ASSERT_TRUE(logger_was_valid_in_dtor);
+
+  // Verify the EP's teardown log message was captured by the user logging function.
+  bool found_teardown_msg = std::any_of(log_msgs.begin(), log_msgs.end(), [](const std::string& msg) {
+    return msg.find("LoggingOnDestroyExecutionProvider teardown") != std::string::npos;
+  });
+  ASSERT_TRUE(found_teardown_msg)
+      << "Expected EP teardown log message not found via user_logging_function.";
+}
+
 }  // namespace test
 }  // namespace onnxruntime

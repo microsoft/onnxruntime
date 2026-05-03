@@ -739,6 +739,14 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  /// Logging manager if provided.
+  /// When user_logging_function is set, user_logging_manager_ owns the LoggingManager and
+  /// logging_manager_ points to it. Both MUST be declared before owned_session_logger_ and
+  /// execution_providers_ so they outlive the logger and EPs during destruction (C++ destroys
+  /// members in reverse declaration order).
+  logging::LoggingManager* logging_manager_;
+  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
+
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   /// This MUST be declared before execution_providers_ so the logger outlives EPs during destruction
   /// (C++ destroys members in reverse declaration order), allowing EP teardown callbacks to safely
@@ -901,12 +909,6 @@ class InferenceSession {
   CheckLoadCancellationFn check_load_cancellation_fn_ = [this]() {
     return session_options_.IsLoadCancellationFlagSet();
   };
-
-  /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_;
-
-  /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
-  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
