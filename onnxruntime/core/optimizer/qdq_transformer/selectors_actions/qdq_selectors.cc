@@ -820,6 +820,13 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return true;
   }
 
+  // When bias is present, QGemm folds bias into the int32 accumulator before
+  // applying the alpha*sa*sb output scale, which would incorrectly scale the
+  // bias by alpha. Require alpha==1 and beta==1 so the fused path is exact.
+  if (node.GetAttributes().at("alpha").f() != 1.0) {
+    return false;
+  }
+
   if (node.GetAttributes().at("beta").f() != 1.0) {  // beta needs to be 1.0
     return false;
   }
