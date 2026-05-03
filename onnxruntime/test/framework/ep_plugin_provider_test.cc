@@ -1513,4 +1513,52 @@ TEST(PluginExecutionProviderTest, GetAvailableResource_NullCallbackLeavesThresho
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
+// OnSessionInitializationEnd is nullptr → falls back to base class (returns OK).
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_NullCallback) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = nullptr;
+  ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
+}
+
+// OnSessionInitializationEnd returns OK status.
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_Success) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = [](OrtEp* /*this_ptr*/) noexcept -> OrtStatus* {
+    return nullptr;
+  };
+
+  ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
+}
+
+// OnSessionInitializationEnd returns an error status → error propagates.
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_Error) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = [](OrtEp* this_ptr) noexcept -> OrtStatus* {
+    auto* test_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+    return test_ep->ort_api->CreateStatus(ORT_RUNTIME_EXCEPTION, "cleanup failed");
+  };
+
+  auto status = ep->OnSessionInitializationEnd();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cleanup failed"));
+}
+
+// OnSessionInitializationEnd with old ort_version_supported → falls back to base class even if pointer is set.
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_OldVersionFallback) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = [](OrtEp* this_ptr) noexcept -> OrtStatus* {
+    auto* test_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+    return test_ep->ort_api->CreateStatus(ORT_RUNTIME_EXCEPTION, "should not be called");
+  };
+
+  // Simulate an older EP version that doesn't have this field.
+  ort_ep->ort_version_supported = 26;
+
+  ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
+}
+
 }  // namespace onnxruntime::test
