@@ -5,6 +5,7 @@
 #pragma warning(disable : 4244)
 #endif
 
+#include <functional>
 #include <random>
 
 #include "gtest/gtest.h"
@@ -246,7 +247,12 @@ TEST_F(GraphTransformationTests, NoopElimination) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
+  // 3 Adds eliminated (scalar/1-element zero initializers).
+  // 2 Adds preserved:
+  //   - one whose initializer rank exceeds the other input's rank (broadcasts up).
+  //   - one with a zero-element initializer (shape [0]); a 0-element tensor is
+  //     not a proven identity for Add, so NoopElimination must not remove it.
+  ASSERT_TRUE(op_to_count["Add"] == 2);
 
   auto pre_graph_checker = [&](Graph& graph) {
     TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Add"] + CountOpsInGraph(graph)["Sub"] + CountOpsInGraph(graph)["Mul"] +
@@ -9836,6 +9842,285 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
+
+// Tests for graceful handling of zero-element initializers in optimizer passes.
+// Zero-element constant initializers (shape [0], 0 bytes of data) are valid ONNX.
+// Optimizer passes must check initializer size() before accessing data<T>().
+
+// Helper: load a minimal ONNX model from an in-memory ModelProto, apply graph transformers,
+// and verify correct handling of zero-element initializers.
+static void TestZeroElementInitializerHandling(const ONNX_NAMESPACE::ModelProto& model_proto,
+                                               const logging::Logger& logger,
+                                               const std::function<void(onnxruntime::GraphTransformerManager&)>& register_transformers) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, logger));
+  Graph& graph = model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  register_transformers(graph_transformation_mgr);
+  // Apply transformers - must handle zero-element initializers gracefully.
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
+}
+
+TEST_F(GraphTransformationTests, DivMulFusion_ZeroElementInitializer) {
+  // Div(zero_element_const, X) -> Mul(_, Y) with a shape [0] initializer.
+  // Verifies the optimizer correctly handles zero-element initializers.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(8);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(14);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("DivMulFusion_ZeroElem");
+
+  // Zero-element float initializer
+  auto* init = graph_proto->add_initializer();
+  init->set_name("div_const");
+  init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init->add_dims(0);  // shape [0]
+
+  // Inputs
+  for (const char* name : {"X", "Y"}) {
+    auto* input = graph_proto->add_input();
+    input->set_name(name);
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(0);
+  }
+  // Note: div_const is intentionally NOT added as a graph input so it remains a constant initializer.
+
+  // Output
+  {
+    auto* output = graph_proto->add_output();
+    output->set_name("output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(0);
+  }
+
+  // Div node
+  auto* div_node = graph_proto->add_node();
+  div_node->set_op_type("Div");
+  div_node->add_input("div_const");
+  div_node->add_input("X");
+  div_node->add_output("div_out");
+
+  // Mul node
+  auto* mul_node = graph_proto->add_node();
+  mul_node->set_op_type("Mul");
+  mul_node->add_input("div_out");
+  mul_node->add_input("Y");
+  mul_node->add_output("output");
+
+  TestZeroElementInitializerHandling(model_proto, *logger_, [](onnxruntime::GraphTransformerManager& mgr) {
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+    ASSERT_STATUS_OK(mgr.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  });
+}
+
+TEST_F(GraphTransformationTests, NoopElimination_ZeroElementInitializer) {
+  // Add(X, zero_element_initializer): NoopElimination must NOT remove the Add.
+  // A zero-element initializer is not a proven identity value (the unfused op
+  // is only equivalent to a no-op for empty-compatible runtime shapes), and
+  // the optimizer must not mask invalid models or broaden semantics.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(8);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(14);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("NoopElim_ZeroElem");
+
+  // Zero-element float initializer
+  auto* init = graph_proto->add_initializer();
+  init->set_name("zero_init");
+  init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init->add_dims(0);
+
+  // Input
+  {
+    auto* input = graph_proto->add_input();
+    input->set_name("X");
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(0);
+  }
+  // Note: zero_init is intentionally NOT added as a graph input so it remains a constant initializer.
+
+  // Output
+  {
+    auto* output = graph_proto->add_output();
+    output->set_name("output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(0);
+  }
+
+  // Add node
+  auto* add_node = graph_proto->add_node();
+  add_node->set_op_type("Add");
+  add_node->add_input("X");
+  add_node->add_input("zero_init");
+  add_node->add_output("output");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // The Add must be preserved: a zero-element initializer is not a proven identity.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Add"], 1);
+}
+
+// Companion test: Producer -> Add(X, zero_element_initializer) -> Consumer.
+// Exercises the path where the node is topologically removable (data input is
+// produced by another node, not a graph input). The Add must still be
+// preserved because a zero-element initializer is not a proven identity.
+TEST_F(GraphTransformationTests, NoopElimination_ZeroElementInitializer_InternalNode) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(8);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(14);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("NoopElim_ZeroElem_Internal");
+
+  // Zero-element float initializer (constant, not a graph input)
+  auto* init = graph_proto->add_initializer();
+  init->set_name("zero_init");
+  init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init->add_dims(0);
+
+  // Graph input
+  {
+    auto* input = graph_proto->add_input();
+    input->set_name("X");
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(0);
+  }
+
+  // Graph output
+  {
+    auto* output = graph_proto->add_output();
+    output->set_name("output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(0);
+  }
+
+  // Producer: Identity(X) -> id_out
+  auto* id_node = graph_proto->add_node();
+  id_node->set_op_type("Identity");
+  id_node->add_input("X");
+  id_node->add_output("id_out");
+
+  // Add(id_out, zero_init) -> add_out  (this is the node that could be removed)
+  auto* add_node = graph_proto->add_node();
+  add_node->set_op_type("Add");
+  add_node->add_input("id_out");
+  add_node->add_input("zero_init");
+  add_node->add_output("add_out");
+
+  // Consumer: Identity(add_out) -> output
+  auto* consumer_node = graph_proto->add_node();
+  consumer_node->set_op_type("Identity");
+  consumer_node->add_input("add_out");
+  consumer_node->add_output("output");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // The Add must be preserved even though it is topologically removable.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Add"], 1);
+}
+
+// Verifies that DivMulFusion's tightened size() != 1 check correctly rejects
+// multi-element (non-scalar) initializers. Fusion must be skipped and the
+// original Div/Mul nodes preserved.
+TEST_F(GraphTransformationTests, DivMulFusion_MultiElementInitializer) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(8);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(14);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("DivMulFusion_MultiElem");
+
+  // Multi-element (shape [2]) float initializer - must NOT be treated as a scalar.
+  auto* init = graph_proto->add_initializer();
+  init->set_name("div_const");
+  init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init->add_dims(2);
+  init->add_float_data(1.0f);
+  init->add_float_data(2.0f);
+
+  for (const char* name : {"X", "Y"}) {
+    auto* input = graph_proto->add_input();
+    input->set_name(name);
+    auto* type = input->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(2);
+  }
+
+  {
+    auto* output = graph_proto->add_output();
+    output->set_name("output");
+    auto* type = output->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    type->mutable_shape()->add_dim()->set_dim_value(2);
+  }
+
+  auto* div_node = graph_proto->add_node();
+  div_node->set_op_type("Div");
+  div_node->add_input("div_const");
+  div_node->add_input("X");
+  div_node->add_output("div_out");
+
+  auto* mul_node = graph_proto->add_node();
+  mul_node->set_op_type("Mul");
+  mul_node->add_input("div_out");
+  mul_node->add_input("Y");
+  mul_node->add_output("output");
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Fusion must be skipped: Div and Mul both remain.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
+}
+
+// Note: There is intentionally no end-to-end regression test for the
+// `ratio.size() != 1` guard in `EliminateDropout`. ONNX Dropout requires
+// `ratio` to be a scalar, so a malformed (zero-element or multi-element)
+// initializer is rejected by ORT shape inference during `Model::Load` before
+// the optimizer ever runs. The guard in `dropout_elimination.cc` remains as
+// pure defense-in-depth against future internal callers that may bypass
+// shape inference.
 
 }  // namespace test
 }  // namespace onnxruntime
