@@ -144,6 +144,21 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
+    // Validate seqlens_k values against cos/sin cache size to prevent OOB in rotary embedding lookup.
+    // Use the minimum of cos_cache and sin_cache dim-0 since CheckRotaryCaches does not enforce equality.
+    {
+      const int rotary_cache_max_seq = static_cast<int>(std::min(cos_cache->Shape().GetDims()[0],
+                                                                 sin_cache->Shape().GetDims()[0]));
+      const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+      for (int b = 0; b < batch_size; b++) {
+        // position_id = seqlens_k[b] (in token generation), must be < cache rows
+        if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= rotary_cache_max_seq) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                                 " is out of range for rotary cache dimension 0 (", rotary_cache_max_seq, ")");
+        }
+      }
+    }
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
     rotary_params.batch_size = batch_size;
