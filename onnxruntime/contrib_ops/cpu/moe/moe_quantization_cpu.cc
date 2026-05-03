@@ -1138,8 +1138,8 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const bool is_fc1_block_wise = (fc1_scales_dims.size() == 3 && fc1_scales_dims[2] > 1);
   const bool is_fc2_block_wise = (fc2_scales_dims.size() == 3 && fc2_scales_dims[2] > 1);
 
-  const uint8_t* fc1_weights_data = (packed_fc1_ != nullptr) ? nullptr : fc1_experts_weights->template Data<uint8_t>();
-  const uint8_t* fc2_weights_data = (packed_fc2_ != nullptr) ? nullptr : fc2_experts_weights->template Data<uint8_t>();
+  const uint8_t* fc1_weights_data = (packed_fc1_ != nullptr || packed_fc1_lut_cache_ != nullptr) ? nullptr : fc1_experts_weights->template Data<uint8_t>();
+  const uint8_t* fc2_weights_data = (packed_fc2_ != nullptr || packed_fc2_lut_cache_ != nullptr) ? nullptr : fc2_experts_weights->template Data<uint8_t>();
   const T* fc1_scales_data = fc1_scales->template Data<T>();
   const T* fc2_scales_data = fc2_scales->template Data<T>();
   const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->template Data<T>() : nullptr;
@@ -1206,20 +1206,22 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
   const void* fc1_direct_lut_cache_ptr = can_use_fc1_lut_gemm ? packed_fc1_lut_cache_.get() : nullptr;
   const void* fc2_direct_lut_cache_ptr = can_use_fc2_lut_gemm ? packed_fc2_lut_cache_.get() : nullptr;
-  const size_t fc1_lut_packed_size = (can_use_fc1_lut_gemm && fc1_direct_lut_cache_ptr == nullptr)
-                                         ? MlasLutGemmPackedSize(static_cast<size_t>(fc1_out_features),
-                                                                 static_cast<size_t>(hidden_size),
-                                                                 2,
-                                                                 static_cast<size_t>(block_size_),
-                                                                 fc1_zp_data != nullptr)
-                                         : 0;
-  const size_t fc2_lut_packed_size = (can_use_fc2_lut_gemm && fc2_direct_lut_cache_ptr == nullptr)
-                                         ? MlasLutGemmPackedSize(static_cast<size_t>(hidden_size),
-                                                                 static_cast<size_t>(inter_size),
-                                                                 2,
-                                                                 static_cast<size_t>(block_size_),
-                                                                 fc2_zp_data != nullptr)
-                                         : 0;
+  const size_t fc1_lut_packed_size_per_expert = can_use_fc1_lut_gemm
+                                                    ? MlasLutGemmPackedSize(static_cast<size_t>(fc1_out_features),
+                                                                           static_cast<size_t>(hidden_size),
+                                                                           2,
+                                                                           static_cast<size_t>(block_size_),
+                                                                           fc1_zp_data != nullptr)
+                                                    : 0;
+  const size_t fc2_lut_packed_size_per_expert = can_use_fc2_lut_gemm
+                                                    ? MlasLutGemmPackedSize(static_cast<size_t>(hidden_size),
+                                                                           static_cast<size_t>(inter_size),
+                                                                           2,
+                                                                           static_cast<size_t>(block_size_),
+                                                                           fc2_zp_data != nullptr)
+                                                    : 0;
+  const size_t fc1_lut_packed_size = (fc1_direct_lut_cache_ptr == nullptr) ? fc1_lut_packed_size_per_expert : 0;
+  const size_t fc2_lut_packed_size = (fc2_direct_lut_cache_ptr == nullptr) ? fc2_lut_packed_size_per_expert : 0;
   const size_t lut_packed_scratch_size_per_thread = std::max(fc1_lut_packed_size, fc2_lut_packed_size);
   IAllocatorUniquePtr<std::byte> lut_packed_buffers_ptr;
   std::byte* lut_packed_buffers = nullptr;
@@ -1369,7 +1371,10 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                                                    fc1_out_features, hidden_size, q_type)));
 
       if (can_use_fc1_lut_gemm &&
-          TryRunLutGemm(A1, C1, fc1_weights_data, fc1_direct_lut_cache_ptr,
+          TryRunLutGemm(A1, C1, fc1_weights_data,
+                        fc1_direct_lut_cache_ptr != nullptr
+                            ? static_cast<const void*>(static_cast<const std::byte*>(fc1_direct_lut_cache_ptr) + expert_idx * fc1_lut_packed_size_per_expert)
+                            : nullptr,
                         fc1_scales_ptr, fc1_zp_ptr, expert_idx,
                         fc1_out_features, hidden_size, fc1_packed_cols,
                         block_size_, fc1_scales_dims[2],
@@ -1608,7 +1613,10 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                                                        hidden_size, inter_size, q_type2)));
 
       if (can_use_fc2_lut_gemm &&
-          TryRunLutGemm(A2, C2, fc2_weights_data, fc2_direct_lut_cache_ptr,
+          TryRunLutGemm(A2, C2, fc2_weights_data,
+                        fc2_direct_lut_cache_ptr != nullptr
+                            ? static_cast<const void*>(static_cast<const std::byte*>(fc2_direct_lut_cache_ptr) + expert_idx * fc2_lut_packed_size_per_expert)
+                            : nullptr,
                         fc2_scales_ptr, fc2_zp_ptr, expert_idx,
                         hidden_size, inter_size, fc2_packed_cols,
                         block_size_, fc2_scales_dims[2],

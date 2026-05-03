@@ -125,13 +125,25 @@ def quant_dequant(weights, quant_bits: int = 4, asymmetric: bool = False):
         scale = torch.zeros((rows), dtype=torch.float32, device=weights.device)
         if is_packed:
             packed_size = (cols + pack_size - 1) // pack_size
-            quantized_storage = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
+            if asymmetric:
+                # Asymmetric: zero maps to quantized 0, so packed storage is 0x00
+                quantized_storage = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
+            else:
+                # Symmetric: zero maps to sym_zp_offset in each lane
+                # For 2-bit: offset=2 → 0b10101010 = 0xAA; for 4-bit: offset=8 → 0b10001000 = 0x88
+                zp_byte = 0
+                for lane in range(pack_size):
+                    zp_byte |= sym_zp_offset << (lane * quant_bits)
+                quantized_storage = torch.full((rows, packed_size), zp_byte, dtype=torch.uint8, device=weights.device)
             zp_packed_size = (rows + pack_size - 1) // pack_size
             zero_point_storage = (
                 torch.zeros(zp_packed_size, dtype=torch.uint8, device=weights.device) if asymmetric else None
             )
         else:
-            quantized_storage = torch.zeros_like(weights, dtype=torch.uint8)
+            if asymmetric:
+                quantized_storage = torch.zeros_like(weights, dtype=torch.uint8)
+            else:
+                quantized_storage = torch.full_like(weights, sym_zp_offset, dtype=torch.uint8)
             zero_point_storage = torch.zeros((rows), dtype=torch.uint8, device=weights.device) if asymmetric else None
 
         return scale, quantized_storage, torch.zeros_like(weights), zero_point_storage
@@ -242,13 +254,23 @@ def quant_dequant_blockwise(weights, block_size, quant_bits: int = 4, asymmetric
         dequantized = torch.zeros_like(weights)
         if is_packed:
             packed_size = (cols + pack_size - 1) // pack_size
-            quantized = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
+            if asymmetric:
+                quantized = torch.zeros((rows, packed_size), dtype=torch.uint8, device=weights.device)
+            else:
+                # Symmetric: zero maps to sym_zp_offset in each lane
+                zp_byte = 0
+                for lane in range(pack_size):
+                    zp_byte |= sym_zp_offset << (lane * quant_bits)
+                quantized = torch.full((rows, packed_size), zp_byte, dtype=torch.uint8, device=weights.device)
             zp_packed_size = (num_blocks + pack_size - 1) // pack_size
             zero_points_storage = (
                 torch.zeros((rows, zp_packed_size), dtype=torch.uint8, device=weights.device) if asymmetric else None
             )
         else:
-            quantized = torch.zeros((rows, cols), dtype=torch.uint8, device=weights.device)
+            if asymmetric:
+                quantized = torch.zeros((rows, cols), dtype=torch.uint8, device=weights.device)
+            else:
+                quantized = torch.full((rows, cols), sym_zp_offset, dtype=torch.uint8, device=weights.device)
             zero_points_storage = (
                 torch.zeros((rows, num_blocks), dtype=torch.uint8, device=weights.device) if asymmetric else None
             )

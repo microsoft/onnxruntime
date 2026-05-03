@@ -65,10 +65,10 @@ Weight tensor shapes:
 - Quantization is along the K dimension of each GEMM
 - One scale per output row and per block
 
-Weight tensor shapes:
+Weight tensor shapes (same as row-wise — block-wise only changes scales):
 
-- FC1: `(num_experts, fc1_out_features, hidden_size / block_size / pack_size)`
-- FC2: `(num_experts, hidden_size, inter_size / block_size / pack_size)`
+- FC1: `(num_experts, fc1_out_features, hidden_size / pack_size)`
+- FC2: `(num_experts, hidden_size, inter_size / pack_size)`
 
 Scale tensor shapes:
 
