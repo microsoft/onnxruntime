@@ -56,7 +56,7 @@ extensions;https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.12.0.zip;7e733cfdc410d777b76122d64232499205589a96
 dawn;https://github.com/google/dawn/archive/ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38.zip;d4d64d1729104b61e654073566f1a376e16cad92
-kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.gz;6895e72b3d5cf1173358164cb3d64c9d7d33cc84
+kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.22.0.tar.gz;9ed4a2154777223a305da4627e9bccd3fb076c38
 # kleidiai-qmx is pinned to a specific commit as there are no tagged releases. When an appropriate tagged release becomes available,
 # this entry will be updated to use refs/tags/<version> instead of the raw commit hash.
 kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4885a29cc35d2b0da87.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c
