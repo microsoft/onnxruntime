@@ -27,13 +27,17 @@ const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
 // Right-hand-side (weights) cache key
 struct RhsCacheKey {
     size_t co, ci, kh, kw, dilationh, dilationw;
+    bool has_bias;
     size_t weights_hash;
+    size_t bias_hash;
 
     bool operator==(const RhsCacheKey& other) const {
         return co == other.co && ci == other.ci &&
                kh == other.kh && kw == other.kw &&
                dilationh == other.dilationh && dilationw == other.dilationw &&
-               weights_hash == other.weights_hash;
+               has_bias == other.has_bias &&
+               weights_hash == other.weights_hash &&
+               bias_hash == other.bias_hash;
     }
 };
 
@@ -44,27 +48,39 @@ struct LhsCacheKey {
     size_t padding, sh, sw;
     size_t kh, kw;
     size_t dilationh, dilationw;
-    size_t data_hash;
 
     bool operator==(const LhsCacheKey& other) const {
         return ci == other.ci && ih == other.ih && iw == other.iw &&
                padding == other.padding && sh == other.sh && sw == other.sw &&
                kh == other.kh && kw == other.kw &&
-               dilationh == other.dilationh && dilationw == other.dilationw &&
-               data_hash == other.data_hash;
+               dilationh == other.dilationh && dilationw == other.dilationw;
     }
 };
 
-// Derived from 2^32 * (sqrt(5) - 1) / 2 ≈ 0.6180339887 (reciprocal of the golden ratio)
-// Based on Knuth's multiplicative hashing method
-constexpr size_t HASH_GOLDEN_RATIO_CONST = 0x9e3779b9;
+constexpr size_t kFnvOffsetBasis = sizeof(size_t) == 8
+                                       ? 14695981039346656037ull
+                                       : 2166136261u;
+constexpr size_t kFnvPrime = sizeof(size_t) == 8
+                                 ? 1099511628211ull
+                                 : 16777619u;
 
-size_t HashWeights(const float* data, size_t count = 16) {
-    size_t h = 0;
-    for (size_t i = 0; i < count; ++i) {
-        h ^= std::hash<float>()(data[i]) + HASH_GOLDEN_RATIO_CONST + (h << 6) + (h >> 2);
+size_t HashBytes(const void* data, size_t byte_count) {
+    if (data == nullptr || byte_count == 0) {
+        return 0;
     }
+
+    const auto* bytes = static_cast<const unsigned char*>(data);
+    size_t h = kFnvOffsetBasis;
+    for (size_t i = 0; i < byte_count; ++i) {
+        h ^= static_cast<size_t>(bytes[i]);
+        h *= kFnvPrime;
+    }
+
     return h;
+}
+
+size_t HashTensorContents(const float* data, size_t element_count) {
+    return HashBytes(data, element_count * sizeof(float));
 }
 
 namespace std {
@@ -81,24 +97,25 @@ namespace std {
                 (std::hash<size_t>()(k.kh) << 3) ^
                 (std::hash<size_t>()(k.kw) << 4) ^
                 (std::hash<size_t>()(k.dilationh) << 5) ^
-                (std::hash<size_t>()(k.dilationw) << 6);
+                (std::hash<size_t>()(k.dilationw) << 6) ^
+                (std::hash<bool>()(k.has_bias) << 7) ^
+                (std::hash<size_t>()(k.bias_hash) << 8);
         }
     };
 
     template<>
     struct hash<LhsCacheKey> {
         size_t operator()(const LhsCacheKey& k) const {
-            return k.data_hash ^
-                (std::hash<size_t>()(k.ci) << 1) ^
-                (std::hash<size_t>()(k.ih) << 2) ^
-                (std::hash<size_t>()(k.iw) << 3) ^
-                (std::hash<size_t>()(k.padding) << 4) ^
-                (std::hash<size_t>()(k.sh) << 5) ^
-                (std::hash<size_t>()(k.sw) << 6) ^
-                (std::hash<size_t>()(k.kh) << 7) ^
-                (std::hash<size_t>()(k.kw) << 8) ^
-                (std::hash<size_t>()(k.dilationh) << 9) ^
-                (std::hash<size_t>()(k.dilationw) << 10);
+            return std::hash<size_t>()(k.ci) ^
+                (std::hash<size_t>()(k.ih) << 1) ^
+                (std::hash<size_t>()(k.iw) << 2) ^
+                (std::hash<size_t>()(k.padding) << 3) ^
+                (std::hash<size_t>()(k.sh) << 4) ^
+                (std::hash<size_t>()(k.sw) << 5) ^
+                (std::hash<size_t>()(k.kh) << 6) ^
+                (std::hash<size_t>()(k.kw) << 7) ^
+                (std::hash<size_t>()(k.dilationh) << 8) ^
+                (std::hash<size_t>()(k.dilationw) << 9);
         }
     };
 
@@ -151,29 +168,21 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
 }
 
 static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
-
-    //functional checks - logically can the conv be performed
-    if ((Parameters->Dimensions != 2) ||
-        (Parameters->BatchCount != 1) ||
-        (Parameters->Beta != 0.f) ||
-        (Parameters->Padding[0] != Parameters->Padding[1]) ||
-        (Parameters->Padding[0] != Parameters->Padding[2]) ||
-        (Parameters->Padding[0] != Parameters->Padding[3]) ||
-        (ComputeConvOutSize(Parameters->InputShape[0],
-                            ComputeKernelSize(Parameters->DilationShape[0],Parameters->KernelShape[0]),
-                            Parameters->Padding[0], Parameters->StrideShape[0]) *
-         ComputeConvOutSize(Parameters->InputShape[1],
-                            ComputeKernelSize(Parameters->DilationShape[1],Parameters->KernelShape[1]),
-                            Parameters->Padding[1], Parameters->StrideShape[1]) == 0)) {
-        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on functional checks.");
+    if (!MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+            Parameters->Dimensions,
+            Parameters->BatchCount,
+            Parameters->GroupCount,
+            Parameters->InputShape,
+            Parameters->KernelShape,
+            Parameters->DilationShape,
+            Parameters->Padding,
+            Parameters->StrideShape,
+            Parameters->FilterCount,
+            Parameters->Beta)) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on shared capability checks.");
         return false;
     }
 
-    auto N = Parameters->FilterCount;
-    if (N == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
-        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on optimization checks.");
-        return false;
-    }
     return true;
 }
 
@@ -341,7 +350,11 @@ static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const
     // Cache of prepacked kai rhs weights and biases. thread_local to prevent interference from parallel sessions.
     thread_local std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
 
-    RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, HashWeights(weights) };
+    // The packed RHS buffer includes both weights and bias, so both must participate in the cache key.
+    const size_t weights_hash = HashTensorContents(weights, co * ci * kh * kw);
+    const bool has_bias = bias != nullptr;
+    const size_t bias_hash = has_bias ? HashTensorContents(bias, co) : 0;
+    RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, has_bias, weights_hash, bias_hash };
 
     auto found = rhs_cache.find(key);
     if (found != rhs_cache.end()) {
@@ -458,6 +471,7 @@ static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t i
 static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const size_t ih, const size_t iw,
                                                         const size_t kh, const size_t kw, const size_t sh,
                                                         const size_t sw, const size_t padding, const float* in,
+                                                        bool input_is_channels_last,
                                                         MLAS_THREADPOOL* ThreadPool)
 {
     size_t padsize = 256;
@@ -484,7 +498,14 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
     const auto lhs_size = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(m,kh*kw,ci);
     auto lhs = std::make_unique<std::byte[]>(lhs_size);
 
-    auto nhwc = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
+    std::unique_ptr<float[]> nhwc_holder;
+    const float* activation_src = nullptr;
+    if (input_is_channels_last) {
+        activation_src = in;
+    } else {
+        nhwc_holder = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
+        activation_src = nhwc_holder.get();
+    }
 
     // Cache of computed lhs ptr offsets. thread_local to prevent interference from parallel sessions.
     //
@@ -506,8 +527,7 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
         ci, ih, iw,
         padding, sh, sw,
         kh, kw,
-        1, 1,
-        HashWeights(in)
+        1, 1
     };
 
     auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
@@ -520,7 +540,7 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
         lhs_ptrs_cache[key] = lhs_ptrs;
     }
 
-    MultiThreadedLHSPackSme(ThreadPool, ci, m, kh, kw, &lhs_ptrs[0], &lhs[0], &nhwc[0], &pad_ptr[0]);
+    MultiThreadedLHSPackSme(ThreadPool, ci, m, kh, kw, &lhs_ptrs[0], &lhs[0], activation_src, &pad_ptr[0]);
 
     return lhs;
 }
@@ -542,6 +562,7 @@ static void ConvolveSme(const size_t co, //channels out
                         const float* in,           //in image data
                         float* out,                //out image data
                         float* tmp_mlas_aligned,   //intermediate buffer if we need to perform a transpose
+                        bool input_is_channels_last,
                         MLAS_THREADPOOL* ThreadPool) {
 
     //RhsPackWeightsBiasSme() - to perform dilation increases kernel size and masks unused weights
@@ -579,17 +600,13 @@ static void ConvolveSme(const size_t co, //channels out
 
     for (size_t g = 0; g < groups; ++g) {
 
-        auto result{out};
-        //do we require a post matmul transpose ?
-        //output is m x n or image_data x co or hw x co
-        //MLAS require it as n x m (or co x hw), transpose required
-        if (co > 1) {
-            //intermediate buffer required, pre-transpose
-            //Note: because we are calling MlasTranspose() need to ensure we use a MLAS aligned buffer
+        auto result = out;
+        const bool need_transpose = (!input_is_channels_last) && (co > 1);
+        if (need_transpose) {
             result = tmp_mlas_aligned;
         }
 
-        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, in, ThreadPool);
+        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, in, input_is_channels_last, ThreadPool);
         auto rhs = RhsPackWeightsBiasSme(co, ci, kh, kw, dilationh, dilationw, weights, bias, ThreadPool);
 
         MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [&](ptrdiff_t tid) {
@@ -631,7 +648,7 @@ static void ConvolveSme(const size_t co, //channels out
             );
         });
 
-        if (result == tmp_mlas_aligned) {
+        if (need_transpose) {
             //Note: this could be absorbed into post conv activation
             MlasTranspose(tmp_mlas_aligned, out, m, co, ThreadPool);
         }
@@ -660,6 +677,7 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t FilterCount,
                 const MLAS_ACTIVATION* Activation,
                 size_t* WorkingBufferSize,
+                bool ChannelsLast,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool)
 {
@@ -679,6 +697,7 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
     Parameters->BatchCount = BatchCount;
     Parameters->GroupCount = GroupCount;
     Parameters->InputChannels = InputChannels;
+    Parameters->ChannelsLast = ChannelsLast;
     Parameters->FilterCount = FilterCount;
     Parameters->Beta = Beta;
 
@@ -750,7 +769,7 @@ ArmKleidiAI::MlasConv(
                 Parameters->DilationShape[0], Parameters->DilationShape[1],  // kernel dilation
                 Parameters->Padding[0],                                      // image padding
                 Parameters->GroupCount,                                      // filter groups
-                Filter, Bias, Input, Output, WorkingBuffer, ThreadPool);
+                Filter, Bias, Input, Output, WorkingBuffer, Parameters->ChannelsLast, ThreadPool);
 
     MlasActivation(Parameters->Activation, Output, nullptr, Parameters->FilterCount, Parameters->OutputSize,
                    Parameters->OutputSize);

@@ -4604,6 +4604,66 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   }
 }
 
+// Verifies that layout transformation preserves an existing NHWC-native
+// NhwcFusedConv as-is instead of retargeting it or inserting Transpose nodes.
+TEST(TransposeOptimizerTests, LayoutTransformDoesNotRetargetNhwcFusedConv) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("LayoutTransformDoesNotRetargetNhwcFusedConv", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input_arg = builder.MakeInput<float>({1, 7, 7, 8}, -1.0f, 1.0f);
+  auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+  auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
+  auto* output_arg = builder.MakeOutput();
+
+  auto& nhwc_fused_conv = builder.AddNode("NhwcFusedConv", {input_arg, weight_arg, bias_arg}, {output_arg}, kMSDomain);
+  nhwc_fused_conv.AddAttribute("activation", "Relu");
+  nhwc_fused_conv.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  nhwc_fused_conv.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  nhwc_fused_conv.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions so;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& optimized_graph = session.GetGraph();
+  const auto op_to_count = CountOpsInGraph(optimized_graph);
+  const auto get_op_count = [&op_to_count](std::string_view op_type) {
+    const auto it = op_to_count.find(std::string{op_type});
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  EXPECT_EQ(get_op_count("com.microsoft.NhwcFusedConv"), 1);
+  EXPECT_EQ(get_op_count("Transpose"), 0);
+
+  int nhwc_fused_conv_count = 0;
+  for (const auto& node : optimized_graph.Nodes()) {
+    if (node.OpType() == "NhwcFusedConv") {
+      ++nhwc_fused_conv_count;
+      EXPECT_EQ(node.Domain(), kMSDomain);
+      EXPECT_EQ(node.GetExecutionProviderType(), internal_testing_ep::kInternalTestingExecutionProvider);
+    }
+  }
+
+  EXPECT_EQ(nhwc_fused_conv_count, 1);
+}
+
 TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
