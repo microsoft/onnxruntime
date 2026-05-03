@@ -979,6 +979,11 @@ class InferenceSession {
   bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
   bool is_concurrent_run_supported_ = true;  // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
+  // Cached flags from session config options to avoid repeated string lookups during Run().
+  // Set once during Initialize().
+  bool disable_input_validation_ = false;   // kOrtSessionOptionsConfigDisableInputValidation
+  bool disable_output_validation_ = false;  // kOrtSessionOptionsConfigDisableOutputValidation
+
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;
 #endif
