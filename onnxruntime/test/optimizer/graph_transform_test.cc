@@ -1515,6 +1515,201 @@ TEST_F(GraphTransformationTests, ConstantFoldingIfConstantInliningEdgesWithMiddl
   ASSERT_TRUE(dest_edges.find(2) != dest_edges.end());
 }
 
+// Test that constant folding respects the output size limit and skips nodes
+// whose output would exceed it. This is a security measure against malicious
+// models that could cause memory exhaustion during optimization.
+TEST_F(GraphTransformationTests, ConstantFoldingOutputSizeLimit) {
+  // Build a model with an Expand node: scalar input [1.0] expanded by shape [1024, 1024].
+  // Output = 1024*1024 * 4 bytes = 4 MB of float data.
+  // With a 1 MB limit, this should NOT be constant folded.
+  // With a 8 MB limit, this SHOULD be constant folded.
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInitializer<float>({1}, {1.0f});
+    auto* shape_data = builder.MakeInitializer<int64_t>({2}, {1024, 1024});
+    auto* output_arg = builder.MakeOutput();
+
+    builder.AddNode("Expand", {input_data, shape_data}, {output_arg});
+  };
+
+  // Test 1: With a 1 MB limit, the Expand node should NOT be folded (output is ~4 MB).
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Expand should remain because output is too large
+      TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    // Set limit to 1 MB
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1048576"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  // Test 2: With an 8 MB limit, the Expand node SHOULD be folded (output is ~4 MB).
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Expand should be folded since output is within limit
+      TEST_RETURN_IF_NOT(op_to_count["Expand"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    // Set limit to 8 MB
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "8388608"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+}
+
+// Test that an explicitly configured constant folding output-size limit blocks
+// folding a very large ConstantOfShape output.
+TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConstantOfShape) {
+  // Build a model with a ConstantOfShape node producing a huge output.
+  // Shape = [16384, 16384] = 268M elements * 4 bytes = 1 GB.
+  // Use an explicit 512 MB limit so the 1 GB output is not folded.
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* shape_data = builder.MakeInitializer<int64_t>({2}, {16384, 16384});
+    auto* output_arg = builder.MakeOutput();
+
+    auto& node = builder.AddNode("ConstantOfShape", {shape_data}, {output_arg});
+    // Default value is float 0.0
+    ONNX_NAMESPACE::AttributeProto value_attr;
+    value_attr.set_name("value");
+    value_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = value_attr.mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor->add_dims(1);
+    tensor->add_float_data(0.0f);
+    node.AddAttributeProto(std::move(value_attr));
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // ConstantOfShape should remain because output is too large (1 GB > 512 MB limit)
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ConfigOptions config_options;
+  // Set limit to 512 MB so the 1 GB output is blocked
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "536870912"));
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
+// Test that small constant folding still works with the size limit.
+TEST_F(GraphTransformationTests, ConstantFoldingSmallOutputAllowed) {
+  // Build a model with a small Expand: scalar -> [4, 4] = 16 * 4 = 64 bytes.
+  // This is well within even a small limit and should be folded.
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInitializer<float>({1}, {42.0f});
+    auto* shape_data = builder.MakeInitializer<int64_t>({2}, {4, 4});
+    auto* output_arg = builder.MakeOutput();
+
+    builder.AddNode("Expand", {input_data, shape_data}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // Small Expand should be constant folded
+    TEST_RETURN_IF_NOT(op_to_count["Expand"] == 0);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const ConfigOptions empty_config_options;
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, empty_config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
+// Test that constant folding gracefully handles an Expand node whose output shape
+// dimensions would cause integer overflow. This simulates the attack vector where
+// a malicious model embeds constant initializers with extreme shape values, causing
+// kernel Compute() to execute during graph optimization. The SafeInt-protected
+// arithmetic in Expand::Compute (or TensorShape overflow) should be caught by the
+// try/catch around Compute, and the node should NOT be constant folded.
+TEST_F(GraphTransformationTests, ConstantFoldingExpandOverflowDimsSkipped) {
+  constexpr int64_t kLargeDim = int64_t(1) << 32;  // 4294967296
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInitializer<float>({1}, {1.0f});
+    auto* shape_data = builder.MakeInitializer<int64_t>({2}, {kLargeDim, kLargeDim});
+    auto* output_arg = builder.MakeOutput();
+
+    builder.AddNode("Expand", {input_data, shape_data}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // Expand should remain because the overflow prevents constant folding.
+    TEST_RETURN_IF_NOT(op_to_count["Expand"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e =
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const ConfigOptions empty_config_options;
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, empty_config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 // Check transformations in the case of a subgraph with constant inputs.
 TEST_F(GraphTransformationTests, SubgraphWithConstantInputs) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "constant-subgraph.onnx";
