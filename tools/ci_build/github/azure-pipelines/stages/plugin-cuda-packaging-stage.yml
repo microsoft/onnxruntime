@@ -66,6 +66,11 @@ parameters:
   displayName: 'Docker Python executable path'
   default: '/opt/python/cp312-cp312/bin/python3.12'
 
+- name: python_package_name
+  type: string
+  displayName: 'Python package distribution name'
+  default: ''
+
 stages:
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:
@@ -75,6 +80,7 @@ stages:
           cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
+          python_package_name: ${{ parameters.python_package_name }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # Linux x64
@@ -83,11 +89,12 @@ stages:
         parameters:
           stage_name: Linux_plugin_cuda_x64
           arch: 'x64'
-          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           cuda_version: ${{ parameters.cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
+          python_package_name: ${{ parameters.python_package_name }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           docker_base_image: ${{ parameters.docker_base_image }}
           python_version: ${{ parameters.python_version }}
@@ -105,6 +112,7 @@ stages:
           cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
+          python_package_name: ${{ parameters.python_package_name }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
           python_version: ${{ parameters.python_version }}

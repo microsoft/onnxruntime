@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "@package_name@"
+version = "@version@"
+description = "ONNX Runtime CUDA Plugin Execution Provider"
+readme = "onnxruntime_ep_cuda/README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+  "onnxruntime>=@min_onnxruntime_version@",
+]
+
+[tool.setuptools.packages.find]
+include = ["onnxruntime_ep_cuda*"]
+
+[tool.setuptools.package-data]
+onnxruntime_ep_cuda = ["*.dll", "*.so", "*.so.*"]
