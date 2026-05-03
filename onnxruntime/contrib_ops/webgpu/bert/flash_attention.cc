@@ -416,9 +416,19 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k,
+                           WebgpuAttentionParameters parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k,
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink) {
   constexpr uint32_t tile_size = 64;
+
+  // Match ApplyAttention behavior: only use past when present outputs are requested.
+  ORT_ENFORCE((present_key == nullptr) == (present_value == nullptr),
+              "present_key and present_value must be both nullptr or both non-nullptr");
+  if (present_key == nullptr && present_value == nullptr) {
+    past_key = nullptr;
+    past_value = nullptr;
+    parameters.past_sequence_length_ = 0;
+    parameters.total_sequence_length_ = parameters.kv_sequence_length_;
+  }
 
   // Create present_key and present_value tensors if they are nullptr
   Tensor internal_present_key;
