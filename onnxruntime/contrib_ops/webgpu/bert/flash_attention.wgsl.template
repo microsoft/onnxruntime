@@ -1,6 +1,7 @@
 
 #param has_attention_bias
 #param has_head_sink
+#param has_softcap
 #param is_fp16
 #param is_qualcomm
 #param is_unidirectional
@@ -264,6 +265,16 @@ $MAIN {
       qk_3 = qk_3 + loadAttentionBias(batch_idx, q_idx_global, k_start + 8, head_idx);
       qk_4 = qk_4 + loadAttentionBias(batch_idx, q_idx_global, k_start + 12, head_idx);
     }
+
+#if has_softcap
+    // Apply softcap: score = softcap * tanh(score / softcap)
+    qk_1 = q_value_t(uniforms.softcap * tanh(vec4<f32>(qk_1) / uniforms.softcap));
+    qk_2 = q_value_t(uniforms.softcap * tanh(vec4<f32>(qk_2) / uniforms.softcap));
+    if (sg_size > 8) {
+      qk_3 = q_value_t(uniforms.softcap * tanh(vec4<f32>(qk_3) / uniforms.softcap));
+      qk_4 = q_value_t(uniforms.softcap * tanh(vec4<f32>(qk_4) / uniforms.softcap));
+    }
+#endif
 
     // Neuter qk values where K is out of bounds.
     qk_1[0] = select(min_value, qk_1[0], k_start + 0 < seq_causal_length);
