@@ -109,6 +109,8 @@ class TensorData:
             value = v
             if isinstance(value, dict) and value.get("CLS") == "numpy.array":
                 value = np.array(value["data"], dtype=np.dtype(value["dtype"]))
+            elif k in cls._floats and isinstance(value, (int, float)):
+                value = np.array(value, dtype=np.float32)
             kwargs[k] = value
         return cls(**kwargs)
 
@@ -232,10 +234,14 @@ def save_tensors_data(tensors_data: "TensorsData", path: "str | Path") -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w") as f:
-        json.dump(tensors_data, f, cls=_CalibrationCacheEncoder)
-        f.flush()
-    os.replace(tmp, path)
+    try:
+        with tmp.open("w") as f:
+            json.dump(tensors_data, f, cls=_CalibrationCacheEncoder)
+            f.flush()
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def load_tensors_data(path: "str | Path") -> "TensorsData":
