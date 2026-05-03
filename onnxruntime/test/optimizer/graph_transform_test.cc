@@ -2572,6 +2572,35 @@ TEST_F(GraphTransformationTests, FuseConvClip11Activation) {
   }
 }
 
+// Regression test: when a SelectorActionTransformer fusion runs before partitioning, the
+// target nodes still have empty (unassigned) EP. The replacement node must inherit the empty
+// EP rather than being silently pinned to CPU; otherwise non-CPU EPs cannot claim the new
+// node via GetCapability and the fusion locks them out.
+TEST_F(GraphTransformationTests, FuseConvActivationPreEpAssignmentLeavesEpEmpty) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_relu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  // Sanity: nodes start with empty EP (loaded from disk, not yet partitioned).
+  for (const Node& node : graph.Nodes()) {
+    ASSERT_TRUE(node.GetExecutionProviderType().empty())
+        << "expected empty EP on freshly loaded node " << node.Name();
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
+                                                     TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  ASSERT_EQ(graph.NumberOfNodes(), 1);
+  const Node& fused = *graph.Nodes().begin();
+  ASSERT_EQ(fused.OpType(), "FusedConv");
+  EXPECT_TRUE(fused.GetExecutionProviderType().empty())
+      << "FusedConv replacement should inherit the target's empty EP, got '"
+      << fused.GetExecutionProviderType() << "'";
+}
+
 TEST_F(GraphTransformationTests, FuseConvActivationPreservingAttributes) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/conv_with_padding_relu.onnx";
   std::shared_ptr<Model> p_model;
