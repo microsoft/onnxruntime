@@ -75,15 +75,20 @@ Use `reserve()` not `resize()`. Do not use `absl::` directly — use the ORT typ
 
 ### Virtual environment
 
-Build and test processes may install Python packages. Create and activate an isolated virtual environment first:
+**Always activate the project virtual environment at the start of every terminal session before running any commands** — including non-Python commands like `git` or builds, since build and test tooling may shell out to Python and install packages.
+
+If `.venv/` already exists, activate it rather than creating a new one:
 
 ```bash
-python -m venv .venv                  # one-time setup
 source .venv/bin/activate             # Linux/macOS
 .\.venv\Scripts\Activate.ps1          # Windows (PowerShell)
 ```
 
-If a virtual environment already exists (e.g., `.venv/`), activate it rather than creating a new one.
+Otherwise, create one first:
+
+```bash
+python -m venv .venv                  # one-time setup
+```
 
 ### Conventions
 
