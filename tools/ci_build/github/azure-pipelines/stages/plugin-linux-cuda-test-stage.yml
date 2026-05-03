@@ -1,0 +1,74 @@
+parameters:
+- name: machine_pool
+  type: string
+  default: 'onnxruntime-Ubuntu2404-AMD-GPU-A10'
+
+- name: cuda_version
+  type: string
+  default: '12.8'
+
+- name: docker_base_image
+  type: string
+  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+
+stages:
+- stage: Linux_plugin_cuda_x64_Test
+  dependsOn: []
+  jobs:
+  - job: Linux_plugin_cuda_x64_Python_Test
+    timeoutInMinutes: 60
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/setup-feeds-and-python-steps.yml
+
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION= --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}plugintestx64
+
+    # Download the Python wheel produced by the packaging pipeline run that
+    # triggered this pipeline (or that was selected at queue time).
+    - download: build
+      artifact: cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
+      displayName: 'Download Python wheel'
+
+    - script: |
+        set -e -x
+        mkdir -p "$(Build.BinariesDirectory)/python_wheel"
+        cp -R "$(Pipeline.Workspace)/build/cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}/"* "$(Build.BinariesDirectory)/python_wheel/"
+      displayName: 'Stage Python wheel for test container'
+
+    - script: |
+        set -e -x
+        docker run --rm --gpus all \
+          --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
+          --volume "$(Build.BinariesDirectory):/build" \
+          --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+          --env "NVIDIA_VISIBLE_DEVICES=all" \
+          --env "ORT_TEST_VERBOSE=$(System.Debug)" \
+          onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}plugintestx64 \
+          /bin/bash -c "
+            set -e -x
+            python3 -m venv /build/test_venv
+            source /build/test_venv/bin/activate
+            python3 -m pip install onnxruntime onnx numpy
+            wheel=\$(find /build/python_wheel -name 'onnxruntime*ep*cuda*.whl' | head -1)
+            if [ -z \"\$wheel\" ]; then
+              echo 'ERROR: No matching wheel found in /build/python_wheel'
+              ls -la /build/python_wheel/
+              exit 1
+            fi
+            python3 -m pip install \"\$wheel\"
+            python3 -u /onnxruntime_src/plugin-ep-cuda/python/test/test_cuda_plugin_ep.py
+          "
+      displayName: 'Install and test Python package'
