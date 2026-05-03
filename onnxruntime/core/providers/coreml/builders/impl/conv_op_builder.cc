@@ -15,6 +15,19 @@ using namespace CoreML::Specification;
 namespace onnxruntime {
 namespace coreml {
 
+namespace {
+
+// Set of activations that ORT's ConvActivationFusion may fold into a FusedConv
+// and that the CoreML EP has MLProgram equivalents for.
+// See onnxruntime/core/optimizer/conv_activation_fusion.cc:82-99 for the
+// producer side.
+bool IsSupportedFusedConvActivation(const std::string& name) {
+  return name == "Relu" || name == "Sigmoid" || name == "Tanh" ||
+         name == "LeakyRelu" || name == "Clip" || name == "HardSigmoid";
+}
+
+}  // namespace
+
 class ConvOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
@@ -92,9 +105,83 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     AddPadTypeAndPads(*conv_op, model_builder, op_type, helper, num_spatial_dims);
 
-    AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
+    const bool is_fused_conv = node.OpType() == "FusedConv";
+    if (!is_fused_conv) {
+      AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
+      model_builder.AddOperation(std::move(conv_op));
+    } else {
+      // com.microsoft:FusedConv = Conv + activation. Emit conv into an
+      // intermediate, then the activation MIL op on top. Mirrors how
+      // ConvActivationFusion was going to compose them on other EPs.
+      const auto output_elem_type = static_cast<int32_t>(
+          node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type());
+      std::vector<int64_t> output_shape;
+      ORT_RETURN_IF_NOT(GetShape(*node.OutputDefs()[0], output_shape, logger),
+                        "Failed to get FusedConv output shape");
 
-    model_builder.AddOperation(std::move(conv_op));
+      const std::string& conv_out_name = model_builder.GetUniqueName(node, "fused_conv_conv_out");
+      AddIntermediateOperationOutput(*conv_op, conv_out_name, output_elem_type, output_shape);
+      model_builder.AddOperation(std::move(conv_op));
+
+      const std::string activation = helper.Get("activation", std::string(""));
+      const auto activation_params = helper.Get("activation_params", std::vector<float>{});
+
+      std::string_view mil_op;
+      if (activation == "Relu") {
+        mil_op = "relu";
+      } else if (activation == "Sigmoid") {
+        mil_op = "sigmoid";
+      } else if (activation == "Tanh") {
+        mil_op = "tanh";
+      } else if (activation == "LeakyRelu") {
+        mil_op = "leaky_relu";
+      } else if (activation == "Clip") {
+        mil_op = "clip";
+      } else if (activation == "HardSigmoid") {
+        mil_op = "sigmoid_hard";
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "FusedConv has unsupported activation: ", activation);
+      }
+
+      auto act_op = model_builder.CreateOperation(node, mil_op, "activation");
+      AddOperationInput(*act_op, "x", conv_out_name);
+
+      auto add_scalar = [&](std::string_view port_name, float value) {
+        if (output_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          AddOperationInput(*act_op, std::string(port_name),
+                            model_builder.AddScalarConstant(act_op->type(), std::string(port_name), value));
+        } else {
+          AddOperationInput(*act_op, std::string(port_name),
+                            model_builder.AddScalarConstant(act_op->type(), std::string(port_name), MLFloat16(value)));
+        }
+      };
+
+      // Activation-specific params. ConvActivationFusion packs them into
+      // `activation_params` in this order (see conv_activation_fusion.cc:165-184):
+      //   LeakyRelu: [alpha]
+      //   Clip:      [min, max]
+      //   HardSigmoid: [alpha, beta]
+      if (activation == "LeakyRelu") {
+        const float alpha = activation_params.empty() ? 0.01f : activation_params[0];
+        add_scalar("alpha", alpha);
+      } else if (activation == "Clip") {
+        const float min_v = activation_params.size() > 0 ? activation_params[0]
+                                                         : std::numeric_limits<float>::lowest();
+        const float max_v = activation_params.size() > 1 ? activation_params[1]
+                                                         : std::numeric_limits<float>::max();
+        add_scalar("alpha", min_v);
+        add_scalar("beta", max_v);
+      } else if (activation == "HardSigmoid") {
+        const float alpha = activation_params.size() > 0 ? activation_params[0] : 0.2f;
+        const float beta = activation_params.size() > 1 ? activation_params[1] : 0.5f;
+        add_scalar("alpha", alpha);
+        add_scalar("beta", beta);
+      }
+
+      AddOperationOutput(*act_op, *node.OutputDefs()[0]);
+      model_builder.AddOperation(std::move(act_op));
+    }
   } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
@@ -232,6 +319,24 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& input_defs = node.InputDefs();
+  const bool is_fused_conv = node.OpType() == "FusedConv";
+
+  // FusedConv composes Conv with an activation op in a single node. Only
+  // implemented for the MLProgram path; fall back to CPU in NeuralNetwork mode
+  // rather than emitting an unfused Conv and losing the activation.
+  if (is_fused_conv) {
+    if (!input_params.create_mlprogram) {
+      LOGS(logger, VERBOSE) << "FusedConv is only supported in MLProgram format";
+      return false;
+    }
+    NodeAttrHelper fused_helper(node);
+    const std::string activation = fused_helper.Get("activation", std::string(""));
+    if (!IsSupportedFusedConvActivation(activation)) {
+      LOGS(logger, VERBOSE) << "FusedConv activation [" << activation
+                            << "] is not supported by the CoreML EP";
+      return false;
+    }
+  }
 
   const auto& weight_name = input_defs[1]->Name();
   const auto* weight = input_params.graph_viewer.GetConstantInitializer(weight_name);
