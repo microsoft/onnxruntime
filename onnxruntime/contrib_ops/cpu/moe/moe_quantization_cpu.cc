@@ -1208,17 +1208,17 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const void* fc2_direct_lut_cache_ptr = can_use_fc2_lut_gemm ? packed_fc2_lut_cache_.get() : nullptr;
   const size_t fc1_lut_packed_size_per_expert = can_use_fc1_lut_gemm
                                                     ? MlasLutGemmPackedSize(static_cast<size_t>(fc1_out_features),
-                                                                           static_cast<size_t>(hidden_size),
-                                                                           2,
-                                                                           static_cast<size_t>(block_size_),
-                                                                           fc1_zp_data != nullptr)
+                                                                            static_cast<size_t>(hidden_size),
+                                                                            2,
+                                                                            static_cast<size_t>(block_size_),
+                                                                            fc1_zp_data != nullptr)
                                                     : 0;
   const size_t fc2_lut_packed_size_per_expert = can_use_fc2_lut_gemm
                                                     ? MlasLutGemmPackedSize(static_cast<size_t>(hidden_size),
-                                                                           static_cast<size_t>(inter_size),
-                                                                           2,
-                                                                           static_cast<size_t>(block_size_),
-                                                                           fc2_zp_data != nullptr)
+                                                                            static_cast<size_t>(inter_size),
+                                                                            2,
+                                                                            static_cast<size_t>(block_size_),
+                                                                            fc2_zp_data != nullptr)
                                                     : 0;
   const size_t fc1_lut_packed_size = (fc1_direct_lut_cache_ptr == nullptr) ? fc1_lut_packed_size_per_expert : 0;
   const size_t fc2_lut_packed_size = (fc2_direct_lut_cache_ptr == nullptr) ? fc2_lut_packed_size_per_expert : 0;
