@@ -56,11 +56,16 @@ void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorSh
 void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape,
                                     const TensorShape& label_shape,
                                     const TensorShape* weight_shape) {
-  ORT_ENFORCE(nullptr == weight_shape || 1 == weight_shape->NumDimensions(), "Weights tensor is not 1-D.");
-
   const size_t label_dims = label_shape.NumDimensions();
+  ORT_ENFORCE(label_dims >= 1, "label must be at least 1-D.");
+  ORT_ENFORCE(logit_shape.NumDimensions() >= 2, "logit must be at least 2-D.");
   ORT_ENFORCE(logit_shape.NumDimensions() == label_dims + 1,
               "logit_shape must be (1 + label_shape)");
+
+  ORT_ENFORCE(nullptr == weight_shape || 1 == weight_shape->NumDimensions(), "Weights tensor is not 1-D.");
+  ORT_ENFORCE(nullptr == weight_shape || (*weight_shape)[0] == logit_shape[1],
+              "Weight tensor size (", (weight_shape ? (*weight_shape)[0] : 0),
+              ") must equal the number of classes (", logit_shape[1], ")");
 
   ORT_ENFORCE(label_shape[0] == logit_shape[0], "The shape of logit and label does not match");
 
@@ -147,6 +152,16 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
   }
 
   const T2* label_data = label.template Data<T2>();
+
+  // Validate label values are within [0, C) to prevent out-of-bounds reads.
+  for (int64_t i = 0; i < N_D; i++) {
+    if (ignore_index != label_data[i]) {
+      ORT_RETURN_IF(label_data[i] < 0 || label_data[i] >= C,
+                    "SoftmaxCrossEntropyLoss: label value ", label_data[i],
+                    " at index ", i, " is out of range [0, ", C, ")");
+    }
+  }
+
   T1* loss_data = loss->template MutableData<T1>();
   std::vector<T1> shifted_logit(narrow<size_t>(n_d_c));
   ORT_ENFORCE(n_d_c <= static_cast<uint64_t>(std::numeric_limits<Eigen::Index>::max()));
@@ -267,6 +282,16 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   const T1* dY_data = dY.template Data<T1>();
   const T1* log_prob_data = log_prob.template Data<T1>();
   const T2* label_data = label.template Data<T2>();
+
+  // Validate label values are within [0, C) to prevent out-of-bounds reads.
+  for (int64_t i = 0; i < N_D; i++) {
+    if (ignore_index != label_data[i]) {
+      ORT_RETURN_IF(label_data[i] < 0 || label_data[i] >= C,
+                    "SoftmaxCrossEntropyLossGrad: label value ", label_data[i],
+                    " at index ", i, " is out of range [0, ", C, ")");
+    }
+  }
+
   Tensor* d_logit = context->Output(0, probability_shape);
   T1* d_logit_data = d_logit->template MutableData<T1>();
   std::memset(d_logit_data, 0, narrow<size_t>(sizeof(T1) * N_D));
@@ -299,11 +324,11 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
               int64_t row = index / C;
               int64_t col = index % C;
               T2 label_sample = label_data[row];
-              T1 weight_smaple = weight_data[label_sample] * dY_data[row];
               if (ignore_index == label_sample) {
                 d_logit_data[index] = 0;
               } else {
-                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_smaple;
+                T1 weight_sample = weight_data[label_sample] * dY_data[row];
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_sample;
               }
             }
           });
@@ -330,11 +355,11 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
               int64_t row = index / C;
               int64_t col = index % C;
               T2 label_sample = label_data[row];
-              T1 weight_smaple = weight_data[label_sample] * dY_scaled;
               if (ignore_index == label_sample) {
                 d_logit_data[index] = 0;
               } else {
-                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_smaple;
+                T1 weight_sample = weight_data[label_sample] * dY_scaled;
+                d_logit_data[index] = (exp(log_prob_data[index]) - (label_sample == col)) * weight_sample;
               }
             }
           });
