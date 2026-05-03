@@ -293,13 +293,31 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
   mul_program.SetWorkgroupSize(work_group_size);
-  mul_program.SetDispatchGroupSize(
-      (N + tile_size_b - 1) / tile_size_b,
-      (M + tile_size_a - 1) / tile_size_a, 1);
+  uint32_t dispatch_x = (N + tile_size_b - 1) / tile_size_b;
+  uint32_t num_m_tiles = (M + tile_size_a - 1) / tile_size_a;
+  uint32_t dispatch_y = num_m_tiles;
+  // For large M on Intel Xe, cap dispatch_y so each workgroup processes multiple
+  // M-tiles sequentially, reducing scheduling overhead.
+  if (M > 2048 && context.AdapterInfo().vendor == std::string_view{"intel"}) {
+    // Each XeCore has 4 XVE x 8 SIMD-32 hardware threads = 32 subgroups.
+    uint32_t hw_subgroups = 0;
+    if (context.AdapterInfo().architecture == std::string_view{"xe-3lpg"}) {
+      hw_subgroups = 384;  // 12 XeCore x 32
+    } else if (context.AdapterInfo().architecture == std::string_view{"xe-2lpg"}) {
+      hw_subgroups = 256;  // 8 XeCore x 32
+    }
+    if (hw_subgroups > 0) {
+      constexpr uint32_t kOccupancyFactor = 16;  // empirically tuned on Xe2/Xe3 devices
+      uint32_t target_wgs = hw_subgroups * kOccupancyFactor / (work_group_size / 32);
+      dispatch_y = std::min(dispatch_y, (target_wgs + dispatch_x - 1) / dispatch_x);
+    }
+  }
+  uint32_t m_tiles_per_wg = (num_m_tiles + dispatch_y - 1) / dispatch_y;
+  mul_program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
   mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-      .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}, {weight_index}})
+      .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}, {weight_index}, {m_tiles_per_wg}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
       .CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect);
   if (has_zero_points) {
