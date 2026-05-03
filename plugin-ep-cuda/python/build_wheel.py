@@ -20,7 +20,21 @@ BINARY_PATTERNS = [
 ]
 AUDITWHEEL_EXCLUDE = [
     "libcuda.so.1",
-    "libnvidia-ml.so.1",
+    "libcublas.so.12",
+    "libcublas.so.13",
+    "libcublasLt.so.12",
+    "libcublasLt.so.13",
+    "libcudart.so.12",
+    "libcudart.so.13",
+    "libcudnn.so.9",
+    "libcufft.so.11",
+    "libcufft.so.12",
+    "libnvJitLink.so.12",
+    "libnvJitLink.so.13",
+    "libnvrtc.so.12",
+    "libnvrtc.so.13",
+    "libnvrtc-builtins.so.12",
+    "libnvrtc-builtins.so.13",
 ]
 
 
