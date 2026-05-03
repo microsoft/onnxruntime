@@ -10,6 +10,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/math_constants.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators

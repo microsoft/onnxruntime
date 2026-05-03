@@ -1803,7 +1803,7 @@ MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
 // Also define additional standard NEON intrinsics using the MSVC aliases.
 //
 
-#if defined(_M_ARM64)
+#if defined(_M_ARM64) && !defined(__clang__)
 #ifndef vmaxvq_f32
 #define vmaxvq_f32(src) neon_fmaxv(src)
 #endif

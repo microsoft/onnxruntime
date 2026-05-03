@@ -106,7 +106,7 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reve
     if (exclusive == 1 || exclusive == 0) {
       exclusive_ = exclusive;
     } else {
-      ORT_ENFORCE("attribute exclusive can only be 0 or 1");
+      ORT_ENFORCE(false, "attribute exclusive can only be 0 or 1");
     }
   }
   int64_t reverse = 0;
@@ -115,7 +115,7 @@ CumSum<T>::CumSum(const OpKernelInfo& info) : OpKernel(info), exclusive_(), reve
     if (reverse == 1 || reverse == 0) {
       reverse_ = reverse;
     } else {
-      ORT_ENFORCE("attribute reverse can only be 0 or 1");
+      ORT_ENFORCE(false, "attribute reverse can only be 0 or 1");
     }
   }
 }

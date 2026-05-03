@@ -6,7 +6,7 @@
 #include <mutex>
 #include <sstream>
 #ifdef __has_include
-#if __has_include(<stacktrace>)
+#if __has_include(<stacktrace>) && !defined(_LIBCPP_VERSION)
 #include <stacktrace>
 #endif
 #endif
@@ -30,7 +30,7 @@ class CaptureStackTrace {
 // Get the stack trace. Currently only enabled for a DEBUG build as we require the DbgHelp library.
 std::vector<std::string> GetStackTrace() {
 #ifndef NDEBUG
-#if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#if (defined __cpp_lib_stacktrace) && !defined(_LIBCPP_VERSION) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
   return detail::CaptureStackTrace().Trace();
 #else
   return {};
@@ -42,7 +42,7 @@ std::vector<std::string> GetStackTrace() {
 
 namespace detail {
 #ifndef NDEBUG
-#if (defined __cpp_lib_stacktrace) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+#if (defined __cpp_lib_stacktrace) && !defined(_LIBCPP_VERSION) && !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX) && !(defined ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
 
 std::vector<std::string> CaptureStackTrace::Trace() const {
   std::vector<std::string> stacktrace;

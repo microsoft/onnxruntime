@@ -11,6 +11,7 @@
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/common/math_constants.h"
 using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {

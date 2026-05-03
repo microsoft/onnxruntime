@@ -73,7 +73,10 @@ class Node {
     Fused = 1,      ///< The node refers to a function.
   };
 
-  explicit Node() = default;
+  // Constructor and destructor defined out-of-line in graph.cc so that Graph
+  // is a complete type when std::unique_ptr<Graph> in subgraphs_ is destroyed
+  // (required by libc++).
+  explicit Node();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Node(std::string_view name,
@@ -82,15 +85,10 @@ class Node {
        gsl::span<NodeArg* const> input_args,
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
-       std::string_view domain) {
-    Init(name, op_type, description,
-         input_args,
-         output_args,
-         attributes, domain);
-  }
+       std::string_view domain);
 #endif
 
-  ~Node() = default;
+  ~Node();
 
   /**
   @class EdgeEnd
@@ -580,7 +578,7 @@ class Node {
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+  Node(NodeIndex index, Graph& graph);
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

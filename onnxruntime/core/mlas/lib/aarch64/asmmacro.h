@@ -32,6 +32,9 @@ Arguments:
 #if defined(__APPLE__)
         .globl  _\FunctionName\()
 _\FunctionName\():
+#elif defined(_WIN32)
+        .globl  \FunctionName\()
+\FunctionName\():
 #else
         .globl  \FunctionName\()
         .type   \FunctionName\(),%function

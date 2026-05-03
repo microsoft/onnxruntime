@@ -91,8 +91,8 @@ extern "C" {
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
-// To make symbols visible on macOS/iOS
-#ifdef __APPLE__
+// To make symbols visible on macOS/iOS/Linux
+#if defined(__GNUC__)
 #define ORT_EXPORT __attribute__((visibility("default")))
 #else
 #define ORT_EXPORT

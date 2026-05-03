@@ -1733,7 +1733,7 @@ static Status LoadOrtModelBytes(const PathString& model_uri,
 
   bytes_data_holder.resize(num_bytes);
 
-  std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
+  std::ifstream bytes_stream(std::filesystem::path(model_uri), std::ifstream::in | std::ifstream::binary);
   bytes_stream.read(reinterpret_cast<char*>(bytes_data_holder.data()), num_bytes);
 
   if (!bytes_stream) {

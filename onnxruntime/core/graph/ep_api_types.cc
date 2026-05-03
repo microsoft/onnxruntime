@@ -110,6 +110,8 @@ static bool IsOptionalAttribute(const Node& node, const std::string& attr_name) 
 // EpNode
 //
 
+EpNode::SubgraphState::~SubgraphState() = default;
+
 EpNode::EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag)
     : OrtNode(OrtGraphIrApi::kEpApi), ep_graph_(ep_graph), node_(node) {}
 
