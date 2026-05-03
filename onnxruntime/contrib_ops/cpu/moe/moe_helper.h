@@ -76,6 +76,8 @@ Status CheckInputs(MoEParameters& parameters,
                    const int64_t pack_size,                       // number of weights packed together (like 2 for uint4 packed to uint8)
                    const bool is_fused_swiglu,
                    const int64_t block_size = 0) {  // block size for block-wise quantization
+  ORT_RETURN_IF(pack_size <= 0, "pack_size must be positive, got ", pack_size);
+
   // Required inputs
   if (input == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is required.");
@@ -104,11 +106,19 @@ Status CheckInputs(MoEParameters& parameters,
   int64_t hidden_size = input_dims[input_dims.size() - 1];
   int64_t num_experts = router_probs_dims[1];
 
+  ORT_RETURN_IF(hidden_size % pack_size != 0,
+                "hidden_size (", hidden_size, ") must be divisible by pack_size (", pack_size, ").");
+
   int64_t local_num_experts = fc1_experts_weights_shape->GetDims()[0];
 
-  int64_t inter_size = (fc2_experts_weights_shape->GetDims()[1] *
-                        fc2_experts_weights_shape->GetDims()[2] * pack_size) /
-                       hidden_size;
+  const int64_t inter_size_numerator = fc2_experts_weights_shape->GetDims()[1] *
+                                       fc2_experts_weights_shape->GetDims()[2] * pack_size;
+  ORT_RETURN_IF(inter_size_numerator % hidden_size != 0,
+                "Unable to infer inter_size from fc2_experts_weights shape ",
+                *fc2_experts_weights_shape, " and hidden_size ", hidden_size, ".");
+  int64_t inter_size = inter_size_numerator / hidden_size;
+  ORT_RETURN_IF(inter_size % pack_size != 0,
+                "inter_size (", inter_size, ") must be divisible by pack_size (", pack_size, ").");
 
   bool legacy_shape = false;
   const auto& fc2_experts_weights_dims = fc2_experts_weights_shape->GetDims();
