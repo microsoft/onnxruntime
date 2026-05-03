@@ -20,7 +20,6 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
 
 import onnxruntime as ort
 
@@ -35,14 +34,14 @@ def debug_print(*args, **kwargs):
 
 def create_mul_model(output_dir: Path) -> Path:
     """Create a simple Mul model in `output_dir` and return the path to the saved .onnx file."""
-    x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
-    y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
-    z = helper.make_tensor_value_info("z", TensorProto.FLOAT, [2, 3])
+    x = onnx.helper.make_tensor_value_info("x", onnx.TensorProto.FLOAT, [2, 3])
+    y = onnx.helper.make_tensor_value_info("y", onnx.TensorProto.FLOAT, [2, 3])
+    z = onnx.helper.make_tensor_value_info("z", onnx.TensorProto.FLOAT, [2, 3])
 
-    mul_node = helper.make_node("Mul", inputs=["x", "y"], outputs=["z"])
+    mul_node = onnx.helper.make_node("Mul", inputs=["x", "y"], outputs=["z"])
 
-    graph = helper.make_graph([mul_node], "mul_graph", [x, y], [z])
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    graph = onnx.helper.make_graph([mul_node], "mul_graph", [x, y], [z])
+    model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
     model.ir_version = 7
 
     model_path = output_dir / "mul.onnx"
