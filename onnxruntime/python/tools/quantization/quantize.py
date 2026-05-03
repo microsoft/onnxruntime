@@ -369,13 +369,17 @@ def get_qdq_config(
         }
         final_extra_options.update(calib_extra_options)
 
-    # ONNX opset < 21 does not support 16-bit quantization, so must use 'com.microsoft' domain
-    # on Q/DQ operators if using 16-bit or 4-bit quantization.
+    # ONNX opset < 21 does not support 4-bit quantization natively, so must use 'com.microsoft' domain
+    # on Q/DQ operators if using 4-bit quantization.  16-bit weight/activation types are excluded here
+    # because quantize_static() will automatically bump the model opset to 21, where native ONNX
+    # QuantizeLinear/DequantizeLinear supports INT16/UINT16 without contrib-domain ops.
     onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
     if onnx_opset.version < 21:
         opset21_types = q16_types.union(q4_types)
         overrides_have_opset21_types = any(t in opset21_types for t in overrides_helper.get_quant_types())
-        if activation_type in opset21_types or weight_type in opset21_types or overrides_have_opset21_types:
+        # Only set UseQDQContribOps for 4-bit types; 16-bit types are handled by the opset bump.
+        needs_contrib_ops = activation_type in q4_types or weight_type in q4_types or overrides_have_opset21_types
+        if needs_contrib_ops:
             final_extra_options["UseQDQContribOps"] = True
 
     # Allow user's extra_options to override our final_extra_options.

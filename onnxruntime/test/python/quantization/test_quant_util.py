@@ -211,12 +211,12 @@ class TestQuantUtil(unittest.TestCase):
                 result_opset = result.opset_import[0].version
                 self.assertEqual(result_opset, 21)
 
-        # Both 8-bit should NOT bump to 21
+        # Both 8-bit should NOT bump to 21; opset stays at 20
         with self.subTest(weight_type="QInt8", activation_type="QUInt8", opset=20):
             model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
             result = update_opset_version(model, QuantType.QInt8, QuantType.QUInt8)
             result_opset = result.opset_import[0].version
-            self.assertNotEqual(result_opset, 21)
+            self.assertEqual(result_opset, 20)
 
 
 if __name__ == "__main__":

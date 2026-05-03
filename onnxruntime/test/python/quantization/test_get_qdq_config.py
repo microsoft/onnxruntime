@@ -271,10 +271,12 @@ class TestGetQDQConfig(unittest.TestCase):
         self.assertIsNotNone(weight_quantized)
         self.assertEqual(weight_quantized.data_location, onnx.TensorProto.EXTERNAL)
 
-    def test_use_qdq_contrib_ops_for_int16_opset19(self):
+    def test_no_qdq_contrib_ops_for_int16_opset_lt21(self):
         """
-        Test that get_qdq_config() returns a config that forces 'com.microsoft' Q/DQ ops for
-        use of int16 in opset < 21.
+        Test that get_qdq_config() does NOT set UseQDQContribOps for int16 types even when
+        the model opset is < 21.  quantize_static() will bump the opset to 21 automatically,
+        where native ONNX QuantizeLinear/DequantizeLinear supports INT16/UINT16, so contrib-
+        domain ops are not needed.
         """
 
         shape = [1, 8, 8]
@@ -297,7 +299,53 @@ class TestGetQDQConfig(unittest.TestCase):
         )
 
         self.assertEqual(qdq_config.activation_type, QuantType.QUInt16)
-        self.assertTrue(qdq_config.extra_options["UseQDQContribOps"])
+        # UseQDQContribOps must NOT be auto-set for 16-bit types; the opset bump handles them.
+        self.assertFalse(qdq_config.extra_options.get("UseQDQContribOps", False))
+
+    def test_quantize_via_config_int16_opset_lt21_uses_native_qdq(self):
+        """
+        Test that the config-based quantize() path produces a model at opset 21 using native
+        ONNX QuantizeLinear/DequantizeLinear (not com.microsoft domain) when int16 activation
+        types are requested on a model whose original opset is < 21.
+        """
+
+        shape = [1, 8, 8]
+        tensor_type = onnx.TensorProto.FLOAT
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(tensor_type)
+        weight = onnx.numpy_helper.from_array(np.ones(shape, dtype=np_dtype), "weight")
+        # Build a model at opset 20 (< 21) with int16 activation type
+        float_model = self.build_add_model(shape, tensor_type, weight, opset=20)
+
+        input_data_list = [
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(-2, dtype=np_dtype)},
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(2, dtype=np_dtype)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        qdq_config = get_qdq_config(
+            float_model,
+            data_reader,
+            activation_type=QuantType.QUInt16,
+            weight_type=QuantType.QInt8,
+        )
+
+        qdq_model_path = os.path.join(self._tmp_dir_path, "add_int16_opset20_qdq.onnx")
+        quantize(float_model, qdq_model_path, qdq_config)
+
+        qdq_model = onnx.load_model(qdq_model_path)
+
+        # The quantized model must have been bumped to opset 21.
+        onnx_opset = next(x for x in qdq_model.opset_import if not x.domain or x.domain == "ai.onnx")
+        self.assertEqual(onnx_opset.version, 21)
+
+        # All Q/DQ nodes must use the default ONNX domain (not com.microsoft).
+        for node in qdq_model.graph.node:
+            if node.op_type in ("QuantizeLinear", "DequantizeLinear"):
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
 
     def test_use_qdq_contrib_ops_for_int4_opset19(self):
         """
