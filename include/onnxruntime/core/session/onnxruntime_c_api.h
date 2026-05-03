@@ -7727,7 +7727,8 @@ struct OrtModelEditorApi {
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * ORT will take ownership of the OrtValue and you should NOT call ReleaseOrtValue.
+   * ORT will copy the OrtValue internally. The caller retains ownership of the OrtValue and should
+   * release it with ReleaseValue when done.
    *
    * Two options:
    *

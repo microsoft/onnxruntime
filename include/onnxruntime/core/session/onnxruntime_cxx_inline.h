@@ -3919,10 +3919,8 @@ inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
 
 template <typename T>
 inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
-  // Graph takes ownership of `initializer`
-  // On error the ownership is not transferred.
+  // Graph copies the OrtValue internally. Caller retains ownership of initializer.
   ThrowOnError(GetModelEditorApi().AddInitializerToGraph(this->p_, name.c_str(), initializer, data_is_external));
-  initializer.release();
 }
 
 template <typename T>

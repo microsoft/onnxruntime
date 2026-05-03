@@ -33,7 +33,7 @@ ORT_API_STATUS_IMPL(SetGraphInputs, _In_ OrtGraph* graph,
                     _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
 ORT_API_STATUS_IMPL(SetGraphOutputs, _In_ OrtGraph* graph,
                     _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
-ORT_API_STATUS_IMPL(AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
+ORT_API_STATUS_IMPL(AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name, _In_ OrtValue* tensor,
                     bool data_is_external);
 ORT_API_STATUS_IMPL(AddNodeToGraph, _In_ OrtGraph* graph, _Inout_ OrtNode* node);
 
