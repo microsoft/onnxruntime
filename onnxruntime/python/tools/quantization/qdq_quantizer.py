@@ -1321,12 +1321,10 @@ class QDQQuantizer(BaseQuantizer):
             reduce_range = quant_overrides.get("reduce_range", False)
             qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
             zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, self.min_real_range)
-            if (
-                self.is_activation_restricted_asymmetric
-                and quant_type == onnx.TensorProto.UINT8
-                and not symmetric
-            ):
-                zero, scale = snap_zero_point_to_uint8(rmin, rmax)
+            if self.is_activation_restricted_asymmetric and quant_type == onnx.TensorProto.UINT8 and not symmetric:
+                zero, scale = snap_zero_point_to_uint8(
+                    rmin, rmax, qmin=qmin, qmax=qmax, min_real_range=self.min_real_range
+                )
 
         return QuantizationParams(zero_point=zero.squeeze(), scale=scale.squeeze(), quant_type=quant_type)
 

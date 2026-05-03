@@ -297,7 +297,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     return [zero_point, scale]
 
 
-def snap_zero_point_to_uint8(rmin, rmax):
+def snap_zero_point_to_uint8(rmin, rmax, qmin=None, qmax=None, min_real_range=None):
     """Snap a uint8 activation zero-point to 0 (when rmin >= 0) or 128 (when rmin < 0).
 
     Used by the ActivationRestrictedAsymmetric quantization option. Recomputes scale so the
@@ -305,21 +305,41 @@ def snap_zero_point_to_uint8(rmin, rmax):
 
     :parameter rmin: calibrated minimum activation value (numpy scalar)
     :parameter rmax: calibrated maximum activation value (numpy scalar)
+    :parameter qmin: minimum quantized value (numpy scalar, default numpy.array(0, dtype=numpy.uint8))
+    :parameter qmax: maximum quantized value (numpy scalar, default numpy.array(255, dtype=numpy.uint8))
+    :parameter min_real_range: minimum floating-point range to enforce (same semantics as compute_scale_zp).
+        When not None and > 0, rmax is adjusted to max(rmax, rmin + min_real_range) before scale computation.
     :return: (zero_point, scale) with zero_point dtype uint8 and scale dtype float32
     """
+    if qmin is None:
+        qmin = numpy.array(0, dtype=numpy.uint8)
+    if qmax is None:
+        qmax = numpy.array(255, dtype=numpy.uint8)
+
     rmin = float(numpy.squeeze(rmin))
     rmax = float(numpy.squeeze(rmax))
+
+    # Apply minimum real range, mirroring compute_scale_zp behaviour.
+    if min_real_range is not None and min_real_range > 0:
+        rmax = max(rmax, rmin + float(min_real_range))
+
     if rmax <= rmin:
-        # Degenerate range – return neutral values
+        # Degenerate range - return neutral values
         return numpy.array(0, dtype=numpy.uint8), numpy.array(1.0, dtype=numpy.float32)
+
+    qmin_val = int(qmin)
+    qmax_val = int(qmax)
+
     if rmin >= 0.0:
-        zero_point = numpy.array(0, dtype=numpy.uint8)
-        scale = numpy.array(rmax / 255.0, dtype=numpy.float32)
+        zero_point = numpy.array(qmin_val, dtype=numpy.uint8)
+        scale = numpy.array(rmax / (qmax_val - qmin_val), dtype=numpy.float32)
     else:
-        zero_point = numpy.array(128, dtype=numpy.uint8)
-        # Choose scale that covers both negative and positive halves without clipping
-        scale_neg = -rmin / 128.0  # scale needed to represent rmin at q=0
-        scale_pos = rmax / 127.0  # scale needed to represent rmax at q=255
+        # Snap zero-point to the midpoint of the quantized range.
+        zp_val = round((qmin_val + qmax_val) / 2.0)
+        zero_point = numpy.array(zp_val, dtype=numpy.uint8)
+        # Choose scale that covers both halves without clipping.
+        scale_neg = -rmin / zp_val  # scale needed to represent rmin at q=qmin
+        scale_pos = rmax / (qmax_val - zp_val)  # scale needed to represent rmax at q=qmax
         scale = numpy.array(max(scale_neg, scale_pos), dtype=numpy.float32)
     return zero_point, scale
 

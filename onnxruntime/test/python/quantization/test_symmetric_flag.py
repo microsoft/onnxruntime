@@ -148,10 +148,6 @@ class TestSymmetricFlag(unittest.TestCase):
         self.assertEqual(wgt_zp, 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestRestrictedAsymmetricFlag(unittest.TestCase):
     """Tests for ActivationRestrictedAsymmetric extra-option (uint8 zero-point snapping)."""
 
@@ -185,11 +181,11 @@ class TestRestrictedAsymmetricFlag(unittest.TestCase):
         onnx.save(model, "model_restricted.onnx")
 
         class DummyDataReader(quantization.CalibrationDataReader):
-            def __init__(self_inner):
-                self_inner.iterator = ({"ACT": act} for act in activations)
+            def __init__(self):
+                self.iterator = ({"ACT": act} for act in activations)
 
-            def get_next(self_inner):
-                return next(self_inner.iterator, None)
+            def get_next(self):
+                return next(self.iterator, None)
 
         quantization.quantize_static(
             model_input="model_restricted.onnx",
@@ -231,3 +227,7 @@ class TestRestrictedAsymmetricFlag(unittest.TestCase):
         )
         # Standard asymmetric uint8 with rmin=-1, rmax=2 should give non-128 zp (it's ~85)
         self.assertNotEqual(act_zp, 128, f"Option=False should not snap to 128, got {act_zp}")
+
+
+if __name__ == "__main__":
+    unittest.main()
