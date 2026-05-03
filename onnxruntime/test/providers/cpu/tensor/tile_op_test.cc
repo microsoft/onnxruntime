@@ -357,5 +357,62 @@ TEST(TensorOpTest, TileOverflowMultipleAxes) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
+// Large per-axis repeat values whose product does not overflow int64 but would
+// still request an allocation above the supported upper bound must be rejected.
+// input [1] float32 with repeat [2^32] => 2^32 elements * 4 bytes = 16 GiB.
+TEST(TensorOpTest, TileOutputSizeExceedsLimit1D) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {1}, {1.0f});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{4294967296}});  // 2^32
+  test.AddOutput<float>("output", {0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// A moderately large but supported repeat value is accepted.
+// input [1] float32 with repeat [1000000] => 1M elements * 4 bytes = 4 MB.
+TEST(TensorOpTest, TileOutputSizeWithinLimit) {
+  RunTest<float>({1}, {1000000});
+}
+
+// Combined per-axis repeats can produce a total that is in range for int64 but
+// still above the supported allocation limit.
+// input [2,2] float32 with repeats [32768, 32768] => ~4 billion elements * 4 bytes = ~16 GiB.
+TEST(TensorOpTest, TileOutputSizeExceedsLimitMultiAxis) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<int64_t>("repeats", {2}, {32768, 32768});
+  test.AddOutput<float>("output", {0, 0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// With 8-byte elements a smaller repeat value crosses the supported limit.
+// input [1] double with repeat [536870913] => ~4 GiB + 8 bytes, just above limit.
+TEST(TensorOpTest, TileOutputSizeExceedsLimitDouble) {
+  OpTester test("Tile", 13);
+  test.AddInput<double>("input", {1}, {1.0});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{536870913}});
+  test.AddOutput<double>("output", {0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// The output-size bound applies to std::string tensors as well: the output tensor
+// holds sizeof(std::string) bytes per element for the container backing store.
+// input [1] string with repeat [2^32] easily exceeds the supported maximum.
+TEST(TensorOpTest, TileOutputSizeExceedsLimitString) {
+  OpTester test("Tile", 13);
+  test.AddInput<std::string>("input", {1}, {"x"});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{4294967296}});  // 2^32
+  test.AddOutput<std::string>("output", {0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

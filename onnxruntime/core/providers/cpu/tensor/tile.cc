@@ -161,12 +161,53 @@ Status Tile::Compute(OpKernelContext* ctx) const {
   // Calculate the shape of the output tensor
   const auto* repeats = repeats_tensor.Data<int64_t>();
   auto output_dims = input_shape.AsShapeVector();
+
+  // Bound the total tiled byte count so that a combination of large (but
+  // individually in-range) per-axis repeats cannot request an allocation that
+  // exceeds a reasonable upper limit. Track the running product using
+  // division-based checks so we can return INVALID_ARGUMENT instead of throwing
+  // an integer overflow exception from SafeInt.
+  constexpr int64_t kMaxTileOutputBytes = int64_t{4} * 1024 * 1024 * 1024;  // 4 GiB
+  const int64_t element_size = static_cast<int64_t>(input_tensor.DataType()->Size());
+  if (element_size <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Invalid element size for Tile input tensor type.");
+  }
+  const int64_t max_elements = kMaxTileOutputBytes / element_size;
+  int64_t total_elements = 1;
+
   for (size_t axis = 0; axis < input_rank; axis++) {
     if (repeats[axis] < 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Tile repeat value must be non-negative, got: ", repeats[axis]);
     }
-    output_dims[axis] = SafeInt<int64_t>(output_dims[axis]) * repeats[axis];
+    const int64_t input_dim = output_dims[axis];
+    const int64_t r = repeats[axis];
+    // Compute output_dims[axis] = input_dim * r while detecting both int64
+    // overflow and exceeding the supported byte budget. If the result would
+    // exceed max_elements it cannot fit anyway, so we reject in either case
+    // with the same controlled error message.
+    int64_t dim;
+    if (input_dim == 0 || r == 0) {
+      dim = 0;
+    } else if (input_dim > max_elements / r) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxTileOutputBytes, " bytes.");
+    } else {
+      dim = input_dim * r;
+    }
+    output_dims[axis] = dim;
+    if (dim > 0 && total_elements > max_elements / dim) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxTileOutputBytes, " bytes.");
+    }
+    total_elements *= dim;
   }
 
   TensorShape output_shape(output_dims);
