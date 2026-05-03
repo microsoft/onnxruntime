@@ -18,18 +18,23 @@
 namespace onnxruntime {
 namespace {
 
-struct VariantConstraintsSchema {
-  std::optional<std::string> ep;
-  std::optional<std::string> device;
-  std::optional<std::string> architecture;
-  std::optional<std::string> ep_compatibility_info;
+struct EpCompatibilitySchema {
+  std::optional<std::string> ep;  // nullable in schema
+  std::optional<std::string> device_type;
+  std::optional<std::string> compatibility_info;
+  std::optional<std::unordered_map<std::string, std::string>> session_options;
+  std::optional<std::unordered_map<std::string, std::string>> provider_options;
+};
+
+struct ModelInfoSchema {
+  std::string model_file;                               // required
+  std::string identifier;                               // required
+  std::vector<EpCompatibilitySchema> ep_compatibility;  // required, non-empty
 };
 
 struct VariantSchema {
-  std::optional<std::string> model_type;
-  std::optional<std::string> model_file;
-  std::optional<std::string> model_id;
-  std::optional<VariantConstraintsSchema> constraints;
+  std::vector<ModelInfoSchema> model_info;  // required, non-empty
+  std::optional<json> consumer_metadata;
 };
 
 struct ManifestSchema {
@@ -40,24 +45,61 @@ struct ManifestSchema {
 
 struct MetadataSchema {
   std::optional<std::string> component_model_name;
-  std::unordered_map<std::string, VariantSchema> model_variants;
+  std::unordered_map<std::string, VariantSchema> model_variants;  // required
 };
 
-void from_json(const json& j, VariantConstraintsSchema& c) {
-  if (j.contains(kEpKey) && j[kEpKey].is_string()) c.ep = j[kEpKey].get<std::string>();
-  if (j.contains(kDeviceKey) && j[kDeviceKey].is_string()) c.device = j[kDeviceKey].get<std::string>();
-  if (j.contains(kArchitectureKey) && j[kArchitectureKey].is_string()) c.architecture = j[kArchitectureKey].get<std::string>();
-  if (j.contains(kEpCompatibilityInfoKey) && j[kEpCompatibilityInfoKey].is_string()) {
-    c.ep_compatibility_info = j[kEpCompatibilityInfoKey].get<std::string>();
+namespace {
+
+std::optional<std::unordered_map<std::string, std::string>> ParseStringMapObject(
+    const json& j, const char* key_name) {
+  if (!j.contains(key_name) || j[key_name].is_null()) {
+    return std::nullopt;
+  }
+
+  const auto& obj = j[key_name];
+  if (!obj.is_object()) {
+    throw std::invalid_argument(std::string("\"") + key_name + "\" must be an object");
+  }
+
+  std::unordered_map<std::string, std::string> result;
+  for (auto it = obj.begin(); it != obj.end(); ++it) {
+    if (!it.value().is_string()) {
+      throw std::invalid_argument(std::string("\"") + key_name +
+                                  "\" must contain only string values. Key '" + it.key() + "' is not a string.");
+    }
+    result.emplace(it.key(), it.value().get<std::string>());
+  }
+
+  return result;
+}
+
+}  // namespace
+
+void from_json(const json& j, EpCompatibilitySchema& c) {
+  if (j.contains(kEpKey) && !j[kEpKey].is_null()) c.ep = j[kEpKey].get<std::string>();
+  if (j.contains(kDeviceTypeKey) && j[kDeviceTypeKey].is_string()) c.device_type = j[kDeviceTypeKey].get<std::string>();
+  if (j.contains(kCompatibilityInfoKey) && j[kCompatibilityInfoKey].is_string()) c.compatibility_info = j[kCompatibilityInfoKey].get<std::string>();
+
+  c.session_options = ParseStringMapObject(j, kSessionOptionsKey);
+  c.provider_options = ParseStringMapObject(j, kProviderOptionsKey);
+}
+
+void from_json(const json& j, ModelInfoSchema& m) {
+  m.model_file = j.at(kModelFileKey).get<std::string>();
+  m.identifier = j.at(kIdentifierKey).get<std::string>();
+  m.ep_compatibility = j.at(kEpCompatibilityKey).get<std::vector<EpCompatibilitySchema>>();
+  if (m.ep_compatibility.empty()) {
+    throw std::invalid_argument("\"ep_compatibility\" must contain at least one entry");
   }
 }
 
 void from_json(const json& j, VariantSchema& v) {
-  if (j.contains(kModelTypeKey) && j[kModelTypeKey].is_string()) v.model_type = j[kModelTypeKey].get<std::string>();
-  if (j.contains(kModelFileKey) && j[kModelFileKey].is_string()) v.model_file = j[kModelFileKey].get<std::string>();
-  if (j.contains(kModelIdKey) && j[kModelIdKey].is_string()) v.model_id = j[kModelIdKey].get<std::string>();
-  if (j.contains(kConstraintsKey) && j[kConstraintsKey].is_object()) {
-    v.constraints = j[kConstraintsKey].get<VariantConstraintsSchema>();
+  v.model_info = j.at(kModelInfoKey).get<std::vector<ModelInfoSchema>>();
+  if (v.model_info.empty()) {
+    throw std::invalid_argument("\"model_info\" must contain at least one entry");
+  }
+  if (j.contains(kConsumerMetadataKey) && j[kConsumerMetadataKey].is_object()) {
+    v.consumer_metadata = j[kConsumerMetadataKey];
   }
 }
 
@@ -77,8 +119,8 @@ void from_json(const json& j, ManifestSchema& m) {
 }
 
 void from_json(const json& j, MetadataSchema& m) {
-  if (j.contains("component_model_name") && j["component_model_name"].is_string()) {
-    m.component_model_name = j["component_model_name"].get<std::string>();
+  if (j.contains(kComponentModelNameInMetadataKey) && j[kComponentModelNameInMetadataKey].is_string()) {
+    m.component_model_name = j[kComponentModelNameInMetadataKey].get<std::string>();
   }
   m.model_variants = j.at(kModelVariantsKey).get<std::unordered_map<std::string, VariantSchema>>();  // required
 }
@@ -114,13 +156,6 @@ Status FindSingleOnnxFile(const std::filesystem::path& search_dir,
   return Status::OK();
 };
 
-void ApplyVariantConstraints(const VariantConstraintsSchema& c, ModelVariantInfo& variant) {
-  if (c.ep.has_value()) variant.ep = *c.ep;
-  if (c.device.has_value()) variant.device = *c.device;
-  if (c.architecture.has_value()) variant.architecture = *c.architecture;
-  if (c.ep_compatibility_info.has_value()) variant.compatibility_info = *c.ep_compatibility_info;
-}
-
 std::string SanitizeModelIdForPath(std::string model_id) {
   for (char& ch : model_id) {
     switch (ch) {
@@ -142,6 +177,37 @@ std::string SanitizeModelIdForPath(std::string model_id) {
   return model_id;
 }
 
+std::string BuildModelInfoLogString(const ModelVariantInfo& variant) {
+  std::ostringstream oss;
+  oss << "component='" << variant.component_model_name
+      << "' variant='" << variant.variant_name
+      << "' model_info_count=" << variant.model_info.size();
+
+  if (!variant.model_info.empty()) {
+    oss << " [";
+    for (size_t i = 0; i < variant.model_info.size(); ++i) {
+      const auto& mi = variant.model_info[i];
+      oss << "{id='" << mi.identifier
+          << "', file='" << mi.model_file_path.string()
+          << "', ep_compat_count=" << mi.ep_compatibility.size()
+          << "}";
+      if (i + 1 < variant.model_info.size()) {
+        oss << ", ";
+      }
+    }
+    oss << "]";
+  }
+
+  return oss.str();
+}
+
+void LogParsedVariants(const logging::Logger& logger,
+                       const std::vector<ModelVariantInfo>& variants) {
+  for (const auto& v : variants) {
+    LOGS(logger, INFO) << "model variant: " << BuildModelInfoLogString(v);
+  }
+}
+
 }  // namespace
 
 // The package_root could be either a component model root (contains metadata.json) or a model package root (contains
@@ -156,12 +222,12 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 //
 // A manifest.json may look like this:
 //
-// {
-//     "model_name" : <logical_model_name>,
-//     "model_version": "1.0",
-//     "component_models" : [<component_model_name_1>,
-//                           <component_model_name_2>]
-// }
+//{
+//    "model_name" : <logical_model_name>,
+//    "model_version": "1.0",
+//    "component_models" : [<component_model_name_1>,
+//                          <component_model_name_2>]
+//}
 //
 // A metadata.json for the component model may look like this:
 //
@@ -176,6 +242,10 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 //                "device" : <device_type>,
 //                "ep_compatibility_info" : <ep_compatibility_info_1>
 //            }
+//
+//            // Optional, mergesessionoptions and provider_options JSON blobs
+//            "session_options" : {<options>},
+//            "provider_options" : {<options>}
 //        },
 //        <variant_name_2> : {
 //             "model_type": "onnx",
@@ -185,6 +255,10 @@ std::string SanitizeModelIdForPath(std::string model_id) {
 //                 "device" : <device_type>,
 //                 "ep_compatibility_info" : <ep_compatibility_info_1>
 //             }
+//
+//             // Optional, mergesessionoptions and provider_options JSON blobs
+//             "session_options" : {<options>},
+//             "provider_options" : {<options>}
 //         }
 //     }
 // }
@@ -192,10 +266,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
                                                            /*out*/ std::vector<ModelVariantInfo>& variants) const {
   variants.clear();
 
-  // package_root could be either a component model root (contains metadata.json) or a model package root (contains manifest.json).
-
-  // Mode 1: package_root is a component model root (contains metadata.json).
-  // In this mode metadata.json is the source of truth and manifest.json is ignored.
+  // Mode 1: component root (metadata.json at root)
   const auto component_metadata_path = package_root / kComponentModelMetadataFileName;
   if (std::filesystem::exists(component_metadata_path) &&
       std::filesystem::is_regular_file(component_metadata_path)) {
@@ -230,22 +301,107 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
             ? *metadata_schema.component_model_name
             : package_root.filename().string();
 
-    // component-root mode
     ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
                                                    package_root,
                                                    &metadata_doc[kModelVariantsKey],
                                                    variants));
 
-    for (const auto& v : variants) {
-      LOGS(logger_, INFO) << "model variant: file='" << v.model_path.string()
-                          << "' ep='" << v.ep << "' device='" << v.device
-                          << "' arch='" << v.architecture << "'";
-    }
+    LogParsedVariants(logger_, variants);
 
     return Status::OK();
   }
 
-  // Mode 2: package_root is a model package root, resolve via manifest.json.
+  // Mode 2: package root (manifest.json)
+  return ParseVariantsFromPackageRoot(package_root, variants);
+}
+
+Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
+    const std::string& component_model_name,
+    const std::filesystem::path& component_model_root,
+    const json* metadata_variants_obj,
+    /*in,out*/ std::vector<ModelVariantInfo>& variants) const {
+  if (metadata_variants_obj == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Missing metadata model variants for component model: ",
+                           component_model_name);
+  }
+
+  std::unordered_map<std::string, VariantSchema> metadata_variants;
+  ORT_TRY {
+    metadata_variants = metadata_variants_obj->get<std::unordered_map<std::string, VariantSchema>>();
+  }
+  ORT_CATCH(const std::exception& ex) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Invalid metadata variant schema for component model '",
+                           component_model_name, "': ", ex.what());
+  }
+
+  for (const auto& kv : metadata_variants) {
+    const std::string& variant_name = kv.first;
+    const VariantSchema& variant_schema = kv.second;
+
+    ModelVariantInfo variant{};
+    variant.component_model_name = component_model_name;
+    variant.variant_name = variant_name;
+    variant.consumer_metadata = variant_schema.consumer_metadata;
+
+    const std::filesystem::path variant_root = component_model_root / variant_name;
+    std::unordered_set<std::string> identifiers_seen;
+
+    for (const auto& model_info_schema : variant_schema.model_info) {
+      if (!identifiers_seen.insert(model_info_schema.identifier).second) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Duplicate identifier '", model_info_schema.identifier,
+                               "' in variant '", variant_name, "'.");
+      }
+
+      const std::filesystem::path candidate_path = variant_root / model_info_schema.model_file;
+      if (!std::filesystem::exists(candidate_path)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Variant '", variant_name, "', identifier '", model_info_schema.identifier,
+                               "' path does not exist: ", candidate_path.string());
+      }
+
+      std::filesystem::path resolved_model_path;
+      if (std::filesystem::is_regular_file(candidate_path)) {
+        resolved_model_path = candidate_path;
+      } else if (std::filesystem::is_directory(candidate_path)) {
+        ORT_RETURN_IF_ERROR(FindSingleOnnxFile(candidate_path, resolved_model_path));
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Variant '", variant_name, "', identifier '", model_info_schema.identifier,
+                               "' path is neither a file nor directory: ", candidate_path.string());
+      }
+
+      VariantModelInfo model_info{};
+      model_info.identifier = model_info_schema.identifier;
+      model_info.model_file_path = std::move(resolved_model_path);
+
+      for (const auto& ec_schema : model_info_schema.ep_compatibility) {
+        VariantEpCompatibilityInfo ec{};
+        ec.ep = ec_schema.ep;
+        ec.device_type = ec_schema.device_type;
+        ec.compatibility_info = ec_schema.compatibility_info;
+        ec.session_options = ec_schema.session_options;
+        ec.provider_options = ec_schema.provider_options;
+        ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        model_info.ep_compatibility.push_back(std::move(ec));
+      }
+
+      variant.model_info.push_back(std::move(model_info));
+    }
+
+    variants.push_back(std::move(variant));
+  }
+
+  return Status::OK();
+}
+
+Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
+    const std::filesystem::path& package_root,
+    /*out*/ std::vector<ModelVariantInfo>& variants) const {
+  variants.clear();
+
   const auto manifest_path = package_root / kModelPackageManifestFileName;
   if (!std::filesystem::exists(manifest_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -281,7 +437,6 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
                            "The \"model_name\" field in the manifest.json is missing or empty");
   }
 
-  // Locate component models.
   const bool has_component_models = manifest_schema.component_models.has_value();
   std::vector<std::string> component_model_names;
   std::unordered_map<std::string, json> discovered_metadata_docs;
@@ -289,7 +444,6 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
   if (has_component_models) {
     component_model_names = *manifest_schema.component_models;
   } else {
-    // Fallback: discover component models under package_root/models where a metadata.json exists.
     const auto models_dir = package_root / "models";
     if (!std::filesystem::exists(models_dir) || !std::filesystem::is_directory(models_dir)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -305,7 +459,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
       const auto component_model_name = entry.path().filename().string();
       const auto metadata_path = entry.path() / kComponentModelMetadataFileName;
       if (!std::filesystem::exists(metadata_path)) {
-        continue;  // only folders with metadata.json count as component models
+        continue;
       }
 
       std::ifstream mf(metadata_path, std::ios::binary);
@@ -344,26 +498,19 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
     }
   }
 
-  if (component_model_names.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "manifest.json should contain exactly one component model name in \"component_models\" array "
-                           "or the models directory should contain exactly one component model.");
-  }
-
   for (const auto& component_model_name : component_model_names) {
     const auto component_model_root = package_root / "models" / component_model_name;
 
-    // If component model is listed in manifest.json but corresponding directory is missing, warn and skip.
     if (has_component_models &&
         (!std::filesystem::exists(component_model_root) || !std::filesystem::is_directory(component_model_root))) {
       LOGS(logger_, WARNING) << "Component model '" << component_model_name
                              << "' is listed in manifest.json but directory does not exist: "
                              << component_model_root.string()
                              << ". Skipping this component model.";
+
       continue;
     }
 
-    // Load metadata.json (if present) for this component model.
     json metadata_doc;
     const json* metadata_variants_obj = nullptr;
     const auto metadata_path = component_model_root / kComponentModelMetadataFileName;
@@ -379,11 +526,11 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
       if (mf) {
         ORT_TRY {
           metadata_doc = json::parse(mf);
-          (void)metadata_doc.get<MetadataSchema>();  // typed schema validation
+          (void)metadata_doc.get<MetadataSchema>();
           metadata_variants_obj = &metadata_doc[kModelVariantsKey];
         }
         ORT_CATCH(const std::exception&) {
-          // Ignore metadata parse/schema errors; fall back to metadata-absent handling below.
+          // Ignore metadata parse/schema errors; fall back below.
         }
       }
     }
@@ -399,84 +546,10 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
                            "No valid component models were found under ", (package_root / "models").string());
   }
 
-  for (const auto& v : variants) {
-    LOGS(logger_, INFO) << "model variant: file='" << v.model_path.string()
-                        << "' ep='" << v.ep << "' device='" << v.device
-                        << "' arch='" << v.architecture << "'";
-  }
+  LogParsedVariants(logger_, variants);
 
   return Status::OK();
 }
-
-Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
-    const std::string& component_model_name,
-    const std::filesystem::path& component_model_root,
-    const json* metadata_variants_obj,
-    /*in,out*/ std::vector<ModelVariantInfo>& variants) const {
-  if (metadata_variants_obj == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Missing metadata model variants for component model: ",
-                           component_model_name);
-  }
-
-  std::unordered_map<std::string, VariantSchema> metadata_variants;
-  ORT_TRY {
-    metadata_variants = metadata_variants_obj->get<std::unordered_map<std::string, VariantSchema>>();
-  }
-  ORT_CATCH(const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Invalid metadata variant schema for component model '",
-                           component_model_name, "': ", ex.what());
-  }
-
-  for (const auto& kv : metadata_variants) {
-    const std::string& variant_name = kv.first;
-    const VariantSchema& variant_schema = kv.second;
-
-    ModelVariantInfo variant{};
-    std::filesystem::path model_dir = component_model_root / variant_name;
-
-    if (variant_schema.model_id.has_value() && !variant_schema.model_id->empty()) {
-      model_dir = component_model_root / SanitizeModelIdForPath(*variant_schema.model_id);
-    }
-
-    std::filesystem::path resolved_model_path;
-
-    if (variant_schema.model_file.has_value()) {
-      const std::filesystem::path candidate_path = model_dir / *variant_schema.model_file;
-
-      if (!std::filesystem::exists(candidate_path)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Variant '", variant_name, "' file path does not exist: ",
-                               candidate_path.string());
-      }
-
-      if (std::filesystem::is_regular_file(candidate_path)) {
-        resolved_model_path = candidate_path;
-      } else if (std::filesystem::is_directory(candidate_path)) {
-        ORT_RETURN_IF_ERROR(FindSingleOnnxFile(candidate_path, resolved_model_path));
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Variant '", variant_name,
-                               "' file path is neither a file nor a directory: ",
-                               candidate_path.string());
-      }
-    } else {
-      ORT_RETURN_IF_ERROR(FindSingleOnnxFile(model_dir, resolved_model_path));
-    }
-
-    variant.model_path = std::move(resolved_model_path);
-
-    if (variant_schema.constraints.has_value()) {
-      ApplyVariantConstraints(*variant_schema.constraints, variant);
-    }
-
-    variants.push_back(std::move(variant));
-  }
-
-  return Status::OK();
-}
-
-}  // namespace onnxruntime
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+}  // namespace onnxruntime

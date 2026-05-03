@@ -339,6 +339,8 @@ ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared exte
 ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
 ORT_RUNTIME_CLASS(EpAssignedSubgraph);
 ORT_RUNTIME_CLASS(EpAssignedNode);
+ORT_RUNTIME_CLASS(ModelPackageOptions);
+ORT_RUNTIME_CLASS(ModelPackageContext);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -915,6 +917,9 @@ typedef struct OrtCompileApi OrtCompileApi;
 
 struct OrtInteropApi;
 typedef struct OrtInteropApi OrtInteropApi;
+
+struct OrtModelPackageApi;
+typedef struct OrtModelPackageApi OrtModelPackageApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
@@ -7436,6 +7441,19 @@ struct OrtApi {
                   _In_ const OrtThreadPoolCallbacksConfig* config);
 
   /// @}
+
+  /** \brief Get the OrtModelPackageApi instance, providing APIs for loading, inspecting,
+   *         and creating sessions from ORT model packages.
+   *
+   * ONNX Runtime releases guarantee that ::OrtApi is forward- and backward-compatible;
+   * ::OrtModelPackageApi carries its own independent versioning.
+   *
+   * \return Pointer to an ::OrtModelPackageApi, or NULL if model package support is not
+   *         available in this build (e.g., minimal builds).
+   *
+   * \since Version 1.26.
+   */
+  const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
 };
 
 /*
@@ -8518,6 +8536,169 @@ struct OrtInteropApi {
   ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 
   /// @}
+};
+
+/** \brief APIs for loading, inspecting, and creating sessions from ONNX model packages.
+ *
+ * Obtain via OrtApi::GetModelPackageApi. Mirrors the shape of OrtCompileApi.
+ *
+ * Typical flow:
+ *
+ *   const OrtModelPackageApi* pkg = g_ort->GetModelPackageApi();
+ *
+ *   OrtModelPackageOptions* options = nullptr;
+ *   pkg->CreateModelPackageOptionsFromSessionOptions(env, session_options, &options);
+ *
+ *   OrtModelPackageContext* ctx = nullptr;
+ *   pkg->CreateModelPackageContext(env, package_root, options, &ctx);
+ *
+ *   size_t component_count = 0;
+ *   pkg->ModelPackageContext_GetComponentModelCount(ctx, &component_count);
+ *
+ *   const char* component_name = nullptr;
+ *   pkg->ModelPackageContext_GetComponentModelName(ctx, 0, &component_name);
+ *
+ *   OrtSession* session = nullptr;
+ *   pkg->CreateSession(env, ctx, component_name, nullptr, nullptr, &session);
+ *   g_ort->ReleaseSession(session);
+ *   pkg->ReleaseModelPackageContext(ctx);
+ *   pkg->ReleaseModelPackageOptions(options);
+ *
+ * \since Version 1.26.
+ */
+struct OrtModelPackageApi {
+  /// \name OrtModelPackageOptions
+  /// @{
+  ORT_CLASS_RELEASE(ModelPackageOptions);
+
+  ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
+                  _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtModelPackageOptions** out);
+  /// @}
+  /// \name OrtModelPackageContext
+  /// @{
+
+  ORT_CLASS_RELEASE(ModelPackageContext);
+
+  ORT_API2_STATUS(CreateModelPackageContext,
+                  _In_ const ORTCHAR_T* package_root,
+                  _Outptr_ OrtModelPackageContext** out);
+
+  ORT_API2_STATUS(ModelPackageContext_GetComponentModelCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetComponentModelNames,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetModelVariantCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetModelVariantNames,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetFileCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetFileIdentifiers,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_file_identifiers,
+                  _Out_ size_t* out_count);
+
+  ORT_API2_STATUS(ModelPackageContext_GetFilePath,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _In_opt_ const char* file_identifier,
+                  _Outptr_ const ORTCHAR_T** out_path);
+
+  /** \brief Get session options for a selected file as flat key/value entries.
+   *
+   * Returns NULL/empty arrays when none specified.
+   * Memory is owned by `context` and valid until the next model-package query call on that context.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(ModelPackageGetFileSessionOptions,
+                  _In_ const OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_opt_ const char* file_identifier,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                  _Out_ size_t* num_entries);
+
+  /** \brief Get provider options for a selected file as flat key/value entries.
+   *
+   * EP-name nesting is not included (selected EP is already known).
+   * Returns NULL/empty arrays when none specified.
+   * Memory is owned by `context` and valid until the next model-package query call on that context.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(ModelPackageGetFileProviderOptions,
+                  _In_ const OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_opt_ const char* file_identifier,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                  _Out_ size_t* num_entries);
+
+  ORT_API2_STATUS(ResolveVariant,
+                  _Inout_ OrtModelPackageContext* ctx,
+                  _In_ const OrtModelPackageOptions* options);
+
+  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _Out_ size_t* out_count);
+  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileIdentifier,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ size_t index,
+                  _Outptr_ const char** out_file_identifier);
+
+  /// @}
+  /** \brief Create an OrtSession for a selected file within a component model variant.
+   *
+   * The chosen variant (and thus its EP selection) is determined by `context`, which
+   * was built from an OrtSessionOptions via CreateModelPackageOptionsFromSessionOptions.
+   *
+   * Session options precedence:
+   *   1. session_options == NULL (default path):
+   *      ORT uses the OrtSessionOptions that was captured when `context` was created.
+   *      Any variant-specific session and provider options declared in the package
+   *      metadata are merged on top.
+   *
+   *   2. session_options != NULL (advanced path):
+   *      ORT uses the caller-provided OrtSessionOptions as-is. Variant-specific
+   *      session and provider options from the package metadata are NOT applied.
+   *      Use this when custom EP setup is required (e.g., shared CUDA streams,
+   *      shared QNN EP contexts, custom allocators).
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(CreateSession,
+                  _In_ const OrtEnv* env,
+                  _In_ OrtModelPackageContext* context,
+                  _In_ const char* component_name,
+                  _In_opt_ const char* file_identifier,
+                  _In_opt_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtSession** session);
+
+  // End of Version 1.26 - DO NOT MODIFY ABOVE
 };
 
 /*

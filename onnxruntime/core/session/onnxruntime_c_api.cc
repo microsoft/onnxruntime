@@ -57,6 +57,7 @@
 #include "core/session/ort_env.h"
 #include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
+#include "core/session/model_package_api.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -3688,6 +3689,10 @@ ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   return OrtCompileAPI::GetCompileApi();
 }
 
+ORT_API(const OrtModelPackageApi*, OrtApis::GetModelPackageApi) {
+  return OrtModelPackageAPI::GetModelPackageApi();
+}
+
 ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
   auto kvps = std::make_unique<OrtKeyValuePairs>();
   *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
@@ -4894,6 +4899,9 @@ static constexpr OrtApi ort_api_1_to_26 = {
     &OrtApis::KernelInfoGetAttributeArray_string,
     &OrtApis::SetPerSessionThreadPoolCallbacks,
     // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetModelPackageApi,
+    // End of Version 26 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
