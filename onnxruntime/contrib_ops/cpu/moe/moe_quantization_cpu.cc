@@ -178,7 +178,7 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
   const float default_zp_8bit = 128.0f;
   const float default_zp_4bit = 8.0f;
   const uint8_t default_zp_4bit_packed = 0x88;
-  const int64_t zp_pack_size = (num_bits == 4) ? 2 : 1;
+  const int64_t zp_pack_size = 8 / num_bits;
 
   if (CanUseMlasQ4Dequant(num_bits) && zero_points == nullptr) {
     // Use optimized symmetric 4-bit dequantization
@@ -348,6 +348,54 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
           if (c + 1 < cols) {
             row_output[c + 1] = scale * (static_cast<float>(val1) - zp);
           }
+        }
+      }
+    }
+  } else if (num_bits == 2) {
+    // 2-bit, asymmetric (LSB-first, 4 values per byte, mask 0x3)
+    const int64_t packed_cols = (cols + 3) / 4;
+    const int64_t blocks_per_row = (block_size > 0) ? ((cols + block_size - 1) / block_size) : 1;
+    const int64_t blocks_per_row_packed = (blocks_per_row + zp_pack_size - 1) / zp_pack_size;
+    const float default_zp_2bit = 2.0f;
+    const uint8_t default_zp_2bit_packed = 0xAA;  // 2 in each 2-bit slot (0b10101010)
+
+    for (int64_t r = 0; r < rows; ++r) {
+      const uint8_t* row_data = quantized_data + r * packed_cols;
+      float* row_output = dequantized_data + r * cols;
+
+      if (block_size > 0) {
+        // 2-bit, block-wise, asymmetric
+        const uint8_t* row_zp_data = (zero_points == nullptr) ? nullptr : zero_points + r * blocks_per_row_packed;
+        for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
+          const int64_t block_end = std::min(block_start + block_size, cols);
+          const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
+          const int64_t scale_idx = r * blocks_per_row + block_idx;
+          const float scale = static_cast<float>(scales[scale_idx]);
+
+          const uint8_t packed_zp = (row_zp_data == nullptr) ? default_zp_2bit_packed
+                                                             : row_zp_data[block_idx / 4];
+          const uint8_t zp_shift = static_cast<uint8_t>((block_idx % 4) * 2);
+          const float zp = static_cast<float>((packed_zp >> zp_shift) & 0x3);
+
+          for (int64_t c = block_start; c < block_end; ++c) {
+            const uint8_t packed_val = row_data[c / 4];
+            const uint8_t shift = static_cast<uint8_t>((c % 4) * 2);
+            const uint8_t val = (packed_val >> shift) & 0x3;
+            row_output[c] = scale * (static_cast<float>(val) - zp);
+          }
+        }
+      } else {
+        // 2-bit, row-wise, asymmetric
+        const uint8_t packed_zp = (zero_points == nullptr) ? default_zp_2bit_packed : zero_points[r / 4];
+        const uint8_t zp_shift = static_cast<uint8_t>((r % 4) * 2);
+        const float zp = static_cast<float>((packed_zp >> zp_shift) & 0x3);
+        const float scale = static_cast<float>(scales[r]);
+
+        for (int64_t c = 0; c < cols; ++c) {
+          const uint8_t packed_val = row_data[c / 4];
+          const uint8_t shift = static_cast<uint8_t>((c % 4) * 2);
+          const uint8_t val = (packed_val >> shift) & 0x3;
+          row_output[c] = scale * (static_cast<float>(val) - zp);
         }
       }
     }
@@ -625,8 +673,8 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
               "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
-  ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
-              "Attribute 'expert_weight_bits' must be 4 or 8.");
+  ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
+              "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
   block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
   ORT_ENFORCE(block_size_ >= 0);
 
@@ -922,7 +970,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
   const bool has_fc2_bias = (fc2_bias_data != nullptr);
 
   // Calculate strides for zero-point tensors
-  const int64_t zp_pack_size = (expert_weight_bits_ == 4) ? 2 : 1;
+  const int64_t zp_pack_size = 8 / expert_weight_bits_;
   int64_t fc1_zp_expert_stride = 0;
   int64_t fc2_zp_expert_stride = 0;
 
