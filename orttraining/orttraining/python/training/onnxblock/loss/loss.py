@@ -119,7 +119,7 @@ class CrossEntropyLoss(blocks.Block):
         # Register log_prob in value_info so the gradient builder can resolve
         # O(1) (the second output of SoftmaxCrossEntropyLoss).  Without this,
         # graph optimizers may drop the output def and cause a C++ assertion.
-        scores_info = _graph_utils.get_output_from_output_name(self.base, scores_input_name)
+        scores_info = _graph_utils.get_value_info_for_name(self.base, scores_input_name)
         scores_elem_type = scores_info.type.tensor_type.elem_type
         if not any(vi.name == log_prob_output_name for vi in self.base.graph.value_info):
             self.base.graph.value_info.append(

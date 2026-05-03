@@ -25,6 +25,39 @@ def get_input_from_input_name(onnx_model: onnx.ModelProto, input_name: str) -> o
     raise LookupError(f"The provided output name {input_name} is not a graph input.")
 
 
+def get_value_info_for_name(onnx_model: onnx.ModelProto, name: str) -> onnx.ValueInfoProto:
+    """Returns the ValueInfoProto for the given name by searching graph outputs, inputs, and value_info.
+
+    Searches in order: graph.output -> graph.input -> graph.value_info. This allows callers to
+    resolve type information for any tensor in the graph, including intermediate tensors that are
+    not yet promoted to graph outputs.
+
+    Args:
+        onnx_model: the ONNX model whose graph is searched.
+        name: the tensor name to look up.
+
+    Returns:
+        The matching ValueInfoProto.
+
+    Raises:
+        LookupError: if no match is found in any of the three collections.
+    """
+
+    for vi in onnx_model.graph.output:
+        if vi.name == name:
+            return vi
+
+    for vi in onnx_model.graph.input:
+        if vi.name == name:
+            return vi
+
+    for vi in onnx_model.graph.value_info:
+        if vi.name == name:
+            return vi
+
+    raise LookupError(f"The provided name '{name}' was not found in graph outputs, inputs, or value_info.")
+
+
 _GRAPH_TOKEN = 0
 
 
