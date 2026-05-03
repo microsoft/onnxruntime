@@ -57,3 +57,59 @@ stages:
 
           echo "running test_webgpu_plugin_ep.py"
           python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+
+  # NuGet package test (x64 only — the NuGet package is multi-platform but
+  # the test runs on a single Windows agent that exercises the WebGPU EP).
+  - ${{ if eq(parameters.arch, 'x64') }}:
+    - job: Win_plugin_webgpu_nuget_Test
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        os: windows
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/setup-feeds-and-python-steps.yml
+
+      # Download the NuGet package produced by the packaging pipeline run that
+      # triggered this pipeline (or that was selected at queue time).
+      - download: build
+        artifact: webgpu_plugin_nuget
+        displayName: 'Download NuGet package'
+
+      # Set up local NuGet feed
+      - powershell: |
+          $ErrorActionPreference = 'Stop'
+          $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
+          New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
+
+          # Copy .nupkg to local feed
+          Copy-Item "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\*.nupkg" $localFeedDir -Force
+
+          # Write a project-level nuget.config that adds ONLY the local feed.
+          # NuGet merges this with the repo-root NuGet.config.
+          $nugetConfig = "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\nuget.config"
+          Set-Content -Path $nugetConfig -Encoding UTF8 -Value @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="local" value="$localFeedDir" />
+            </packageSources>
+          </configuration>
+          "@
+          Write-Host "Wrote project-level nuget.config with local feed: $localFeedDir"
+          Write-Host "Local feed contents:"
+          Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
+        displayName: 'Set up local NuGet feed'
+
+      - script: |
+          dotnet build "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" --configuration Release
+        displayName: 'Build test project'
+
+      - script: |
+          dotnet run --project "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" --configuration Release --no-build
+        displayName: 'Run NuGet package test'

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.ML.OnnxRuntime is pulled in transitively via the EP package. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.WebGpu" Version="*-*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="mul.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Uncomment to use project reference during local development -->
+  <!-- <ItemGroup>
+    <ProjectReference Include="..\..\Microsoft.ML.OnnxRuntime.EP.WebGpu\Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj" />
+  </ItemGroup> -->
+
+</Project>

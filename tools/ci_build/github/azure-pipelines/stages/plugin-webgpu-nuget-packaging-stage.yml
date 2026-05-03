@@ -1,0 +1,190 @@
+# NuGet packaging stage for WebGPU plugin EP.
+# Downloads platform-specific build artifacts, packs them into a single multi-platform NuGet package,
+# signs it, and runs a basic test.
+
+parameters:
+- name: package_version
+  type: string
+
+- name: version_file
+  type: string
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+
+- name: DoEsrp
+  type: boolean
+  default: true
+
+- name: platforms
+  type: object
+  default:
+    win_x64: false
+    win_arm64: false
+    linux_x64: false
+    macos_arm64: false
+
+stages:
+- stage: NuGet_Packaging
+  displayName: 'NuGet Packaging'
+  dependsOn:
+  - ${{ if eq(parameters.platforms.win_x64, true) }}:
+    - Win_plugin_webgpu_x64_Build
+  - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+    - Win_plugin_webgpu_arm64_Build
+  - ${{ if eq(parameters.platforms.linux_x64, true) }}:
+    - Linux_plugin_webgpu_x64_Build
+  - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
+    - MacOS_plugin_webgpu_arm64_Build
+  jobs:
+  # ---------- Pack job ----------
+  - job: NuGet_Pack
+    displayName: 'Pack NuGet'
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win-CPU-VS2022-Latest
+      os: windows
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: '$(Build.ArtifactStagingDirectory)\nuget'
+        artifactName: webgpu_plugin_nuget
+    variables:
+    - template: ../templates/common-variables.yml
+    - name: WebGpuPackStagingDir
+      value: '$(Build.BinariesDirectory)\webgpu_pack_staging'
+    # Common arguments shared by the Build and Pack invocations of pack_nuget.py.
+    - name: WebGpuPackNuGetCommonArgs
+      value: >-
+        --version "$(PluginPackageVersion)"
+        --output-dir "$(Build.ArtifactStagingDirectory)\nuget"
+        --staging-dir "$(WebGpuPackStagingDir)"
+        --configuration Release
+        --nuget-config "$(Build.SourcesDirectory)\NuGet.config"
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'x64'
+
+    - template: ../templates/set-nightly-build-option-variable-step.yml
+
+    - template: ../templates/set-plugin-build-variables-step.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
+
+    # Download platform artifacts
+    - ${{ if eq(parameters.platforms.win_x64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download win-x64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_win_x64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\win_x64'
+
+    - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download win-arm64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_win_arm64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\win_arm64'
+
+    - ${{ if eq(parameters.platforms.linux_x64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download linux-x64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_linux_x64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\linux_x64'
+
+    - ${{ if eq(parameters.platforms.macos_arm64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download macos-arm64 artifacts'
+        inputs:
+          artifactName: webgpu_plugin_macos_arm64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\macos_arm64'
+
+    # Compute the set of required platforms from the pipeline parameters and verify the
+    # corresponding artifact directories actually downloaded. This catches renamed/moved
+    # upstream artifacts loudly before any pack work, and feeds pack_nuget.py the same
+    # list so it fails fast if any required platform's binaries are missing.
+    - task: PythonScript@0
+      displayName: 'Compute required platforms'
+      inputs:
+        scriptSource: inline
+        script: |
+          import os
+          import sys
+
+          # The string literals below are filled in by ADO template expansion at queue
+          # time and resolve to 'True' or 'False'.
+          platforms_enabled = {
+              "win_x64":     "${{ parameters.platforms.win_x64 }}" == "True",
+              "win_arm64":   "${{ parameters.platforms.win_arm64 }}" == "True",
+              "linux_x64":   "${{ parameters.platforms.linux_x64 }}" == "True",
+              "macos_arm64": "${{ parameters.platforms.macos_arm64 }}" == "True",
+          }
+          expected = [name for name, enabled in platforms_enabled.items() if enabled]
+
+          if not expected:
+              print("##vso[task.logissue type=error]No platforms enabled in 'platforms' parameter — nothing to pack.")
+              sys.exit(1)
+
+          artifacts_dir = r"$(Build.BinariesDirectory)\artifacts"
+          missing = [
+              f"{p} ({d})"
+              for p in expected
+              for d in [os.path.join(artifacts_dir, p, "bin")]
+              if not os.path.isdir(d)
+          ]
+          if missing:
+              print("##vso[task.logissue type=error]Expected artifact directories not found:")
+              for m in missing:
+                  print(f"##vso[task.logissue type=error]  {m}")
+              sys.exit(1)
+
+          required = ",".join(expected)
+          print(f"Required platforms: {required}")
+          print(f"##vso[task.setvariable variable=WebGpuRequiredPlatforms]{required}")
+
+    # Stage binaries and build the managed assembly (so it can be ESRP-signed before packing).
+    - task: PythonScript@0
+      displayName: 'Build managed DLL'
+      inputs:
+        scriptSource: filePath
+        scriptPath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.py'
+        arguments: >-
+          $(WebGpuPackNuGetCommonArgs)
+          --artifacts-dir "$(Build.BinariesDirectory)\artifacts"
+          --required-platforms $(WebGpuRequiredPlatforms)
+          --build-only
+
+    # ESRP-sign the managed DLL before it gets embedded in the .nupkg.
+    - template: ../templates/win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(WebGpuPackStagingDir)'
+        Pattern: 'Microsoft.ML.OnnxRuntime.EP.WebGpu.dll'
+        DisplayName: 'ESRP - Sign managed DLL'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
+    # Pack the (now-signed) managed DLL plus native binaries into the .nupkg.
+    - task: PythonScript@0
+      displayName: 'Pack NuGet package'
+      inputs:
+        scriptSource: filePath
+        scriptPath: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\pack_nuget.py'
+        arguments: >-
+          $(WebGpuPackNuGetCommonArgs)
+          --pack-only
+
+    # ESRP sign
+    - template: ../templates/esrp_nuget.yml
+      parameters:
+        FolderPath: '$(Build.ArtifactStagingDirectory)\nuget'
+        DisplayName: 'ESRP - Sign NuGet package'
+        DoEsrp: ${{ parameters.DoEsrp }}

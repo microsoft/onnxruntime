@@ -42,6 +42,25 @@ parameters:
    - MinSizeRel
 
 stages:
+    # Parameter validation. The ARM64 build requires the x64 tblgen.exe (used during the
+    # build), which is not correctly generated in a cross build. We require x64 to be built
+    # first and download tblgen.exe from it; surface a mismatched-flags request as an
+    # explicit failure rather than silently disabling arm64 packaging.
+    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, false)) }}:
+      - stage: Validate_Parameters
+        displayName: 'Validate parameters'
+        jobs:
+        - job: Fail
+          displayName: 'Invalid parameter combination'
+          pool:
+            name: onnxruntime-Win-CPU-VS2022-Latest
+            os: windows
+          steps:
+          - powershell: |
+              Write-Error "build_windows_arm64=true requires build_windows_x64=true: the ARM64 build cross-uses the x64 tblgen.exe published by the Windows x64 stage."
+              exit 1
+            displayName: 'Fail: arm64 requires x64'
+
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:
       - template: plugin-win-webgpu-stage.yml
@@ -52,9 +71,7 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # Windows ARM64
-    # ARM64 build requires the x64 tblgen.exe (used during the build), which is not correctly
-    # generated in a cross build. So we require x64 to be built first and download tblgen.exe from it.
-    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+    - ${{ if eq(parameters.build_windows_arm64, true) }}:
       - template: plugin-win-webgpu-stage.yml
         parameters:
           arch: 'arm64'
@@ -77,3 +94,16 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # NuGet packaging (runs after all platform builds)
+    - template: plugin-webgpu-nuget-packaging-stage.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
+        cmake_build_type: ${{ parameters.cmake_build_type }}
+        DoEsrp: true
+        platforms:
+          win_x64: ${{ parameters.build_windows_x64 }}
+          win_arm64: ${{ parameters.build_windows_arm64 }}
+          linux_x64: ${{ parameters.build_linux_x64 }}
+          macos_arm64: ${{ parameters.build_macos_arm64 }}

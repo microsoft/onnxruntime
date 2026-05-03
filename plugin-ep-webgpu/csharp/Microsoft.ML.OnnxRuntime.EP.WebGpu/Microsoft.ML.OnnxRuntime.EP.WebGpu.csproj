@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+
+    <!-- Package info -->
+    <PackageId>Microsoft.ML.OnnxRuntime.EP.WebGpu</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Microsoft</Authors>
+    <Company>Microsoft</Company>
+    <Description>WebGPU plugin Execution Provider for ONNX Runtime. Provides GPU acceleration via WebGPU (Dawn) with D3D12 and Vulkan backends.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>ONNX;ONNX Runtime;Machine Learning;AI;Deep Learning;WebGPU</PackageTags>
+
+    <!-- License/Repository -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/microsoft/onnxruntime</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
+
+    <!-- Include symbols/source for better debugging experience -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!--
+    Minimum required Microsoft.ML.OnnxRuntime version is read from a file (single source
+    of truth, shared with the Python wheel build). The path is overridable via
+    -p:OnnxRuntimeMinVersionFile=<absolute path> so callers (e.g. pack_nuget.py, which
+    builds out of a staged copy) can point at the original file in the source tree.
+  -->
+  <PropertyGroup>
+    <OnnxRuntimeMinVersionFile Condition="'$(OnnxRuntimeMinVersionFile)' == ''">$(MSBuildThisFileDirectory)..\..\MIN_ONNXRUNTIME_VERSION</OnnxRuntimeMinVersionFile>
+    <OnnxRuntimeMinVersion Condition="Exists('$(OnnxRuntimeMinVersionFile)')">$([System.IO.File]::ReadAllText('$(OnnxRuntimeMinVersionFile)').Trim())</OnnxRuntimeMinVersion>
+  </PropertyGroup>
+
+  <Target Name="_ValidateOnnxRuntimeMinVersion" BeforeTargets="CollectPackageReferences">
+    <Error Condition="!Exists('$(OnnxRuntimeMinVersionFile)')"
+           Text="OnnxRuntimeMinVersionFile not found: '$(OnnxRuntimeMinVersionFile)'. Set -p:OnnxRuntimeMinVersionFile=&lt;absolute path&gt; or restore the file at the default location." />
+    <Error Condition="'$(OnnxRuntimeMinVersion)' == ''"
+           Text="OnnxRuntimeMinVersion resolved to an empty value from '$(OnnxRuntimeMinVersionFile)'." />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(OnnxRuntimeMinVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ensure README is included in the package -->
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <!-- Native binaries per platform. Each ItemGroup is conditioned on the runtimes/ directory
+       existing so the project can build cleanly from the source tree. At pack time, pack_nuget.py
+       populates the staging directory with whichever platforms are available. -->
+  <ItemGroup>
+    <None Include="runtimes\win-x64\native\**"
+          Pack="true"
+          PackagePath="runtimes/win-x64/native/"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\win-x64\native')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="runtimes\win-arm64\native\**"
+          Pack="true"
+          PackagePath="runtimes/win-arm64/native/"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\win-arm64\native')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="runtimes\linux-x64\native\**"
+          Pack="true"
+          PackagePath="runtimes/linux-x64/native/"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\linux-x64\native')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="runtimes\osx-arm64\native\**"
+          Pack="true"
+          PackagePath="runtimes/osx-arm64/native/"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\osx-arm64\native')" />
+  </ItemGroup>
+
+</Project>
