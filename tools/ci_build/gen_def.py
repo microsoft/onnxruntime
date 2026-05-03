@@ -9,7 +9,7 @@ def parse_arguments():
     parser.add_argument("--output", required=True, help="output file")
     parser.add_argument("--output_source", required=True, help="output file")
     parser.add_argument("--version_file", required=True, help="VERSION_NUMBER file")
-    parser.add_argument("--style", required=True, choices=["gcc", "vc", "xcode"])
+    parser.add_argument("--style", required=True, choices=["gcc", "vc", "xcode", "aix"])
     parser.add_argument("--config", required=True, nargs="+")
     return parser.parse_args()
 
@@ -38,8 +38,8 @@ with open(args.output, "w") as file:
     if args.style == "vc":
         file.write("LIBRARY\n")
         file.write("EXPORTS\n")
-    elif args.style == "xcode":
-        pass  # xcode compile don't has any header.
+    elif args.style in ["xcode", "aix"]:
+        pass  # Both xcode and AIX export files don't need a specific header.
     else:
         file.write(f"VERS_{VERSION_STRING} {{\n")
         file.write(" global:\n")
@@ -49,6 +49,8 @@ with open(args.output, "w") as file:
             file.write(f" {symbol} @{symbol_index}\n")
         elif args.style == "xcode":
             file.write(f"_{symbol}\n")
+        elif args.style == "aix":
+            file.write(f"{symbol}\n")  # AIX just needs the name
         else:
             file.write(f"  {symbol};\n")
         symbol_index += 1
