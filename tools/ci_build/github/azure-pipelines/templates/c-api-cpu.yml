@@ -286,8 +286,6 @@ stages:
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -356,7 +354,14 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: RelWithDebInfo
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentTime=$(BuildTime) -p:CurrentDate=$(BuildDate)'
+        msbuildArguments: >-
+          -t:CreatePackage
+          "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
+          "-p:OrtPackageId=$(OrtPackageId)"
+          "-p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}"
+          "-p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)"
+          "-p:CurrentTime=$(ORT_CI_BUILD_TIME)"
+          "-p:CurrentDate=$(ORT_CI_BUILD_DATE)"
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
@@ -420,8 +425,6 @@ stages:
         NpmPackagingMode: 'release'
       ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
         NpmPackagingMode: 'dev'
-      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - checkout: self
@@ -635,7 +638,7 @@ stages:
             Write-Host "Latest version of ${packageName}: $latestVersion"
 
             # Generate current version
-            $currentVersion = "$(cat .\VERSION_NUMBER)-dev-$($env:BuildDate)-$($env:BuildTime)-$(git rev-parse --short HEAD)"
+            $currentVersion = "$(cat .\VERSION_NUMBER)-dev-$($env:ORT_CI_BUILD_DATE)-$($env:ORT_CI_BUILD_TIME)-$(git rev-parse --short HEAD)"
             Write-Host "Current version: $currentVersion"
 
             # Set the version as an environment variable
