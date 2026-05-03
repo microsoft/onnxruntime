@@ -148,7 +148,6 @@ CudaEpFactory::HardwareDeviceKey CudaEpFactory::MakeDeviceKey(const OrtApi& ort_
   };
 }
 
-/*static*/
 OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
     OrtEpFactory* this_ptr,
     const OrtHardwareDevice* const* hw_devices,
@@ -196,10 +195,27 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
         continue;  // Skip non-NVIDIA GPUs
       }
 
-      // CUDA uses contiguous ordinals for CUDA-visible NVIDIA devices. Build that
-      // mapping from the filtered hardware-device list instead of relying on the
-      // ORT hardware device id, which is not guaranteed to be a CUDA ordinal.
-      int current_device_id = cuda_device_index++;
+      // Try to resolve the CUDA ordinal from pci_bus_id metadata if available.
+      // This is more reliable than counter-based ordinal assignment because it is
+      // not affected by enumeration order, CUDA_VISIBLE_DEVICES remapping, or
+      // mixed-vendor GPU configurations.
+      int current_device_id = -1;
+      const OrtKeyValuePairs* metadata = factory->ort_api_.HardwareDevice_Metadata(&device);
+      if (metadata != nullptr) {
+        const char* pci_bus_id = factory->ort_api_.GetKeyValue(metadata, "pci_bus_id");
+        if (pci_bus_id != nullptr && pci_bus_id[0] != '\0') {
+          int resolved_ordinal = -1;
+          cudaError_t err = cudaDeviceGetByPCIBusId(&resolved_ordinal, pci_bus_id);
+          if (err == cudaSuccess && resolved_ordinal >= 0 && resolved_ordinal < cuda_device_count) {
+            current_device_id = resolved_ordinal;
+          }
+        }
+      }
+
+      // Fallback: if pci_bus_id was not available, use counter-based ordinal assignment.
+      if (current_device_id < 0) {
+        current_device_id = cuda_device_index++;
+      }
 
       // Validate the assigned ordinal is within the range of CUDA-visible devices.
       // If hardware enumeration reports GPUs not visible to CUDA (e.g. due to
@@ -207,6 +223,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       if (current_device_id >= cuda_device_count) {
         continue;
       }
+
       const auto device_key = CudaEpFactory::MakeDeviceKey(factory->ort_api_, device, current_device_id);
       DeviceCacheEntry* cache_entry = nullptr;
       {
