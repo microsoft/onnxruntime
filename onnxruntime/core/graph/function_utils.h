@@ -29,6 +29,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
 /** Create a OpSchema given from a local function in onnx model.
  * @param function_domain The domain of the function.
  * @param function_name The name of the function.
+ * @param function_overload The overload identifier of the function (IR version 10+). Empty for non-overloaded functions.
  * @param model_local_functions The map of local functions in the same onnx model.
  *                              This will be used as context for the function's type/shape inference.
  *                              This argument is captured by shape inferencing lambda by reference and must
@@ -40,6 +41,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
  */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
+                                                       const std::string& function_overload,
                                                        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                                                        const std::unordered_map<std::string, int>& domain_version_map,
                                                        const SchemaRegistryManager& schema_registry,
@@ -50,9 +52,15 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
  * relevant model local function from it's container.
  * @param function_domain Domain for the function.
  * @param function_name Name of the function. Name should match the OpType of the node which references the function.
+ * @param function_overload Overload identifier for the function (IR version 10+). Empty for non-overloaded functions.
  */
-inline std::string GetFunctionIdentifier(std::string_view function_domain, std::string_view function_name) {
-  return function_domain.data() + std::string(":") + function_name.data();
+inline std::string GetFunctionIdentifier(std::string_view function_domain, std::string_view function_name,
+                                         std::string_view function_overload = std::string_view{}) {
+  std::string id = std::string(function_domain) + ":" + std::string(function_name);
+  if (!function_overload.empty()) {
+    id += ":" + std::string(function_overload);
+  }
+  return id;
 }
 
 void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto& calling_node,
