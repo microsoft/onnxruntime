@@ -104,6 +104,7 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
     cuda_tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
     cuda_tester.AddAttribute<std::string>("activation_type", activation_type);
     cuda_tester.AddAttribute<int64_t>("normalize_routing_weights", static_cast<int64_t>(normalize_routing_weights));
+    cuda_tester.AddAttribute<int64_t>("expert_weight_bits", static_cast<int64_t>(expert_weight_bits));
 
     std::vector<int64_t> input_dims = {num_rows, hidden_size};
     std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
@@ -194,6 +195,7 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
     webgpu_tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
     webgpu_tester.AddAttribute<std::string>("activation_type", activation_type);
     webgpu_tester.AddAttribute<int64_t>("normalize_routing_weights", static_cast<int64_t>(normalize_routing_weights));
+    webgpu_tester.AddAttribute<int64_t>("expert_weight_bits", static_cast<int64_t>(expert_weight_bits));
 
     std::vector<int64_t> input_dims = {num_rows, hidden_size};
     std::vector<int64_t> router_probs_dims = {num_rows, num_experts};

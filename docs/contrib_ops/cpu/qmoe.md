@@ -183,7 +183,10 @@ The CPU kernel implements `PrePack()` and `UseSharedPrePackedBuffers()` to reduc
 
 ### 2-bit prepack
 
-For supported block-wise shapes, the kernel pre-packs FC1/FC2 weights into MLAS LUT GEMM packed buffers. These packed buffers are cached and can be reused across sessions through shared prepacked buffers.
+When FC1/FC2 weights and scales, plus any zero points, are constant initializers and the block-wise shape is
+supported by MLAS LUT GEMM, the kernel pre-packs the weights into MLAS LUT GEMM packed buffers. These packed
+buffers are cached and can be reused across sessions through shared prepacked buffers. If scales or zero points are
+runtime inputs, execution falls back to packing per expert during `Compute()`.
 
 ### 4-bit prepack
 

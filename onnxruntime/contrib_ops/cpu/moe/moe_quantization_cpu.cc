@@ -641,6 +641,10 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
         return Status::OK();
       }
 
+      if (scales_dims[1] != rows || scales_dims[2] != (cols / block_size_)) {
+        return Status::OK();
+      }
+
       const bool has_zp_input = zp_idx < static_cast<int>(Info().node().InputDefs().size()) &&
                                 Info().node().InputDefs()[zp_idx]->Exists();
       const Tensor* zp_tensor = nullptr;
