@@ -460,7 +460,10 @@ static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
   }
   const size_t num_channels = std::max(w_num, b_num);
 
-  // Tolerance values matching convention in optimizer/utils.cc.
+  // Looser tolerances than optimizer_utils::IsInitializerWithExpectedValue (atol=1e-8, rtol=1e-5)
+  // are used intentionally: bias_scale is computed as input_scale * weight_scale and may
+  // accumulate fp rounding error from upstream quantization tools, so a tighter check
+  // would reject otherwise valid fusions in practice.
   constexpr float atol = 1e-6f;
   constexpr float rtol = 1e-2f;
 
@@ -496,6 +499,9 @@ static bool CheckConvBiasZeroPoint(const GraphViewer& graph_viewer, const Node& 
     return false;  // zero-point present but not constant — cannot verify
   }
 
+  // Fusion to QLinearConv assumes bias is symmetrically quantized (zero_point == 0).
+  // If a nonzero bias zero-point is present we skip fusion to avoid producing an
+  // arithmetically incorrect QLinearConv (which has no bias zero-point input).
   const Initializer zp_init{graph_viewer.GetGraph(), *zp_proto, graph_viewer.ModelPath()};
   if (zp_init.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     return false;  // unexpected dtype for bias zero-point
