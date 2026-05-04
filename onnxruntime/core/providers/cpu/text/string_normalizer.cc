@@ -33,11 +33,11 @@ namespace string_normalizer {
 class Utf8ConverterGeneric {
  public:
   size_t ComputeRequiredSizeToUtf8(const std::wstring& wstr) const {
-    return WideToUtf8RequiredSize(wstr);
+    return utf8_util::WideToUtf8RequiredSize(wstr);
   }
 
   Status ConvertToUtf8(const std::wstring& wstr, std::string& str) const {
-    return WideToUtf8(wstr, str);
+    return utf8_util::WideToUtf8(wstr, str);
   }
 
   Status ComputeRequiredSizeToWideChar(const std::string& str, size_t& wchars) {
@@ -47,11 +47,11 @@ class Utf8ConverterGeneric {
   }
 
   Status ConvertToWideChar(const std::string& str, std::wstring& wstr) {
-    return Utf8ToWide(str, wstr);
+    return utf8_util::Utf8ToWide(str, wstr);
   }
 
   std::wstring from_bytes(const std::string& s) {
-    return Utf8ToWideString(s);
+    return utf8_util::Utf8ToWideString(s);
   }
 };
 #endif  // !_WIN32
@@ -445,7 +445,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       output_shape.push_back(C);
       status = output_no_filtering(output_shape);
     } else {
-      // Case insensitive filtering: convert to wchar_t and case-fold for comparison.
+      // Case insensitive filtering: convert to wchar_t and lowercase for comparison.
       // Re-conversion during output is cheaper than caching N wide strings (each requiring
       // a heap allocation), especially under multi-threaded contention for the allocator lock.
       InlinedVector<size_t> filtered_strings_indices;

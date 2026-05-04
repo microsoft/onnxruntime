@@ -58,7 +58,8 @@ TEST(Utf8UtilTest, Utf8Bytes_Ascii) {
 TEST(Utf8UtilTest, Utf8Bytes_TwoByte) {
   using namespace utf8_util;
   size_t len = 0;
-  // 0xC0-0xDF are 2-byte lead bytes
+  // 0xC0-0xDF share the 2-byte lead-byte prefix.
+  // Full well-formedness checks happen in utf8_validate.
   EXPECT_TRUE(utf8_bytes(0xC0, len));
   EXPECT_EQ(2U, len);
   EXPECT_TRUE(utf8_bytes(0xC2, len));
@@ -82,7 +83,8 @@ TEST(Utf8UtilTest, Utf8Bytes_ThreeByte) {
 TEST(Utf8UtilTest, Utf8Bytes_FourByte) {
   using namespace utf8_util;
   size_t len = 0;
-  // 0xF0-0xF7 are 4-byte lead bytes
+  // 0xF0-0xF7 share the 4-byte lead-byte prefix.
+  // Full well-formedness checks happen in utf8_validate.
   EXPECT_TRUE(utf8_bytes(0xF0, len));
   EXPECT_EQ(4U, len);
   EXPECT_TRUE(utf8_bytes(0xF4, len));
@@ -200,6 +202,13 @@ TEST(Utf8UtilTest, Validate_OverlongTwoByte) {
   EXPECT_FALSE(utf8_validate(reinterpret_cast<const unsigned char*>(s), 2, chars));
 }
 
+TEST(Utf8UtilTest, Validate_OverlongTwoByteLeadByteC1) {
+  using namespace utf8_util;
+  size_t chars = 0;
+  const char* s = "\xc1\xbf";
+  EXPECT_FALSE(utf8_validate(reinterpret_cast<const unsigned char*>(s), 2, chars));
+}
+
 TEST(Utf8UtilTest, Validate_SurrogatePair) {
   using namespace utf8_util;
   size_t chars = 0;
@@ -225,6 +234,13 @@ TEST(Utf8UtilTest, Validate_BeyondMaxCodepoint) {
   EXPECT_FALSE(utf8_validate(reinterpret_cast<const unsigned char*>(s), 4, chars));
 }
 
+TEST(Utf8UtilTest, Validate_FourByteLeadByteAboveUnicodeRange) {
+  using namespace utf8_util;
+  size_t chars = 0;
+  const char* s = "\xf7\xbf\xbf\xbf";
+  EXPECT_FALSE(utf8_validate(reinterpret_cast<const unsigned char*>(s), 4, chars));
+}
+
 TEST(Utf8UtilTest, Validate_ContinuationByteAlone) {
   using namespace utf8_util;
   size_t chars = 0;
@@ -235,6 +251,8 @@ TEST(Utf8UtilTest, Validate_ContinuationByteAlone) {
 
 // --- Non-Windows conversion tests ---
 #ifndef _WIN32
+
+using namespace utf8_util;
 
 TEST(Utf8UtilTest, WideToUtf8RequiredSize_Ascii) {
   std::wstring ws = L"Hello";

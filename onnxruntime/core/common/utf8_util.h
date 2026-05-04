@@ -11,12 +11,13 @@ namespace onnxruntime {
 namespace utf8_util {
 
 /// <summary>
-/// Checks the extension bytes and returns a number of
-/// bytes in the UTF-8 character
+/// Classifies a UTF-8 lead byte by encoded length.
+/// This is a structural prefix check only; full well-formedness validation
+/// is handled by utf8_validate.
 /// </summary>
-/// <param name="ch"></param>
-/// <param name="len">result</param>
-/// <returns>false if the char len is greater than 4 otherwise true</returns>
+/// <param name="ch">lead byte candidate</param>
+/// <param name="len">decoded byte length</param>
+/// <returns>false if the byte does not match any 1-4 byte UTF-8 lead-byte prefix</returns>
 inline bool utf8_bytes(unsigned char ch, size_t& len) {
   if ((ch & 0x80) == 0) {
     len = 1;
@@ -152,8 +153,6 @@ inline bool utf8_validate(const unsigned char* s, size_t len, size_t& utf8_chars
   utf8_chars = utf8_len;
   return true;
 }
-
-}  // namespace utf8_util
 
 // UTF-8 <-> wchar_t conversion utilities for non-Windows builds.
 // These helpers operate on one wchar_t code unit per Unicode scalar value.
@@ -345,4 +344,5 @@ inline std::wstring Utf8ToWideString(const std::string& s) {
 
 #endif  // !_WIN32
 
+}  // namespace utf8_util
 }  // namespace onnxruntime
