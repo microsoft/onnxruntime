@@ -229,6 +229,18 @@ class TestRestrictedAsymmetricFlag(unittest.TestCase):
         # Standard asymmetric uint8 with rmin=-1, rmax=2 should give non-128 zp (it's ~85)
         self.assertNotEqual(act_zp, 128, f"Option=False should not snap to 128, got {act_zp}")
 
+    def test_all_zero_activations_zp_is_qmin(self):
+        """All-zero calibration tensor (rmin==rmax==0): degenerate range with rmin>=0, zp must snap to qmin (0)."""
+        all_zero_activations = [
+            np.zeros([1, 2, 32, 32], dtype="float32"),
+            np.zeros([1, 2, 32, 32], dtype="float32"),
+        ]
+        act_zp, act_sc = self._quantize(
+            all_zero_activations,
+            extra_options={"ActivationRestrictedAsymmetric": True},
+        )
+        self.assertEqual(act_zp, 0, f"Expected zp=0 (qmin) for all-zero degenerate range, got {act_zp}")
+
     def test_snap_zero_point_uint8_respects_reduce_range(self):
         """snap_zero_point_to_uint8 with reduce_range qmin/qmax (0/127) must return a valid zp and scale."""
         zp, scale = snap_zero_point_to_uint8(rmin=-1.0, rmax=2.0, qmin=0, qmax=127)

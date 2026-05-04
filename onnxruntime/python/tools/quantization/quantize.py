@@ -120,8 +120,9 @@ class StaticQuantConfig(QuantConfig):
                 key value pair dictionary for various options in different case. Current used:
                     extra.Sigmoid.nnapi = True/False  (Default is False)
                     ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
-                    ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to 0
-                        (rmin>=0) or 128 (rmin<0); recompute scale accordingly (default is False).
+                    ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                        (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                        recompute scale accordingly (default is False).
                     WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                     EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                                   Dyanmic mode currently is supported. Will support more in future.
@@ -421,8 +422,9 @@ class DynamicQuantConfig(QuantConfig):
             extra_options: key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
                 ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
-                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to 0
-                    (rmin>=0) or 128 (rmin<0); recompute scale accordingly (default is False).
+                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                    (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                    recompute scale accordingly (default is False).
                 WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                 EnableSubgraph = True/False :
                     Default is False. If enabled, subgraph will be quantized. Dynamic mode currently is supported. Will
@@ -548,8 +550,9 @@ def quantize_static(
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
                 ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
-                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to 0
-                    (rmin>=0) or 128 (rmin<0); recompute scale accordingly (default is False).
+                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                    (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                    recompute scale accordingly (default is False).
                 WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                 EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                               Dyanmic mode currently is supported. Will support more in the future.
@@ -840,8 +843,9 @@ def quantize_dynamic(
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
                 ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
-                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to 0
-                    (rmin>=0) or 128 (rmin<0); recompute scale accordingly (default is False).
+                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                    (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                    recompute scale accordingly (default is False).
                 WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                 EnableSubgraph = True/False :
                     Default is False. If enabled, subgraph will be quantized. Dynamic mode currently is supported. Will

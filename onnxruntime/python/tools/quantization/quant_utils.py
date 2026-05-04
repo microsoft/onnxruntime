@@ -323,12 +323,14 @@ def snap_zero_point_to_uint8(rmin, rmax, qmin: int = 0, qmax: int = 255, min_rea
         rmax = max(rmax, rmin + float(min_real_range))
 
     if rmax <= rmin:
-        # Degenerate range - compute a meaningful scale rather than a hardcoded 1.0.
+        # Degenerate range - apply the same snap logic as the normal path, then
+        # compute a meaningful scale rather than a hardcoded 1.0.
+        degenerate_zp = qmin_val if rmin >= 0.0 else mid
         abs_max = max(abs(rmin), abs(rmax))
         scale_val = (abs_max if abs_max > 0 else 1.0) / max(1, (qmax_val - qmin_val) // 2)
         if min_real_range is not None and scale_val < min_real_range / (qmax_val - qmin_val):
             scale_val = min_real_range / (qmax_val - qmin_val)
-        return numpy.array(mid, dtype=numpy.uint8), numpy.array(scale_val, dtype=numpy.float32)
+        return numpy.array(degenerate_zp, dtype=numpy.uint8), numpy.array(scale_val, dtype=numpy.float32)
 
     if rmin >= 0.0:
         zero_point = numpy.array(qmin_val, dtype=numpy.uint8)
