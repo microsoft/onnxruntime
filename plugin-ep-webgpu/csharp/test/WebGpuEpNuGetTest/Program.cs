@@ -24,6 +24,7 @@ class Program
                 if (string.Equals(epName, d.EpName, StringComparison.Ordinal))
                 {
                     epDevice = d;
+                    break;
                 }
             }
 
