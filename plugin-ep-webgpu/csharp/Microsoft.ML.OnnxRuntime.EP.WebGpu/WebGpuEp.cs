@@ -42,7 +42,7 @@ namespace Microsoft.ML.OnnxRuntime.EP.WebGpu
         /// <returns>Array of EP names.</returns>
         public static string[] GetEpNames()
         {
-            return new[] { "WebGpuExecutionProvider" };
+            return new[] { GetEpName() };
         }
 
         /// <summary>
@@ -52,7 +52,7 @@ namespace Microsoft.ML.OnnxRuntime.EP.WebGpu
         /// <returns>The EP name string.</returns>
         public static string GetEpName()
         {
-            return GetEpNames()[0];
+            return "WebGpuExecutionProvider";
         }
 
         private static string GetNativeDirectory()
@@ -79,7 +79,8 @@ namespace Microsoft.ML.OnnxRuntime.EP.WebGpu
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 return "libonnxruntime_providers_webgpu.dylib";
 
-            return "onnxruntime_providers_webgpu";
+            throw new PlatformNotSupportedException(
+                $"WebGPU plugin EP does not support OS platform: {RuntimeInformation.OSDescription}");
         }
 
         private static string GetOSTag()
@@ -87,14 +88,19 @@ namespace Microsoft.ML.OnnxRuntime.EP.WebGpu
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "win";
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "linux";
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "osx";
-            return "unknown";
+            throw new PlatformNotSupportedException(
+                $"WebGPU plugin EP does not support OS platform: {RuntimeInformation.OSDescription}");
         }
 
         private static string GetArchTag()
         {
-            return RuntimeInformation.ProcessArchitecture == Architecture.X64 ? "x64"
-                 : RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64"
-                 : "unknown";
+            return RuntimeInformation.ProcessArchitecture switch
+            {
+                Architecture.X64 => "x64",
+                Architecture.Arm64 => "arm64",
+                _ => throw new PlatformNotSupportedException(
+                    $"WebGPU plugin EP does not support process architecture: {RuntimeInformation.ProcessArchitecture}"),
+            };
         }
     }
 }

@@ -64,9 +64,10 @@ stages:
       pool:
         name: onnxruntime-Win2022-VS2022-webgpu-A10
         os: windows
+      variables:
+        WebGpuTestProject: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj'
       steps:
       - checkout: self
-        clean: true
         submodules: none
 
       - template: ../templates/setup-feeds-and-python-steps.yml
@@ -84,12 +85,17 @@ stages:
           $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
           New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
 
-          # Copy .nupkg to local feed
-          $nupkg = (Get-ChildItem "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\Microsoft.ML.OnnxRuntime.EP.WebGpu.*.nupkg")[0]
+          # Locate the .nupkg.
+          $nupkg = Get-ChildItem "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\Microsoft.ML.OnnxRuntime.EP.WebGpu.*.nupkg" |
+                   Select-Object -First 1
+          if (-not $nupkg) {
+              throw "No matching .nupkg found under $(Pipeline.Workspace)\build\webgpu_plugin_nuget"
+          }
           Copy-Item $nupkg.FullName $localFeedDir -Force
 
           # Extract version from filename: Microsoft.ML.OnnxRuntime.EP.WebGpu.<version>.nupkg
-          if ($nupkg.BaseName -notmatch '^Microsoft\.ML\.OnnxRuntime\.EP\.WebGpu\.(.+)$') {
+          # The version starts with a digit, which disambiguates from any future filename suffixes.
+          if ($nupkg.BaseName -notmatch '^Microsoft\.ML\.OnnxRuntime\.EP\.WebGpu\.(\d.*)$') {
               throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
           }
           $packageVersion = $Matches[1]
@@ -114,14 +120,14 @@ stages:
 
       - pwsh: |
           dotnet build `
-            "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" `
+            "$(WebGpuTestProject)" `
             --configuration Release `
             -p:OrtWebGpuPackageVersion=$(OrtWebGpuPackageVersion)
         displayName: 'Build test project'
 
       - pwsh: |
           dotnet run `
-            --project "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" `
+            --project "$(WebGpuTestProject)" `
             --configuration Release `
             --no-build
         displayName: 'Run NuGet package test'

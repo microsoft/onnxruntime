@@ -15,7 +15,7 @@ var env = OrtEnv.Instance();
 env.RegisterExecutionProviderLibrary("webgpu_ep", WebGpuEp.GetLibraryPath());
 
 // Find the WebGPU EP device
-OrtEpDevice webGpuDevice = null!;
+OrtEpDevice? webGpuDevice = null;
 foreach (var d in env.GetEpDevices())
 {
     if (d.EpName == WebGpuEp.GetEpName())
