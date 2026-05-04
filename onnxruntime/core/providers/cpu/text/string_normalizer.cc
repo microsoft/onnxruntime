@@ -376,8 +376,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
 
   // Output everything and change case as required
   auto output_no_filtering = [&](const TensorShape& output_shape) {
-    auto output_tensor = ctx->Output(0, output_shape);
-    auto const output_data = output_tensor->MutableData<std::string>();
+    auto* output_tensor = ctx->Output(0, output_shape);
+    auto* output_data = output_tensor->MutableData<std::string>();
     for (size_t i = 0, lim = input_span.size(); i < lim; ++i) {
       const std::string& s = input_span[i];
       wchar_buffer.resize(max_wide_buffer_len);
@@ -394,8 +394,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   };
 
   auto output_filtered = [&](const TensorShape& output_shape, gsl::span<const size_t> filtered_indices) {
-    auto output_tensor = ctx->Output(0, output_shape);
-    auto output_data = output_tensor->MutableData<std::string>();
+    auto* output_tensor = ctx->Output(0, output_shape);
+    auto* output_data = output_tensor->MutableData<std::string>();
     for (size_t i : filtered_indices) {
       const std::string& s = input_span[i];
       if (case_change_action_ != NONE) {
