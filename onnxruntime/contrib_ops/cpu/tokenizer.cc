@@ -126,6 +126,8 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
     if (!separators.empty()) {
       re2::RE2::Options options;
       options.set_longest_match(true);
+      // UTF-8 mode also validates that separator patterns are valid UTF-8
+      options.set_encoding(re2::RE2::Options::EncodingUTF8);
       for (const auto& sep : separators) {
         std::unique_ptr<re2::RE2> regex = std::make_unique<re2::RE2>(sep, options);
         if (!regex->ok()) {
@@ -138,6 +140,8 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
       assert(!tokenexp.empty());
       re2::RE2::Options options;
       options.set_longest_match(true);
+      // UTF-8 mode also validates that the tokenexp pattern is valid UTF-8
+      options.set_encoding(re2::RE2::Options::EncodingUTF8);
       std::unique_ptr<re2::RE2> regex = std::make_unique<re2::RE2>(tokenexp, options);
       if (!regex->ok()) {
         ORT_THROW("Can not digest tokenexp: ", regex->error());
@@ -178,7 +182,8 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->Data<std::string>();
   auto curr_input = input_data;
-  auto const last = input_data + SafeInt<size_t>(N) * C;
+  const size_t num_elements = SafeInt<size_t>(N) * C;
+  auto const last = input_data + num_elements;
   while (curr_input != last) {
     const auto& s = *curr_input;
     size_t tokens = 0;  // length in utf8 chars
@@ -391,7 +396,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   size_t max_tokens = 0;
   size_t str_idx = 0;
   for (const auto& s : input_span) {
-    const size_t utf8_chars = utf8_lengths[str_idx++];
+    size_t utf8_chars = utf8_lengths[str_idx++];
 
     const auto expected_tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
     auto& row = allocator.EmplaceBack(rows);
@@ -404,8 +409,11 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
         size_t start_pos = 0;
         StringPiece submatch;
 
-        bool match = true;
+        bool match = false;
         do {
+          if (start_pos > end_pos) {
+            break;
+          }
           match = sep->Match(text, start_pos, end_pos, anchor, &submatch, 1);
           if (match) {
             // Record  pos/len
@@ -429,10 +437,13 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
             if (match_len > 0) {
               start_pos = match_pos + match_len;
             } else {
-              size_t bytes = 0;
-              // Advance by one UTF-8 character, or at least 1 byte to guarantee progress
-              if (!utf8_bytes(*submatch.data(), bytes) || bytes == 0) {
-                bytes = 1;
+              size_t bytes = 1;  // Always advance at least 1 byte to guarantee progress
+              // Advance by one UTF-8 character when within bounds
+              if (match_pos < end_pos) {
+                size_t char_bytes = 0;
+                if (utf8_bytes(static_cast<unsigned char>(text[match_pos]), char_bytes) && char_bytes > 0) {
+                  bytes = char_bytes;
+                }
               }
               start_pos = match_pos + bytes;
             }
@@ -522,7 +533,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
 
   size_t str_idx = 0;
   for (const auto& s : input_span) {
-    const size_t utf8_chars = utf8_lengths[str_idx++];
+    size_t utf8_chars = utf8_lengths[str_idx++];
 
     auto& row = allocator.EmplaceBack(rows);
 
