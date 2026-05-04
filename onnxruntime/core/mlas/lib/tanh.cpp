@@ -178,7 +178,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     GetMlasPlatform().TanhKernelRoutine(Input, Output, N);
 #else
     MlasTanhKernel(Input, Output, N);

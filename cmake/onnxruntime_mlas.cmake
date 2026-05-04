@@ -929,11 +929,15 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
             )
             set_source_files_properties(
               ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
           else()
