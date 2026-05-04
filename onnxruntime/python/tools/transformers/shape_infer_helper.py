@@ -35,7 +35,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
             err = _symbolic_shape_infer_import_error
             cause = (
                 "missing 'sympy' (install with: pip install sympy)"
-                if err is not None and err.name == "sympy"
+                if err is not None and "sympy" in str(err)
                 else f"failed to import symbolic_shape_infer: {err!r}"
             )
             raise ImportError(f"SymbolicShapeInferenceHelper is unavailable — {cause}") from err
