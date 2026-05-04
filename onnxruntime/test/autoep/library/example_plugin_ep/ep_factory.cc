@@ -11,6 +11,7 @@
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
 
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
@@ -141,6 +142,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
 
       // random example using made up values
       factory->ort_api.AddKeyValuePair(ep_metadata, "supported_devices", "CrackGriffin 7+");
+      // Example os_driver_version. A real EP would read the OS driver version from the device.
+      // The format is a 4-part dot-separated version matching the DXCore DriverVersion property.
+      factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
 
       // OrtEpDevice copies ep_metadata and ep_options.
@@ -171,6 +175,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
     //    Ort::KeyValuePairs ep_metadata;
     //    Ort::KeyValuePairs ep_options;
     //    ep_metadata.Add("supported_devices", "CrackGriffin 7+");
+    //    ep_metadata.Add(kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
     //    ep_options.Add("run_really_fast", "true");
     //    Ort::EpDevice ep_device{*this_ptr, device, ep_metadata.GetConst(), ep_options.GetConst()};
     //    ep_devices[num_ep_devices++] = ep_device.release();
