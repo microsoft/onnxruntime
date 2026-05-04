@@ -9,10 +9,6 @@ parameters:
 - name: version_file
   type: string
 
-- name: cmake_build_type
-  type: string
-  default: 'Release'
-
 - name: DoEsrp
   type: boolean
   default: true
@@ -122,12 +118,12 @@ stages:
           import sys
 
           # The string literals below are filled in by ADO template expansion at queue
-          # time and resolve to 'True' or 'False'.
+          # time and resolve to a boolean value 'True' or 'False'. Compare case-insensitively.
           platforms_enabled = {
-              "win_x64":     "${{ parameters.platforms.win_x64 }}" == "True",
-              "win_arm64":   "${{ parameters.platforms.win_arm64 }}" == "True",
-              "linux_x64":   "${{ parameters.platforms.linux_x64 }}" == "True",
-              "macos_arm64": "${{ parameters.platforms.macos_arm64 }}" == "True",
+              "win_x64":     "${{ parameters.platforms.win_x64 }}".lower() == "true",
+              "win_arm64":   "${{ parameters.platforms.win_arm64 }}".lower() == "true",
+              "linux_x64":   "${{ parameters.platforms.linux_x64 }}".lower() == "true",
+              "macos_arm64": "${{ parameters.platforms.macos_arm64 }}".lower() == "true",
           }
           expected = [name for name, enabled in platforms_enabled.items() if enabled]
 

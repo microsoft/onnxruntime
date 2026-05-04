@@ -81,14 +81,24 @@ stages:
         artifact: webgpu_plugin_nuget
         displayName: 'Download NuGet package'
 
-      # Set up local NuGet feed
+      # Set up local NuGet feed and extract the package version from the .nupkg filename
+      # so the test project can pin to it (instead of resolving via a floating version).
       - powershell: |
           $ErrorActionPreference = 'Stop'
           $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
           New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
 
           # Copy .nupkg to local feed
-          Copy-Item "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\*.nupkg" $localFeedDir -Force
+          $nupkg = (Get-ChildItem "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\Microsoft.ML.OnnxRuntime.EP.WebGpu.*.nupkg")[0]
+          Copy-Item $nupkg.FullName $localFeedDir -Force
+
+          # Extract version from filename: Microsoft.ML.OnnxRuntime.EP.WebGpu.<version>.nupkg
+          if ($nupkg.BaseName -notmatch '^Microsoft\.ML\.OnnxRuntime\.EP\.WebGpu\.(.+)$') {
+              throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
+          }
+          $packageVersion = $Matches[1]
+          Write-Host "Detected package version: $packageVersion"
+          Write-Host "##vso[task.setvariable variable=OrtWebGpuPackageVersion]$packageVersion"
 
           # Write a project-level nuget.config that adds ONLY the local feed.
           # NuGet merges this with the repo-root NuGet.config.
@@ -106,10 +116,16 @@ stages:
           Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
         displayName: 'Set up local NuGet feed'
 
-      - script: |
-          dotnet build "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" --configuration Release
+      - powershell: |
+          dotnet build `
+            "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" `
+            --configuration Release `
+            -p:OrtWebGpuPackageVersion=$(OrtWebGpuPackageVersion)
         displayName: 'Build test project'
 
-      - script: |
-          dotnet run --project "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" --configuration Release --no-build
+      - powershell: |
+          dotnet run `
+            --project "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj" `
+            --configuration Release `
+            --no-build
         displayName: 'Run NuGet package test'

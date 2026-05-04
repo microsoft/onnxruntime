@@ -6,11 +6,18 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!--
+      Version of the EP package to test. CI overrides this with the exact version produced by
+      pack_nuget.py via -p:OrtWebGpuPackageVersion=<version> so the test consumes the freshly
+      built package deterministically. The floating fallback is for local development against
+      a single-package local feed.
+    -->
+    <OrtWebGpuPackageVersion Condition="'$(OrtWebGpuPackageVersion)' == ''">*-*</OrtWebGpuPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Microsoft.ML.OnnxRuntime is pulled in transitively via the EP package. -->
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.WebGpu" Version="*-*" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.WebGpu" Version="$(OrtWebGpuPackageVersion)" />
   </ItemGroup>
 
   <ItemGroup>

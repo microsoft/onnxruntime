@@ -92,8 +92,8 @@ namespace Microsoft.ML.OnnxRuntime.EP.WebGpu
 
         private static string GetArchTag()
         {
-            return RuntimeInformation.OSArchitecture == Architecture.X64 ? "x64"
-                 : RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64"
+            return RuntimeInformation.ProcessArchitecture == Architecture.X64 ? "x64"
+                 : RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64"
                  : "unknown";
         }
     }

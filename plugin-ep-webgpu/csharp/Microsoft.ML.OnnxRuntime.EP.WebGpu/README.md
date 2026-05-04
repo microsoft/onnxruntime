@@ -6,6 +6,7 @@ Provides GPU acceleration via WebGPU (Dawn) with D3D12 and Vulkan backends.
 ### Usage
 
 ```csharp
+// Error handling (e.g. WebGPU device not found) is omitted for readability.
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.EP.WebGpu;
 
@@ -14,12 +15,12 @@ var env = OrtEnv.Instance();
 env.RegisterExecutionProviderLibrary("webgpu_ep", WebGpuEp.GetLibraryPath());
 
 // Find the WebGPU EP device
-OrtEpDevice? webGpuDevice = null;
-foreach (var device in env.GetEpDevices())
+OrtEpDevice webGpuDevice = null!;
+foreach (var d in env.GetEpDevices())
 {
-    if (string.Equals(WebGpuEp.GetEpName(), device.EpName, StringComparison.Ordinal))
+    if (d.EpName == WebGpuEp.GetEpName())
     {
-        webGpuDevice = device;
+        webGpuDevice = d;
         break;
     }
 }
