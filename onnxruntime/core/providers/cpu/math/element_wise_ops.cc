@@ -1334,6 +1334,19 @@ BitShift<T>::BitShift(const OpKernelInfo& info) : OpKernel(info) {
     ORT_THROW("Invalid direction value of '", direction, "'. Valid values are 'LEFT' or 'RIGHT'.");
 }
 
+// Shifting by >= the bit width of an unsigned type is undefined behavior in C++.
+// On x86, 64-bit shifts mask the shift amount to 6 bits, so shift by 64 acts like shift by 0.
+// Guard against this by returning 0 when the shift amount >= the bit width.
+template <typename T>
+inline T SafeShiftLeft(T value, T shift) {
+  return shift >= sizeof(T) * 8 ? T{0} : value << shift;
+}
+
+template <typename T>
+inline T SafeShiftRight(T value, T shift) {
+  return shift >= sizeof(T) * 8 ? T{0} : value >> shift;
+}
+
 template <typename T>
 Status BitShift<T>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
@@ -1345,11 +1358,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         ptrdiff_t i = 0;
         if (shift_left) {
           for (const auto& input : input1.array()) {
-            output[i++] = input0 << input;
+            output[i++] = SafeShiftLeft(input0, input);
           }
         } else {
           for (const auto& input : input1.array()) {
-            output[i++] = input0 >> input;
+            output[i++] = SafeShiftRight(input0, input);
           }
         }
       },
@@ -1361,11 +1374,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         ptrdiff_t i = 0;
         if (shift_left) {
           for (const auto& input : input0.array()) {
-            output[i++] = input << input1;
+            output[i++] = SafeShiftLeft(input, input1);
           }
         } else {
           for (const auto& input : input0.array()) {
-            output[i++] = input >> input1;
+            output[i++] = SafeShiftRight(input, input1);
           }
         }
       },
@@ -1380,11 +1393,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         auto cur_out = output.begin(), end_out = output.end();
         if (shift_left) {
           for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
-            *cur_out = *cur0 << *cur1;
+            *cur_out = SafeShiftLeft(*cur0, *cur1);
           }
         } else {
           for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
-            *cur_out = *cur0 >> *cur1;
+            *cur_out = SafeShiftRight(*cur0, *cur1);
           }
         }
 
