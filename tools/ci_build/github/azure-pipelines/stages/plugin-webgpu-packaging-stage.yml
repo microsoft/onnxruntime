@@ -204,7 +204,7 @@ stages:
 
                 # Collect the binaries (dll, so, dylib) and version.json
                 $filesToZip = Get-ChildItem -Path $binDir -File | Where-Object {
-                  $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -match '^(dxil\.dll|dxcompiler\.dll|version\.json)$'
+                  $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -eq 'version.json'
                 }
 
                 $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
