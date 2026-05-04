@@ -10,7 +10,13 @@
 #include "core/framework/tensor.h"
 #include "re2/re2.h"
 
-#ifdef _MSC_VER
+// Use PMR (polymorphic memory resource) when the standard library supports it.
+// This reduces per-token allocation overhead by using a monotonic buffer.
+#if __has_include(<memory_resource>) && defined(__cpp_lib_memory_resource) && __cpp_lib_memory_resource >= 201603L
+#include <memory_resource>
+#define ORT_PMR_ALLOCATOR_SUPPORTED
+#elif defined(_MSC_VER)
+// MSVC supports PMR but may not define the feature-test macro in older modes
 #include <memory_resource>
 #define ORT_PMR_ALLOCATOR_SUPPORTED
 #endif
@@ -152,7 +158,7 @@ Status Tokenizer::EstimateNumberOfTokens(gsl::span<const std::string> input_span
                     "Input string contains invalid utf8 chars: " + s);
     }
     auto tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
-    total_tokens_estimate += tokens;
+    total_tokens_estimate = SafeInt<size_t>(total_tokens_estimate) + tokens;
     max_tokens_per_row = std::max(max_tokens_per_row, tokens);
   }
 
@@ -168,7 +174,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   auto X = ctx->Input<Tensor>(0);
   auto const input_data = X->Data<std::string>();
   auto curr_input = input_data;
-  auto const last = input_data + N * C;
+  auto const last = input_data + SafeInt<size_t>(N) * C;
   while (curr_input != last) {
     const auto& s = *curr_input;
     size_t tokens = 0;  // length in utf8 chars
@@ -211,8 +217,10 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     const size_t str_len = s.size();
     for (size_t token_idx = 0; token_idx < str_len;) {
       size_t tlen = 0;
-      [[maybe_unused]] bool result = utf8_bytes(static_cast<unsigned char>(s[token_idx]), tlen);
-      assert(result);
+      if (!utf8_bytes(static_cast<unsigned char>(s[token_idx]), tlen) || tlen == 0) {
+        // Should not happen since we validated UTF-8 above, but guarantee progress
+        tlen = 1;
+      }
       assert(token_idx + tlen <= str_len);
       output_data[output_index] = s.substr(token_idx, tlen);
       ++output_index;
@@ -240,9 +248,8 @@ namespace {
 // We use std::vector in this case, because InlinedVector::clear() is incompatible
 // with std::vector. It also deallocates memory, which is not what we want.
 
-// The compiler we are using GCC on Linux and Clang on MacOS does not
-// have the library that support C++17 PMR. So we are only using it on Windows
-// since the problem is acute on the platform.
+// When ORT_PMR_ALLOCATOR_SUPPORTED is defined, we use std::pmr::monotonic_buffer_resource
+// to pre-allocate memory for token StringPieces and reduce per-token allocation overhead.
 
 #ifdef ORT_PMR_ALLOCATOR_SUPPORTED
 /// <summary>
@@ -290,7 +297,9 @@ class MemoryAllocator {
     buf_holder_ = std::make_unique<uint8_t[]>(size_bytes);
     void* ptr = buf_holder_.get();
     allocated_size = size_bytes;
-    return std::align(alignment, size_bytes, ptr, allocated_size);
+    void* aligned = std::align(alignment, num * sizeof(re2::StringPiece), ptr, allocated_size);
+    ORT_ENFORCE(aligned != nullptr, "Failed to align memory for tokenizer buffer");
+    return aligned;
   }
 
   std::unique_ptr<uint8_t[]> buf_holder_;
@@ -317,10 +326,10 @@ class MemoryAllocator {
 }  // namespace
 
 void Tokenizer::OutputData(gsl::span<const SlicesVector> rows,
-                           size_t max_tokens, [[maybe_unused]] size_t max_output_index, std::string* output_data) const {
+                           size_t max_tokens, size_t max_output_index, std::string* output_data) const {
   size_t output_index = 0;
   for (const auto& row : rows) {
-    [[maybe_unused]] size_t c_idx = output_index;
+    size_t c_idx = output_index;
     if (mark_) {
       output_data[output_index++].assign(&kStartMarker, 1);
     }
@@ -335,8 +344,8 @@ void Tokenizer::OutputData(gsl::span<const SlicesVector> rows,
     for (size_t p = 0; p < pads; ++p) {
       output_data[output_index++] = pad_value_;
     }
-    assert(output_index <= max_output_index);
-    assert((output_index - c_idx) <= max_tokens);
+    ORT_ENFORCE(output_index <= max_output_index, "Tokenizer output index out of bounds");
+    ORT_ENFORCE((output_index - c_idx) <= max_tokens, "Tokenizer output exceeded max tokens per row");
   }
 }
 
@@ -422,7 +431,10 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
               start_pos = match_pos + match_len;
             } else {
               size_t bytes = 0;
-              utf8_bytes(*submatch.data(), bytes);
+              // Advance by one UTF-8 character, or at least 1 byte to guarantee progress
+              if (!utf8_bytes(*submatch.data(), bytes) || bytes == 0) {
+                bytes = 1;
+              }
               start_pos = match_pos + bytes;
             }
           } else {
@@ -544,7 +556,10 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
             start_pos = match_pos + token_len;
           } else {
             size_t bytes = 0;
-            utf8_bytes(*submatch.data(), bytes);
+            // Advance by one UTF-8 character, or at least 1 byte to guarantee progress
+            if (!utf8_bytes(*submatch.data(), bytes) || bytes == 0) {
+              bytes = 1;
+            }
             start_pos = match_pos + bytes;
           }
         }
