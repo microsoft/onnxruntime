@@ -377,6 +377,94 @@ class TestGetQDQConfig(unittest.TestCase):
         self.assertEqual(qdq_config.extra_options["TensorQuantOverrides"]["weight"][0]["quant_type"], QuantType.QInt4)
         self.assertTrue(qdq_config.extra_options["UseQDQContribOps"])
 
+    def test_overrides_16bit_opset_lt21_bumps_opset_no_contrib_ops(self):
+        """
+        Regression test: when TensorQuantOverrides request a 16-bit type on a model whose opset is
+        < 21, the quantized model must be bumped to opset 21 and UseQDQContribOps must NOT be set.
+        """
+
+        shape = [1, 8, 8]
+        tensor_type = onnx.TensorProto.FLOAT
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(tensor_type)
+        weight = onnx.numpy_helper.from_array(np.ones(shape, dtype=np_dtype), "weight")
+        # Build a model at opset 18 (< 21) so the opset bump is required.
+        float_model = self.build_add_model(shape, tensor_type, weight, opset=18)
+
+        input_data_list = [
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(-2, dtype=np_dtype)},
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(2, dtype=np_dtype)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        # Override the weight to use QUInt16 via TensorQuantOverrides; top-level types are 8-bit.
+        qdq_config = get_qdq_config(
+            float_model,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QInt8,
+            tensor_quant_overrides={"weight": [{"quant_type": QuantType.QUInt16}]},
+        )
+
+        # UseQDQContribOps must NOT be set: the 16-bit override triggers an opset bump to 21,
+        # where native ONNX Q/DQ ops handle all types.
+        self.assertFalse(qdq_config.extra_options.get("UseQDQContribOps", False))
+
+        qdq_model_path = os.path.join(self._tmp_dir_path, "add_override_uint16_opset18_qdq.onnx")
+        quantize(float_model, qdq_model_path, qdq_config)
+
+        qdq_model = onnx.load_model(qdq_model_path)
+
+        # The quantized model must have been bumped to opset 21.
+        onnx_opset = next(x for x in qdq_model.opset_import if not x.domain or x.domain == "ai.onnx")
+        self.assertEqual(onnx_opset.version, 21)
+
+        # All Q/DQ nodes must use the default ONNX domain (not com.microsoft).
+        for node in qdq_model.graph.node:
+            if node.op_type in ("QuantizeLinear", "DequantizeLinear"):
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
+
+    def test_overrides_mixed_16bit_4bit_opset_lt21_no_contrib_ops(self):
+        """
+        Regression test: when TensorQuantOverrides contain both a 16-bit type (for one tensor) and
+        a 4-bit type (for another tensor) on a model whose opset is < 21, UseQDQContribOps must NOT
+        be set because the 16-bit override triggers an opset bump to 21 where all types are native.
+        """
+
+        shape = [1, 8, 8]
+        tensor_type = onnx.TensorProto.FLOAT
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(tensor_type)
+        weight = onnx.numpy_helper.from_array(np.ones(shape, dtype=np_dtype), "weight")
+        # Build a model at opset 18 (< 21).
+        float_model = self.build_add_model(shape, tensor_type, weight, opset=18)
+
+        input_data_list = [
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(-2, dtype=np_dtype)},
+            {"input_0": np.ones(shape, dtype=np_dtype) * np.array(2, dtype=np_dtype)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        # Override: weight uses QUInt16 (16-bit, triggers opset bump), input_0 uses QInt4 (4-bit).
+        # The presence of the 16-bit override means the model is bumped to opset 21, so native
+        # Q/DQ ops handle everything — UseQDQContribOps must NOT be set.
+        qdq_config = get_qdq_config(
+            float_model,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QInt8,
+            tensor_quant_overrides={
+                "weight": [{"quant_type": QuantType.QUInt16}],
+                "input_0": [{"quant_type": QuantType.QInt4}],
+            },
+        )
+
+        # UseQDQContribOps must NOT be set: the 16-bit override triggers an opset bump to 21,
+        # making native Q/DQ ops sufficient for all types including the 4-bit one.
+        self.assertFalse(qdq_config.extra_options.get("UseQDQContribOps", False))
+
 
 if __name__ == "__main__":
     unittest.main()

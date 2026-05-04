@@ -966,7 +966,10 @@ def get_opset_version(model: ModelProto) -> int:
 
 
 def update_opset_version(
-    model: ModelProto, weight_type: QuantType, activation_type: QuantType | None = None
+    model: ModelProto,
+    weight_type: QuantType,
+    activation_type: QuantType | None = None,
+    tensor_quant_overrides: dict | None = None,
 ) -> ModelProto:
     opset_version = get_opset_version(model)
     target_opset_version = opset_version
@@ -977,6 +980,24 @@ def update_opset_version(
 
     _int16_types = (onnx.TensorProto.UINT16, onnx.TensorProto.INT16)
     needs_opset21_for_16bit = weight_quant_type in _int16_types or activation_quant_type in _int16_types
+
+    # Also check TensorQuantOverrides for any 16-bit types, including per-override convert.quant_type.
+    if not needs_opset21_for_16bit and tensor_quant_overrides:
+        _int16_quant_types = {QuantType.QInt16, QuantType.QUInt16}
+        for overrides_list in tensor_quant_overrides.values():
+            for override in overrides_list:
+                qt = override.get("quant_type")
+                if qt in _int16_quant_types:
+                    needs_opset21_for_16bit = True
+                    break
+                convert = override.get("convert")
+                if convert is not None:
+                    convert_qt = convert.get("quant_type")
+                    if convert_qt in _int16_quant_types:
+                        needs_opset21_for_16bit = True
+                        break
+            if needs_opset21_for_16bit:
+                break
 
     if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
         logging.warning(
@@ -989,7 +1010,7 @@ def update_opset_version(
     elif opset_version < 21 and needs_opset21_for_16bit:
         logging.warning(
             f"The original model opset version is {opset_version}, which does not support 16-bit integer "
-            "quantization with native ONNX QuantizeLinear/DequantizeLinear. "
+            "quantization natively. "
             "Please update the model to opset >= 21. Automatically update the model to opset 21. "
             "Please verify the quantized model."
         )
