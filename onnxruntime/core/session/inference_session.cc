@@ -1678,7 +1678,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
         cpu_regs = kernel_regs[kernel_regs.size() - 1];
       }
 
-      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
+      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs, on_partition_assignment_fn};
       ORT_RETURN_IF_ERROR_SESSIONID_(
           apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
                                  ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
