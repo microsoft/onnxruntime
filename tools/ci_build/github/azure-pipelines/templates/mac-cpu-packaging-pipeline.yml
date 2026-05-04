@@ -26,6 +26,13 @@ stages:
   jobs:
   - template: mac-cpu-packing-jobs.yml
     parameters:
+      MacosArch: 'x86_64'
+      AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+
+  - template: mac-cpu-packing-jobs.yml
+    parameters:
+      MacosArch: 'arm64'
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
@@ -40,6 +47,9 @@ stages:
       - ImageOverride -equals ACES_VM_SharedPool_Sequoia
     templateContext:
       inputs:
+      - input: pipelineArtifact
+        artifactName: onnxruntime-osx-x86_64
+        targetPath: $(Build.ArtifactStagingDirectory)
       - input: pipelineArtifact
         artifactName: onnxruntime-osx-arm64 # The files in this artifact are not signed
         targetPath: $(Build.ArtifactStagingDirectory)
@@ -56,16 +66,12 @@ stages:
         architecture: arm64
         addToPath: true
 
-    - script: |
-        set -ex
-        cd $(Build.ArtifactStagingDirectory)
-        # Find and extract the arm64 tarball
-        find . -name 'onnxruntime-osx-arm64*.tgz' -exec tar -xzf {} \;
-        # Remove _manifest directories if they exist
-        find . -type d -name '_manifest' -exec rm -rf {} + || true
-        # Find the extracted directory and zip it
-        find . -maxdepth 1 -type d -name 'onnxruntime-osx-arm64*' -exec zip -FSr --symlinks {}.zip {} \;
-      displayName: 'Prepare ARM64 Package for Signing'
+    - task: PythonScript@0
+      displayName: 'Prepare, Create Universal Binary, and Zip with Python'
+      inputs:
+        scriptSource: 'filePath'
+        scriptPath: 'tools/ci_build/prepare_macos_package.py'
+        arguments: '--staging_dir $(Build.ArtifactStagingDirectory)'
 
     - template: mac-esrp-dylib.yml
       parameters:
