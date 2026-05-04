@@ -298,10 +298,6 @@ Status PrepareForReduce(const Tensor* X,
     prepare_reduce_metadata.output_dims = input_shape.AsShapeVector();
     for (auto axis : axes) {
       axis = HandleNegativeAxis(axis, rank);
-      ORT_ENFORCE(input_dims[axis] != 0,
-                  "Can't reduce on dim with value of 0 if 'keepdims' is false. "
-                  "Invalid output shape would be produced. input_shape:",
-                  input_shape);
       prepare_reduce_metadata.output_dims[axis] = 1;
       reduced[axis] = true;
     }
