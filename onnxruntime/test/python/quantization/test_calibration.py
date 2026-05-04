@@ -604,8 +604,9 @@ class TestCalibrationCache(unittest.TestCase):
         np.testing.assert_array_almost_equal(loaded["y"].hist_edges, hist_edges)
 
     def test_load_tensors_data_invalid_path(self):
+        bogus = Path(self._tmp_dir.name) / "does_not_exist.json"
         with self.assertRaises(FileNotFoundError):
-            load_tensors_data("/nonexistent/path/cache.json")
+            load_tensors_data(bogus)
 
     def test_quantize_static_calibration_cache_path(self):
         model_path = Path(self._tmp_dir.name) / "tiny_model.onnx"

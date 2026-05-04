@@ -212,8 +212,13 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-class _CalibrationCacheEncoder(json.JSONEncoder):
-    """JSON encoder for calibration cache serialization."""
+class CalibrationCacheEncoder(json.JSONEncoder):
+    """Shared JSON encoder for calibration caches.
+
+    Handles numpy ndarrays and numpy scalar types (integer/floating) so
+    calibration JSON output is consistent across ``save_tensors_data`` and
+    ``quant_utils.write_calibration_table``.
+    """
 
     def default(self, obj):
         if isinstance(obj, (TensorData, TensorsData)):
@@ -236,7 +241,7 @@ def save_tensors_data(tensors_data: "TensorsData", path: "str | Path") -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
         with tmp.open("w") as f:
-            json.dump(tensors_data, f, cls=_CalibrationCacheEncoder)
+            json.dump(tensors_data, f, cls=CalibrationCacheEncoder)
             f.flush()
         os.replace(tmp, path)
     except BaseException:
