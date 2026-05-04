@@ -1304,10 +1304,14 @@ TEST(ModelEditorAPITest, AddGraphToModel_SameGraphTwoModels_Fails) {
 }
 
 // Regression tests for Release-after-ownership-transfer (yuslepukhin review comments).
-// These verify that calling Release on an object after ownership has been transferred
-// to a graph/model is safely ignored (no double-free).
+// In debug builds, releasing an owned object triggers an assert to flag the programming error.
+// In release builds, the release is a safe no-op (prevents double-free).
 
-TEST(ModelEditorAPITest, ReleaseNode_AfterAddToGraph_IsNoOp) {
+#ifdef NDEBUG
+TEST(ModelEditorAPITest, ReleaseNode_AfterAddToGraph_NoOpInRelease) {
+#else
+TEST(ModelEditorAPIDeathTest, ReleaseNode_AfterAddToGraph_AssertsInDebug) {
+#endif
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
@@ -1319,14 +1323,23 @@ TEST(ModelEditorAPITest, ReleaseNode_AfterAddToGraph_IsNoOp) {
   // Transfer ownership to graph
   ASSERT_ORTSTATUS_OK(model_editor_api.AddNodeToGraph(graph, node));
 
-  // Caller still holds raw pointer — Release should be a safe no-op
+#ifdef NDEBUG
+  // Release build: safe no-op
   api.ReleaseNode(node);
+#else
+  // Debug build: assert fires
+  ASSERT_DEATH(api.ReleaseNode(node), ".*");
+#endif
 
   // Graph destructor should safely clean up the node (no double-free)
   api.ReleaseGraph(graph);
 }
 
-TEST(ModelEditorAPITest, ReleaseGraph_AfterAddToModel_IsNoOp) {
+#ifdef NDEBUG
+TEST(ModelEditorAPITest, ReleaseGraph_AfterAddToModel_NoOpInRelease) {
+#else
+TEST(ModelEditorAPIDeathTest, ReleaseGraph_AfterAddToModel_AssertsInDebug) {
+#endif
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
@@ -1342,14 +1355,23 @@ TEST(ModelEditorAPITest, ReleaseGraph_AfterAddToModel_IsNoOp) {
   // Transfer ownership to model
   ASSERT_ORTSTATUS_OK(model_editor_api.AddGraphToModel(model, graph));
 
-  // Caller still holds raw pointer — Release should be a safe no-op
+#ifdef NDEBUG
+  // Release build: safe no-op
   api.ReleaseGraph(graph);
+#else
+  // Debug build: assert fires
+  ASSERT_DEATH(api.ReleaseGraph(graph), ".*");
+#endif
 
   // Model destructor should safely clean up the graph (no double-free)
   api.ReleaseModel(model);
 }
 
-TEST(ModelEditorAPITest, ReleaseValueInfo_AfterSetGraphInputs_IsNoOp) {
+#ifdef NDEBUG
+TEST(ModelEditorAPITest, ReleaseValueInfo_AfterSetGraphInputs_NoOpInRelease) {
+#else
+TEST(ModelEditorAPIDeathTest, ReleaseValueInfo_AfterSetGraphInputs_AssertsInDebug) {
+#endif
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
@@ -1376,8 +1398,13 @@ TEST(ModelEditorAPITest, ReleaseValueInfo_AfterSetGraphInputs_IsNoOp) {
   std::vector<OrtValueInfo*> inputs = {x_info};
   ASSERT_ORTSTATUS_OK(model_editor_api.SetGraphInputs(graph, inputs.data(), inputs.size()));
 
-  // Caller still holds saved_ptr — Release should be a safe no-op
+#ifdef NDEBUG
+  // Release build: safe no-op
   api.ReleaseValueInfo(saved_ptr);
+#else
+  // Debug build: assert fires
+  ASSERT_DEATH(api.ReleaseValueInfo(saved_ptr), ".*");
+#endif
 
   // Graph destructor should safely clean up the ValueInfo (no double-free)
   api.ReleaseGraph(graph);
