@@ -639,5 +639,89 @@ TEST(GroupQueryAttentionTest, OptionalPresent_CudaOmitMatchesConnected) {
   EXPECT_FALSE(all_zero) << "CUDA output should not be all zeros";
 }
 
+// KV-shared decode: Q has length 1, K/V have full context length (kv_seq_len=8),
+// no past, present omitted. Verifies that the output matches when present outputs
+// are connected vs omitted for the decode shape.
+TEST(GroupQueryAttentionTest, OptionalPresent_KVSharedDecode) {
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;   // decode: single token query
+  constexpr int kv_seq_len = 8;  // borrowed KV from source layer
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> key_data(batch_size * kv_seq_len * kv_hidden_size);
+  std::vector<float> value_data(batch_size * kv_seq_len * kv_hidden_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key_data.size(); i++) key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value_data.size(); i++) value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto run_test = [&](bool omit_present) {
+    OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+    tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+    tester.AddInput<float>("query", {batch_size, q_seq_len, hidden_size}, query_data);
+    tester.AddInput<float>("key", {batch_size, kv_seq_len, kv_hidden_size}, key_data);
+    tester.AddInput<float>("value", {batch_size, kv_seq_len, kv_hidden_size}, value_data);
+
+    tester.AddOptionalInputEdge<float>();  // past_key
+    tester.AddOptionalInputEdge<float>();  // past_value
+
+    tester.AddInput<int32_t>("seqlens_k", {batch_size}, {static_cast<int32_t>(kv_seq_len - 1)});
+    tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(kv_seq_len)});
+
+    tester.AddOptionalInputEdge<float>();    // cos_cache
+    tester.AddOptionalInputEdge<float>();    // sin_cache
+    tester.AddOptionalInputEdge<int64_t>();  // position_ids
+    tester.AddOptionalInputEdge<float>();    // attention_bias
+    tester.AddOptionalInputEdge<float>();    // head_sink
+
+    const int output_size = batch_size * q_seq_len * hidden_size;
+    tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+
+    if (omit_present) {
+      tester.AddOptionalOutputEdge<float>();
+      tester.AddOptionalOutputEdge<float>();
+    } else {
+      const int present_size = batch_size * kv_num_heads * kv_seq_len * head_size;
+      tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, kv_seq_len, head_size},
+                              std::vector<float>(present_size, 0.0f));
+      tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, kv_seq_len, head_size},
+                              std::vector<float>(present_size, 0.0f));
+    }
+    tester.SetOutputTolerance(1e6f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+    auto fetches = tester.GetFetches();
+    const float* out = fetches[0].Get<Tensor>().Data<float>();
+    return std::vector<float>(out, out + output_size);
+  };
+
+  auto output_with = run_test(/*omit_present=*/false);
+  auto output_without = run_test(/*omit_present=*/true);
+
+  ASSERT_EQ(output_with.size(), output_without.size());
+  for (size_t i = 0; i < output_with.size(); i++) {
+    EXPECT_NEAR(output_with[i], output_without[i], 1e-5f)
+        << "KV-shared decode output mismatch at index " << i;
+  }
+  bool all_zero = true;
+  for (float v : output_with) {
+    if (v != 0.0f) {
+      all_zero = false;
+      break;
+    }
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+}
+
 }  // namespace test
 }  // namespace onnxruntime

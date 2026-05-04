@@ -88,6 +88,7 @@ Status PrepareQKV(
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
+  const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
@@ -123,18 +124,51 @@ Status PrepareQKV(
                                       cudaMemcpyDeviceToDevice, stream));
   }
 
-  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
-      parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
-      q_out, k, v, data.k_scale, data.v_scale,
-      num_heads, kv_num_heads, head_size, sequence_length, batch_size,
-      max_cache_length, data.past_seq_lens,
-      reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
-      parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
-      is_cache_bnsh, parameters.k_quant_type,
-      stream, max_threads_per_block)));
+  // When kv_sequence_length differs from sequence_length (KV-shared decode),
+  // we must call LaunchUnpackRoPEAppend separately for Q and K/V since the kernel
+  // uses a single sequence_length for its thread grid.
+  if (kv_sequence_length != sequence_length) {
+    // Process Q only (sequence_length tokens, no K/V)
+    ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+        nullptr,                                 // no packed_qkv
+        reinterpret_cast<const T*>(data.query),  // Q input
+        nullptr,                                 // no K
+        nullptr,                                 // no V
+        q_out, k, v, data.k_scale, data.v_scale,
+        num_heads, kv_num_heads, head_size, sequence_length, batch_size,
+        max_cache_length, data.past_seq_lens,
+        reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
+        parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+        is_cache_bnsh, parameters.k_quant_type,
+        stream, max_threads_per_block)));
+
+    // Process K/V only (kv_sequence_length tokens, no Q)
+    ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+        nullptr,                                    // no packed_qkv
+        nullptr,                                    // no Q
+        reinterpret_cast<const T*>(data.key),       // K input
+        reinterpret_cast<const T*>(data.value),     // V input
+        nullptr, k, v, data.k_scale, data.v_scale,  // no Q output
+        num_heads, kv_num_heads, head_size, kv_sequence_length, batch_size,
+        max_cache_length, data.past_seq_lens,
+        reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
+        parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+        is_cache_bnsh, parameters.k_quant_type,
+        stream, max_threads_per_block)));
+  } else {
+    ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+        parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
+        parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
+        parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
+        parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
+        q_out, k, v, data.k_scale, data.v_scale,
+        num_heads, kv_num_heads, head_size, sequence_length, batch_size,
+        max_cache_length, data.past_seq_lens,
+        reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
+        parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+        is_cache_bnsh, parameters.k_quant_type,
+        stream, max_threads_per_block)));
+  }
 
   if (q_out != nullptr) {
     q = reinterpret_cast<const T*>(q_out);

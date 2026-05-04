@@ -274,8 +274,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 
   // Omitting present outputs is only safe when past_key is not provided.
-  // KV-shared layers (e.g., Gemma 4) omit present during decode: they receive
-  // borrowed KV via key/value inputs with no past of their own.
+  // When past_key exists, the kernel must concatenate past+current KV into present.
   if ((present_key_output == nullptr || present_value_output == nullptr) && past_key != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "present_key and present_value outputs are required when past_key is provided. "
@@ -284,7 +283,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   // When present outputs are omitted, allocate internal scratch buffers so the
   // CUDA kernels (flash attention, MEA, unfused) have a valid KV workspace.
-  // This keeps behavior consistent with the CPU EP.
   IAllocatorUniquePtr<void> present_key_scratch;
   IAllocatorUniquePtr<void> present_value_scratch;
   if (present_key_output == nullptr || present_value_output == nullptr) {

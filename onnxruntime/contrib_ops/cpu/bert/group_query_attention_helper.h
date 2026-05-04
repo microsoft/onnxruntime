@@ -14,7 +14,8 @@ namespace group_query_attention_helper {
 
 template <typename T>
 Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_heads, const int kv_num_heads,
-                   int& batch_size, int& sequence_length, int& q_hidden_size, int& kv_hidden_size, int& head_size) {
+                   int& batch_size, int& sequence_length, int& kv_sequence_length,
+                   int& q_hidden_size, int& kv_hidden_size, int& head_size) {
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
@@ -40,10 +41,8 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   } else if (query_dims[0] != key_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'query' and 'key' shall have same dim 0 (batch size)");
-  } else if (query_dims[1] != key_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'key' shall have same dim 1 (sequence length)");
   }
+  kv_sequence_length = static_cast<int>(key_dims[1]);
   kv_hidden_size = static_cast<int>(key_dims[2]);
   if (kv_hidden_size % kv_num_heads != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -61,9 +60,9 @@ Status Check_Q_K_V(const T* query, const T* key, const T* value, const int num_h
   } else if (query_dims[0] != value_dims[0]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'query' and 'value' shall have same dim 0 (batch size)");
-  } else if (query_dims[1] != value_dims[1]) {
+  } else if (key_dims[1] != value_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'query' and 'value' shall have same dim 1 (sequence length)");
+                           "Input 'key' and 'value' shall have same dim 1 (sequence length)");
   } else if (value_dims[2] != kv_hidden_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have same hidden size as key.");
   }
@@ -239,17 +238,19 @@ Status CheckInputs(const T* query,
 
   int batch_size = 0;
   int sequence_length = 0;
+  int kv_sequence_length = 0;
   int q_hidden_size = 0;
   int kv_hidden_size = 0;
   int head_size = 0;
   const bool is_packed_qkv = (key == nullptr);
   if (!is_packed_qkv) {
     ORT_RETURN_IF_ERROR(Check_Q_K_V(query, key, value, num_heads, kv_num_heads, batch_size, sequence_length,
-                                    q_hidden_size, kv_hidden_size, head_size));
+                                    kv_sequence_length, q_hidden_size, kv_hidden_size, head_size));
   } else {
     qkv_format = QKV_BS3NH;
     ORT_RETURN_IF_ERROR(Check_QKV(query, value, num_heads, kv_num_heads, batch_size, sequence_length, q_hidden_size,
                                   kv_hidden_size, head_size));
+    kv_sequence_length = sequence_length;
   }
 
   // Check past-present KV
@@ -312,6 +313,7 @@ Status CheckInputs(const T* query,
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;                  // sequence length of Q
+    output_parameters->kv_sequence_length = kv_sequence_length;            // sequence length of K/V inputs
     output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
     output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
     output_parameters->total_sequence_length = total_sequence_length;      // total sequence length

@@ -122,8 +122,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Omitting present outputs is only safe when past_key is not provided.
   // When past_key exists, ConcatStateChunkGQA must build a concatenated
   // past+current KV buffer in present_key/present_value for the attention GEMMs.
-  // KV-shared layers (e.g., Gemma 4) legitimately omit present during decode:
-  // they receive borrowed KV via key/value inputs with no past of their own.
   if ((present_k == nullptr || present_v == nullptr) && past_key != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "present_key and present_value outputs are required when past_key is provided. "
@@ -142,6 +140,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   OrtValue Q;
   OrtValue K;
   OrtValue V;
+  const int kv_sequence_length = parameters.kv_sequence_length;
   if (packed_qkv) {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size, query, Q));
@@ -149,9 +148,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_, sequence_length, head_size, query, Q));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        allocator, batch_size, kv_num_heads_, sequence_length, head_size, key, K));
+        allocator, batch_size, kv_num_heads_, kv_sequence_length, head_size, key, K));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
+        allocator, batch_size, kv_num_heads_, kv_sequence_length, head_size, value, V));
   }
 
   OrtValue RotaryQKV;
