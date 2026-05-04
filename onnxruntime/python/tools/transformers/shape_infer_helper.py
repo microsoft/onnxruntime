@@ -14,13 +14,31 @@ if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
 else:
     sys.path.append(os.path.join(file_path, ".."))
 
-from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy  # noqa: E402
+try:
+    from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy
+
+    _symbolic_shape_infer_available = True
+    _symbolic_shape_infer_import_error: ImportError | None = None
+except ImportError as exc:
+    SymbolicShapeInference = object  # type: ignore[assignment,misc]
+    get_shape_from_type_proto = None  # type: ignore[assignment]
+    sympy = None  # type: ignore[assignment]
+    _symbolic_shape_infer_available = False
+    _symbolic_shape_infer_import_error = exc
 
 logger = logging.getLogger(__name__)
 
 
 class SymbolicShapeInferenceHelper(SymbolicShapeInference):
     def __init__(self, model, verbose=0, int_max=2**31 - 1, auto_merge=True, guess_output_rank=False):
+        if not _symbolic_shape_infer_available:
+            err = _symbolic_shape_infer_import_error
+            cause = (
+                "missing 'sympy' (install with: pip install sympy)"
+                if err is not None and "sympy" in str(err)
+                else f"failed to import symbolic_shape_infer: {err!r}"
+            )
+            raise ImportError(f"SymbolicShapeInferenceHelper is unavailable — {cause}") from err
         super().__init__(int_max, auto_merge, guess_output_rank, verbose)
         self.model_ = model
         self.all_shapes_inferred_: bool = False
