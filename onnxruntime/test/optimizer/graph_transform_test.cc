@@ -601,6 +601,135 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
 }
 
+// Test that constant folding respects the size threshold config option.
+// The threshold guards against net memory *increases*: output_size - freed_input_size.
+// Inputs are "freed" only when the node is their sole consumer.
+TEST_F(GraphTransformationTests, ConstantFoldingWithSizeThreshold) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
+
+  // Case 1: no threshold — all Unsqueeze nodes are folded.
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 2);
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    const ConfigOptions empty_config_options;
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 0);
+  }
+
+  // Case 2: threshold of 1 byte — Unsqueeze nodes still fold because each input is
+  // exclusively consumed (freed after folding), making the net memory increase zero,
+  // which does not exceed the 1-byte threshold.
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+    Graph& graph = model->MainGraph();
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 2);
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ConfigOptions config_options_with_threshold;
+    ASSERT_STATUS_OK(config_options_with_threshold.AddConfigEntry(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "1"));
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, config_options_with_threshold),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    // Net increase = output_size (256 bytes) - freed_input_size (256 bytes) = 0, which <= 1.
+    ASSERT_EQ(CountOpsInGraph(graph)["Unsqueeze"], 0);
+  }
+
+  // Case 3: build a Tile graph where the output is genuinely larger than the inputs.
+  //   tile_input:   float32[1]  = {1.0}  →  4 bytes (exclusively consumed)
+  //   tile_repeats: int64[1]    = {200}  →  8 bytes (exclusively consumed)
+  //   Tile output:  float32[200]         → 800 bytes
+  //   Net increase = 800 - 4 - 8 = 788 bytes.
+  auto build_tile_graph = [](Graph& graph) {
+    // Add initializers
+    TensorProto tile_input_tp;
+    tile_input_tp.set_name("tile_input");
+    tile_input_tp.add_dims(1);
+    tile_input_tp.add_float_data(1.0f);
+    tile_input_tp.set_data_type(TensorProto_DataType_FLOAT);
+    graph.AddInitializedTensor(tile_input_tp);
+
+    TensorProto tile_repeats_tp;
+    tile_repeats_tp.set_name("tile_repeats");
+    tile_repeats_tp.add_dims(1);
+    tile_repeats_tp.add_int64_data(200LL);
+    tile_repeats_tp.set_data_type(TensorProto_DataType_INT64);
+    graph.AddInitializedTensor(tile_repeats_tp);
+
+    TypeProto float_1_type;
+    float_1_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    float_1_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto int64_1_type;
+    int64_1_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_1_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto float_200_type;
+    float_200_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    float_200_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(200);
+
+    auto& tile_input_arg = graph.GetOrCreateNodeArg("tile_input", &float_1_type);
+    auto& tile_repeats_arg = graph.GetOrCreateNodeArg("tile_repeats", &int64_1_type);
+    auto& tile_output_arg = graph.GetOrCreateNodeArg("tile_output", &float_200_type);
+
+    graph.AddNode("tile", "Tile", "Tile node", {&tile_input_arg, &tile_repeats_arg}, {&tile_output_arg});
+    ASSERT_STATUS_OK(graph.Resolve());
+  };
+
+  // Case 3a: threshold below net increase (100 < 788) — Tile node must NOT be folded.
+  {
+    Model model("ConstantFoldingWithSizeThreshold_Tile",
+                false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    build_tile_graph(graph);
+    ASSERT_EQ(CountOpsInGraph(graph)["Tile"], 1);
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ConfigOptions config_low_threshold;
+    ASSERT_STATUS_OK(config_low_threshold.AddConfigEntry(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "100"));
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, config_low_threshold),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    ASSERT_EQ(CountOpsInGraph(graph)["Tile"], 1);  // not folded — net (788) > threshold (100)
+  }
+
+  // Case 3b: threshold above net increase (1000 > 788) — Tile node SHOULD be folded.
+  {
+    Model model("ConstantFoldingWithSizeThreshold_Tile2",
+                false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 13}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    build_tile_graph(graph);
+    ASSERT_EQ(CountOpsInGraph(graph)["Tile"], 1);
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ConfigOptions config_high_threshold;
+    ASSERT_STATUS_OK(config_high_threshold.AddConfigEntry(
+        kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold, "1000"));
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, config_high_threshold),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+    ASSERT_EQ(CountOpsInGraph(graph)["Tile"], 0);  // folded — net (788) <= threshold (1000)
+  }
+}
+
 TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
   std::shared_ptr<Model> model;
