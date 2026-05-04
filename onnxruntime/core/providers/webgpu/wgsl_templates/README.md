@@ -2,7 +2,8 @@
 
 This directory contains the infrastructure, scripts, and documentation for the WGSL template system used by the ONNX Runtime WebGPU Execution Provider (EP). The template system enables the generation of optimized WGSL shaders at build time or runtime, with parameterization and reusability across different operators.
 
-For detailed information about the underlying template engine, see [wgsl-template](https://github.com/fs-eire/wgsl-template).
+The template engine is implemented in Python (`wgsl_gen.py` plus the `wgsl_template/` package) for the static build path.
+The original Node.js [`@fs-eire/wgsl-template`](https://github.com/fs-eire/wgsl-template) tool is still used for the `dynamic` generator mode.
 
 ## Overview
 
@@ -118,3 +119,38 @@ This section includes instructions for how to use the template system in the dev
       2. Launch wgsl-gen in watch mode
       3. Run ORT to debug/validate the shader
       4. Make changes to the template files, and repeat step (c)
+
+## Python tool reference (static mode only)
+
+The static build path invokes `wgsl_gen.py` directly from CMake; you should not normally need to run it by hand. The CLI surface is:
+
+```
+python wgsl_gen.py \
+    -i <source-dir> [-i <source-dir> ...] \
+    --output <out-dir> \
+    --generator {static-cpp|static-cpp-literal} \
+    [-I <include-prefix>] \
+    [--ext .wgsl.template] \
+    [--preserve-code-ref] \
+    [--clean] \
+    [--verbose]
+```
+
+* `static-cpp` (Release): emits short `__str_N` identifiers backed by a `string_table.h` for shader-string deduplication.
+* `static-cpp-literal` (Debug): inlines string literals; easier to read while debugging.
+
+### Running the test suite
+
+The Python tool ships with a unit + fixture test suite. CMake adds `wgsl_template_python_tests` to `ctest`, so any standard ORT build with WGSL templates enabled will run them:
+
+```
+ctest -R wgsl_template_python_tests
+```
+
+You can also run the suite directly from the source tree:
+
+```
+python test/run_tests.py
+```
+
+Tests cover the loader, parser, generator, build orchestrator, and a smoke test against the in-tree templates (Pad, Transpose, im2col-matmul). Several fixtures are pulled directly from the upstream `wgsl-template` test corpus when that checkout is available locally; the suite skips them transparently otherwise.
