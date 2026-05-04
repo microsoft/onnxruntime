@@ -534,6 +534,7 @@ else()
         # Conditionally add the SVE implementation if compiler supports it
         if (onnxruntime_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve_i8.h)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlas_sve_fp16.h)
