@@ -289,8 +289,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> present_value_scratch;
   if (present_key_output == nullptr || present_value_output == nullptr) {
     size_t present_kv_bytes = present_shape.Size() * sizeof(U);
-    present_key_scratch = GetScratchBuffer<void>(present_kv_bytes, context->GetComputeStream());
-    present_value_scratch = GetScratchBuffer<void>(present_kv_bytes, context->GetComputeStream());
+    present_key_scratch = GetScratchBuffer<void>(present_kv_bytes, GetComputeStream(context));
+    present_value_scratch = GetScratchBuffer<void>(present_kv_bytes, GetComputeStream(context));
   }
 
   IAllocatorUniquePtr<void> k_buffer;
