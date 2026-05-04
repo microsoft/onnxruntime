@@ -98,28 +98,11 @@ stages:
             targetPath: $(Build.ArtifactStagingDirectory)/webgpu-deps-package
             artifactName: foundry-local-webgpu-plugin-ep-zips
         steps:
-        - checkout: none
-
         # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
-        # Since we skip checkout for this packaging job, create a minimal config.
-        - task: PowerShell@2
-          displayName: 'Create tsaoptions.json for SDL'
-          inputs:
-            targetType: inline
-            script: |
-              $configDir = "$(Build.SourcesDirectory)/.config"
-              New-Item -ItemType Directory -Path $configDir -Force
-              $tsaConfig = @{
-                codebaseName = "onnxruntime"
-                instanceUrl = "https://aiinfra.visualstudio.com/"
-                projectName = "ONNX Runtime"
-                areaPath = "ONNX Runtime\\Engineering Systems"
-                notificationAliases = @("ort-engsys@microsoft.com")
-                ignoreBranchName = $true
-                template = "AIINFRA_TSA"
-              } | ConvertTo-Json
-              Set-Content -Path "$configDir/tsaoptions.json" -Value $tsaConfig -Encoding UTF8
-              Write-Host "Created tsaoptions.json at $configDir/tsaoptions.json"
+        # Use a sparse checkout to pull only the .config directory (avoids full repo clone).
+        - checkout: self
+          fetchDepth: 1
+          sparseCheckoutDirectories: .config
 
         - ${{ if eq(parameters.build_windows_x64, true) }}:
           - task: DownloadPipelineArtifact@2
@@ -196,6 +179,12 @@ stages:
                 }
 
                 # Track the resolved version (all platforms must agree)
+                # Version formats (full -> filename):
+                #   release: 0.1.0 -> 0.1.0
+                #   dev:     0.1.0-dev.20260401+2a1ffff2 -> 0.1.0.dev.20260401.2a1ffff2
+                # Dev versions have - and + replaced with . for filename compatibility.
+                # Full version string is preserved in version.json.
+                # TODO: RC versioning (e.g. 0.1.0-rc1) is not yet implemented
                 $filenameVersion = $versionString -replace '[-+]', '.'
                 if ($null -eq $resolvedVersion) {
                   $resolvedVersion = $filenameVersion
@@ -218,12 +207,6 @@ stages:
                   $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -match '^(dxil\.dll|dxcompiler\.dll|version\.json)$'
                 }
 
-                # Version formats (full -> filename):
-                #   release: 0.1.0 -> 0.1.0
-                #   dev:     0.1.0-dev.20260401+2a1ffff2 -> 0.1.0.dev.20260401.2a1ffff2
-                # Dev versions have - and + replaced with . for filename compatibility.
-                # Full version string is preserved in version.json.
-                # TODO: RC versioning (e.g. 0.1.0-rc1) is not yet implemented
                 $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
                 if ($filesToZip) {
                   $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
