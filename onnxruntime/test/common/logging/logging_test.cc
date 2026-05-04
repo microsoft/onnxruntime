@@ -14,8 +14,6 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26400)
 #endif
-// if we pull in the whole 'testing' namespace we get warnings from date.h as both use '_' in places.
-// to avoid that we explicitly pull in the pieces we are using
 using testing::Eq;
 using testing::Field;
 using testing::Ge;

@@ -1,0 +1,83 @@
+diff --git a/src/linux/processors.c b/src/linux/processors.c
+index 47bee76..d0c5569 100644
+--- a/src/linux/processors.c
++++ b/src/linux/processors.c
+@@ -2,0 +3 @@
++#include <unistd.h>
+@@ -291,0 +293,22 @@
++static uint32_t cpuinfo_linux_get_max_processor_from_sysconf(
++	uint32_t max_processors_count,
++	const char* processor_list_name) {
++	const long nproc = sysconf(_SC_NPROCESSORS_ONLN);
++	if (nproc <= 0) {
++		cpuinfo_log_warning(
++			"failed to query online processors from sysconf(_SC_NPROCESSORS_ONLN) for %s",
++			processor_list_name);
++		return UINT32_MAX;
++	}
++
++	uint32_t max_processor = (uint32_t)(nproc - 1);
++	if ((uint64_t)nproc > (uint64_t)max_processors_count) {
++		cpuinfo_log_warning(
++			"online processors count %ld exceeds system limit %" PRIu32 ": truncating to the latter",
++			nproc,
++			max_processors_count);
++		max_processor = max_processors_count - 1;
++	}
++	return max_processor;
++}
++
+@@ -301 +324 @@
+-		return UINT32_MAX;
++		return cpuinfo_linux_get_max_processor_from_sysconf(max_processors_count, POSSIBLE_CPULIST_FILENAME);
+@@ -323 +346 @@
+-		return UINT32_MAX;
++		return cpuinfo_linux_get_max_processor_from_sysconf(max_processors_count, PRESENT_CPULIST_FILENAME);
+@@ -357,0 +381,31 @@
++static bool cpuinfo_linux_detect_processors_from_sysconf(
++	uint32_t max_processors_count,
++	uint32_t* processor0_flags,
++	uint32_t processor_struct_size,
++	uint32_t detected_flag,
++	const char* processor_list_name) {
++	const long nproc = sysconf(_SC_NPROCESSORS_ONLN);
++	if (nproc <= 0) {
++		cpuinfo_log_warning(
++			"failed to query online processors from sysconf(_SC_NPROCESSORS_ONLN) for %s",
++			processor_list_name);
++		return false;
++	}
++
++	uint32_t processors_count = (uint32_t)nproc;
++	if ((uint64_t)nproc > (uint64_t)max_processors_count) {
++		cpuinfo_log_warning(
++			"online processors count %ld exceeds system limit %" PRIu32 ": truncating to the latter",
++			nproc,
++			max_processors_count);
++		processors_count = max_processors_count;
++	}
++
++	for (uint32_t processor = 0; processor < processors_count; processor++) {
++		*((uint32_t*)((uintptr_t)processor0_flags + processor_struct_size * processor)) |= detected_flag;
++	}
++	cpuinfo_log_warning(
++		"falling back to sysconf(_SC_NPROCESSORS_ONLN) = %ld for %s", nproc, processor_list_name);
++	return true;
++}
++
+@@ -373 +427,6 @@
+-		return false;
++		return cpuinfo_linux_detect_processors_from_sysconf(
++			max_processors_count,
++			processor0_flags,
++			processor_struct_size,
++			possible_flag,
++			POSSIBLE_CPULIST_FILENAME);
+@@ -392 +451,6 @@
+-		return false;
++		return cpuinfo_linux_detect_processors_from_sysconf(
++			max_processors_count,
++			processor0_flags,
++			processor_struct_size,
++			present_flag,
++			PRESENT_CPULIST_FILENAME);

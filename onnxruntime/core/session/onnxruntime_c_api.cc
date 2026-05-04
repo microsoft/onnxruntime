@@ -3,11 +3,12 @@
 
 #include <algorithm>
 #include <cassert>
+#include <climits>
 #include <cstring>
 #include <functional>
 #include <mutex>
-#include <vector>
 #include <sstream>
+#include <vector>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -30,14 +31,19 @@
 #include "core/framework/utils.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
+#include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/ep_api_types.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
+#include "core/session/ep_graph_assignment_info.h"
+#include "core/session/interop_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/inference_session.h"
@@ -46,8 +52,10 @@
 #include "core/session/lora_adapters.h"
 #include "core/session/model_editor_api.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -195,7 +203,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -205,7 +215,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -215,7 +227,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithGlobalThreadPools, OrtLoggingLevel log
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -226,7 +240,56 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtL
   API_IMPL_BEGIN
   OrtEnv::LoggingManagerConstructionInfo lm_info{logging_function, logger_param, logging_level, logid};
   Status status;
-  *out = OrtEnv::GetInstance(lm_info, status, tp_options);
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, tp_options);
+
+  *out = ort_env.release();
+  return ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithOptions, _In_ const OrtEnvCreationOptions* options, _Outptr_ OrtEnv** out) {
+  API_IMPL_BEGIN
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) OrtEnvCreationOptions argument");
+  }
+
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a valid (non-null) output parameter into which to "
+                                 "store the new OrtEnv instance");
+  }
+
+  // Both this API function and OrtEnvCreationOptions were added in ORT 1.24, so check that the user
+  // filled out the version correctly.
+  if (options->version < 24) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument with the version set "
+                                 "equal to ORT_API_VERSION");
+  }
+
+  if (options->logging_severity_level < OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE ||
+      options->logging_severity_level > OrtLoggingLevel::ORT_LOGGING_LEVEL_FATAL) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid logging severity level value from the OrtLoggingLevel enumeration");
+  }
+
+  if (options->log_id == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "CreateEnvWithOptions requires a OrtEnvCreationOptions argument "
+                                 "with a valid (non-null) log identifier string");
+  }
+
+  OrtLoggingLevel logging_severity_level = static_cast<OrtLoggingLevel>(options->logging_severity_level);
+  OrtEnv::LoggingManagerConstructionInfo lm_info(options->custom_logging_function,
+                                                 options->custom_logging_param,
+                                                 logging_severity_level,
+                                                 options->log_id);
+  Status status;
+  OrtEnvPtr ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, options->threading_options, options->config_entries);
+
+  *out = ort_env.release();
   return ToOrtStatus(status);
   API_IMPL_END
 }
@@ -369,6 +432,112 @@ union PtrConvert {
   const char** strings;
 };
 
+// Shared validation for COO indices used by both FillSparseTensorCoo and UseCooIndices.
+// Returns nullptr on success, OrtStatus* on validation failure.
+OrtStatus* ValidateCooIndices(const int64_t* indices_data, size_t indices_num,
+                              size_t values_size, const TensorShape& dense_shape) {
+  if (indices_num > 0 && indices_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "indices_data must not be null when indices_num > 0.");
+  }
+  if ((values_size == 0) != (indices_num == 0)) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        values_size == 0
+            ? "COO indices must be empty when the sparse tensor has no values."
+            : "COO indices must be provided when the sparse tensor has values.");
+  }
+  if (values_size > 0 && indices_num > 0) {
+    if (indices_num == values_size) {
+      const auto dense_size = dense_shape.Size();
+      for (size_t i = 0; i < indices_num; ++i) {
+        if (indices_data[i] < 0 || indices_data[i] >= dense_size) {
+          return OrtApis::CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              MakeString("COO linear index out of bounds: ", indices_data[i],
+                         " must be in [0, ", dense_size, ")")
+                  .c_str());
+        }
+      }
+    } else if (indices_num / 2 == values_size && indices_num % 2 == 0) {
+      if (dense_shape.NumDimensions() != 2) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                     "COO 2D indices require dense shape of 2 dimensions");
+      }
+      const auto rows = dense_shape.GetDims()[0];
+      const auto cols = dense_shape.GetDims()[1];
+      size_t tuple_idx = 0;
+      for (size_t i = 0; i < values_size; ++i, tuple_idx += 2) {
+        auto r = indices_data[tuple_idx];
+        auto c = indices_data[tuple_idx + 1];
+        if (r < 0 || r >= rows || c < 0 || c >= cols) {
+          return OrtApis::CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              MakeString("COO 2D index out of bounds: (", r, ", ", c,
+                         ") must be in [0, ", rows, ") x [0, ", cols, ")")
+                  .c_str());
+        }
+      }
+    } else {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "COO indices count must be equal to or twice the values count.");
+    }
+  }
+  return nullptr;
+}
+
+// Shared validation for CSR indices used by both FillSparseTensorCsr and UseCsrIndices.
+// Returns nullptr on success, OrtStatus* on validation failure.
+OrtStatus* ValidateCsrIndices(const int64_t* inner_data, size_t inner_num,
+                              const int64_t* outer_data, size_t outer_num,
+                              const TensorShape& dense_shape) {
+  if (inner_num > 0 && inner_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "inner index data must not be null when inner index count > 0.");
+  }
+  if (outer_num > 0 && outer_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "outer index data must not be null when outer index count > 0.");
+  }
+  if (dense_shape.NumDimensions() == 2 && inner_num > 0) {
+    const auto cols = dense_shape.GetDims()[1];
+    for (size_t i = 0; i < inner_num; ++i) {
+      if (inner_data[i] < 0 || inner_data[i] >= cols) {
+        return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            MakeString("CSR inner index out of bounds: ", inner_data[i],
+                       " must be in [0, ", cols, ")")
+                .c_str());
+      }
+    }
+  }
+  if (outer_num > 0) {
+    if (outer_data[0] != 0) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index must start at 0, got: ", outer_data[0]).c_str());
+    }
+    if (outer_data[outer_num - 1] != static_cast<int64_t>(inner_num)) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index last element must equal inner index count (",
+                     inner_num, "), got: ", outer_data[outer_num - 1])
+              .c_str());
+    }
+    int64_t prev = 0;
+    for (size_t i = 0; i < outer_num; ++i) {
+      auto val = outer_data[i];
+      if (val < prev || val > static_cast<int64_t>(inner_num)) {
+        return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            MakeString("CSR outer index out of bounds or not monotonically non-decreasing: ", val).c_str());
+      }
+      prev = val;
+    }
+  }
+  return nullptr;
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace
 
@@ -382,6 +551,11 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
 
   auto values_size = narrow<size_t>(values_t_shape.Size());
   auto indices_span = gsl::make_span(indices_data, indices_num);
+
+  if (auto* status = ValidateCooIndices(indices_data, indices_num, values_size,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
 
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
@@ -418,6 +592,13 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
 
   auto inner_indices_span = gsl::make_span(inner_indices_data, inner_indices_num);
   auto outer_indices_span = gsl::make_span(outer_indices_data, outer_indices_num);
+
+  if (auto* status = ValidateCsrIndices(inner_indices_data, inner_indices_num,
+                                        outer_indices_data, outer_indices_num,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
     ORT_THROW_IF_ERROR(sparse_tensor.MakeCsrStrings(values_size, conv.strings, inner_indices_span, outer_indices_span));
@@ -529,6 +710,12 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
                           ? gsl::span<int64_t>()
                           : gsl::make_span(indices_data, indices_num);
 
+  if (auto* status = ValidateCooIndices(indices_data, indices_num,
+                                        sparse_tensor.NumValues(),
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCooIndices(indices_span));
   return nullptr;
 #else
@@ -553,6 +740,12 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
   auto outer_span = (outer_num == 0 || outer_data == nullptr)
                         ? gsl::span<int64_t>()
                         : gsl::make_span(outer_data, outer_num);
+
+  if (auto* status = ValidateCsrIndices(inner_data, inner_num, outer_data, outer_num,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCsrIndices(inner_span, outer_span));
   return nullptr;
 #else
@@ -868,6 +1061,153 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
                                        output_span,
                                        run_async_callback,
                                        user_data));
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphAssignmentInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  const auto* inference_session = reinterpret_cast<const onnxruntime::InferenceSession*>(session);
+  const auto& session_options = inference_session->GetSessionOptions();
+  bool is_enabled =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "0") == "1";
+
+  if (!is_enabled) {
+    std::ostringstream oss;
+    oss << "Session configuration entry '" << kOrtSessionOptionsRecordEpGraphAssignmentInfo
+        << "' must be set to \"1\" to retrieve EP graph assignment information.";
+    return OrtApis::CreateStatus(ORT_FAIL, oss.str().c_str());
+  }
+
+  if (ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_subgraphs' argument is null");
+  }
+
+  if (num_ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_ep_subgraphs' argument is null");
+  }
+
+  const std::vector<const OrtEpAssignedSubgraph*>& ep_assignment_info = inference_session->GetEpGraphAssignmentInfo();
+
+  *ep_subgraphs = ep_assignment_info.data();
+  *num_ep_subgraphs = ep_assignment_info.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(session);
+  ORT_UNUSED_PARAMETER(ep_subgraphs);
+  ORT_UNUSED_PARAMETER(num_ep_subgraphs);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetEpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetEpName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the EP name string.");
+  }
+
+  *out = ep_subgraph->ep_name.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetNodes requires a valid (non-null) `ep_nodes` output parameter "
+                                 "into which to store the pointer to the node array.");
+  }
+
+  if (num_ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedSubgraph_GetNodes requires a valid (non-null) `num_ep_nodes` "
+                                 "output parameter into which to store the number of nodes.");
+  }
+
+  *ep_nodes = ep_subgraph->nodes.data();
+  *num_ep_nodes = ep_subgraph->nodes.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(ep_nodes);
+  ORT_UNUSED_PARAMETER(num_ep_nodes);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetName, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetName requires a valid (non-null) `out` output parameter "
+                                 "into which to store the name string.");
+  }
+
+  *out = ep_node->name.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetDomain, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetDomain requires a valid (non-null) `out` output parameter "
+                                 "into which to store the domain string.");
+  }
+
+  *out = ep_node->domain.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedNode_GetOperatorType, _In_ const OrtEpAssignedNode* ep_node,
+                    _Outptr_ const char** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "EpAssignedNode_GetOperatorType requires a valid (non-null) `out` output parameter "
+                                 "into which to store the operator type string.");
+  }
+
+  *out = ep_node->op_type.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  ORT_UNUSED_PARAMETER(out);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph assignment information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
 
@@ -2818,72 +3158,174 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
 
   const EpGraph* ep_graph = EpGraph::ToInternal(src_graph);
   if (ep_graph == nullptr) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "src_graph is a ModelEditorGraph which doesn't support Graph_GetSubGraph.");
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
+                                 "src_graph is a ModelEditorGraph which doesn't support Graph_GetGraphView.");
   }
-  const Graph& graph = ep_graph->GetGraphViewer().GetGraph();
+  const GraphViewer& graph_viewer = ep_graph->GetGraphViewer();
+
+  // Create subgraph's node set and convert them to internal Node
+  InlinedHashSet<NodeIndex> node_set;
+  InlinedVector<const Node*> internal_nodes;
+  internal_nodes.reserve(num_nodes);
+  for (size_t i = 0; i < num_nodes; i++) {
+    const EpNode* ep_node = EpNode::ToInternal(nodes[i]);
+    if (ep_node != nullptr) {
+      const Node& node = ep_node->GetInternalNode();
+      node_set.insert(node.Index());
+      internal_nodes.push_back(&node);
+    } else {
+      std::ostringstream oss;
+      oss << "node indexed [" << i << "] appears to be a ModelEditorNode";
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, oss.str().c_str());
+    }
+  }
 
   // Create a GraphViewer with filtered info
+  // TODO: Investigate whether utils::MakeComputeCapability can be extended and reused instead
   std::unique_ptr<IndexedSubGraph> indexed_sub_graph = std::make_unique<IndexedSubGraph>();
-  std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
-  metadef->name = "sub_graph";
-  metadef->since_version = 1;
-  std::unordered_set<std::string> outputs;
-  std::unordered_set<const NodeArg*> initializers;
 
-  auto add_inputs = [&](ConstPointerContainer<std::vector<NodeArg*>> defs) {
-    for (const auto* def : defs) {
-      if (def->Exists()) {
-        // not the output of a previous node
-        if (outputs.count(def->Name()) == 0) {
-          metadef->inputs.push_back(def->Name());
-        } else {
-          // consumed by node so no longer subgraph output
-          // NOTE: Ignoring edge case where a node output is an overall graph output AND a node input
-          outputs.erase(def->Name());
+  // Following data structures help determine the final inputs/outputs of the subgraph.
+  // Note: The 'subgraph' here refers to a graph contains a subset of nodes in the 'src_graph'.
+
+  // Pre-pass: Identify all outputs produced by nodes within the subgraph.
+  // This allows O(1) checks to determine if an input is internal or from the boundary.
+  InlinedHashSet<const NodeArg*> internal_outputs;
+  for (size_t i = 0, lim = internal_nodes.size(); i < lim; i++) {
+    const auto& node = *internal_nodes[i];
+    for (const auto& output : node.OutputDefs()) {
+      internal_outputs.insert(output);
+    }
+  }
+
+  // Source graph output names
+  InlinedHashSet<std::string> graph_output_names;
+  for (const auto* output_arg : graph_viewer.GetOutputs()) {
+    graph_output_names.insert(output_arg->Name());
+  }
+
+  // These maps store the inputs and outputs of the subgraph.
+  // Value is order index to maintain deterministic order.
+  InlinedHashMap<const NodeArg*, int> subgraph_inputs, subgraph_outputs;
+
+  int input_order = 0;
+  int output_order = 0;
+
+  InlinedVector<std::string> initializers;
+
+  // Add nodes and identify boundary inputs/outputs
+  for (size_t i = 0, lim = internal_nodes.size(); i < lim; i++) {
+    const auto& node = *internal_nodes[i];
+    indexed_sub_graph->nodes.push_back(node.Index());
+
+    // Process Inputs: If an input is not produced internally, it's a subgraph input.
+    auto process_inputs = [&](gsl::span<const NodeArg* const> inputs) {
+      for (const auto& input : inputs) {
+        if (!input->Exists()) continue;
+
+        if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
+          initializers.push_back(input->Name());
+          continue;
         }
 
-        if (graph.IsInitializedTensor(def->Name())) {
-          initializers.insert(def);
+        // If not produced by this subgraph, it's a boundary input
+        if (internal_outputs.count(input) == 0) {
+          // Use insert to keep the first occurrence's order
+          auto p = subgraph_inputs.emplace(input, input_order);
+          if (p.second) {
+            input_order++;
+          }
         }
       }
-    }
-  };
+    };
 
-  auto add_node = [&](const Node& node) {
-    indexed_sub_graph->nodes.push_back(node.Index());
-    add_inputs(node.InputDefs());
-    add_inputs(node.ImplicitInputDefs());
+    process_inputs(gsl::make_span(node.InputDefs().data(), node.InputDefs().size()));
+    process_inputs(gsl::make_span(node.ImplicitInputDefs().data(), node.ImplicitInputDefs().size()));
 
-    for (const auto* def : node.OutputDefs()) {
-      outputs.insert(def->Name());
-    }
-  };
+    // Process Outputs: If an output is graph output OR consumed externally, it's a subgraph output.
+    for (const auto& output : node.OutputDefs()) {
+      if (!output->Exists()) continue;
 
-  // Add nodes
-  for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {
-    const OrtNode* ort_node = nodes[node_idx];
-    const EpNode* ep_node = EpNode::ToInternal(ort_node);
-    if (ep_node == nullptr) {
-      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Graph_GetSubGraph.");
+      bool is_boundary_output = false;
+
+      // 1. Is it a graph output?
+      if (graph_output_names.count(output->Name()) > 0) {
+        is_boundary_output = true;
+      } else {
+        // 2. Is it consumed by any node outside the subgraph?
+        for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+          // Check if the edge uses this specific output
+          if (it->GetSrcArgIndex() < static_cast<int>(node.OutputDefs().size()) &&
+              node.OutputDefs()[it->GetSrcArgIndex()] == output) {
+            if (node_set.count(it->GetNode().Index()) == 0) {
+              is_boundary_output = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (is_boundary_output) {
+        subgraph_outputs.insert({output, output_order++});
+      }
     }
-    add_node(ep_node->GetInternalNode());
   }
 
-  // Add initializers
-  for (auto& initializer : initializers) {
-    metadef->constant_initializers.push_back(initializer->Name());
+  std::multimap<int, const NodeArg*> inputs, outputs;
+
+  // Get the input order of the original graph
+  InlinedHashMap<const NodeArg*, int> original_inputs;
+  int order = 0;
+  for (const auto* input : graph_viewer.GetInputs()) {
+    original_inputs[input] = order++;
   }
 
-  // Add outputs
-  for (auto& output : outputs) {
-    metadef->outputs.push_back(output);
+  // input order needs to be consistent with original graph's input order
+  for (const auto& [node_arg, subgraph_input_order] : subgraph_inputs) {
+    const auto original_input_it = original_inputs.find(node_arg);
+
+    if (original_input_it != original_inputs.end()) {
+      inputs.emplace(
+          original_input_it->second,  // input order from original graph
+          node_arg);
+    } else {
+      inputs.emplace(
+          subgraph_input_order,  // input order from subgraph
+          node_arg);
+    }
   }
 
-  indexed_sub_graph->SetMetaDef(std::move(metadef));
-  auto graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph.get());
+  // Sort outputs by the order they were added
+  for (const auto& [node_arg, subgraph_output_order] : subgraph_outputs) {
+    outputs.emplace(subgraph_output_order, node_arg);
+  }
+
+  std::unique_ptr<IndexedSubGraph::MetaDef> meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
+  meta_def->name = "sub_graph";
+  meta_def->since_version = 1;
+
+  // Assign inputs and outputs to subgraph's meta_def
+  for (const auto& input : inputs) {
+    if (input.second->Exists()) {
+      meta_def->inputs.push_back(input.second->Name());
+    }
+  }
+
+  for (const auto& initializer : initializers) {
+    meta_def->constant_initializers.push_back(initializer);
+  }
+
+  for (const auto& output : outputs) {
+    if (output.second->Exists()) {
+      meta_def->outputs.push_back(output.second->Name());
+    }
+  }
+
+  indexed_sub_graph->SetMetaDef(std::move(meta_def));
+  const Graph& graph = graph_viewer.GetGraph();
+  auto new_graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph);
 
   std::unique_ptr<EpGraph> result;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(graph_viewer), std::move(indexed_sub_graph), result));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(indexed_sub_graph), result));
 
   *dst_graph = result.release();
 
@@ -3334,6 +3776,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
       ep_option_vals_span,
       session_options->value));
 
+  ORT_API_RETURN_IF_STATUS_NOT_OK(AddEpCustomDomainsToSessionOptions(
+      ep_devices_span,
+      *session_options));
+
   session_options->provider_factories.push_back(std::move(provider_factory));
 
   return nullptr;
@@ -3366,6 +3812,34 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
 
   for (size_t i = 0; i < num_values; ++i) {
     inputs_ep_devices[i] = (i < num_found) ? ep_devices[i] : nullptr;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForOutputs, _In_ const OrtSession* ort_session,
+                    _Out_writes_(num_values) const OrtEpDevice** outputs_ep_devices,
+                    _In_ size_t num_values) {
+  API_IMPL_BEGIN
+  if (ort_session == nullptr || outputs_ep_devices == nullptr || num_values == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to SessionGetEpDeviceForOutputs.");
+  }
+
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+
+  InlinedVector<const OrtEpDevice*> ep_devices;
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->GetEpDeviceForOutputs(ep_devices));
+
+  auto num_found = ep_devices.size();
+  if (num_found > num_values) {
+    auto msg = MakeString("Number of outputs ", num_found, " exceeds the provided size of ", num_values);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
+  }
+
+  for (size_t i = 0; i < num_values; ++i) {
+    outputs_ep_devices[i] = (i < num_found) ? ep_devices[i] : nullptr;
   }
 
   return nullptr;
@@ -3536,6 +4010,98 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
   API_IMPL_END
 }
 
+// Helper function to extract compatibility info from model metadata
+static OrtStatus* ExtractCompatibilityInfoFromModelProto(
+    const ONNX_NAMESPACE::ModelProto& model_proto,
+    const char* ep_type,
+    OrtAllocator* allocator,
+    char** compatibility_info) {
+  // Build the key we're looking for
+  std::string target_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep_type;
+
+  // Search through metadata_props for the matching key
+  for (const auto& prop : model_proto.metadata_props()) {
+    if (prop.key() == target_key) {
+      // Found it - allocate and copy the value using the provided allocator
+      *compatibility_info = onnxruntime::StrDup(prop.value(), allocator);
+      if (*compatibility_info == nullptr) {
+        return OrtApis::CreateStatus(ORT_FAIL, "Failed to allocate memory for compatibility info.");
+      }
+      return nullptr;
+    }
+  }
+
+  // Key not found - return nullptr (not an error, just means no compat info for this EP)
+  *compatibility_info = nullptr;
+  return nullptr;
+}
+
+// Extract EP compatibility info from a model file
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModel,
+                    _In_ const ORTCHAR_T* model_path,
+                    _In_ const char* ep_type,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_result_maybenull_ char** compatibility_info) {
+  API_IMPL_BEGIN
+  if (model_path == nullptr || ep_type == nullptr || ep_type[0] == '\0' ||
+      allocator == nullptr || compatibility_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid argument provided to GetCompatibilityInfoFromModel.");
+  }
+
+  *compatibility_info = nullptr;
+
+  // Use Model::Load for proper cross-platform path handling via file descriptor
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto status = Model::Load(PathString(model_path), model_proto);
+  if (!status.IsOK()) {
+    if (status.Code() == common::NO_SUCHFILE) {
+      return OrtApis::CreateStatus(ORT_NO_SUCHFILE, status.ErrorMessage().c_str());
+    }
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, status.ErrorMessage().c_str());
+  }
+
+  return ExtractCompatibilityInfoFromModelProto(model_proto, ep_type, allocator, compatibility_info);
+  API_IMPL_END
+}
+
+// Extract EP compatibility info from model bytes in memory
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModelBytes,
+                    _In_reads_(model_data_length) const void* model_data,
+                    _In_ size_t model_data_length,
+                    _In_ const char* ep_type,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_result_maybenull_ char** compatibility_info) {
+  API_IMPL_BEGIN
+  if (model_data == nullptr || model_data_length == 0 || ep_type == nullptr || ep_type[0] == '\0' ||
+      allocator == nullptr || compatibility_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid argument provided to GetCompatibilityInfoFromModelBytes.");
+  }
+
+  *compatibility_info = nullptr;
+
+  // Explicit check for size limit - Model::LoadFromBytes uses int for size due to protobuf API
+  if (model_data_length > static_cast<size_t>(INT_MAX)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Model data size exceeds maximum supported size (2GB). Use GetCompatibilityInfoFromModel with a file path instead.");
+  }
+
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto status = Model::LoadFromBytes(narrow<int32_t>(model_data_length), model_data, model_proto);
+  if (!status.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, status.ErrorMessage().c_str());
+  }
+
+  return ExtractCompatibilityInfoFromModelProto(model_proto, ep_type, allocator, compatibility_info);
+  API_IMPL_END
+}
+
+// GetInteropApi - returns the Interop API struct
+ORT_API(const OrtInteropApi*, OrtApis::GetInteropApi) {
+  return OrtInteropAPI::GetInteropApi();
+}
+
 #else  // defined(ORT_MINIMAL_BUILD)
 ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, _In_ const char* /*registration_name*/,
                     const ORTCHAR_T* /*path*/) {
@@ -3566,6 +4132,29 @@ ORT_API_STATUS_IMPL(OrtApis::GetModelCompatibilityForEpDevices,
                     _Out_ OrtCompiledModelCompatibility* /*out_status*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetModelCompatibilityForEpDevices is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// Minimal build stub for GetCompatibilityInfoFromModel
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModel,
+                    _In_ const ORTCHAR_T* /*model_path*/,
+                    _In_ const char* /*ep_type*/,
+                    _Inout_ OrtAllocator* /*allocator*/,
+                    _Outptr_result_maybenull_ char** /*compatibility_info*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetCompatibilityInfoFromModel is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+// Minimal build stub for GetCompatibilityInfoFromModelBytes
+ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModelBytes,
+                    _In_reads_(model_data_length) const void* /*model_data*/,
+                    _In_ size_t /*model_data_length*/,
+                    _In_ const char* /*ep_type*/,
+                    _Inout_ OrtAllocator* /*allocator*/,
+                    _Outptr_result_maybenull_ char** /*compatibility_info*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetCompatibilityInfoFromModelBytes is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3618,6 +4207,19 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
                     _In_ size_t /*num_tensors*/) {
   API_IMPL_BEGIN
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CopyTensors is not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(const OrtInteropApi*, OrtApis::GetInteropApi) {
+  fprintf(stderr, "The Interop API is not supported in a minimal build.\n");
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForOutputs, _In_ const OrtSession* /*ort_session*/,
+                    _Out_writes_(num_values) const OrtEpDevice** /*outputs_ep_devices*/,
+                    _In_ size_t /*num_values*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "SessionGetEpDeviceForOutputs is not supported in a minimal build.");
   API_IMPL_END
 }
 
@@ -3721,6 +4323,27 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSessi
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
+                    _In_ const OrtThreadPoolCallbacksConfig* config) {
+  API_IMPL_BEGIN
+  if (config == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config must not be null");
+  }
+  if (config->version == 0 || config->version > ORT_API_VERSION) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtThreadPoolCallbacksConfig requires version set to ORT_API_VERSION");
+  }
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  return onnxruntime::ToOrtStatus(
+      ort_env->GetEnvironment().SetPerSessionWorkCallbacks(*config));
+#else
+  ORT_UNUSED_PARAMETER(ort_env);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "SetPerSessionThreadPoolCallbacks requires ORT built with --enable_session_threadpool_callbacks");
+#endif
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -3764,7 +4387,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_24 = {
+static constexpr OrtApi ort_api_1_to_26 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4238,6 +4861,39 @@ static constexpr OrtApi ort_api_1_to_24 = {
 
     &OrtApis::TensorTypeAndShape_HasShape,
     &OrtApis::KernelInfo_GetConfigEntries,
+    &OrtApis::KernelInfo_GetOperatorDomain,
+    &OrtApis::KernelInfo_GetOperatorType,
+    &OrtApis::KernelInfo_GetOperatorSinceVersion,
+
+    &OrtApis::GetInteropApi,
+    &OrtApis::SessionGetEpDeviceForOutputs,
+
+    &OrtApis::GetNumHardwareDevices,
+    &OrtApis::GetHardwareDevices,
+    &OrtApis::GetHardwareDeviceEpIncompatibilityDetails,
+    &OrtApis::DeviceEpIncompatibilityDetails_GetReasonsBitmask,
+    &OrtApis::DeviceEpIncompatibilityDetails_GetNotes,
+    &OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode,
+    &OrtApis::ReleaseDeviceEpIncompatibilityDetails,
+    &OrtApis::GetCompatibilityInfoFromModel,
+    &OrtApis::GetCompatibilityInfoFromModelBytes,
+
+    &OrtApis::CreateEnvWithOptions,
+    &OrtApis::Session_GetEpGraphAssignmentInfo,
+    &OrtApis::EpAssignedSubgraph_GetEpName,
+    &OrtApis::EpAssignedSubgraph_GetNodes,
+    &OrtApis::EpAssignedNode_GetName,
+    &OrtApis::EpAssignedNode_GetDomain,
+    &OrtApis::EpAssignedNode_GetOperatorType,
+    &OrtApis::RunOptionsSetSyncStream,
+    &OrtApis::GetTensorElementTypeAndShapeDataReference,
+    // End of Version 24 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::RunOptionsEnableProfiling,
+    &OrtApis::RunOptionsDisableProfiling,
+    &OrtApis::KernelInfoGetAttributeArray_string,
+    &OrtApis::SetPerSessionThreadPoolCallbacks,
+    // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4274,18 +4930,27 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
+static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
+static_assert(offsetof(OrtApi, KernelInfoGetAttributeArray_string) / sizeof(void*) == 417, "Size of version 25 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.24.0",
+static_assert(std::string_view(ORT_VERSION) == "1.26.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_24 above:
+//
+// 2. If there were any APIs added to ort_api_1_to_26 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
+//
+// 3. There are additional API structs that may have been updated. Repeat step 2 for these instances:
+//    - ort_compile_api in onnxruntime/onnxruntime/core/session/compile_api.cc
+//    - ort_ep_api in onnxruntime/onnxruntime/core/session/plugin_ep/ep_api.cc
+//    - ort_interop_api in onnxruntime/core/session/interop_api.cc
+//    - ort_model_editor_api in onnxruntime/onnxruntime/core/session/model_editor_c_api.cc
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_24;
+    return &ort_api_1_to_26;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
@@ -4296,6 +4961,9 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {
+  static_assert(onnxruntime::version_check::IsOrtVersionValid(ORT_VERSION),
+                "ORT_VERSION must be in the format '1.Y.Z' where Y and Z are non-negative integers without leading "
+                "zeros, and Y must equal ORT_API_VERSION");
   return ORT_VERSION;
 }
 
@@ -4315,3 +4983,137 @@ DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Value, OrtValue)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(RunOptions, OrtRunOptions)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(Session, ::onnxruntime::InferenceSession)
 DEFINE_RELEASE_ORT_OBJECT_FUNCTION(ModelMetadata, ::onnxruntime::ModelMetadata)
+
+ORT_API_STATUS_IMPL(OrtApis::GetNumHardwareDevices, _In_ const OrtEnv* env, _Out_ size_t* num_devices) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (env == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must not be null");
+  }
+  if (num_devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "num_devices must not be null");
+  }
+
+  const auto& device_vector = env->GetEnvironment().GetSortedOrtHardwareDevices();
+  *num_devices = device_vector.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(num_devices);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetNumHardwareDevices is not available in minimal build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetHardwareDevices, _In_ const OrtEnv* env,
+                    _Out_writes_(num_devices) const OrtHardwareDevice** devices,
+                    _In_ size_t num_devices) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (env == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env must not be null");
+  }
+  if (devices == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "devices must not be null");
+  }
+
+  const auto& device_vector = env->GetEnvironment().GetSortedOrtHardwareDevices();
+  size_t available_devices = device_vector.size();
+
+  if (num_devices < available_devices) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "num_devices is less than the number of available hardware devices. "
+                                 "Use GetNumHardwareDevices() to get the required array size.");
+  }
+
+  for (size_t i = 0; i < available_devices; ++i) {
+    devices[i] = device_vector[i];
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(devices);
+  ORT_UNUSED_PARAMETER(num_devices);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetHardwareDevices is not available in minimal build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetHardwareDeviceEpIncompatibilityDetails, _In_ const OrtEnv* env, _In_ const char* ep_name, _In_ const OrtHardwareDevice* hw, _Outptr_ OrtDeviceEpIncompatibilityDetails** details) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  // Validate all input parameters
+  if (env == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "env is required and cannot be null");
+  }
+  if (ep_name == nullptr || ep_name[0] == '\0') {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_name is required and cannot be null or empty");
+  }
+  if (hw == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "hw is required and cannot be null");
+  }
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details output parameter cannot be null");
+  }
+
+  std::unique_ptr<OrtDeviceEpIncompatibilityDetails> compat_details;
+  auto status = env->GetEnvironment().GetHardwareDeviceEpIncompatibilityDetails(ep_name, hw, compat_details);
+  if (!status.IsOK()) {
+    return ToOrtStatus(status);
+  }
+
+  *details = compat_details.release();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(env);
+  ORT_UNUSED_PARAMETER(ep_name);
+  ORT_UNUSED_PARAMETER(hw);
+  ORT_UNUSED_PARAMETER(details);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetHardwareDeviceEpIncompatibilityDetails is not available in minimal build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceEpIncompatibilityDetails_GetReasonsBitmask, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ uint32_t* reasons_bitmask) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details cannot be null");
+  }
+  if (reasons_bitmask == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "reasons_bitmask output parameter cannot be null");
+  }
+  *reasons_bitmask = details->reasons_bitmask;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceEpIncompatibilityDetails_GetNotes, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Outptr_result_maybenull_ const char** notes) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details cannot be null");
+  }
+  if (notes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "notes output parameter cannot be null");
+  }
+  *notes = details->notes.empty() ? nullptr : details->notes.c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::DeviceEpIncompatibilityDetails_GetErrorCode, _In_ const OrtDeviceEpIncompatibilityDetails* details, _Out_ int32_t* error_code) {
+  API_IMPL_BEGIN
+  if (details == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "details cannot be null");
+  }
+  if (error_code == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "error_code output parameter cannot be null");
+  }
+  *error_code = details->error_code;
+  return nullptr;
+  API_IMPL_END
+}
+
+void ORT_API_CALL OrtApis::ReleaseDeviceEpIncompatibilityDetails(OrtDeviceEpIncompatibilityDetails* details) noexcept {
+  delete details;
+}

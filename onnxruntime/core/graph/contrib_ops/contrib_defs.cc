@@ -559,6 +559,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
                                     {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                                     "Constrain input and output types to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+                                .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
                                 .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
                                   // gelu(x) = x * Phi(x) = x * 1/2(1+erf(x/sqrt(2)))
                                   auto* tp = ctx.getInputType(0);
@@ -614,6 +615,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+        .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
         .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema,
                                                    FunctionProto& functionProto) {
           auto* tp = ctx.getInputType(0);
@@ -1566,6 +1568,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "2D optional tensor with shape (num_experts, inter_size / pack_size), or "
                "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
                "T1",
+               OpSchema::Optional)
+        .Input(14,
+               "router_weights",
+               "2D optional tensor with shape (num_tokens, num_experts). "
+               "When provided, router_probs is used only for Top-K expert selection, and router_weights is used "
+               "for aggregating expert outputs (the values at the selected expert indices are gathered and used as "
+               "mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for "
+               "selection and aggregation. When not provided, router_probs is used for both selection and aggregation "
+               "(backward compatible).",
+               "T",
                OpSchema::Optional)
         .Output(0,
                 "output",
@@ -2997,6 +3009,7 @@ void RegisterContribSchemas() {
             saved_inv_std_dev_shape->mutable_dim(static_cast<int>(d))->set_dim_value(1);
         }
       })
+      .SetNodeDeterminism(OpSchema::NodeDeterminism::Deterministic)
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)

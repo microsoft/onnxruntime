@@ -45,7 +45,16 @@ void ModelCompilationOptions::SetInputModelFromBuffer(const void* input_model_da
   input_model_data_size_ = input_model_data_size;
 }
 
+void ModelCompilationOptions::SetInputModel(const OrtModel* model) {
+  ResetInputModelSettings();
+  input_model_ = model;
+}
+
 Status ModelCompilationOptions::SetOutputModelPath(const std::filesystem::path& output_model_path) {
+  if (output_model_path.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Output model path must not be empty.");
+  }
+
   ConfigOptions& config_options = session_options_.value.config_options;
   epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
@@ -186,10 +195,19 @@ size_t ModelCompilationOptions::GetInputModelDataSize() const {
   return input_model_data_size_;
 }
 
+bool ModelCompilationOptions::InputModelComesFromOrtModel() const {
+  return input_model_ != nullptr;
+}
+
+const OrtModel* ModelCompilationOptions::GetInputModel() const {
+  return input_model_;
+}
+
 void ModelCompilationOptions::ResetInputModelSettings() {
   input_model_path_.clear();
   input_model_data_ = nullptr;
   input_model_data_size_ = 0;
+  input_model_ = nullptr;
 }
 
 Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level) {
@@ -229,16 +247,21 @@ Status ModelCompilationOptions::Check() const {
   // Check input model settings.
   const bool input_from_file = !input_model_path_.empty();
   const bool input_from_memory = input_model_data_ != nullptr;
+  const bool input_from_model = input_model_ != nullptr;
 
-  if (!input_from_file && !input_from_memory) {
+  int input_source_count = (input_from_file ? 1 : 0) +
+                           (input_from_memory ? 1 : 0) +
+                           (input_from_model ? 1 : 0);
+
+  if (input_source_count == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input model to compile must be loaded from either a file or a memory buffer");
+                           "Input model to compile must be specified via file path, memory buffer, or OrtModel");
   }
 
-  if (input_from_file && input_from_memory) {
+  if (input_source_count > 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input model to compile must be loaded from either a file or a memory buffer, ",
-                           "but not both.");
+                           "Input model to compile must be specified via exactly one of: ",
+                           "file path, memory buffer, or OrtModel");
   }
 
   if (input_from_file && !std::filesystem::exists(input_model_path_)) {
@@ -249,12 +272,45 @@ Status ModelCompilationOptions::Check() const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer for input model data has size 0");
   }
 
+  // Validate OrtModel input
+  if (input_from_model) {
+    if (input_model_->graph == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel has no graph. Call AddGraphToModel before compilation.");
+    }
+
+    if (input_model_->graph->GetNumInputs() == 0 || input_model_->graph->GetNumOutputs() == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel graph must have at least one input and one output defined.");
+    }
+
+    if (input_model_->domain_to_version.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "OrtModel must specify at least one opset domain/version.");
+    }
+
+    // Note: Additional validation (node connections, schema) happens during
+    // Model::LoadFromModelEditorApiModel -> Graph::Resolve()
+  }
+
   // Check output model settings.
   const epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
   bool has_no_output_model_location = std::holds_alternative<std::monostate>(
       ep_context_gen_options.output_model_location);
 
-  if (has_no_output_model_location && input_from_file) {
+  // Determine if we can derive an output path from the input
+  bool can_derive_output_path = input_from_file;
+
+  // For OrtModel input, check if model_path is set in the graph using the virtual GetModelPath() method
+  // (avoids dynamic_cast which requires RTTI)
+  if (input_from_model && input_model_->graph) {
+    const ORTCHAR_T* model_path_cstr = input_model_->graph->GetModelPath();
+    if (model_path_cstr && model_path_cstr[0] != ORT_TSTR('\0')) {
+      can_derive_output_path = true;
+    }
+  }
+
+  if (has_no_output_model_location && can_derive_output_path) {
     // User did not specify an output file, an output buffer, or an output write function. We default to generating an
     // output file with a name based on the input file name, so do not return an error.
     return Status::OK();
@@ -291,6 +347,60 @@ Status ModelCompilationOptions::Check() const {
   }
 
   return Status::OK();
+}
+
+std::string ModelCompilationOptions::GetInputSourceForTelemetry() const {
+  if (InputModelComesFromFile()) {
+    return "file";
+  }
+  if (InputModelComesFromOrtModel()) {
+    return "ort_model";
+  }
+  return "buffer";
+}
+
+std::string ModelCompilationOptions::GetOutputTargetForTelemetry() const {
+  const epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
+
+  if (options.TryGetOutputModelPath() != nullptr) {
+    return "file";
+  }
+  if (options.TryGetOutputModelBuffer() != nullptr) {
+    return "buffer";
+  }
+  if (options.TryGetOutputModelWriteFunc() != nullptr) {
+    return "callback";
+  }
+
+  // Default: output path will be derived from input path
+  return "file";
+}
+
+uint32_t ModelCompilationOptions::GetFlagsForTelemetry() const {
+  const epctx::ModelGenOptions& options = session_options_.value.ep_context_gen_options;
+  uint32_t flags = OrtCompileApiFlags_NONE;
+
+  if (options.error_if_output_file_exists) {
+    flags |= OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
+  }
+  if (options.action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError) {
+    flags |= OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED;
+  }
+
+  return flags;
+}
+
+int ModelCompilationOptions::GetGraphOptimizationLevelForTelemetry() const {
+  return static_cast<int>(session_options_.value.graph_optimization_level);
+}
+
+bool ModelCompilationOptions::GetEmbedEpContextForTelemetry() const {
+  return session_options_.value.ep_context_gen_options.embed_ep_context_in_model;
+}
+
+bool ModelCompilationOptions::HasExternalInitializersFileForTelemetry() const {
+  return session_options_.value.ep_context_gen_options.TryGetExternalInitializerFileInfo() != nullptr ||
+         session_options_.value.ep_context_gen_options.TryGetInitializerHandler() != nullptr;
 }
 
 }  // namespace onnxruntime

@@ -1202,6 +1202,7 @@ TEST_F(QnnHTPBackendTests, CastAddQDQS16) {
 
 // Test float32 model with FP16 precision
 TEST_F(QnnHTPBackendTests, Float32ModelWithFP16PrecisionTest) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -1311,6 +1312,27 @@ TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   // Cleaup generated files.
   // Comment the following line to inspect generated JSON files.
   std::filesystem::remove_all(dump_dir);
+}
+
+// Test extended UDMA mode on supported hardware (should run successfully)
+TEST_F(QnnHTPBackendTests, ExtendedUdmaModeTest) {
+  // Create provider options with extended UDMA mode enabled
+  ProviderOptions options;
+  options["backend_type"] = "htp";
+  options["offload_graph_io_quantization"] = "0";
+  options["htp_arch"] = "81";
+  options["extended_udma"] = "1";
+
+  // Define a simple model with Add operation
+  auto input_defs = {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f)};
+
+  // Run the test - this should succeed because v81 supports extended UDMA
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain),
+                  options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
 }
 
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
@@ -1466,6 +1488,10 @@ TEST_F(QnnHTPBackendTests, LoadingAndUnloadingOfQnnLibrary_FixSegFault) {
 // Tests autoEP feature to automatically select an EP that supports the NPU.
 // Currently only works on Windows.
 TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
+  // V68 device (Makena) on win-arm64 doesn't support NPU device discovery with dxcore.dll,
+  // which is required by auto-EP.
+  QNN_SKIP_TEST_IF_AUTOEP_NPU_UNSUPPORTED();
+
   ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
                                                                      ORT_TSTR("onnxruntime_providers_qnn.dll")));
 
@@ -1485,6 +1511,82 @@ TEST_F(QnnGPUBackendTests, AutoEp_PreferGpu) {
 
   Ort::SessionOptions so;
   so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
+}
+
+TEST_F(QnnHTPBackendTests, AutoEp_AllDevices) {
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
+                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+
+  Ort::SessionOptions so;
+  auto devices = ort_env->GetEpDevices();
+  std::vector<Ort::ConstEpDevice> selected_devices;
+
+  std::copy_if(devices.begin(),
+               devices.end(),
+               std::back_inserter(selected_devices),
+               [](Ort::ConstEpDevice& d) { return std::string_view(d.EpName()) == kQnnExecutionProvider; });
+
+  ASSERT_TRUE(selected_devices.size() > 0) << "No QNN devices were found.";
+
+  so.AppendExecutionProvider_V2(*ort_env, selected_devices, {});
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
+}
+
+TEST_F(QnnHTPBackendTests, AutoEp_NpuOnly) {
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
+                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+
+  Ort::SessionOptions so;
+  auto devices = ort_env->GetEpDevices();
+  std::vector<Ort::ConstEpDevice> selected_devices;
+
+  std::copy_if(devices.begin(),
+               devices.end(),
+               std::back_inserter(selected_devices),
+               [](Ort::ConstEpDevice& d) {
+                 return std::string_view(d.EpName()) == kQnnExecutionProvider && d.Device().Type() == OrtHardwareDeviceType_NPU;
+               });
+
+  ASSERT_TRUE(selected_devices.size() > 0) << "No QNN NPU device was found.";
+
+  so.AppendExecutionProvider_V2(*ort_env, selected_devices, {});
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::Session session(*ort_env, ort_model_path, so);
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
+}
+
+TEST_F(QnnGPUBackendTests, AutoEp_GpuOnly) {
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
+                                                                     ORT_TSTR("onnxruntime_providers_qnn.dll")));
+
+  Ort::SessionOptions so;
+  auto devices = ort_env->GetEpDevices();
+  std::vector<Ort::ConstEpDevice> selected_devices;
+
+  std::copy_if(devices.begin(),
+               devices.end(),
+               std::back_inserter(selected_devices),
+               [](Ort::ConstEpDevice& d) {
+                 return std::string_view(d.EpName()) == kQnnExecutionProvider && d.Device().Type() == OrtHardwareDeviceType_GPU;
+               });
+
+  ASSERT_TRUE(selected_devices.size() > 0) << "No QNN GPU device was found.";
+
+  so.AppendExecutionProvider_V2(*ort_env, selected_devices, {});
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx";
   Ort::Session session(*ort_env, ort_model_path, so);

@@ -70,13 +70,20 @@ struct RunConfig {
   std::string intra_op_thread_affinities;
   bool disable_spinning = false;
   bool disable_spinning_between_run = false;
+  int spin_duration_us = -1;  // -1 means use default (not set by user)
+  // Keep this signed in the CLI layer so negative user input can be diagnosed
+  // before clamping/conversion to the unsigned runtime option.
+  int spin_backoff_max = 1;  // 1 means no backoff (default)
+  bool spin_backoff_max_set = false;
   bool exit_after_session_creation = false;
+  uint32_t hold_ms_after_session_creation{0};
   std::basic_string<ORTCHAR_T> register_custom_op_path;
   bool enable_cuda_io_binding{false};
   bool use_extensions = false;
   bool compile_ep_context{false};
   std::basic_string<ORTCHAR_T> compile_model_path;
   bool compile_binary_embed{false};
+  bool compile_only{false};
   struct CudaMempoolArenaConfig {
     std::string release_threshold;
     std::string bytes_to_keep;

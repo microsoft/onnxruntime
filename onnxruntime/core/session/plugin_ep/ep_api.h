@@ -100,4 +100,83 @@ ORT_API_STATUS_IMPL(GetTensorDataType, _In_ ONNXTensorElementDataType elem_type,
                     _Outptr_ const OrtDataType** out);
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_LookUpKernel, _In_ OrtEpGraphSupportInfo* graph_support_info,
                     _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtKernelDef** out_kernel_def);
+
+ORT_API_STATUS_IMPL(SharedPrePackedWeightCache_StoreWeightData,
+                    _In_ OrtSharedPrePackedWeightCache* prepacked_weight_cache,
+                    _In_reads_(num_buffers) void** buffer_data_ptrs, _In_reads_(num_buffers) size_t* buffer_data_sizes,
+                    _In_ size_t num_buffers);
+
+// KernelInfo
+ORT_API_STATUS_IMPL(KernelInfo_GetEp, _In_ const OrtKernelInfo* info, _Outptr_ const OrtEp** ep);
+
+// Control flow kernel APIs
+ORT_API_STATUS_IMPL(CreateIfKernel, _In_ const OrtKernelInfo* kernel_info, _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API_STATUS_IMPL(CreateLoopKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtLoopKernelHelper* helper,
+                    _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API_STATUS_IMPL(CreateScanKernel, _In_ const OrtKernelInfo* kernel_info, _In_ OrtScanKernelHelper* helper,
+                    _Outptr_ OrtKernelImpl** kernel_out);
+ORT_API(void, ReleaseKernelImpl, _Frees_ptr_opt_ OrtKernelImpl* kernel_impl);
+
+// Env config entries
+ORT_API_STATUS_IMPL(GetEnvConfigEntries, _Outptr_ OrtKeyValuePairs** config_entries);
+
+// OpSchema APIs
+ORT_API_STATUS_IMPL(GetOpSchema, _In_ const char* name, _In_ int max_inclusive_version,
+                    _In_ const char* domain, _Outptr_result_maybenull_ OrtOpSchema** out_schema);
+ORT_API(void, ReleaseOpSchema, _Frees_ptr_opt_ OrtOpSchema* schema);
+ORT_API_STATUS_IMPL(OpSchema_GetSinceVersion, _In_ const OrtOpSchema* schema, _Out_ int* out);
+ORT_API_STATUS_IMPL(OpSchema_GetNumInputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(OpSchema_GetInputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(OpSchema_GetInputTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_result_maybenull_ const OrtOpSchemaTypeConstraint** out);
+ORT_API_STATUS_IMPL(OpSchema_GetNumOutputs, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(OpSchema_GetOutputName, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(OpSchema_GetOutputTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_result_maybenull_ const OrtOpSchemaTypeConstraint** out);
+ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraintCount, _In_ const OrtOpSchema* schema, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(OpSchema_GetTypeConstraint, _In_ const OrtOpSchema* schema, _In_ size_t index,
+                    _Outptr_ const OrtOpSchemaTypeConstraint** out);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetTypeParamName, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetAllowedTypes, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                    _Outptr_ const char* const** out_types, _Out_ size_t* num_types);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetInputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                    _Outptr_ const size_t** out_indices, _Out_ size_t* count);
+ORT_API_STATUS_IMPL(OpSchemaTypeConstraint_GetOutputIndices, _In_ const OrtOpSchemaTypeConstraint* type_constraint,
+                    _Outptr_ const size_t** out_indices, _Out_ size_t* count);
+
+// EP profiling events container
+ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
+                    _In_reads_(num_events) const OrtProfilingEvent* const* events,
+                    _In_ size_t num_events);
+
+// EP profiling event creation/release
+ORT_API_STATUS_IMPL(CreateProfilingEvent,
+                    _In_ OrtProfilingEventCategory category,
+                    _In_ int32_t process_id,
+                    _In_ int32_t thread_id,
+                    _In_ const char* event_name,
+                    _In_ int64_t timestamp_us,
+                    _In_ int64_t duration_us,
+                    _In_reads_(num_args) const char* const* arg_keys,
+                    _In_reads_(num_args) const char* const* arg_values,
+                    _In_ size_t num_args,
+                    _Outptr_ OrtProfilingEvent** out);
+
+ORT_API(void, ReleaseProfilingEvent, _Frees_ptr_opt_ OrtProfilingEvent* event);
+
+// Profiling event accessors
+ORT_API_STATUS_IMPL(ProfilingEvent_GetCategory, _In_ const OrtProfilingEvent* event,
+                    _Out_ OrtProfilingEventCategory* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetName, _In_ const OrtProfilingEvent* event,
+                    _Outptr_ const char** out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetTimestampUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* event,
+                    _Out_ int64_t* out);
+ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
+                    _Outptr_result_maybenull_ const char** out);
+
 }  // namespace OrtExecutionProviderApi

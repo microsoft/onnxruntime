@@ -15,6 +15,7 @@
 #include "core/common/path_string.h"
 #include "core/common/profiler.h"
 #include "core/common/status.h"
+#include "core/platform/env.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
@@ -30,6 +31,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/session/ep_graph_assignment_info.h"
 #include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
@@ -484,6 +486,15 @@ class InferenceSession {
    * This is required for a user to know the location of the input/output when autoep selection is enabled.
    */
   common::Status GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
+
+  /**
+   * Get the OrtEpDevice (if available) for the outputs of the model.
+   *
+   * This is required for a user to validate that outputs will be placed on the expected device
+   * for external resource sharing.
+   */
+  common::Status GetEpDeviceForOutputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
+
   /**
    * Get the current number of in-progress concurrent Run calls.
    */
@@ -494,6 +505,19 @@ class InferenceSession {
    * priority. The first provider in the vector has the highest priority.
    */
   const std::vector<std::string>& GetRegisteredProviderTypes() const;
+
+  /**
+   * Get the registered Execution Providers.
+   *
+   * This method can be called after EP registration but before Initialize() completes.
+   * Used only for early validation of compiled model compatibility where accessing
+   * EPs through session state is not yet possible.
+   *
+   * @return const reference to the ExecutionProviders collection.
+   */
+  const ExecutionProviders& GetExecutionProviders() const noexcept {
+    return execution_providers_;
+  }
 
   /*
    * Get the options this session was initialized with.
@@ -653,6 +677,12 @@ class InferenceSession {
     return session_id_;
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const std::vector<const OrtEpAssignedSubgraph*>& GetEpGraphAssignmentInfo() const {
+    return this->ep_graph_assignment_info_;
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -709,6 +739,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
+  /// This MUST be declared before execution_providers_ so the logger outlives EPs during destruction
+  /// (C++ destroys members in reverse declaration order), allowing EP teardown callbacks to safely
+  /// use the logger pointer.
+  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
+
   // The list of execution providers.
   // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
   // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
@@ -738,6 +774,20 @@ class InferenceSession {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
+
+  // Maximum number of internal run attempts allowed (within a single session.Run()) for EP graph capture.
+  // If the number of run attempts exceeds this limit, the session.Run() returns an error status.
+  // This prevents running an unbounded number of runs due to buggy EPs that never return true from
+  // IsGraphCaptured(). Note that EPs typically need at most two runs to capture a graph (e.g., CUDA EP).
+  static constexpr int kMaxGraphCaptureRunAttempts = 8;
+
+  // Internal implementation of Run() with graph capture recursion depth tracking.
+  [[nodiscard]] common::Status RunImpl(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                                       gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
+                                       std::vector<OrtValue>* p_fetches,
+                                       const std::vector<OrtDevice>* p_fetches_device_info,
+                                       int graph_capture_depth);
+
   void SetLoggingManager(const SessionOptions& session_options,
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
@@ -858,9 +908,6 @@ class InferenceSession {
   /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
   std::unique_ptr<logging::LoggingManager> user_logging_manager_;
 
-  /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
-  std::unique_ptr<logging::Logger> owned_session_logger_ = nullptr;
-
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
@@ -947,8 +994,10 @@ class InferenceSession {
     std::unordered_map<int64_t, long long> duration_per_batch_size_;  // the duration (us) of Run() calls per batch size since the last report
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
-    // Event Rate per provider < 20 peak events per second
-    constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
+    // RuntimePerf backoff interval: starts at 2s between emissions, doubles each emission, caps at 10 min
+    constexpr static int64_t kRuntimePerfInitialInterval = 2 * 1000 * 1000;    // 2 seconds in (us)
+    constexpr static int64_t kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;  // 10 minutes in (us)
+    int64_t runtime_perf_interval_ = kRuntimePerfInitialInterval;
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
@@ -980,6 +1029,8 @@ class InferenceSession {
   //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
   //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
   //   and some for the Initialize (create SessionState).
+  //   If "session.use_memory_mapped_ort_model" is set, we memory-map the file instead and store the
+  //   mapping in ort_format_model_mapped_memory_.
   // Short term we free them after Initialize.
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
@@ -988,8 +1039,12 @@ class InferenceSession {
   // This holds the actual model data
   // In case if the session is started with an input byte array contains model data, and the caller
   // specifies that ORT should use the model bytes directly by setting the session config option
-  // "session.use_ort_model_bytes_directly" to "1", this will be empty
+  // "session.use_ort_model_bytes_directly" to "1", this will be empty.
+  // Also empty when using memory-mapped loading, as the data is held by ort_format_model_mapped_memory_.
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
+
+  // Holds the memory-mapped file data when session.use_memory_mapped_ort_model is set.
+  Env::MappedMemoryPtr ort_format_model_mapped_memory_;
 
   bool using_ort_model_bytes_for_initializers_{false};
 
@@ -1031,6 +1086,8 @@ class InferenceSession {
     }
 
     const std::string& Type() const {
+      ORT_ENFORCE(cached_execution_provider_for_graph_replay_ != nullptr,
+                  "No EP registered for graph replay yet");
       return cached_execution_provider_for_graph_replay_->Type();
     }
 
@@ -1045,6 +1102,13 @@ class InferenceSession {
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Information about the subgraphs/nodes assigned to each EP.
+  // A user gets this information via the OrtApi::GetEpGraphAssignmentInfo C API function.
+  std::vector<std::unique_ptr<OrtEpAssignedSubgraph>> ep_graph_assignment_info_storage_;
+  std::vector<const OrtEpAssignedSubgraph*> ep_graph_assignment_info_;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 struct SessionIOBinding {

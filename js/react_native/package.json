@@ -37,7 +37,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.24.0",
+  "version": "1.26.0",
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/microsoft/onnxruntime/blob/main/js/react_native/README.md",
   "files": [
@@ -49,6 +49,7 @@
     "ios/*.mm",
     "onnxruntime-react-native.podspec",
     "app.plugin.js",
+    "react-native.config.js",
     "unimodule.json",
     "!dist/commonjs/*.js.map",
     "!dist/module/*.js.map",

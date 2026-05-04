@@ -2,12 +2,16 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/matmul.h"
+
+#include <limits>
+
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+#include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
@@ -163,7 +167,11 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     inputs.push_back(bias);
   }
 
-  return ComputeMatMul(&context, Activation(), inputs, output_tensor, false);
+  if (intel::CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
+    return intel::ApplyMatMulIntel(context, Activation(), inputs, output_tensor);
+  }
+
+  return ComputeMatMul(&context, Activation(), inputs, output_tensor);
 }
 
 Status ComputeMatMul(ComputeContext* context,
@@ -183,18 +191,18 @@ Status ComputeMatMul(ComputeContext* context,
 
   TensorShape output_shape = helper.OutputShape();
 
-  const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
-  // check if A is  batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
-  if (batchA != 1 && dim_output_outer == 1 && batchB == 1) {
-    // optimization for batched vector matrix multiplication
-    // dimensions of A: [1,`batchA`,K]
-    TensorShapeVector dims_a = {1, batchA, helper.K()};
+  // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
+  // performance (e.g., [2,3,5] → [1,6,5]).
+  if (batchA != 1 && batchB == 1) {
+    // dimensions of A: [1,`batchA`, M, K]
+    int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
+    TensorShapeVector dims_a = {1, batchAndM, helper.K()};
     // dimensions of B: [1,K,N]
     TensorShapeVector dims_b = {1, helper.K(), helper.N()};
 
     a_shape = TensorShape(dims_a);
     b_shape = TensorShape(dims_b);
-    output_shape = {1, batchA, helper.N()};
+    output_shape = {1, batchAndM, helper.N()};
   }
 
   // helpful dimension variables
@@ -239,30 +247,40 @@ Status ComputeMatMul(ComputeContext* context,
   const Tensor* bias = has_bias ? inputs[2] : nullptr;
   bool use_bias_in_matmul = has_bias;
   uint32_t split_dim_inner = 1;
+  uint32_t splits_per_batch = 1;
 
-  const SplitKConfig& split_k_config = context->GetSplitKConfig();
-  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, is_channels_last, dim_a_outer, dim_b_outer, dim_inner);
-  if (need_split_k) {
-    ORT_ENFORCE(batch_size == 1, "Split-K MatMul only supports batch_size == 1.");
-    ORT_ENFORCE(is_vec4, "Split-K MatMul only supports bias in vec4 format.");
-    ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
+  // Current Split-K implementation relies on atomic operations, which are not deterministic.
+  if (!context->KernelContext().GetUseDeterministicCompute()) {
+    const SplitKConfig& split_k_config = context->GetSplitKConfig();
+    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
+    if (need_split_k) {
+      ORT_ENFORCE(is_vec4, "Split-K MatMul requires vec4 packing.");
 
-    // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-    const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, output_shape_temp);
-    ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
+      if (has_bias) {
+        ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
+      }
 
-    // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
-    // `bias` again in `MatMulProgram`.
-    use_bias_in_matmul = false;
+      // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
+      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp, narrow<uint32_t>(batch_size));
+      ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
 
-    // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
-    // number of splits along `dim_inner`.
-    split_dim_inner = split_k_config.GetSplitDimInner();
-    dispatch_z = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+      // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
+      // `bias` again in `MatMulProgram`.
+      use_bias_in_matmul = false;
 
-    // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
-    // built-in functions.
-    output.is_atomic = true;
+      // With Split-K, `dim_inner` will be split into multiple parts. `dispatch_z` encodes
+      // both the split-k index and the batch index: dispatch_z = splits_per_batch * batch_size.
+      split_dim_inner = split_k_config.GetSplitDimInner();
+      splits_per_batch = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+      const uint64_t dispatch_z_u64 = static_cast<uint64_t>(batch_size) * static_cast<uint64_t>(splits_per_batch);
+      ORT_ENFORCE(dispatch_z_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                  "dispatch_z exceeds uint32_t range: ", dispatch_z_u64);
+      dispatch_z = narrow<uint32_t>(dispatch_z_u64);
+
+      // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
+      // built-in functions.
+      output.is_atomic = true;
+    }
   }
 
   MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
@@ -270,7 +288,7 @@ Status ComputeMatMul(ComputeContext* context,
       .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
       .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
@@ -288,32 +306,37 @@ Status ComputeMatMul(ComputeContext* context,
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
-    const TensorShape& output_shape_vec4) {
+    bool is_gemm,
+    float beta,
+    uint32_t output_components,
+    const TensorShape& output_shape,
+    uint32_t batch_size) {
   const bool has_bias = bias != nullptr;
+  const bool bias_is_scalar = has_bias ? bias->Shape().Size() == 1 : false;
 
-  // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
-  constexpr uint32_t bias_components = 4;
-  MatMulFillBiasOrZeroBeforeSplitKProgram program(has_bias);
+  MatMulFillBiasOrZeroBeforeSplitKProgram program(is_gemm, has_bias, output_components, bias_is_scalar);
 
-  const uint32_t dim_a_outer = narrow<uint32_t>(output_shape_vec4[output_shape_vec4.NumDimensions() - 2]);
-  const uint32_t dim_b_outer_vec4 = narrow<uint32_t>(output_shape_vec4[output_shape_vec4.NumDimensions() - 1]);
+  const uint32_t dim_a_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 2]);
+  const uint32_t dim_b_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 1]);
 
-  // Fill one value (currently only vec4) per invocation. Now we use default workgroup size (64) for
-  // this program.
-  const uint32_t total_outputs_vec4 = dim_a_outer * dim_b_outer_vec4;
-  const uint32_t dispatch_x = (total_outputs_vec4 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+  // Fill one value per invocation across all batches.
+  const uint64_t total_outputs = static_cast<uint64_t>(batch_size) *
+                                 static_cast<uint64_t>(dim_a_outer) *
+                                 static_cast<uint64_t>(dim_b_outer);
+  const uint64_t dispatch_x_u64 = CeilDiv(total_outputs, static_cast<uint64_t>(WORKGROUP_SIZE));
+  ORT_ENFORCE(dispatch_x_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+              "dispatch_x exceeds uint32_t range: ", dispatch_x_u64);
+  const uint32_t dispatch_x = narrow<uint32_t>(dispatch_x_u64);
 
-  // To reuse `MatMulWriteFnSource()` we need to set `dim_a_outer` and `dim_b_outer` in scalar
-  // instead of vec4, while use `output_shape_vec4` directly as the output shape.
-  const uint32_t dim_b_outer = narrow<uint32_t>(dim_b_outer_vec4 * bias_components);
-  program.CacheHint(has_bias)
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape_vec4, static_cast<int32_t>(bias_components)})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}})
+  const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
+  program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, static_cast<int32_t>(output_components)})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer_components}, {beta}, {batch_size}})
       .SetDispatchGroupSize(dispatch_x);
 
   if (has_bias) {
-    const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, static_cast<int32_t>(bias_components)});
+    const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), output_components);
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, static_cast<int32_t>(output_components)});
   }
 
   return program;

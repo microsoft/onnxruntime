@@ -35,41 +35,22 @@ namespace openvino_ep {
 
 // Ops which are supported only in models(as intermediate nodes) and not in unit tests
 std::set<std::string> ops_supported_only_in_model = {
-    "Add",
     "Cast",
     "Celu",
-    "Concat",
     "ConstantOfShape",
-    "DequantizeLinear",
     "Dropout",
     "Einsum",
-    "Exp",
-    "Expand",
-    "EyeLike",
     "GatherElements",
     "GatherND",
     "GridSample",
-    "Identity",
     "LayerNormalization",
-    "Loop",
     "LSTM",
-    "NonMaxSuppression",
-    "NonZero",
-    "Not",
     "OneHot",
     "Pad",
-    "QuantizeLinear",
     "RandomNormalLike",
-    "Range",
     "ReduceMin",
-    "Resize",
-    "Round",
-    "Shape",
     "Slice",
-    "Split",
-    "Tile",
-    "TopK",
-    "Trilu"};
+    "TopK"};
 
 // Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
@@ -270,6 +251,8 @@ void DataOps::populate_types_supported() {
   supported_types_initializer_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_initializer_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32));
+  supported_types_initializer_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
   supported_types_initializer_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16));
@@ -285,6 +268,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
   supported_types_initializer_.insert(
       std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN));
+  supported_types_initializer_.insert(
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2));
 
   supported_types_npu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
@@ -305,9 +292,9 @@ void DataOps::populate_types_supported() {
   supported_types_npu_.insert(
       std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
   supported_types_npu_.insert(
-      std::make_pair(V_2024_3, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN));
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN));
   supported_types_npu_.insert(
-      std::make_pair(V_2024_3, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ));
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2));
   supported_types_npu_.insert(
       std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
   supported_types_npu_.insert(
@@ -317,6 +304,8 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32));
   supported_types_cpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_cpu_.insert(
@@ -335,6 +324,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
   supported_types_cpu_.insert(
       std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN));
+  supported_types_cpu_.insert(
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2));
 
   supported_types_gpu_.insert(
       std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
@@ -354,6 +347,10 @@ void DataOps::populate_types_supported() {
       std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT4));
   supported_types_gpu_.insert(
       std::make_pair(V_2024_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN));
+  supported_types_gpu_.insert(
+      std::make_pair(V_2026_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2));
 }
 
 void DataOps::populate_op_mode_supported() {
@@ -367,6 +364,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"DynamicQuantizeLinear", V_2025_2, {"All"}});
   no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Equal", V_2023_0, {"GPU"}});
+  no_dimension_supported_.push_back({"Exp", V_2020_4, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Expand", V_2023_3, {"CPU"}});
   no_dimension_supported_.push_back({"Expand", V_2024_3, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
@@ -382,10 +380,12 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Neg", V_2023_0, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Pow", V_2023_0, {"CPU", "GPU"}});
+  no_dimension_supported_.push_back({"PRelu", V_2020_4, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"ReduceSum", V_2025_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
@@ -408,7 +408,7 @@ void DataOps::populate_op_mode_supported() {
 
   // populate unsupportedmode_t
   {
-    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4},
+    UnsupportedOpMode obj = {{V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the Input of ReduceMax op is UINT8, it is rejected (Due to output mismatch)
                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
@@ -425,7 +425,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
-                              V_2025_2, V_2025_3, V_2025_4},
+                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input_args = node->InputDefs();
                                const auto& input_arg = (input_args.size() > 1) ? input_args[1] : input_args[0];
@@ -445,7 +445,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
-                              V_2025_2, V_2025_3, V_2025_4},
+                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // If the operator is unsqueeze
                                // If axes is an input, then we cannot produce a static graph.
@@ -461,7 +461,7 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2, V_2024_3, V_2024_4, V_2024_5,
-                              V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4},
+                              V_2024_6, V_2025_0, V_2025_1, V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                // check for attributes
                                auto& upsample_attr = node->GetAttributes();
@@ -488,6 +488,39 @@ void DataOps::populate_op_mode_supported() {
                                }
                              }};
     op_list_.insert({"Upsample", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
+                              V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1,
+                              V_2025_2, V_2025_3, V_2025_4, V_2026_0, V_2026_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               auto& attributes = node->GetAttributes();
+                               if (attributes.count("coordinate_transformation_mode") > 0) {
+                                 auto coordinate_transformation_mode =
+                                     attributes.at("coordinate_transformation_mode").s();
+                                 if (coordinate_transformation_mode == "tf_crop_and_resize" ||
+                                     coordinate_transformation_mode == "half_pixel_symmetric") {
+                                   return true;
+                                 }
+                               }
+                               if (attributes.count("antialias") > 0) {
+                                 auto antialias_mode =
+                                     attributes.at("antialias").i();
+                                 auto resize_mode = attributes.at("mode").s();
+                                 if (antialias_mode == 1 &&
+                                     (resize_mode == "linear" ||
+                                      resize_mode == "cubic")) {
+                                   return true;
+                                 }
+                               }
+                               if (attributes.count("exclude_outside") > 0) {
+                                 if (attributes.at("exclude_outside").i() == 1) {
+                                   return true;
+                                 }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Resize", obj});
   }
 }
 

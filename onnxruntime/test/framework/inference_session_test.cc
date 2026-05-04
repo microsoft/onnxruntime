@@ -6,12 +6,16 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <filesystem>
 #include <functional>
 #include <future>
 #include <iterator>
 #include <thread>
 #include <fstream>
 #include <random>
+
+#include "nlohmann/json.hpp"
+#include "onnxruntime_cxx_api.h"
 
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include "core/common/denormal.h"
@@ -61,6 +65,8 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::concurrency;
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
 struct KernelRegistryAndStatus {
@@ -174,66 +180,9 @@ class FuseExecutionProvider : public IExecutionProvider {
 };
 
 namespace test {
-static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                          const std::vector<float>& expected_values);
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
 // static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
-
-static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  // Generate the input & output def lists
-  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
-  p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
-                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                    model_specific_functions, DefaultLoggingManager().DefaultLogger(),
-                                    ModelOptions(true, true));
-  onnxruntime::Graph& graph = p_model->MainGraph();
-
-  TypeProto tensor_float;
-  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-
-  std::vector<onnxruntime::NodeArg*> input_defs;
-  auto& input_arg_a = graph.GetOrCreateNodeArg("A", &tensor_float);
-  input_defs.push_back(&input_arg_a);
-
-  auto& input_arg_b = graph.GetOrCreateNodeArg("B", &tensor_float);
-  input_defs.push_back(&input_arg_b);
-
-  std::vector<onnxruntime::NodeArg*> output_defs;
-  auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_float);
-  output_defs.push_back(&output_arg);
-
-  // Create a simple model
-  auto& node = graph.AddNode("node1", "MatMul", "MatMul", input_defs, output_defs, nullptr, onnxruntime::kOnnxDomain);
-  if (provider_type == kCpuExecutionProvider) {
-    node.SetExecutionProviderType(provider_type);
-  } else {
-#if defined(USE_CUDA) || defined(USE_WEBGPU)
-    node.SetExecutionProviderType(provider_type);
-#endif
-  }
-  Status status = graph.Resolve();
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-}
-
-template <typename T = float>
-void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_dims,
-                   const std::vector<T>& expected_values) {
-  TensorShape expected_shape(expected_dims);
-  ASSERT_EQ(expected_shape, tensor.Shape());
-  const std::vector<T> found(tensor.Data<T>(),
-                             tensor.Data<T>() + expected_values.size());
-  ASSERT_EQ(expected_values, found);
-}
-
-void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
-                   const std::vector<float>& expected_values) {
-  ASSERT_EQ(1u, fetches.size());
-  auto& rtensor = fetches.front().Get<Tensor>();
-  VerifyOutputs(rtensor, expected_dims, expected_values);
-}
 
 void RunModel(InferenceSession& session_object,
               const RunOptions& run_options,
@@ -255,8 +204,7 @@ void RunModel(InferenceSession& session_object,
   if (is_preallocate_output_vec) {
     fetches.resize(output_names.size());
     for (auto& elem : fetches) {
-      CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, values_mul_x,
-                           &elem);
+      AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x, &elem);
     }
   }
 
@@ -270,175 +218,7 @@ void RunModel(InferenceSession& session_object,
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  VerifyOutputs(fetches, expected_dims_mul_y, expected_values_mul_y);
-}
-
-void RunModelWithBindingMatMul(InferenceSession& session_object,
-                               const RunOptions& run_options,
-                               ProviderType bind_provider_type,
-                               bool is_preallocate_output_vec,
-                               ProviderType allocation_provider,
-                               IExecutionProvider* gpu_provider,
-                               OrtDevice* output_device,
-                               bool enable_graph_capture) {
-  std::unique_ptr<IOBinding> io_binding;
-  Status st = session_object.NewIOBinding(&io_binding);
-  ASSERT_TRUE(st.IsOK());
-
-  // bind a value to A with input that will produce invalid output in order to test replacement of a feed
-  std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
-  std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
-  std::vector<float> values_mul_x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
-  std::vector<int64_t> dims_mul_x_A = {3, 4};
-  std::vector<int64_t> dims_mul_x_B = {4, 3};
-
-  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-  onnxruntime::AllocatorPtr gpu_alloc = nullptr;
-  if (allocation_provider == kWebGpuExecutionProvider) {
-    // Use session_object.GetAllocator to get the OrtAllocator for WebGPU.
-    // Otherwise, gpu_provider->CreatePreferredAllocators() will create a new OrtAllocator which will go to the create UMA path.
-    // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
-    OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
-    gpu_alloc = session_object.GetAllocator(mem_info);
-  } else if (allocation_provider == kCudaExecutionProvider) {
-    gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
-  }
-  if (enable_graph_capture) {
-    // For graph capture, all inputs/outputs should be in preallocated gpu memory.
-    ASSERT_TRUE(is_preallocate_output_vec);
-    OrtValue input_ml_value_A_cpu;
-    CreateMLValue<float>(cpu_alloc, dims_mul_x_A, values_mul_x, &input_ml_value_A_cpu);
-    auto& cpu_tensor_a = input_ml_value_A_cpu.Get<Tensor>();
-    Tensor gpu_tensor_a(cpu_tensor_a.DataType(), cpu_tensor_a.Shape(), gpu_alloc);
-    st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a, gpu_tensor_a);
-    ASSERT_TRUE(st.IsOK());
-    OrtValue input_ml_value_A;
-    Tensor::InitOrtValue(std::move(gpu_tensor_a), input_ml_value_A);
-
-    OrtValue input_ml_value_B_cpu;
-    CreateMLValue<float>(cpu_alloc, dims_mul_x_B, values_mul_x, &input_ml_value_B_cpu);
-    auto& cpu_tensor_b = input_ml_value_B_cpu.Get<Tensor>();
-    Tensor gpu_tensor_b(cpu_tensor_b.DataType(), cpu_tensor_b.Shape(), gpu_alloc);
-    st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_b, gpu_tensor_b);
-    ASSERT_TRUE(st.IsOK());
-    OrtValue input_ml_value_B;
-    Tensor::InitOrtValue(std::move(gpu_tensor_b), input_ml_value_B);
-
-    ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
-    ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
-  } else {
-    auto input_allocator = io_binding->GetCPUAllocator(bind_provider_type);
-    OrtValue input_tmp;
-    CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
-    ASSERT_STATUS_OK(io_binding->BindInput("A", input_tmp));
-    const void* tmp_A = io_binding->GetInputs()[0].Get<Tensor>().DataRaw();  // location of data post binding
-
-    // prepare inputs
-    /*
-        0 1 2 3     0 1 2
-        4 5 6 7     3 4 5
-        8 9 10 11   6 7 8
-        9 10 11
-        */
-    // bind one input to cpu allocator from bind_provider_type, and another on user provided CPU memory
-    // so both code pathes are covered
-    OrtValue input_ml_value_A;
-    CreateMLValue<float>(input_allocator, dims_mul_x_A, values_mul_x, &input_ml_value_A);
-
-    OrtValue input_ml_value_B;
-    CreateMLValue<float>(cpu_alloc, dims_mul_x_B, values_mul_x, &input_ml_value_B);
-
-    ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
-    ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
-
-    // check location of 'A' post-binding has changed to validate that the previous value was replaced
-    ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() != tmp_A);
-  }
-  // prepare outputs
-  std::vector<int64_t> expected_output_dims = {3, 3};
-  OrtValue output_ml_value;
-  if (is_preallocate_output_vec) {
-    if (allocation_provider == kCpuExecutionProvider) {
-      AllocateMLValue<float>(cpu_alloc, expected_output_dims, &output_ml_value);
-    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
-      AllocateMLValue<float>(gpu_alloc, expected_output_dims, &output_ml_value);
-    } else {
-      ORT_THROW("Unsupported provider");
-    }
-  }
-
-  if (output_device) {
-    // output should be allocated on specified device (if not preallocated here)
-    ASSERT_STATUS_OK(io_binding->BindOutput("Y", *output_device));
-  } else {
-    ASSERT_STATUS_OK(io_binding->BindOutput("Y", output_ml_value));
-  }
-
-  ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
-
-  // prepare expected inputs and outputs
-  std::vector<float> expected_values_mul_y = {42, 48, 54, 114, 136, 158, 186, 224, 262};
-  std::vector<float> expected_values_mul_y_2 = {174, 216, 258, 102, 128, 154, 30, 40, 50};
-
-  // Now run
-  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
-
-  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
-      (output_device && output_device->Type() == OrtDevice::GPU)) {
-#if defined(USE_CUDA) || defined(USE_WEBGPU)
-    // in this case we need to copy the tensor from cuda to cpu
-    std::vector<OrtValue>& outputs = io_binding->GetOutputs();
-    ASSERT_EQ(1u, outputs.size());
-    auto& rtensor = outputs.front().Get<Tensor>();
-    auto element_type = rtensor.DataType();
-    auto& shape = rtensor.Shape();
-    Tensor cpu_tensor(element_type, shape, cpu_alloc);
-#ifdef USE_CUDA
-    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
-#endif
-#ifdef USE_WEBGPU
-    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor);
-#endif
-    ASSERT_TRUE(st.IsOK());
-    OrtValue ml_value;
-    Tensor::InitOrtValue(std::move(cpu_tensor), ml_value);
-    VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
-#endif
-  } else {
-    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
-      ASSERT_STATUS_OK(gpu_provider->Sync());
-    }
-    VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
-  }
-
-  if (enable_graph_capture) {
-    // Update input_a's value. Run again. Replay the captured graph
-    OrtValue input_a2;
-    CreateMLValue<float>(cpu_alloc, dims_mul_x_A_tmp, values_mul_x_tmp, &input_a2);
-    auto& cpu_tensor_a2 = input_a2.Get<Tensor>();
-    st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a2, const_cast<Tensor&>(io_binding->GetInputs()[0].Get<Tensor>()));
-    ASSERT_TRUE(st.IsOK());
-
-    st = session_object.Run(run_options, *io_binding.get());
-
-    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
-    ASSERT_TRUE(st.IsOK());
-
-    // Copy the tensor from gpu to cpu
-    std::vector<OrtValue>& outputs = io_binding->GetOutputs();
-    ASSERT_EQ(1u, outputs.size());
-    auto& rtensor = outputs.front().Get<Tensor>();
-    auto element_type = rtensor.DataType();
-    auto& shape = rtensor.Shape();
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
-    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
-    ASSERT_TRUE(st.IsOK());
-    OrtValue ml_value;
-    ml_value.Init(cpu_tensor.release(),
-                  DataTypeImpl::GetType<Tensor>(),
-                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-    VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y_2);
-  }
+  VerifySingleOutput(fetches, expected_dims_mul_y, expected_values_mul_y);
 }
 
 TEST(InferenceSessionTests, NoTimeout) {
@@ -617,7 +397,9 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 // WebAssembly will emit profiling data into console
 // TODO(hasesh): Investigate why this test fails on Windows CUDA builds
 #if (!defined(__wasm__) && !defined(_WIN32))
-TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
+
+// See issue #27732 for details on why this is disabled.
+TEST(InferenceSessionTests, DISABLED_CheckRunProfilerWithSessionOptions) {
   SessionOptions so;
 
   so.session_logid = "CheckRunProfiler";
@@ -745,27 +527,296 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
 
   std::ifstream profile(profile_file);
   std::string line;
+  std::string profile_contents;
+  std::vector<std::string> lines;
+
+  while (std::getline(profile, line)) {
+    profile_contents += line + "\n";
+    lines.push_back(line);
+  }
+
+  auto size = lines.size();
+  ASSERT_TRUE(size > 1);
+  ASSERT_TRUE(lines[0].find("[") != std::string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != std::string::npos);
 
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
-  int count = 0;
-  while (std::getline(profile, line)) {
-    if (count == 0) {
-      ASSERT_TRUE(line.find("[") != std::string::npos);
-    } else if (count <= 3) {
-      for (auto& s : tags) {
-        ASSERT_TRUE(line.find(s) != std::string::npos);
-      }
-    } else {
-      ASSERT_TRUE(line.find("]") != std::string::npos);
+  bool has_mul_kernel_info = false;
+  const char* target_string = "mul_1_kernel_time";
+  for (size_t i = 1; i < size - 1; ++i) {
+    for (auto& s : tags) {
+      ASSERT_TRUE(lines[i].find(s) != std::string::npos);
+      has_mul_kernel_info = has_mul_kernel_info || lines[i].find(target_string) != std::string::npos;
     }
-
-    if (count == 1) {
-      ASSERT_TRUE(line.find("mul_1_kernel_time") != std::string::npos);
-    }
-    count++;
   }
+  ASSERT_TRUE(has_mul_kernel_info) << "Did not find string '" << target_string
+                                   << "' in profile contents: " << profile_contents;
 }
-#endif  // __wasm__
+
+TEST(InferenceSessionTests, CheckRunProfilerWithRunOptions) {
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfilerWithRunOptions";
+  // Note: NOT enabling session-level profiling
+  so.enable_profiling = false;
+
+  InferenceSession session_object(so, GetEnvironment());
+#ifdef USE_CUDA
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+#endif
+#ifdef USE_WEBGPU
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+#endif
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Enable profiling via RunOptions instead of SessionOptions
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+  run_options.enable_profiling = true;
+  run_options.profile_file_prefix = ORT_TSTR("ort_run_profile_test");
+
+  RunModel(session_object, run_options);
+
+  // Find the profile file with the specified prefix
+  std::string profile_file;
+  for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    std::string filename = entry.path().filename().string();
+    if (filename.find("ort_run_profile_test") == 0 && filename.find(".json") != std::string::npos) {
+      profile_file = entry.path().string();
+      break;
+    }
+  }
+
+  ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_test' not found";
+
+  std::ifstream profile(profile_file);
+  ASSERT_TRUE(profile) << "Failed to open profile file: " << profile_file;
+
+  std::string line;
+  std::vector<std::string> lines;
+
+  while (std::getline(profile, line)) {
+    lines.push_back(line);
+  }
+
+  auto size = lines.size();
+  ASSERT_TRUE(size > 1) << "Profile file should have more than 1 line";
+  ASSERT_TRUE(lines[0].find("[") != std::string::npos) << "First line should contain '['";
+  ASSERT_TRUE(lines[size - 1].find("]") != std::string::npos) << "Last line should contain ']'";
+
+  std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+
+  [[maybe_unused]] bool has_api_info = false;
+  for (size_t i = 1; i < size - 1; ++i) {
+    for (auto& s : tags) {
+      ASSERT_TRUE(lines[i].find(s) != std::string::npos)
+          << "Line " << i << " should contain tag '" << s << "', line content: " << lines[i];
+#ifdef USE_CUDA
+      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos &&
+                                         lines[i].find("cudaLaunch") != std::string::npos;
+#endif
+#ifdef USE_WEBGPU
+      has_api_info = has_api_info || lines[i].find("Api") != std::string::npos;
+#endif
+    }
+  }
+
+// Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
+#if (defined(USE_WEBGPU) && !defined(__APPLE__))
+  ASSERT_TRUE(has_api_info);
+#endif
+
+  // Clean up the profile file
+  std::remove(profile_file.c_str());
+}
+#endif  // !defined(__wasm__) && !defined(_WIN32)
+
+#ifndef __wasm__
+// Test that run-level profiling captures operators inside subgraphs (e.g., If branches).
+TEST(InferenceSessionTests, CheckRunProfilerWithSubgraph_If) {
+  Ort::SessionOptions session_options;
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/if_mul.onnx"), session_options);
+
+  // Prepare inputs for if_mul.onnx:
+  //   A (bool, [1])    - condition (true -> then branch: C = B * 2)
+  //   B (float, [3,2]) - data
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 1> a_shape = {1};
+  std::array<int64_t, 2> b_shape = {3, 2};
+
+  std::array<bool, 1> a_data = {true};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, 6.f, 7.f};
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<bool>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), b_shape.data(), b_shape.size()));
+
+  std::array ort_input_names{"A", "B"};
+  std::array output_names{"C"};
+
+  // Enable run-level profiling via RunOptions
+  Ort::RunOptions run_options;
+  run_options.EnableProfiling(ORT_TSTR("ort_run_profile_subgraph_test"));
+
+  std::vector<Ort::Value> ort_outputs = session.Run(run_options, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Verify output: condition=true -> then branch -> B * 2
+  const float* output_data = ort_outputs[0].GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(4.f, 6.f, 8.f, -10.f, 12.f, 14.f));
+
+  // Find the generated profile JSON file
+  std::string profile_file;
+  for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    std::string filename = entry.path().filename().string();
+    if (filename.find("ort_run_profile_subgraph_test") == 0 && filename.find(".json") != std::string::npos) {
+      profile_file = entry.path().string();
+      break;
+    }
+  }
+
+  ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_subgraph_test' not found";
+
+  // Ensure the profile file is cleaned up even if an assertion fails.
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  // Parse the profile JSON
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good()) << "Failed to open profile file: " << profile_file;
+
+  nlohmann::json profile_json;
+  profile_stream >> profile_json;
+  profile_stream.close();
+
+  ASSERT_TRUE(profile_json.is_array()) << "Profile JSON should be an array";
+  ASSERT_FALSE(profile_json.empty()) << "Profile JSON should not be empty";
+
+  // Check that the profile contains an entry for the Mul op inside the If's then-branch (mul_0).
+  bool found_subgraph_mul = false;
+  for (const auto& entry : profile_json) {
+    if (entry.contains("name")) {
+      const std::string name = entry["name"].get<std::string>();
+      if (name.find("mul_0") != std::string::npos) {
+        found_subgraph_mul = true;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(found_subgraph_mul)
+      << "Profile should contain an entry for 'mul_0' (Mul op inside If's then-branch). "
+      << "Profile contents: " << profile_json;
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
+// Test that run-level profiling captures operators inside beam search decoder subgraphs.
+TEST(BeamSearchTest, CheckRunProfilerWithSubgraph_BeamSearch) {
+  // Same inputs as RunGptBeamSearchFp32
+  std::vector<int64_t> input_ids_shape{3, 12};
+  std::vector<int32_t> input_ids{
+      0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
+      41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572,
+      0, 0, 0, 52, 328, 219, 328, 206, 288, 227, 896, 328};
+
+  std::vector<int64_t> parameter_shape{1};
+  std::vector<int32_t> max_length{20};
+  std::vector<int32_t> min_length{1};
+  std::vector<int32_t> num_beams{4};
+  std::vector<int32_t> num_return_sequences{1};
+  std::vector<float> length_penalty{1.0f};
+  std::vector<float> repetition_penalty{1.0f};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto input_ids_tensor = Ort::Value::CreateTensor(
+      info, input_ids.data(), input_ids.size(), input_ids_shape.data(), input_ids_shape.size());
+  auto max_length_tensor = Ort::Value::CreateTensor(
+      info, max_length.data(), max_length.size(), parameter_shape.data(), parameter_shape.size());
+  auto min_length_tensor = Ort::Value::CreateTensor(
+      info, min_length.data(), min_length.size(), parameter_shape.data(), parameter_shape.size());
+  auto num_beams_tensor = Ort::Value::CreateTensor(
+      info, num_beams.data(), num_beams.size(), parameter_shape.data(), parameter_shape.size());
+  auto num_return_sequences_tensor = Ort::Value::CreateTensor(
+      info, num_return_sequences.data(), num_return_sequences.size(), parameter_shape.data(), parameter_shape.size());
+  auto length_penalty_tensor = Ort::Value::CreateTensor(
+      info, length_penalty.data(), length_penalty.size(), parameter_shape.data(), parameter_shape.size());
+  auto repetition_penalty_tensor = Ort::Value::CreateTensor(
+      info, repetition_penalty.data(), repetition_penalty.size(), parameter_shape.data(), parameter_shape.size());
+
+  std::vector<Ort::Value> ort_inputs;
+  ort_inputs.push_back(std::move(input_ids_tensor));
+  ort_inputs.push_back(std::move(max_length_tensor));
+  ort_inputs.push_back(std::move(min_length_tensor));
+  ort_inputs.push_back(std::move(num_beams_tensor));
+  ort_inputs.push_back(std::move(num_return_sequences_tensor));
+  ort_inputs.push_back(std::move(length_penalty_tensor));
+  ort_inputs.push_back(std::move(repetition_penalty_tensor));
+
+  const char* input_names[] = {"input_ids", "max_length", "min_length", "num_beams", "num_return_sequences",
+                               "length_penalty", "repetition_penalty"};
+  const char* const output_names[] = {"sequences"};
+
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx"), session_options);
+
+  // Enable run-level profiling
+  Ort::RunOptions run_options;
+  run_options.EnableProfiling(ORT_TSTR("ort_run_profile_beam_search_test"));
+
+  auto ort_outputs = session.Run(run_options, input_names, ort_inputs.data(), ort_inputs.size(),
+                                 output_names, 1);
+  ASSERT_EQ(ort_outputs.size(), 1U);
+
+  // Find the generated profile JSON file
+  std::string profile_file;
+  for (const auto& entry : std::filesystem::directory_iterator(".")) {
+    std::string filename = entry.path().filename().string();
+    if (filename.find("ort_run_profile_beam_search_test") == 0 && filename.find(".json") != std::string::npos) {
+      profile_file = entry.path().string();
+      break;
+    }
+  }
+
+  ASSERT_FALSE(profile_file.empty()) << "Profile file with prefix 'ort_run_profile_beam_search_test' not found";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  // Parse the profile JSON
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good()) << "Failed to open profile file: " << profile_file;
+
+  nlohmann::json profile_json;
+  profile_stream >> profile_json;
+  profile_stream.close();
+
+  ASSERT_TRUE(profile_json.is_array()) << "Profile JSON should be an array";
+  ASSERT_FALSE(profile_json.empty()) << "Profile JSON should not be empty";
+
+  // Check that the profile contains Node entries beyond just the top-level BeamSearch op.
+  // The decoder subgraph contains ops like MatMul, Add, etc. If run profiling propagates
+  // correctly, we should see Node entries with names that are NOT "BeamSearch".
+  bool found_subgraph_node = false;
+  for (const auto& entry : profile_json) {
+    if (entry.contains("cat") && entry["cat"].get<std::string>() == "Node" &&
+        entry.contains("name")) {
+      const std::string name = entry["name"].get<std::string>();
+      if (name.find("BeamSearch") == std::string::npos) {
+        found_subgraph_node = true;
+        break;
+      }
+    }
+  }
+
+  EXPECT_TRUE(found_subgraph_node)
+      << "Profile should contain Node entries from the beam search decoder subgraph "
+      << "(e.g., MatMul, Add), not just the top-level BeamSearch op. Profile contents: "
+      << profile_json;
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+#endif  // !defined(__wasm__)
 
 TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   // Test whether the InferenceSession can access the profiler's start time
@@ -1007,110 +1058,6 @@ TEST(InferenceSessionTests, TestRegisterExecutionProvider) {
   RunModel(session_object, run_options);
 }
 
-static void TestBindHelper(const std::string& log_str,
-                           ProviderType bind_provider_type,
-                           ProviderType run_provider_type,
-                           bool preallocate_output,
-                           ProviderType allocation_provider = kCpuExecutionProvider,
-                           OrtDevice* output_device = nullptr,
-                           bool enable_graph_capture = false) {
-  SessionOptions so;
-
-  so.session_logid = "InferenceSessionTests." + log_str;
-  so.session_log_verbosity_level = 1;  // change to 1 for detailed logging
-  InferenceSession session_object{so, GetEnvironment()};
-  IExecutionProvider* gpu_provider{};
-
-  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kWebGpuExecutionProvider) {
-#ifdef USE_CUDA
-    {
-      auto provider = DefaultCudaExecutionProvider();
-      gpu_provider = provider.get();
-      ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
-    }
-#endif
-#ifdef USE_WEBGPU
-    {
-      ConfigOptions config_options{};
-      ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
-                                                enable_graph_capture ? webgpu::options::kEnableGraphCapture_ON : webgpu::options::kEnableGraphCapture_OFF)
-                      .IsOK());
-      auto provider = WebGpuExecutionProviderWithOptions(config_options);
-      gpu_provider = provider.get();
-      ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
-    }
-#endif
-  }
-
-  std::unique_ptr<Model> p_model;
-  CreateMatMulModel(p_model, run_provider_type);
-
-  std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
-  std::stringstream sstr(s1);
-  ASSERT_STATUS_OK(session_object.Load(sstr));
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  RunOptions run_options;
-  run_options.run_log_verbosity_level = so.session_log_verbosity_level;
-  run_options.run_tag = so.session_logid;
-
-  RunModelWithBindingMatMul(session_object,
-                            run_options,
-                            bind_provider_type,
-                            preallocate_output,
-                            allocation_provider,
-                            gpu_provider,
-                            output_device,
-                            enable_graph_capture);
-}
-
-TEST(InferenceSessionTests, TestBindCpu) {
-  TestBindHelper("TestBindCpu",
-                 kCpuExecutionProvider,
-                 kCpuExecutionProvider,
-                 false /* don't preallocate output */);
-}
-
-TEST(InferenceSessionTests, TestIOBindingReuse) {
-  SessionOptions so;
-  InferenceSession session_object(so, GetEnvironment());
-  std::unique_ptr<Model> p_model;
-  CreateMatMulModel(p_model, kCpuExecutionProvider);
-
-  std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
-  std::stringstream sstr(s1);
-  ASSERT_TRUE(session_object.Load(sstr).IsOK());
-  ASSERT_STATUS_OK(session_object.Initialize());
-  std::unique_ptr<IOBinding> io_binding;
-  Status st = session_object.NewIOBinding(&io_binding);
-  ASSERT_TRUE(st.IsOK());
-
-  OrtValue ml_value1;
-  const std::vector<float> v1{2.f};
-  const int64_t shape[] = {1};
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape, v1, &ml_value1);
-  ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value1));
-  ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
-  auto span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
-  ASSERT_TRUE(static_cast<size_t>(span.size()) == v1.size());
-  for (size_t i = 0; i < v1.size(); ++i) {
-    ASSERT_TRUE(v1[i] == span[i]);
-  }
-
-  OrtValue ml_value2;
-  const std::vector<float> v2{3.f};
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], shape, v2, &ml_value2);
-  ASSERT_STATUS_OK(io_binding->BindOutput("foo", ml_value2));
-  ASSERT_TRUE(io_binding->GetOutputs().size() == 1);
-  span = io_binding->GetOutputs()[0].Get<Tensor>().DataAsSpan<float>();
-  ASSERT_TRUE(static_cast<size_t>(span.size()) == v2.size());
-  for (size_t i = 0; i < v2.size(); ++i) {
-    ASSERT_TRUE(v2[i] == span[i]);
-  }
-}
-
 TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   SessionOptions so;
 
@@ -1148,67 +1095,6 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   }
   ASSERT_TRUE(!st.IsOK());
 }
-
-#if defined(USE_CUDA) || defined(USE_WEBGPU)
-#if USE_CUDA
-constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
-#elif USE_WEBGPU
-constexpr const char* kGpuExecutionProvider = kWebGpuExecutionProvider;
-#endif
-
-TEST(InferenceSessionTests, TestBindCuda) {
-  TestBindHelper("TestBindCuda",
-                 kGpuExecutionProvider,
-                 kGpuExecutionProvider,
-                 false /* don't preallocate output */);
-}
-
-TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCuda) {
-  TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
-                 kGpuExecutionProvider,
-                 kGpuExecutionProvider,
-                 true /* preallocate output on GPU */,
-                 kGpuExecutionProvider);
-}
-
-TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu) {
-  TestBindHelper("TestBindCudaPreallocateOutputOnCpu",
-                 kGpuExecutionProvider,
-                 kGpuExecutionProvider,
-                 true /* preallocate output on CPU */,
-                 kCpuExecutionProvider);
-}
-
-TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu2) {
-  TestBindHelper("TestBindCudaPreallocateOutputOnCpu2",
-                 kGpuExecutionProvider,
-                 kCpuExecutionProvider,
-                 true /* preallocate output on CPU */,
-                 kCpuExecutionProvider);
-}
-#ifndef USE_WEBGPU
-TEST(InferenceSessionTests, TestBindCudaSpecifyOutputDeviceOnCuda) {
-  OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
-
-  TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
-                 kGpuExecutionProvider,
-                 kGpuExecutionProvider,
-                 false /* preallocate output on GPU */,
-                 kGpuExecutionProvider,
-                 &device /* specify output device */);
-}
-#else
-TEST(InferenceSessionTests, TestGraphCapture) {
-  TestBindHelper("TestGraphCapture",
-                 kGpuExecutionProvider,
-                 kGpuExecutionProvider,
-                 true /* preallocate output on GPU */,
-                 kGpuExecutionProvider,
-                 nullptr,
-                 true /* enable graph capture*/);
-}
-#endif  // !USE_WEBGPU
-#endif
 
 TEST(InferenceSessionTests, ModelWithoutOpset) {
   SessionOptions so;
@@ -1403,14 +1289,14 @@ TEST(ExecutionProviderTest, FunctionTest) {
 
   // Now run
   ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+  VerifySingleOutput(fetches, expected_dims_mul_m, expected_values_mul_m);
 
   InferenceSession session2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session2.RegisterExecutionProvider(std::make_unique<::onnxruntime::FuseExecutionProvider>()));
   ASSERT_STATUS_OK(session2.Load(model_file_name));
   ASSERT_STATUS_OK(session2.Initialize());
   ASSERT_STATUS_OK(session2.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+  VerifySingleOutput(fetches, expected_dims_mul_m, expected_values_mul_m);
 }
 
 TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
@@ -1671,7 +1557,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   // Now run
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-  VerifyOutputs(fetches, expected_dims, expected_values);
+  VerifySingleOutput(fetches, expected_dims, expected_values);
 
 #if USE_TENSORRT
   // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
@@ -1686,7 +1572,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   // Now run
   status = session_object_2.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-  VerifyOutputs(fetches, expected_dims, expected_values);
+  VerifySingleOutput(fetches, expected_dims, expected_values);
 #endif
 }
 
@@ -1828,7 +1714,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   // Now run
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
-  VerifyOutputs(fetches, expected_dims, expected_values);
+  VerifySingleOutput(fetches, expected_dims, expected_values);
 }
 
 TEST(InferenceSessionTests, TestTruncatedSequence) {
@@ -2035,7 +1921,7 @@ TEST(InferenceSessionTests, TestCopyToFromDevices) {
     common::Status st = session_object.Run(run_options, feed_names, feeds, output_names, &fetches, nullptr);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 
-    VerifyOutputs(fetches, expected_dims_mul_y, expected_values_mul_y);
+    VerifySingleOutput(fetches, expected_dims_mul_y, expected_values_mul_y);
   };
 
   int run_number = 0;
@@ -2930,7 +2816,7 @@ void RunModelWithDenormalAsZero(InferenceSession& session_object,
     std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   }
   ASSERT_TRUE(st.IsOK());
-  VerifyOutputs(fetches, expected_dims_mul, expected_values_mul);
+  VerifySingleOutput(fetches, expected_dims_mul, expected_values_mul);
 }
 
 void VerifyThreadPoolWithDenormalAsZero(onnxruntime::concurrency::ThreadPool* tp,
@@ -3068,6 +2954,210 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 #endif
+
+TEST(InferenceSessionTests, BadDataTypeInInitializerIsHandled) {
+  // model has an initializer with a bogus data type. Graph ctor should detect and throw.
+  auto model_uri = ORT_TSTR("testdata/icm-31000000518082.onnx");
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Load(model_uri), "does not have valid data type");
+}
+
+TEST(InferenceSessionTests, GraphResolveHandlesNodeWithSubgraphBeingRemoved) {
+  // model has a subgraph with output that is not consumed. the node with the subgraph should get removed in
+  // Graph::BuildConnections and Graph::Resolve should adjust its list of subgraphs to not access the removed subgraph.
+  auto model_uri = ORT_TSTR("testdata/icm-31000000518483.onnx");
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+}
+
+#ifdef ORT_ENABLE_STREAM
+namespace {
+
+struct TestNotification : public synchronize::Notification {
+  explicit TestNotification(Stream& s) : Notification(s) {}
+  void Activate() override {}
+};
+
+struct TestOverrideStream : Stream {
+  TestOverrideStream(StreamHandle h, const OrtDevice& d) : Stream(h, d) {}
+  std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
+    return std::make_unique<TestNotification>(*this);
+  }
+};
+}  // namespace
+
+TEST(DeviceStreamCollection, TestOverride) {
+  // We need an allocator map for the constructor, but it's not used in this test scenario.
+  AllocatorMap allocators;
+  DeviceStreamCollection collection(2, allocators, false);
+
+  OrtDevice cpu_device(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0);
+  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+
+  auto cpu_stream = std::make_unique<TestOverrideStream>(nullptr, cpu_device);
+  auto* cpu_stream_ptr = cpu_stream.get();
+  collection.AddDeviceStream(0, std::move(cpu_stream));
+
+  auto gpu_stream = std::make_unique<TestOverrideStream>(nullptr, gpu_device);
+  auto* gpu_stream_ptr = gpu_stream.get();
+  collection.AddDeviceStream(1, std::move(gpu_stream));
+
+  ASSERT_EQ(collection.GetStream(0), cpu_stream_ptr);
+  ASSERT_EQ(collection.GetStream(1), gpu_stream_ptr);
+
+  // 1. Override CPU stream
+  TestOverrideStream cpu_override_stream(nullptr, cpu_device);
+  ASSERT_STATUS_OK(collection.SetStreamOverride(&cpu_override_stream));
+
+  // Verify override took effect for correct device match
+  ASSERT_EQ(collection.GetStream(0), &cpu_override_stream);
+  ASSERT_EQ(collection.GetStream(1), gpu_stream_ptr);
+
+  // 2. Reset Override
+  collection.ResetStreamOverride();
+  ASSERT_EQ(collection.GetStream(0), cpu_stream_ptr);
+  ASSERT_EQ(collection.GetStream(1), gpu_stream_ptr);
+
+  // 3. Override GPU stream
+  TestOverrideStream gpu_override_stream(nullptr, gpu_device);
+  ASSERT_STATUS_OK(collection.SetStreamOverride(&gpu_override_stream));
+
+  ASSERT_EQ(collection.GetStream(0), cpu_stream_ptr);
+  ASSERT_EQ(collection.GetStream(1), &gpu_override_stream);
+
+  collection.ResetStreamOverride();
+
+  // 4. Override with non-matching device
+  OrtDevice other_device(OrtDevice::FPGA, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0);
+  TestOverrideStream other_stream(nullptr, other_device);
+  ASSERT_FALSE(collection.SetStreamOverride(&other_stream).IsOK());
+}
+
+#endif  // ORT_ENABLE_STREAM
+
+// Test that the session logger outlives execution providers during session destruction.
+// This validates the fix for the use-after-free bug where owned_session_logger_ was declared
+// after execution_providers_ in InferenceSession, causing the logger to be destroyed before
+// EP teardown callbacks could safely use it. See https://github.com/microsoft/onnxruntime/issues/28234.
+
+// An EP that logs via its stored logger pointer during destruction.
+// If the logger has been destroyed before the EP, dereferencing the logger is undefined behavior.
+class LoggingOnDestroyExecutionProvider : public IExecutionProvider {
+ public:
+  static constexpr const char* kEpType = "LoggingOnDestroyExecutionProvider";
+
+  // logger_was_valid_in_dtor will be set to true if the logger pointer was non-null
+  // when the destructor ran.
+  explicit LoggingOnDestroyExecutionProvider(bool* logger_was_valid_in_dtor,
+                                             const std::string& type = kEpType)
+      : IExecutionProvider{type},
+        logger_was_valid_in_dtor_(logger_was_valid_in_dtor) {
+  }
+
+  ~LoggingOnDestroyExecutionProvider() override {
+    const logging::Logger* logger = GetLogger();
+    if (logger != nullptr) {
+      // Actually use the logger to ensure the pointer is valid (not use-after-free).
+      // Under AddressSanitizer or similar tools, this would detect a dangling pointer.
+      LOGS(*logger, VERBOSE) << "LoggingOnDestroyExecutionProvider teardown";
+      *logger_was_valid_in_dtor_ = true;
+    } else {
+      *logger_was_valid_in_dtor_ = false;
+    }
+  }
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    return std::make_shared<KernelRegistry>();
+  }
+
+ private:
+  bool* logger_was_valid_in_dtor_;
+};
+
+TEST(InferenceSessionTests, SessionLoggerOutlivesEPsOnDestruction) {
+  // Create a logging manager with VERBOSE level so the logger is non-null and active.
+  auto capturing_sink = new CapturingSink();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  OrtThreadingOptions tp_options;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env, &tp_options,
+                                       true /*create_global_thread_pools*/));
+
+  bool logger_was_valid_in_dtor = false;
+
+  {
+    SessionOptions so;
+    so.session_logid = "SessionLoggerOutlivesEPs";
+    so.session_log_severity_level = static_cast<int>(logging::Severity::kVERBOSE);
+
+    InferenceSession session{so, *env};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<LoggingOnDestroyExecutionProvider>(&logger_was_valid_in_dtor)));
+    ASSERT_STATUS_OK(session.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    // Session goes out of scope here. Destruction order must be:
+    // 1. execution_providers_ destroyed (EP teardown logs via logger — must still be valid)
+    // 2. owned_session_logger_ destroyed (logger freed after all users are done)
+  }
+
+  // The EP's destructor should have found a valid logger and logged successfully.
+  ASSERT_TRUE(logger_was_valid_in_dtor);
+
+  // Verify the EP's teardown log message was actually captured.
+  auto& msgs = capturing_sink->Messages();
+  bool found_teardown_msg = std::any_of(msgs.begin(), msgs.end(), [](const std::string& msg) {
+    return msg.find("LoggingOnDestroyExecutionProvider teardown") != std::string::npos;
+  });
+  ASSERT_TRUE(found_teardown_msg)
+      << "Expected EP teardown log message not found. Logger may have been destroyed before EP.";
+}
+
+TEST(InferenceSessionTests, SessionLoggerOutlivesEPsWithMultipleEPs) {
+  // Test with multiple EPs to ensure all EPs can log during teardown.
+  auto capturing_sink = new CapturingSink();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<ISink>(capturing_sink), logging::Severity::kVERBOSE, false,
+      LoggingManager::InstanceType::Temporal);
+
+  std::unique_ptr<Environment> env;
+  OrtThreadingOptions tp_options;
+  ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env, &tp_options,
+                                       true /*create_global_thread_pools*/));
+
+  bool logger_valid_ep1 = false;
+  bool logger_valid_ep2 = false;
+
+  {
+    SessionOptions so;
+    so.session_logid = "SessionLoggerMultipleEPs";
+    so.session_log_severity_level = static_cast<int>(logging::Severity::kVERBOSE);
+
+    InferenceSession session{so, *env};
+
+    // Register two EPs with different type names (EP registry requires unique types).
+    // Both should be able to log safely during teardown.
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<LoggingOnDestroyExecutionProvider>(&logger_valid_ep1, "LoggingOnDestroyEP_1")));
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_unique<LoggingOnDestroyExecutionProvider>(&logger_valid_ep2, "LoggingOnDestroyEP_2")));
+
+    ASSERT_STATUS_OK(session.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+
+  ASSERT_TRUE(logger_valid_ep1);
+  ASSERT_TRUE(logger_valid_ep2);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

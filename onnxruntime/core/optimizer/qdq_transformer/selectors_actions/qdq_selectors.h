@@ -92,6 +92,20 @@ class UnaryNodeGroupSelector : public NodeGroupSelector {
   bool allow_4bit_;
 };
 
+class ClipNodeGroupSelector : public NodeGroupSelector {
+ public:
+  explicit ClipNodeGroupSelector(bool allow_16bit = true, bool allow_4bit = true)
+      : allow_16bit_(allow_16bit), allow_4bit_(allow_4bit) {}
+
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+
+  bool allow_16bit_;
+  bool allow_4bit_;
+};
+
 // 2 DQ nodes providing input -> node -> Q
 class BinaryNodeGroupSelector : public NodeGroupSelector {
  public:
@@ -317,6 +331,15 @@ class ScatterElementsNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// Input: DQ nodes for input, scale
+// Output: Q node for output
+class RMSNormalizationNodeGroupSelector : public NodeGroupSelector {
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */
@@ -431,11 +454,15 @@ class MatMulSelector : public BaseSelector {
                      compatible_providers) {}
 };
 
-// Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
+// Convert "1 DQ node for input B -> MatMul/Gemm" to "MatMulNBits"
 class DQMatMulToMatMulNBitsSelector : public BaseSelector {
  public:
   explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
+
+  // Only keep the weight DQ in the selection. Any bias DQ (for Gemm) is excluded
+  // so that RemoveNodes does not remove it — its output is wired through to MatMulNBits.
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const override;
 };
 
 // Input: DQ nodes for A, B and optional C

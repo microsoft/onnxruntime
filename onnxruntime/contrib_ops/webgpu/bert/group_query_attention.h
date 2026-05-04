@@ -14,19 +14,12 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
- public:
-  SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
-};
-
 class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved) : Program{"SplitPackedQKVWithRotaryEmbedding"}, interleaved_{interleaved} {}
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved, uint32_t multi_rotary_cache_concat_offset)
+      : Program{"SplitPackedQKVWithRotaryEmbedding"},
+        interleaved_{interleaved},
+        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -42,6 +35,7 @@ class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPacke
 
  private:
   const bool interleaved_;
+  const uint32_t multi_rotary_cache_concat_offset_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {

@@ -96,6 +96,18 @@ def _openvino_verify_device_type(device_read: str) -> str:
     return device_read
 
 
+def _webgpu_verify_library_kind(library_kind: str) -> str:
+    """Verifies the library kind for the WebGPU Execution Provider."""
+    choices = ["shared_lib", "static_lib"]
+    if library_kind not in choices:
+        print("\nYou have specified an invalid library kind for WebGPU EP.")
+        print(f"The invalid library kind was: {library_kind}")
+        print("Provide a library kind from the following options: ", choices)
+        print(f"Example: --use_webgpu {choices[0]}")
+        sys.exit("Incorrect build configuration")
+    return library_kind
+
+
 # --- Argument Grouping Functions ---
 
 
@@ -174,6 +186,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
             "NMake Makefiles JOM",
             "Unix Makefiles",
             "Visual Studio 17 2022",
+            "Visual Studio 18 2026",
             "Xcode",
         ],
         default=None,  # Will be set later based on OS and WASM
@@ -359,7 +372,7 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for WebAssembly (WASM) platform builds."""
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly.")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build WebAssembly static library.")
-    parser.add_argument("--emsdk_version", default="4.0.21", help="Specify version of emsdk.")
+    parser.add_argument("--emsdk_version", default="4.0.23", help="Specify version of emsdk.")
     parser.add_argument(
         "--enable_wasm_jspi", action="store_true", help="Enable WebAssembly JavaScript Promise Integration."
     )
@@ -533,12 +546,17 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--disable_contrib_ops", action="store_true", help="Disable contrib operators.")
     parser.add_argument("--disable_ml_ops", action="store_true", help="Disable traditional ML operators.")
+    parser.add_argument(
+        "--disable_generation_ops",
+        action="store_true",
+        help="Disable generation contrib operators (BeamSearch, WhisperBeamSearch, GreedySearch, Sampling).",
+    )
     parser.add_argument("--disable_rtti", action="store_true", help="Disable Run-Time Type Information (RTTI).")
     parser.add_argument(
         "--disable_types",
         nargs="+",
         default=[],
-        choices=["float4", "float8", "optional", "sparsetensor"],
+        choices=["float4", "float8", "optional", "sparsetensor", "string"],
         help="Disable selected data types.",
     )
     parser.add_argument(
@@ -554,6 +572,15 @@ def add_client_package_args(parser: argparse.ArgumentParser) -> None:
         "--client_package_build",
         action="store_true",
         help="Create ORT package with default settings more appropriate for client/on-device workloads.",
+    )
+
+
+def add_threadpool_callback_args(parser: argparse.ArgumentParser) -> None:
+    """Adds arguments for per-session thread pool work callbacks."""
+    parser.add_argument(
+        "--enable_session_threadpool_callbacks",
+        action="store_true",
+        help="Enable per-session thread pool work callbacks.",
     )
 
 
@@ -646,6 +673,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cpu_group.add_argument(
         "--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels."
     )
+    cpu_group.add_argument(
+        "--enable_rvv",
+        action="store_true",
+        help="Enable riscv64 MLAS kernels that use the RISC-V Vector extension.",
+    )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")
@@ -733,21 +765,17 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     vitis_group = parser.add_argument_group("Vitis-AI Execution Provider (Xilinx)")
     vitis_group.add_argument("--use_vitisai", action="store_true", help="Enable Vitis-AI EP.")
 
-    # --- ArmNN ---
-    armnn_group = parser.add_argument_group("ArmNN Execution Provider")
-    armnn_group.add_argument("--use_armnn", action="store_true", help="Enable ArmNN EP.")
-    armnn_group.add_argument("--armnn_relu", action="store_true", help="Use ArmNN Relu implementation.")
-    armnn_group.add_argument("--armnn_bn", action="store_true", help="Use ArmNN BatchNormalization implementation.")
-    armnn_group.add_argument("--armnn_home", help="Path to ArmNN home directory.")
-    armnn_group.add_argument("--armnn_libs", help="Path to ArmNN libraries directory.")
-
     # --- ACL (Arm Compute Library) ---
     acl_group = parser.add_argument_group("ACL Execution Provider")
     acl_group.add_argument("--use_acl", action="store_true", help="Enable ACL EP (ARM architectures).")
     acl_group.add_argument("--acl_home", help="Path to ACL home directory.")
     acl_group.add_argument("--acl_libs", help="Path to ACL libraries directory.")
-    acl_group.add_argument(
-        "--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL/ArmNN)."
+    acl_group.add_argument("--no_kleidiai", action="store_true", help="Disable KleidiAI integration (used with ACL).")
+
+    # --- Qualcomm QMX Library ---
+    qmx_group = parser.add_argument_group("QMX kernel library")
+    qmx_group.add_argument(
+        "--use_qmx", action="store_true", help="Enable Qualcomm QMX kernel to coexist with Arm KleidiAI."
     )
 
     # --- RKNPU ---
@@ -763,6 +791,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
     migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
+    # --rocm_version and --rocm_home are deprecated. See https://github.com/microsoft/onnxruntime/issues/26801.
+    migx_group.add_argument("--rocm_version", help="ROCm stack version. This option is deprecated and has no effect.")
+    migx_group.add_argument(
+        "--rocm_home", help="Path to ROCm installation directory. This option is deprecated and has no effect."
+    )
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")
@@ -774,7 +807,13 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
 
     # --- WebGPU ---
     webgpu_group = parser.add_argument_group("WebGPU Execution Provider")
-    webgpu_group.add_argument("--use_webgpu", action="store_true", help="Enable WebGPU EP.")
+    webgpu_group.add_argument(
+        "--use_webgpu",
+        nargs="?",
+        const="static_lib",
+        type=_webgpu_verify_library_kind,
+        help="Enable WebGPU EP. Optionally specify 'static_lib' (default) or 'shared_lib'.",
+    )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )
@@ -796,6 +835,14 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # --- Azure ---
     azure_group = parser.add_argument_group("Azure Execution Provider")
     azure_group.add_argument("--use_azure", action="store_true", help="Enable Azure EP.")
+
+    # --- DX Interop Feature ---
+    dx_interop_group = parser.add_argument_group("DirectX Interop Feature")
+    dx_interop_group.add_argument(
+        "--enable_dx_interop",
+        action="store_true",
+        help="Enable DirectX Interop feature for graphics API synchronization.",
+    )
 
 
 def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
@@ -838,13 +885,17 @@ def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
     class Parser(argparse.ArgumentParser):
-        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:  # Use list[str] for Python 3.9+
+        # override argument file line parsing behavior
+        # - allow multiple arguments per line and handle quotes
+        # - allow comment lines starting with '#'
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+            if arg_line.lstrip().startswith("#"):  # ignore comment lines
+                return []
             return shlex.split(arg_line)
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""
+        usage=f"""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -853,6 +904,10 @@ def parse_arguments() -> argparse.Namespace:
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags (--update, --build, --test) to only run specific stages.
+
+        Arguments can also be passed in an argument file prefixed with '@'.
+        E.g., `{sys.argv[0]} @arguments.txt`.
+        Argument files may contain comment lines starting with '#'. They will be ignored.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )
@@ -872,6 +927,7 @@ def parse_arguments() -> argparse.Namespace:
     add_extension_args(parser)
     add_size_reduction_args(parser)
     add_client_package_args(parser)
+    add_threadpool_callback_args(parser)
 
     # Language Bindings
     add_python_binding_args(parser)
@@ -904,6 +960,10 @@ def parse_arguments() -> argparse.Namespace:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
     if args.android_ndk_path:
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
+
+    # Treat --build_wasm_static_lib as implying --build_wasm
+    if args.build_wasm_static_lib:
+        args.build_wasm = True
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:

@@ -21,11 +21,11 @@ using onnxruntime::graph_utils::ExtendedGraphEdge;
 namespace onnxruntime {
 namespace {
 bool CanNodePropagate(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14, 19, 21}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13, 21}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Squeeze", {1, 11, 13, 21}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Unsqueeze", {1, 11, 13, 21}) ||
+  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12, 22}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13, 21, 23, 24, 25}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Squeeze", {1, 11, 13, 21, 23, 24, 25}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 10, 11, 13});
 }
 
@@ -194,6 +194,8 @@ Status InsertQDQPairs(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion
       }
     }
 
+    optimizer_utils::DuplicateNodeAnnotation(*src_node, q_node);
+
     // Add edge from src to Q node.
     src_node->MutableOutputDefs()[first_edge.src->arg_idx] = &pre_q_nodearg;
     graph.AddEdge(src_node->Index(), q_node.Index(), first_edge.src->arg_idx, 0);
@@ -220,6 +222,10 @@ Status InsertQDQPairs(Graph& graph, gsl::span<const ExtendedGraphEdge> insertion
                                   {&post_dq_nodearg},
                                   &dq_attrs,  // attributes
                                   qdq_domain);
+
+    if (src_node) {
+      optimizer_utils::DuplicateNodeAnnotation(*src_node, dq_node);
+    }
 
     ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(dq_node), "Failed to set op schema for added DQ node.");
 

@@ -34,8 +34,8 @@ ShaderHelper::ShaderHelper(const ProgramBase& program,
       dispatch_group_size_z_{dispatch_group_size_z},
       program_{program},
       program_metadata_{program_metadata},
-      additional_implementation_ss_{&additional_implementation_},
-      body_ss_{&body_} {}
+      additional_implementation_ss_{kStringInitialSizeShaderSourceCodeAdditionalImplementation},
+      body_ss_{kStringInitialSizeShaderSourceCodeMain} {}
 
 Status ShaderHelper::Init() {
   // dispatch group size is normalized so no need to validate it here
@@ -59,8 +59,6 @@ Status ShaderHelper::Init() {
   // init body string stream
   bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
   bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
-  body_.reserve(4096);
-  additional_implementation_.reserve(1024);
 
   // append header for main function so it is ready for user to append main function body
   body_ss_ << "@compute @workgroup_size(workgroup_size_x, workgroup_size_y, workgroup_size_z)\n"
@@ -144,6 +142,7 @@ Status ValidateVariableDataType(int32_t element_type, ProgramVariableDataType va
     ORT_RETURN_IF_NOT(var_type == ProgramVariableDataType::Int32 ||
                           var_type == ProgramVariableDataType::Uint32 ||
                           var_type == ProgramVariableDataType::Float32 ||
+                          var_type == ProgramVariableDataType::Float16 ||
                           var_type == ProgramVariableDataType::Float16x4 ||
                           var_type == ProgramVariableDataType::Float32x4,
                       "Unexpected program variable type ", int(var_type), " for atomic variable");
@@ -383,7 +382,7 @@ Status ShaderHelper::ValidateIndices() const {
   return Status::OK();
 }
 
-Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) const {
+Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& shape_uniform_ranks) {
   SS(ss, kStringInitialSizeShaderSourceCode);
 
   //
@@ -482,6 +481,8 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
           ss << "atomic<u32>";
         } else if (output->type_ == ProgramVariableDataType::Int32) {
           ss << "atomic<i32>";
+        } else if (output->type_ == ProgramVariableDataType::Float16) {
+          ss << "atomic<u32>";  // emulate f16 atomic via u32 (storing as packed u16)
         } else {
           ORT_RETURN_IF(true, "Unsupported atomic type: ", int(output->type_));
         }
@@ -498,7 +499,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 
   // store shape uniform ranks in shape_uniform_ranks
   bool use_any_shape_uniform = false;
-  ORT_ENFORCE(shape_uniform_ranks.size() == 0);
+  ORT_ENFORCE(shape_uniform_ranks.empty());
   shape_uniform_ranks.reserve(input_vars_.size() + output_vars_.size() + indices_vars_.size());
 
   for (const auto& input : input_vars_) {
@@ -630,12 +631,12 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
   //
   // Additional Implementation
   //
-  ss << additional_implementation_;
+  ss << SS_GET(additional_implementation_ss_);
 
   //
   // Main Function Body
   //
-  ss << body_;
+  ss << SS_GET(body_ss_);
   ss << "\n"
         "}\n";
 

@@ -76,6 +76,22 @@
   ss << __VA_ARGS__;     \
   throw std::runtime_error(ss.str())
 
+#define EXCEPTION_TO_RETURNED_STATUS_BEGIN try {
+#define EXCEPTION_TO_RETURNED_STATUS_END                  \
+  }                                                       \
+  catch (const Ort::Exception& ex) {                      \
+    Ort::Status status(ex);                               \
+    return status.release();                              \
+  }                                                       \
+  catch (const std::exception& ex) {                      \
+    Ort::Status status(ex.what(), ORT_EP_FAIL);           \
+    return status.release();                              \
+  }                                                       \
+  catch (...) {                                           \
+    Ort::Status status("Unknown exception", ORT_EP_FAIL); \
+    return status.release();                              \
+  }
+
 struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
@@ -86,6 +102,15 @@ struct FloatInitializer {
   std::vector<int64_t> shape;
   std::vector<float> data;
 };
+
+// Returns a lower case version of the input string.
+inline std::string GetLowercaseString(std::string str) {
+  // https://en.cppreference.com/w/cpp/string/byte/tolower
+  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return str;
+}
 
 // Returns an entry in the session option configurations, or a default value if not present.
 inline OrtStatus* GetSessionConfigEntryOrDefault(const OrtSessionOptions& session_options,
@@ -161,20 +186,27 @@ inline ONNXTensorElementDataType GetTensorElemDataType<int64_t>() {
 }
 
 template <typename T>
-inline OrtStatus* GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
-                                             /*out*/ gsl::span<const T>& data,
-                                             /*out*/ std::vector<int64_t>& shape) {
-  Ort::ConstValue input = kernel_context.GetInput(index);
-  auto type_shape = input.GetTensorTypeAndShapeInfo();
+inline OrtStatus* GetValueDataAndShape(Ort::ConstValue value,
+                                       /*out*/ gsl::span<const T>& data,
+                                       /*out*/ std::vector<int64_t>& shape) {
+  auto type_shape = value.GetTensorTypeAndShapeInfo();
 
   ONNXTensorElementDataType elem_type = type_shape.GetElementType();
   RETURN_IF(elem_type != GetTensorElemDataType<T>(), Ort::GetApi(),
             "EP expected kernel input of tensor type");
 
-  const T* float_data = input.GetTensorData<T>();
+  const T* elem_data = value.GetTensorData<T>();
   size_t num_elems = type_shape.GetElementCount();
-  data = gsl::span<const T>(float_data, num_elems);
+  data = gsl::span<const T>(elem_data, num_elems);
   shape = type_shape.GetShape();
 
   return nullptr;
+}
+
+template <typename T>
+inline OrtStatus* GetKernelInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                                             /*out*/ gsl::span<const T>& data,
+                                             /*out*/ std::vector<int64_t>& shape) {
+  Ort::ConstValue input = kernel_context.GetInput(index);
+  return GetValueDataAndShape<T>(input, data, shape);
 }

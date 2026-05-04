@@ -25,6 +25,14 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+# Quick build mode: Filter flash attention kernels for faster development iteration.
+#   - We keep only hdim128 fp16 flash attention kernels in quick build mode.
+#   - All other listed head dimensions are excluded (e.g., 32, 64, 96, 192, 256).
+#     If new head dimensions are added or removed, update this list to match the supported set.
+if(onnxruntime_QUICK_BUILD)
+  message(STATUS "Quick build mode enabled: Only building hdim128 fp16 flash attention kernels")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "flash_fwd.*hdim(32|64|96|192|256)")
+endif()
 
 file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.h"

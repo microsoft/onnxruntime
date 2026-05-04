@@ -27,32 +27,59 @@ TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components
 
 SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
   if (adapter_info.vendor == std::string_view{"intel"}) {
-    if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
-        adapter_info.architecture == std::string_view{"xe-2hpg"} ||
-        adapter_info.architecture == std::string_view{"xe-lpg"} ||
-        adapter_info.architecture == std::string_view{"gen-12hp"}) {
+    // Disable Split-K on old Intel GPUs.
+    if (adapter_info.architecture == std::string_view{"gen-7"} ||
+        adapter_info.architecture == std::string_view{"gen-8"} ||
+        adapter_info.architecture == std::string_view{"gen-9"} ||
+        adapter_info.architecture == std::string_view{"gen-11"}) {
+      enable_split_k_ = false;
+    } else if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
+               adapter_info.architecture == std::string_view{"xe-2hpg"} ||
+               adapter_info.architecture == std::string_view{"gen-12hp"}) {
+      // Below thresholds are only verified on Intel discrete GPUs and Lunar Lake iGPUs.
       enable_split_k_ = true;
 
-      // Below thresholds are only verified on the above Intel GPUs without any regressions. The
-      // proper value of `max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_` may be
-      // reduced when we support a larger `dim_inner` because larger `dim_inner` will bring more
-      // atomic calls for each output value.
+      max_batch_size_ = 8;
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
-      max_dim_inner_with_split_k_ = split_dim_inner_ * 9;
-      max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_ = 35.0f;
+
+      configs_per_dim_inner_range_.emplace_back(768, 52.0);
+      configs_per_dim_inner_range_.emplace_back(2304, 35.0);
+      configs_per_dim_inner_range_.emplace_back(3072, 21.5);
+      configs_per_dim_inner_range_.emplace_back(4096, 16.0);
+    } else {
+      // Below are the default thresholds on newer Intel GPUs. These values are chosen on
+      // Intel "gen-12lp" GPU with 32EUs.
+      enable_split_k_ = true;
+
+      max_batch_size_ = 8;
+      split_dim_inner_ = 256;
+      min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
+
+      configs_per_dim_inner_range_.emplace_back(768, 20.0);
+      configs_per_dim_inner_range_.emplace_back(1792, 13.0);
+      configs_per_dim_inner_range_.emplace_back(3072, 8.0);
+      configs_per_dim_inner_range_.emplace_back(4096, 6.0);
     }
   }
+}
+
+SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, double rate)
+    : max_dim_inner_with_rate(max_dim_inner), max_dim_a_outer_x_dim_b_outer_x_batch_size_divides_dim_inner(rate) {}
+
+uint32_t SplitKConfig::GetMaxDimInnerWithSplitK() const {
+  assert(!configs_per_dim_inner_range_.empty());
+  return configs_per_dim_inner_range_.back().max_dim_inner_with_rate;
 }
 
 bool SplitKConfig::UseSplitK(
     bool is_vec4,
     ActivationKind activation_kind,
     uint64_t batch_size,
-    bool is_channels_last,
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
-    uint32_t dim_inner) const {
+    uint32_t dim_inner,
+    bool is_channels_last) const {
   if (!enable_split_k_) {
     return false;
   }
@@ -62,19 +89,35 @@ bool SplitKConfig::UseSplitK(
   // TODO: support the cases below.
   use_split_k &= activation_kind == ActivationKind::None;
   use_split_k &= is_vec4;
-  use_split_k &= batch_size == 1;
-  // Now `is_channels_last` is only supported because we only generate vec4 shaders in
-  // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
+
+  // Larger batches increase parallelism on their own, so we temporarily set a batch size threshold
+  // for using Split-K.
+  use_split_k &= batch_size <= max_batch_size_;
+
+  // `is_channels_last` should only affect Split-K gating when bias is applied in the non-GEMM
+  // MatMul/Conv|MatMul path. For GEMM and for MatMul or Conv|MatMul without bias, we need to
+  // use `true` as `is_channels_last` to make `UseSplitK` ignore `is_channels_last`.
+  // When `is_channels_last` has a valid value here, it is required to be true because we only
+  // generate `vec4` shaders in `MatMulFillBiasOrZeroBeforeSplitKProgram`.
   use_split_k &= is_channels_last;
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
-  // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer)` and
-  // `dim_inner)` as the metric to decide whether to use Split-K or not.
-  use_split_k &= (dim_inner >= min_dim_inner_with_split_k_);
-  use_split_k &= (dim_inner <= max_dim_inner_with_split_k_);
-  use_split_k &= ((dim_a_outer * dim_b_outer * 1.0f / dim_inner) <= max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner_);
+  // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer * batch_size)`
+  // and `dim_inner` as the metric to decide whether to use Split-K or not.
+  use_split_k &= dim_inner >= min_dim_inner_with_split_k_;
+  use_split_k &= dim_inner <= GetMaxDimInnerWithSplitK();
 
-  return use_split_k;
+  if (!use_split_k) {
+    return false;
+  }
+
+  const double rate = static_cast<double>(dim_a_outer) * static_cast<double>(dim_b_outer) * static_cast<double>(batch_size) / static_cast<double>(dim_inner);
+  for (const auto& config_at_range : configs_per_dim_inner_range_) {
+    if (dim_inner <= config_at_range.max_dim_inner_with_rate) {
+      return rate <= config_at_range.max_dim_a_outer_x_dim_b_outer_x_batch_size_divides_dim_inner;
+    }
+  }
+  return false;
 }
 
 uint32_t SplitKConfig::GetSplitDimInner() const {

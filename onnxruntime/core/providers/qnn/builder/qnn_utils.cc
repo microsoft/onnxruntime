@@ -15,6 +15,7 @@
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/common.h"
 #include "nlohmann/json.hpp"
 
 namespace onnxruntime {
@@ -33,10 +34,13 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
       {QNN_DATATYPE_UINT_64, 8},
       {QNN_DATATYPE_FLOAT_16, 2},
       {QNN_DATATYPE_FLOAT_32, 4},
+      {QNN_DATATYPE_BFLOAT_16, 2},
       {QNN_DATATYPE_BOOL_8, 1},
+      {QNN_DATATYPE_SFIXED_POINT_4, sizeof(Int4x2)},
       {QNN_DATATYPE_SFIXED_POINT_8, 1},
       {QNN_DATATYPE_SFIXED_POINT_16, 2},
       {QNN_DATATYPE_SFIXED_POINT_32, 4},
+      {QNN_DATATYPE_UFIXED_POINT_4, sizeof(Int4x2)},
       {QNN_DATATYPE_UFIXED_POINT_8, 1},
       {QNN_DATATYPE_UFIXED_POINT_16, 2},
       {QNN_DATATYPE_UFIXED_POINT_32, 4},
@@ -103,11 +107,25 @@ size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
   }
   // Unreachable
 }
+size_t GetQnnTensorDataSizeInBytes(size_t num_elements, Qnn_DataType_t element_type) {
+  SafeInt<size_t> safe_num_elements = num_elements;
+  if (element_type == QNN_DATATYPE_SFIXED_POINT_4 || element_type == QNN_DATATYPE_UFIXED_POINT_4) {
+    return (safe_num_elements + 1) / 2;
+  }
+  return (safe_num_elements * GetElementSizeByType(element_type));
+}
 
 size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
   ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
-  SafeInt<size_t> data_length = GetElementSizeByType(element_type);
-  return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
+  SafeInt<size_t> num_elements = std::accumulate(shape.begin(), shape.end(), SafeInt<size_t>{1}, std::multiplies<>{});
+  return GetQnnTensorDataSizeInBytes(num_elements, element_type);
+}
+
+size_t GetQnnTensorDataSizeInBytes(const Qnn_Tensor_t& tensor) {
+  uint32_t rank = GetQnnTensorRank(tensor);
+  uint32_t* dims = GetQnnTensorDims(tensor);
+  gsl::span<const uint32_t> shape{dims, static_cast<size_t>(rank)};
+  return GetQnnTensorDataSizeInBytes(shape, GetQnnTensorDataType(tensor));
 }
 
 bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor) {
@@ -200,6 +218,9 @@ std::ostream& operator<<(std::ostream& out, const Qnn_DataType_t& data_type) {
       break;
     case QNN_DATATYPE_FLOAT_32:
       out << "QNN_DATATYPE_FLOAT_32";
+      break;
+    case QNN_DATATYPE_BFLOAT_16:
+      out << "QNN_DATATYPE_BFLOAT_16";
       break;
     case QNN_DATATYPE_SFIXED_POINT_8:
       out << "QNN_DATATYPE_SFIXED_POINT_8";
@@ -957,7 +978,7 @@ Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t>
   size_t block_size = num_elems;
 
   if (axis.has_value()) {
-    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
     block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
     broadcast_dim = shape[axis_no_neg];
     block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
@@ -994,7 +1015,7 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
   const size_t num_dims = shape.size();
   const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
   ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
-  size_t expected_num_quant_bytes = GetElementSizeByType(data_type) * data.size();
+  size_t expected_num_quant_bytes = GetQnnTensorDataSizeInBytes(data.size(), data_type);
   ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
                     "Cannot quantize data because output buffer is not the correct size");
 
@@ -1003,7 +1024,7 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
   size_t block_size = num_elems;
 
   if (axis.has_value()) {
-    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
     block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
     broadcast_dim = shape[axis_no_neg];
     block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
@@ -1053,6 +1074,80 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
     }
   }
   assert(i == data.size());
+
+  return Status::OK();
+}
+
+Status DequantizePerChannel(gsl::span<const uint8_t> quant_bytes, gsl::span<const uint32_t> shape,
+                            gsl::span<const float> scales, gsl::span<const int32_t> offsets,
+                            /*out*/ gsl::span<float> data, Qnn_DataType_t data_type,
+                            std::optional<int64_t> axis) {
+  const size_t num_dims = shape.size();
+  const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
+  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to dequantize");
+  size_t expected_num_quant_bytes = GetElementSizeByType(data_type) * data.size();
+  ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
+                    "Cannot dequantize data because input buffer is not the correct size");
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
+    block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
+  }
+
+  ORT_RETURN_IF_NOT(scales.size() == broadcast_dim, "Unexpected size of scales input buffer");
+  ORT_RETURN_IF_NOT(offsets.size() == broadcast_dim, "Unexpected size of offsets input buffer");
+
+  size_t i = 0;
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      switch (data_type) {
+        case QNN_DATATYPE_SFIXED_POINT_8: {
+          const int8_t* input = reinterpret_cast<const int8_t*>(&quant_bytes[i * sizeof(int8_t)]);
+          for (size_t j = 0; j < block_size; j++) {
+            data[i + j] = static_cast<float>(Dequantize(offsets[bd], scales[bd], static_cast<double>(input[j])));
+          }
+          break;
+        }
+        case QNN_DATATYPE_UFIXED_POINT_8: {
+          const uint8_t* input = reinterpret_cast<const uint8_t*>(&quant_bytes[i * sizeof(uint8_t)]);
+          for (size_t j = 0; j < block_size; j++) {
+            data[i + j] = static_cast<float>(Dequantize(offsets[bd], scales[bd], static_cast<double>(input[j])));
+          }
+          break;
+        }
+        case QNN_DATATYPE_SFIXED_POINT_16: {
+          const int16_t* input = reinterpret_cast<const int16_t*>(&quant_bytes[i * sizeof(int16_t)]);
+          for (size_t j = 0; j < block_size; j++) {
+            data[i + j] = static_cast<float>(Dequantize(offsets[bd], scales[bd], static_cast<double>(input[j])));
+          }
+          break;
+        }
+        case QNN_DATATYPE_UFIXED_POINT_16: {
+          const uint16_t* input = reinterpret_cast<const uint16_t*>(&quant_bytes[i * sizeof(uint16_t)]);
+          for (size_t j = 0; j < block_size; j++) {
+            data[i + j] = static_cast<float>(Dequantize(offsets[bd], scales[bd], static_cast<double>(input[j])));
+          }
+          break;
+        }
+        case QNN_DATATYPE_SFIXED_POINT_32: {
+          const int32_t* input = reinterpret_cast<const int32_t*>(&quant_bytes[i * sizeof(int32_t)]);
+          for (size_t j = 0; j < block_size; j++) {
+            data[i + j] = static_cast<float>(Dequantize(offsets[bd], scales[bd], static_cast<double>(input[j])));
+          }
+          break;
+        }
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported quantization data type for DequantizeData");
+      }
+      i += block_size;
+    }
+  }
 
   return Status::OK();
 }
@@ -1443,6 +1538,59 @@ Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& pe
 uint64_t GetTimeStampInUs() {
   auto timestamp = std::chrono::steady_clock::now().time_since_epoch();
   return std::chrono::duration_cast<std::chrono::microseconds>(timestamp).count();
+}
+
+bool CheckBiasScaleMatch(float bias_scale, float weights_scale, float activation_scale, float tolerance) {
+  float expected_scale = weights_scale * activation_scale;
+  return std::abs(bias_scale - expected_scale) <= tolerance;
+}
+
+Status RequantizeBiasTensor(const std::vector<uint8_t>& original_bias_data,
+                            const std::vector<uint32_t>& bias_shape,
+                            gsl::span<const float> current_scales,
+                            gsl::span<const int32_t> current_offsets,
+                            gsl::span<const float> weights_scales,
+                            float activation_scale,
+                            Qnn_DataType_t data_type,
+                            /*out*/ std::vector<uint8_t>& requantized_bias_data,
+                            /*out*/ std::vector<float>& new_scales,
+                            /*out*/ std::vector<int32_t>& new_offsets,
+                            std::optional<int64_t> axis) {
+  const size_t num_dims = bias_shape.size();
+  const size_t num_elems = ShapeSizeCalc(bias_shape, 0, num_dims);
+
+  // Step 1: Dequantize the bias tensor to float
+  std::vector<float> float_bias_data(num_elems);
+  ORT_RETURN_IF_ERROR(DequantizePerChannel(original_bias_data, bias_shape, current_scales, current_offsets,
+                                           float_bias_data, data_type, axis));
+
+  // Step 2: Calculate new quantization parameters
+  size_t broadcast_dim = 1;
+  if (axis.has_value()) {
+    size_t axis_no_neg = static_cast<size_t>(HandleNegativeAxis(*axis, static_cast<int64_t>(num_dims)));
+    broadcast_dim = bias_shape[axis_no_neg];
+  }
+
+  // Resize output vectors
+  new_scales.resize(broadcast_dim);
+  new_offsets.resize(broadcast_dim);
+
+  // Calculate per-channel bias scales: bias_scale[i] = weights_scale[i] * activation_scale
+  for (size_t i = 0; i < broadcast_dim; ++i) {
+    // Use the corresponding weight scale if available, otherwise use the first one
+    float weight_scale = (i < weights_scales.size()) ? weights_scales[i] : weights_scales[0];
+    new_scales[i] = weight_scale * activation_scale;
+    new_offsets[i] = 0;
+  }
+
+  // Step 3: Quantize back with new parameters
+  size_t expected_output_bytes = GetElementSizeByType(data_type) * num_elems;
+  requantized_bias_data.resize(expected_output_bytes);
+
+  ORT_RETURN_IF_ERROR(QuantizeData(float_bias_data, bias_shape, new_scales, new_offsets,
+                                   requantized_bias_data, data_type, axis));
+
+  return Status::OK();
 }
 
 }  // namespace utils

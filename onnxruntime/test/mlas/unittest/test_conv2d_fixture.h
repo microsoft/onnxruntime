@@ -125,7 +125,7 @@ class Conv2dShortExecuteTest : public MlasTestFixture<Conv2dTester> {
     return 1;
   }
 
-  static size_t RegisterShortExecuteTests() {
+  static size_t RegisterShortExecuteTests(bool include_mobileclip_shapes = true) {
     size_t test_registered = 0;
     for (unsigned i = 1; i < 256; i <<= 1) {
       test_registered += RegisterSingleTest(1, 1, 16, i, i, 32, 3, 3, 0, 0, 0, 0, 1, 1, 1, 1);
@@ -142,6 +142,20 @@ class Conv2dShortExecuteTest : public MlasTestFixture<Conv2dTester> {
       test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
       test_registered += RegisterSingleTest(1, 16, 1, i, i, 1, 3, 3, 1, 1, 1, 1, 1, 1, 2, 2);
     }
+
+    if (include_mobileclip_shapes) {
+      // Exact grouped 7x7 depthwise-multiplier-2 shapes (MobileClip).
+      test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+      test_registered += RegisterSingleTest(1, 128, 1, 32, 32, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+      test_registered += RegisterSingleTest(1, 256, 1, 16, 16, 2, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+
+      // Near misses should bypass the specialized MobileClip kernel and fall back
+      // to the generic path while still matching the reference implementation.
+      test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 3, 7, 7, 3, 3, 3, 3, 1, 1, 2, 2);
+      test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 2, 5, 5, 2, 2, 2, 2, 1, 1, 2, 2);
+      test_registered += RegisterSingleTest(1, 64, 1, 64, 64, 2, 7, 7, 3, 3, 3, 3, 1, 1, 1, 1);
+    }
+
     return test_registered;
   }
 

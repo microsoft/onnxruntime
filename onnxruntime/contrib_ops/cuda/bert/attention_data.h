@@ -145,40 +145,74 @@ struct PackedMultiHeadAttentionData {
   bool use_memory_efficient_attention;
 };
 
-template <typename T>
+template <typename T, typename U>
 struct GroupQueryAttentionData {
   // Input Tensors
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
-  const T* past_key = nullptr;
-  const T* past_value = nullptr;
-  int* seqlens_k = nullptr;
+  const U* past_key = nullptr;
+  const U* past_value = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
+
+  const float* k_scale = nullptr;
+  const float* v_scale = nullptr;
+
+  // Total sequence length for each batch. It has shape [batch_size].
+  int* total_seq_lens = nullptr;
+
+  // Past sequence length for each batch (i.e., the offset to append new tokens). Shape [batch_size].
+  // For first prompt: past_seq_lens[b] = 0
+  // For token generation or subsequent prompt: past_seq_lens[b] = total_seq_lens[b] - sequence_length
+  int* past_seq_lens = nullptr;
+
+  // Padded sequence length for each batch. Shape [batch_size].
+  // Only used for first prompt: padded_seq_lens[b] = sequence_length
+  int* padded_seq_lens = nullptr;
 
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
-  int* seqlens_k_buff = nullptr;
+
+  // Position IDs from Input
+  const int64_t* position_ids = nullptr;
 
   // Memory Efficient buffers
   T* fmha_buffer = nullptr;
-  T* unpacked_qkv_buffer = nullptr;
-  T* rotary_buffer = nullptr;
+  T* qkv_buffer = nullptr;
+
   T* k = nullptr;
   T* v = nullptr;
 
   // Output Tensors
   T* output = nullptr;
-  T* present_key = nullptr;
-  T* present_value = nullptr;
+  U* present_key = nullptr;
+  U* present_value = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
+  bool use_flash_attention_fast_decode = false;
+  bool use_xqa = false;
+  // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
+  // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
+  bool use_unfused = false;
+
+  // XQA buffer
+  void* xqa_buffer = nullptr;
+  size_t xqa_buffer_bytes = 0;
+
+  // Unfused fallback buffers (see LaunchGqaUnfusedAttention in gqa_unfused_attention.h):
+  //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
+  //   unfused_y_bnsh : [B, N_q, S_q, H_v] (output BNSH, transposed to BSNH before leaving op)
+  //   unfused_workspace: FP32 QK scratch + T softmax scratch (sized by
+  //                      GetGqaUnfusedAttentionWorkspaceSize)
+  T* unfused_q_bnsh = nullptr;
+  T* unfused_y_bnsh = nullptr;
+  void* unfused_workspace = nullptr;
 };
 
 template <typename T>
@@ -203,11 +237,27 @@ struct PagedAttentionData {
   // Fused op buffers
   T* workspace_buffer = nullptr;
 
+  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
+  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
+  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
+  int total_kv_tokens = 0;
+
+  // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
+  // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's
+  // grid_x (ceil_div(sequence_length, kQueriesPerBlock)) cover every query token. The previous
+  // heuristic `token_count - batch_size + 1` underestimates when any batch has 0 new tokens,
+  // producing silent per-token dropout in MEA and rotary.
+  int max_query_len = 0;
+
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
 };
 
 }  // namespace cuda

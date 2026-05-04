@@ -7,18 +7,7 @@
 #include "core/framework/provider_options.h"
 #include "nv_execution_provider_custom_ops.h"
 #include "nv_execution_provider.h"
-
-// The filename extension for a shared library is different per platform
-#ifdef _WIN32
-#define LIBRARY_PREFIX
-#define LIBRARY_EXTENSION ORT_TSTR(".dll")
-#elif defined(__APPLE__)
-#define LIBRARY_PREFIX "lib"
-#define LIBRARY_EXTENSION ".dylib"
-#else
-#define LIBRARY_PREFIX "lib"
-#define LIBRARY_EXTENSION ".so"
-#endif
+#include "nv_platform_utils.h"
 
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger(bool verbose);
@@ -39,17 +28,32 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose);
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) {
+  // Domain for TRT plugin custom ops (domain name: "trt.plugins"). Owns the OrtCustomOpDomain object.
+  // Raw pointers from .get() are handed out to callers via domain_list and may be held by InferenceSession.
   static std::unique_ptr<OrtCustomOpDomain> custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+
+  // Owns the TensorRTCustomOp objects for TRT plugins. Raw pointers are stored in custom_op_domain->custom_ops_.
   static std::vector<std::unique_ptr<TensorRTCustomOp>> created_custom_op_list;
+
+  // Domain for native custom ops (domain name: "trt"). Owns the OrtCustomOpDomain object.
+  // Raw pointers from .get() are handed out to callers via domain_list and may be held by InferenceSession.
   static std::unique_ptr<OrtCustomOpDomain> native_custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+
+  // Owns the TensorRTCustomOp objects for native custom ops. Raw pointers are stored in native_custom_op_domain->custom_ops_.
+  // Non-empty list indicates native custom ops have been registered (used to avoid re-registration on subsequent calls).
   static std::vector<std::unique_ptr<TensorRTCustomOp>> native_custom_op_list;
+
+  // Protects concurrent access to all the above static members.
   static std::mutex mutex;
   std::lock_guard<std::mutex> lock(mutex);
+
+  // Add already-initialized native ops to domain list
+  if (!native_custom_op_list.empty()) {
+    domain_list.push_back(native_custom_op_domain.get());
+  }
+
   if (custom_op_domain->domain_ != "" && custom_op_domain->custom_ops_.size() > 0) {
     domain_list.push_back(custom_op_domain.get());
-    if (native_custom_op_domain->domain_ != "" && native_custom_op_domain->custom_ops_.size() > 0) {
-      domain_list.push_back(native_custom_op_domain.get());
-    }
     return Status::OK();
   }
 
@@ -76,14 +80,14 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   // This library contains GroupQueryAttention and RotaryEmbedding plugins for transformer models
   try {
     const auto& env = onnxruntime::GetDefaultEnv();
-    auto external_plugin_path = env.GetRuntimePath() +
+    auto external_plugin_path = GetEPLibraryDirectory() +
                                 PathString(LIBRARY_PREFIX ORT_TSTR("tensorrt_plugins") LIBRARY_EXTENSION);
     void* external_plugin_handle = nullptr;
     auto status = env.LoadDynamicLibrary(external_plugin_path, false, &external_plugin_handle);
     if (status.IsOK()) {
       LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] External plugins loaded: tensorrt_plugins (GQA + RotaryEmbedding)";
     } else {
-      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not found in runtime path (optional)";
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not found in EP library path (optional)";
     }
   } catch (const std::exception& e) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] tensorrt_plugins library not available: " << e.what();
@@ -112,12 +116,16 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Default plugin library is not on the path and is therefore ignored";
   }
   try {
-    int num_plugin_creator = 0;
-    auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
+    // getAllCreators() is the TRT 10+ replacement for the removed getPluginCreatorList().
+    // It returns IPluginCreatorInterface* const*; cast each entry to the deprecated-but-present
+    // IPluginCreator* to access getPluginName()/getPluginVersion().
+    int32_t num_plugin_creator = 0;
+    auto plugin_creators = getPluginRegistry()->getAllCreators(&num_plugin_creator);
     std::unordered_set<std::string> registered_plugin_names;
 
-    for (int i = 0; i < num_plugin_creator; i++) {
-      auto plugin_creator = plugin_creators[i];
+    for (int32_t i = 0; i < num_plugin_creator; i++) {
+      auto* plugin_creator = dynamic_cast<nvinfer1::IPluginCreator*>(plugin_creators[i]);
+      if (!plugin_creator) continue;  // skip IPluginCreatorV3One entries that lack these accessors
       std::string plugin_name(plugin_creator->getPluginName());
       LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
 
@@ -143,35 +151,36 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
   }
 
   // Register native custom ops (register these independent of TRT plugin library availability)
-  const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
-  int num_native_custom_ops = std::size(native_custom_ops_names);
+  if (native_custom_op_list.empty()) {
+    const char* native_custom_ops_names[] = {"TRT_FP4DynamicQuantize", "TRT_FP8QuantizeLinear", "TRT_FP8DequantizeLinear"};
+    size_t num_native_custom_ops = std::size(native_custom_ops_names);
 
-  for (int i = 0; i < num_native_custom_ops; i++) {
-    native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
-    native_custom_op_list.back()->SetName(native_custom_ops_names[i]);
-    native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
+    for (size_t i = 0; i < num_native_custom_ops; i++) {
+      native_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kNvTensorRTRTXExecutionProvider, nullptr));
+      native_custom_op_list.back()->SetName(native_custom_ops_names[i]);
+      native_custom_op_domain->custom_ops_.push_back(native_custom_op_list.back().get());
+    }
+
+    native_custom_op_domain->domain_ = "trt";
+    domain_list.push_back(native_custom_op_domain.get());
   }
 
-  native_custom_op_domain->domain_ = "trt";
-  domain_list.push_back(native_custom_op_domain.get());
   return Status::OK();
 }
 
 void ReleaseTensorRTCustomOpDomain(OrtCustomOpDomain* domain) {
-  if (domain != nullptr) {
-    for (auto ptr : domain->custom_ops_) {
-      if (ptr != nullptr) {
-        delete ptr;
-      }
-    }
-    delete domain;
-  }
+  (void)domain;  // Suppress unused parameter warning
+  // The domain and its custom ops are owned by static unique_ptrs in CreateTensorRTCustomOpDomainList().
+  // Callers receive raw pointers via .get().
+  //  1. Manually deleting them would cause a double-free when the static unique_ptrs are destroyed at program exit.
+  //  2. Resetting the static unique_ptrs is also unsafe because other EP instances or InferenceSession objects
+  //     may still hold raw pointers to these same objects (handed out via domain_list).
+  // The static objects would be shared across EP instances and would persist for the program lifetime.
 }
 
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) {
-  for (auto ptr : custom_op_domain_list) {
-    ReleaseTensorRTCustomOpDomain(ptr);
-  }
+  // Only clear the reference vector, don't delete the static domain objects.
+  custom_op_domain_list.clear();
 }
 
 }  // namespace onnxruntime

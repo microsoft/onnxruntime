@@ -4,6 +4,8 @@
 
 #pragma once
 #include <ctime>
+#include <utility>
+#include <vector>
 #ifndef USE_CUDA_MINIMAL
 #include <cudnn.h>
 #else
@@ -135,6 +137,13 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  * tensor name -> ( dimension -> [min, max, opt] )
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
+
+// SubGraph_t and SubGraphCollection_t were defined in NvOnnxParser.h up to TRT-RTX 1.5.x
+// but removed in 1.6.0. Define them here for 1.6+ so the provider owns these ORT-internal types.
+#if TRT_MINOR_RTX >= 6
+using SubGraph_t = std::pair<std::vector<size_t>, bool>;
+using SubGraphCollection_t = std::vector<SubGraph_t>;
+#endif
 
 /**
  * @brief Container for tensor data and their shape.
@@ -306,8 +315,8 @@ class NvExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* /* resource_accountant */) const override;
 
-  int GetDeviceId() const { return device_id_; }
-  Status Sync() const;
+  int GetDeviceId() const override { return device_id_; }
+  Status Sync() const override;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -344,6 +353,13 @@ class NvExecutionProvider : public IExecutionProvider {
                                     bool detailed_build_log);
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
+
+  // Engine compatibility validation methods
+  std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const override;
+
+  common::Status ValidateCompiledModelCompatibilityInfo(
+      const std::string& compatibility_info,
+      OrtCompiledModelCompatibility& model_compatibility) const override;
 
  private:
   mutable NvExecutionProviderInfo info_;
@@ -423,6 +439,10 @@ class NvExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
+
+  // Storage for engine headers (64 bytes) for compatibility validation
+  // Maps fused_node_name -> hex-encoded engine header
+  mutable std::unordered_map<std::string, std::string> engine_headers_;
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;

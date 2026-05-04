@@ -3,7 +3,10 @@
 
 // onnxruntime dependencies
 #include <core/session/onnxruntime_c_api.h>
+#include <chrono>
+#include <iostream>
 #include <random>
+#include <thread>
 #include "command_args_parser.h"
 #include "performance_runner.h"
 #include "utils.h"
@@ -14,7 +17,7 @@ using namespace onnxruntime;
 const OrtApi* g_ort = NULL;
 
 int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
-Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
+Ort::Status CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTestConfig& test_config);
 
 #ifdef _WIN32
 int real_main(int argc, wchar_t* argv[]) {
@@ -82,6 +85,12 @@ int real_main(int argc, char* argv[]) {
         return -1;
     }
 
+    std::cout << "Model compiled successfully to " << ToUTF8String(test_config.run_config.compile_model_path) << "\n";
+    if (test_config.run_config.compile_only) {
+      return 0;
+    }
+
+    std::cout << "\n> Running EP context model...\n";
     {
       test_config.model_info.model_file_path = test_config.run_config.compile_model_path;
       status = RunPerfTest(env, test_config);
@@ -121,6 +130,11 @@ int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_confi
   // Exit if user enabled -n option so that user can measure session creation time
   if (test_config.run_config.exit_after_session_creation) {
     perf_runner.LogSessionCreationTime();
+    if (test_config.run_config.hold_ms_after_session_creation > 0) {
+      std::cout << "SESSION_READY" << std::endl;
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(test_config.run_config.hold_ms_after_session_creation));
+    }
     return 0;
   }
 
@@ -134,14 +148,20 @@ int RunPerfTest(Ort::Env& env, const perftest::PerformanceTestConfig& test_confi
   return 0;
 }
 
-Ort::Status CompileEpContextModel(const Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
+Ort::Status CompileEpContextModel(Ort::Env& env, const perftest::PerformanceTestConfig& test_config) {
   auto output_ctx_model_path = test_config.run_config.compile_model_path;
   const auto provider_name = test_config.machine_config.provider_type_name;
 
   Ort::SessionOptions session_options;
 
-  std::unordered_map<std::string, std::string> provider_options;
-  session_options.AppendExecutionProvider(provider_name, provider_options);
+  // Add EP devices if any (created by plugin EP)
+  if (!test_config.registered_plugin_eps.empty()) {
+    perftest::utils::AppendPluginExecutionProviders(env, session_options, test_config);
+  } else {
+    // Regular non-plugin EP
+    std::unordered_map<std::string, std::string> provider_options;
+    session_options.AppendExecutionProvider(provider_name, provider_options);
+  }
 
   // free dim override
   if (!test_config.run_config.free_dim_name_overrides.empty()) {

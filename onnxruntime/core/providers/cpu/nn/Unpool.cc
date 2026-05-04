@@ -96,15 +96,22 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   }
 
   // unpool
-  int64_t total_elements = X_shape.Size();
+  size_t total_elements = narrow<size_t>(X_shape.Size());
+  size_t output_size = narrow<size_t>(shape.Size());
 
   Tensor* Y = context->Output(0, shape);
   auto* Y_data = Y->MutableData<float>();
-  auto out = gsl::make_span(Y_data, narrow<size_t>(Y->Shape().Size()));
+  auto out = gsl::make_span(Y_data, output_size);
   std::fill_n(out.data(), out.size(), 0.f);
 
-  for (auto cur_elem = 0; cur_elem < total_elements; ++cur_elem) {
-    out[narrow<size_t>(I_data[narrow<size_t>(cur_elem)])] = X_data[narrow<size_t>(cur_elem)];
+  for (size_t cur_elem = 0; cur_elem < total_elements; ++cur_elem) {
+    const int64_t idx = I_data[cur_elem];
+    if (idx < 0 || idx >= static_cast<int64_t>(output_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Index value out of bounds. Got: ", idx, ". Valid range is [0, ", output_size, ").");
+    }
+
+    out[static_cast<size_t>(idx)] = X_data[cur_elem];
   }
 
   return Status::OK();

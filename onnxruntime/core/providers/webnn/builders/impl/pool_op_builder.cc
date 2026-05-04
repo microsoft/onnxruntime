@@ -95,8 +95,10 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("padding", emscripten::val::array(padding));
 
   const auto ceil_mode = helper.Get("ceil_mode", 0);
-  options.set("roundingType", ceil_mode == 0 ? emscripten::val("floor")
-                                             : emscripten::val("ceil"));
+  emscripten::val output_shape_rounding = ceil_mode == 0 ? emscripten::val("floor") : emscripten::val("ceil");
+  // WebNN renamed roundingType to outputShapeRounding, but set older name too for compatibility.
+  options.set("roundingType", output_shape_rounding);
+  options.set("outputShapeRounding", output_shape_rounding);
 
   // WebNN doesn't support AveragePool with count_include_pad == 1, emulate it by pad + averagePool2d.
   if (op_type == "AveragePool" && helper.Get("count_include_pad", 0) == 1) {

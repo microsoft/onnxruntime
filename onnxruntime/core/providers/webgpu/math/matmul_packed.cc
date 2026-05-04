@@ -33,8 +33,12 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
   // declare the read and write functions
-  MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false, is_vec4_);
-  MatMulWriteFnSource(shader, output, bias, /* is_gemm = */ false, 1, is_vec4_ ? 4 : 1, false, apply_activation, is_channels_last_, need_split_k, output_var_type);
+  MatMulReadFnSource(shader, a, b, &batch_dims, /*transA = */ false, /*transB = */ false);
+  if (need_split_k) {
+    MatMulWriteFnSourceWithSplitK(shader, output, /*is_gemm = */ false, output_var_type);
+  } else {
+    MatMulWriteFnSourceForMatMul(shader, output, bias, apply_activation, is_channels_last_);
+  }
   std::string data_type = "a_element_t";
   // generate the main function
   if (is_vec4_) {
@@ -60,27 +64,30 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
     bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
 
-  // Handle bias with `MatMulWriteFnSource()`.
-  // Here `use_split_k` is false because we just initialize `output` with bias.
-  // `use_split_k` is true only when we do the actual MatMul with Split-K.
-  // Currently we only support bias in vec4 and channels last format for Split-K MatMul.
-  MatMulWriteFnSource(
-      shader, output, bias, /*is_gemm*/ false, /*c_components*/ 4, /*output_components*/ 4, /*c_is_scalar*/ false,
-      /*activation_snippet*/ "", /*is_channels_last*/ true, /*use_split_k*/ false);
+  // Handle bias with `MatMulWriteFnSourceForGemm() or MatMulWriteFnSourceForMatMul()`.
+  if (is_gemm_) {
+    MatMulWriteFnSourceForGemm(shader, output, bias, bias_is_scalar_);
+  } else {
+    // Currently we only support `is_channels_last` to be true and no activation.
+    MatMulWriteFnSourceForMatMul(shader, output, bias, /*activation_snippet*/ "", /*is_channels_last*/ true);
+  }
 
+  shader.MainFunctionBody() << "  let output_components = " << output_components_ << ";\n";
   shader.MainFunctionBody() << R"(
-  let output_components = 4;
   let output_id = i32(global_idx);
 
+  let batch_size = i32(uniforms.batch_size);
   let dim_a_outer = i32(uniforms.dim_a_outer);
   let dim_b_outer = i32(uniforms.dim_b_outer) / output_components;
-  if (output_id >= dim_a_outer * dim_b_outer) {
+  let elements_per_batch = dim_a_outer * dim_b_outer;
+  if (output_id >= batch_size * elements_per_batch) {
     return;
   }
 
-  let output_row = output_id / dim_b_outer;
-  let output_col = output_id % dim_b_outer;
-  let output_batch = 0;
+  let output_batch = output_id / elements_per_batch;
+  let remaining = output_id % elements_per_batch;
+  let output_row = remaining / dim_b_outer;
+  let output_col = remaining % dim_b_outer;
   let output_value = output_value_t();
   mm_write(output_batch, output_row, output_col, output_value);
 )";

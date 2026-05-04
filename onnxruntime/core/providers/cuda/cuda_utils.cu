@@ -81,6 +81,7 @@ template std::unique_ptr<IConstantBuffer<Float8E5M2>> CreateConstantOnes<Float8E
   template void Fill<T>(cudaStream_t stream, T * output, T value, int64_t count);
 
 SPECIALIZED_FILL(int8_t)
+SPECIALIZED_FILL(bool)
 SPECIALIZED_FILL(int16_t)
 SPECIALIZED_FILL(int32_t)
 SPECIALIZED_FILL(int64_t)

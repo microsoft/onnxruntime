@@ -247,6 +247,13 @@ Return Value:
 
 --*/
 {
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && !defined(FORCE_GENERIC_ALGORITHMS)
+    if (GetMlasPlatform().GemmFloatKernel != nullptr) {
+        MlasSgemmCopyPackBRvv(D, B, ldb, CountX, CountY);
+        return;
+    }
+#endif
+
     //
     // Copy data from matrix B into the destination buffer 16 columns at a
     // time.
@@ -751,9 +758,9 @@ Routine Description:
     This routine copies elements from the source matrix to the destination
     packed buffer.
 
-    Columns of 4 elements from the source matrix are unrolled to be physically
+    Columns of 16 elements from the source matrix are unrolled to be physically
     contiguous for better locality inside the SGEMM kernels. Any remaining
-    columns less than 4 elements wide are zero-padded.
+    columns less than 16 elements wide are zero-padded.
 
 Arguments:
 
@@ -774,31 +781,31 @@ Return Value:
 --*/
 {
     //
-    // Copy data from matrix B into the destination buffer 4 columns at a
+    // Copy data from matrix B into the destination buffer 16 columns at a
     // time.
     //
 
-    while (CountX >= 4) {
+    while (CountX >= 16) {
 
         const float* b = B;
         size_t y = CountY;
 
         do {
 
-            std::copy_n(b, 4, D);
+            std::copy_n(b, 16, D);
 
-            D += 4;
+            D += 16;
             b += ldb;
             y--;
 
         } while (y > 0);
 
-        B += 4;
-        CountX -= 4;
+        B += 16;
+        CountX -= 16;
     }
 
     //
-    // Special case the handling of the remaining columns less than 4 elements
+    // Special case the handling of the remaining columns less than 16 elements
     // wide.
     //
 
@@ -808,28 +815,10 @@ Return Value:
 
         do {
 
-            std::fill_n(D, 4, 0.0f);
+            std::fill_n(D, 16, 0.0f);
+            std::copy_n(B, CountX, D);
 
-            float* d = D;
-            const float* b = B;
-
-            if ((CountX & 2) != 0) {
-
-                float t0 = b[0];
-                float t1 = b[1];
-
-                d[0] = t0;
-                d[1] = t1;
-
-                d += 2;
-                b += 2;
-            }
-
-            if ((CountX & 1) != 0) {
-                d[0] = b[0];
-            }
-
-            D += 4;
+            D += 16;
             B += ldb;
             y--;
 
@@ -852,9 +841,9 @@ Routine Description:
     This routine transposes elements from the source matrix to the destination
     packed buffer.
 
-    Columns of 4 elements from the source matrix are unrolled to be physically
+    Columns of 16 elements from the source matrix are unrolled to be physically
     contiguous for better locality inside the SGEMM kernels. Any remaining
-    columns less than 4 elements wide are zero-padded.
+    columns less than 16 elements wide are zero-padded.
 
 Arguments:
 
@@ -874,60 +863,43 @@ Return Value:
 
 --*/
 {
-    auto TransposePackByVector = [&](float *D, const float* B) {
-
-        float b0 = B[0];
-        float b1 = B[1];
-        float b2 = B[2];
-        float b3 = B[3];
-
-        D[0] = b0;
-        D[4] = b1;
-        D[8] = b2;
-        D[12] = b3;
-    };
-
     //
-    // Transpose elements from matrix B into the packed buffer 4 rows at a
+    // Transpose elements from matrix B into the packed buffer 16 rows at a
     // time.
     //
 
-    while (CountY >= 4) {
+    while (CountY >= 16) {
 
         const float* b = B;
         size_t x = CountX;
 
         while (x >= 4) {
 
-            TransposePackByVector(&D[0], &b[ldb * 0]);
-            TransposePackByVector(&D[1], &b[ldb * 1]);
-            TransposePackByVector(&D[2], &b[ldb * 2]);
-            TransposePackByVector(&D[3], &b[ldb * 3]);
+            for (size_t row = 0; row < 16; row++) {
+                D[0 * 16 + row] = b[row * ldb + 0];
+                D[1 * 16 + row] = b[row * ldb + 1];
+                D[2 * 16 + row] = b[row * ldb + 2];
+                D[3 * 16 + row] = b[row * ldb + 3];
+            }
 
-            D += 4 * 4;
+            D += 16 * 4;
             b += 4;
             x -= 4;
         }
 
         while (x > 0) {
 
-            float t0 = b[0];
-            float t1 = b[ldb];
-            float t2 = b[ldb * 2];
-            float t3 = b[ldb * 3];
+            for (size_t row = 0; row < 16; row++) {
+                D[row] = b[row * ldb];
+            }
 
-            D[0] = t0;
-            D[1] = t1;
-            D[2] = t2;
-            D[3] = t3;
-
-            D += 4;
+            D += 16;
             b += 1;
             x--;
         }
 
-        B += ldb * 4;
-        CountY -= 4;
+        B += ldb * 16;
+        CountY -= 16;
     }
 
     //
@@ -944,25 +916,16 @@ Return Value:
 
         while (x >= 4) {
 
-            std::fill_n(D, 16, 0.0f);
+            std::fill_n(D, 16 * 4, 0.0f);
 
-            float* d = D;
-            const float* b = B;
-
-            if ((CountY & 2) != 0) {
-
-                TransposePackByVector(&d[0], &b[ldb * 0]);
-                TransposePackByVector(&d[1], &b[ldb * 1]);
-
-                d += 2;
-                b += ldb * 2;
+            for (size_t row = 0; row < CountY; row++) {
+                D[0 * 16 + row] = B[row * ldb + 0];
+                D[1 * 16 + row] = B[row * ldb + 1];
+                D[2 * 16 + row] = B[row * ldb + 2];
+                D[3 * 16 + row] = B[row * ldb + 3];
             }
 
-            if ((CountY & 1) != 0) {
-                TransposePackByVector(&d[0], &b[ldb * 0]);
-            }
-
-            D += 4 * 4;
+            D += 16 * 4;
             B += 4;
             x -= 4;
         }
@@ -973,28 +936,13 @@ Return Value:
 
         while (x > 0) {
 
-            std::fill_n(D, 4, 0.0f);
+            std::fill_n(D, 16, 0.0f);
 
-            float* d = D;
-            const float* b = B;
-
-            if ((CountY & 2) != 0) {
-
-                float t0 = b[0];
-                float t1 = b[ldb];
-
-                d[0] = t0;
-                d[1] = t1;
-
-                d += 2;
-                b += ldb * 2;
+            for (size_t row = 0; row < CountY; row++) {
+                D[row] = B[row * ldb];
             }
 
-            if ((CountY & 1) != 0) {
-                d[0] = b[0];
-            }
-
-            D += 4;
+            D += 16;
             B += 1;
             x--;
         }
@@ -1063,6 +1011,14 @@ Return Value:
 
 #if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#elif defined(MLAS_TARGET_RISCV64) && !defined(FORCE_GENERIC_ALGORITHMS)
+        if (GetMlasPlatform().GemmFloatKernel != nullptr) {
+            RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+        } else if (ZeroMode) {
+            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        } else {
+            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        }
 #else
         if (ZeroMode) {
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
@@ -1569,14 +1525,16 @@ MlasGemmBatch(
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
     // Override
-    if(GetMlasPlatform().MlasGemmBatchOverride != nullptr &&
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSGemmBatchOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans &&
-        GetMlasPlatform().MlasGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
+        GetMlasPlatform().MlasSGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool)){
         return;
     }
     //
@@ -1646,7 +1604,8 @@ MlasGemmPackBSize(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
-    size_t K
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1660,6 +1619,9 @@ Arguments:
 
     K - Supplies the number of rows of matrix B.
 
+    BackendKernelSelectorConfig - Supplies the backend kernel selector
+                                  configuration options, else nullptr if the
+                                  default configuration should be used.
 Return Value:
 
     Returns the size in bytes for the packed matrix B buffer.
@@ -1670,13 +1632,14 @@ Return Value:
     // Compute the number of bytes required to hold the packed buffer.
     //
     // KleidiAI or other override
-    #if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    if (GetMlasPlatform().MlasGemmPackBSizeOverride != nullptr &&
+    #if defined(USE_KLEIDIAI)
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSGemmPackBSizeOverride != nullptr &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans) {
         size_t bytes_required;
         //TODO pass status by reference to indicate success/fail
-        bytes_required = GetMlasPlatform().MlasGemmPackBSizeOverride(TransA, TransB, N, K);
+        bytes_required = GetMlasPlatform().MlasSGemmPackBSizeOverride(TransA, TransB, N, K);
         if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
             return bytes_required;
         }
@@ -1684,6 +1647,8 @@ Return Value:
     #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
 
 
     const size_t AlignedN =
@@ -1706,7 +1671,8 @@ MlasGemmPackB(
     size_t K,
     const float* B,
     size_t ldb,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1737,15 +1703,17 @@ Return Value:
 
 --*/
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    if (GetMlasPlatform().MlasGemmPackBOverride != nullptr  &&
+#if defined(USE_KLEIDIAI)
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSGemmPackBOverride != nullptr  &&
         // TODO: Remove once KAI supports transposing for A
         TransA != CBLAS_TRANSPOSE::CblasTrans    &&
-        GetMlasPlatform().MlasGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+        GetMlasPlatform().MlasSGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
          return;
     }
 #endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
 
     const size_t AlignedN =

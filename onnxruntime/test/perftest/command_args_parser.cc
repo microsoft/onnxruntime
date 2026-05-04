@@ -21,12 +21,27 @@
 #include "test_configuration.h"
 #include "strings_helper.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4127: conditional expression is constant
+#pragma warning(disable : 4127)
+// C4324: structure was padded due to alignment specifier
+// Usage of alignas causes some internal padding in places.
+#pragma warning(disable : 4324)
+// C4702: unreachable code
+#pragma warning(disable : 4702)
+#endif  // _MSC_VER
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "absl/flags/usage.h"
 #include "absl/flags/usage_config.h"
 #include "absl/flags/reflection.h"
 #include "absl/strings/str_split.h"
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
 
 static const onnxruntime::perftest::PerformanceTestConfig& DefaultPerformanceTestConfig() {
   static onnxruntime::perftest::PerformanceTestConfig default_config{};
@@ -101,6 +116,8 @@ ABSL_FLAG(std::string, i, "",
           "  [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer, used while generating QNN context binary.\n"
           "  [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared memory allocator and use it for inputs and outputs. Requires libcdsprpc.so/dll to be available.\n"
           "  Defaults to '0' (disabled).\n"
+          "  [QNN only] [extended_udma]: Enable HTP extended UDMA mode for better performance on supported hardware, options: \n"
+          "  '0' (disabled), '1' (enabled). Default: '0'. \n"
           "  [Example] [For QNN EP] -e qnn -i \"backend_type|cpu\" \n"
           "\n"
           "  [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
@@ -164,7 +181,15 @@ ABSL_FLAG(bool, q, DefaultPerformanceTestConfig().run_config.do_cuda_copy_in_sep
 ABSL_FLAG(bool, z, DefaultPerformanceTestConfig().run_config.set_denormal_as_zero, "Sets denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.");
 ABSL_FLAG(bool, D, DefaultPerformanceTestConfig().run_config.disable_spinning, "Disables spinning entirely for thread owned by onnxruntime intra-op thread pool.");
 ABSL_FLAG(bool, Z, DefaultPerformanceTestConfig().run_config.disable_spinning_between_run, "Disallows thread from spinning during runs to reduce cpu usage.");
+ABSL_FLAG(int, spin_duration_us, -1, "Sets the spin duration in microseconds for intra-op thread pool. Default (-1) uses iteration-count-based spinning. 0 disables spinning. Positive values enable time-based spinning.");
+ABSL_FLAG(int, spin_backoff_max, 1,
+          "Sets the exponential-backoff cap for the intra-op thread pool spin loop. 1 (default) keeps the "
+          "legacy single-SpinPause behavior. Values >= 2 enable exp-backoff (typical: 4 or 8) to reduce "
+          "CPU/power density during the spin window. Values above 64 are clamped to 64.");
 ABSL_FLAG(bool, n, DefaultPerformanceTestConfig().run_config.exit_after_session_creation, "Allows user to measure session creation time to measure impact of enabling any initialization optimizations.");
+ABSL_FLAG(uint32_t, hold_ms_after_session_creation, DefaultPerformanceTestConfig().run_config.hold_ms_after_session_creation,
+          "When used with -n, keeps the process alive for the specified number of milliseconds after session creation.\n"
+          "Prints 'SESSION_READY' to stdout before sleeping. Useful for multi-process memory measurements.");
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding, "[TensorRT RTX | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
 ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Registers custom ops from onnxruntime-extensions.");
@@ -182,10 +207,13 @@ ABSL_FLAG(std::string, select_ep_devices, "", "Specifies a semicolon-separated l
 ABSL_FLAG(std::string, filter_ep_devices, "",
           "Specifies EP or Device metadata entries as key-value pairs to filter ep devices passed to AppendExecutionProvider_V2.\n"
           "[Usage]: --filter_ep_devices \"<key1>|<value1> <key2>|<value2>\" \n"
-          "Devices that match any of the key-value pair will be appended to the session. --select_ep_devices will take precedence over this option.\n");
+          "Devices that match any of the key-value pair will be appended to the session. --select_ep_devices will take precedence over this option.\n"
+          "[Example] --filter_ep_devices \"ov_device|NPU ov_device|CPU\" \n"
+          "Above example will append npu device first if available, followed by cpu device.");
 ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.compile_ep_context, "Generate an EP context model");
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
+ABSL_FLAG(bool, compile_only, DefaultPerformanceTestConfig().run_config.compile_only, "Only compile EP context model without running it");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
 namespace onnxruntime {
@@ -323,8 +351,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
       } else if (ep == "acl") {
         test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
-      } else if (ep == "armnn") {
-        test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
       } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
       } else if (ep == "xnnpack") {
@@ -350,7 +376,11 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   auto is_option_specified = [&](std::string option) {
     for (int i = 1; i < argc; ++i) {
       auto utf8_arg = ToUTF8String(argv[i]);
-      if (utf8_arg == ("-" + option) || utf8_arg == ("--" + option)) {
+      const auto short_option = "-" + option;
+      const auto long_option = "--" + option;
+      if (utf8_arg == short_option || utf8_arg == long_option ||
+          utf8_arg.rfind(short_option + "=", 0) == 0 ||
+          utf8_arg.rfind(long_option + "=", 0) == 0) {
         return true;
       }
     }
@@ -492,8 +522,22 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
   // -Z
   test_config.run_config.disable_spinning_between_run = absl::GetFlag(FLAGS_Z);
 
+  // --spin_duration_us
+  test_config.run_config.spin_duration_us = absl::GetFlag(FLAGS_spin_duration_us);
+
+  // --spin_backoff_max
+  test_config.run_config.spin_backoff_max = absl::GetFlag(FLAGS_spin_backoff_max);
+  test_config.run_config.spin_backoff_max_set = is_option_specified("spin_backoff_max");
+
   // -n
   test_config.run_config.exit_after_session_creation = absl::GetFlag(FLAGS_n);
+
+  // --hold_ms_after_session_creation
+  test_config.run_config.hold_ms_after_session_creation = absl::GetFlag(FLAGS_hold_ms_after_session_creation);
+  if (test_config.run_config.hold_ms_after_session_creation > 0 &&
+      !test_config.run_config.exit_after_session_creation) {
+    fprintf(stderr, "WARNING: --hold_ms_after_session_creation has no effect without -n.\n");
+  }
 
   // -l
   test_config.model_info.load_via_path = absl::GetFlag(FLAGS_l);
@@ -565,6 +609,9 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // --compile_binary_embed
   test_config.run_config.compile_binary_embed = absl::GetFlag(FLAGS_compile_binary_embed);
+
+  // --compile_only
+  test_config.run_config.compile_only = absl::GetFlag(FLAGS_compile_only);
 
   if (positional.size() == 2) {
     test_config.model_info.model_file_path = ToPathString(positional[1]);

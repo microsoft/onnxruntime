@@ -28,6 +28,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_env_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
   )
@@ -217,7 +218,6 @@ endif()
 
 set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_ACL}
-  ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
@@ -225,7 +225,6 @@ set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
-  ${PROVIDERS_WEBGPU}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
@@ -233,6 +232,10 @@ set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
 
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
+endif()
+
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+  list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()
 
 # This list is a reversed topological ordering of library dependencies.
@@ -283,7 +286,7 @@ if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-if(NOT APPLE AND NOT WIN32)
+if(NOT WIN32)
   if(CMAKE_SYSTEM_NAME MATCHES "AIX")
     set_target_properties(onnxruntime PROPERTIES
       PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
@@ -299,7 +302,7 @@ if(NOT APPLE AND NOT WIN32)
       FOLDER "ONNXRuntime")
   endif()
 else()
-  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
+  # Omit the SOVERSION setting in Windows build
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}

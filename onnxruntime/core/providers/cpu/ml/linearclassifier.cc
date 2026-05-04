@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/ml/linearclassifier.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/gemm.h"
 
 namespace onnxruntime {
@@ -36,6 +37,11 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
 
   using_strings_ = !classlabels_strings_.empty();
   class_count_ = static_cast<ptrdiff_t>(intercepts_.size());
+
+  ORT_ENFORCE(class_count_ > 0, "LinearClassifier: intercepts must not be empty.");
+  ORT_ENFORCE(!coefficients_.empty(), "LinearClassifier: coefficients must not be empty.");
+
+  SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts
@@ -66,7 +72,7 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
                                         1.f, input_data, coefficients.data(), 1.f,
                                         intercepts.data(), &intercepts_shape,
                                         scores_output_data.data(),
-                                        threadpool);
+                                        threadpool, &mlas_backend_kernel_selector_config_);
 
   float* score = scores_output_data.data();
   float* end_scores = score + (num_batches * num_targets);  // we haven't added extra targets yet so iterate the original scores
@@ -144,6 +150,16 @@ Status LinearClassifier::Compute(OpKernelContext* ctx) const {
   ptrdiff_t num_features = input_shape.NumDimensions() == 1 ? narrow<ptrdiff_t>(
                                                                   input_shape[0])
                                                             : narrow<ptrdiff_t>(input_shape[1]);
+  size_t expected_coefficients_size = 0;
+  if (!SafeMultiply(static_cast<size_t>(class_count_), static_cast<size_t>(num_features),
+                    expected_coefficients_size)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "LinearClassifier: class_count (", class_count_,
+                           ") * num_features (", num_features, ") overflows size_t");
+  }
+  ORT_RETURN_IF_NOT(coefficients_.size() >= expected_coefficients_size,
+                    "LinearClassifier: coefficients size (", coefficients_.size(),
+                    ") is less than class_count (", class_count_, ") * num_features (", num_features, ").");
 
   Tensor* Y = ctx->Output(0, {num_batches});
 

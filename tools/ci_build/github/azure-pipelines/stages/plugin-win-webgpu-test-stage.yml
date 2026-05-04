@@ -1,0 +1,59 @@
+parameters:
+- name: arch
+  type: string
+  values:
+  - x64
+  - arm64
+
+stages:
+- stage: Win_plugin_webgpu_${{ parameters.arch }}_Test
+  dependsOn: []
+  jobs:
+  - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Test
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win2022-VS2022-webgpu-A10
+      os: windows
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: ${{ parameters.arch }}
+
+    # Download the Python wheel produced by the packaging pipeline run that
+    # triggered this pipeline (or that was selected at queue time).
+    - download: build
+      artifact: webgpu_plugin_python_win_${{ parameters.arch }}
+      displayName: 'Download Python wheel'
+
+    - task: PowerShell@2
+      displayName: 'Install and test Python package'
+      env:
+        ORT_TEST_VERBOSE: $(System.Debug)
+      inputs:
+        targetType: inline
+        pwsh: true
+        script: |
+          $ErrorActionPreference = 'Stop'
+
+          echo "creating test_venv"
+          python -m venv "$(Build.BinariesDirectory)\test_venv"
+
+          echo "activating test_venv"
+          & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
+
+          echo "installing onnxruntime onnx numpy"
+          python -m pip install onnxruntime onnx numpy
+
+          $wheelDir = "$(Pipeline.Workspace)\build\webgpu_plugin_python_win_${{ parameters.arch }}"
+          $wheel = (Get-ChildItem "$wheelDir\onnxruntime_ep_webgpu-*.whl")[0]
+          echo "installing ${wheel}"
+          python -m pip install $wheel.FullName
+
+          echo "running test_webgpu_plugin_ep.py"
+          python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"

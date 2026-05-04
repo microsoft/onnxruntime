@@ -13,7 +13,7 @@
  * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 2048
+ * The maximum length of the Config Value is 8192
  */
 
 // Key for disable PrePacking,
@@ -46,6 +46,19 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // "1": disable. ORT doesn't do fusion logic for QDQ format.
 // Its default value is "0" unless the DirectML execution provider is registered, in which case it defaults to "1".
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
+
+// This controls whether to prevent constant folding from folding DequantizeLinear nodes:
+// "0": (default) DequantizeLinear constant folding is determined solely by session.disable_quant_qdq.
+// "1": DequantizeLinear nodes are never individually constant folded.
+// When session.disable_quant_qdq is "0" (default), DequantizeLinear nodes are already protected from
+// constant folding to preserve QDQ node units for downstream QDQ fusion optimizers.
+// When session.disable_quant_qdq is "1", then DequantizeLinear nodes are normally allowed to be
+// constant folded, but setting this option to "1" still preserves DequantizeLinear nodes.
+// This is useful for execution providers like WebNN that disable QDQ fusion, but which
+// still need the original DQ/Q nodes to be preserved for their own quantization handling.
+
+static const char* const kOrtSessionOptionsDisableQDQConstantFolding =
+    "session.disable_qdq_constant_folding";
 
 // It controls whether to enable Double QDQ remover and Identical Children Consolidation
 // "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
@@ -154,6 +167,39 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
 
+// Configure the duration in microseconds that threads spin waiting for work before blocking.
+// This setting is subordinate to the allow_spinning flags (session.intra_op.allow_spinning /
+// session.inter_op.allow_spinning). When allow_spinning is "0", spinning is disabled and
+// the spin duration is forced to 0 regardless of this setting.
+// By default (when this option is not set), the thread pool uses an iteration-count-based spin loop
+// whose wall-clock duration varies by CPU architecture and pause instruction latency. This provides
+// the best throughput but may result in high CPU utilization.
+// Setting a positive value switches to calibrated iteration-based spinning that targets
+// the specified duration. The actual spin time is a best-effort approximation based on a
+// one-time measurement of the pause instruction latency; it may vary with CPU frequency
+// changes. Recommended for power-sensitive or client/on-device workloads.
+// Common values: 500-2000 (0.5-2ms).
+// Setting to "0" with spinning enabled effectively disables spinning (equivalent to allow_spinning = false).
+static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
+static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
+
+// Configure the maximum exponential-backoff cap for the thread pool spin loop.
+// When > 1, each idle spin iteration emits a growing number of SpinPause() calls
+// (1, 2, 4, ..., up to this cap), which reduces the density of pause instructions
+// during the spin window and lowers CPU/power usage compared to emitting one
+// SpinPause() per iteration. The total wall-clock spin duration targeted by
+// session.{intra,inter}_op.spin_duration_us is preserved by scaling the iteration
+// count against the backoff cap.
+//   "1" (default) = no backoff, one SpinPause() per iteration (original behavior).
+//   ">= 2"        = enable exponential backoff capped at this value. Typical
+//                   values: 4 (hybrid/E-core friendly) or 8 (desktop/server).
+// Values above 64 are clamped to 64.
+// This setting is subordinate to allow_spinning and spin_duration_us: when
+// spinning is disabled or spin_duration_us forces zero iterations, this value
+// has no effect.
+static const char* const kOrtSessionOptionsConfigIntraOpSpinBackoffMax = "session.intra_op.spin_backoff_max";
+static const char* const kOrtSessionOptionsConfigInterOpSpinBackoffMax = "session.inter_op.spin_backoff_max";
+
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,
 // By default we will copy the model bytes at the time of session creation to ensure the model bytes
@@ -165,12 +211,22 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 /// <summary>
 /// Key for using the ORT format model flatbuffer bytes directly for initializers.
 /// This avoids copying the bytes and reduces peak memory usage during model loading and initialization.
-/// Requires `session.use_ort_model_bytes_directly` to be true.
+/// Requires `session.use_ort_model_bytes_directly` or `session.use_memory_mapped_ort_model` to be true.
 /// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire
 /// duration of the InferenceSession.
 /// </summary>
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =
     "session.use_ort_model_bytes_for_initializers";
+
+/// <summary>
+/// Key for using memory-mapped I/O to load ORT format model files.
+/// When set to "1" and the session is created from a file path, ORT will use memory-mapped I/O
+/// to load the .ort model file instead of reading it into a heap-allocated buffer.
+/// Usage with session.use_ort_model_bytes_for_initializers will ensure Tensors point directly to the mapped bytes,
+/// although the mapping must remain valid and model weights will be immutable.
+/// The model load will fail if the mapping fails; fallbacks should be caller-handled.
+/// </summary>
+static const char* const kOrtSessionOptionsConfigUseMemoryMappedOrtModel = "session.use_memory_mapped_ort_model";
 
 // This should only be specified when exporting an ORT format model for use on a different platform.
 // If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
@@ -325,12 +381,32 @@ static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "sessi
 /// This is a composite CSV setting formatted as "memory limit in kb,file name for collected stats"
 /// "limit > 0": enables Capacity Aware Partitioning for Cuda EP. `limit` is optional and when absent
 /// the provider may attempt to figure out the memory available automatically.
+/// The setting with no pre-recorded stats is expected to look like: "limit > 0,".
+/// In this case, the EP will calculate memory using the initializers referenced by the node.
+///   This enables an ad-hoc and flexible scenarios with no pre-recorded stats, but may be less accurate.
 /// The setting with no limit is expected to look like: ",file name for collected stats"
-///  The EP will place nodes on device "file name" :
+/// Finally a setting with both limit and pre-recorded stats absent can contain a single comma: ",".
+///  The EP will attempt to place nodes on device (currently only CUDA is supported) :
 /// this file is expected to be found at the same folder with the model. The file contains
 /// pre-recorded stats collected when running with kOrtSessionOptionsCollectNodeMemoryStatsToFile enforce (see above)
 static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
     "session.resource_cuda_partitioning_settings";
+
+/// <summary>
+/// This is a setting that contains string annotations or annotation prefixes to be matched
+/// against individual nodes metadata entry 'layer_ann' to guide layer assignment during partitioning.
+/// The value is a semicolon separated list of strings or string prefixes per device.
+/// Format: device1(annotation1, annotation2, ...); device2(annotation1, =annotation3, ...);...
+/// Where:
+/// - device1, device2, ... are the recognized device names to be matched against EPs configured in
+///   the given session.
+/// - annotation1, annotation2, ... are annotation prefixes to be matched against node annotations. Any
+///   node annotation that starts with one of these prefixes will be matched.
+/// - =annotation3 indicates an exact match for annotation3. Only node annotations that are exactly
+///   equal to 'annotation3' will be matched.
+/// TODO: add a list of recognized devices here.
+/// </summary>
+static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.layer_assignment_settings";
 
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
@@ -374,10 +450,34 @@ static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFil
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
 
+// Use LUT (Lookup Table) based GEMM for quantized models when available.
+// Option values:
+// - "0": Do not use LUT based GEMM. [DEFAULT]
+// - "1": Use LUT based GEMM when available.
+static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
+
+// Use KleidiAI kernels in MLAS if available.
+// Option values:
+// - "0": Use KleidiAI kernels when available. [DEFAULT]
+// - "1": Disable KleidiAI kernels even if available.
+static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// Block size used when converting per-tensor or per-axis DQ + MatMul to MatMulNBits.
+// Only applies to DQ nodes without an existing block_size attribute (i.e., per-tensor or per-axis quantization).
+// Positive value: explicit block_size (must be power-of-2 and >= 16, e.g., 16, 32, 64, 128).
+// "0" or not provided: use default block_size of 32.
+// "-1": heuristic - largest power-of-2 <= min(K, 256) that minimizes padding.
+static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qdq_matmulnbits_block_size";
+
+// Enable the DQ->MatMulNBits fusion graph transformer.
+// "0": disabled (default). "1": enabled.
+// This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
+static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
 
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
 // Meant to be used with SetEpDynamicOptions
@@ -415,3 +515,25 @@ static const char* const kOrtSessionOptionsFailOnSuboptimalCompiledModel =
 // "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver",
 // "sustained_high_performance". Default to "default".
 static const char* const kOrtEpDynamicOptionsQnnHtpPerformanceMode = "ep.dynamic.qnn_htp_performance_mode";
+
+// Enables the session to record information about the subgraphs/nodes assigned to execution providers.
+// When enabled, an application may call Session_GetEpGraphAssignmentInfo() to retrieve the information.
+//
+// Option values:
+// - "0": Recording of EP graph assignment information is disabled. [DEFAULT]
+// - "1": Recording of EP graph assignment information is enabled.
+static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "session.record_ep_graph_assignment_info";
+
+// An application enables this option to request that EPs create compiled models (i.e., EPContext models) with EPContext
+// nodes that do not store model weights internally. Instead, the weights should be provided by ONNX Runtime as
+// explicit inputs to the EPContext nodes.
+//
+// This option is ignored by an EP if "ep.context_enable" is not set to "1".
+//
+// If the weights are originally stored in an external file, this allows multiple models to share the same
+// external weights file.
+//
+// Option values:
+// - "0": disable. (default)
+// - "1": enable.
+static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";

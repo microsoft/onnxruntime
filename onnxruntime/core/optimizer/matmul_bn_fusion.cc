@@ -10,8 +10,8 @@ namespace onnxruntime {
 
 namespace {
 const std::vector<std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>>> ignorable_nodes{
-    {"Reshape", {1, 5, 13, 14, 19}},
-    {"Transpose", {1, 13}}};
+    {"Reshape", {1, 5, 13, 14, 19, 21, 23, 24, 25}},
+    {"Transpose", {1, 13, 21, 23, 24, 25}}};
 const std::pair<std::string, InlinedVector<ONNX_NAMESPACE::OperatorSetVersion>> dest = {"BatchNormalization", {1, 6, 7, 9, 14, 15}};
 }  // namespace
 
@@ -227,6 +227,7 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
       "Generated from Matmul BatchNormalization fusion",
       {matmul_node.MutableInputDefs()[0], &new_gemm_b_node_arg, &new_gemm_bias_node_arg},
       matmul_node.MutableOutputDefs(),
+      matmul_node,
       nullptr,
       kOnnxDomain);
 

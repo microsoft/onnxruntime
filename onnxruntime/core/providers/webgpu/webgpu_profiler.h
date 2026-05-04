@@ -15,19 +15,24 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
   WebGpuProfiler(WebGpuContext& context);
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuProfiler);
   ~WebGpuProfiler() {}
-  bool StartProfiling(TimePoint) override;
+  Status StartProfiling(TimePoint) override;
   void EndProfiling(TimePoint, onnxruntime::profiling::Events&) override;
   void Start(uint64_t) override {
   }
-  void Stop(uint64_t) override {
+  void Stop(uint64_t, const profiling::EventRecord&) override {
   }
   inline bool Enabled() const { return enabled_; }
-  inline onnxruntime::profiling::Events& Events() { return events_; }
+  // GPU events collected during session-level profiling.
+  profiling::Events& GpuEvents() {
+    is_session_level_ = true;
+    return gpu_events_;
+  }
 
  private:
   WebGpuContext& context_;
   bool enabled_{false};
-  onnxruntime::profiling::Events events_;  // cached GPU events
+  bool is_session_level_{false};
+  profiling::Events gpu_events_;
 };
 
 }  // namespace webgpu

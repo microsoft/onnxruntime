@@ -15,6 +15,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -25,6 +26,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#ifdef USE_WEBGPU
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -197,10 +202,10 @@ void RunTest2Bits(const TestOptions2Bits& opts) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if constexpr (std::is_same<T1, float>::value) {
-    execution_providers.emplace_back(DefaultCpuExecutionProvider());
 #ifdef USE_WEBGPU
     execution_providers.push_back(DefaultWebGpuExecutionProvider());
 #endif
+    execution_providers.emplace_back(DefaultCpuExecutionProvider());
     test.ConfigEps(std::move(execution_providers));
     test.RunWithConfig();
   }
@@ -247,46 +252,349 @@ void TestMatMul2BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
 }  // namespace
 
-template <int BatchSize, int MVal, int NVal, int KVal>
-struct TypedTestParams {
-  static constexpr int batch_size = BatchSize;
-  static constexpr int M = MVal;
-  static constexpr int N = NVal;
-  static constexpr int K = KVal;
-};
+template <typename AType>
+void TestMatMul2BitsLutGemm(int64_t M, int64_t N, int64_t K, int64_t block_size,
+                            bool has_zero_point, float abs_error = 0.15f, float rel_error = 0.05f) {
+  if (K % 32 != 0 || N % 128 != 0 || block_size % 32 != 0) {
+    GTEST_SKIP() << "LUT GEMM requires K multiple of 32, N multiple of 128, block_size multiple of 32";
+  }
 
-using TestTypes = ::testing::Types<
-    TypedTestParams<1, 1, 16, 16>,
-    TypedTestParams<1, 2, 16, 16>,
-    TypedTestParams<1, 32, 16, 16>,
-    TypedTestParams<1, 32, 32, 16>,
-    TypedTestParams<1, 32, 16, 128>,
-    TypedTestParams<1, 288, 16, 16>,
-    TypedTestParams<4, 1, 16, 16>,
-    TypedTestParams<4, 2, 16, 16>,
-    TypedTestParams<4, 32, 16, 16>,
-    TypedTestParams<4, 32, 32, 16>,
-    TypedTestParams<4, 32, 16, 128>,
-    TypedTestParams<4, 288, 16, 16>>;
+  if (!MlasIsLutGemmAvailable(static_cast<size_t>(N), static_cast<size_t>(K), 2, static_cast<size_t>(block_size))) {
+    GTEST_SKIP() << "LUT GEMM not available on this platform";
+  }
 
+  RandomValueGenerator random{1234};
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), /* columnwise */ true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), /* columnwise */ true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+  std::vector<uint8_t> zp(q_zp_size_in_bytes);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(),
+      scales.data(),
+      has_zero_point ? zp.data() : nullptr,
+      input1_fp32_vals.data(),
+      static_cast<int32_t>(block_size),
+      true,
+      static_cast<int32_t>(K),
+      static_cast<int32_t>(N),
+      static_cast<int32_t>(N),
+      tp);
+
+  // Dequantize for reference computation
+  MlasDequantizeBlockwise<float, QBits>(
+      input1_fp32_vals.data(),
+      input1_vals.data(),
+      scales.data(),
+      has_zero_point ? zp.data() : nullptr,
+      static_cast<int32_t>(block_size),
+      true,
+      static_cast<int32_t>(K),
+      static_cast<int32_t>(N),
+      tp);
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  if constexpr (std::is_same<AType, float>::value) {
+    test.AddInput<AType>("A", {M, K}, input0_fp32_vals, false);
+  }
+
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+
+  if constexpr (std::is_same<AType, float>::value) {
+    test.AddInput<AType>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, scales, true);
+  }
+
+  if (has_zero_point) {
+    test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
+  } else {
+    test.AddOptionalInputEdge<uint8_t>();
+  }
+
+  test.AddOptionalInputEdge<int32_t>();
+  test.AddOptionalInputEdge<AType>();
+
+  if constexpr (std::is_same<AType, float>::value) {
+    test.AddOutput<AType>("Y", {M, N}, expected_vals);
+  }
+
+  test.SetOutputAbsErr("Y", abs_error);
+  test.SetOutputRelErr("Y", rel_error);
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+
+  test.Config(so)
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_128x128) {
+  TestMatMul2BitsLutGemm<float>(1, 128, 128, 32, false);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_128x128) {
+  TestMatMul2BitsLutGemm<float>(1, 128, 128, 32, true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_256x256) {
+  TestMatMul2BitsLutGemm<float>(1, 256, 256, 32, false);
+}
+
+// This test was previously disabled due to accuracy issues related to non-deterministic
+// gather operations. It is now re-enabled after replacing gather with deterministic
+// load+shuffle operations to improve determinism and stability.
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_256x256) {
+  TestMatMul2BitsLutGemm<float>(1, 256, 256, 32, true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_256x256_BlkLen64) {
+  TestMatMul2BitsLutGemm<float>(1, 256, 256, 64, false);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_256x256_BlkLen64) {
+  TestMatMul2BitsLutGemm<float>(1, 256, 256, 64, true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_128x256_BlkLen128) {
+  TestMatMul2BitsLutGemm<float>(1, 128, 256, 128, false);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_128x256_BlkLen128) {
+  TestMatMul2BitsLutGemm<float>(1, 128, 256, 128, true);
+}
+
+// Batch tests (M > 1)
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_Batch32_128x128) {
+  TestMatMul2BitsLutGemm<float>(32, 128, 128, 32, false);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_Batch32_256x256) {
+  TestMatMul2BitsLutGemm<float>(32, 256, 256, 32, true);
+}
+
+TEST(MatMul2Bits, Float32_2b_Accuracy0) {
+  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 1, 2, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 32, 16, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 16, 128, 0>();
+  TestMatMul2BitsTyped<float, 1, 288, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 2, 1, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 2, 2, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 4, 1, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 4, 2, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 32, 16, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 16, 128, 0>();
+  TestMatMul2BitsTyped<float, 4, 288, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 100, 1, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 100, 2, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 100, 32, 16, 16, 0>();
+  TestMatMul2BitsTyped<float, 100, 32, 32, 16, 0>();
+  TestMatMul2BitsTyped<float, 100, 32, 16, 128, 0>();
+  TestMatMul2BitsTyped<float, 100, 288, 16, 16, 0>();
+}
+
+TEST(MatMul2Bits, Float32_2b_Accuracy4) {
+  TestMatMul2BitsTyped<float, 1, 1, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 1, 2, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 32, 16, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 16, 128, 4>();
+  TestMatMul2BitsTyped<float, 1, 288, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 2, 1, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 2, 2, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 4, 1, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 4, 2, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 32, 16, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 16, 128, 4>();
+  TestMatMul2BitsTyped<float, 4, 288, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 100, 1, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 100, 2, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 100, 32, 16, 16, 4>();
+  TestMatMul2BitsTyped<float, 100, 32, 32, 16, 4>();
+  TestMatMul2BitsTyped<float, 100, 32, 16, 128, 4>();
+  TestMatMul2BitsTyped<float, 100, 288, 16, 16, 4>();
+}
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+
+namespace {
+
+// Runs a 2-bit MatMulNBits test on WebGPU EP with CPU as baseline.
+// The test quantizes random weights to 2 bits, dequantizes to compute
+// expected output via matmul on CPU, then compares WebGPU output.
 template <typename T>
-class MatMulNBits : public ::testing::Test {
- public:
-  static constexpr int batch_size = T::batch_size;
-  static constexpr int M = T::M;
-  static constexpr int N = T::N;
-  static constexpr int K = T::K;
-};
+void RunWebGpu2BitsTest(int64_t M, int64_t N, int64_t K, int64_t block_size,
+                        bool has_zero_point, float abs_error = 0.1f, float rel_error = 0.02f) {
+  TestOptions2Bits opts{};
+  opts.M = M;
+  opts.N = N;
+  opts.K = K;
+  opts.block_size = block_size;
+  opts.has_zero_point = has_zero_point;
+  opts.output_abs_error = abs_error;
+  opts.output_rel_error = rel_error;
 
-TYPED_TEST_SUITE(MatMulNBits, TestTypes);
-
-TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy0) {
-  TestMatMul2BitsTyped<float, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 0>();
+  RunTest2Bits<T>(opts);
 }
 
-TYPED_TEST(MatMulNBits, Float32_2Bits_Accuracy4) {
-  TestMatMul2BitsTyped<float, TestFixture::batch_size, TestFixture::M, TestFixture::N, TestFixture::K, 4>();
+}  // namespace
+
+// WebGPU 2-bit tests: symmetric (no zero points)
+TEST(MatMul2BitsWebGpu, Float32_Symmetric_Small) {
+  RunWebGpu2BitsTest<float>(1, 32, 32, 16, false);
+  RunWebGpu2BitsTest<float>(1, 32, 32, 32, false);
+  RunWebGpu2BitsTest<float>(1, 32, 16, 16, false);
 }
+
+TEST(MatMul2BitsWebGpu, Float32_Symmetric_Medium) {
+  RunWebGpu2BitsTest<float>(1, 288, 16, 16, false);
+  RunWebGpu2BitsTest<float>(4, 32, 32, 16, false);
+  RunWebGpu2BitsTest<float>(4, 288, 16, 16, false);
+  RunWebGpu2BitsTest<float>(100, 32, 32, 16, false);
+  RunWebGpu2BitsTest<float>(100, 288, 16, 16, false);
+}
+
+// WebGPU 2-bit tests: asymmetric (with zero points) — the primary accuracy concern
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_Small) {
+  RunWebGpu2BitsTest<float>(1, 1, 16, 16, true);
+  RunWebGpu2BitsTest<float>(1, 2, 16, 16, true);
+  RunWebGpu2BitsTest<float>(1, 32, 16, 16, true);
+  RunWebGpu2BitsTest<float>(1, 32, 32, 16, true);
+  RunWebGpu2BitsTest<float>(1, 32, 32, 32, true);
+}
+
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_Medium) {
+  RunWebGpu2BitsTest<float>(1, 288, 16, 16, true);
+  RunWebGpu2BitsTest<float>(4, 32, 32, 16, true);
+  RunWebGpu2BitsTest<float>(4, 288, 16, 16, true);
+  RunWebGpu2BitsTest<float>(100, 32, 32, 16, true);
+  RunWebGpu2BitsTest<float>(100, 288, 16, 16, true);
+}
+
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_BlockSize32) {
+  // blockSize=32 triggers the Intel Gen12 optimized path on matching hardware.
+  RunWebGpu2BitsTest<float>(1, 32, 32, 32, true);
+  RunWebGpu2BitsTest<float>(4, 32, 32, 32, true);
+  RunWebGpu2BitsTest<float>(100, 32, 32, 32, true);
+}
+
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_BlockSize128) {
+  RunWebGpu2BitsTest<float>(1, 32, 16, 128, true);
+  RunWebGpu2BitsTest<float>(4, 32, 16, 128, true);
+  RunWebGpu2BitsTest<float>(100, 32, 16, 128, true);
+}
+
+// BlockSize=64 tests — covers nBlocksPerCol not a multiple of 4 (padding edge case).
+// These match configurations found in real 2-bit quantized transformer models.
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_BlockSize64) {
+  RunWebGpu2BitsTest<float>(1, 32, 64, 64, true);
+  RunWebGpu2BitsTest<float>(1, 32, 128, 64, true);
+  RunWebGpu2BitsTest<float>(1, 192, 384, 64, true, 0.3f, 0.05f);
+  RunWebGpu2BitsTest<float>(1, 384, 1024, 64, true, 0.5f, 0.05f);
+}
+
+TEST(MatMul2BitsWebGpu, Float32_Symmetric_BlockSize64) {
+  RunWebGpu2BitsTest<float>(1, 32, 64, 64, false);
+  RunWebGpu2BitsTest<float>(1, 32, 128, 64, false);
+  RunWebGpu2BitsTest<float>(1, 192, 384, 64, false, 0.3f, 0.05f);
+}
+
+// Larger K tests — exercises multi-word (multiple u32) extraction per block,
+// verifying the Q2 nibble-spread and A-offset tracking across passes.
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_LargerK) {
+  RunWebGpu2BitsTest<float>(1, 32, 64, 32, true);
+  RunWebGpu2BitsTest<float>(1, 32, 128, 32, true);
+  RunWebGpu2BitsTest<float>(1, 32, 256, 32, true, 0.3f, 0.05f);
+}
+
+// DP4A path tests (accuracy_level=4) — exercises the 1024-entry LUT / dequantization
+// path for 2-bit weights with zero_points.
+// DP4A constraints: accuracy_level==4, block_size%32==0, K%128==0, N%16==0.
+// Skipped when the adapter lacks Subgroups support or is Apple (Metal),
+// because the DP4A kernel would silently fall back to the default path.
+TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
+  // Ensure the WebGPU context is initialized so we can query adapter capabilities.
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!contrib::webgpu::HasDP4ADeviceSupport(ep->GetDeviceId())) {
+    GTEST_SKIP() << "DP4A requires Subgroups support on a non-Apple adapter";
+  }
+
+  TestOptions2Bits opts{};
+  opts.accuracy_level = 4;
+  opts.has_zero_point = true;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+
+  // M=1, N=16, K=128, block_size=32 — minimal DP4A-eligible shape
+  opts.M = 1;
+  opts.N = 16;
+  opts.K = 128;
+  opts.block_size = 32;
+  RunTest2Bits<float>(opts);
+
+  // M=1, N=32, K=256, block_size=32 — larger K
+  opts.M = 1;
+  opts.N = 32;
+  opts.K = 256;
+  opts.block_size = 32;
+  opts.output_abs_error = 0.3f;
+  opts.output_rel_error = 0.05f;
+  RunTest2Bits<float>(opts);
+
+  // M=4 (rows), N=32, K=128, block_size=32
+  opts.M = 4;
+  opts.N = 32;
+  opts.K = 128;
+  opts.block_size = 32;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  RunTest2Bits<float>(opts);
+
+  // M=1, N=16, K=128, block_size=128 — full-block
+  opts.M = 1;
+  opts.N = 16;
+  opts.K = 128;
+  opts.block_size = 128;
+  RunTest2Bits<float>(opts);
+}
+
+#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 }  // namespace test
 }  // namespace onnxruntime

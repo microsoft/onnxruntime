@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -17,8 +18,11 @@ class CDist final : public OpKernel {
   enum class Mode { EUCLIDEAN,
                     SQEUCLIDEAN } mode_;
 
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
  public:
   CDist(const OpKernelInfo& info) : OpKernel(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
     std::string metric;
     ORT_ENFORCE(info.GetAttr<std::string>("metric", &metric).IsOK());
     if (metric.compare("sqeuclidean") == 0)

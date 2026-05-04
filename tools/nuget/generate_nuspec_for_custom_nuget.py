@@ -4,6 +4,7 @@
 import argparse
 import glob
 import os
+import re
 import shutil
 
 from generate_nuspec_for_native_nuget import generate_metadata
@@ -14,19 +15,26 @@ def generate_files(lines, args):
     platform_map = {
         "win-arm64": args.win_arm64,
         "win-x64": args.win_x64,
-        "osx-x64": args.osx_x64,
         "osx-arm64": args.osx_arm64,
     }
 
-    avoid_keywords = {"pdb"}
+    avoid_keywords = {"pdb", "onnxruntime_providers_cuda"}
+    # On macOS the build output contains both libonnxruntime.dylib and a versioned
+    # duplicate like libonnxruntime.1.version_minor.version_patch.dylib (identical contents).
+    # Skip the versioned dylib to avoid bloating the NuGet package with duplicate binaries.
+    versioned_dylib_re = re.compile(r"^lib.+\.\d+(\.\d+)*\.dylib$")
     processed_includes = set()
     for platform, platform_dir in platform_map.items():
         for file in glob.glob(os.path.join(platform_dir, "lib", "*")):
             if not os.path.isfile(file):
                 continue
-            if any(keyword in file for keyword in avoid_keywords):
-                continue
+
             file_name = os.path.basename(file)
+            if any(keyword in file_name for keyword in avoid_keywords):
+                continue
+
+            if platform.startswith("osx-") and versioned_dylib_re.match(file_name):
+                continue
 
             files_list.append(f'<file src="{file}" target="runtimes/{platform}/native/{file_name}" />')
 
@@ -50,9 +58,6 @@ def generate_files(lines, args):
     files_list.append(f'<file src="{os.path.join(args.root_dir, "docs", "Privacy.md")}" target="Privacy.md" />')
     files_list.append(
         f'<file src="{os.path.join(args.root_dir, "ORT_icon_for_light_bg.png")}" target="ORT_icon_for_light_bg.png" />'
-    )
-    files_list.append(
-        f'<file src="{os.path.join(args.win_arm64, "Qualcomm_LICENSE.pdf")}" target="Qualcomm_LICENSE.pdf" />'
     )
 
     source_props = os.path.join(
@@ -118,7 +123,6 @@ def parse_arguments():
     parser.add_argument("--win_arm64", required=True, help="Ort win-arm64 directory")
     parser.add_argument("--win_x64", required=True, help="Ort win-x64 directory")
     parser.add_argument("--osx_arm64", required=True, help="Ort osx-arm64 directory")
-    parser.add_argument("--osx_x64", required=True, help="Ort osx-x64 directory")
     parser.add_argument("--package_version", required=True, help="Version of the package")
     parser.add_argument("--package_name", required=True, help="Name of the package")
 

@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -12,7 +13,9 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/model_metadef_id_generator.h"
 #include "core/providers/providers.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
@@ -108,9 +111,13 @@ class PluginExecutionProvider : public IExecutionProvider {
                                                    std::string_view node_op_type,
                                                    DataLayout target_data_layout) const override;
 
+  bool ConcurrentRunSupported() const override;
+
   Status OnRunStart(const RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
+
+  Status Sync() const override;
 
   Status SetEpDynamicOptions(gsl::span<const char* const> keys,
                              gsl::span<const char* const> values) override;
@@ -131,7 +138,20 @@ class PluginExecutionProvider : public IExecutionProvider {
   Status ValidateCompiledModelCompatibilityInfo(const std::string& compatibility_info,
                                                 OrtCompiledModelCompatibility& model_compatibility) const override;
 
+  const OrtEp* GetOrtEp() const override;
+
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
+  ProviderOptions GetProviderOptions() const override;
+
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured(int graph_annotation_id) const override;
+  common::Status ReplayGraph(int graph_annotation_id) override;
+  OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override;
+
  private:
+  const logging::Logger& GetEpLoggerOrDefault() const;
+
   struct FusedNodeState {
     FusedNodeState() = default;
     FusedNodeState(FusedNodeState&& other) = default;
@@ -148,6 +168,14 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
   bool generate_ep_ctx_model_ = false;
 
+  // Provider options extracted from session-level config (ep.<ep_name>.* keys, excluding arena.*).
+  // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.
+  ProviderOptions provider_options_;
+
+  // Arena options extracted from session-level config (ep.<ep_name>.arena.* keys).
+  // Built once at construction; passed directly to ep_factory_.CreateAllocator.
+  std::optional<OrtKeyValuePairs> session_arena_options_;
+
   std::vector<OrtNodeComputeInfo*> api_node_compute_infos_;
 
   // Fused nodes have to be valid throughout model inference because they may be cached in NodeComputeInfo instances.
@@ -155,6 +183,13 @@ class PluginExecutionProvider : public IExecutionProvider {
   // which are then passed to the underlying OrtEp instance. This class stores this "fused node state"
   // so that it is not destroyed until the EP itself is destroyed.
   std::vector<FusedNodeState> fused_node_states_;
+
+  // Generates a model's hash and a monotonically increasing ID that is unique per model hash. The
+  // ID is used in the MetaDef name for a fused node containing a compiling EP's supported subgraph.
+  //
+  // The same generator instance must be used across calls to GetCapability() to ensure that fused nodes that live in
+  // different GraphViews (e.g., different branches of an If node) obtain a unique ID.
+  ModelMetadefIdGenerator metadef_id_generator_;
 
   // Stores the EPContext Nodes created from the OrtNode instances returned by the underlying plugin EP.
   // Need to store both the Node and NodeArg instances so that they are available when the GraphPartitioner
