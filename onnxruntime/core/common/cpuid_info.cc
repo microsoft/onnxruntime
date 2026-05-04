@@ -207,6 +207,10 @@ void CPUIDInfo::ArmLinuxInit() {
         continue;
       }
       auto coreid = proc->linux_id;
+      if (coreid >= core_uarchs_.size()) {
+        continue;
+      }
+
       auto uarch = corep->uarch;
       core_uarchs_[coreid] = uarch;
       if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
