@@ -10,6 +10,34 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+
+extern "C" {
+
+size_t MLASCALL
+MlasGemmU8X8KernelUmmlaZero(const uint8_t* A,
+                            const uint8_t* B,
+                            int32_t* C,
+                            size_t PackedCountK,
+                            size_t CountM,
+                            size_t CountN,
+                            size_t ldc,
+                            const int32_t* RowSumVector,
+                            const int32_t* ColumnSumVector,
+                            const int32_t* ZeroPointB);
+
+size_t MLASCALL
+MlasGemmU8X8KernelUmmlaAdd(const uint8_t* A,
+                           const uint8_t* B,
+                           int32_t* C,
+                           size_t PackedCountK,
+                           size_t CountM,
+                           size_t CountN,
+                           size_t ldc,
+                           const int32_t* RowSumVector,
+                           const int32_t* ColumnSumVector,
+                           const int32_t* ZeroPointB);
+}
+
 struct MLAS_GEMM_U8X8_KERNEL_UMMLA {
     using PackedAType = uint8_t;
     using PackedBType = uint8_t;
@@ -62,7 +90,6 @@ size_t Process1RowTest256(
         // svint32_t acc00 = svdup_s32(0); // for columns 0–3
         // svint32_t acc01 = svdup_s32(0); // for columns 4–7
 
-        // can this give seg faults when #Columns are not checked? 
         svint32_t zpb_0_3, col_0_3, zpb_4_7, col_4_7;
         svint64_t zpb64_0_3, col64_0_3, zpb64_4_7, col64_4_7;
         // --- Columns 0–3 ---
@@ -1346,20 +1373,26 @@ size_t MlasSveQgemmU8X8KernelUmmlaAdd(const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedA
                               )
 {
     bool isZeroPointB = false;
-    if (CountM >= 8) {
-        return Process8RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+     if (svcntb() >= 32) {
+        if (CountM >= 8) {
+                return Process8RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+        } 
+        else if (CountM >= 4) {
+            return Process4RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+        } else if (CountM >= 2) {
+            return Process2RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+        } else if (CountM >= 1) {
+            return Process1RowTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
                                 RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-    } 
-    else if (CountM >= 4) {
-        return Process4RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-    } else if (CountM >= 2) {
-        return Process2RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-    } else if (CountM >= 1) {
-        return Process1RowTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                               RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-    }
+        }
+     }
+     else{
+        MlasGemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
+                RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+     };
     return 0; // Unsupported CountM
 }
 
@@ -1376,21 +1409,27 @@ size_t MlasSveQgemmU8X8KernelUmmlaZero(const MLAS_GEMM_U8X8_KERNEL_UMMLA::Packed
                               )
 {
     bool isZeroPointB = true;
-    if (CountM >= 8) {
-        return Process8RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-    }
-    else if (CountM >= 4) {
-        return Process4RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-        
-    } else if (CountM >= 2) {
-        return Process2RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+    if(svcntb() >= 32){
+        if (CountM >= 8) {
+            return Process8RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+        }
+        else if (CountM >= 4) {
+            return Process4RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+            
+        } else if (CountM >= 2) {
+            return Process2RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
 
-    } else if (CountM >= 1) {
-        return Process1RowTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                               RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+        } else if (CountM >= 1) {
+            return Process1RowTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
+                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+        }
+    }
+    else{
+        MlasGemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
+                RowSumBuffer, ColumnSumBuffer, ZeroPointB);
     }
     return 0; // Unsupported CountM
 }

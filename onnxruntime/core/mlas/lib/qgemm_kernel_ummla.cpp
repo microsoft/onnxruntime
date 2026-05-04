@@ -17,10 +17,12 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm.h"
+#ifdef __ARM_FEATURE_SVE
 #include "sve/mlasi_sve.h"
+#endif
 
 //
-// Define the prototypes of the NEON UMMLA routines written in assembly.
+// Define the prototypes of the SVE routines and NEON UMMLA routines written in assembly.
 //
 
 extern "C" {
