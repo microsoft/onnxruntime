@@ -14,7 +14,14 @@ from typing import Any
 
 import onnx
 
-from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
+from .calibrate import (
+    CalibrationDataReader,
+    CalibrationMethod,
+    TensorsData,
+    create_calibrator,
+    load_tensors_data,
+    save_tensors_data,
+)
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
@@ -479,7 +486,7 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
 def quantize_static(
     model_input: str | Path | onnx.ModelProto,
     model_output: str | Path,
-    calibration_data_reader: CalibrationDataReader,
+    calibration_data_reader: CalibrationDataReader | None = None,
     quant_format=QuantFormat.QDQ,
     op_types_to_quantize=None,
     per_channel=False,
@@ -492,6 +499,7 @@ def quantize_static(
     calibrate_method=CalibrationMethod.MinMax,
     calibration_providers=None,
     extra_options=None,
+    calibration_cache_path: str | Path | None = None,
 ):
     """
     Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
@@ -506,7 +514,13 @@ def quantize_static(
         model_output: file path of quantized model
         calibration_data_reader: a calibration data reader. It
             enumerates calibration data and generates inputs for the
-            original model.
+            original model. May be None if calibration_cache_path points to an
+            existing cache file.
+        calibration_cache_path: optional path to a JSON calibration cache. If
+            the file already exists, calibration inference is skipped and the
+            cached tensor ranges are loaded instead. If the file does not yet
+            exist, calibration runs normally and the result is saved to this
+            path for future reuse.
         quant_format: QuantFormat{QOperator, QDQ}.
             QOperator format quantizes the model with quantized operators directly.
             QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
@@ -673,6 +687,11 @@ def quantize_static(
     }
 
     if extra_options.get("SmoothQuant", False):
+        if calibration_data_reader is None:
+            raise ValueError(
+                "SmoothQuant requires a non-None calibration_data_reader; the calibration cache "
+                "stores per-tensor ranges only and cannot drive the SmoothQuant transform."
+            )
         import importlib  # noqa: PLC0415
 
         try:
@@ -704,48 +723,68 @@ def quantize_static(
     if is_model_updated:
         model = updated_model
 
-    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        if is_model_updated:
-            # Update model_input and avoid to use the original one
-            model_input = copy.deepcopy(model)
+    _cache_path = Path(calibration_cache_path) if calibration_cache_path is not None else None
+    if _cache_path is not None and _cache_path.exists() and not _cache_path.is_file():
+        raise ValueError(f"calibration_cache_path is not a file: {_cache_path}")
+    _cache_hit = _cache_path is not None and _cache_path.is_file()
 
-        if isinstance(model_input, onnx.ModelProto):
-            output_path = Path(quant_tmp_dir).joinpath("model_input.onnx").as_posix()
-            onnx.save_model(
-                model_input,
-                output_path,
-                save_as_external_data=True,
+    if _cache_hit:
+        tensors_range = load_tensors_data(_cache_path)
+        if tensors_range.calibration_method != calibrate_method:
+            raise ValueError(
+                f"Calibration cache at {_cache_path} was produced with "
+                f"{tensors_range.calibration_method}, but quantize_static was called "
+                f"with calibrate_method={calibrate_method}. Delete the cache or "
+                f"pass a matching calibrate_method."
             )
-            model_input = output_path
+    else:
+        if calibration_data_reader is None:
+            raise ValueError("Either calibration_data_reader or an existing calibration_cache_path must be provided.")
+        with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+            if is_model_updated:
+                # Update model_input and avoid to use the original one
+                model_input = copy.deepcopy(model)
 
-        calibrator = create_calibrator(
-            Path(model_input),
-            op_types_to_quantize,
-            augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
-            calibrate_method=calibrate_method,
-            use_external_data_format=use_external_data_format,
-            providers=calibration_providers,
-            extra_options=calib_extra_options,
-        )
+            if isinstance(model_input, onnx.ModelProto):
+                output_path = Path(quant_tmp_dir).joinpath("model_input.onnx").as_posix()
+                onnx.save_model(
+                    model_input,
+                    output_path,
+                    save_as_external_data=True,
+                )
+                model_input = output_path
 
-        stride = extra_options.get("CalibStridedMinMax", None)
-        if stride:
-            total_data_size = len(calibration_data_reader)
-            if total_data_size % stride != 0:
-                raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+            calibrator = create_calibrator(
+                Path(model_input),
+                op_types_to_quantize,
+                augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
+                calibrate_method=calibrate_method,
+                use_external_data_format=use_external_data_format,
+                providers=calibration_providers,
+                extra_options=calib_extra_options,
+            )
 
-            for start in range(0, total_data_size, stride):
-                end_index = start + stride
-                calibration_data_reader.set_range(start_index=start, end_index=end_index)
+            stride = extra_options.get("CalibStridedMinMax", None)
+            if stride:
+                total_data_size = len(calibration_data_reader)
+                if total_data_size % stride != 0:
+                    raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+
+                for start in range(0, total_data_size, stride):
+                    end_index = start + stride
+                    calibration_data_reader.set_range(start_index=start, end_index=end_index)
+                    calibrator.collect_data(calibration_data_reader)
+            else:
                 calibrator.collect_data(calibration_data_reader)
-        else:
-            calibrator.collect_data(calibration_data_reader)
-        tensors_range = calibrator.compute_data()
-        if not isinstance(tensors_range, TensorsData):
-            raise TypeError(
-                f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
-            )
-        del calibrator
+            tensors_range = calibrator.compute_data()
+            if not isinstance(tensors_range, TensorsData):
+                raise TypeError(
+                    f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+                )
+            del calibrator
+
+        if _cache_path is not None:
+            save_tensors_data(tensors_range, _cache_path)
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 

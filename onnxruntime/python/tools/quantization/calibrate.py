@@ -7,6 +7,7 @@
 import abc
 import copy
 import itertools
+import json
 import os
 import uuid
 from collections.abc import Sequence
@@ -98,6 +99,21 @@ class TensorData:
         data["CLS"] = self.__class__.__name__
         return data
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "TensorData":
+        """Reconstruct a TensorData from a dict produced by to_dict()."""
+        kwargs = {}
+        for k, v in d.items():
+            if k == "CLS":
+                continue
+            value = v
+            if isinstance(value, dict) and value.get("CLS") == "numpy.array":
+                value = np.array(value["data"], dtype=np.dtype(value["dtype"]))
+            elif k in cls._floats and isinstance(value, (int, float)):
+                value = np.array(value, dtype=np.float32)
+            kwargs[k] = value
+        return cls(**kwargs)
+
 
 class TensorsData:
     def __init__(self, calibration_method, data: dict[str, TensorData | tuple]):
@@ -150,6 +166,18 @@ class TensorsData:
         }
         return data
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "TensorsData":
+        """Reconstruct a TensorsData from a dict produced by to_dict()."""
+        method_val = d["calibration_method"]
+        if isinstance(method_val, dict) and method_val.get("CLS") == "CalibrationMethod":
+            name = method_val["value"].split(".")[-1]
+            method = CalibrationMethod[name]
+        else:
+            method = method_val
+        reconstructed = {k: TensorData.from_dict(v) for k, v in d["data"].items()}
+        return cls(method, reconstructed)
+
 
 class CalibrationMethod(Enum):
     MinMax = 0
@@ -182,6 +210,55 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
 
     def set_range(self, start_index: int, end_index: int):
         raise NotImplementedError
+
+
+class CalibrationCacheEncoder(json.JSONEncoder):
+    """Shared JSON encoder for calibration caches.
+
+    Handles numpy ndarrays and numpy scalar types (integer/floating) so
+    calibration JSON output is consistent across ``save_tensors_data`` and
+    ``quant_utils.write_calibration_table``.
+    """
+
+    def default(self, obj):
+        if isinstance(obj, (TensorData, TensorsData)):
+            return obj.to_dict()
+        if isinstance(obj, np.ndarray):
+            return {"data": obj.tolist(), "dtype": str(obj.dtype), "CLS": "numpy.array"}
+        if isinstance(obj, CalibrationMethod):
+            return {"CLS": obj.__class__.__name__, "value": str(obj)}
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        return json.JSONEncoder.default(self, obj)
+
+
+def save_tensors_data(tensors_data: "TensorsData", path: "str | Path") -> None:
+    """Serialize calibration tensor ranges to a JSON file at *path*."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with tmp.open("w") as f:
+            json.dump(tensors_data, f, cls=CalibrationCacheEncoder)
+            f.flush()
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def load_tensors_data(path: "str | Path") -> "TensorsData":
+    """Load calibration tensor ranges from a JSON file written by save_tensors_data()."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Calibration cache not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"Calibration cache path is not a file: {path}")
+    with path.open("r") as f:
+        d = json.load(f)
+    return TensorsData.from_dict(d)
 
 
 class CalibraterBase:
