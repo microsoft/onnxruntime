@@ -226,14 +226,14 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
 }
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort_graph, _In_ const char* name,
-                    _In_ OrtValue* tensor, bool data_is_external) {
+                    _In_ const OrtValue* ort_value, bool data_is_external) {
   API_IMPL_BEGIN
   if (name == nullptr || *name == '\0') {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name cannot be null or empty string");
   }
 
-  if (tensor == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tensor cannot be null");
+  if (ort_value == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ort_value cannot be null");
   }
 
   if (ort_graph == nullptr) {
@@ -247,15 +247,15 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                  "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
 
-  if (!tensor->IsTensor()) {
+  if (!ort_value->IsTensor()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only Tensor is currently supported.");
   }
 
-  if (!tensor->IsAllocated()) {
+  if (!ort_value->IsAllocated()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Tensor must be allocated.");
   }
 
-  const auto& t = tensor->Get<onnxruntime::Tensor>();
+  const auto& t = ort_value->Get<onnxruntime::Tensor>();
   if (t.Location().device.Type() != OrtDevice::CPU) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only CPU based tensors are currently supported.");
   }
@@ -282,8 +282,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
   // OrtValue uses shared_ptr internally, so copying is cheap (refcount increment, no data copy).
   // The caller retains their original OrtValue and is responsible for releasing it.
   auto& m = data_is_external ? graph->external_initializers : graph->initializers;
-  auto copy = std::make_unique<OrtValue>(*tensor);  // may throw; caller's tensor is untouched
-  auto [it, inserted] = m.emplace(name, std::move(copy));
+  auto [it, inserted] = m.emplace(name, *ort_value);
   ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
 
   return nullptr;

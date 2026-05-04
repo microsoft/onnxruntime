@@ -7728,8 +7728,10 @@ struct OrtModelEditorApi {
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * ORT will copy the OrtValue internally. The caller retains ownership of the OrtValue and should
-   * release it with ReleaseValue when done.
+   * ORT will copy the OrtValue wrapper internally. The caller retains ownership of the OrtValue and should
+   * release it with ReleaseValue when done. Note that the underlying data buffer is not copied.
+   * If the OrtValue was created with a user-provided buffer (e.g., CreateTensorWithDataAsOrtValue),
+   * that buffer must remain valid for the duration of the inference session.
    *
    * Two options:
    *
@@ -7758,15 +7760,15 @@ struct OrtModelEditorApi {
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] name The value name for the initializer.
-   * \param[in] tensor The OrtValue instance containing the tensor data.
-   * \param[in] data_is_external Set to true if the data is external and should not be copied.
+   * \param[in] ort_value The OrtValue instance containing the tensor data.
+   * \param[in] data_is_external Set to true if the data is external and should not be serialized into the model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _In_ OrtValue* tensor,
-                  bool data_is_external);
+  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name,
+                  _In_ const OrtValue* ort_value, bool data_is_external);
 
   /** \brief Add an OrtNode to an OrtGraph
    *

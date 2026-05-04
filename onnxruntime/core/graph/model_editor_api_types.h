@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
@@ -237,8 +237,8 @@ struct ModelEditorGraph : public OrtGraph {
 
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> inputs;
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> outputs;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
+  std::unordered_map<std::string, OrtValue> initializers;
+  std::unordered_map<std::string, OrtValue> external_initializers;
   bool owned_ = false;  // true after ownership transferred to a model
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
   std::string name = "ModelEditorGraph";
