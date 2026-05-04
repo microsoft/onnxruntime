@@ -7,8 +7,7 @@ Stages native binaries from build artifacts into the runtimes/ layout expected
 by the .csproj and runs `dotnet pack` to produce the .nupkg / .snupkg files.
 
 Can be invoked locally or from CI. In CI, pass --artifacts-dir to point at the
-downloaded pipeline artifacts. Locally, pass individual --binary-dir-* options
-or place binaries manually in the runtimes/ folders.
+downloaded pipeline artifacts. Locally, pass individual --binary-dir-* options.
 
 Examples
 --------

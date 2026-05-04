@@ -15,7 +15,6 @@ csharp/
     └── WebGpuEpNuGetTest/
         ├── WebGpuEpNuGetTest.csproj                # Test console app (net8.0)
         ├── Program.cs                              # Registers EP, runs inference, validates output
-        ├── nuget.config                            # NuGet source config (local feed for CI)
         ├── mul.onnx                                # Test model (element-wise multiply)
         └── generate_mul_model.py                   # Script to regenerate mul.onnx
 ```
@@ -23,23 +22,7 @@ csharp/
 ## Prerequisites
 
 - .NET SDK 8.0 or later
-- A built WebGPU plugin EP binary (see below)
-
-## Building the Plugin EP Binary
-
-From the repo root:
-
-```powershell
-python tools/ci_build/build.py `
-  --build_dir ./build/webgpu.plugin `
-  --use_webgpu shared_lib `
-  --use_vcpkg `
-  --config Release `
-  --parallel `
-  --update --build
-```
-
-The plugin DLL will be at `build/webgpu.plugin/Release/Release/onnxruntime_providers_webgpu.dll`.
+- A built WebGPU plugin EP shared library
 
 ## Building the NuGet Package
 
@@ -58,7 +41,7 @@ provided. Platforms without a binary directory are skipped. Run
 cd plugin-ep-webgpu/csharp
 
 python pack_nuget.py --version 0.1.0-dev `
-  --binary-dir-win-x64 ..\..\build\webgpu.plugin\Release\Release
+  --binary-dir-win-x64 <path-to-win-x64-binaries>
 ```
 
 ### Pack multiple platforms

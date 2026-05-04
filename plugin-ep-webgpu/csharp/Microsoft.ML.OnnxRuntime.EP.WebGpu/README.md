@@ -6,7 +6,8 @@ Provides GPU acceleration via WebGPU (Dawn) with D3D12 and Vulkan backends.
 ### Usage
 
 ```csharp
-// Error handling (e.g. WebGPU device not found) is omitted for readability.
+// Note: Error handling is omitted for brevity.
+
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.EP.WebGpu;
 

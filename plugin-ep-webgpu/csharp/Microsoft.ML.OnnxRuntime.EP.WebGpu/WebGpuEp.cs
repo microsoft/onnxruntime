@@ -21,18 +21,24 @@ namespace Microsoft.ML.OnnxRuntime.EP.WebGpu
             string rootDir = GetNativeDirectory();
             string rid = GetRuntimeIdentifier();
             string libraryName = GetLibraryName();
-            string epLibPath = Path.GetFullPath(Path.Combine(rootDir,
-                                                             "runtimes", rid,
-                                                             "native",
-                                                             libraryName));
 
-            if (!File.Exists(epLibPath))
+            // Probe the standard NuGet runtimes/<rid>/native/ layout first, then fall back
+            // to the base directory for single-file/published layouts where native assets
+            // can land directly next to the managed assembly.
+            string[] candidates =
             {
-                throw new FileNotFoundException(
-                    $"Did not find WebGPU EP library file: {epLibPath}");
+                Path.Combine(rootDir, "runtimes", rid, "native", libraryName),
+                Path.Combine(rootDir, libraryName),
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                    return Path.GetFullPath(candidate);
             }
 
-            return epLibPath;
+            throw new FileNotFoundException(
+                $"Did not find WebGPU EP library file. Probed: {string.Join(", ", candidates)}");
         }
 
         /// <summary>
