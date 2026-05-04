@@ -167,6 +167,8 @@ stages:
                 @{ name = 'macos-arm64';  dir = '$(Build.SourcesDirectory)/webgpu-plugin-macos-arm64' }
               )
 
+              $resolvedVersion = $null
+
               foreach ($platform in $platforms) {
                 $depsDir = $platform.dir
                 $platformName = $platform.name
@@ -193,6 +195,14 @@ stages:
                    }
                 }
 
+                # Track the resolved version (all platforms must agree)
+                $filenameVersion = $versionString -replace '[-+]', '.'
+                if ($null -eq $resolvedVersion) {
+                  $resolvedVersion = $filenameVersion
+                } elseif ($resolvedVersion -ne $filenameVersion) {
+                  throw "Version mismatch across platforms: expected '$resolvedVersion' but $platformName has '$filenameVersion'"
+                }
+
                 $versionInfo = @{
                   version = $versionString
                 }
@@ -214,7 +224,6 @@ stages:
                 # Dev versions have - and + replaced with . for filename compatibility.
                 # Full version string is preserved in version.json.
                 # TODO: RC versioning (e.g. 0.1.0-rc1) is not yet implemented
-                $filenameVersion = $versionString -replace '[-+]', '.'
                 $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
                 if ($filesToZip) {
                   $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
@@ -224,3 +233,15 @@ stages:
                 }
                 Write-Host ""
               }
+
+              if ($null -eq $resolvedVersion) {
+                throw "No platforms were processed — cannot determine version."
+              }
+
+              # Create a version folder in the output artifact with a file whose name is the version string.
+              # This follows the same convention as the per-platform artifacts (e.g. webgpu_plugin_win_x64/version/)
+              # and allows downstream pipelines to read the version without parsing zip filenames.
+              $versionOutputDir = Join-Path $outputDir "version"
+              New-Item -ItemType Directory -Path $versionOutputDir -Force
+              New-Item -ItemType File -Path (Join-Path $versionOutputDir $resolvedVersion) -Force | Out-Null
+              Write-Host "Created version marker: $versionOutputDir/$resolvedVersion"
