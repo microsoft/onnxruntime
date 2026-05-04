@@ -46,7 +46,8 @@ class Tokenizer final : public OpKernel {
  private:
   Status EstimateNumberOfTokens(gsl::span<const std::string> input_span,
                                 size_t& max_tokens_per_row,
-                                size_t& total_tokens_estimate) const;
+                                size_t& total_tokens_estimate,
+                                InlinedVector<size_t>& utf8_lengths) const;
 
   Status CharTokenize(OpKernelContext* context, size_t N, size_t C,
                       gsl::span<const int64_t> input_dims) const;
@@ -147,9 +148,11 @@ Tokenizer::Tokenizer(const OpKernelInfo& info) : OpKernel(info) {
 }
 
 Status Tokenizer::EstimateNumberOfTokens(gsl::span<const std::string> input_span,
-                                         size_t& max_tokens_per_row, size_t& total_tokens_estimate) const {
+                                         size_t& max_tokens_per_row, size_t& total_tokens_estimate,
+                                         InlinedVector<size_t>& utf8_lengths) const {
   total_tokens_estimate = 0;
   max_tokens_per_row = 0;
+  utf8_lengths.reserve(input_span.size());
   for (const auto& s : input_span) {
     size_t utf8_chars = 0;  // length in utf8 chars
     if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
@@ -157,6 +160,7 @@ Status Tokenizer::EstimateNumberOfTokens(gsl::span<const std::string> input_span
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Input string contains invalid utf8 chars: " + s);
     }
+    utf8_lengths.push_back(utf8_chars);
     auto tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
     total_tokens_estimate = SafeInt<size_t>(total_tokens_estimate) + tokens;
     max_tokens_per_row = std::max(max_tokens_per_row, tokens);
@@ -297,9 +301,7 @@ class MemoryAllocator {
     buf_holder_ = std::make_unique<uint8_t[]>(size_bytes);
     void* ptr = buf_holder_.get();
     allocated_size = size_bytes;
-    void* aligned = std::align(alignment, num * sizeof(re2::StringPiece), ptr, allocated_size);
-    ORT_ENFORCE(aligned != nullptr, "Failed to align memory for tokenizer buffer");
-    return aligned;
+    return std::align(alignment, size_bytes, ptr, allocated_size);
   }
 
   std::unique_ptr<uint8_t[]> buf_holder_;
@@ -362,7 +364,8 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   // output.
   size_t total_tokens_estimate = 0;
   size_t max_tokens_per_row = 0;
-  ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate));
+  InlinedVector<size_t> utf8_lengths;
+  ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate, utf8_lengths));
   // Add a scratch token vector allocation
   total_tokens_estimate += max_tokens_per_row;
 
@@ -386,13 +389,9 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   // Scan all strings and attempt to find separators in them
   // collect all the output tokens here
   size_t max_tokens = 0;
+  size_t str_idx = 0;
   for (const auto& s : input_span) {
-    size_t utf8_chars = 0;  // length in utf8 chars
-    if (!utf8_len(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
-                  utf8_chars)) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars: " + s);
-    }
+    const size_t utf8_chars = utf8_lengths[str_idx++];
 
     const auto expected_tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
     auto& row = allocator.EmplaceBack(rows);
@@ -503,7 +502,8 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   // Let's estimate maximum number of tokens
   size_t total_tokens_estimate = 0;
   size_t max_tokens_per_row = 0;
-  ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate));
+  InlinedVector<size_t> utf8_lengths;
+  ORT_RETURN_IF_ERROR(EstimateNumberOfTokens(input_span, max_tokens_per_row, total_tokens_estimate, utf8_lengths));
 
   // Pre-allocate memory for all tokens (StringPieces)
   MemoryAllocator allocator(total_tokens_estimate);
@@ -520,9 +520,9 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   // on the beginning or end of the string
   constexpr RE2::Anchor anchor = RE2::UNANCHORED;
 
+  size_t str_idx = 0;
   for (const auto& s : input_span) {
-    size_t utf8_chars = 0;
-    utf8_len(reinterpret_cast<const unsigned char*>(s.data()), s.size(), utf8_chars);
+    const size_t utf8_chars = utf8_lengths[str_idx++];
 
     auto& row = allocator.EmplaceBack(rows);
 
