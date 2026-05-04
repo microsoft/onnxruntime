@@ -28,7 +28,7 @@
 
   <!--
     Minimum required Microsoft.ML.OnnxRuntime version is read from a file (single source
-    of truth, shared with the Python wheel build). The path is overridable via
+    of truth, shared with the other plugin EP packages). The path is overridable via
     -p:OnnxRuntimeMinVersionFile=<absolute path> so callers (e.g. pack_nuget.py, which
     builds out of a staged copy) can point at the original file in the source tree.
   -->
