@@ -19,7 +19,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
       default_logger_{default_logger},
       ep_name_{ep_name},
       default_memory_info_{nullptr},
-      readonly_memory_info_{nullptr} {
+      readonly_memory_info_{nullptr},
+      host_accessible_memory_info_{nullptr} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
@@ -71,12 +72,12 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   // HOST_ACCESSIBLE memory example. use the non-CPU device type so it's clear which device the memory is also
   // accessible from. we infer from the type of HOST_ACCESSIBLE that it's CPU accessible.
-  auto host_accessible_memory_info = Ort::MemoryInfo{"ExampleEP GPU pinned",
-                                                     OrtMemoryInfoDeviceType_GPU,
-                                                     /*vendor*/ 0xBE57, /* device_id */ 0,
-                                                     OrtDeviceMemoryType_HOST_ACCESSIBLE,
-                                                     /*alignment*/ 0,
-                                                     OrtAllocatorType::OrtDeviceAllocator};
+  host_accessible_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU pinned",
+                                                 OrtMemoryInfoDeviceType_GPU,
+                                                 /*vendor*/ 0xBE57, /* device_id */ 0,
+                                                 OrtDeviceMemoryType_HOST_ACCESSIBLE,
+                                                 /*alignment*/ 0,
+                                                 OrtAllocatorType::OrtDeviceAllocator};
   // Custom Op Domains
   custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
   custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
@@ -156,10 +157,11 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       }
 
       // register the allocator info required by the EP.
-      // registering OrtMemoryInfo for host accessible memory would be done in an additional call.
       // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers is optional.
+      // OrtDeviceMemoryType_HOST_ACCESSIBLE is also optional and exposes CPU-accessible memory on the EP device.
       RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_));
       RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_));
+      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->host_accessible_memory_info_));
 
       ep_devices[num_ep_devices++] = ep_device;
     }
@@ -244,8 +246,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
 
   bool is_default_allocator = memory_info == factory.default_memory_info_;
   bool is_readonly_allocator = memory_info == factory.readonly_memory_info_;
+  bool is_host_accessible_allocator = memory_info == factory.host_accessible_memory_info_;
 
-  if (!is_default_allocator && !is_readonly_allocator) {
+  if (!is_default_allocator && !is_readonly_allocator && !is_host_accessible_allocator) {
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                         "INTERNAL ERROR! Unknown memory info provided to CreateAllocator. "
                                         "Value did not come directly from an OrtEpDevice returned by this factory.");
@@ -261,9 +264,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   //       You are of course free to have completely different settings.
 
   // the read-only allocator is used for initializers. we don't need an arena for that.
-  if (is_readonly_allocator) {
-    auto read_only_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
-    *allocator = read_only_allocator.release();
+  // host-accessible memory is also returned via a plain non-arena allocator.
+  if (is_readonly_allocator || is_host_accessible_allocator) {
+    auto simple_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+    *allocator = simple_allocator.release();
     return nullptr;
   }
 
