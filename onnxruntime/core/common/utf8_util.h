@@ -174,6 +174,9 @@ inline size_t WideToUtf8RequiredSize(const std::wstring& wstr) {
   size_t result = 0;
   for (wchar_t wc : wstr) {
     char32_t cp = static_cast<char32_t>(wc);
+    if (cp >= 0xD800 && cp <= 0xDFFF) {
+      ORT_THROW("Invalid Unicode surrogate codepoint U+", std::hex, static_cast<uint32_t>(cp));
+    }
     if (cp <= 0x7F) {
       result += 1;
     } else if (cp <= 0x7FF) {
@@ -202,20 +205,32 @@ inline Status WideToUtf8(const std::wstring& wstr, std::string& str) {
 
   for (wchar_t wc : wstr) {
     char32_t cp = static_cast<char32_t>(wc);
+    if (cp >= 0xD800 && cp <= 0xDFFF) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Invalid Unicode surrogate codepoint during UTF-8 conversion");
+    }
     if (cp <= 0x7F) {
-      if (dest >= dest_end) break;
+      if (dest >= dest_end) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
+      }
       *dest++ = static_cast<char>(cp);
     } else if (cp <= 0x7FF) {
-      if (dest + 1 >= dest_end) break;
+      if (dest + 1 >= dest_end) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
+      }
       *dest++ = static_cast<char>(0xC0 | (cp >> 6));
       *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
     } else if (cp <= 0xFFFF) {
-      if (dest + 2 >= dest_end) break;
+      if (dest + 2 >= dest_end) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
+      }
       *dest++ = static_cast<char>(0xE0 | (cp >> 12));
       *dest++ = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
       *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
     } else if (cp <= 0x10FFFF) {
-      if (dest + 3 >= dest_end) break;
+      if (dest + 3 >= dest_end) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
+      }
       *dest++ = static_cast<char>(0xF0 | (cp >> 18));
       *dest++ = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
       *dest++ = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
@@ -237,6 +252,10 @@ inline Status Utf8ToWide(const std::string& str, std::wstring& wstr) {
   if (str.empty()) {
     wstr.clear();
     return Status::OK();
+  }
+
+  if (wstr.size() < str.size()) {
+    wstr.resize(str.size());
   }
 
   const auto* src = reinterpret_cast<const unsigned char*>(str.data());

@@ -258,6 +258,14 @@ TEST(Utf8UtilTest, WideToUtf8_RoundTrip_Ascii) {
   EXPECT_EQ("Hello World", result);
 }
 
+TEST(Utf8UtilTest, WideToUtf8_BufferTooSmall) {
+  std::wstring ws;
+  ws += static_cast<wchar_t>(0x00E9);  // 2 bytes in UTF-8
+  std::string result;
+  result.resize(1);
+  EXPECT_FALSE(WideToUtf8(ws, result).IsOK());
+}
+
 TEST(Utf8UtilTest, WideToUtf8_RoundTrip_Multibyte) {
   // Build wide string with various codepoints
   std::wstring ws;
@@ -294,6 +302,13 @@ TEST(Utf8UtilTest, Utf8ToWide_Ascii) {
   std::string s = "ABC";
   std::wstring result;
   result.resize(s.size());
+  ASSERT_TRUE(Utf8ToWide(s, result).IsOK());
+  EXPECT_EQ(L"ABC", result);
+}
+
+TEST(Utf8UtilTest, Utf8ToWide_AutoResizeDestination) {
+  std::string s = "ABC";
+  std::wstring result;
   ASSERT_TRUE(Utf8ToWide(s, result).IsOK());
   EXPECT_EQ(L"ABC", result);
 }
@@ -356,10 +371,26 @@ TEST(Utf8UtilTest, Utf8ToWideString_ValidInput) {
   EXPECT_EQ(static_cast<wchar_t>(0x00E9), result[3]);
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST(Utf8UtilTest, Utf8ToWideString_InvalidInput) {
   // Should throw on invalid UTF-8
   std::string s = "\xc0\xaf";
   EXPECT_THROW(Utf8ToWideString(s), OnnxRuntimeException);
+}
+
+TEST(Utf8UtilTest, WideToUtf8RequiredSize_SurrogateCodepoint) {
+  std::wstring ws;
+  ws += static_cast<wchar_t>(0xD800);
+  EXPECT_THROW(WideToUtf8RequiredSize(ws), OnnxRuntimeException);
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
+TEST(Utf8UtilTest, WideToUtf8_SurrogateCodepoint) {
+  std::wstring ws;
+  ws += static_cast<wchar_t>(0xD800);
+  std::string result;
+  result.resize(4);
+  EXPECT_FALSE(WideToUtf8(ws, result).IsOK());
 }
 
 #endif  // !_WIN32

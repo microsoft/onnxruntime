@@ -8,10 +8,10 @@
 #include "core/common/utf8_util.h"
 #include "core/framework/tensor.h"
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 #include <Windows.h>
 #include <locale.h>
-#endif  // _MSC_VER
+#endif  // _WIN32
 
 #include <locale>
 #include <functional>
@@ -27,7 +27,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 
 namespace string_normalizer {
 
-#ifndef _MSC_VER
+#ifndef _WIN32
 // Thin wrapper around the common utf8_util functions, providing the same interface
 // as Utf8ConverterWindows so the code below can use either via the Utf8Converter alias.
 class Utf8ConverterGeneric {
@@ -54,47 +54,12 @@ class Utf8ConverterGeneric {
     return Utf8ToWideString(s);
   }
 };
-#endif  // !_MSC_VER
+#endif  // !_WIN32
 
 // We need to specialize for MS as there is
 // a std::locale creation bug that affects different
 // environments in a different way
-#ifdef _MSC_VER
-
-class Locale {
- public:
-  explicit Locale(const std::string& name)
-      : loc_(nullptr) {
-    loc_ = _create_locale(LC_CTYPE, name.c_str());
-    if (loc_ == nullptr) {
-      ORT_THROW("Failed to construct locale with name:",
-                name, ":", ":Please, install necessary language-pack-XX and configure locales");
-    }
-  }
-
-  ~Locale() {
-    if (loc_ != nullptr) {
-      _free_locale(loc_);
-    }
-  }
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
-
-  void ChangeCase(StringNormalizer::CaseAction caseaction,
-                  std::wstring& wstr) const {
-    assert(caseaction != StringNormalizer::NONE);
-    if (caseaction == StringNormalizer::LOWER) {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return ::_towlower_l(ch, loc_); });
-    } else {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return ::_towupper_l(ch, loc_); });
-    }
-  }
-
- private:
-  _locale_t loc_;
-};
+#ifdef _WIN32
 
 class Utf8ConverterWindows {
  public:
@@ -212,39 +177,7 @@ const std::string default_locale("en-US");
 
 using Utf8Converter = Utf8ConverterWindows;
 
-#else  // _MSC_VER
-
-class Locale {
- public:
-  explicit Locale(const std::string& name) {
-    ORT_TRY {
-      loc_ = std::locale(name.c_str());
-    }
-    ORT_CATCH(const std::runtime_error& e) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        ORT_THROW("Failed to construct locale with name:",
-                  name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
-      });
-    }
-  }
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Locale);
-
-  void ChangeCase(StringNormalizer::CaseAction caseaction,
-                  std::wstring& wstr) const {
-    assert(caseaction != StringNormalizer::NONE);
-    if (caseaction == StringNormalizer::LOWER) {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return std::tolower(ch, loc_); });
-    } else {
-      std::transform(wstr.begin(), wstr.end(), wstr.begin(),
-                     [this](wchar_t ch) { return std::toupper(ch, loc_); });
-    }
-  }
-
- private:
-  std::locale loc_;
-};
+#else  // _WIN32
 
 using Utf8Converter = Utf8ConverterGeneric;
 
@@ -259,10 +192,66 @@ const std::string default_locale("en_US.UTF-8");  // Other kinds of Apple Platfo
 const std::string default_locale("en_US.UTF-8");  // All non-MS and not Apple
 #endif
 
-#endif  // _MSC_VER
+#endif  // _WIN32
 }  // namespace string_normalizer
 
 using namespace string_normalizer;
+
+#ifdef _WIN32
+
+StringNormalizer::Locale::Locale(const std::string& name) {
+  loc_ = _create_locale(LC_CTYPE, name.c_str());
+  if (loc_ == nullptr) {
+    ORT_THROW("Failed to construct locale with name:",
+              name, ":", ":Please, install necessary language-pack-XX and configure locales");
+  }
+}
+
+StringNormalizer::Locale::~Locale() {
+  if (loc_ != nullptr) {
+    _free_locale(loc_);
+  }
+}
+
+void StringNormalizer::Locale::ChangeCase(CaseAction caseaction, std::wstring& wstr) const {
+  assert(caseaction != NONE);
+  if (caseaction == LOWER) {
+    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                   [this](wchar_t ch) { return ::_towlower_l(ch, loc_); });
+  } else {
+    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                   [this](wchar_t ch) { return ::_towupper_l(ch, loc_); });
+  }
+}
+
+#else
+
+StringNormalizer::Locale::Locale(const std::string& name) {
+  ORT_TRY {
+    loc_ = std::locale(name.c_str());
+  }
+  ORT_CATCH(const std::runtime_error& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      ORT_THROW("Failed to construct locale with name:",
+                name, ":", e.what(), ":Please, install necessary language-pack-XX and configure locales");
+    });
+  }
+}
+
+StringNormalizer::Locale::~Locale() = default;
+
+void StringNormalizer::Locale::ChangeCase(CaseAction caseaction, std::wstring& wstr) const {
+  assert(caseaction != NONE);
+  if (caseaction == LOWER) {
+    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                   [this](wchar_t ch) { return std::tolower(ch, loc_); });
+  } else {
+    std::transform(wstr.begin(), wstr.end(), wstr.begin(),
+                   [this](wchar_t ch) { return std::toupper(ch, loc_); });
+  }
+}
+
+#endif
 
 StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info) {
   int64_t iscasesensitive = 0;
@@ -283,21 +272,26 @@ StringNormalizer::StringNormalizer(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(false, "attribute case_change_action has invalid value");
   }
 
-  locale_name_ = info.GetAttrOrDefault("locale", default_locale);
+  const std::string locale_name = info.GetAttrOrDefault("locale", default_locale);
 
   std::vector<std::string> stop_words = info.GetAttrsOrDefault<std::string>("stopwords");
+  const bool needs_runtime_locale = case_change_action_ != NONE || (!is_case_sensitive_ && !stop_words.empty());
+  if (needs_runtime_locale) {
+    locale_.emplace(locale_name);
+  }
+
   if (is_case_sensitive_) {
     stopwords_.reserve(stop_words.size());
     for (std::string& s : stop_words) {
       stopwords_.insert(std::move(s));
     }
-  } else {
-    Locale locale(locale_name_);
+  } else if (!stop_words.empty()) {
+    assert(locale_.has_value());
     Utf8Converter converter;
     wstopwords_.reserve(stop_words.size());
     for (std::string& s : stop_words) {
       std::wstring wstr = converter.from_bytes(s);
-      locale.ChangeCase(compare_caseaction_, wstr);
+      locale_->ChangeCase(compare_caseaction_, wstr);
       wstopwords_.insert(std::move(wstr));
     }
   }
@@ -357,8 +351,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   // to widechar, lowercase it and then compare. Case-insensitive comparison is complicated
   // for UTF-8 and requires additional dependency.
 
-  Locale locale(locale_name_);
   Utf8Converter converter;
+  const Locale* locale = locale_ ? &*locale_ : nullptr;
 
   // Determine whether we need wchar conversion at all.
   // We need it if: (a) case change is requested, or (b) case-insensitive filtering.
@@ -388,7 +382,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       const std::string& s = input_span[i];
       wchar_buffer.resize(max_wide_buffer_len);
       ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
-      locale.ChangeCase(case_change_action_, wchar_buffer);
+      assert(locale != nullptr);
+      locale->ChangeCase(case_change_action_, wchar_buffer);
 
       auto& dest = output_data[i];
       size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wchar_buffer);
@@ -406,7 +401,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       if (case_change_action_ != NONE) {
         wchar_buffer.resize(max_wide_buffer_len);
         ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
-        locale.ChangeCase(case_change_action_, wchar_buffer);
+        assert(locale != nullptr);
+        locale->ChangeCase(case_change_action_, wchar_buffer);
 
         auto& dest = *output_data++;
         size_t utf8_buffer_len = converter.ComputeRequiredSizeToUtf8(wchar_buffer);
@@ -459,7 +455,8 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
         const std::string& s = input_span[i];
         wchar_buffer.resize(max_wide_buffer_len);
         ORT_RETURN_IF_ERROR(converter.ConvertToWideChar(s, wchar_buffer));
-        locale.ChangeCase(compare_caseaction_, wchar_buffer);
+        assert(locale != nullptr);
+        locale->ChangeCase(compare_caseaction_, wchar_buffer);
         if (wstopwords_.count(wchar_buffer) == 0) {
           filtered_strings_indices.push_back(i);
         }

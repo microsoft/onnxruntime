@@ -483,15 +483,32 @@ TEST(ContribOpTest, StringNormalizerInvalidCaseChangeAction) {
 }
 
 TEST(ContribOpTest, StringNormalizerInvalidLocale) {
-  // Invalid locale should be rejected when locale-sensitive processing is required.
+  // Invalid locale should be rejected when locale-sensitive processing is required
+  // on platforms that validate locale names. On wasm, locale construction accepts
+  // arbitrary names, so this path succeeds.
+  OpTester test("StringNormalizer", opset_ver, domain);
+  InitTestAttr(test, "UPPER", true, {}, "ort_invalid_locale_for_test");
+  std::vector<int64_t> dims{1};
+  std::vector<std::string> input{"hello"};
+  test.AddInput<std::string>("T", dims, input);
+  test.AddOutput<std::string>("Y", dims, input);
+#ifdef __wasm__
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
+#else
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Failed to construct locale with name:");
+#endif
+}
+
+TEST(ContribOpTest, StringNormalizerInvalidLocaleIgnoredWhenUnused) {
+  // Invalid locale should not matter when the runtime stays on the UTF-8 passthrough fast path.
   OpTester test("StringNormalizer", opset_ver, domain);
   InitTestAttr(test, "NONE", false, {}, "ort_invalid_locale_for_test");
   std::vector<int64_t> dims{1};
   std::vector<std::string> input{"hello"};
   test.AddInput<std::string>("T", dims, input);
   test.AddOutput<std::string>("Y", dims, input);
-  test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Failed to construct locale with name:");
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(ContribOpTest, StringNormalizerPassthroughRejectsInvalidUtf8) {
