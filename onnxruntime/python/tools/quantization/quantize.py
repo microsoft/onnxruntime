@@ -369,14 +369,24 @@ def get_qdq_config(
         }
         final_extra_options.update(calib_extra_options)
 
-    # ONNX opset < 21 does not support 16-bit quantization, so must use 'com.microsoft' domain
-    # on Q/DQ operators if using 16-bit or 4-bit quantization.
+    # ONNX opset < 21 does not support 4-bit quantization natively, so must use 'com.microsoft' domain
+    # on Q/DQ operators if using 4-bit quantization.  16-bit weight/activation types are excluded here
+    # because quantize_static() will automatically bump the model opset to 21, where native ONNX
+    # QuantizeLinear/DequantizeLinear supports INT16/UINT16 and INT4/UINT4 without contrib-domain ops.
+    # 16-bit types in TensorQuantOverrides also trigger the same opset bump, so a mixed 16-bit + 4-bit
+    # override config will be served at opset 21 where neither type needs contrib ops.
     onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
     if onnx_opset.version < 21:
-        opset21_types = q16_types.union(q4_types)
-        overrides_have_opset21_types = any(t in opset21_types for t in overrides_helper.get_quant_types())
-        if activation_type in opset21_types or weight_type in opset21_types or overrides_have_opset21_types:
-            final_extra_options["UseQDQContribOps"] = True
+        override_types = overrides_helper.get_quant_types()
+        overrides_have_16bit = any(t in q16_types for t in override_types)
+        # If any 16-bit type is present (top-level or override), quantize_static() will bump the
+        # model to opset 21, making contrib ops unnecessary for all types.
+        will_bump_to_opset21 = activation_type in q16_types or weight_type in q16_types or overrides_have_16bit
+        if not will_bump_to_opset21:
+            overrides_have_q4_types = any(t in q4_types for t in override_types)
+            needs_contrib_ops = activation_type in q4_types or weight_type in q4_types or overrides_have_q4_types
+            if needs_contrib_ops:
+                final_extra_options["UseQDQContribOps"] = True
 
     # Allow user's extra_options to override our final_extra_options.
     if extra_options:
@@ -699,7 +709,12 @@ def quantize_static(
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
-    updated_model = update_opset_version(model, weight_type)
+    updated_model = update_opset_version(
+        model,
+        weight_type,
+        activation_type,
+        tensor_quant_overrides=extra_options.get("TensorQuantOverrides"),
+    )
     is_model_updated = updated_model is not model
     if is_model_updated:
         model = updated_model
