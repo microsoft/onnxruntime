@@ -119,15 +119,15 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                            "present_key and present_value must be both provided or both omitted.");
   }
 
-  // Optional present outputs are only safe when is_first_prompt
-  // (sequence_length == total_sequence_length, i.e., no past KV to concatenate).
-  // When past exists, the attention GEMMs use total_seqlen which requires a
-  // concatenated past+current KV buffer built by ConcatStateChunkGQA into present.
-  if ((present_k == nullptr || present_v == nullptr) && !parameters.is_first_prompt) {
+  // Omitting present outputs is only safe when past_key is not provided.
+  // When past_key exists, ConcatStateChunkGQA must build a concatenated
+  // past+current KV buffer in present_key/present_value for the attention GEMMs.
+  // KV-shared layers (e.g., Gemma 4) legitimately omit present during decode:
+  // they receive borrowed KV via key/value inputs with no past of their own.
+  if ((present_k == nullptr || present_v == nullptr) && past_key != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value outputs are required when past state exists "
-                           "(sequence_length != total_sequence_length). Omitting present outputs is only "
-                           "supported for first-prompt inference with no past KV cache.");
+                           "present_key and present_value outputs are required when past_key is provided. "
+                           "Omitting present outputs is only supported when there is no past KV cache.");
   }
 
   std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};

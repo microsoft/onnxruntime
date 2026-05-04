@@ -273,13 +273,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                            "present_key and present_value must be both provided or both omitted.");
   }
 
-  // Optional present outputs are only safe when is_first_prompt
-  // (sequence_length == total_sequence_length, i.e., no past KV to concatenate).
-  if ((present_key_output == nullptr || present_value_output == nullptr) && !parameters.is_first_prompt) {
+  // Omitting present outputs is only safe when past_key is not provided.
+  // KV-shared layers (e.g., Gemma 4) omit present during decode: they receive
+  // borrowed KV via key/value inputs with no past of their own.
+  if ((present_key_output == nullptr || present_value_output == nullptr) && past_key != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value outputs are required when past state exists "
-                           "(sequence_length != total_sequence_length). "
-                           "Omitting present outputs is only supported for first-prompt inference.");
+                           "present_key and present_value outputs are required when past_key is provided. "
+                           "Omitting present outputs is only supported when there is no past KV cache.");
   }
 
   // When present outputs are omitted, allocate internal scratch buffers so the
