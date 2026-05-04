@@ -944,7 +944,8 @@ PackScalesAndZeroPoints_avx2_impl(
     size_t bm,
     float* PackedScalesBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -962,8 +963,23 @@ PackScalesAndZeroPoints_avx2_impl(
     const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
     const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
 
+    // Cast ZP pointers based on type
+    const uint8_t* uint8_zp = IsFloatZeroPoint ? nullptr : static_cast<const uint8_t*>(QuantBZeroPoint);
+    const float* float_zp = IsFloatZeroPoint ? static_cast<const float*>(QuantBZeroPoint) : nullptr;
+
     const size_t TotalBlocks = N * row_blks;
     ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
+
+    // Lambda to compute ZP correction for a given (row, block) pair
+    auto compute_zp_correction = [&](size_t im, size_t blk_in_col, float scale) -> float {
+        if (IsFloatZeroPoint) {
+            return (float_zp[im * nb1 + blk_in_col] - static_cast<float>(midpoint)) * scale;
+        }
+        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+        size_t elem_idx = blk_in_col % num_elem_per_byte;
+        uint8_t v = (uint8_zp[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+        return static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+    };
 
     if (N >= static_cast<size_t>(MaxThreads) || row_blks <= 1) {
         MlasTrySimpleParallel(
@@ -982,11 +998,7 @@ PackScalesAndZeroPoints_avx2_impl(
                     for (size_t blk_in_col = 0; blk_in_col < row_blks; blk_in_col++) {
                         const size_t idx = im * nb1 + blk_in_col;
                         const float scale = QuantBScale[idx];
-
-                        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-                        size_t elem_idx = blk_in_col % num_elem_per_byte;
-                        uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
-                        float zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+                        float zp = compute_zp_correction(im, blk_in_col, scale);
 
                         const size_t new_idx_outer = outer_base + blk_in_col * outer_stride;
                         const size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
@@ -1028,10 +1040,7 @@ PackScalesAndZeroPoints_avx2_impl(
                     const size_t outer_base = new_im * (bm_div_bits * nb1 / simd_n_out) + new_ibm_div_simd;
                     const size_t outer_stride = bm_div_bits / simd_n_out;
 
-                    size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-                    size_t elem_idx = blk_in_col % num_elem_per_byte;
-                    uint8_t v = (QuantBZeroPoint[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
-                    float zp = static_cast<float>(static_cast<int>(v) - midpoint) * scale;
+                    float zp = compute_zp_correction(im, blk_in_col, scale);
 
                     const size_t new_idx_outer = outer_base + blk_in_col * outer_stride;
                     const size_t new_idx_scale = new_idx_outer * (simd_n_out * 2) + new_isimd;
@@ -1060,7 +1069,8 @@ PackScalesAndZeroPoints_avx2(
     bool HasZeroPoint,
     float* PackedScalesBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -1070,12 +1080,12 @@ PackScalesAndZeroPoints_avx2(
     if (HasZeroPoint) {
         PackScalesAndZeroPoints_avx2_impl<true>(
             N, K, bits, BlkLen, simd_n_out, bm,
-            PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+            PackedScalesBegin, QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool
         );
     } else {
         PackScalesAndZeroPoints_avx2_impl<false>(
             N, K, bits, BlkLen, simd_n_out, bm,
-            PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+            PackedScalesBegin, QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool
         );
     }
 }

@@ -319,7 +319,11 @@ MlasLutGemmPackedSize(
  * @param[in]   HasZeroPoint        whether zero points are provided
  * @param[in]   QuantBData          quantized B data (nullptr to skip B packing)
  * @param[in]   QuantBScale         quantized B scales (nullptr to skip scale packing)
- * @param[in]   QuantBZeroPoint     quantized B zero points (nullptr if HasZeroPoint is false)
+ * @param[in]   QuantBZeroPoint     quantized B zero points (nullptr if HasZeroPoint is false).
+ *                                  When IsFloatZeroPoint is false, this is packed uint8 data.
+ *                                  When IsFloatZeroPoint is true, this is a float array with one
+ *                                  value per quantization group, shape (N, K/BlkLen).
+ * @param[in]   IsFloatZeroPoint    if true, QuantBZeroPoint is interpreted as const float*
  * @param[out]  PackedBuf           output buffer (must be at least MlasLutGemmPackedSize bytes)
  * @param[in]   ThreadPool          thread pool for parallel packing
  */
@@ -332,7 +336,8 @@ MlasLutGemmPack(
     bool HasZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     std::byte* PackedBuf,
     MLAS_THREADPOOL* ThreadPool
 );
