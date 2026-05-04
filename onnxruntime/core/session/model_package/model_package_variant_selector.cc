@@ -22,13 +22,13 @@ namespace {
 struct VariantMatchResult {
   bool matched{false};
   int score{std::numeric_limits<int>::min()};
-  std::vector<VariantModelInfo> selected_model_infos{};
+  std::optional<size_t> selected_ep_compatibility_index{};
 };
 
 std::string ToLower(std::string_view s) {
   std::string result(s);
   std::transform(result.begin(), result.end(), result.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return result;
 }
 
@@ -37,14 +37,14 @@ bool MatchesDevice(const OrtHardwareDevice* hd, std::string_view value) {
     return value.empty();
   }
 
-  const std::string device_type = ToLower(value);
+  const std::string device = ToLower(value);
   switch (hd->type) {
     case OrtHardwareDeviceType::OrtHardwareDeviceType_CPU:
-      return device_type == "cpu";
+      return device == "cpu";
     case OrtHardwareDeviceType::OrtHardwareDeviceType_GPU:
-      return device_type == "gpu";
+      return device == "gpu";
     case OrtHardwareDeviceType::OrtHardwareDeviceType_NPU:
-      return device_type == "npu";
+      return device == "npu";
     default:
       return false;
   }
@@ -66,11 +66,11 @@ const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_cons
 }
 
 Status ValidateCompiledModelCompatibilityInfo(const VariantSelectionEpInfo& ep_info,
-                                              const std::string& compatibility_info,
+                                              const std::string& compatibility_string,
                                               std::vector<const OrtHardwareDevice*>& constraint_devices,
                                               OrtCompiledModelCompatibility* compiled_model_compatibility) {
-  if (compatibility_info.empty()) {
-    LOGS_DEFAULT(INFO) << "No compatibility info constraint for this variant. Skip compatibility validation.";
+  if (compatibility_string.empty()) {
+    LOGS_DEFAULT(INFO) << "No compatibility_string constraint. Skip compatibility validation.";
     return Status::OK();
   }
 
@@ -82,7 +82,7 @@ Status ValidateCompiledModelCompatibilityInfo(const VariantSelectionEpInfo& ep_i
     auto status = ep_factory->ValidateCompiledModelCompatibilityInfo(ep_factory,
                                                                      constraint_devices.data(),
                                                                      constraint_devices.size(),
-                                                                     compatibility_info.c_str(),
+                                                                     compatibility_string.c_str(),
                                                                      compiled_model_compatibility);
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(status));
   }
@@ -92,6 +92,7 @@ Status ValidateCompiledModelCompatibilityInfo(const VariantSelectionEpInfo& ep_i
 
 int ScoreEpCompatibility(const VariantEpCompatibilityInfo& ec) {
   int score = 0;
+
   if (ec.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL) {
     score += 100;
   } else if (ec.compiled_model_compatibility == OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION) {
@@ -102,37 +103,42 @@ int ScoreEpCompatibility(const VariantEpCompatibilityInfo& ec) {
     score += 10;
   }
 
+  if (ec.device.has_value() && !ec.device->empty()) {
+    score += 5;
+  }
+
   return score;
 }
 
 bool IsUnconstrainedEpCompatibility(const VariantEpCompatibilityInfo& ec) {
   const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
-  const bool no_device = !ec.device_type.has_value() || ec.device_type->empty();
-  const bool no_compat = !ec.compatibility_info.has_value() || ec.compatibility_info->empty();
+  const bool no_device = !ec.device.has_value() || ec.device->empty();
+  const bool no_compat = !ec.compatibility_string.has_value() || ec.compatibility_string->empty();
   return no_ep && no_device && no_compat;
 }
 
-bool TryMatchModelInfoForEp(VariantModelInfo& model_info,
-                            const VariantSelectionEpInfo& ep_info,
-                            int& best_score_for_model_info) {
-  model_info.selected_ep_compatibility_index.reset();
-  best_score_for_model_info = std::numeric_limits<int>::min();
-  bool matched = false;
+VariantMatchResult MatchVariantForEp(ModelVariantInfo& variant, const VariantSelectionEpInfo& ep_info) {
+  VariantMatchResult result{};
+  if (variant.ep_compatibility.empty()) {
+    return result;
+  }
 
-  for (size_t ec_idx = 0; ec_idx < model_info.ep_compatibility.size(); ++ec_idx) {
-    auto& ec = model_info.ep_compatibility[ec_idx];
+  int best_score = std::numeric_limits<int>::min();
+
+  for (size_t ec_idx = 0; ec_idx < variant.ep_compatibility.size(); ++ec_idx) {
+    auto& ec = variant.ep_compatibility[ec_idx];
 
     if (ec.ep.has_value() && !ec.ep->empty() && *ec.ep != ep_info.ep_name) {
       continue;
     }
 
-    bool device_ok = !ec.device_type.has_value() || ec.device_type->empty();
+    bool device_ok = !ec.device.has_value() || ec.device->empty();
     std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
 
     if (ep_info.hardware_devices.empty()) {
       device_ok = true;
     } else if (!device_ok) {
-      if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device_type, ep_info.hardware_devices)) {
+      if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
         device_ok = true;
         constraint_devices = {matched_hd};
       }
@@ -144,7 +150,7 @@ bool TryMatchModelInfoForEp(VariantModelInfo& model_info,
 
     ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
     auto st = ValidateCompiledModelCompatibilityInfo(ep_info,
-                                                     ec.compatibility_info.value_or(""),
+                                                     ec.compatibility_string.value_or(""),
                                                      constraint_devices,
                                                      &ec.compiled_model_compatibility);
     if (!st.IsOK()) {
@@ -156,77 +162,29 @@ bool TryMatchModelInfoForEp(VariantModelInfo& model_info,
     }
 
     const int score = ScoreEpCompatibility(ec);
-    if (!matched || score > best_score_for_model_info) {
-      matched = true;
-      best_score_for_model_info = score;
-      model_info.selected_ep_compatibility_index = ec_idx;
+    if (!result.matched || score > best_score) {
+      result.matched = true;
+      best_score = score;
+      result.selected_ep_compatibility_index = ec_idx;
     }
   }
 
-  return matched;
-}
-
-VariantMatchResult MatchVariantForEp(ModelVariantInfo& variant, const VariantSelectionEpInfo& ep_info) {
-  VariantMatchResult result{};
-  if (variant.model_info.empty()) {
-    return result;
-  }
-
-  int total_score = 0;
-
-  // ALL model_info must match for variant to match.
-  for (auto& mi : variant.model_info) {
-    int best_score_for_mi = std::numeric_limits<int>::min();
-    if (!TryMatchModelInfoForEp(mi, ep_info, best_score_for_mi)) {
-      return result;
-    }
-    total_score += best_score_for_mi;
-    result.selected_model_infos.push_back(mi);  // keep selected_ep_compatibility_index for each model_info
-  }
-
-  // Normalize score by model_info count.
-  const int n = static_cast<int>(variant.model_info.size());
-  const int normalized_score = (total_score + n / 2) / n;
-
-  result.matched = true;
-  result.score = normalized_score;
+  result.score = best_score;
   return result;
 }
 
 VariantMatchResult MatchUnconstrainedVariant(const ModelVariantInfo& variant) {
   VariantMatchResult result{};
 
-  if (variant.model_info.empty()) {
-    return result;
+  for (size_t ec_idx = 0; ec_idx < variant.ep_compatibility.size(); ++ec_idx) {
+    if (IsUnconstrainedEpCompatibility(variant.ep_compatibility[ec_idx])) {
+      result.matched = true;
+      result.score = 0;
+      result.selected_ep_compatibility_index = ec_idx;
+      break;
+    }
   }
 
-  for (const auto& mi : variant.model_info) {
-    std::optional<size_t> unconstrained_ec_index;
-
-    for (size_t ec_idx = 0; ec_idx < mi.ep_compatibility.size(); ++ec_idx) {
-      const auto& ec = mi.ep_compatibility[ec_idx];
-      const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
-      const bool no_device = !ec.device_type.has_value() || ec.device_type->empty();
-      const bool no_compat = !ec.compatibility_info.has_value() || ec.compatibility_info->empty();
-
-      if (no_ep && no_device && no_compat) {
-        unconstrained_ec_index = ec_idx;
-        break;
-      }
-    }
-
-    // All model_info entries must have an unconstrained ep_compatibility.
-    if (!unconstrained_ec_index.has_value()) {
-      return result;
-    }
-
-    VariantModelInfo selected_mi = mi;
-    selected_mi.selected_ep_compatibility_index = unconstrained_ec_index;
-    result.selected_model_infos.push_back(std::move(selected_mi));
-  }
-
-  result.matched = true;
-  result.score = 0;
   return result;
 }
 
@@ -245,22 +203,11 @@ VariantMatchResult MatchUnconstrainedVariant(const ModelVariantInfo& variant) {
 // the former will have a higher score and thus be selected.
 //
 int ModelVariantSelector::CalculateVariantScore(const ModelVariantInfo& variant) const {
-  int total = 0;
-
-  for (const auto& mi : variant.model_info) {
-    int best_for_mi = std::numeric_limits<int>::min();
-    for (const auto& ec : mi.ep_compatibility) {
-      best_for_mi = std::max(best_for_mi, ScoreEpCompatibility(ec));
-    }
-
-    if (best_for_mi == std::numeric_limits<int>::min()) {
-      return std::numeric_limits<int>::min();
-    }
-
-    total += best_for_mi;
+  int best = std::numeric_limits<int>::min();
+  for (const auto& ec : variant.ep_compatibility) {
+    best = std::max(best, ScoreEpCompatibility(ec));
   }
-
-  return total;
+  return best;
 }
 
 Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
@@ -275,8 +222,7 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
 
   const VariantSelectionEpInfo* selected_ep_info = nullptr;
   if (ep_infos.size() > 1) {
-    LOGS_DEFAULT(WARNING) << "Multiple EP info provided for model variant selection, but only the first one with ep name '"
-                          << ep_infos[0].ep_name << "' will be used.";
+    LOGS_DEFAULT(WARNING) << "Multiple EP infos provided; only first ep '" << ep_infos[0].ep_name << "' is used.";
   }
   if (!ep_infos.empty()) {
     selected_ep_info = &ep_infos[0];
@@ -285,7 +231,7 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
   std::unordered_set<size_t> candidate_indices_set;
   std::unordered_map<size_t, VariantMatchResult> candidate_matches;
 
-  // 1) Unconstrained variants (all model_info unconstrained).
+  // 1) Unconstrained variants
   for (size_t i = 0, end = variants.size(); i < end; ++i) {
     VariantMatchResult m = MatchUnconstrainedVariant(variants[i]);
     if (m.matched) {
@@ -294,7 +240,7 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
     }
   }
 
-  // 2) EP/device compatibility: all model_info must match.
+  // 2) EP/device compatibility: all constraints in ep compatibility info need to be matched.
   if (selected_ep_info != nullptr) {
     for (size_t i = 0, end = variants.size(); i < end; ++i) {
       VariantMatchResult m = MatchVariantForEp(variants[i], *selected_ep_info);
@@ -324,12 +270,8 @@ Status ModelVariantSelector::SelectVariant(const ModelPackageContext& context,
     }
   }
 
-  const auto& best_match = candidate_matches[best_index];
-  ORT_RETURN_IF(best_match.selected_model_infos.empty(),
-                "Selected variant has no selected model_infos.");
-
-  selected_variant = variants[best_index];
-  selected_variant->model_info = std::move(best_match.selected_model_infos);
+  selected_variant = std::move(variants[best_index]);
+  selected_variant->selected_ep_compatibility_index = candidate_matches[best_index].selected_ep_compatibility_index;
   return Status::OK();
 }
 

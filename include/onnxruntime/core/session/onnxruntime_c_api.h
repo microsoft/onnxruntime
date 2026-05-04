@@ -8564,7 +8564,7 @@ struct OrtInteropApi {
  *   pkg->ReleaseModelPackageContext(ctx);
  *   pkg->ReleaseModelPackageOptions(options);
  *
- * \since Version 1.26.
+ * \since Version 1.27.
  */
 struct OrtModelPackageApi {
   /// \name OrtModelPackageOptions
@@ -8630,7 +8630,7 @@ struct OrtModelPackageApi {
    * Returns NULL/empty arrays when none specified.
    * Memory is owned by `context` and valid until the next model-package query call on that context.
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    */
   ORT_API2_STATUS(ModelPackageGetFileSessionOptions,
                   _In_ const OrtModelPackageContext* context,
@@ -8646,7 +8646,7 @@ struct OrtModelPackageApi {
    * Returns NULL/empty arrays when none specified.
    * Memory is owned by `context` and valid until the next model-package query call on that context.
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    */
   ORT_API2_STATUS(ModelPackageGetFileProviderOptions,
                   _In_ const OrtModelPackageContext* context,
@@ -8688,7 +8688,7 @@ struct OrtModelPackageApi {
    *      Use this when custom EP setup is required (e.g., shared CUDA streams,
    *      shared QNN EP contexts, custom allocators).
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    */
   ORT_API2_STATUS(CreateSession,
                   _In_ const OrtEnv* env,
@@ -8698,7 +8698,7 @@ struct OrtModelPackageApi {
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtSession** session);
 
-  // End of Version 1.26 - DO NOT MODIFY ABOVE
+  // End of Version 1.27 - DO NOT MODIFY ABOVE
 };
 
 /*

@@ -55,6 +55,22 @@ Status FillOptionCachesFromMap(
 
 }  // namespace
 
+ModelPackageComponentContext::ModelPackageComponentContext(const std::string& component_model_name,
+                                                           const ComponentModelInfo& component_model_info,
+                                                           const ModelPackageOptions* options)
+    : component_model_name_(component_model_name),
+      component_model_info_(component_model_info),
+      options_(options) {
+}
+
+ModelPackageComponentContext::ModelPackageComponentContext(const std::string& component_model_name,
+                                                           const ComponentModelInfo& component_model_info,
+                                                           gsl::span<const VariantSelectionEpInfo> ep_infos)
+    : component_model_name_(component_model_name),
+      component_model_info_(component_model_info),
+      ep_infos_(ep_infos) {
+}
+
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
   std::vector<ModelVariantInfo>& variants = model_variant_infos_;
@@ -136,12 +152,10 @@ Status ModelPackageContext::ResolveVariantImpl(gsl::span<const VariantSelectionE
   ORT_RETURN_IF(!selected_variant.has_value(),
                 "No suitable model variant found for the configured execution providers.");
 
-  // Clear prior selection state before applying new selection.
   for (auto& component : model_package_info_.component_models) {
     component.selected_variant_index.reset();
   }
 
-  // Update selected variant cache for the component that owns this selected model_info.
   size_t matched_variants = 0;
   for (auto& component : model_package_info_.component_models) {
     if (component.component_model_name != selected_variant->component_model_name) {
@@ -151,6 +165,7 @@ Status ModelPackageContext::ResolveVariantImpl(gsl::span<const VariantSelectionE
     for (size_t i = 0; i < component.model_variants.size(); ++i) {
       if (component.model_variants[i].variant_name == selected_variant->variant_name) {
         component.selected_variant_index = i;
+        component.model_variants[i] = *selected_variant;  // persist selected_ep_compatibility_index + files
         ++matched_variants;
       }
     }
@@ -221,7 +236,7 @@ Status ModelPackageContext::GetFileCount(const std::string& component_name,
   const auto& variants = model_package_info_.component_models[it->second].model_variants;
   for (const auto& variant : variants) {
     if (variant.variant_name == variant_name) {
-      out_count = variant.model_info.size();
+      out_count = variant.files.size();
       return Status::OK();
     }
   }
@@ -245,10 +260,10 @@ Status ModelPackageContext::GetFileIdentifiers(const std::string& component_name
     if (variant.variant_name == variant_name) {
       std::string key = component_name + ":" + variant_name;
       variant_to_file_identifiers_cache_[key].clear();
-      variant_to_file_identifiers_cache_[key].reserve(variant.model_info.size());
+      variant_to_file_identifiers_cache_[key].reserve(variant.files.size());
 
-      for (const auto& mi : variant.model_info) {
-        variant_to_file_identifiers_cache_[key].push_back(mi.identifier);
+      for (const auto& f : variant.files) {
+        variant_to_file_identifiers_cache_[key].push_back(f.identifier);
       }
 
       out_file_identifiers = gsl::span<const std::string>(variant_to_file_identifiers_cache_[key].data(),
@@ -279,8 +294,8 @@ Status ModelPackageContext::GetFilePath(const std::string& component_name,
     }
 
     if (file_identifier == nullptr || std::string_view(file_identifier).empty()) {
-      if (variant.model_info.size() == 1) {
-        out_path = variant.model_info.front().model_file_path;
+      if (variant.files.size() == 1) {
+        out_path = variant.files.front().model_file_path;
         return Status::OK();
       }
 
@@ -289,9 +304,9 @@ Status ModelPackageContext::GetFilePath(const std::string& component_name,
                              component_name, "', variant='", variant_name, "'.");
     }
 
-    for (const auto& mi : variant.model_info) {
-      if (mi.identifier == file_identifier) {
-        out_path = mi.model_file_path;
+    for (const auto& f : variant.files) {
+      if (f.identifier == file_identifier) {
+        out_path = f.model_file_path;
         return Status::OK();
       }
     }
@@ -345,18 +360,18 @@ Status ModelPackageContext::GetSelectedVariantModelInfo(const std::string& compo
   ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_name);
 
   if (file_identifier == nullptr || std::string_view(file_identifier).empty()) {
-    if (selected_variant->model_info.size() == 1) {
-      out_model_info = &selected_variant->model_info.front();
+    if (selected_variant->files.size() == 1) {
+      out_model_info = &selected_variant->files.front();
       return Status::OK();
     }
 
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "file_identifier is required when selected variant has multiple model_info entries.");
+                           "file_identifier is required when selected variant has multiple files.");
   }
 
-  for (const auto& mi : selected_variant->model_info) {
-    if (mi.identifier == file_identifier) {
-      out_model_info = &mi;
+  for (const auto& f : selected_variant->files) {
+    if (f.identifier == file_identifier) {
+      out_model_info = &f;
       return Status::OK();
     }
   }
@@ -375,17 +390,14 @@ Status ModelPackageContext::GetSelectedVariantFileIdentifiers(const std::string&
   ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_name);
 
   selected_variant_file_identifiers_cache_.clear();
-  selected_variant_file_identifiers_cache_.reserve(selected_variant->model_info.size());
+  selected_variant_file_identifiers_cache_.reserve(selected_variant->files.size());
 
-  // Preserve schema order (do not sort).
-  for (const auto& mi : selected_variant->model_info) {
-    selected_variant_file_identifiers_cache_.push_back(mi.identifier);
+  for (const auto& f : selected_variant->files) {
+    selected_variant_file_identifiers_cache_.push_back(f.identifier);
   }
 
-  out_file_identifiers = gsl::span<const std::string>(
-      selected_variant_file_identifiers_cache_.data(),
-      selected_variant_file_identifiers_cache_.size());
-
+  out_file_identifiers = gsl::span<const std::string>(selected_variant_file_identifiers_cache_.data(),
+                                                      selected_variant_file_identifiers_cache_.size());
   return Status::OK();
 }
 
@@ -394,12 +406,12 @@ Status ModelPackageContext::ResolveSelectedVariantFilePath(const std::string& co
                                                            std::filesystem::path& out_path) const {
   out_path.clear();
 
-  const VariantModelInfo* selected_model_info = nullptr;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, selected_model_info));
-  ORT_RETURN_IF(selected_model_info == nullptr,
-                "Selected model info is null for component: ", component_name);
+  const VariantModelInfo* selected_file = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, selected_file));
+  ORT_RETURN_IF(selected_file == nullptr,
+                "Selected file is null for component: ", component_name);
 
-  out_path = selected_model_info->model_file_path;
+  out_path = selected_file->model_file_path;
   return Status::OK();
 }
 
@@ -425,15 +437,15 @@ Status ModelPackageContext::GetSelectedVariantFilePath(std::filesystem::path& ou
   ORT_RETURN_IF(selected_variant == nullptr,
                 "Selected variant is null for single component model: ", component_name);
 
-  if (selected_variant->model_info.size() != 1) {
+  if (selected_variant->files.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "ResolveSelectedVariantFileForSingleComponent requires selected variant to have exactly one model_info entry, found: ",
-                           selected_variant->model_info.size(),
+                           "ResolveSelectedVariantFileForSingleComponent requires selected variant to have exactly one file entry, found: ",
+                           selected_variant->files.size(),
                            ", component: ", component_name,
                            ", variant: ", selected_variant->variant_name);
   }
 
-  out_path = selected_variant->model_info.front().model_file_path;
+  out_path = selected_variant->files.front().model_file_path;
   return Status::OK();
 }
 
@@ -444,24 +456,11 @@ Status ModelPackageContext::GetSelectedVariantFileSessionOptions(const std::stri
   out_keys = {};
   out_values = {};
 
-  const VariantModelInfo* mi = nullptr;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, mi));
-  ORT_RETURN_IF(mi == nullptr, "Selected model info is null for component: ", component_name);
+  const VariantModelInfo* selected_file = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, selected_file));
+  ORT_RETURN_IF(selected_file == nullptr, "Selected file is null for component: ", component_name);
 
-  ORT_RETURN_IF(mi->ep_compatibility.empty(),
-                "Selected model info has no ep_compatibility entries.");
-
-  size_t ec_idx = 0;
-  if (mi->selected_ep_compatibility_index.has_value()) {
-    ec_idx = *mi->selected_ep_compatibility_index;
-    ORT_RETURN_IF(ec_idx >= mi->ep_compatibility.size(),
-                  "selected_ep_compatibility_index out of range.");
-  } else if (mi->ep_compatibility.size() > 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "selected_ep_compatibility_index is not set for selected model_info with multiple ep_compatibility entries.");
-  }
-
-  return FillOptionCachesFromMap(mi->ep_compatibility[ec_idx].session_options,
+  return FillOptionCachesFromMap(selected_file->session_options,
                                  selected_variant_session_option_keys_cache_,
                                  selected_variant_session_option_values_cache_,
                                  out_keys,
@@ -475,24 +474,11 @@ Status ModelPackageContext::GetSelectedVariantFileProviderOptions(const std::str
   out_keys = {};
   out_values = {};
 
-  const VariantModelInfo* mi = nullptr;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, mi));
-  ORT_RETURN_IF(mi == nullptr, "Selected model info is null for component: ", component_name);
+  const VariantModelInfo* selected_file = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantModelInfo(component_name, file_identifier, selected_file));
+  ORT_RETURN_IF(selected_file == nullptr, "Selected file is null for component: ", component_name);
 
-  ORT_RETURN_IF(mi->ep_compatibility.empty(),
-                "Selected model info has no ep_compatibility entries.");
-
-  size_t ec_idx = 0;
-  if (mi->selected_ep_compatibility_index.has_value()) {
-    ec_idx = *mi->selected_ep_compatibility_index;
-    ORT_RETURN_IF(ec_idx >= mi->ep_compatibility.size(),
-                  "selected_ep_compatibility_index out of range.");
-  } else if (mi->ep_compatibility.size() > 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "selected_ep_compatibility_index is not set for selected model_info with multiple ep_compatibility entries.");
-  }
-
-  return FillOptionCachesFromMap(mi->ep_compatibility[ec_idx].provider_options,
+  return FillOptionCachesFromMap(selected_file->provider_options,
                                  selected_variant_provider_option_keys_cache_,
                                  selected_variant_provider_option_values_cache_,
                                  out_keys,

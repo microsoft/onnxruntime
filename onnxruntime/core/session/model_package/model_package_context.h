@@ -23,27 +23,36 @@ namespace onnxruntime {
 
 struct VariantEpCompatibilityInfo {
   std::optional<std::string> ep;
-  std::optional<std::string> device_type;
-  std::optional<std::string> compatibility_info;
-  std::optional<std::unordered_map<std::string, std::string>> session_options;
-  std::optional<std::unordered_map<std::string, std::string>> provider_options;
+  std::optional<std::string> device;                // from metadata.json: "device"
+  std::optional<std::string> compatibility_string;  // from metadata.json: "compatibility_string"
   OrtCompiledModelCompatibility compiled_model_compatibility{};
 };
 
 struct VariantModelInfo {
-  std::string identifier;
-  std::filesystem::path model_file_path;
-  std::vector<VariantEpCompatibilityInfo> ep_compatibility;
+  std::string identifier;                 // deterministic id (e.g., filename)
+  std::filesystem::path model_file_path;  // resolved path under <component>/<variant>/
 
-  // Selected ep_compatibility entry index after variant matching.
-  std::optional<size_t> selected_ep_compatibility_index{};
+  // from variant.json file entry
+  std::optional<std::unordered_map<std::string, std::string>> session_options;
+  std::optional<std::unordered_map<std::string, std::string>> provider_options;
+  std::optional<std::unordered_map<std::string, std::string>> shared_files;  // logical_name -> checksum/path
 };
 
-// The finest granularity for variant selection.
+// variant-level info (metadata.json + variant.json)
 struct ModelVariantInfo {
   std::string component_model_name;
   std::string variant_name;
-  std::vector<VariantModelInfo> model_info;
+
+  // from metadata.json: variants.<variant_name>.ep_compatibility
+  std::vector<VariantEpCompatibilityInfo> ep_compatibility;
+
+  // selected ep_compatibility entry index after variant matching
+  std::optional<size_t> selected_ep_compatibility_index{};
+
+  // from variant.json: files[]
+  std::vector<VariantModelInfo> files;
+
+  // from variant.json
   std::optional<json> consumer_metadata;
 };
 
@@ -66,6 +75,51 @@ struct VariantSelectionEpInfo {
 };
 
 class ModelPackageOptions;  // forward declaration
+
+class ModelPackageComponentContext {
+ public:
+  explicit ModelPackageComponentContext(const std::string& component_model_name,
+                                        const ComponentModelInfo& component_model_info,
+                                        const ModelPackageOptions* options);
+
+  explicit ModelPackageComponentContext(const std::string& component_model_name,
+                                        const ComponentModelInfo& component_model_info,
+                                        gsl::span<const VariantSelectionEpInfo> ep_infos);
+  size_t GetVariantCount() const noexcept;
+  Status GetVariantNames(gsl::span<const std::string>& out_variant_names) const;
+  Status GetFileCount(const std::string& variant_name,
+                      size_t& out_count) const;
+  Status GetFileIdentifiers(const std::string& variant_name,
+                            gsl::span<const std::string>& out_file_identifiers) const;
+  Status GetFilePath(const std::string& variant_name,
+                     const char* file_identifier /*may be null*/,
+                     std::filesystem::path& out_path) const;
+  Status ResolveVariant();
+  const std::vector<ModelVariantInfo>& GetModelVariants() const noexcept {
+    return component_model_info_.model_variants;
+  }
+  const ModelPackageOptions* Options() const noexcept;
+
+ private:
+  std::string component_model_name_;
+  ComponentModelInfo component_model_info_{};
+  const ModelPackageOptions* options_{};                // non-owning, immutable config source for EP intent
+  gsl::span<const VariantSelectionEpInfo> ep_infos_{};  // non-owning EP intent when options_ is not used
+
+  mutable std::unordered_map<std::string, std::vector<std::string>> variant_to_file_identifiers_cache_{};
+  mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
+  mutable std::vector<std::string> selected_variant_session_option_keys_cache_{};
+  mutable std::vector<std::string> selected_variant_session_option_values_cache_{};
+  mutable std::vector<std::string> selected_variant_provider_option_keys_cache_{};
+  mutable std::vector<std::string> selected_variant_provider_option_values_cache_{};
+
+  std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
+
+  // optional runtime state mirrors (if needed by callers)
+  std::vector<const OrtEpDevice*> execution_devices_{};
+  std::vector<const OrtEpDevice*> devices_selected_{};
+  bool from_policy_{false};
+};
 
 class ModelPackageContext {
  public:
