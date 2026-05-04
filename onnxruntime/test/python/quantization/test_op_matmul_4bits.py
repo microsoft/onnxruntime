@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from importlib.util import find_spec
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import onnx
@@ -414,7 +415,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
     # dynamically (Shape/Size/Sub/Max/ConstantOfShape/Slice/Concat → Reshape) so it
     # works for arbitrary activation rank. The op-count expectations below reflect
     # those helper ops.
-    _RESHAPE_HELPER_OP_COUNTS = {
+    _RESHAPE_HELPER_OP_COUNTS: ClassVar[dict[str, int]] = {
         "Reshape": 3,
         "Shape": 1,
         "Size": 1,
@@ -495,7 +496,13 @@ class TestOpMatMul4Bits(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     def test_quantize_matmul_int4_3d_weight_3d_activation_preserves_shape(self):
-        """ONNX MatMul([B,S,K],[1,K,N]) must yield [B,S,N] after quantization, not [1,B*S,N]."""
+        """ONNX MatMul([B,S,K],[1,K,N]) must yield [B,S,N] after quantization.
+
+        When activation rank >= weight rank, MatMulNBits already produces the
+        correct output shape, so the post-op reshape is elided as a no-op.
+        The quantized graph therefore contains only MatMulNBits:1 and no
+        reshape helper ops (Reshape/Shape/Size/Sub/Max/ConstantOfShape/Slice/Concat).
+        """
         np.random.seed(42)
         weight_shape = (1, 52, 288)
         batch, seq = 2, 100
@@ -504,7 +511,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
             model_fp32_path, symmetric=True, weight_shape=weight_shape, batch=batch, seq=seq
         )
         data_reader = self.input_feeds(1, {"input": (batch, seq, weight_shape[-2])})
-        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
+        self.quant_test(model_fp32_path, data_reader, 32, True)
 
         # The check_model_correctness inside quant_test runs both the FP32 and
         # quantized models on the same input and compares outputs. If the

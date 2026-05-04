@@ -769,7 +769,12 @@ class HQQWeightOnlyQuantizer:
         kwargs["bits"] = bits
         kwargs["block_size"] = self.config.block_size
 
-        matmul_q_output = node.output[0] if b_original_shape is None else node.output[0] + "_pre_reshape"
+        # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMulNBits
+        # already produces the correct output shape.
+        a_static_rank = _get_static_rank(node.input[0], graph_stack)
+        rank_b_orig = len(b_original_shape) if b_original_shape is not None else 0
+        needs_reshape = b_original_shape is not None and (a_static_rank is None or a_static_rank < rank_b_orig)
+        matmul_q_output = node.output[0] if not needs_reshape else node.output[0] + "_pre_reshape"
         matmul_q_node = onnx.helper.make_node(
             "MatMulNBits",
             inputs=input_names,
@@ -780,7 +785,7 @@ class HQQWeightOnlyQuantizer:
         )
 
         output_nodes = [matmul_q_node]
-        if b_original_shape is not None:
+        if needs_reshape:
             # Restore ONNX MatMul broadcast shape on the output.
             # MatMul(A, B_orig) output shape (with B_orig leading dims all 1) is:
             #   [1] * max(rank(B_orig) - rank(A), 0) + A.shape[:-1] + [N]
@@ -809,6 +814,25 @@ def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, Gr
             if tensor.name == name:
                 return tensor, graph
     return None, None
+
+
+def _get_static_rank(tensor_name: str, graph_path: list[GraphProto]) -> int | None:
+    """Return the static rank of a tensor if its shape is known, else None.
+
+    Searches graph inputs, value_info, and outputs in the graph stack (inner-most
+    graph first).  A known shape requires ``HasField('shape')`` to be true on the
+    tensor_type; the rank is then ``len(shape.dim)``.  Individual dim sizes may
+    still be symbolic — only the rank (dimension count) matters here.
+    """
+    for gid in range(len(graph_path) - 1, -1, -1):
+        graph = graph_path[gid]
+        for vi in list(graph.input) + list(graph.value_info) + list(graph.output):
+            if vi.name == tensor_name:
+                tt = vi.type.tensor_type
+                if tt.HasField("shape"):
+                    return len(tt.shape.dim)
+                return None
+    return None
 
 
 def _build_nbits_output_reshape(
@@ -1092,7 +1116,12 @@ class DefaultWeightOnlyQuantizer:
             if self.config.accuracy_level:
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
-            qop_output = node.output[0] if b_original_shape is None else node.output[0] + "_pre_reshape"
+            # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMulNBits
+            # already produces the correct output shape.
+            a_static_rank = _get_static_rank(node.input[0], graph_stack)
+            rank_b_orig = len(b_original_shape) if b_original_shape is not None else 0
+            needs_reshape = b_original_shape is not None and (a_static_rank is None or a_static_rank < rank_b_orig)
+            qop_output = node.output[0] if not needs_reshape else node.output[0] + "_pre_reshape"
             matmul_qbit_node = onnx.helper.make_node(
                 "MatMulNBits",
                 inputs=input_names,
@@ -1103,7 +1132,7 @@ class DefaultWeightOnlyQuantizer:
             )
 
             output_nodes.append(matmul_qbit_node)
-            if b_original_shape is not None:
+            if needs_reshape:
                 output_nodes.extend(
                     _build_nbits_output_reshape(
                         a_input_name=node.input[0],
@@ -1123,7 +1152,12 @@ class DefaultWeightOnlyQuantizer:
                 node.input[0],
                 tp_output_names[0] if qdq_opt_for_intel_npu_enabled else dq_output_names[0],
             ]
-            qdq_matmul_out = node.output[0] if b_original_shape is None else node.output[0] + "_pre_reshape"
+            # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMulNBits
+            # already produces the correct output shape.
+            a_static_rank = _get_static_rank(node.input[0], graph_stack)
+            rank_b_orig = len(b_original_shape) if b_original_shape is not None else 0
+            needs_reshape = b_original_shape is not None and (a_static_rank is None or a_static_rank < rank_b_orig)
+            qdq_matmul_out = node.output[0] if not needs_reshape else node.output[0] + "_pre_reshape"
             matmul_output_names = [qdq_matmul_out]
             if not self.config.is_symmetric:
                 zp_tensor = onnx.helper.make_tensor(
@@ -1159,7 +1193,7 @@ class DefaultWeightOnlyQuantizer:
                 output_nodes.extend([dq_node, tp_node, matmul_node])
             else:
                 output_nodes.extend([dq_node, matmul_node])
-            if b_original_shape is not None:
+            if needs_reshape:
                 output_nodes.extend(
                     _build_nbits_output_reshape(
                         a_input_name=node.input[0],
