@@ -5,1218 +5,1275 @@
 - [Problem Statement](#problem-statement)
 - [Design Principles](#design-principles)
 - [Proposed API](#proposed-api)
-  - [1. Package Context (Parse, Filter & Discover)](#1-package-context-parse-filter--discover)
-  - [2. Query APIs](#2-query-apis)
-  - [3. Session Creation](#3-session-creation)
+  - [1. Package Context (Parse, Traverse, Mutate)](#1-package-context-parse-traverse-mutate)
+  - [2. Package Options (EP Capture)](#2-package-options-ep-capture)
+  - [3. Component Selection](#3-component-selection)
+  - [4. Component Instance Queries](#4-component-instance-queries)
+  - [5. Session Creation](#5-session-creation)
   - [API Summary](#api-summary)
-- [Variant Metadata Schema](#variant-metadata-schema)
-  - [Schema Field Reference](#schema-field-reference)
-  - [Variant Selection Algorithm](#variant-selection-algorithm)
 - [Package Layout](#package-layout)
+- [Metadata Schemas](#metadata-schemas)
+  - [Top-Level `manifest.json`](#top-level-manifestjson)
+  - [Component `metadata.json`](#component-metadatajson)
+  - [Variant `variant.json`](#variant-variantjson)
+- [Variant Selection Algorithm](#variant-selection-algorithm)
 - [Usage Examples](#usage-examples)
-  - [Example 1: Simple Consumer (Single-File Component, Flat-Directory Style)](#example-1-simple-consumer-single-file-component-flat-directory-style)
-  - [Example 2: Multi-Component Package with QNN](#example-2-multi-component-package-with-qnn)
-  - [Example 3: Advanced Consumer (Custom Session Options)](#example-3-advanced-consumer-custom-session-options)
-  - [Example 4: Querying Selected Variants](#example-4-querying-selected-variants)
+  - [Example 1: Single-File Component](#example-1-single-file-component)
+  - [Example 2: Multi-File Component (Pipeline Consumer)](#example-2-multi-file-component-pipeline-consumer)
+  - [Example 3: Inspecting a Package](#example-3-inspecting-a-package)
+  - [Example 4: Mutating a Package](#example-4-mutating-a-package)
 - [Key Design Decisions](#key-design-decisions)
-  - [EP Selection Is Captured from `OrtSessionOptions`](#ep-selection-is-captured-from-ortsessionoptions)
-  - [NULL Options Means "Single-Variant Package"](#null-options-means-single-variant-package)
-  - [Multi-EP Matching Commits One EP Globally](#multi-ep-matching-commits-one-ep-globally)
-  - [Captured Options Are a Catalog at Session Creation](#captured-options-are-a-catalog-at-session-creation)
-  - [Session Creation Stays with `OrtSession`](#session-creation-stays-with-ortsession)
-  - [ORT Applies Metadata Options (Not the Consumer)](#ort-applies-metadata-options-not-the-consumer)
-  - [Session Options Precedence](#session-options-precedence)
-  - [Two Parameters for Component + File (Not a Dotted String)](#two-parameters-for-component--file-not-a-dotted-string)
-  - [`OrtEnv` Only Needed at Options Creation](#ortenv-only-needed-at-options-creation)
-  - [Partial Match Is Not an Error](#partial-match-is-not-an-error)
-  - [Per-File EP Compatibility List](#per-file-ep-compatibility-list)
-  - [`ep: null` for Neutral/CPU Files](#ep-null-for-neutralcpu-files)
-  - [Variant Score Is the File-Score Average](#variant-score-is-the-file-score-average)
-  - [Provider Options Are Flat](#provider-options-are-flat)
+  - [Opaque Handles for ABI Stability](#opaque-handles-for-abi-stability)
+  - [Component Metadata Is Selection-Only](#component-metadata-is-selection-only)
+  - [Per-Variant `variant.json` Owns Runtime Detail](#per-variant-variantjson-owns-runtime-detail)
+  - [EP Compatibility Is Per-Variant, Not Per-File](#ep-compatibility-is-per-variant-not-per-file)
+  - [Compatibility Strings Are Owned by the EP](#compatibility-strings-are-owned-by-the-ep)
+  - [No File-Set Consistency Across Variants](#no-file-set-consistency-across-variants)
+  - [Index-Based Per-File Access (Default 0)](#index-based-per-file-access-default-0)
+  - [Single-File-Only `CreateSession`](#single-file-only-createsession)
+  - [Shared Weights as a Name-To-Path Mapping](#shared-weights-as-a-name-to-path-mapping)
+  - [`consumer_metadata` Is a Single Opaque Blob](#consumer_metadata-is-a-single-opaque-blob)
+  - [Manifest Carries Merge Provenance](#manifest-carries-merge-provenance)
 - [Implementation Plan](#implementation-plan)
-  - [Phase 1: ORT](#phase-1-ort)
-  - [Phase 2: ORT-GenAI](#phase-2-ort-genai)
+  - [Phase 1: Core API and Read Path](#phase-1-core-api-and-read-path)
+  - [Phase 2: Mutation and Authoring](#phase-2-mutation-and-authoring)
+  - [Phase 3: Compile and Merge/Unmerge](#phase-3-compile-and-mergeunmerge)
 - [Open Questions](#open-questions)
-  - [1. Different EPs for Different Components](#1-different-eps-for-different-components)
-  - [2. ORT-Managed EP Registration](#2-ort-managed-ep-registration)
-  - [3. Known Session Options Setters](#3-known-session-options-setters)
-  - [4. Shared Weights / External Data Files](#4-shared-weights--external-data-files)
+  - [1. EP-Side Preference ABI](#1-ep-side-preference-abi)
+  - [2. JIT Compilation Granularity](#2-jit-compilation-granularity)
+  - [3. Merge / Unmerge Semantics](#3-merge--unmerge-semantics)
+  - [4. Manifest Schema Versioning](#4-manifest-schema-versioning)
   - [5. Cross-Component Consistency](#5-cross-component-consistency)
-  - [6. JIT Compilation Caching](#6-jit-compilation-caching)
-  - [7. `GetSelectedVariantPath` with NULL Options and EP-Declaring Variants](#7-getselectedvariantpath-with-null-options-and-ep-declaring-variants)
-  - [8. Metadata-Aware Policy Delegates (Deferred)](#8-metadata-aware-policy-delegates-deferred)
-  - [9. Package Inspection Mode (Deferred)](#9-package-inspection-mode-deferred)
+  - [6. Authoring Tools](#6-authoring-tools)
+  - [7. Shared-Weight Verification on Add](#7-shared-weight-verification-on-add)
 - [Appendix A: ORT-GenAI Integration](#appendix-a-ort-genai-integration)
-  - [GenAI Session Creation Flow](#genai-session-creation-flow)
-  - [What Changes in GenAI](#what-changes-in-genai)
-  - [GenAI Config in Model Package World](#genai-config-in-model-package-world)
-  - [Backward Compatibility](#backward-compatibility)
-- [Appendix B: Session Options Reference](#appendix-b-session-options-reference)
-  - [Known Session Options (Require Dedicated Setters)](#known-session-options-require-dedicated-setters)
+  - [Where GenAI Assets Live in the Package](#where-genai-assets-live-in-the-package)
+  - [`genai_config.json` in the Package World](#genai_configjson-in-the-package-world)
+  - [Per-Variant Overlays (RFC 7386 JSON Merge Patch)](#per-variant-overlays-rfc-7386-json-merge-patch)
+  - [EP Defaulting in `og.Model` and `og.Config`](#ep-defaulting-in-ogmodel-and-ogconfig)
+  - [Resolution Flow at `Model::Create`](#resolution-flow-at-modelcreate)
+  - [What Overlays Should and Should Not Contain](#what-overlays-should-and-should-not-contain)
+  - [Single-File Components (CPU, CUDA, WebGPU, Vitis, OpenVINO)](#single-file-components-cpu-cuda-webgpu-vitis-openvino)
+  - [Multi-File Components (QNN-Style Pipelines)](#multi-file-components-qnn-style-pipelines)
+  - [Per-File CPU Override](#per-file-cpu-override)
+  - [Backward Compatibility (Flat-Directory Models)](#backward-compatibility-flat-directory-models)
+
+---
 
 ## Problem Statement
 
-The current ORT model package API bundles discovery, variant selection, and session creation into a single `Session(env, path, session_options)` call. This only works for single-component, single-ONNX-file packages.
+A model that ships in production is rarely a single ONNX file. The same model exists as multiple variants targeting different execution providers (CPU, CUDA, WebGPU, QNN, OpenVINO, …), each variant may consist of multiple ONNX files (split decoders, embedding stages, language-model heads), and consumers (frameworks like ORT-GenAI, applications like Foundry Local) need a single distributable that captures all of this without forcing every consumer to re-implement variant discovery, EP-aware selection, and per-file session setup.
 
-Real-world models require:
-- **Multi-component packages** — decoder + vision + embedding + speech
-- **Multi-file variants** — e.g., QNN decoder split into 4 ONNX files (embeddings, context, iterator, lm_head)
-- **Per-file session/provider options** — each file has the EP options it needs to load correctly
-- **Per-variant consumer metadata** — opaque to ORT, consumed by higher-level frameworks
-- **Consumer-managed session lifecycle** — destroy/reload individual sessions for memory management
-- **Mixed EP within a variant** — some files forced to CPU (e.g., embeddings in a QNN pipeline)
+The model package format addresses this by laying out variants on disk under a known structure with a small amount of metadata. The API around it has to:
+
+1. **Open** a package directory and let callers explore its structure.
+2. **Mutate** a package — add or remove components and variants — so authoring tools and consumers can compose packages.
+3. **Select** a component variant given the consumer's intended EP, returning enough information for any consumer to load it (single ORT session, multi-session pipeline, or anything else).
+4. **Open a session** when the variant is a single ONNX file, as a convenience over the lower-level path.
+5. Stay **stable across format evolution** so changes to package internals (new fields, new directory shapes) do not break callers.
+
+This proposal defines that API.
+
+---
 
 ## Design Principles
 
-1. **Parse once, query freely** — create a package context filtered by the captured EP selection, then query it for components, files, identifiers, and metadata. No intermediate handles.
-2. **Session creation stays with `OrtSession`** — an overload of the existing session creation API accepts a package context plus a component/file identifier in place of a model path. Model package parsing and session creation remain independent concerns, and consumers use the same `OrtSession` surface they already know.
-3. **ORT applies required options** — session and provider options live in variant metadata and are applied by ORT during session creation. The consumer does not read and forward them.
-4. **Consumer metadata is opaque to ORT** — ORT stores and returns it; never interprets it.
-5. **EP selection is the consumer's responsibility** — the consumer decides the EP through the same `OrtSessionOptions` surface they already use for session creation. The model package API captures that decision into an `OrtModelPackageOptions` handle and consults it during variant selection. The package API does not discover or instantiate EPs.
-6. **Keep ORT generic** — ORT handles package parsing, variant matching, and file path resolution. Consumer semantics (pipeline structure, execution phases, KV cache) stay in consumer config.
+1. **Folder is the source of truth.** A model package is a directory. Every API takes a folder path; no archive parsing, no implicit extraction. The format is explorable with normal filesystem tools.
+2. **Opaque handles, narrow accessors.** All public types are forward-declared structs accessed through API functions. Internal addressing (file identifiers, sub-component grouping, on-disk layout details) is *not* part of the ABI. This keeps callers stable across format changes.
+3. **Generic mechanism, not consumer semantics.** The package API surfaces ORT-relevant primitives — file paths, session options, provider options, external-data resolution — and an opaque `consumer_metadata` blob that ORT does not interpret. Anything that requires consumer-specific knowledge (pipeline shape, file roles, overlay merge rules) is the consumer's responsibility.
+4. **Component metadata is for selection only.** A component's top-level `metadata.json` declares variants and their EP compatibility — nothing else. Anything that varies per-file or per-variant beyond selection lives inside the variant's directory. This makes adding or removing a variant a one-entry edit plus a directory move.
+5. **EP plugins own EP-specific knowledge.** ORT's selection logic is EP-agnostic: it filters variants by EP-name match. Choosing among compatible variants based on hardware-specific compatibility hints is delegated to the EP itself via a dedicated ABI.
+6. **Single-file is the simple path; multi-file is the consumer's path.** ORT's `CreateSession` over a component instance handles single-file variants directly. Multi-file variants are the consumer's responsibility — but the consumer uses the same generic accessors ORT uses internally, so there is no duplicated parsing.
+7. **Designed for evolution.** The format must support shared weights, JIT compilation, package merging across producers, and variants that can be downloaded standalone. Where the implementation is deferred, the schema and API leave room.
 
 ---
 
 ## Proposed API
 
-The model package surface is exposed through a small sub-API, `OrtModelPackageApi`, obtained from the main `OrtApi`. This mirrors the shape of `OrtCompileApi` and keeps the package-specific functions grouped. Ownership and release semantics for the two new handles (`OrtModelPackageOptions`, `OrtModelPackageContext`) are standard ORT opaque-struct patterns.
+The API is layered into five concerns: opening a package, capturing EP intent, selecting a component, querying the selected component, and creating a session.
 
-### 1. Package Options & Context (Parse, Filter & Discover)
-
-EP selection is **captured from the consumer's existing `OrtSessionOptions`**. Rather than introducing a new selection DSL, the model package API reuses the mechanisms ORT already has for declaring EP intent — `SessionOptionsAppendExecutionProvider_V2` and `SessionOptionsSetEpSelectionPolicy`/`SessionOptionsSetEpSelectionPolicyDelegate`. ORT then captures the resolved `OrtEpDevice` list (plus any non-EP session-level settings) onto an `OrtModelPackageOptions` handle that drives both variant selection and, later, session creation.
+### 1. Package Context (Parse, Traverse, Mutate)
 
 ```c
-// Create a snapshot of EP selection + session-level settings from a session_options.
-//
-// Captures (by copy):
-//   - If SessionOptionsAppendExecutionProvider_V2 was called: the appended
-//     OrtEpDevices and their EP options are captured directly.
-//   - Else if SessionOptionsSetEpSelectionPolicy / *Delegate was set: the policy
-//     is resolved against env's currently registered OrtEpDevices and the
-//     resulting OrtEpDevices are captured.
-//   - Non-EP session-level settings (threading, optimization level, log severity,
-//     free-dim overrides, custom ops, config entries) are also captured so they
-//     can be replayed on sessions created from this context.
-//
-// After this call returns, session_options may be released by the caller.
-//
-// The captured OrtEpDevice list acts as both:
-//   - the ordered candidate-EP list for variant selection at CreateModelPackageContext time, and
-//   - the EP *catalog* that session creation looks up when the selected variant's
-//     file declares its EP (so the exact OrtEpDevice identity is reused — factory,
-//     hardware device, ep_metadata).
-ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
-    _In_ const OrtEnv* env,
-    _In_ const OrtSessionOptions* session_options,
-    _Outptr_ OrtModelPackageOptions** out);
+OrtStatus* CreateModelPackageContext(const ORTCHAR_T* path,
+                                     OrtModelPackageContext** out);
 
-// Standard release.
-ORT_CLASS_RELEASE(ModelPackageOptions);
-
-// Parse a model package directory and resolve variants.
-//
-// `options` drives variant selection:
-//   - NULL options: NULL-options path. Each component is resolved by variant
-//     count — a single variant per component is selected as-is, regardless of
-//     its declared EPs. If any component has >1 variants, returns an ambiguity
-//     error. Intended for flat-directory migration / inspection scenarios where
-//     the consumer handles EP setup elsewhere (or not at all).
-//   - Non-NULL options with no EPs captured: match only variants whose files
-//     either declare no EP (neutral/CPU) or are covered by null `ep_compatibility`
-//     entries. Effective "CPU / unconstrained only" filter.
-//   - Non-NULL options with a captured EP list: run the two-pass walk described
-//     in the Variant Selection Algorithm.
-//
-// If a component has no matching variant, it is excluded from the context (not
-// returned by GetComponentNames). This is not an error — the package may contain
-// components for EPs the consumer is not using.
-//
-// `options` may be released by the caller after this call; the context deep-copies
-// what it needs.
-ORT_API2_STATUS(CreateModelPackageContext,
-    _In_ const ORTCHAR_T* package_path,
-    _In_opt_ const OrtModelPackageOptions* options,
-    _Outptr_ OrtModelPackageContext** out);
-
-ORT_CLASS_RELEASE(ModelPackageContext);
+void ReleaseModelPackageContext(OrtModelPackageContext* ctx);
 ```
 
-Context creation is pure parsing + matching — it does not instantiate EP factories, create sessions, or touch the env. Policy resolution (if any) has already happened inside `CreateModelPackageOptionsFromSessionOptions`; the captured `OrtEpDevice` list on `options` is what the two-pass matcher walks. `OrtEnv` is supplied later, at `CreateSession` time, on the main `OrtApi::CreateSession` signature.
+The context is an opaque handle backed by a parsed view of the package directory. Construction validates the directory structure, parses the top-level manifest (if present), and indexes all components and their variants.
 
-### 2. Query APIs
+**Traversal queries** (read-only, no selection):
 
 ```c
-// --- Components ---
+size_t  ModelPackageGetComponentCount(const OrtModelPackageContext* ctx);
+const char* ModelPackageGetComponentName(const OrtModelPackageContext* ctx, size_t idx);
 
-// List component names that have a matching variant for the captured EP selection.
-ORT_API_STATUS(ModelPackageGetComponentNames,
-    _In_ const OrtModelPackageContext* context,
-    _Out_ size_t* num_components,
-    _Outptr_ const char* const** component_names);
+size_t  ModelPackageGetVariantCount(const OrtModelPackageContext* ctx,
+                                    const char* component_name);
+const char* ModelPackageGetVariantName(const OrtModelPackageContext* ctx,
+                                       const char* component_name, size_t idx);
 
-// --- Selected Variant ---
-
-// Get the name of the selected variant for a component (for debugging/logging).
-// e.g., "qnn-npu", "cpu", "cuda"
-ORT_API_STATUS(ModelPackageGetSelectedVariantName,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _Outptr_ const char** variant_name);
-
-// --- Files ---
-
-// Get the number of ONNX model files in the selected variant for a component.
-// Single-file components return 1. Multi-file (e.g., QNN pipeline) return N.
-ORT_API_STATUS(ModelPackageGetFileCount,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _Out_ size_t* count);
-
-// Get the identifiers for all files in a component's selected variant.
-// Identifiers are logical names (e.g., "embeddings", "context", "iterator", "lm_head").
-// For single-file components, the identifier may be the component name itself.
-ORT_API_STATUS(ModelPackageGetFileIdentifiers,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _Out_ size_t* num_identifiers,
-    _Outptr_ const char* const** identifiers);
-
-// --- Per-File Metadata ---
-
-// Get the resolved file path for a specific file in a component.
-ORT_API_STATUS(ModelPackageGetFilePath,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _In_opt_ const char* file_identifier,   // NULL for single-file components
-    _Outptr_ const ORTCHAR_T** file_path);
-
-// Get the EP that was selected for a specific file during variant resolution.
-// NULL means CPU (either the file had empty `ep_compatibility`, the selected
-// entry had `ep: null`, or the context was created with NULL options and the
-// selected single variant declared no EP for this file).
-ORT_API_STATUS(ModelPackageGetFileEp,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _In_opt_ const char* file_identifier,
-    _Outptr_opt_ const char** ep_name);
-
-// Get the device type declared on the selected EP-compatibility entry for this
-// file (e.g., "cpu", "gpu", "npu"). NULL if the entry did not declare one.
-ORT_API_STATUS(ModelPackageGetFileDeviceType,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _In_opt_ const char* file_identifier,
-    _Outptr_opt_ const char** device_type);
-
-// Get session options for a specific file (JSON string) for the selected EP.
-// NULL if none specified.
-ORT_API_STATUS(ModelPackageGetFileSessionOptions,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _In_opt_ const char* file_identifier,
-    _Outptr_opt_ const char** session_options_json);
-
-// Get provider options for a specific file (JSON string) for the selected EP.
-// Flat key-value — no EP-name nesting (EP is known from GetFileEp).
-// NULL if none specified.
-ORT_API_STATUS(ModelPackageGetFileProviderOptions,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _In_opt_ const char* file_identifier,
-    _Outptr_opt_ const char** provider_options_json);
-
-// --- Consumer Metadata (Opaque to ORT) ---
-
-// Get consumer metadata for a component's selected variant.
-// Raw JSON string. ORT does not parse or validate it. NULL if absent.
-ORT_API_STATUS(ModelPackageGetConsumerMetadata,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _Outptr_opt_ const char** json_string);
+// Per-variant EP compatibility — needed before SelectComponent so callers
+// can build an OrtSessionOptions / OrtModelPackageOptions with the right EP.
+size_t ModelPackageGetVariantEpCount(const OrtModelPackageContext* ctx,
+                                     const char* component_name,
+                                     const char* variant_name);
+const char* ModelPackageGetVariantEpName(const OrtModelPackageContext* ctx,
+                                         const char* component_name,
+                                         const char* variant_name,
+                                         size_t ep_idx);
+// Optional device discriminator on this EP entry (e.g. OpenVINO "GPU" vs "NPU").
+// Returns NULL when the entry omits `device`.
+const char* ModelPackageGetVariantEpDevice(const OrtModelPackageContext* ctx,
+                                           const char* component_name,
+                                           const char* variant_name,
+                                           size_t ep_idx);
+size_t ModelPackageGetVariantEpCompatibilityStringCount(const OrtModelPackageContext* ctx,
+                                                        const char* component_name,
+                                                        const char* variant_name,
+                                                        size_t ep_idx);
+const char* ModelPackageGetVariantEpCompatibilityString(const OrtModelPackageContext* ctx,
+                                                        const char* component_name,
+                                                        const char* variant_name,
+                                                        size_t ep_idx,
+                                                        size_t str_idx);
 ```
 
-### 3. Session Creation
+Pre-selection traversal exposes exactly the contents of each component's `metadata.json` — variant names and their EP compatibility. Anything beyond that (file count, per-file paths and options, consumer_metadata) requires a `SelectComponent` call and lives on the resulting `OrtComponentInstance` (see [Component Instance Queries](#4-component-instance-queries)).
 
-Session creation uses a new overload of the existing `CreateSession` API. Instead of a file path, it takes a package context plus a component/file identifier. No new API surface is introduced for session management — consumers use the same `OrtSession` they already know.
+**Mutation operations** (authoring path):
 
 ```c
-// Create a session from a file in a model package.
-// Overload of CreateSession that takes a package context + component/file
-// identifier instead of a model path.
-//
-// The component_name is required. file_identifier is optional:
-//   - NULL: valid only for single-file components (returns error if multi-file)
-//   - non-NULL: selects a specific file by its identifier
-//
-// Session options precedence (depends on what `context` was created with, and
-// whether `session_options` is provided):
-//
-// +-------------------+----------------------+------------------------------------------------+
-// | context options   | session_options arg  | What ORT does                                  |
-// +-------------------+----------------------+------------------------------------------------+
-// | NULL              | NULL                 | Built entirely from the selected variant's     |
-// |                   |                      | file metadata: EP, session_options, and        |
-// |                   |                      | provider_options from the chosen               |
-// |                   |                      | `ep_compatibility` entry. CPU for `ep: null`.  |
-// |                   |                      | (Equivalent to "the package tells us what      |
-// |                   |                      | to do.")                                       |
-// +-------------------+----------------------+------------------------------------------------+
-// | NULL              | provided             | Caller's session_options used as-is. Caller    |
-// |                   |                      | is responsible for EP registration and all     |
-// |                   |                      | configuration. Metadata is NOT applied.        |
-// +-------------------+----------------------+------------------------------------------------+
-// | non-NULL          | NULL                 | Non-EP settings from the captured session      |
-// |                   |                      | options + the single OrtEpDevice from the      |
-// |                   |                      | captured catalog that matches this file's      |
-// |                   |                      | selected EP (or no EP for `ep: null`) +        |
-// |                   |                      | per-file metadata session_options and          |
-// |                   |                      | provider_options merged on top.                |
-// +-------------------+----------------------+------------------------------------------------+
-// | non-NULL          | provided             | Caller's session_options used as-is. Neither   |
-// |                   |                      | captured options nor variant metadata is       |
-// |                   |                      | applied. Escape hatch for consumers that need  |
-// |                   |                      | custom EP setup (shared CUDA streams, QNN      |
-// |                   |                      | shared EP contexts, custom allocators, etc.).  |
-// +-------------------+----------------------+------------------------------------------------+
-//
-// Note on the "non-NULL context + NULL session_options" row:
-// The captured OrtEpDevice list is NOT replayed wholesale. It is used as a
-// catalog — ORT looks up the specific device corresponding to this file's
-// selected EP and registers only that one. Files with `ep: null` do not have
-// any EP registered (they run on default CPU). This avoids registering every
-// candidate EP on every session.
-//
-ORT_API_STATUS(CreateSession,                    // overload
-    _In_ const OrtEnv* env,
-    _In_ const OrtModelPackageContext* context,
-    _In_ const char* component_name,
-    _In_opt_ const char* file_identifier,
-    _In_opt_ const OrtSessionOptions* session_options,
-    _Outptr_ OrtSession** session);
+OrtStatus* ModelPackageAddComponent(OrtModelPackageContext* ctx,
+                                    const char* component_name,
+                                    const ORTCHAR_T* source_dir);
+OrtStatus* ModelPackageRemoveComponent(OrtModelPackageContext* ctx,
+                                       const char* component_name);
+
+OrtStatus* ModelPackageAddVariant(OrtModelPackageContext* ctx,
+                                  const char* component_name,
+                                  const ORTCHAR_T* source_dir);
+OrtStatus* ModelPackageRemoveVariant(OrtModelPackageContext* ctx,
+                                     const char* component_name,
+                                     const char* variant_name);
+
+OrtStatus* ModelPackageCommit(OrtModelPackageContext* ctx);
 ```
 
-The existing path-based `CreateSession(env, model_path, options, &session)` is unchanged. Language bindings can expose the overload naturally (e.g., `Ort::Session(env, package_ctx, "decoder", "iterator", opts)` in C++).
+Mutations are staged on the context and written to disk by `Commit`. The exact transactional guarantees are an implementation detail; the public contract is that `Commit` is the only call that touches the filesystem in a write capacity.
+
+**Add semantics: source mirrors a component directory.** Both `AddComponent` and `AddVariant` take a `source_dir` shaped like a component on disk:
+
+```
+<source_dir>/
+├── metadata.json                  # selection metadata
+├── shared_weights/                # optional; only blobs the included variants reference
+│   └── <checksum>/<blob>
+└── <variant_name>/                # one or more variant subdirs
+    ├── variant.json
+    └── *.onnx
+```
+
+`AddComponent` accepts any number of variants in the source. `AddVariant` requires *exactly one* variant subdir and a `metadata.json` declaring exactly one variant entry whose key matches that subdir name. (Bulk add is the `AddComponent` operation; if you want to add several variants at once to an existing component, drop the existing component and add a fresh one — or call `AddVariant` per variant.)
+
+ORT then merges:
+
+1. **Validate.** `metadata.json` is well-formed; the variant subdir(s) match the declared variant entries; every checksum referenced by the variants' `variant.json` `shared_files` resolves under `<source>/shared_weights/`.
+2. **Merge shared weights.** For each `<source>/shared_weights/<checksum>/`:
+    - If the destination component already has the same checksum directory, skip — the checksum identifies content, so collision is identity. (ORT optionally verifies by re-hashing on copy as a producer-error safeguard; trusted authoring tools may opt out.)
+    - Otherwise copy the checksum directory verbatim, blob filename and all.
+3. **Merge variant files.** Copy each variant subdir into the destination component. Reject if a destination variant of that name already exists. (Replacement is not provided in the v1 surface; remove + add gives the same effect with explicit intent.)
+4. **Merge metadata.** Add the variant entries from source `metadata.json` into the destination component's `metadata.json`.
+
+For `AddComponent`, if no component of `component_name` exists in the package yet, the source is materialized as a new component directory in one step; the merge logic above is the same.
+
+**Remove semantics: shared-weight GC at commit.** `RemoveVariant` removes the variant directory and its entry from `metadata.json`. It does *not* immediately delete blobs from `<component>/shared_weights/` — `Commit` does that:
+
+- After all staged mutations are applied, `Commit` walks every remaining variant in the package, collects the union of checksums referenced by each variant's `variant.json` `shared_files`, and deletes any `<component>/shared_weights/<checksum>/` directory whose checksum is not in that set.
+- Deferring GC to commit avoids redundant delete-then-re-copy when a sequence like `RemoveVariant("foo") + AddVariant("foo'")` shares blobs.
+- `RemoveComponent` deletes the entire component directory, including its `shared_weights/`. There is no cross-component sharing, so no cross-component GC is needed.
+
+This contract gives producers a clean self-describing source format ("variant package") that the same tooling can produce, consume, split, and merge — at the format level, the operations are uniform.
+
+**Compile** (deferred — see [Open Questions](#2-jit-compilation-granularity)) and **merge / unmerge** (deferred — see [Open Questions](#3-merge--unmerge-semantics)) sit on the context as additional methods. Their signatures will be filled in once their granularity is decided; the manifest is designed today to record the provenance information they will need.
+
+### 2. Package Options (EP Capture)
+
+EP intent is captured from a session-options template. The same shape used to build a normal `OrtSession` is the shape used to declare "this is the EP I want a variant for."
+
+```c
+OrtStatus* CreateModelPackageOptionsFromSessionOptions(
+    OrtEnv* env,
+    const OrtSessionOptions* template,
+    OrtModelPackageOptions** out);
+
+void ReleaseModelPackageOptions(OrtModelPackageOptions* options);
+```
+
+Internally this snapshots the captured EP list (an ordered sequence of `(ep_name, OrtEpDevice*)` pairs) from the template's `Append_V2` calls or its policy-resolved selection. The handle is consumed by component selection and can be reused across components or discarded after use.
+
+The handle is required for `SelectComponent`. Inspection — listing components, listing variants, reading per-variant EP compatibility — does not need EP intent and uses the [traversal accessors](#1-package-context-parse-traverse-mutate) directly on the context.
+
+### 3. Component Selection
+
+```c
+OrtStatus* SelectComponent(OrtModelPackageContext* ctx,
+                           const char* component_name,
+                           const OrtModelPackageOptions* options,  // required, non-NULL
+                           OrtComponentInstance** out);
+
+void ReleaseComponentInstance(OrtComponentInstance* cix);
+```
+
+Selection runs the [variant selection algorithm](#variant-selection-algorithm) and returns an opaque `OrtComponentInstance*` (`cix`) representing the chosen variant. The instance is independent of the context's lifetime — release it when the consumer is done with the variant.
+
+`options` is required and per-call (not stored on the context). A consumer can select different components with different captured EP intents from the same context.
+
+### 4. Component Instance Queries
+
+The instance exposes a deliberately small accessor surface. Anything beyond what's listed here is read directly from the variant directory by the consumer — `variant.json` is part of this proposal's public schema (see [Variant `variant.json`](#variant-variantjson)).
+
+```c
+const ORTCHAR_T* ComponentInstanceGetVariantFolderPath(const OrtComponentInstance* cix);
+
+size_t           ComponentInstanceGetFileCount(const OrtComponentInstance* cix);
+
+OrtStatus* ComponentInstanceGetConsumerMetadata(const OrtComponentInstance* cix,
+                                                const char** out_blob,
+                                                size_t* out_size);
+
+// Resolve a shared-weight checksum (as it appears in variant.json's `shared_files`)
+// to its absolute on-disk path. Encapsulates the <component>/shared_weights/<checksum>/<blob>
+// layout — the blob filename is producer-chosen, so consumers should not construct the path
+// themselves. Each checksum directory is expected to contain exactly one blob file.
+OrtStatus* ComponentInstanceGetSharedWeightPath(const OrtComponentInstance* cix,
+                                                const char* checksum,
+                                                const ORTCHAR_T** out_path);
+```
+
+Notes:
+
+- `GetVariantFolderPath` is the escape hatch. Multi-file consumers walk this directory and parse `variant.json` for filenames, per-file `session_options`, per-file `provider_options`, and `shared_files` mappings.
+- `GetFileCount` lets consumers dispatch single-file vs. multi-file paths without speculatively calling `CreateSession` and handling its rejection.
+- `GetConsumerMetadata` returns the variant's `consumer_metadata` blob verbatim as bytes. ORT does not interpret it. Variants without consumer metadata return an empty blob.
+- `GetSharedWeightPath` resolves a checksum to its absolute path. The shared-weights layout is internal to the package format; consumers depend on this accessor rather than building paths from `<component>/shared_weights/<checksum>/...` themselves.
+
+What's *not* exposed (intentionally):
+
+- The selected variant name, the matched EP, and the matched compatibility strings. Selection state is internal. The variant name is derivable as the basename of `GetVariantFolderPath` for the rare consumer that wants it for logging.
+- Per-file path, session_options, and provider_options accessors. Multi-file consumers read `variant.json` directly. Single-file consumers don't need them at all — `CreateSession` handles everything internally.
+
+This minimal surface is deliberate. APIs are easy to add when a real need surfaces and hard to remove without an ABI break, so the proposal starts narrow.
+
+### 5. Session Creation
+
+```c
+OrtStatus* CreateSession(OrtEnv* env,
+                         const OrtComponentInstance* cix,
+                         const OrtSessionOptions* opt_session_options, // may be NULL
+                         OrtSession** out);
+```
+
+This is the single-file convenience. Behavior is a clean binary on whether the caller supplies session options:
+
+1. If `ComponentInstanceGetFileCount(cix) != 1`, fail with a clear diagnostic. Multi-file variants are the consumer's responsibility (see [Example 2](#example-2-multi-file-component-pipeline-consumer)).
+2. **`opt_session_options == NULL` (convenience path).** ORT reads the variant's `variant.json` internally and:
+    - applies the file's `session_options` key/value pairs,
+    - registers the EP that selection matched, with the file's `provider_options` key/value pairs,
+    - resolves every entry in the file's `shared_files` map to its absolute path and sets up the external-initializers mapping accordingly,
+    - opens a session on the file.
+
+   ORT owns the entire setup. This is the default path for typical consumers running single-file variants.
+3. **`opt_session_options != NULL` (advanced path).** ORT uses the caller's options *as-is* and opens a session on the variant's ONNX file. ORT does **not** apply `variant.json`'s per-file session_options, does **not** apply per-file provider_options, does **not** resolve `shared_files`, and does **not** validate the EP. The caller is responsible for everything they want from the variant — they parse `variant.json` themselves, resolve shared weights via `GetSharedWeightPath`, and configure the session_options before passing them in.
+
+The advanced path exists for callers that need surgical control (custom EP setup, custom external-initializer plumbing, profiling-related options that shouldn't be overridden by the package). It uses the same machinery as the multi-file consumer path — parse `variant.json`, resolve shared weights, build session_options — so consumers who outgrow the convenience path graduate naturally to the advanced path without learning a different mental model.
+
+This is a deliberate "all or nothing" contract. Merging caller options with package options would require ORT to define precedence for every key and every EP, and that policy would itself become a stable surface that's hard to evolve. Saying "you provided options, you own them" sidesteps that entirely.
 
 ### API Summary
 
-| API | Purpose | When to Use |
+| API | Purpose | Notes |
 |---|---|---|
-| `CreateModelPackageOptionsFromSessionOptions` | Snapshot EP selection + session settings from a `OrtSessionOptions` | Before opening a package (optional — pass NULL options for the NULL-options path) |
-| `ReleaseModelPackageOptions` | Release the options handle | After context creation; options are deep-copied into the context |
-| `CreateModelPackageContext` | Parse package, filter by captured EP selection, discover components | Once per package |
-| `ReleaseModelPackageContext` | Release the context handle | When done with the package |
-| `ModelPackageGetComponentNames` | List components with matching variants | After context creation |
-| `ModelPackageGetSelectedVariantName` | Get selected variant name (debugging) | After context creation |
-| `ModelPackageGetFileCount` | Number of ONNX files in a component | Before creating sessions |
-| `ModelPackageGetFileIdentifiers` | Logical names for files in a component | Before creating sessions |
-| `ModelPackageGetFile*` | Per-file metadata (path, EP, options) | Optional — for advanced consumers |
-| `ModelPackageGetConsumerMetadata` | Opaque consumer data (e.g., GenAI config overlay) | Framework-specific setup |
-| `CreateSession` (package overload) | Create an ORT session for a specific component file | Per file that needs a session |
-
----
-
-## Variant Metadata Schema
-
-```json
-{
-    "component_model_name": "decoder",
-    "model_variants": {
-        "cpu": {
-            "model_info": [
-                {
-                    "model_file": "model.onnx",
-                    "identifier": "decoder",
-                    "ep_compatibility": [
-                        {
-                            "ep": "CPUExecutionProvider",
-                            "device_type": "cpu",
-                            "session_options": {
-                                "intra_op_num_threads": 4,
-                                "graph_optimization_level": "ORT_ENABLE_ALL"
-                            }
-                        }
-                    ]
-                }
-            ],
-            "consumer_metadata": {
-                "genai_config_overlay": { "model_type": "decoder" }
-            }
-        },
-        "gpu": {
-            "model_info": [
-                {
-                    "model_file": "model.onnx",
-                    "identifier": "decoder",
-                    "ep_compatibility": [
-                        {
-                            "ep": "CUDAExecutionProvider",
-                            "device_type": "gpu",
-                            "session_options": { "intra_op_num_threads": 1 },
-                            "provider_options": { "enable_skip_layer_norm_strict_mode": "1" }
-                        },
-                        {
-                            "ep": "WebGpuExecutionProvider",
-                            "device_type": "gpu",
-                            "session_options": { "intra_op_num_threads": 1 }
-                        }
-                    ]
-                }
-            ],
-            "consumer_metadata": { "genai_config_overlay": { "model_type": "decoder" } }
-        },
-        "qnn-npu": {
-            "model_info": [
-                {
-                    "model_file": "embeddings.onnx",
-                    "identifier": "embeddings",
-                    "ep_compatibility": [
-                        {
-                            "ep": null,
-                            "device_type": "cpu",
-                            "session_options": { "intra_op_num_threads": 2 }
-                        }
-                    ]
-                },
-                {
-                    "model_file": "context.onnx",
-                    "identifier": "context",
-                    "ep_compatibility": [
-                        {
-                            "ep": "QNNExecutionProvider",
-                            "device_type": "npu",
-                            "compatibility_info": "abc123",
-                            "session_options": { "intra_op_num_threads": 4 },
-                            "provider_options": {
-                                "htp_performance_mode": "burst",
-                                "htp_graph_finalization_optimization_mode": "3",
-                                "soc_model": "60"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "model_file": "iterator.onnx",
-                    "identifier": "iterator",
-                    "ep_compatibility": [
-                        {
-                            "ep": "QNNExecutionProvider",
-                            "device_type": "npu",
-                            "compatibility_info": "def456",
-                            "session_options": { "intra_op_num_threads": 4 },
-                            "provider_options": {
-                                "htp_performance_mode": "burst",
-                                "htp_graph_finalization_optimization_mode": "3",
-                                "soc_model": "60"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "model_file": "lm_head.onnx",
-                    "identifier": "lm_head",
-                    "ep_compatibility": [
-                        {
-                            "ep": null,
-                            "device_type": "cpu",
-                            "session_options": { "intra_op_num_threads": 2 }
-                        }
-                    ]
-                }
-            ],
-            "consumer_metadata": {
-                "genai_config_overlay": {
-                    "model_type": "decoder-pipeline",
-                    "model": {
-                        "decoder": {
-                            "pipeline": [
-                                { "model_id": "embeddings", "run_on_prompt": true, "run_on_token_gen": true },
-                                { "model_id": "context", "run_on_prompt": true, "run_on_token_gen": false },
-                                { "model_id": "iterator", "run_on_prompt": false, "run_on_token_gen": true, "reset_session_idx": 1 },
-                                { "model_id": "lm_head", "run_on_prompt": true, "run_on_token_gen": true }
-                            ]
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-```
-
-### Schema Field Reference
-
-**Per-file** (entries in `model_info`):
-
-| Field | Required | Description |
-|---|---|---|
-| `model_file` | yes | ONNX model filename |
-| `identifier` | yes | Logical name for consumer mapping |
-| `ep_compatibility` | yes | List of EPs this file can run on. Always a list, even for single-EP files. Must have at least one entry. |
-
-**Per `ep_compatibility` entry:**
-
-| Field | Required | Description |
-|---|---|---|
-| `ep` | yes (may be `null`) | EP name (e.g., `"QNNExecutionProvider"`, `"CUDAExecutionProvider"`), or `null` to declare a neutral/CPU fallback entry that matches any captured EP. |
-| `device_type` | no | Hardware class this entry targets: `"cpu"`, `"gpu"`, `"npu"`, etc. Used as an optional secondary filter against the `OrtHardwareDevice->type` of the captured `OrtEpDevice` being considered. If omitted, the entry matches any device type. |
-| `compatibility_info` | no | Hash for device-specific compatibility checking (e.g., Qualcomm SoC model). |
-| `session_options` | no | ORT session options to apply when running this file on this EP (flat key-value). Applied by ORT when session created without explicit session options. |
-| `provider_options` | no | Provider-specific options for this EP (flat key-value, no EP-name nesting). Applied by ORT when session created without explicit session options. Only meaningful for non-null `ep`. |
-
-**Per-variant:**
-
-| Field | Required | Description |
-|---|---|---|
-| `consumer_metadata` | no | Opaque JSON blob for consumer frameworks. ORT stores and returns it; never interprets it. |
-
-Notes:
-- The previous per-variant `constraints` field is removed. Variant-level EP compatibility is now derived from the per-file `ep_compatibility` lists — a variant is compatible with EP X if every file either lists X or has a null (neutral) entry.
-- The previous `force_cpu` flag is removed. An `{"ep": null}` entry naturally means "this file runs on CPU as a neutral fallback and does not constrain EP matching."
-- `ep_compatibility` is always a list. For a file that only supports one EP, the list has one entry. This keeps the schema uniform for consumers and tooling.
-- `device_type` is an optional free-form string (`"cpu"`, `"gpu"`, `"npu"`, ...) that lets producers disambiguate same-EP variants targeting different hardware classes (e.g., CUDA on discrete vs. integrated GPU). Consumers influence it indirectly via the `OrtHardwareDevice` attached to each captured `OrtEpDevice`.
-
-### Variant Selection Algorithm
-
-Selection happens at context creation based on the **captured EP list** on `OrtModelPackageOptions` (or its absence, for the NULL-options path). For each component, every variant is scored and the highest-scoring compatible variant wins.
-
-**Algorithm input**
-
-Variant selection consumes an ordered list of `(ep_name, device_type)` pairs derived from the captured `OrtEpDevice`s on the options handle. The ordering is insertion order for explicit `Append_V2` calls, or policy-preference order for policy-resolved selection. If `options` is NULL, the algorithm short-circuits to the NULL-options path described below.
-
-**Per-file scoring** (given the candidate EP currently being considered, call it `C = (ep_name, device_type)`):
-
-For each file, the selector walks the `ep_compatibility` list and picks the best matching entry:
-
-| Entry condition | Entry score | Selected EP for file |
-|---|---|---|
-| `entry.ep == C.ep_name` **and** device filter passes | positive (see below) | `entry.ep` |
-| `entry.ep == null` **and** device filter passes | `0` — neutral | `null` (CPU) |
-| No entries pass and no null entry passes | — | **variant rejected** |
-
-The **device filter** passes when: `C.device_type` is unspecified, or `entry.device_type` is absent, or they match. `device_type` is a secondary filter on the entry side and an optional declaration from the captured `OrtEpDevice`'s hardware side — entries without a declared device type are wildcards.
-
-If multiple entries match (e.g., a file has both a matching EP entry and a null fallback), the selector prefers the positive-scoring entry.
-
-A matching entry's score is computed from:
-- Base: `+1` for EP-name match.
-- `+0.5` if `C.device_type` is present and equals `entry.device_type`. (An entry without a declared device type passes the filter but does not earn this bonus — so a producer that wants to disambiguate "gpu CUDA" from "cpu-compiled CUDA" variants should set `device_type` on both.)
-- `+0.5` if the captured `OrtEpDevice` provides device-specific compatibility info that matches `entry.compatibility_info` (future work).
-
-(Exact numerics are placeholders — the important properties are: null entry = 0, EP match > 0, additional signals monotonically increase the score.)
-
-**Per-variant scoring:**
-- If any file in the variant has no matching entry and no null fallback, the variant is rejected.
-- Otherwise, variant score = arithmetic mean of file scores.
-- Neutral (null-EP) files contribute `0` to the average, so a pure EP-matched variant will outscore a mixed variant (e.g., `avg(1,1,1,1) = 1.0` beats `avg(0,1,1,0) = 0.5`).
-- Among variants with the same score, a deterministic tie-breaker (e.g., insertion order in `model_variants`) is used.
-
-**Options edge cases:**
-
-| Options input | Behavior |
-|---|---|
-| `options` = NULL | NULL-options path — each component is resolved by variant count. A single variant is selected as-is regardless of its declared EPs; >1 variants for any component → ambiguity error at `CreateModelPackageContext`. Intended for flat-directory migration and inspection scenarios where EP setup happens elsewhere. |
-| Captured EP list is **empty** (no `Append_V2`, no policy result) | Only variants whose files either declare no EP requirement or are fully covered by null entries are candidates. Effectively "CPU / unconstrained only." |
-| Captured EP list has **one** EP | Standard single-EP matching (see rules above). |
-| Captured EP list has **multiple** EPs | Run the two-pass walk below — strict first (prefer EP-specific matches), permissive second (fall back to neutral entries). |
-
-Note: `ep: null` entries in a file's `ep_compatibility` list (CPU-resident files in a mixed variant) are independent of the NULL *options* path. The former is a per-file declaration in metadata; the latter is a per-call statement from the consumer.
-
-**Worked example (single captured EP)** — session_options had `Append_V2` of a single CUDA device, options captured it; package has three variants (`cpu`, `gpu`, `qnn-npu`) from the schema above:
-
-- Captured list: `[CUDAExecutionProvider]`.
-- `cpu`: `decoder` file's `ep_compatibility` lists only CPU (no null entry) → rejected.
-- `gpu`: `decoder` file's `ep_compatibility` includes CUDA → matched, score 1. Variant score = 1.0. ✅
-- `qnn-npu`: `context` lists only QNN → rejected.
-- Winner: `gpu`.
-
-Same schema with a single WebGPU device appended:
-
-- Captured list: `[WebGpuExecutionProvider]`.
-- `gpu`: `decoder` file also lists WebGPU → matched, score 1. Variant score = 1.0. ✅
-- Others: rejected.
-- Winner: `gpu`. Selected EP for the `decoder` file = `WebGpuExecutionProvider`; session/provider options come from the WebGPU entry.
-
-Same schema with a single QNN device appended:
-
-- Captured list: `[QNNExecutionProvider]`.
-- `qnn-npu`: `embeddings` null (0), `context` QNN (1), `iterator` QNN (1), `lm_head` null (0). Variant score = 0.5. ✅
-- `cpu`, `gpu`: rejected.
-- Winner: `qnn-npu`. Selected EP per file: `null` (CPU), QNN, QNN, `null` (CPU). The null-EP files still contribute their own session options to their CPU sessions.
-
-#### Multi-EP Walk (Two Passes)
-
-When the captured EP list has more than one entry — from multiple `Append_V2` calls, from a policy that returned multiple candidates, or a mix — ORT walks the list in two passes and commits to a single EP globally before running the normal per-component matching. The steps:
-
-1. **Input.** An ordered list of candidate EPs. For `Append_V2`-derived lists, the order is insertion order; for policy-derived lists, it is policy-preference order.
-2. **Pass 1 — strict walk.** For each EP in order:
-   - Attempt to match each component's variants against this EP, but **exclude variants that rely solely on null/neutral entries** (a variant qualifies only if at least one file has a non-null `ep_compatibility` entry for this EP; other files in the variant may still resolve via null entries).
-   - Stop at the first EP where **at least one component has a qualifying variant**. That EP is committed globally.
-3. **Pass 2 — permissive fallback.** If Pass 1 yielded no match across all candidate EPs, walk the list again with null entries allowed as standalone matches. Stop at the first EP that produces a match.
-4. **Commit phase.** Once an EP is chosen, match every component against it using the normal per-variant algorithm (null entries fully allowed). Components with no matching variant are excluded as usual.
-
-**Why two passes?** Consider a captured list `[TRT, CUDA]` and a package with a CUDA-optimized variant *plus* a neutral-only JIT variant. Without the strict pass, the neutral variant would match TRT (score 0), TRT would win, and the consumer would silently run the generic JIT file on TRT instead of the purpose-built CUDA variant. The strict pass prevents null entries from hijacking the top-ranked EP when a real EP-specific variant exists further down the list.
-
-**"At least one component" criterion.** The walk commits to an EP as soon as one component has a qualifying variant. Other components may end up excluded if they have no matching variant for that EP — same partial-match semantics as the single-EP path. The consumer's ordering is authoritative; ORT does not re-score across EPs to maximize component coverage. A consumer who wants "best coverage" semantics can supply a custom policy delegate that factors coverage into its ranking.
-
-**Worked example (captured list from policy)** — policy resolved to `[CUDAExecutionProvider, WebGpuExecutionProvider, CPUExecutionProvider]` over the three-variant schema above:
-
-- Pass 1 CUDA: `gpu` qualifies (real CUDA entry). CUDA wins. Commit phase selects `gpu`. ✅
-- Pass 1 WebGpu / CPU: not reached.
-
-Same walk over a package with only a QNN variant and a neutral JIT variant:
-
-- Pass 1 CUDA / WebGpu / CPU: no qualifying strict matches anywhere.
-- Pass 2 CUDA: neutral variant's null entry matches → CUDA wins → neutral variant selected.
-
-Same walk over a package with QNN-specific *and* CUDA-specific variants:
-
-- Pass 1 CUDA: CUDA variant qualifies → CUDA wins. The QNN variant is ignored — consistent with the policy's `CUDA > QNN` preference even though both would run.
-
-**Worked example (captured list from explicit appends)** — consumer called `Append_V2` with CUDA, then with WebGpu (in that order), then created options. Captured list: `[CUDA, WebGpu]`:
-
-- The two-pass walk runs identically. CUDA is tried first, WebGpu second. A package that has WebGpu-only variants would lose to any CUDA match; this reflects the consumer's intent (CUDA appended first = CUDA preferred).
-
-#### NULL-Options Path
-
-When `options` is NULL, the algorithm short-circuits before any scoring:
-
-- Each component is resolved by variant count, not by scoring.
-- If a component has a single variant, it is selected regardless of the EPs declared in its files. This is the "flat directory" case — the consumer trusts what's on disk and handles EP setup at session creation time (either by passing their own `session_options` or by relying entirely on the variant metadata).
-- If any component has more than one variant, `CreateModelPackageContext` fails with an ambiguity error. The consumer must retry with a non-NULL options handle derived from a `session_options` that expresses an EP preference (or accept that it must, by configuring session_options with an explicit EP or policy).
-
-Filtering is at the variant level, not the file level. Once a variant is selected, **all** files in that variant are visible via the query APIs — including files running on CPU via a null entry. The consumer sees the complete set of files needed to run the component.
+| `CreateModelPackageContext(path)` | Parse a package directory | Returns opaque context |
+| `ReleaseModelPackageContext` | Free the context | |
+| `ModelPackageGet{Component,Variant}{Count,Name}` | Traversal — list components and variants | |
+| `ModelPackageGetVariantEp{Count,Name}` | Per-variant EP compatibility (pre-selection) | Lets callers pick the right EP before building options |
+| `ModelPackageGetVariantEpCompatibilityString{Count,…}` | Per-variant EP compatibility strings (pre-selection) | Same; opaque to ORT |
+| `ModelPackageAddComponent(ctx, name, source_dir)` | Stage component-add; source mirrors a component dir | Authoring path; merges shared weights by checksum |
+| `ModelPackageAddVariant(ctx, component, source_dir)` | Stage variant-add; source is a single-variant component slice | Variant name comes from source `metadata.json` |
+| `ModelPackageRemoveComponent` / `…RemoveVariant` | Stage removals | Shared-weight GC happens at `Commit` |
+| `ModelPackageCommit` | Persist staged mutations and GC orphan shared weights | |
+| `CreateModelPackageOptionsFromSessionOptions` | Capture EP intent from a template | |
+| `ReleaseModelPackageOptions` | Free options | |
+| `SelectComponent(ctx, component_name, options)` | Pick the best variant for a component | Requires a non-NULL options handle |
+| `ReleaseComponentInstance` | Free the instance | |
+| `ComponentInstanceGetVariantFolderPath` | Variant directory on disk | Escape hatch; consumers parse `variant.json` here for per-file detail |
+| `ComponentInstanceGetFileCount` | Number of ONNX files in the variant | Lets consumers dispatch single- vs. multi-file paths |
+| `ComponentInstanceGetConsumerMetadata` | Opaque consumer blob from `variant.json` | ORT does not interpret |
+| `ComponentInstanceGetSharedWeightPath(cix, checksum)` | Resolve a shared-weight checksum to its absolute path | Hides the package's `shared_weights/<checksum>/...` layout |
+| `CreateSession(env, cix, opt_session_options)` | Open an ORT session for a single-file variant | Rejects multi-file |
 
 ---
 
 ## Package Layout
 
 ```
-phi-4mm.ortpackage/
-├── manifest.json
-├── configs/                          # Consumer files (convention, not ORT-managed)
-│   ├── genai_config.json
-│   ├── tokenizer.json
-│   └── processor_config.json
-└── models/
-    ├── decoder/
-    │   ├── metadata.json
-    │   ├── cpu/
-    │   │   └── model.onnx
-    │   └── qnn-npu/
-    │       ├── embeddings.onnx
-    │       ├── context.onnx
-    │       ├── iterator.onnx
-    │       └── lm_head.onnx
-    ├── vision/
-    │   ├── metadata.json
-    │   ├── cpu/
-    │   │   └── vision.onnx
-    │   └── qnn-npu/
-    │       ├── patch_embed.onnx
-    │       ├── vision_attn.onnx
-    │       └── patch_merger.onnx
-    └── embedding/
-        ├── metadata.json
-        └── cpu/
-            └── embedding.onnx
+<package>/
+├── manifest.json                       # optional content; lists components and merge provenance
+├── configs/                            # consumer-shared configs (e.g. genai_config.json base, tokenizer assets)
+│   └── ...
+└── <component_name>/                   # one directory per component; ≥ 1 components per package
+    ├── metadata.json                   # selection-only metadata
+    ├── shared_weights/                 # per-component shared weight blobs, addressed by checksum
+    │   └── <checksum>/                 # the checksum names the directory; the file inside can use any name
+    │       └── <blob_filename>
+    └── <variant_name>/                 # one directory per variant
+        ├── variant.json                # file list, per-file SO/PO, shared_files map, consumer_metadata
+        ├── model.onnx
+        ├── model.onnx.data             # may be a shared_weights checksum reference (see variant.json)
+        └── ...                         # additional ONNX files for multi-file variants
 ```
+
+Notes:
+
+- Component directory names are the component identifiers used by `SelectComponent`. They are arbitrary strings (the `decoder` shown in examples is illustrative, not reserved).
+- A package can contain any number of components ≥ 1. A single-component package is a normal case, not a special case.
+- A variant directory is self-contained enough that it could be downloaded on its own and dropped into a sibling package directory. This supports "minimal download" workflows where consumers pull only the variant they need.
+- `configs/` is reserved for consumer-shared assets that are common across variants. The package format does not interpret its contents; consumers know what to look for there.
+- `shared_weights/` is per-component. Cross-component sharing is not supported at this layer.
+- The checksum names the per-blob directory; the blob filename inside is unconstrained. Producers may use a generic name (`weight.data`) or one that encodes useful information (`embeddings.fp16.safetensors`). Consumers never construct this path directly — they call `ComponentInstanceGetSharedWeightPath` which scans the directory and returns the absolute path to the single blob inside.
+
+---
+
+## Metadata Schemas
+
+### Top-Level `manifest.json`
+
+```jsonc
+{
+    "schema_version": 1,                         // package format version
+    "components": ["decoder"],                   // optional; if absent, components are discovered from sub-directories
+    "merge_provenance": [                        // optional; populated when this package was produced by merging others
+        {
+            "source_id": "phi4-cpu-only",
+            "source_version": "1.0.0",
+            "components": ["decoder"],
+            "variants": { "decoder": ["cpu"] }
+        },
+        {
+            "source_id": "phi4-qnn",
+            "source_version": "1.0.0",
+            "components": ["decoder"],
+            "variants": { "decoder": ["qnn-npu"] }
+        }
+    ]
+}
+```
+
+The manifest's *content* is optional — every field can be omitted and the package will still parse. An absent file is equivalent to an empty manifest. When the `components` list is absent, the context discovers components by scanning sub-directories (excluding the reserved `configs/` directory).
+
+`merge_provenance` is the data unmerge needs to reconstruct standalone sub-packages from a merged package. It is populated by `merge` and consumed by `unmerge`. Producers writing a fresh package do not need to populate it.
+
+### Component `metadata.json`
+
+```json
+{
+    "variants": {
+        "cpu": {
+            "ep_compatibility": [
+                { "ep": "CPUExecutionProvider" }
+            ]
+        },
+        "gpu": {
+            "ep_compatibility": [
+                { "ep": "CUDAExecutionProvider", "compatibility": ["sm_80", "sm_86", "sm_90"] },
+                { "ep": "WebGpuExecutionProvider" }
+            ]
+        },
+        "openvino-npu": {
+            "ep_compatibility": [
+                { "ep": "OpenVINOExecutionProvider", "device": "NPU" }
+            ]
+        },
+        "qnn-npu": {
+            "ep_compatibility": [
+                { "ep": "QNNExecutionProvider", "compatibility": ["soc_60", "soc_69"] }
+            ]
+        }
+    }
+}
+```
+
+**Schema field reference:**
+
+| Field | Required | Description |
+|---|---|---|
+| `variants` | yes | Map from variant name to variant entry. Variant name is the variant directory name. |
+| `variants.<name>.ep_compatibility` | yes | List of EP-compatibility entries declaring the EPs this variant can run on. List shape (instead of EP-keyed map) lets a variant pin a specific device for one EP entry while still listing other EPs separately. |
+| `variants.<name>.ep_compatibility[].ep` | yes | EP name (e.g. `CUDAExecutionProvider`). |
+| `variants.<name>.ep_compatibility[].device` | no | Optional device discriminator scoped to this entry's EP (e.g. OpenVINO `"GPU"` vs `"NPU"`). ORT plumbs this to the EP's preference ABI alongside the captured `OrtEpDevice`; ORT does not interpret it. |
+| `variants.<name>.ep_compatibility[].compatibility` | no | List of opaque strings describing hardware/version constraints for this EP entry (e.g. CUDA SM, QNN SoC model). ORT does not interpret these; the EP's preference ABI does. May be omitted (means "no additional constraints, any device of this EP works"). |
+
+A variant compatible with multiple EPs (e.g. CUDA *and* WebGPU) has multiple entries under `ep_compatibility`. A variant compatible with one EP across multiple hardware revisions lists multiple compatibility strings in that EP entry. A duplicate `ep` key across two entries is allowed only when the entries differ in `device` (e.g. one entry pinning `OpenVINOExecutionProvider`/`GPU`, another pinning `OpenVINOExecutionProvider`/`NPU` for the same variant).
+
+This schema deliberately holds nothing else. No file lists, no per-file options, no consumer metadata, no human-readable descriptions. Adding or removing a variant is a one-entry edit plus a directory move.
+
+### Variant `variant.json`
+
+```jsonc
+{
+    "files": [
+        {
+            "filename": "model.onnx",
+            "session_options": {
+                "intra_op_num_threads": 4,
+                "graph_optimization_level": "ORT_ENABLE_ALL"
+            },
+            "provider_options": {
+                "htp_performance_mode": "burst",
+                "htp_graph_finalization_optimization_mode": "3",
+                "soc_model": "60"
+            },
+            "shared_files": {
+                "model.onnx.data": "abc123def456..."   // checksum -> resolves to the blob inside <component>/shared_weights/abc123def456.../
+            }
+        }
+    ],
+    "consumer_metadata": {
+        // Free-form. ORT does not interpret. Returned verbatim by ComponentInstanceGetConsumerMetadata.
+        // The convention for ORT-GenAI consumers is a key like "genai_config_overlay".
+        "genai_config_overlay": { "...": "..." }
+    }
+}
+```
+
+**Schema field reference:**
+
+| Field | Required | Description |
+|---|---|---|
+| `files` | yes | List of ONNX files in this variant. Consumers parse this array directly when handling multi-file variants. |
+| `files[].filename` | yes | Filename relative to the variant directory. |
+| `files[].session_options` | no | Flat key/value session options applied to this file when ORT creates a session. Consumers building multi-file pipelines apply these to their own `OrtSessionOptions*`. Authoring guidance: do not store consumer-side debug tags (e.g. GenAI `log_id`) here — those are synthesized at runtime by the consumer. |
+| `files[].provider_options` | no | Flat key/value provider options for the variant's EP. No EP-name nesting. |
+| `files[].shared_files` | no | Map from filename-as-referenced-by-the-onnx-graph to the checksum of a shared-weight blob. Consumers resolve checksums to absolute paths via `ComponentInstanceGetSharedWeightPath`. Filenames not listed in `shared_files` are assumed to live next to the ONNX file in the variant directory. |
+| `consumer_metadata` | no | Opaque JSON blob for consumer frameworks. Single blob per variant; no nesting structure imposed by ORT. |
+
+Notes:
+
+- File identifiers across variants are not enforced to match. A `cpu` variant may have one file named `model.onnx`; a `qnn-npu` variant may have four files with totally different names. Consumers that care about cross-variant identity rely on filenames inside their own metadata (e.g. ORT-GenAI's pipeline references) rather than ORT-imposed identifiers.
+- `variant.json` is part of this proposal's public schema. ORT's internal single-file `CreateSession` reads it; multi-file consumers parse it directly.
+
+---
+
+## Variant Selection Algorithm
+
+Selection runs at `SelectComponent` time. Inputs are the captured EP list on `OrtModelPackageOptions` (always non-NULL) and the component's variants.
+
+**Step 1 — Filter by EP match.**
+
+For each variant, walk the entries of its `ep_compatibility` list. The variant is *eligible* if any entry's `ep` matches any EP in the captured list. Variants with no matching entry are rejected.
+
+**Step 2 — Score by EP order (within ORT).**
+
+Among eligible variants, ORT sorts by the ordinal position of the matched EP in the captured list — earlier EPs preferred. This gives consumers a deterministic preference dial: list EPs in priority order on the session_options template.
+
+**Step 3 — Delegate compatibility-string disambiguation to the EP.**
+
+If multiple variants tie at the same captured-EP rank, ORT calls into the matched EP's preference ABI, passing the compatibility strings of the still-eligible variants and the `OrtEpDevice` from the captured options. The EP returns its preferred index. The exact ABI signature is an [open question](#1-ep-side-preference-abi); the contract is that ORT plumbs strings without interpreting them.
+
+**Step 4 — Tie-break by insertion order.**
+
+If the EP declines to choose (returns no preference), ORT falls back to the order variants appear in `metadata.json`.
+
+**Empty-captured-EP-list edge case.**
+
+If the options handle's captured EP list is empty (consumer built options without `Append_V2` or a policy result), this is treated as captured `[CPUExecutionProvider]` for selection purposes. Variants that match CPU win normally; non-CPU-only variants are rejected.
+
+**Selection determinism.**
+
+For a fixed package and a fixed captured EP list, selection is deterministic. The EP preference ABI is required to be deterministic for the same `OrtEpDevice` and string list.
+
+**Single-variant packages.**
+
+A package with one variant per component is not a special case at the algorithm level. Producers declare the variant's `ep_compatibility` honestly; consumers capture the matching EP into options; the lone variant wins because nothing competes. Consumers that need to discover what EP to register can read variant EP compatibility through the [traversal accessors](#1-package-context-parse-traverse-mutate) before building options.
 
 ---
 
 ## Usage Examples
 
-### Example 1: Simple Consumer (Single-File Component, Flat-Directory Style)
+### Example 1: Single-File Component
+
+The simple consumer path. A package with one component (`decoder`) and three variants (`cpu`, `gpu`, `qnn-npu`); the consumer wants CUDA.
 
 ```c
-// NULL options path: no EP preference needed — works when every component
-// has exactly one variant (e.g., a flat ORT-GenAI directory repackaged as
-// a .ortpackage with a single variant per component).
-OrtModelPackageContext* ctx = NULL;
-pkg->CreateModelPackageContext(L"my-model.ortpackage",
-                               /*options*/ NULL, &ctx);
+OrtSessionOptions* template_so;
+OrtCreateSessionOptions(&template_so);
+OrtSessionOptionsAppendExecutionProvider_V2(template_so, env, "CUDAExecutionProvider", ...);
 
-// Create session — ORT applies file metadata (EP, session_opts, provider_opts)
-OrtSession* session = NULL;
-api->CreateSession(env, ctx, "decoder", /*file_identifier*/ NULL,
-                   /*session_options*/ NULL, &session);
-//                          ^ctx     ^component            ^no caller opts
+OrtModelPackageOptions* pkg_options;
+CreateModelPackageOptionsFromSessionOptions(env, template_so, &pkg_options);
 
-// Use session...
-api->ReleaseSession(session);
-pkg->ReleaseModelPackageContext(ctx);
+OrtModelPackageContext* ctx;
+CreateModelPackageContext("/path/to/phi4.ortpackage", &ctx);
+
+OrtComponentInstance* cix;
+SelectComponent(ctx, "decoder", pkg_options, &cix);
+
+OrtSession* session;
+CreateSession(env, cix, /*opt_session_options=*/ NULL, &session);
+
+// Use session as normal.
+
+ReleaseComponentInstance(cix);
+ReleaseModelPackageContext(ctx);
+ReleaseModelPackageOptions(pkg_options);
+ReleaseSessionOptions(template_so);
 ```
 
-### Example 2: Multi-Component Package with QNN
+The `cix` defaults the file index to 0 internally; the consumer never sees indexes.
+
+### Example 2: Multi-File Component (Pipeline Consumer)
+
+ORT-GenAI handling a QNN-NPU multi-file decoder. ORT's `CreateSession(cix, …)` rejects multi-file, so GenAI walks the variant directory itself.
 
 ```c
-// Consumer expresses EP intent through normal session_options surface.
-OrtSessionOptions* so = NULL;
-api->CreateSessionOptions(&so);
-api->SessionOptionsAppendExecutionProvider_V2(so, env, /*ep_devices*/ qnn_npu_devices,
-                                              /*num*/ 1, qnn_keys, qnn_vals, qnn_n);
+OrtComponentInstance* cix;
+SelectComponent(ctx, "decoder", pkg_options, &cix);
 
-// Capture that intent for the package API.
-OrtModelPackageOptions* options = NULL;
-pkg->CreateModelPackageOptionsFromSessionOptions(env, so, &options);
+if (ComponentInstanceGetFileCount(cix) > 1) {
+    const ORTCHAR_T* folder = ComponentInstanceGetVariantFolderPath(cix);
 
-OrtModelPackageContext* ctx = NULL;
-pkg->CreateModelPackageContext(L"phi-4mm.ortpackage", options, &ctx);
+    // Parse <folder>/variant.json — schema is part of this proposal's public spec.
+    VariantManifest vm = parse_variant_json(join_path(folder, "variant.json"));
 
-// See what's available for QNN
-size_t num_components = 0;
-const char* const* names = NULL;
-pkg->ModelPackageGetComponentNames(ctx, &num_components, &names);
-// names = ["decoder", "vision"] — "embedding" excluded (CPU-only, no QNN variant)
+    for (size_t i = 0; i < vm.files_count; ++i) {
+        const FileEntry* f = &vm.files[i];
 
-// Query decoder files
-size_t num_files = 0;
-const char* const* ids = NULL;
-pkg->ModelPackageGetFileIdentifiers(ctx, "decoder", &num_files, &ids);
-// num_files = 4, ids = ["embeddings", "context", "iterator", "lm_head"]
+        // Build the external-data mapping: shared_files entries resolve via
+        // GetSharedWeightPath; non-shared entries live next to the ONNX file.
+        OrtKeyValuePairs* ext_data;
+        OrtCreateKeyValuePairs(&ext_data);
+        for (size_t s = 0; s < f->shared_files_count; ++s) {
+            const ORTCHAR_T* resolved;
+            ComponentInstanceGetSharedWeightPath(cix, f->shared_files[s].checksum, &resolved);
+            OrtAddKeyValuePair(ext_data, f->shared_files[s].graph_filename, resolved);
+        }
 
-// Create sessions for each file — ORT uses the captured catalog to register
-// the single EP for each file, and applies per-file variant metadata on top.
-OrtSession* sessions[4];
-for (size_t i = 0; i < num_files; i++) {
-    api->CreateSession(env, ctx, "decoder", ids[i], /*session_options*/ NULL,
-                       &sessions[i]);
-}
+        // Build session options from the per-file pairs in variant.json.
+        OrtSessionOptions* so;
+        OrtCreateSessionOptions(&so);
+        apply_known_session_option_setters(so, f->session_options);  // GenAI helper
+        OrtSessionOptionsAppendExecutionProvider_V2(so, env,
+            /* selected EP — GenAI registered it on its template options already */ ep_name,
+            f->provider_options);
+        OrtSessionOptionsAddExternalInitializersFromFiles(so, ext_data);
 
-// Create vision session
-OrtSession* vision_session = NULL;
-api->CreateSession(env, ctx, "vision", NULL, NULL, &vision_session);
-// If vision has multiple files, NULL file_identifier returns an error — must specify.
+        OrtSession* stage_session;
+        OrtCreateSession(env, join_path(folder, f->filename), so, &stage_session);
 
-// Cleanup
-for (size_t i = 0; i < num_files; i++) api->ReleaseSession(sessions[i]);
-api->ReleaseSession(vision_session);
-pkg->ReleaseModelPackageContext(ctx);
-pkg->ReleaseModelPackageOptions(options);
-api->ReleaseSessionOptions(so);
-```
-
-### Example 3: Advanced Consumer (Custom Session Options)
-
-For consumers like GenAI that need custom EP setup (shared CUDA streams, QNN shared contexts):
-
-```c
-// Same capture pattern as Example 2, just to drive variant selection.
-OrtSessionOptions* so = NULL;
-api->CreateSessionOptions(&so);
-api->SessionOptionsAppendExecutionProvider_V2(so, env, qnn_devices, 1,
-                                              NULL, NULL, 0);
-
-OrtModelPackageOptions* options = NULL;
-pkg->CreateModelPackageOptionsFromSessionOptions(env, so, &options);
-
-OrtModelPackageContext* ctx = NULL;
-pkg->CreateModelPackageContext(L"phi-4mm.ortpackage", options, &ctx);
-
-// Read consumer metadata for GenAI-specific config
-const char* overlay_json = NULL;
-pkg->ModelPackageGetConsumerMetadata(ctx, "decoder", &overlay_json);
-// GenAI parses overlay for pipeline config, model_type, etc.
-
-// Query files
-size_t num_files = 0;
-const char* const* ids = NULL;
-pkg->ModelPackageGetFileIdentifiers(ctx, "decoder", &num_files, &ids);
-
-for (size_t i = 0; i < num_files; i++) {
-    // Read per-file EP to decide how to configure
-    const char* ep = NULL;
-    pkg->ModelPackageGetFileEp(ctx, "decoder", ids[i], &ep);
-
-    // Build custom session options with GenAI's EP-specific setup
-    OrtSessionOptions* caller_opts = NULL;
-    api->CreateSessionOptions(&caller_opts);
-    // ... GenAI applies shared CUDA stream, QNN shared EP context, etc. ...
-    // ... GenAI appends EP with custom provider options ...
-
-    OrtSession* session = NULL;
-    api->CreateSession(env, ctx, "decoder", ids[i], caller_opts, &session);
-    // Caller-provided session_options: ORT does NOT replay captured catalog
-    // or apply variant metadata — caller is fully in charge.
-
-    api->ReleaseSessionOptions(caller_opts);
-    // Store session...
-}
-
-pkg->ReleaseModelPackageContext(ctx);
-pkg->ReleaseModelPackageOptions(options);
-api->ReleaseSessionOptions(so);
-```
-
-### Example 4: Querying Selected Variants
-
-The query APIs surface the *selected* variant per component — i.e., what the consumer will actually run for the captured EP selection (or the single variant, under NULL options). Full package inspection (all components × all variants × all files, ignoring selection) is not supported by these APIs; tooling that needs that should parse `manifest.json` and per-component `metadata.json` directly, or wait for the dedicated inspection entry point tracked in [Open Question #9](#9-package-inspection-mode-deferred).
-
-```c
-// Inspection doesn't need an EP preference — NULL options is fine as long as
-// every component has a single variant. For multi-variant packages, the consumer
-// must supply a non-NULL options handle; the query APIs surface only the
-// *selected* variant per component.
-OrtModelPackageContext* ctx = NULL;
-pkg->CreateModelPackageContext(L"phi-4mm.ortpackage",
-                               /*options*/ NULL, &ctx);
-
-size_t num_components = 0;
-const char* const* names = NULL;
-pkg->ModelPackageGetComponentNames(ctx, &num_components, &names);
-
-for (size_t c = 0; c < num_components; c++) {
-    const char* variant = NULL;
-    pkg->ModelPackageGetSelectedVariantName(ctx, names[c], &variant);
-
-    size_t num_files = 0;
-    pkg->ModelPackageGetFileCount(ctx, names[c], &num_files);
-
-    printf("Component: %s (variant: %s, %zu files)\n", names[c], variant, num_files);
-
-    const char* const* ids = NULL;
-    size_t num_ids = 0;
-    pkg->ModelPackageGetFileIdentifiers(ctx, names[c], &num_ids, &ids);
-
-    for (size_t f = 0; f < num_files; f++) {
-        const char* ep = NULL;
-        pkg->ModelPackageGetFileEp(ctx, names[c], ids[f], &ep);
-        printf("  File: %s (EP: %s)\n", ids[f], ep ? ep : "CPU");
+        // GenAI keys the session by basename, matched against its own genai_config
+        // overlay's pipeline[].<stage>.filename.
+        genai_pipeline_register(stage_session, f->filename);
     }
 }
 
-pkg->ReleaseModelPackageContext(ctx);
+const char* consumer_blob;
+size_t consumer_blob_size;
+ComponentInstanceGetConsumerMetadata(cix, &consumer_blob, &consumer_blob_size);
+// GenAI parses the blob as JSON, finds genai_config_overlay, and merges into base config.
 ```
+
+The consumer parses `variant.json` once for all per-file detail. The only ORT-mediated lookup that survives is `GetSharedWeightPath`, which hides the `shared_weights/<checksum>/...` layout from consumers.
+
+### Example 3: Inspecting a Package
+
+Walking a package to print its layout — component names, variants, and per-variant EP compatibility. No selection needed.
+
+```c
+OrtModelPackageContext* ctx;
+CreateModelPackageContext(path, &ctx);
+
+size_t cn = ModelPackageGetComponentCount(ctx);
+for (size_t i = 0; i < cn; ++i) {
+    const char* component_name = ModelPackageGetComponentName(ctx, i);
+    printf("Component: %s\n", component_name);
+    size_t vn = ModelPackageGetVariantCount(ctx, component_name);
+    for (size_t j = 0; j < vn; ++j) {
+        const char* variant_name = ModelPackageGetVariantName(ctx, component_name, j);
+        printf("  Variant: %s\n", variant_name);
+        size_t en = ModelPackageGetVariantEpCount(ctx, component_name, variant_name);
+        for (size_t k = 0; k < en; ++k) {
+            const char* ep = ModelPackageGetVariantEpName(ctx, component_name, variant_name, k);
+            size_t sn = ModelPackageGetVariantEpCompatibilityStringCount(ctx, component_name, variant_name, k);
+            printf("    EP: %s [", ep);
+            for (size_t s = 0; s < sn; ++s) {
+                if (s > 0) printf(", ");
+                printf("%s", ModelPackageGetVariantEpCompatibilityString(ctx, component_name, variant_name, k, s));
+            }
+            printf("]\n");
+        }
+    }
+}
+```
+
+To see file-level details (paths, session/provider options, consumer_metadata), the inspector calls `SelectComponent` with an options handle and queries the resulting `cix`. Selection always requires a real options handle; tooling that doesn't intend to run anything can still build a minimal options handle with whatever EP it wants to drive selection toward.
+
+### Example 4: Mutating a Package
+
+Adding a new variant to an existing component.
+
+```c
+OrtModelPackageContext* ctx;
+CreateModelPackageContext("/path/to/phi4.ortpackage", &ctx);
+
+ModelPackageAddVariant(ctx,
+                       "decoder",
+                       "/staging/phi4-openvino-npu-slice/");
+//
+// Source layout:
+//   /staging/phi4-openvino-npu-slice/
+//     metadata.json                 # one variant entry: "openvino-npu"
+//     shared_weights/               # optional; only blobs the variant references
+//       <checksum>/<blob>
+//     openvino-npu/                 # variant subdir, name matches metadata entry
+//       variant.json
+//       *.onnx
+//
+// On commit, ORT copies the variant subdir into <package>/decoder/openvino-npu/,
+// merges the metadata.json variant entry into <package>/decoder/metadata.json,
+// and for each shared_weights/<checksum>/ that isn't already in <package>/decoder/shared_weights/,
+// copies the blob over.
+
+ModelPackageCommit(ctx);
+ReleaseModelPackageContext(ctx);
+```
+
+The producer is responsible for staging a source directory that conforms to the component-mirror layout described in [Mutation API](#1-package-context-parse-traverse-mutate): `metadata.json` declaring exactly one variant for `AddVariant`, the variant subdir, and any shared-weight blobs the variant references. ORT validates the structure and does not synthesize `metadata.json` or `variant.json`.
 
 ---
 
 ## Key Design Decisions
 
-### EP Selection Is Captured from `OrtSessionOptions`
+### Opaque Handles for ABI Stability
 
-The consumer expresses EP intent through the mechanisms ORT already has — `SessionOptionsAppendExecutionProvider_V2` for explicit EPs, `SessionOptionsSetEpSelectionPolicy`/`SessionOptionsSetEpSelectionPolicyDelegate` for auto selection. `CreateModelPackageOptionsFromSessionOptions` takes a snapshot of that intent (resolving the policy against env's `OrtEpDevice`s if needed) onto an `OrtModelPackageOptions` handle, which then drives variant selection and is reused as a catalog at session-creation time.
+Every public type — `OrtModelPackageContext`, `OrtModelPackageOptions`, `OrtComponentInstance` — is a forward-declared struct accessed through API functions. Internal addressing (file identifiers, sub-component grouping, on-disk directory shape, manifest version, etc.) is *not* part of the ABI. Adding a new field to `metadata.json`, changing how shared weights are laid out, or introducing a new internal index does not require an API break. Callers stay compatible.
 
-Three wins from this shape:
+This is a conscious response to APIs that hard-code internal addressing into call signatures (e.g. requiring callers to pass strings naming internal entities). Strings the ORT API takes are limited to *consumer-defined names* (component names, variant names, EP names) — names the consumer chose or that come from a stable EP registry. They are never names ORT made up about its own internals.
 
-- **No new EP-selection DSL.** Consumers don't learn a bespoke selection struct; the surface they already use for session creation is the same one they use here. `OrtCompileApi` follows the same pattern, so there is precedent in ORT.
-- **Single source of truth.** The captured `OrtEpDevice` list is what both variant matching and session creation consult. They cannot drift because they look at the same bytes.
-- **Natural generalization to multiple EPs.** Consumers may call `Append_V2` more than once, or use a policy that returns multiple devices. The captured list holds the ordered set; the two-pass walk (see the Algorithm) handles it without any extra orchestration surface.
+### Component Metadata Is Selection-Only
 
-### NULL Options Means "Single-Variant Package"
+`<component>/metadata.json` declares variants and their EP compatibility. Nothing else. The justification:
 
-When the consumer passes NULL for `options` on `CreateModelPackageContext`, the context resolves variants purely by count: a single variant per component is selected as-is, and any multi-variant component causes an ambiguity error. This preserves the flat-directory migration ergonomic where the consumer handles EP setup elsewhere (e.g., a legacy ORT-GenAI directory) and doesn't need to convey EP intent through the package API at all.
+- **Adding or removing a variant is a single-entry edit + directory move.** No need to re-flow per-file options, consumer metadata, or anything else.
+- **Variant directories are independently movable.** A producer can build a single-variant package, and a downstream tool can drop that variant directory into a multi-variant package without touching the new variant's runtime details.
+- **Selection is fast and cheap.** The selection algorithm only ever reads component metadata; it does not page through variant directories.
 
-NULL options is a *package-level* precondition: if even one component is multi-variant, the consumer must provide a non-NULL options handle (from a session_options that carries their EP preference).
+### Per-Variant `variant.json` Owns Runtime Detail
 
-Sessions created from a NULL-options context fall back to the variant metadata for EP and per-file options, which is always sufficient because each file's `ep_compatibility` carries what ORT needs. The consumer may alternatively pass their own `session_options` at session creation to take full control. See the precedence table in *Session Creation*.
+File lists, per-file session_options, per-file provider_options, shared-weight references, and the consumer_metadata blob all live in `<component>/<variant>/variant.json`. The variant directory is the unit of "everything ORT or a consumer needs to know to actually load this variant," and it is self-contained.
 
-### Multi-EP Matching Commits One EP Globally
+This separation also means the *selection-time* read path is small (just `metadata.json` per component) while the *load-time* read path is local to the chosen variant.
 
-When the captured EP list has more than one entry — whether from multiple `Append_V2` calls or a policy that returned several `OrtEpDevice`s — variant matching walks the list in two passes (strict first, permissive fallback) and commits to a single EP globally before per-component matching runs. Three choices deserve calling out:
+### EP Compatibility Is Per-Variant, Not Per-File
 
-- **EP selection is a list, not an unordered set.** Insertion order (for explicit appends) or policy-preference order is authoritative. The walk tries EPs in that order and stops at the first match, so the consumer's ranking decides ties.
-- **The two-pass strict/permissive walk.** A single-pass walk with null entries always allowed would let a generic JIT variant hijack the top-ranked EP (e.g., a captured list `[TRT, CUDA]` with only a neutral variant present would match TRT via the null entry, ignoring a real CUDA variant that might exist further down). The strict pass prevents this: neutral variants only win when nothing EP-specific matches anywhere in the list.
-- **No cross-EP coordination.** Once an EP is committed, ORT does *not* revisit the decision to maximize component coverage. If component A matches CUDA but component B doesn't, the consumer gets A and loses B — same partial-match semantics as the single-EP path. This keeps the algorithm predictable and sidesteps hard ranking questions ("is three components on QNN better than two on CUDA?"). Consumers who want coverage-aware behavior can supply a custom `EpSelectionDelegate` that factors coverage into its policy output.
+A variant declares one EP-compatibility list. The list says which EPs the variant runs on; it does not say which EP each individual file runs on. Reasons:
 
-### Captured Options Are a Catalog at Session Creation
+- **Multi-file variants ship as a unit.** The QNN-NPU variant of a decoder is one variant — its four ONNX files run together as a pipeline on QNN. There is no meaningful "this file runs on QNN, that file runs on CPU" decision for ORT to make at selection time.
+- **Per-file CPU/EP overrides, when needed, are the consumer's domain.** ORT-GenAI can express "run the embedding on CPU even though the rest of the variant is on QNN" through its own genai_config without polluting the package format with mixed-EP variant declarations.
+- **Selection stays simple.** The algorithm filters by single-string EP match per variant. No per-file score averaging, no neutral-fallback bookkeeping.
 
-The captured `OrtEpDevice` list is not replayed wholesale at session creation. Blindly registering every candidate on every session would be wrong: for an `ep: null` file that should run on default CPU, registering CUDA or TRT would force it onto an accelerator. Instead, the captured list acts as a **catalog** — ORT looks up the specific `OrtEpDevice` corresponding to this file's selected EP and registers only that one. Non-EP session-level settings from the captured options (threading, optimization level, log severity, custom ops, config entries) *are* replayed on every session in the package, since those are consumer-wide configuration rather than EP-specific.
+### Compatibility Strings Are Owned by the EP
 
-This ensures the EP chosen for a file at variant-selection time is the same EP used to run that file at session-creation time — no drift — while still honoring the consumer's session-level configuration.
+ORT does not interpret compatibility strings. It plumbs them through to the matched EP via the EP-side preference ABI ([Open Question 1](#1-ep-side-preference-abi)). The EP — which already owns hardware enumeration, capability detection, and device-specific tuning — is in the right place to choose among `["sm_80", "sm_86", "sm_90"]` given the user's actual GPU.
 
-### Session Creation Stays with `OrtSession`
+This keeps EP-specific knowledge (SoC model, driver versions, JIT vs AOT compatibility, architecture tier) inside the EP plugin and out of the package format. Adding a new EP, or extending an existing one with a new compatibility dimension, is a producer-and-EP coordination — the package format and ORT core do not change.
 
-The model package is a file format. Session creation is an ORT runtime operation. Keeping them separate means the package API stays small and focused on discovery and metadata, while session creation stays with the existing `OrtSession` surface that consumers already understand. The package-aware form is just an overload of `CreateSession` that takes a package context plus a component/file identifier instead of a file path — no new "session from package" API is introduced.
+### No File-Set Consistency Across Variants
 
-This avoids creating a parallel surface for session management inside the package API. If the package itself created sessions, there would be two places where sessions get created and lifecycle-managed, which adds confusion for no real benefit — the caller already has an `OrtEnv` and `OrtSessionOptions` at session-creation time.
+A `cpu` variant may have one ONNX file. A `qnn-npu` variant may have four. They are different packagings of the same component, with different file structures. ORT does not enforce that variants of the same component declare the same files.
 
-### ORT Applies Metadata Options (Not the Consumer)
+The reason is that the variants genuinely have different file structures (single monolithic file vs. multi-stage pipeline) and forcing a uniform identifier scheme on top would either create fictitious "file identity" (one variant's `decoder` is another variant's `prompt-processor` + `token-generator` + …) or restrict what producers can ship. Consumers that need cross-variant identity rely on their own conventions (e.g. ORT-GenAI keys files by filename in its config overlay).
 
-The producer of the model knows what session and provider options the model needs to run correctly. Those options belong with the model, in its variant metadata. When the consumer asks ORT to load a file, ORT reads the metadata and applies the options.
+### Minimal Component-Instance Surface
 
-Having the consumer read options from metadata and forward them to ORT during session creation adds a pass-through layer with no value — the consumer isn't making any decisions about those options. Keeping the application in ORT means the consumer code is simpler and the options stay close to the model they apply to.
+The component instance exposes the smallest accessor set that supports both the single-file `CreateSession` path and the multi-file consumer path:
 
-Only options that are *required* to run the component belong in variant metadata. Anything overridable or policy-like (thread tuning, profiling, debug flags) belongs in the consumer's own config.
+- `GetVariantFolderPath` — the escape hatch and the root for parsing `variant.json`.
+- `GetFileCount` — for dispatch.
+- `GetConsumerMetadata` — blessed access to the overlay/consumer blob.
+- `GetSharedWeightPath(checksum)` — the only piece of resolution that consumers can't easily replicate without baking the package's shared-weights layout into their code.
+- `CreateSession` — single-file convenience.
 
-### Session Options Precedence
+What's deliberately *not* exposed: the matched EP, the matched compatibility strings, the selected variant name, per-file paths, per-file session_options, per-file provider_options. Multi-file consumers parse `variant.json` (whose schema is part of this proposal) for those fields; single-file consumers don't need them at all because `CreateSession` handles everything internally.
 
-Four cases, no merging at session-options level:
+The bias is toward narrowness. Adding an accessor later is cheap; removing one without an ABI break is not. The accessors that survive in this list either do real work the consumer can't replicate (resolve a checksum) or are needed for control flow at the seam between ORT and the consumer (file count for dispatch, consumer blob for the consumer's overlay).
 
-| Package context `options` | `session_options` at `CreateSession` | Behavior |
-|---|---|---|
-| NULL | NULL | ORT builds the session entirely from the variant's file metadata — EP + session_options + provider_options come from the selected `ep_compatibility` entry. The "trust what's on disk" path. |
-| NULL | Provided | ORT uses the caller's `session_options` as-is. Metadata options are NOT applied. The caller takes full responsibility for EP setup and session configuration. |
-| Non-NULL | NULL | ORT replays the non-EP settings from the captured `OrtSessionOptions` (threading, optimization level, custom ops, config entries), registers the single captured `OrtEpDevice` matching this file's chosen EP (catalog lookup), and then applies variant metadata (provider options and additional session settings) on top. |
-| Non-NULL | Provided | ORT uses the caller's `session_options` as-is. Neither the captured catalog nor variant metadata is applied — the advanced path for callers who need shared CUDA streams, shared QNN EP contexts, custom allocators, etc. |
+### Single-File-Only `CreateSession`
 
-All-or-nothing at session-options level avoids complex precedence rules and subtle bugs from conflicting options. The two "Provided" rows behave identically (caller is authoritative); the two "NULL" rows differ only in where the EP comes from (captured catalog vs. file metadata).
+`CreateSession(env, cix, opt_so)` rejects variants with more than one file. The rationale:
 
-### Two Parameters for Component + File (Not a Dotted String)
+- A single-file variant is a pure ORT concept: open a session, run it. The package API can handle this end-to-end.
+- A multi-file variant has *consumer-specific orchestration* (which file runs first, when each is invoked, how state is shared between sessions). That orchestration is not the package API's job.
+- Multi-file consumers parse `variant.json` (a documented schema in this proposal) and build sessions themselves. ORT's internal single-file convenience path uses the same `variant.json` data internally, so the format is the single source of truth — there is no duplicate code path.
 
-The `CreateSession` overload takes `component_name` and `file_identifier` as separate parameters rather than a single `"component.file"` string. Dotted strings have escaping pitfalls (what if an identifier contains a dot?), weaker validation, and awkward language bindings. Two parameters also match how the rest of the query APIs already address files.
+Refusing the multi-file case explicitly (rather than silently picking the first file) prevents subtle bugs where a consumer accidentally runs only one stage of a pipeline.
 
-### `OrtEnv` Only Needed at Options Creation
+### `CreateSession` Is All-Or-Nothing on Caller Options
 
-`CreateModelPackageOptionsFromSessionOptions` needs `env` to resolve a policy against the registered `OrtEpDevice`s (when the session_options uses a policy rather than explicit `Append_V2`). Once options is created, the captured `OrtEpDevice` list is all that variant matching needs — `CreateModelPackageContext` is pure parsing + matching and takes no env. At session-creation time, env is provided again on `CreateSession`, and the `OrtEpDevice` identity preserved by the context's catalog lookup ensures match-time EP == session-time EP. This keeps each entry point focused on the state it actually needs.
+When the caller passes `opt_session_options == NULL`, ORT owns the entire session setup from `variant.json`. When the caller passes their own `OrtSessionOptions*`, ORT uses it as-is — no merging, no precedence resolution, no per-file pair application from the package. The caller takes full responsibility for parsing `variant.json` themselves and feeding whatever they want into their options.
 
-### Partial Match Is Not an Error
+The alternative — merging caller options on top of package options — would require ORT to define precedence rules for every session-option key, every provider-option key, every EP, and every external-initializer source. That policy would itself become a stable, observable surface that consumers depend on, which is exactly the kind of implicit contract that is painful to evolve.
 
-If a package contains components that don't have a matching variant for the captured EP selection, those components are silently excluded from the context. The consumer sees only what's usable. This matches the mental model of the API: "tell me what's available for my EP."
+The all-or-nothing rule also keeps the advanced caller's mental model consistent with the multi-file consumer's: in both cases, you parse `variant.json`, resolve shared weights via `GetSharedWeightPath`, and build session_options yourself. There is one "manual" path, and the convenience function exists *next to* it, not layered on top of it.
 
-Components that *are* available can still be loaded. If a consumer expects a specific component and it's missing, that shows up at session creation time with a clear error.
+### Shared Weights as a Resolved Path
 
-One exception: when the consumer passes **NULL options** and any component has more than one variant, context creation fails. That's ambiguity, not absence — see *NULL Options Means "Single-Variant Package"* above.
+Shared weights live under `<component>/shared_weights/<checksum>/<blob_filename>`. The checksum names the per-blob directory; the blob filename inside is producer's choice (a plain `weight.data`, or a name that encodes format/version like `embeddings.fp16.safetensors`). Allowing arbitrary filenames keeps options open for future tooling that wants to read intent from the name without a separate manifest. When a variant's ONNX file references an external-data filename, the variant's `variant.json` maps that filename to a checksum, and the layout under `shared_weights/` is the resolution.
 
-### Per-File EP Compatibility List
+The single API around this is `ComponentInstanceGetSharedWeightPath(cix, checksum) → absolute_path`. Critically:
 
-A file declares its compatible EPs as a list (`ep_compatibility`), always — even when the file only supports one EP, the list has a single entry. Each entry carries its own `ep` name (or `null` for CPU/neutral), `compatibility_info`, `session_options`, and `provider_options`. The variant selector walks the captured EP list against each file's `ep_compatibility` and picks the best-scoring variant where every file either matches or has a null fallback.
+- ORT does not symlink, hardlink, or copy shared weights into the variant directory.
+- ORT does not intercept the ONNX loader's path resolution.
+- The caller (ORT's internal session creation, or an external consumer building its own session_options) plumbs the resolved path into ORT through the existing external-initializers session-options API.
+- The accessor encapsulates the `<component>/shared_weights/<checksum>/<blob>` layout — including the fact that the blob filename is unconstrained — so the format can evolve (different blob filenames, additional levels of nesting) without consumer changes.
 
-Keeping a uniform list shape — rather than a flat "single-EP" shorthand — means consumers, tooling, and the selection algorithm always see one schema. The cost is one extra level of nesting for single-EP files, which is negligible given metadata.json is typically generated by tools rather than hand-written.
+This avoids filesystem-mutation surprises, sidesteps platform-specific symlink quirks, and keeps the package's internal layout an implementation detail.
 
-Storing per-EP options alongside each compatible EP keeps the options close to the execution target they apply to — when the selector picks CUDA for a file, it uses the CUDA-specific options attached to that entry. The null entry lets neutral/CPU files carry their own options too.
+### `consumer_metadata` Is a Single Opaque Blob
 
-### `ep: null` for Neutral/CPU Files
+The variant's `variant.json` carries a single `consumer_metadata` field. It is returned verbatim by `GetConsumerMetadata(cix)` — no key, no namespace, no parsing. ORT stores the blob, ORT returns the blob, and ORT does not interpret the blob.
 
-An `ep_compatibility` entry with `ep: null` runs on CPU and matches any captured EP as a neutral fallback. This serves two use cases:
+Consumers that share a package layout (e.g. all ORT-GenAI consumers on a Phi-4 package) coordinate on the blob's internal shape — typically a JSON object with framework-named keys like `genai_config_overlay`. Coordination happens *outside* ORT.
 
-1. **Base models meant for JIT compilation** — the package ships a single generic ONNX file that any EP can consume at runtime via JIT. The file has a single null entry, so it matches any captured EP and scores neutrally.
-2. **Mixed-EP variants** — a QNN decoder pipeline where embeddings and `lm_head` run on CPU while the rest run on QNN. The CPU-resident files have a null entry; they ride along with the variant without affecting its match decision against non-CPU EPs.
+This keeps the package format fully neutral toward any one consumer framework. Adding a new consumer means defining a key inside the blob; no schema change to the package format.
 
-Null entries can still carry session options (and those are applied by ORT when the file is loaded on CPU), so a CPU file with specific threading or optimization settings can have them declared alongside any EP-specific entries.
+### Manifest Carries Merge Provenance
 
-Scoring null entries as `0` (neutral) means a purely EP-matched variant will outscore a mixed variant when both are viable, which is the right preference: if the producer ships a full-CUDA variant alongside a CUDA-decoder-with-CPU-embeddings variant, the full-CUDA one wins.
+The top-level `manifest.json`'s content is optional, but when a package is the result of merging two or more upstream packages, the `merge_provenance` field records which components and variants came from which source. Unmerge — extracting a standalone sub-package — uses this provenance to reconstruct each upstream package faithfully.
 
-This subsumes the old `force_cpu` flag — a null entry expresses the same intent without an extra field, and it naturally allows session options on neutral files.
-
-### Variant Score Is the File-Score Average
-
-A multi-file variant is either fully compatible with the candidate EP (every file has a matching EP entry or a null entry) or rejected outright. When compatible, the variant's score is the mean of its file scores. Averaging gives a simple, monotonic score that:
-
-- Prefers variants with more EP-matched files over variants with more null/neutral files
-- Has a natural interpretation — "how EP-specific is this variant, on average?"
-- Scales cleanly when additional signals (device match, compatibility info) are added later
-
-More sophisticated aggregation (weighted means, per-file importance) can be layered in later without changing the schema.
-
-### Provider Options Are Flat
-
-Since each `ep_compatibility` entry already names its EP, provider options inside that entry don't need EP-name nesting. Flat key-value pairs, passed directly to `AppendExecutionProvider` for the selected EP.
+Both merge and unmerge are deferred to a later workstream, but the manifest schema is designed today to carry the data they need. Producers writing fresh packages can ignore `merge_provenance` entirely.
 
 ---
 
 ## Implementation Plan
 
-The work splits into two phases. Phase 1 lands everything in ORT so a C/C++/Python consumer can load a model package end-to-end. Phase 2 wires ORT-GenAI on top of the new APIs.
+### Phase 1: Core API and Read Path
 
-Within Phase 1, the workstreams are designed so that, after a short shared foundation, multiple developers can work in parallel on disjoint parts of the codebase.
+- `CreateModelPackageContext` parses the package directory (manifest, components, variants) into an in-memory representation. Read-only.
+- Traversal accessors (`GetComponentCount`, `GetComponentName`, `GetVariantCount`, `GetVariantName`).
+- `CreateModelPackageOptionsFromSessionOptions` snapshots EP intent.
+- `SelectComponent` runs the selection algorithm. EP-side preference ABI is initially stubbed with insertion-order tie-break only (Open Question 1 lands later).
+- `OrtComponentInstance` accessors: `GetVariantFolderPath`, `GetFileCount`, `GetConsumerMetadata`, `GetSharedWeightPath`.
+- `CreateSession(env, cix, opt_so)` for single-file variants — rejects multi-file with a diagnostic. Reads `variant.json` internally for the file's session_options, provider_options, and shared_files.
+- ORT-internal external-data plumbing: `CreateSession` resolves shared-weight checksums via the same logic exposed by `GetSharedWeightPath` and feeds the resulting paths to the existing external-initializers infrastructure.
 
-> **Tracking note:** Check off items as they land. Link the PR/issue next to each bullet when one is filed (e.g., `— #1234`). A workstream is "done" only when all its items are checked and tests are green in CI.
+### Phase 2: Mutation and Authoring
 
-### Phase 1: ORT
+- `ModelPackageAddComponent`, `RemoveComponent`, `AddVariant`, `RemoveVariant`, `Commit`. Staged-then-committed model.
+- Validation on `Add`: source directory conforms to the component-mirror layout, `metadata.json` is well-formed (and declares exactly one variant for `AddVariant`), each variant's `variant.json` is well-formed, `ep_compatibility` entries name known EPs (warning-only — unknown EPs may be intentional for future-proofing), every checksum referenced by `variant.json` `shared_files` resolves under the source's `shared_weights/`.
+- Shared-weight merge logic: content-addressable dedup (skip on checksum collision; optionally re-hash on copy as a producer-error safeguard).
+- Shared-weight GC at `Commit`: walk all remaining variants, collect referenced checksums, delete unreferenced `<component>/shared_weights/<checksum>/` directories.
+- A small authoring CLI (or Python tooling) on top of the C API to make package construction usable from a workflow without writing C.
 
-#### Shared foundation (must land first)
+### Phase 3: Compile and Merge/Unmerge
 
-**WS0. Schema types & internal data model**
-- [ ] Internal C++ structs mirroring the metadata schema: `ModelPackage`, `Component`, `Variant`, `FileEntry`, `EpCompatibilityEntry`.
-- [ ] Public opaque handles `OrtModelPackageOptions` and `OrtModelPackageContext`.
-- [ ] Error codes and status messages for malformed packages and for NULL-options ambiguity.
-- [ ] Headers published so other workstreams can compile against them.
-
-Everyone else depends on WS0. Once its header lands, the remaining workstreams below can proceed in parallel on separate PRs.
-
-#### Parallel workstreams (A / B / C / D can all proceed independently after WS0)
-
-**WS-A. Package loader & metadata parser** *(Dev 1)*
-- [ ] Parse `manifest.json` (list of components, paths to per-component `metadata.json`).
-- [ ] Parse `metadata.json` (component name, variants, per-file `ep_compatibility`, consumer metadata blob).
-- [ ] Validation: required fields, at least one `ep_compatibility` entry per file, file paths resolve, identifiers unique within a variant.
-- [ ] Populate `ModelPackage` structs from WS0.
-- [ ] Unit tests with fixture packages (valid, malformed, missing fields).
-
-**WS-B. Variant selection algorithm** *(Dev 2)*
-- [ ] Per-file scoring per [Variant Selection Algorithm](#variant-selection-algorithm): EP match, `ep: null` neutral entries, device filter + bonus.
-- [ ] Variant-level rejection when any file has no matching entry and no null fallback.
-- [ ] Variant score = arithmetic mean of file scores.
-- [ ] NULL-options path (single-variant-per-component requirement; ambiguity error otherwise).
-- [ ] Multi-EP walk (two passes: strict first, permissive fallback; commit one EP globally). Handles both `Append_V2`-derived and policy-derived lists uniformly.
-- [ ] Deterministic tie-break (insertion order).
-- [ ] Pure function over WS0 structs plus an ordered `OrtEpDevice` list — no I/O, no ORT runtime deps. EP resolution (policy → ordered list) happens in WS-C before calling WS-B.
-- [ ] Unit tests: single-EP variants, multi-EP files, mixed neutral+EP variants, all-rejected case, NULL-options, multi-EP two-pass (including strict-pass anti-hijack case), ties, device-type filter.
-
-**WS-C. Public C API — options, context & queries** *(Dev 3)*
-- [ ] `OrtModelPackageApi` sub-API obtained via `OrtApi::GetModelPackageApi` (mirrors `OrtCompileApi`).
-- [ ] `CreateModelPackageOptionsFromSessionOptions` — deep-copy the non-EP session settings from `OrtSessionOptions` onto the options handle; capture the `OrtEpDevice` list (from `Append_V2` appends, or by resolving the configured policy/delegate against the registered `OrtEpDevice`s on `env`).
-- [ ] `ReleaseModelPackageOptions`.
-- [ ] `CreateModelPackageContext` (calls WS-A loader + WS-B selector; returns opaque handle). `options` is optional (NULL = NULL-options path). Does NOT take `OrtEnv` — env is only needed at options creation and at session creation.
-- [ ] `ReleaseModelPackageContext`.
-- [ ] Context must deep-copy whatever it needs from `options` so the caller can release `options` immediately after the call.
-- [ ] `GetComponentNames`, `GetSelectedVariantName`.
-- [ ] `GetFileCount`, `GetFileIdentifiers`, `GetFilePath`.
-- [ ] `GetFileEp`, `GetFileDeviceType`.
-- [ ] `GetFileSessionOptions`, `GetFileProviderOptions`.
-- [ ] `GetConsumerMetadata`.
-- [ ] Memory ownership, release semantics, thread-safety notes documented in the headers.
-- [ ] C API smoke tests (single-EP appended, multi-EP appended, policy-resolved, NULL-options paths).
-
-**WS-D. Session creation integration** *(Dev 4)*
-- [ ] `CreateSession` overload taking `OrtModelPackageContext*`, `component_name`, `file_identifier`, optional `OrtSessionOptions*`.
-- [ ] Session options precedence per the [Session Options Precedence](#session-options-precedence) table — four cases (NULL/non-NULL context options × NULL/provided caller session_options).
-- [ ] Non-EP settings replay: when the context has captured options and caller passed NULL session_options, replay the non-EP settings (threading, optimization level, custom ops, config entries) on the built session_options.
-- [ ] Catalog lookup: register the single captured `OrtEpDevice` whose EP name matches the file's selected EP. If the file's selected EP is `null` (CPU), register nothing (default CPU).
-- [ ] ORT-side applier for per-file `session_options` — generic passthrough via `AddConfigEntry`.
-- [ ] Known-setter dispatch for session-option keys that require dedicated setters (e.g., `intra_op_num_threads`, `graph_optimization_level`) — fixed mapping from key name → setter. See [Appendix B](#appendix-b-session-options-reference) and [Open Question #3](#3-known-session-options-setters).
-- [ ] ORT-side applier for per-file `provider_options` — wire the provider options into the registered EP.
-- [ ] Integration tests that go from a sample package on disk to a runnable session (all four precedence cases).
-- [ ] This workstream depends on A/B/C landing; can develop against stubs in parallel.
-
-#### Post-integration (serial, once A–D are merged)
-
-**WS-E. Language bindings**
-- [ ] C++ wrappers (`Ort::ModelPackageOptions`, `Ort::ModelPackageContext`, `Ort::Session` overload).
-- [ ] Python bindings (`onnxruntime.ModelPackageContext`, `InferenceSession` from context).
-- [ ] Binding-level tests (C++ and Python).
-
-**WS-F. Sample packages & end-to-end tests**
-- [ ] Fixture package: single-file CPU.
-- [ ] Fixture package: multi-EP single-file (CUDA + WebGPU).
-- [ ] Fixture package: multi-file QNN pipeline with CPU-resident files.
-- [ ] Fixture package: neutral-only JIT variant (exercises policy Pass 2 fallback).
-- [ ] Fixture package: no matching variant (negative case).
-- [ ] E2E tests driving the public API across all fixtures, covering single-EP appended, multi-EP appended, policy-resolved, and NULL-options paths.
-- [ ] Some of this can start in parallel with WS-A/B using hand-written fixtures; the bulk lands after WS-D.
-
-#### Dependency graph (Phase 1)
-
-```
-WS0 ──┬──► WS-A ──┐
-      ├──► WS-B ──┼──► WS-D ──► WS-E
-      └──► WS-C ──┘         └─► WS-F
-```
-
-Four developers can productively work in parallel on WS-A, WS-B, WS-C, WS-D immediately after WS0 lands, using stubs or mocks for cross-workstream dependencies until they merge.
-
-### Phase 2: ORT-GenAI
-
-Depends on Phase 1 being available in a released (or internal) ORT build.
-
-**WS-G. Package detection & context creation**
-- [ ] Detect "flat directory" vs "model package" at GenAI `Model::Create` time (presence of `manifest.json`).
-- [ ] For package path: build `OrtSessionOptions` from GenAI's existing EP config, then call `CreateModelPackageOptionsFromSessionOptions` to capture it.
-- [ ] Call `CreateModelPackageContext`; hold it on the GenAI `Model`.
-- [ ] Flat-directory code path left unchanged (regression guard).
-
-**WS-H. Session creation via package context**
-- [ ] Replace GenAI's per-component session creation with the `CreateSession(env, ctx, component, file_id, opts)` overload.
-- [ ] Continue owning EP-specific runtime plumbing (CUDA streams, QNN shared context handles) and pass via session options (relying on "consumer's options win" precedence).
-- [ ] Multi-file components: iterate file identifiers from the package context, create one session per file.
-- [ ] Derive `p_device_` from `GetFileEp` / `GetFileDeviceType` instead of `is_primary_session_options`.
-
-**WS-I. `genai_config` overlay consumption**
-- [ ] Merge per-variant `consumer_metadata.genai_config_overlay` on top of GenAI's defaults / legacy `genai_config.json`.
-- [ ] Drive pipeline construction (e.g., QNN `decoder-pipeline` entries) from the overlay.
-- [ ] Fall back cleanly when a package provides no overlay.
-
-**WS-J. Tests & sample models**
-- [ ] Single-file package test.
-- [ ] Multi-EP package test.
-- [ ] QNN multi-file pipeline package test.
-- [ ] Legacy flat-directory regression test.
-- [ ] At least one canonical sample package checked in or referenced from the test fixtures.
-
-**WS-K. Documentation**
-- [ ] Update GenAI docs to describe the model package path alongside the flat-directory path.
-- [ ] Migration notes for existing consumers.
-
-#### Dependency graph (Phase 2)
-
-```
-Phase 1 released ──► WS-G ──► WS-H ──┬──► WS-J
-                            │        │
-                            └► WS-I ─┘
-                                     │
-                                     └──► WS-K
-```
-
-WS-G is strictly first in Phase 2; after that, WS-H and WS-I can be developed in parallel, with WS-J and WS-K wrapping up.
+- `ModelPackageCompile(ctx, …)` — granularity is [Open Question 2](#2-jit-compilation-granularity). Once decided, the API materializes a compilable variant in place, updates its compatibility strings, and writes the result back through `Commit`.
+- `ModelPackageMerge(target, source, …)` — combine packages, populate `merge_provenance`.
+- `ModelPackageUnmerge(ctx, source_id, out_path)` — extract a standalone sub-package using `merge_provenance`.
 
 ---
 
 ## Open Questions
 
-### 1. Different EPs for Different Components
+### 1. EP-Side Preference ABI
 
-The current design captures one `OrtModelPackageOptions` handle (derived from a single `OrtSessionOptions`) for the entire context. What if a consumer needs decoder on QNN but embedding on CPU?
+ORT delegates compatibility-string disambiguation to the matched EP. The ABI shape needs to land before the selection algorithm is fully wired:
 
-Options:
-- Create two contexts, one per EP.
-- Extend the API to accept multiple options or per-component overrides.
+```c
+// Strawman:
+OrtStatus* OrtEpPreferVariant(const OrtEp* ep,
+                              const OrtEpDevice* device,
+                              size_t num_variants,
+                              const char* const* variant_names,
+                              const size_t* num_compat_strings_per_variant,
+                              const char* const* const* compat_strings_per_variant,
+                              size_t* out_preferred_idx,
+                              bool* out_has_preference);
+```
 
-Most real deployments use one EP for the whole pipeline, so this is an edge case. We can start with a single captured options handle and extend later if needed.
+Open: should the EP return a single preferred index, or a ranking? Should it have access to the entire captured device list, or only the matched device? How does it signal "no preference" vs. "this one is mandatory"?
 
-### 2. ORT-Managed EP Registration
+### 2. JIT Compilation Granularity
 
-When `session_options` is NULL, ORT applies the EP from metadata via `AppendExecutionProvider`. Open questions:
-- Does the EP need to be already registered in the ORT build?
-- Should ORT attempt to load the EP plugin if missing?
+Whiteboarded options:
 
-Proposed: require the EP to be available. If not, return an error with a clear message.
+- **Variant-level** — the variant has a "compilable" flag and a target output filename. The whole variant is JIT-compiled in place.
+- **File-level** — `variant.json` marks specific files as compilable, each with its own target output filename.
+- **Component-level** — the component has a "base" variant that is compiled into a per-EP variant on first use.
 
-### 3. Known Session Options Setters
+For multi-file variants, the design also has to answer "is each file JIT'd independently, or as a unit?" — likely file-level if the host EP supports it.
 
-ORT's "known" session options (`intra_op_num_threads`, etc.) require dedicated setter APIs — `AddConfigEntry` silently does nothing for them. For the metadata-driven path, ORT needs a fixed mapping of ~9 known key names to their setters. See Appendix B for the list. Tractable.
+### 3. Merge / Unmerge Semantics
 
-### 4. Shared Weights / External Data Files
+Merging two single-variant packages into one two-variant package is straightforward: copy directories, append entries to component `metadata.json`, append `merge_provenance` entries to the manifest. Open questions:
 
-Deferred. When tackled, the package-aware `CreateSession` overload abstracts external data path resolution — this is a key benefit of having a package-aware session creation path.
+- What happens when sources conflict on the same component + variant name? Reject? Rename?
+- Does merge consolidate `configs/` (e.g. shared `genai_config.json` base)? If so, by what rule?
+- Does merge across producers require a common manifest schema version?
+- Does unmerge fail if a downstream consumer mutated the merged package's component metadata after the merge?
+
+### 4. Manifest Schema Versioning
+
+The manifest carries `schema_version` today as a placeholder. The upgrade story (forward and backward compatibility, what counts as a breaking change) is not yet specified. Keeping the manifest's content optional until v2 lands gives producers a way to ship without committing to a version they don't know yet.
 
 ### 5. Cross-Component Consistency
 
-When selecting variants for multiple components independently, how do we ensure they're compatible? Package-level profiles can be added later if needed. For now, leave coordination to the consumer.
+A package can have multiple components. Today, selection runs per-component, and there is no enforcement that the EP chosen for `decoder` matches the EP chosen for `vision_encoder`. For most cases this is desirable (e.g. CPU embedding + GPU decoder). For some cases — multi-component models that must share a session memory pool, or that have hard runtime dependencies on co-located EPs — the consumer wants a guarantee. Whether ORT should provide that guarantee, or whether it remains the consumer's responsibility, is an open question.
 
-### 6. JIT Compilation Caching
+### 6. Authoring Tools
 
-Deferred. After compilation, ORT saves artifacts into the package and updates variant metadata.
+The C API supports mutation, but day-to-day producers (model-export scripts, CI pipelines) will not call C directly. A Python authoring layer on top of the C API — `package = ModelPackage("/path"); package.add_variant("decoder", staging_dir); package.commit()` — is in scope but unspecified at this point.
 
-### 7. `GetSelectedVariantPath` with NULL Options and EP-Declaring Variants
+### 7. Shared-Weight Verification on Add
 
-When the context was created with NULL options and the (single) selected variant's files declare specific EPs, does `GetSelectedVariantPath` still return the variant path? Proposed: yes — trust what's on disk, consistent with the "flat directory" semantics. Consumer who asked for NULL-options opted into this.
+`AddComponent` / `AddVariant` skip copying a shared-weight blob when the destination already has the same checksum directory, on the assumption that "checksum identifies content." If a producer accidentally mislabels a blob (wrong checksum filename), the destination's pre-existing blob silently wins. ORT can guard against this by re-hashing on copy:
 
-### 8. Metadata-Aware Policy Delegates (Deferred)
+- **Always re-hash:** safest, but adds I/O proportional to total shared-weight size on every add.
+- **Re-hash by default; opt-out flag for trusted authoring tools:** good middle ground.
+- **Never re-hash; rely on producer correctness:** fastest; matches how content-addressable stores typically operate.
 
-A custom `EpSelectionDelegate` that factors in package-level signals (e.g., "which EP yields the best component coverage for this specific package?") would let advanced consumers override the default "first EP with at least one match wins" behavior. Deferred — straightforward to layer on once the single-EP-commit default is validated.
-
-### 9. Package Inspection Mode (Deferred)
-
-The v1 query APIs are *selection-scoped*: they surface the single selected variant per component and filter out components that have no match for the captured EP selection. This is the consumer shape (run a package) but not the tooling shape (validate a package, diff two packages, list every variant a package ships, drive a UI that lets the user pick a variant manually).
-
-True inspection would need a second surface:
-
-- A construction entry point that skips variant selection entirely and never errors on multi-variant components — e.g., `CreateModelPackageInspectionContext(package_path, &ctx)`, or a flag on `CreateModelPackageContext`.
-- Traversal APIs that enumerate *all* components, *all* variants per component, and *all* files per variant — independent of any EP filtering.
-- Getters keyed by the full `(component, variant, file)` tuple rather than `(component, file)` against the selected variant.
-
-Out of scope for v1 because (a) the consumer-run-package flow is the primary driver, (b) the data is all in the file formats (`manifest.json` + per-component `metadata.json`), so tooling can parse directly in the short term, and (c) adding the traversal surface prematurely risks coupling it to selection-context internals that are still evolving. Worth reserving naming so `CreateModelPackageContext` and related APIs stay future-compatible with an inspection entry point layered alongside.
+Default policy is yet to land. Recommend "re-hash by default, opt-out flag" for v1.
 
 ---
 
 ## Appendix A: ORT-GenAI Integration
 
-This section details how ORT-GenAI, a sophisticated consumer, integrates with the API.
+ORT-GenAI is the first consumer of the model package API and the primary multi-file consumer. This appendix specifies how GenAI sits on top of the package API: where its assets live in the package, how its per-variant configuration is layered, and how its session-creation flow consumes the package's generic accessors.
 
-### GenAI Session Creation Flow
+The package format itself is generic. Nothing below requires schema changes to the package — it is entirely a convention layered on top of `consumer_metadata` and the `configs/` directory.
 
-```cpp
-ComponentSessions Model::CreateComponentSessions(
-    const std::string& component_name) {
+### Where GenAI Assets Live in the Package
 
-    ComponentSessions result;
-
-    if (model_package_ctx_) {
-        // --- Model Package Path ---
-
-        // 1. Read consumer metadata for GenAI-specific config
-        const char* overlay_json = nullptr;
-        ModelPackageGetConsumerMetadata(model_package_ctx_.get(),
-            component_name.c_str(), &overlay_json);
-        if (overlay_json) {
-            config_->ApplyOverlay(component_name, overlay_json);
-        }
-
-        // 2. Get file list
-        size_t num_files = 0;
-        const char* const* identifiers = nullptr;
-        ModelPackageGetFileIdentifiers(model_package_ctx_.get(),
-            component_name.c_str(), &num_files, &identifiers);
-
-        // 3. Create sessions per file
-        for (size_t i = 0; i < num_files; i++) {
-            const char* ep = nullptr;
-            ModelPackageGetFileEp(model_package_ctx_.get(),
-                component_name.c_str(), identifiers[i], &ep);
-
-            result.identifiers.push_back(identifiers[i]);
-            result.file_eps.push_back(ep ? ep : "");
-
-            // GenAI builds custom session options with EP-specific runtime state
-            auto session_opts = OrtSessionOptions::Create();
-            SetupEpSpecificOptions(ep, *session_opts);
-            // ^ Injects shared CUDA stream, QNN shared EP context, etc.
-
-            // Use the package-aware CreateSession overload
-            result.sessions.push_back(OrtSession::Create(
-                GetOrtEnv(), model_package_ctx_.get(),
-                component_name.c_str(), identifiers[i],
-                session_opts.get()));
-        }
-
-        // 4. Derive device from per-file EPs
-        p_device_ = GetDeviceInterface(DeriveDeviceFromFileEps(result));
-
-    } else {
-        // --- Legacy Flat Directory Path (unchanged) ---
-        auto opts = OrtSessionOptions::Create();
-        CreateSessionOptionsFromConfig(
-            config_->model.decoder.session_options, *opts, true);
-        result.sessions.push_back(
-            OrtSession::Create(GetOrtEnv(), config_path_ / filename, *opts));
-        result.identifiers.push_back(component_name);
-    }
-    return result;
-}
+```
+<package>/                              # ← model_root for GenAI
+├── manifest.json
+├── configs/                            # ← consumer-shared (model-level) assets
+│   ├── genai_config.json               # GenAI BASE — merged into for every variant
+│   ├── tokenizer.json                  # tokenizer assets
+│   ├── tokenizer_config.json
+│   ├── special_tokens_map.json
+│   ├── added_tokens.json
+│   ├── vocab.json
+│   ├── merges.txt
+│   ├── chat_template.jinja             # if present
+│   ├── processor_config.json           # vision processor (multimodal models)
+│   └── audio_processor_config.json     # speech processor (multimodal/whisper)
+└── <component>/
+    ├── metadata.json
+    └── <variant>/                      # ← variant_folder for GenAI
+        ├── variant.json                # consumer_metadata.genai_config_overlay carried here
+        ├── *.onnx, *.onnx.data         # ORT-loadable model files
+        ├── <custom_ops>.so/.dll        # if `custom_ops_library` referenced
+        └── <lora>.onnx                 # per-variant LoRA adapters (e.g. phi multimodal)
 ```
 
-### What Changes in GenAI
+**Two filesystem roots for GenAI:**
 
-| Current Code | With Model Packages | Status |
+| What GenAI is loading | Where it looks | Consumer of the path |
 |---|---|---|
-| EP-specific session handlers (CUDA, QNN, DML) | Still needed — GenAI passes custom session options | **Stays** |
-| EP dispatch (`session_options.cpp`) | Still needed — GenAI registers EPs | **Stays** |
-| `CreateSessionOptionsFromConfig()` | For model package path: replaced by ORT reading metadata directly. GenAI only adds EP-specific runtime state. | **Simplified** |
-| File path resolution (`config_path_ / filename`) | Replaced by package-aware `CreateSession` overload | **Removed** |
-| `is_primary_session_options` parameter | No longer needed — `p_device_` derived from per-file EPs | **Removed** |
-| `SetProviderSessionOptions()` | EP from `GetFileEp()`, GenAI only adds runtime state | **Adapted** |
+| `genai_config.json` (base), tokenizer assets, processor configs, chat template | `<package>/configs/` | `Generators::Config`, `Tokenizer`, image/audio processors, constrained logits |
+| ONNX model files, external data, custom ops library, LoRA adapters | `ComponentInstanceGetVariantFolderPath(cix)` | `OrtSession::Create`, `RegisterCustomOpsLibrary`, `Adapters::LoadAdapter` |
 
-### GenAI Config in Model Package World
+The package root is the model root for any consumer that thinks of itself as loading "the model" (config, tokenizer, processors). The variant folder is the per-(component, variant) directory for anything tied to a specific ONNX file.
 
-**Base genai_config.json** (in `<package>/configs/`):
+- **`configs/genai_config.json`** is the shared base configuration. One per package. It captures the GenAI-architecture-level fields that don't vary by variant.
+- **Tokenizer assets** are shared across variants and live in `configs/`. A package that mixes incompatible tokenizers across variants is a producer error; the package format does not police it but GenAI documents it as a constraint.
+- **Processor configs** (`processor_config.json`, `audio_processor_config.json`) are model-level preprocessing descriptors and live in `configs/`. They don't vary by EP or quantization. Per-component preprocessing differences (rare) can be expressed via overlay overrides on `model.<component>.config_filename` if needed.
+- **Per-variant overlays** are stored in the variant's `variant.json` under `consumer_metadata.genai_config_overlay`. ORT returns the entire `consumer_metadata` blob verbatim through `ComponentInstanceGetConsumerMetadata`; GenAI parses it and pulls `genai_config_overlay` out.
+- **LoRA adapters and custom ops libraries** live in the variant folder. Both are tied to specific ONNX files (the LoRA matches a base model graph; the custom ops library matches the EP build that the variant targets), so they cannot be shared across variants.
+
+### Component Discovery Is Driven by `genai_config.json`, Not the User
+
+Important: GenAI users never tell `og.Model(path)` which components to load. The merged `genai_config.json` declares the model architecture, and from `model.type` GenAI knows which component roles exist — `decoder`, or `{vision, speech, embedding, decoder}` for multimodal, or `{encoder, decoder}` for encoder-decoder, etc. GenAI's role-to-package-component mapping comes from the `"component": "<name>"` field carried inside each `model.<role>` block in `genai_config.json`.
+
+The flow is:
+
+1. Open the package, read manifest + scan components.
+2. Load `<package>/configs/genai_config.json` as the base.
+3. For each component listed in the package, run `SelectComponent` (using the resolved EP from defaulting or user choice) to obtain a `cix`. Pull its consumer_metadata, extract `genai_config_overlay`, and JSON-merge into the base.
+4. With the merged config in hand, GenAI consults `model.type` to instantiate the right `Model` subclass (decoder-only, multimodal, whisper, etc.) and walks its expected component roles. For each role, look up `model.<role>.component` to find the right `cix`, then call `cix->GetVariantFolderPath()` and load files from there.
+
+This means the user-facing API stays exactly as it is today: `og.Model(path[, ep])`. v4 adds component discovery and variant folder resolution under the covers; nothing surfaces in the C API.
+
+### `genai_config.json` in the Package World
+
+The package-world `genai_config.json` is trimmed compared to the flat-directory shape: anything ORT now owns lives in the package's per-file `variant.json`, and anything that varies by variant lives in the overlay. What remains is the GenAI-architecture description.
+
+| Legacy flat-dir field | Package-world equivalent |
+|---|---|
+| `model.type` (nested) | `model.type` (nested, unchanged) |
+| `model.<component>.filename` | dropped — GenAI matches `pipeline[].<stage>.filename` against the basenames listed in the variant's `variant.json` `files[]` |
+| `model.<component>.session_options` (any sub-key) | dropped from the package-shipped `genai_config.json`; static SO/PO are owned by per-file `variant.json` and parsed by GenAI when it walks the variant directory. The same path *does* exist in the *merged-at-runtime* config object as the layer-2 runtime-overrides channel populated by `OgaConfigOverlay` / `RuntimeSettings` — see [Resolution Flow at `Model::Create`](#resolution-flow-at-modelcreate). |
+| `model.<component>.session_options.provider_options` | same as above |
+| `model.<component>` block | adds a `"component": "<name>"` field carrying the package component name |
+
+What stays in `genai_config.json`: GenAI architecture identity (`model.type`, `head_size`, `hidden_size`, `num_attention_heads`, `num_hidden_layers`, `num_key_value_heads`, `vocab_size`), tokenizer-id constants (`bos_token_id`, `eos_token_id`, `pad_token_id`), capacity (`context_length`), per-component I/O name maps, GenAI-specific structures (`pipeline[]`, `sliding_window`), and `search` defaults.
+
+Pipeline stages reference component files **by filename** (relative to the variant directory). GenAI walks the variant's `variant.json`, builds a `{filename → file-entry}` map, and matches each `pipeline[].<stage>.filename` against it. ORT does not impose a separate logical file identifier.
+
+Concrete base example (Phi-4-mini-reasoning shape):
+
 ```json
 {
-    "model_type": "decoder",
-    "search": { "max_length": 2048 },
     "model": {
-        "decoder": { "component": "decoder" },
-        "vision": { "component": "vision" },
-        "embedding": { "component": "embedding" }
-    }
+        "type": "phi3",
+        "context_length": 131072,
+        "bos_token_id": 199999,
+        "eos_token_id": [200020, 199999],
+        "pad_token_id": 199999,
+        "vocab_size": 200064,
+        "decoder": {
+            "component": "decoder",
+            "head_size": 128,
+            "hidden_size": 3072,
+            "num_attention_heads": 24,
+            "num_hidden_layers": 32,
+            "num_key_value_heads": 8,
+            "inputs":  { "input_ids": "input_ids",
+                         "attention_mask": "attention_mask",
+                         "past_key_names":  "past_key_values.%d.key",
+                         "past_value_names": "past_key_values.%d.value" },
+            "outputs": { "logits": "logits",
+                         "present_key_names":  "present.%d.key",
+                         "present_value_names": "present.%d.value" }
+        }
+    },
+    "search": { "max_length": 131072, "past_present_share_buffer": true,
+                "temperature": 1.0, "top_k": 1, "top_p": 1.0 }
 }
 ```
 
-`"component": "decoder"` replaces `"filename": "model.onnx"`. GenAI uses the component name with the model package API instead of a file path.
+No `session_options`. No `provider_options`. No `filename`. The decoder block declares architectural shape and which package component it maps to. This is the document overlays merge into.
 
-### Backward Compatibility
+### Per-Variant Overlays (RFC 7386 JSON Merge Patch)
 
-| Scenario | Detection | Session Creation | EP Discovery |
-|---|---|---|---|
-| Flat directory (current) | No manifest.json | Legacy GenAI flow | `SetProviderSessionOptions()` → `p_device_` |
-| Model package | manifest.json present | Package-aware `CreateSession` overload | Per-file EPs → `DeriveDeviceFromFileEps()` |
+Each variant's overlay is an RFC 7386 JSON Merge Patch stored as `consumer_metadata.genai_config_overlay` in the variant's `variant.json`. At `Model::Create` time, GenAI merges the selected variant's overlay into the base `genai_config.json`.
 
-Legacy path is preserved unchanged.
+The RFC is two pages; the merge rules are:
+
+1. Object keys recurse — `{"a":{"b":2}}` patched onto `{"a":{"c":1}}` yields `{"a":{"b":2,"c":1}}`.
+2. Scalars and arrays replace wholesale — no element-level array merging.
+3. `null` deletes — `{"a": null}` removes key `a`.
+4. Anything not mentioned is unchanged.
+
+JSON Merge Patch is widely deployed (Kubernetes `--type=merge`, Azure ARM PATCH, GitHub PATCH) and implementations are short (~20 lines in any language). Arrays replacing wholesale is fine for our case: the largest array in practice (`pipeline[]`) is whole-variant-specific by nature — there is no meaningful per-stage merge.
+
+Why not alternatives:
+
+| Alternative | Why not |
+|---|---|
+| Full per-variant `genai_config.json` (no merging) | 7× duplication of identical content; drift inevitable. |
+| RFC 6902 JSON Patch (operation list) | Verbose; only useful when precise array-element ops are needed, which they aren't. |
+| Strategic merge (Kubernetes-style) | Requires schema annotations on every field. Overkill. |
+| Custom DSL (Jsonnet, CUE) | Adds a dependency for marginal gain; opaque to reviewers. |
+
+### EP Defaulting in `og.Model` and `og.Config`
+
+GenAI's `Model` constructor — and the lower-level `Config` constructor that wraps the same package-loading flow without immediately building sessions — both accept an EP argument. With v4's pre-selection traversal accessors, that argument can be made optional with sensible defaulting:
+
+```python
+# explicit
+model  = og.Model("/path/to/phi4.ortpackage", ep="CUDAExecutionProvider")
+config = og.Config("/path/to/phi4.ortpackage", ep="CUDAExecutionProvider")
+
+# defaulted — let GenAI pick if the package leaves no ambiguity
+model  = og.Model("/path/to/phi4.ortpackage")
+config = og.Config("/path/to/phi4.ortpackage")
+```
+
+The defaulting algorithm is the same for both entry points (it runs in GenAI before any package option is captured) — `Model` just chains into session creation after the EP is resolved, while `Config` stops at the merged-config view.
+
+Algorithm:
+
+1. Open the package as `OrtModelPackageContext`.
+2. For each component, walk its variants and collect the union of EP names declared in each entry of `ep_compatibility` (via `ModelPackageGetVariantEpName`).
+3. Intersect those per-component sets. The result is the set of EPs that *every* component can run on — a session built on any of those EPs can load every component.
+4. If the intersection has exactly one EP, use it. This is the common "the package only ships one EP across components" case (e.g. a CPU-only package, or a CUDA-only package).
+5. If the intersection has more than one EP, GenAI may pick by a fixed preference order (e.g. CUDA > QNN > WebGPU > CPU) or fail with a diagnostic listing the candidates and asking the user to choose. Recommend fail-with-diagnostic for the first cut — implicit policy is the kind of thing that's hard to change later.
+6. If the intersection is empty, fail with a diagnostic. The package has no EP that supports every component; the user must pick per-component, which isn't expressible through the simple top-level `ep` argument and likely indicates a malformed package.
+
+Failure path 5 and 6 use the *intersection*, not the *union*, because GenAI builds one set of `OrtModelPackageOptions` for the whole `Model` (one EP-list captured from one session-options template). If the chosen EP isn't compatible with one of the components, that component's `SelectComponent` will return no eligible variants.
+
+This works because v4 exposed per-variant EP compatibility on the *context* (pre-selection), not just on the instance (post-selection). Without those traversal accessors, GenAI would have to either require the EP argument always or speculatively call `SelectComponent` and unwind on failure.
+
+Edge cases:
+
+- **Single-component package with multi-EP variants** (e.g. one component with cpu and cuda variants): defaulting works — intersection is `{cpu, cuda}`, fall through to step 5.
+- **Single-EP package** (e.g. a Vitis-only edge build): intersection is `{vitis}`, defaulting picks Vitis automatically. The constructor "just works" without the user knowing or caring.
+- **Mixed-EP multi-component package** where every component happens to ship a CPU variant alongside its EP-specific variants: intersection includes CPU, and CPU wins iff GenAI's tie-break prefers it. Recommend GenAI list the candidate EPs and prefer the user's explicit choice over implicit defaulting in this case.
+
+### Resolution Flow at `Model::Create`
+
+```
+                        ┌─────────────────────────────────────────────┐
+                        │ ORT model package context (already built)   │
+                        │   - selected component instance per         │
+                        │     component                               │
+                        │   - per-file paths, EPs, session/provider   │
+                        │     options, external-data mapping          │
+                        └─────────────────────────────────────────────┘
+                                            │
+                                            ▼
+   1. Load base                ┌───────────────────────────┐
+      <pkg>/configs/           │ genai_config (base copy)  │
+      genai_config.json        └───────────────────────────┘
+                                            │
+   2. For each component,                   │  ComponentInstanceGetConsumerMetadata(cix)
+      pull consumer blob,      ┌───────────────────────────┐
+      extract                  │ overlay (JSON merge patch)│
+      genai_config_overlay     └───────────────────────────┘
+                                            │
+   3. Apply RFC 7386 merge                  ▼
+      patch                    ┌───────────────────────────┐
+                               │ merged genai_config       │  ──►  drives model.type
+                               │  (final, per-variant view)│       dispatch, pipeline
+                               └───────────────────────────┘       construction, search
+                                                                   defaults, etc.
+```
+
+GenAI then walks the merged config to construct sessions. **GenAI uses the advanced path of `CreateSession` (or, equivalently, calls `OrtCreateSession` directly) — never the convenience path with `NULL` options.** GenAI's session setup is not a pass-through of the package's flat KV pairs into `AppendExecutionProvider_V2`; it runs framework-level logic on top.
+
+The session-options resolution for any one file is layered:
+
+| Layer | Source | When applied |
+|---|---|---|
+| 1. Baseline | variant.json `files[].session_options` and `files[].provider_options` | Package-baked; static for the variant |
+| 2. Runtime overrides | Merged genai_config's `model.<component>.session_options` subtree | Comes from `OgaConfigOverlay` (user JSON) or `RuntimeSettings::GenerateConfigOverlay()` (framework-generated, e.g. `dawnProcTable`) |
+| 3. Framework knobs | GenAI's `SetProviderSessionOptions()` machinery | Cross-session state, typed structs, V2/V1 fallback, key translations, graph-capture detection |
+
+Layer 2 wins over layer 1 per-key. Layer 3 runs last because it injects state (CUDA stream pointers, HTP allocators) that only exists at runtime in the GenAI process. The framework-level concerns are unchanged from before:
+
+- **Cross-session state.** `user_compute_stream` is shared across encoder/decoder/embedding sessions on CUDA. The QNN HTP shared-memory allocator is registered against the global `OrtEnv` and reused across stages. The convenience path knows nothing about cross-session sharing because it only sees one `cix` at a time.
+- **Typed provider-options structs.** Some EPs (CUDA `OrtCUDAProviderOptionsV2`, NvTensorRtRtx multi-profile shapes) have V2 ABI surface that isn't fully expressible as flat KV. GenAI builds the typed struct from the merged KV map.
+- **V2-plugin → V1-fallback dispatch.** GenAI tries `AppendExecutionProvider_V2` first, falls back to legacy named-EP registration for EPs that aren't yet plugin-shaped.
+- **Special key translations.** OpenVINO `cache_dir` → `CACHE_DIR` config entry; custom-ops library path resolution searches model dir → EP lib dir → cwd.
+- **Graph-capture detection.** GenAI scans the merged `provider_options` for `enable_cuda_graph` / DML implicit / `multi_profile` and threads the flag through to runtime input placement.
+
+#### Why the Merged Config Still Carries a `session_options` Subtree
+
+The package-shipped `genai_config.json` does not carry `session_options` — that's variant.json's job. But the *merged* genai_config — the in-memory object GenAI works with at runtime — does have a `session_options` slot, used exclusively as the layer-2 runtime override channel.
+
+This is required to preserve two existing GenAI mechanisms:
+
+- **`OgaConfigOverlay(config, json)`**: a public API that merges a user-supplied JSON into the config tree. Existing callers write to `model.<component>.session_options.*` paths (e.g. to set thread counts, EP-specific knobs, or pass platform handles). Reinterpreting these writes as runtime overrides keeps the surface working without a breaking change.
+- **`RuntimeSettings::GenerateConfigOverlay()`**: GenAI itself emits an overlay to inject runtime-only handles like WebGPU's `dawnProcTable` — an opaque process-local pointer that *cannot* be baked into a static package. The overlay path it generates is `model.decoder.session_options.provider_options[*].WebGPU.dawnProcTable`, and it must keep working.
+
+So variant.json owns the static config (what the package author shipped); the merged genai_config's `session_options` subtree owns the runtime overrides (what the calling app or the framework injects). Both flow into GenAI's `SetProviderSessionOptions()` as a single merged KV map.
+
+#### What Goes Where
+
+| Concern | Where it lives in v4 |
+|---|---|
+| Static, EP-mechanical knobs (intra-op threads, graph optimization level, `htp_performance_mode`) | variant.json `files[].session_options` / `files[].provider_options` |
+| Process-local handles that can't be baked (e.g. `dawnProcTable`) | Layer 2 — emitted by `RuntimeSettings::GenerateConfigOverlay()` into the overlay |
+| User-supplied per-deployment overrides (e.g. raise threading on a beefier host) | Layer 2 — `OgaConfigOverlay(config, json)` writes to `model.<component>.session_options.*` |
+| Cross-session state (CUDA stream sharing, custom-op library paths) | Layer 3 — GenAI internal, computed at session-build time |
+
+For both single-file and multi-file components, GenAI's flow is uniform:
+
+1. `folder = ComponentInstanceGetVariantFolderPath(cix)`; parse `<folder>/variant.json`.
+2. For each file in the variant's `files[]` (one entry for cpu/cuda/webgpu/vitis/openvino; multiple for QNN-style pipelines):
+    - Start with the file's `session_options` and `provider_options` KV pairs from `variant.json` as the layer-1 baseline.
+    - Merge layer-2 overrides on top: walk the merged genai_config's `model.<component>.session_options` subtree (populated by `OgaConfigOverlay` and/or `RuntimeSettings::GenerateConfigOverlay()`) and apply per-key, layer-2 winning. For multi-file variants where overrides need to target a specific stage, the convention is `model.<component>.session_options.pipeline.<filename>.{session_options,provider_options}` (overrides without that nesting apply to every file in the variant).
+    - Run the resulting merged map through GenAI's `SetProviderSessionOptions()` machinery (layer 3) to build `OrtSessionOptions*`: cross-session state injection, typed-struct construction, V2/V1 fallback, key translations, graph-capture detection.
+    - Build the external-initializer mapping by resolving every `shared_files` entry via `ComponentInstanceGetSharedWeightPath`.
+    - Call `OrtCreateSession(env, <folder>/<filename>, so, &session)`.
+3. Match files to roles: for `model.type: "phi3"`-style configs, the single file *is* the decoder; for `pipeline[]` configs, GenAI matches `pipeline[].<stage>.filename` against the variant's `files[].filename`.
+
+The single-file case is the multi-file case with `files.size() == 1`. There is no separate code path inside GenAI.
+
+ORT's convenience path (`CreateSession(cix, NULL)`) exists for simpler consumers — sample apps, Foundry's pure-inference flow, tools that don't need cross-session orchestration. GenAI is a framework consumer, not a simple consumer, and it stays in the manual lane.
+
+#### How `p_device_` Is Determined
+
+GenAI's `Model` carries a single `DeviceInterface* p_device_` — the "main device" that anchors KV-cache allocation, generation state, search-state buffers, and tensor placement decisions. Exactly one device per `Model`, regardless of how many sessions or pipeline stages exist underneath.
+
+In flat-directory GenAI today, this is determined by the `is_primary_session_options` flag passed to `SetProviderSessionOptions()`:
+
+- The decoder's main `session_options` block is built with `is_primary_session_options = true`. The first registered EP returns a `DeviceInterface*` and that becomes `p_device_`.
+- Pipeline stages, vision, speech, and any other secondary sessions are built with `is_primary_session_options = false`. Their EPs do not contribute to `p_device_` and they also pick up an implicit "all listed provider_options are providers" expansion (`session_options.cpp:164-173`).
+
+In the package world, both halves of that flag stop making sense:
+
+- There is no "higher-level" `session_options` block to mark as primary. variant.json carries per-file SO/PO; every file is built with the same dispatch loop.
+- Provider-list inference is moot — variant.json `files[].provider_options[].name` already names the EP for each file explicitly. Nothing to infer.
+
+The v4 rule is: **`p_device_` derives from the EP GenAI captured for the *primary component role* of the model.** GenAI already knows this EP — it captured it into the `OrtModelPackageOptions` it passed to `SelectComponent`. No new ORT API is needed.
+
+The "primary component role" is determined by `model.type` in the merged genai_config:
+
+| `model.type` | Primary role | Source of `p_device_` |
+|---|---|---|
+| LLM (`phi3`, `llama`, `gpt2`, …) | `decoder` | EP captured for the decoder component |
+| Encoder-decoder (`marian`, `whisper` ALM-style) | `decoder` | Same |
+| Multimodal (`fara`, `qwen2_5_vl`, `phi3_v`, …) | `decoder` | Same — generation runs on the decoder |
+| RNN-T speech (`nemotron_speech`) | `decoder` (or whichever component owns generation state) | Same |
+| Pipeline (`decoder-pipeline`) | `decoder` (the variant containing the pipeline) | EP captured for the decoder variant — applies to all files in the pipeline that are not `run_on_cpu`-pinned |
+
+Consequences:
+
+- **Mixed-EP multi-component packages** (e.g. vision on CPU, decoder on QNN) still produce a single `p_device_` from the decoder. Vision sessions allocate their own buffers on CPU and copy outputs to/from `p_device_` exactly as today. No change in tensor flow.
+- **`run_on_cpu` stages** inside a pipeline use the CPU EP for their session, but they do not influence `p_device_`. They allocate inputs/outputs on CPU and copy across the device boundary as needed (existing behavior).
+- **The `is_primary_session_options` parameter is dropped from `SetProviderSessionOptions()`.** Its two effects (provider-list expansion and device assignment) are both replaced: variant.json makes provider lists explicit, and `p_device_` is set once at `Model::Create` time from the captured decoder EP rather than as a side-effect of an SO-building call.
+- **No new cix accessor.** The earlier v3 sketch `DeriveDeviceFromFileEps(cix)` (which would have walked per-file EPs through `cix->GetFileEp`) is no longer needed — GenAI already holds the EP it asked for. This keeps the cix surface trimmed.
+
+### What Overlays Should and Should Not Contain
+
+| Field | In overlay? | Rationale |
+|---|---|---|
+| `model.type` | yes | GenAI model-class dispatch — variant-specific (e.g. `phi3` vs `decoder-pipeline`). |
+| `model.context_length`, `search.max_length` | yes | EP-capability-driven (e.g. 4096 / 4224 / 131072). |
+| `model.<component>.inputs / outputs` name maps | yes | I/O contract differs per variant (QNN renames; OpenVINO adds `position_ids`). |
+| `model.<component>.pipeline[]` | yes | Whole-array replace; stages reference files by `filename`. Multi-file variants only. |
+| `model.<component>.sliding_window` | yes | EP-specific runtime structure (currently QNN-only). |
+| `search.past_present_share_buffer` | yes | KV-layout differs on some EPs. |
+| `model.pad_token_id` | avoid unless exporter-required | Should be a tokenizer-level property in the base. |
+| `search.{temperature, top_k, top_p, do_sample}` | avoid unless EP-required | User-tunable defaults; producer should pick one canonical value in the base. |
+| `model.<component>.filename` | n/a | Not in `genai_config.json` anymore — files are addressed by basename, looked up in the variant's `variant.json`. |
+| `session_options`, `provider_options`, `graph_optimization_level`, `custom_ops_library`, threading | n/a in package overlay; **yes** in runtime overlay | Static EP knobs belong in `variant.json`'s per-file fields, not in the package-shipped overlay. The *runtime* overlay (`OgaConfigOverlay` / `RuntimeSettings::GenerateConfigOverlay`) does write `model.<component>.session_options.*` — see the layer-2 mechanism above. |
+
+The table covers what producers ship inside the package (the consumer_metadata-borne overlay applied at config load). Runtime overrides — the layer-2 channel — are a separate stack populated at session-build time by app code and the framework itself.
+
+Rule of thumb: **if the field describes how the model is shaped or what it produces, it is overlay material. If the field describes how ORT runs it, the package's per-file `variant.json` owns it.**
+
+### Single-File Components (CPU, CUDA, WebGPU, Vitis, OpenVINO)
+
+For variants where the only differences from the base are EP-mechanical (different binary, different provider options, different threading), the GenAI overlay is empty (`{}`) or near-empty. Everything that varies lives in the variant's per-file `session_options` and `provider_options` inside `variant.json`.
+
+Example (cuda overlay): `{}`. CUDA-specific knobs (e.g. `enable_cuda_graph`, `enable_skip_layer_norm_strict_mode`) live in per-file `provider_options` in `variant.json`. From GenAI's perspective the cuda variant runs the same `phi3` architecture as cpu — only the binary on disk and EP setup differ.
+
+Example (webgpu overlay) — minimal interesting case (one extra graph input):
+
+```json
+{ "model": { "decoder": { "inputs": { "position_ids": "position_ids" } } } }
+```
+
+GenAI parses `variant.json`, walks `files[]` (length 1), runs the file's `provider_options` through `SetProviderSessionOptions()` to handle CUDA stream sharing / typed structs / V2-V1 fallback / key translations, applies `session_options`, resolves `shared_files` via `ComponentInstanceGetSharedWeightPath`, and calls `OrtCreateSession`. Same loop structure as the multi-file case below; the loop just runs once.
+
+### Multi-File Components (QNN-Style Pipelines)
+
+For pipeline-style variants (e.g. QNN with embedding / prompt-processor / token-generator / transformer-head), the overlay carries the full `pipeline[]` array. Each stage references a file by `filename` relative to the variant directory.
+
+```jsonc
+{
+  "model": {
+    "type": "decoder-pipeline",
+    "context_length": 4096,
+    "decoder": {
+      "inputs":  { /* renamed past_keys_%d, past_seq_len, total_seq_len */ },
+      "outputs": { /* renamed present_keys_%d, etc.                   */ },
+      "sliding_window": { "window_size": 64, "alignment": "left",
+                          "pad_value": 0, "slide_key_value_cache": false },
+      "pipeline": [
+        { "embedding":        { "filename": "phi_4_mini_embeddings.all.quant.onnx",
+                                "inputs":  ["input_ids"],
+                                "outputs": ["input_hidden_states"] } },
+        { "prompt-processor": { "filename": "phi_4_mini_ctx.onnx_ctx.onnx",
+                                "inputs":  [/* past_keys/values_0..N, ... */],
+                                "outputs": [/* present_keys/values_0..N, ... */],
+                                "run_on_token_gen": false } },
+        { "token-generator":  { "filename": "phi_4_mini_iter.onnx_ctx.onnx",
+                                /* same I/O shape as prompt-processor */
+                                "run_on_prompt": false } },
+        { "transformer-head": { "filename": "phi_4_mini_lm_head.onnx",
+                                "inputs":  ["output_hidden_states"],
+                                "outputs": ["logits"] } }
+      ]
+    }
+  },
+  "search": { "max_length": 4096 }
+}
+```
+
+The four pipeline stages map 1:1 to the four file entries in the QNN variant's `variant.json` `files[]` array. GenAI's pipeline runner parses `variant.json` once, builds a `{filename → file-entry}` map, and creates a session per stage:
+
+```c
+const ORTCHAR_T* folder = ComponentInstanceGetVariantFolderPath(cix);
+VariantManifest vm = parse_variant_json(join_path(folder, "variant.json"));
+const char* selected_ep = /* GenAI knows this — it built pkg_options with its EP list */;
+
+for (size_t s = 0; s < merged_genai_config.pipeline_count; ++s) {
+    PipelineStage* stage = &merged_genai_config.pipeline[s];
+    const FileEntry* f = vm_lookup_by_filename(&vm, stage->filename);
+    if (!f) { /* producer error: stage references a file not in the variant */ continue; }
+
+    // External-data mapping: shared_files entries via GetSharedWeightPath, others as-is.
+    OrtKeyValuePairs* ext;
+    OrtCreateKeyValuePairs(&ext);
+    for (size_t k = 0; k < f->shared_files_count; ++k) {
+        const ORTCHAR_T* resolved;
+        ComponentInstanceGetSharedWeightPath(cix, f->shared_files[k].checksum, &resolved);
+        OrtAddKeyValuePair(ext, f->shared_files[k].graph_filename, resolved);
+    }
+
+    OrtSessionOptions* so;
+    OrtCreateSessionOptions(&so);
+
+    // Layer 1 + Layer 2: merge variant.json baseline with runtime overrides
+    // pulled from the merged genai_config (model.<component>.session_options).
+    KvMap merged_so = layer_merge(f->session_options, runtime_overrides_for_file(merged_genai_config, "decoder", f->filename));
+    KvMap merged_po = layer_merge(f->provider_options, runtime_overrides_for_file_po(merged_genai_config, "decoder", f->filename));
+
+    apply_known_session_option_setters(so, merged_so);   // GenAI helper
+
+    // Layer 3: SetProviderSessionOptions injects cross-session state, builds typed structs,
+    // does V2/V1 fallback, key translations, and graph-capture detection on top of merged_po.
+    SetProviderSessionOptions(so, env, selected_ep, merged_po, framework_state);
+    OrtSessionOptionsAddExternalInitializersFromFiles(so, ext);
+
+    OrtSession* stage_session;
+    OrtCreateSession(env, join_path(folder, f->filename), so, &stage_session);
+    pipeline_attach(stage, stage_session);
+}
+```
+
+No static `session_options` or `provider_options` need to appear in the package-shipped overlay — the package owns the static baseline per-file in `variant.json`. The runtime overlay channel (`OgaConfigOverlay`, `RuntimeSettings`) is still available for layer-2 overrides at session-build time.
+
+### Per-File CPU Override
+
+A common pattern in QNN-style pipelines is "the decoder runs on QNN, but the embedding and lm_head should run on CPU because they don't fit the NPU well." This is **not** a package-format fact — `variant.json` `files[]` does not carry a per-file EP pin. It is a consumer-side orchestration concern, expressed by the consumer's overlay. For ORT-GenAI, that means a per-stage `run_on_cpu: true` flag inside the pipeline definition under `consumer_metadata.genai_config_overlay` — the same key already used by `qwen_vl_model.cpp` and the existing `decoder.pipeline[]` config block:
+
+```jsonc
+{
+  "model": {
+    "decoder": {
+      "pipeline": [
+        { "embedding": { "filename": "phi_4_mini_embeddings.all.quant.onnx",
+                         "run_on_cpu": true,
+                         "inputs": ["input_ids"], "outputs": ["input_hidden_states"] } },
+        { "prompt-processor": { "filename": "phi_4_mini_ctx.onnx_ctx.onnx", ... } },
+        ...
+      ]
+    }
+  }
+}
+```
+
+When GenAI sees `run_on_cpu: true` on a stage, the only thing it changes is **which EP it appends** when building that stage's session — `CPUExecutionProvider` instead of the variant's selected EP. The file's `session_options` and `provider_options` from `variant.json` are still applied as-is: producers authoring a multi-file QNN variant with one CPU-bound stage already ship CPU-shaped (or empty) SO/PO for that file in `variant.json`.
+
+This keeps the per-file CPU override as a GenAI-level concern, not a package-level one, and reuses an existing schema key — packages produced today already round-trip through this path without invention. A non-GenAI consumer that wants to pin specific files to CPU expresses it the same way in its own overlay key, or in whatever pipeline schema it owns.
+
+### Backward Compatibility (Flat-Directory Models)
+
+Models in the legacy flat-directory layout (a single directory with `genai_config.json`, ONNX files, tokenizer assets) are not packages. GenAI continues to support them through the existing `Model::Create(path)` path that does not go through the package API.
+
+A flat-directory model can be wrapped into a single-component, single-variant package without code changes by:
+
+1. Creating `<pkg>/configs/` and moving `genai_config.json` + tokenizer assets in.
+2. Trimming `genai_config.json` per the [package-world rules](#genai_configjson-in-the-package-world).
+3. Creating `<pkg>/<component>/` with a `metadata.json` that has one variant entry, and the variant directory with a `variant.json` listing the ONNX file(s) and any external data.
+
+When opened, the consumer reads the variant's declared EP from the traversal accessors (or just registers the producer-documented EP), captures it into options, calls `SelectComponent`, and builds sessions exactly as it would for a multi-variant package. The flat-directory and package-world paths converge once a model is wrapped.
 
 ---
-
-## Appendix B: Session Options Reference
-
-### Known Session Options (Require Dedicated Setters)
-
-| Field | Type | ORT Setter |
-|---|---|---|
-| `intra_op_num_threads` | int | `SetIntraOpNumThreads` |
-| `inter_op_num_threads` | int | `SetInterOpNumThreads` |
-| `enable_cpu_mem_arena` | bool | `EnableCpuMemArena` / `DisableCpuMemArena` |
-| `enable_mem_pattern` | bool | `EnableMemPattern` / `DisableMemPattern` |
-| `log_id` | string | `SetSessionLogId` |
-| `log_severity_level` | int | `SetSessionLogSeverityLevel` |
-| `log_verbosity_level` | int | `SetSessionLogVerbosityLevel` |
-| `enable_profiling` | string | `EnableProfiling` |
-| `graph_optimization_level` | string enum | `SetSessionGraphOptimizationLevel` |
-
-All other keys are passed through via `AddSessionConfigEntry`. This is a fixed, tractable list.
