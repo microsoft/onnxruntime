@@ -318,7 +318,11 @@ def snap_zero_point_to_uint8(rmin, rmax, qmin: int = 0, qmax: int = 255, min_rea
     rmin = float(numpy.squeeze(rmin))
     rmax = float(numpy.squeeze(rmax))
 
-    # Apply minimum real range, mirroring compute_scale_zp behaviour.
+    # Expand the range to include zero, mirroring compute_scale_zp's ordering.
+    rmin = min(rmin, 0.0)
+    rmax = max(rmax, 0.0)
+
+    # Apply minimum real range after zero-inclusion, mirroring compute_scale_zp behaviour.
     if min_real_range is not None and min_real_range > 0:
         rmax = max(rmax, rmin + float(min_real_range))
 
@@ -327,7 +331,9 @@ def snap_zero_point_to_uint8(rmin, rmax, qmin: int = 0, qmax: int = 255, min_rea
         # compute a meaningful scale rather than a hardcoded 1.0.
         degenerate_zp = qmin_val if rmin >= 0.0 else mid
         abs_max = max(abs(rmin), abs(rmax))
-        scale_val = (abs_max if abs_max > 0 else 1.0) / max(1, (qmax_val - qmin_val) // 2)
+        # Use full range when zp snaps to qmin (all-positive), half range for mid snap.
+        denom = (qmax_val - qmin_val) if degenerate_zp == qmin_val else max(1, (qmax_val - qmin_val) // 2)
+        scale_val = (abs_max if abs_max > 0 else 1.0) / max(1, denom)
         if min_real_range is not None and scale_val < min_real_range / (qmax_val - qmin_val):
             scale_val = min_real_range / (qmax_val - qmin_val)
         return numpy.array(degenerate_zp, dtype=numpy.uint8), numpy.array(scale_val, dtype=numpy.float32)

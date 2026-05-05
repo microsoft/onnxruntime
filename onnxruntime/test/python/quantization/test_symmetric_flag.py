@@ -5,6 +5,8 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -179,29 +181,33 @@ class TestRestrictedAsymmetricFlag(unittest.TestCase):
         conv_node = onnx.helper.make_node("Conv", ["ACT", "WGT"], ["RES"])
         graph = helper.make_graph([conv_node], "test", [act], [res], initializer=[wgt_init])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
-        onnx.save(model, "model_restricted.onnx")
 
-        class DummyDataReader(quantization.CalibrationDataReader):
-            def __init__(self):
-                self.iterator = ({"ACT": act} for act in activations)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_path = os.path.join(tmpdir, "model_restricted.onnx")
+            quantized_path = os.path.join(tmpdir, "quantized_restricted.onnx")
+            onnx.save(model, model_path)
 
-            def get_next(self):
-                return next(self.iterator, None)
+            class DummyDataReader(quantization.CalibrationDataReader):
+                def __init__(self):
+                    self.iterator = ({"ACT": act} for act in activations)
 
-        quantization.quantize_static(
-            model_input="model_restricted.onnx",
-            model_output="quantized_restricted.onnx",
-            calibration_data_reader=DummyDataReader(),
-            quant_format=quantization.QuantFormat.QOperator,
-            activation_type=quantization.QuantType.QUInt8,
-            weight_type=quantization.QuantType.QUInt8,
-            op_types_to_quantize=["Conv", "MatMul"],
-            extra_options=extra_options,
-        )
+                def get_next(self):
+                    return next(self.iterator, None)
 
-        model = onnx.load("quantized_restricted.onnx")
-        act_zp = next(init for init in model.graph.initializer if init.name == "ACT_zero_point").int32_data[0]
-        act_sc = next(init for init in model.graph.initializer if init.name == "ACT_scale").float_data[0]
+            quantization.quantize_static(
+                model_input=model_path,
+                model_output=quantized_path,
+                calibration_data_reader=DummyDataReader(),
+                quant_format=quantization.QuantFormat.QOperator,
+                activation_type=quantization.QuantType.QUInt8,
+                weight_type=quantization.QuantType.QUInt8,
+                op_types_to_quantize=["Conv", "MatMul"],
+                extra_options=extra_options,
+            )
+
+            model = onnx.load(quantized_path)
+            act_zp = next(init for init in model.graph.initializer if init.name == "ACT_zero_point").int32_data[0]
+            act_sc = next(init for init in model.graph.initializer if init.name == "ACT_scale").float_data[0]
         return act_zp, act_sc
 
     def test_positive_activations_zp_is_zero(self):
