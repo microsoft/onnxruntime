@@ -41,7 +41,7 @@ limitations under the License.
 // We can not use CPUINFO if it is not supported and we do not want to used
 // it on certain platforms because of the binary size increase.
 // We could use it to find out the number of physical cores for certain supported platforms
-#if defined(CPUINFO_SUPPORTED) && !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+#if defined(CPUINFO_SUPPORTED) && !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX) && defined(__linux__)
 #include <cpuinfo.h>
 #define ORT_USE_CPUINFO
 #endif
