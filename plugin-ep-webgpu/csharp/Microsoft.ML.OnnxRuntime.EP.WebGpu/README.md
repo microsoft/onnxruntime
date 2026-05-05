@@ -1,7 +1,6 @@
 ## Microsoft.ML.OnnxRuntime.EP.WebGpu
 
 WebGPU plugin Execution Provider for [ONNX Runtime](https://github.com/microsoft/onnxruntime).
-Provides GPU acceleration via WebGPU (Dawn) with D3D12 and Vulkan backends.
 
 ### Usage
 

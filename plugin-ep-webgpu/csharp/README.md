@@ -89,7 +89,7 @@ runtimes/osx-arm64/native/libonnxruntime_providers_webgpu.dylib
 ## Testing the Package
 
 The test app registers the WebGPU EP, creates a session, runs a simple Mul model, and
-validates the output. It requires a GPU with D3D12 or Vulkan support.
+validates the output.
 
 ```powershell
 # Point the test project's nuget.config at the pack output

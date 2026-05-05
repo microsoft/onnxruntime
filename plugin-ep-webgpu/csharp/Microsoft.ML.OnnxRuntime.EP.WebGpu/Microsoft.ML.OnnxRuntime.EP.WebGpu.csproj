@@ -11,7 +11,7 @@
     <Version>0.0.0-dev</Version>
     <Authors>Microsoft</Authors>
     <Company>Microsoft</Company>
-    <Description>WebGPU plugin Execution Provider for ONNX Runtime. Provides GPU acceleration via WebGPU (Dawn) with D3D12 and Vulkan backends.</Description>
+    <Description>ONNX Runtime WebGPU Plugin Execution Provider.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>ONNX;ONNX Runtime;Machine Learning;AI;Deep Learning;WebGPU</PackageTags>
 
