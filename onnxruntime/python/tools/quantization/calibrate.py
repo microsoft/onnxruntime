@@ -5,10 +5,12 @@
 # license information.
 # --------------------------------------------------------------------------
 import abc
+import contextlib
 import copy
 import itertools
 import json
 import os
+import tempfile
 import uuid
 from collections.abc import Sequence
 from enum import Enum
@@ -238,14 +240,16 @@ def save_tensors_data(tensors_data: "TensorsData", path: "str | Path") -> None:
     """Serialize calibration tensor ranges to a JSON file at *path*."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".calibcache_", suffix=".tmp")
     try:
-        with tmp.open("w") as f:
+        with os.fdopen(fd, "w") as f:
             json.dump(tensors_data, f, cls=CalibrationCacheEncoder)
             f.flush()
-        os.replace(tmp, path)
+        os.chmod(tmp_name, 0o644)
+        os.replace(tmp_name, path)
     except BaseException:
-        tmp.unlink(missing_ok=True)
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp_name)
         raise
 
 
