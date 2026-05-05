@@ -60,11 +60,17 @@ inline bool ShouldUseMemcpy(int64_t size) {
   return size >= 64;
 }
 
-inline int64_t GetDequantBlockSize(int64_t features, int64_t total_work) {
+inline int64_t GetDequantBlockSize(int64_t features, int64_t total_work, int64_t alignment = 1) {
   if (features <= 0 || total_work <= 0) return 16;
   const int64_t target_block_size = std::max(int64_t{16}, features / std::max(int64_t{1}, int64_t{8}));
   const int64_t work_based_size = std::max(int64_t{16}, total_work / std::max(int64_t{1}, int64_t{4}));
-  return std::min(target_block_size, work_based_size);
+  int64_t block_size = std::min(target_block_size, work_based_size);
+  // Round up to alignment so that row-wise zero-point packed-byte offsets are correct
+  // when sharding across parallel dequant blocks.
+  if (alignment > 1) {
+    block_size = ((block_size + alignment - 1) / alignment) * alignment;
+  }
+  return block_size;
 }
 
 bool CanUseMlasQ4Dequant(int64_t num_bits) {
@@ -1386,7 +1392,10 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
         fc1_zp_ptr = (fc1_zp_data == nullptr) ? nullptr : fc1_zp_data + expert_idx * fc1_zp_expert_stride;
       }
 
-      const int64_t dequant_block_size = GetDequantBlockSize(fc1_out_features, num_expert_tokens);
+      // When row-wise ZP is present, align block size to zp_pack_size so that parallel
+      // shards start at packed-byte boundaries for correct zero-point lane indexing.
+      const int64_t fc1_dequant_alignment = (!is_fc1_block_wise && fc1_zp_ptr != nullptr) ? zp_pack_size : 1;
+      const int64_t dequant_block_size = GetDequantBlockSize(fc1_out_features, num_expert_tokens, fc1_dequant_alignment);
       const int64_t num_dequant_blocks = (fc1_out_features + dequant_block_size - 1) / dequant_block_size;
 
       const size_t m = static_cast<size_t>(num_expert_tokens);
@@ -1628,7 +1637,9 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
         fc2_zp_ptr = (fc2_zp_data == nullptr) ? nullptr : fc2_zp_data + expert_idx * fc2_zp_expert_stride;
       }
 
-      const int64_t fc2_dequant_block_size = GetDequantBlockSize(hidden_size, num_expert_tokens);
+      // When row-wise ZP is present, align block size to zp_pack_size for correct lane indexing.
+      const int64_t fc2_dequant_alignment = (!is_fc2_block_wise && fc2_zp_ptr != nullptr) ? zp_pack_size : 1;
+      const int64_t fc2_dequant_block_size = GetDequantBlockSize(hidden_size, num_expert_tokens, fc2_dequant_alignment);
       const int64_t num_fc2_dequant_blocks = (hidden_size + fc2_dequant_block_size - 1) / fc2_dequant_block_size;
 
       const size_t m2 = static_cast<size_t>(num_expert_tokens);
