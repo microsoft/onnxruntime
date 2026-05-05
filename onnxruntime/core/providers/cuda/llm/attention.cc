@@ -1395,8 +1395,18 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // implies %4. Kept as an explicit, dtype-agnostic alignment floor so
         // it remains correct once microsoft/onnxruntime#28365 lands and
         // relaxes BiasLoader to use kAlignmentA / DispatchIsAligned (at which
-        // point MEA's %8 invariant goes away). Delete this clause when MEA
-        // no longer requires the %8 invariant upstream.
+        // point MEA's %8 invariant goes away).
+        //
+        // Delete this clause ONLY when BOTH conditions hold:
+        //   (a) `has_memory_efficient_attention` no longer enforces the
+        //       (qk_head_size & 7) == 0 invariant (post-microsoft/onnxruntime#28365
+        //       likely relaxes it to %4 via BiasLoader = kAlignmentA), AND
+        //   (b) no other host-side gate above this point would let head_size < 4
+        //       (e.g. head_size == 2) reach LaunchUngroup, which still enforces
+        //       head_size % 4 == 0 internally (see ORT_ENFORCE near line 723-724
+        //       of this file). Removing this clause without (b) would let GQA+MEA
+        //       configurations crash inside LaunchUngroup instead of falling
+        //       through to the unfused path here.
         (parameters.head_size % 4 == 0);
 
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
