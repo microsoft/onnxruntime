@@ -60,7 +60,7 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 }
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS) && defined(USE_KLEIDIAI)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformationRequiredOps) {
   KernelTypeStrResolver resolver;
   ASSERT_STATUS_OK(kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(resolver));
@@ -138,7 +138,7 @@ TEST(KernelTypeStrResolverUtilsTest, SavedOrtModelResolverContainsNhwcFusedConv)
 
   std::filesystem::remove(ort_model_path, remove_ec);
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS) && defined(USE_KLEIDIAI)
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 // run this test manually to output a hard-coded byte array.
 // update AddLayoutTransformationRequiredOpsToKernelTypeStrResolver in
