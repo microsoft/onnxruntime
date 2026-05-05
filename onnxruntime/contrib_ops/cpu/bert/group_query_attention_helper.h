@@ -257,6 +257,13 @@ Status CheckInputs(const T* query,
   int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length));
+    // When past KV exists, Q and K/V must have the same sequence length.
+    // The KV concat/append paths assume sequence_length == kv_sequence_length.
+    if (kv_sequence_length != sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "query and key must have the same sequence length when past_key is provided. "
+                             "Different Q/K sequence lengths are only supported for KV-shared layers with no past.");
+    }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
@@ -280,6 +287,17 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "total_sequence_length must be positive, got ", total_sequence_length, ".");
   }
+
+  // When there is no past KV (KV-shared / first-prompt), total_sequence_length
+  // must not exceed kv_sequence_length — the attention kernel reads up to
+  // total_sequence_length from the K/V buffer which has kv_sequence_length entries.
+  if (is_total_seqlen_on_cpu && past_key == nullptr && total_sequence_length > kv_sequence_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length (", total_sequence_length,
+                           ") must not exceed kv_sequence_length (", kv_sequence_length,
+                           ") when past_key is not provided.");
+  }
+
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
   int rotary_dim = 0;
