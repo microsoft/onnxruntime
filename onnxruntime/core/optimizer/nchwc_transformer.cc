@@ -502,8 +502,10 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_node.MutableInputDefs()[2] = nchwc_conv_B_arg;
   }
 
-  nchwc_node.MutableInputDefs()[3] = nchwc_sum_input->nchwc_arg_;
-  nchwc_sum_input->remaining_original_uses_--;
+  if (nchwc_sum_input != nullptr) {
+    nchwc_node.MutableInputDefs()[3] = nchwc_sum_input->nchwc_arg_;
+    nchwc_sum_input->remaining_original_uses_--;
+  }
 
   NchwcArgument::Shape output_shape(output_defs[0]);
 
