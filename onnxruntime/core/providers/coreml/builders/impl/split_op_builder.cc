@@ -23,8 +23,6 @@ class SplitOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
-  // Pre-opset-13 Split takes 'split' as an INTS attribute instead of an input.
-  // We accept both via the IsOpSupportedImpl checks below.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 1; }
 
   bool SupportsMLProgram() const override { return true; }
