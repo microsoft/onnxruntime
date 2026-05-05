@@ -849,12 +849,13 @@ def _build_nbits_output_reshape(
     the original ``MatMul(A, B_orig)`` output, where B_orig has all-unit leading
     dims, we need:
 
-        out_shape = [1] * max(rank(B_orig) - rank(A), 0) + A.shape[:-1] + [N]
+        a_rank_eff = max(rank(A), 2)   # ONNX promotes 1-D A to rank-2
+        out_shape = [1] * max(rank(B_orig) - a_rank_eff, 0) + A.shape[:-1] + [N]
 
-    This is built dynamically via Shape/Size/Sub/Max/ConstantOfShape/Slice/Concat
-    so it works regardless of A's static rank (handles rank(A) == 2 — the common
-    transformer case — as well as rank(A) >= rank(B_orig) where no leading-1
-    prepending is needed).
+    This is built dynamically via Shape/Size/Max/Sub/Max/ConstantOfShape/Slice/Concat
+    so it works regardless of A's static rank (handles rank(A) == 1, rank(A) == 2
+    — the common transformer case — as well as rank(A) >= rank(B_orig) where no
+    leading-1 prepending is needed).
 
     Args:
         a_input_name: name of the activation input edge (A) feeding MatMulNBits.
@@ -876,6 +877,7 @@ def _build_nbits_output_reshape(
     p = name_prefix
     init_zero = p + "_zero"
     init_one = p + "_one"
+    init_two = p + "_two"
     init_one_vec = p + "_one_vec"
     init_rank_b = p + "_rank_b"
     init_n_vec = p + "_n_vec"
@@ -886,6 +888,7 @@ def _build_nbits_output_reshape(
         [
             onnx.numpy_helper.from_array(np.array(0, dtype=np.int64), name=init_zero),
             onnx.numpy_helper.from_array(np.array(1, dtype=np.int64), name=init_one),
+            onnx.numpy_helper.from_array(np.array(2, dtype=np.int64), name=init_two),
             onnx.numpy_helper.from_array(np.array([1], dtype=np.int64), name=init_one_vec),
             onnx.numpy_helper.from_array(np.array(rank_b_orig, dtype=np.int64), name=init_rank_b),
             onnx.numpy_helper.from_array(np.array([n_dim], dtype=np.int64), name=init_n_vec),
@@ -895,6 +898,7 @@ def _build_nbits_output_reshape(
 
     a_shape = p + "_a_shape"
     a_rank = p + "_a_rank"
+    a_rank_eff = p + "_a_rank_eff"
     extra_raw = p + "_extra_raw"
     extra_count = p + "_extra_count"
     extra_count_vec = p + "_extra_count_vec"
@@ -907,7 +911,11 @@ def _build_nbits_output_reshape(
     nodes = [
         onnx.helper.make_node("Shape", [a_input_name], [a_shape], name=p + "_shape_a"),
         onnx.helper.make_node("Size", [a_shape], [a_rank], name=p + "_size_a"),
-        onnx.helper.make_node("Sub", [init_rank_b, a_rank], [extra_raw], name=p + "_sub"),
+        # ONNX MatMul promotes a 1-D activation to rank-2 before computing the
+        # output shape, so use Max(a_rank, 2) as the effective rank when
+        # computing how many leading 1s to prepend.
+        onnx.helper.make_node("Max", [a_rank, init_two], [a_rank_eff], name=p + "_max_rank_eff"),
+        onnx.helper.make_node("Sub", [init_rank_b, a_rank_eff], [extra_raw], name=p + "_sub"),
         onnx.helper.make_node("Max", [extra_raw, init_zero], [extra_count], name=p + "_max"),
         onnx.helper.make_node("Reshape", [extra_count, init_one_vec], [extra_count_vec], name=p + "_reshape_extra"),
         onnx.helper.make_node(

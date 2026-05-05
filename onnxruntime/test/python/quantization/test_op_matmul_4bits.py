@@ -412,15 +412,15 @@ class TestOpMatMul4Bits(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     # The output-restoration helper builds an ONNX-broadcast-correct target shape
-    # dynamically (Shape/Size/Sub/Max/ConstantOfShape/Slice/Concat → Reshape) so it
-    # works for arbitrary activation rank. The op-count expectations below reflect
-    # those helper ops.
+    # dynamically (Shape/Size/Max/Sub/Max/ConstantOfShape/Slice/Concat → Reshape) so it
+    # works for arbitrary activation rank, including 1-D activations. The op-count
+    # expectations below reflect those helper ops.
     _RESHAPE_HELPER_OP_COUNTS: ClassVar[dict[str, int]] = {
         "Reshape": 3,
         "Shape": 1,
         "Size": 1,
         "Sub": 2,
-        "Max": 1,
+        "Max": 2,
         "ConstantOfShape": 1,
         "Slice": 1,
         "Concat": 1,
@@ -511,12 +511,76 @@ class TestOpMatMul4Bits(unittest.TestCase):
             model_fp32_path, symmetric=True, weight_shape=weight_shape, batch=batch, seq=seq
         )
         data_reader = self.input_feeds(1, {"input": (batch, seq, weight_shape[-2])})
-        self.quant_test(model_fp32_path, data_reader, 32, True)
+        # When activation rank (3) >= weight rank (3), no reshape helpers are needed.
+        # Assert explicitly that none of the helper ops appear in the quantized graph.
+        no_reshape_helpers = {
+            "Shape": 0,
+            "Size": 0,
+            "Sub": 0,
+            "Max": 0,
+            "ConstantOfShape": 0,
+            "Slice": 0,
+            "Concat": 0,
+        }
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=no_reshape_helpers)
 
         # The check_model_correctness inside quant_test runs both the FP32 and
         # quantized models on the same input and compares outputs. If the
         # quantized graph collapsed batch dims (output [1, B*S, N] instead of
         # [B, S, N]), that comparison would fail before we even reach here.
+
+    def construct_model_matmul_3d_weight_1d_activation(
+        self, output_model_path: str, symmetric: bool, weight_shape: tuple
+    ) -> None:
+        """Build a model with 1-D activation [K] and 3-D weight [1, K, N].
+
+        ONNX MatMul([K], [1, K, N]) -> [1, N]. The quantized graph must preserve
+        this output shape; the reshape helper computes extra_count=1 (since
+        a_rank_eff=max(1,2)=2 and rank_b_orig=3) so a single leading 1 is prepended.
+        """
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+        weight_data = self.fill_int4_data(weight_shape, symmetric).astype(np.float32)
+        initializers.append(onnx.numpy_helper.from_array(weight_data, name="linear1.weight"))
+        matmul_node = onnx.helper.make_node(
+            "MatMul",
+            [input_name, "linear1.weight"],
+            [output_name],
+            "MatMul_0",
+        )
+        k = weight_shape[-2]
+        n = weight_shape[-1]
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, [k])
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, [1, n])
+        graph = helper.make_graph(
+            [matmul_node],
+            "matmul_4bits_1d_activation_test",
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.save(model, output_model_path)
+
+    def test_quantize_matmul_int4_3d_weight_1d_activation_preserves_shape(self):
+        """ONNX MatMul([K],[1,K,N]) must yield [1,N] after quantization.
+
+        When the activation is 1-D, ONNX MatMul promotes it to rank-2 internally
+        before broadcasting against the weight. The reshape helper must use
+        max(rank(A), 2) as the effective activation rank so that exactly one
+        leading 1 is prepended, giving output shape [1, N].
+        """
+        np.random.seed(42)
+        weight_shape = (1, 52, 288)
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_1d_act.onnx").absolute())
+        self.construct_model_matmul_3d_weight_1d_activation(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (weight_shape[-2],)})
+        # rank(A)=1, rank(B_orig)=3: a_rank_eff=max(1,2)=2, extra_count=1, so the
+        # reshape helper IS emitted. Verify the full helper op-count and that
+        # check_model_correctness confirms the output shape is [1, N].
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
 
 
 if __name__ == "__main__":
