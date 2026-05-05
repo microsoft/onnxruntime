@@ -39,8 +39,7 @@ parameters:
 
 stages:
     # Parameter validation. Always runs as the first stage so it serves as a single,
-    # explicit `dependsOn` anchor for every downstream platform-build template, and
-    # provides an obvious home for any cross-parameter checks.
+    # explicit `dependsOn` anchor for every downstream platform-build template.
     - stage: Validate_Parameters
       displayName: 'Validate parameters'
       dependsOn: []
