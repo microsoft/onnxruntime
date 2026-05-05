@@ -49,7 +49,7 @@ stages:
         pool:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
-        # Skip the repo checkout entirely — this job only inspects pipeline parameters.
+        # Skip the repo checkout entirely — this job only inspects parameters.
         # Suppress SDL/TSA scans that the 1ES PT would otherwise inject (they require
         # `.config/tsaoptions.json` from the source tree and have nothing to scan here).
         templateContext:
