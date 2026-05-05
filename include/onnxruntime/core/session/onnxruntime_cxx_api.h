@@ -1621,6 +1621,9 @@ struct ConstSessionOptionsImpl : Base<T> {
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def) const;
+
+  bool GetMemPatternEnabled() const;       ///< Wraps OrtApi::GetMemPatternEnabled
+  ExecutionMode GetExecutionMode() const;  ///< Wraps OrtApi::GetSessionExecutionMode
 };
 
 template <typename T>
@@ -1645,10 +1648,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& EnableMemPattern();   ///< Wraps OrtApi::EnableMemPattern
   SessionOptionsImpl& DisableMemPattern();  ///< Wraps OrtApi::DisableMemPattern
-  bool GetMemPatternEnabled() const;        ///< Wraps OrtApi::GetMemPatternEnabled
 
   SessionOptionsImpl& SetExecutionMode(ExecutionMode execution_mode);  ///< Wraps OrtApi::SetSessionExecutionMode
-  ExecutionMode GetExecutionMode() const;                              ///< Wraps OrtApi::GetSessionExecutionMode
 
   SessionOptionsImpl& SetLoadCancellationFlag(bool value);  ///< Wraps OrtApi::SessionOptionsSetLoadCancellationFlag
 

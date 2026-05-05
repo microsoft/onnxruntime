@@ -7444,7 +7444,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    *
    * \see OrtApi::EnableMemPattern, OrtApi::DisableMemPattern
    */
@@ -7457,7 +7457,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    *
    * \see OrtApi::SetSessionExecutionMode
    */

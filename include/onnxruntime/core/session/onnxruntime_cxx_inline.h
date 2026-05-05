@@ -1401,6 +1401,20 @@ inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const cha
 }
 
 template <typename T>
+inline bool ConstSessionOptionsImpl<T>::GetMemPatternEnabled() const {
+  int out = 0;
+  ThrowOnError(GetApi().GetMemPatternEnabled(this->p_, &out));
+  return out != 0;
+}
+
+template <typename T>
+inline ExecutionMode ConstSessionOptionsImpl<T>::GetExecutionMode() const {
+  ExecutionMode out{};
+  ThrowOnError(GetApi().GetSessionExecutionMode(this->p_, &out));
+  return out;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetIntraOpNumThreads(int intra_op_num_threads) {
   ThrowOnError(GetApi().SetIntraOpNumThreads(this->p_, intra_op_num_threads));
   return *this;
@@ -1461,13 +1475,6 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::DisableMemPattern() {
 }
 
 template <typename T>
-inline bool SessionOptionsImpl<T>::GetMemPatternEnabled() const {
-  int out = 0;
-  ThrowOnError(GetApi().GetMemPatternEnabled(this->p_, &out));
-  return out != 0;
-}
-
-template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::EnableCpuMemArena() {
   ThrowOnError(GetApi().EnableCpuMemArena(this->p_));
   return *this;
@@ -1483,13 +1490,6 @@ template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetExecutionMode(ExecutionMode execution_mode) {
   ThrowOnError(GetApi().SetSessionExecutionMode(this->p_, execution_mode));
   return *this;
-}
-
-template <typename T>
-inline ExecutionMode SessionOptionsImpl<T>::GetExecutionMode() const {
-  ExecutionMode out;
-  ThrowOnError(GetApi().GetSessionExecutionMode(this->p_, &out));
-  return out;
 }
 
 template <typename T>
