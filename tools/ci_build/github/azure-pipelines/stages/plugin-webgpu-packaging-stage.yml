@@ -56,14 +56,6 @@ stages:
           sdl:
             tsa:
               enabled: false
-            credscan:
-              enabled: false
-            policheck:
-              enabled: false
-            codeSignValidation:
-              enabled: false
-            binskim:
-              enabled: false
         steps:
         - checkout: none
 
