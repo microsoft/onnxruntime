@@ -94,6 +94,25 @@ inline void ComputeAttentionSoftcapInplace(MLFloat16* scores, int sequence_lengt
   }
 }
 
+// In-place elementwise add: scores[i] += addend[i].
+//
+// Used to apply attn_mask / attn_bias to the QK scores after softcap, per the
+// ONNX Attention v23/24 spec ordering (onnx/onnx#7867 + #7913). For float,
+// delegates to MLAS. For MLFloat16, uses a portable scalar fallback because
+// MlasEltwiseAdd<MLAS_FP16> requires hardware fp16 add support that is not
+// available on every target.
+template <typename T>
+inline void AddInPlace(T* scores, const T* addend, size_t count) {
+  MlasEltwiseAdd<T>(addend, scores, scores, count);
+}
+
+template <>
+inline void AddInPlace<MLFloat16>(MLFloat16* scores, const MLFloat16* addend, size_t count) {
+  for (size_t i = 0; i < count; ++i) {
+    scores[i] = MLFloat16(scores[i].ToFloat() + addend[i].ToFloat());
+  }
+}
+
 // Dispatches a GEMM operation across float and MLFloat16 types.
 //   C = alpha * op(A) * op(B) + beta * C
 //
@@ -199,9 +218,9 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
                                : attention_helper::QKMatMulOutputMode::kNone;
   ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQK ||
-                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKMask ||
-                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftCap ||
-                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftMax,
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostSoftCap ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostMaskBias ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostSoftMax,
               "qk_matmul_output_mode must be 0, 1, 2, or 3.");
   // The default scale depends on the input dimensions. It is set to nan to indicate that it should be computed.
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
@@ -402,16 +421,6 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
       T* output = attention_probs + output_offset;
       T* out_qk = output_qk == nullptr ? nullptr : output_qk + output_offset;
-      float beta;
-
-      if (mask_data != nullptr &&
-          (out_qk == nullptr || parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK)) {
-        // Broadcast mask data: SxT -> SxT
-        memcpy(output, mask_data + mask_data_offset, probs_matrix_bytes);
-        beta = 1;
-      } else {
-        beta = 0;
-      }
 
       // handling GQA
       std::ptrdiff_t head_ki = head_i * parameters.kv_num_heads / parameters.q_num_heads;
@@ -431,10 +440,35 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       }
 
       // Compute Q*K' + AttentionMask
+      //
+      // ONNX Attention v23/24 (per onnx/onnx#7867 + #7913) requires the mask/bias
+      // to be applied AFTER softcap, otherwise -inf mask values get squashed by
+      // tanh into -c, leaking probability through softmax onto masked positions.
+      //
+      // When softcap is disabled, mask add commutes with the (no-op) softcap, so we
+      // follow the original code path verbatim:  fold the mask add into the GEMM as
+      // `beta = 1` (preload mask, accumulate via FMA).  This preserves the FMA-fused
+      // numerics that pre-spec-fix tests were calibrated against.
+      // When softcap is active, we run GEMM with `beta = 0`, apply softcap inplace,
+      // then add the mask explicitly via AddInPlace.
+      //
       //                     original                 transposed             each iteration
       // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
       // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
       // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
+      const bool softcap_active = (parameters.softcap > 0.0f);
+      float beta;
+      if (mask_data != nullptr && !softcap_active &&
+          (out_qk == nullptr ||
+           (parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK &&
+            parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kPostSoftCap))) {
+        // Broadcast mask data: SxT -> SxT
+        memcpy(output, mask_data + mask_data_offset, probs_matrix_bytes);
+        beta = 1;
+      } else {
+        beta = 0;
+      }
+
       const T* q_ptr = parameters.transpose_output
                            ? Q + q_input_chunk_length * parameters.q_num_heads * batch_i + head_i * parameters.head_size
                            : Q + q_input_chunk_length * i;
@@ -452,26 +486,15 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                     parameters.q_sequence_length, parameters.total_sequence_length, parameters.head_size,
                     alpha, q_ptr, q_lda, k_ptr, k_ldb, beta, output, parameters.total_sequence_length,
                     &mlas_backend_kernel_selector_config_);
+
+      // Snapshot kQK (raw scale*Q*K^T): only reachable when fold path was skipped.
       if (out_qk != nullptr &&
-          (parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKMask ||
-           parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK)) {
+          parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK) {
         memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
-        if (mask_data != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK) {
-          // We need to add the bias we could not add because out_qk was requested without the mask.
-          // This can be optimized with vectorized add using MlasAddFloat32x4.
-          MlasEltwiseAdd(output, mask_data + mask_data_offset, output, probs_matrix_size);
-        }
       }
-      // Apply nonpad_kv_seqlen masking (Opset 24+): mask out KV positions >= valid length per batch.
-      if (parameters.has_nonpad_kv_seqlen) {
-        int valid_kv_len = static_cast<int>(parameters.nonpad_kv_seqlen_data[batch_i]);
-        for (int s = 0; s < parameters.q_sequence_length; ++s) {
-          std::fill(output + s * parameters.total_sequence_length + valid_kv_len,
-                    output + (s + 1) * parameters.total_sequence_length,
-                    mask_filter_value<T>());
-        }
-      }
-      if (parameters.softcap > 0.0f) {
+
+      if (softcap_active) {
+        // Softcap path (mask was NOT folded into GEMM since beta=0 above).
         if constexpr (std::is_same<T, float>::value) {
           ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), parameters.softcap);
         } else if constexpr (std::is_same<T, MLFloat16>::value) {
@@ -481,14 +504,49 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                     DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
         }
       }
-      if (out_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftCap) {
+
+      // Snapshot kPostSoftCap (post-softcap, pre-mask/bias).  When softcap is disabled
+      // this equals raw scale*Q*K^T (kQK).  Reachable only when fold was skipped above.
+      if (out_qk != nullptr &&
+          parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kPostSoftCap) {
         memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
       }
+
+      // Add mask explicitly when it wasn't folded into GEMM.  The fold path is taken
+      // iff (mask != null && !softcap_active && snapshot mode is not kQK/kPostSoftCap).
+      // When the fold path was skipped but mask is present, add it now.
+      const bool mask_was_folded =
+          (mask_data != nullptr && !softcap_active &&
+           (out_qk == nullptr ||
+            (parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK &&
+             parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kPostSoftCap)));
+      if (mask_data != nullptr && !mask_was_folded) {
+        AddInPlace(output, mask_data + mask_data_offset, probs_matrix_size);
+      }
+
+      // Apply nonpad_kv_seqlen masking (Opset 24+): mask out KV positions >= valid length per batch.
+      // Done AFTER softcap+mask so the masked positions are guaranteed -inf.
+      if (parameters.has_nonpad_kv_seqlen) {
+        int valid_kv_len = static_cast<int>(parameters.nonpad_kv_seqlen_data[batch_i]);
+        for (int s = 0; s < parameters.q_sequence_length; ++s) {
+          std::fill(output + s * parameters.total_sequence_length + valid_kv_len,
+                    output + (s + 1) * parameters.total_sequence_length,
+                    mask_filter_value<T>());
+        }
+      }
+
+      // Snapshot kPostMaskBias (post-mask/bias, pre-softmax).
+      if (out_qk != nullptr &&
+          parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kPostMaskBias) {
+        memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
+      }
+
       ComputeAttentionSoftmaxInplace(output, parameters.q_sequence_length, parameters.total_sequence_length, nullptr, allocator);
 
-      if (output_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
-        memcpy(output_qk + output_offset, output,
-               SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T));
+      // Snapshot kPostSoftMax (post-softmax).
+      if (out_qk != nullptr &&
+          parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kPostSoftMax) {
+        memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
       }
     }
   });

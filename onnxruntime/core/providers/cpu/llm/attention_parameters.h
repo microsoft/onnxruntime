@@ -9,13 +9,23 @@ namespace onnxruntime {
 // Declares enum QKMatMulOutputMode and struct AttentionParameters inside namespace onnxruntime::attention_helper.
 namespace attention_helper {
 
-// enum equivalent to the onnx defintion of qk_matmul_output_mode
+// enum equivalent to the onnx defintion of qk_matmul_output_mode.
+//
+// Mode integer numbering follows the ONNX Attention v23/24 pipeline stage
+// order, per onnx/onnx#7867 (which corrected the ordering to apply softcap
+// BEFORE bias/mask add) and onnx/onnx#7913 (which swapped the integer
+// values of modes 1 and 2 to align with the corrected pipeline):
+//
+//   stage 0: scale * (Q @ K^T)
+//   stage 1: softcap (if > 0)
+//   stage 2: + attn_bias / + attn_mask
+//   stage 3: softmax
 enum QKMatMulOutputMode {
-  kNone = -1,      // No output Q*K
-  kQK = 0,         // Output Q*K
-  kQKMask = 1,     // Output Q*K + Mask
-  kQKSoftCap = 2,  // Output SoftCap(Q*K + Mask)
-  kQKSoftMax = 3,  // Output SoftMax(SoftCap(Q*K + Mask))
+  kNone = -1,         // No optional output.
+  kQK = 0,            // Raw scale * Q @ K^T (pre-softcap).
+  kPostSoftCap = 1,   // Post-softcap, pre-mask/bias.
+  kPostMaskBias = 2,  // Post-mask/bias, pre-softmax.
+  kPostSoftMax = 3,   // Post-softmax.
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
