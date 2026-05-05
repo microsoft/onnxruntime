@@ -1375,26 +1375,23 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
         !has_output_qk &&
-        // MEA decode requires head_size == v_head_size for LaunchConcatNewToPastKV
-        // (single head_size parameter). Fall back to unfused when they differ.
+        // MEA requires head_size == v_head_size in two internal paths:
+        //   - LaunchConcatNewToPastKV (decode with past_key)
+        //   - LaunchUngroup (GQA head expansion)
+        // Fall back to unfused attention when they differ.
+        (!is_gqa || parameters.head_size == parameters.v_head_size) &&
         (past_key == nullptr || parameters.head_size == parameters.v_head_size) &&
         // GQA+MEA requires LaunchUngroup which only has fp16/bf16 instantiations.
         // FP32 GQA must fall through to the unfused path.
         !(is_gqa && std::is_same<T, float>::value);
 
-    // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
-    // "unaligned" kernel path. When an attention mask is present (with or without
-    // nonpad_kv_seqlen), it becomes an additive bias with bias_strideM =
-    // total_sequence_length. Skip MEA if this stride can't satisfy the kernel's
-    // minimum alignment requirement.
+    // CUTLASS FMHA BiasLoader uses vectorized loads on the attention bias.
+    // The unaligned kernel path uses kMinimumAlignment (4 elements for fp16),
+    // so the bias row stride (total_sequence_length) must be a multiple of 4.
+    // The aligned kernel path uses kAlignmentA (8 elements for fp16); the
+    // DispatchIsAligned function in fmha_launch_template.h routes to the
+    // correct kernel based on actual stride alignment.
     if (mea_eligible && attn_mask != nullptr) {
-      // NOTE: CUTLASS uses kMinimumAlignment = 4 (elements, not bytes) for the bias
-      // pointer in its epilogue. total_sequence_length is the bias row stride in elements,
-      // so we check alignment in element count. The contrib_ops convention (4 * sizeof(T))
-      // conflates bytes with elements; we use the correct value of 4 elements here.
-      // Note: on SM50/53 (Maxwell), CUTLASS kMinimumAlignment=1, so this is stricter than
-      // necessary — cases with odd total_sequence_length that previously used MEA on those
-      // GPUs will now fall to unfused. This is acceptable for these very old architectures.
       constexpr int min_bias_align = 4;
       if (parameters.total_sequence_length % min_bias_align != 0) {
         mea_eligible = false;
