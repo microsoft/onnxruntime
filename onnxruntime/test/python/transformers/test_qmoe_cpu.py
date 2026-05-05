@@ -1137,6 +1137,10 @@ class SparseMoeBlockORTHelper(nn.Module):
             "FP16:2": (0.12, 0.02),
             "FP16:4": (0.05, 0.01),
             "FP16:8": (0.02, 0.01),
+            # FP32:2 is wider than FP16:2 because the FP32 path uses a different dequantization
+            # code path (generic block-wise loop) vs FP16 which uses MLAS-optimized routines.
+            # The reference PyTorch model also accumulates differently in FP32 for 2-bit,
+            # leading to slightly larger absolute differences despite higher precision.
             "FP32:2": (0.20, 0.02),
             "FP32:4": (0.11, 0.01),
             "FP32:8": (0.11, 0.01),

@@ -475,6 +475,8 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
         }
       }
     }
+  } else {
+    ORT_THROW("Unsupported num_bits (", num_bits, ") in DequantizeBlockWithMlas");
   }
 }
 
@@ -797,6 +799,19 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
       } else {
         packed_fc2_lut_cache_ = std::move(prepacked_buffers[0]);
         parse_shape(fc2_shape_);
+      }
+
+      // Re-initialize MLAS LUT kernel config for the restored shape.
+      // The global T-MAC param cache may not be populated in a fresh session sharing prepacked weights.
+      const TensorShape& restored_shape = (input_idx == 2) ? fc1_shape_ : fc2_shape_;
+      if (restored_shape.NumDimensions() == 3) {
+        const int64_t rows = restored_shape[1];
+        const int64_t cols = restored_shape[2] * (8 / expert_weight_bits_);
+        const int zp_idx = (input_idx == 2) ? 11 : 12;
+        const bool has_zp = zp_idx < static_cast<int>(Info().node().InputDefs().size()) &&
+                            Info().node().InputDefs()[zp_idx]->Exists();
+        MlasInitLutGemmKernelConfig(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
+                                    static_cast<size_t>(block_size_), has_zp);
       }
 
       used_shared_buffers = true;
@@ -1276,6 +1291,17 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   for (const auto& work : expert_workload) {
     expert_batches[thread_idx].push_back(work.first);
     thread_idx = (thread_idx + 1) % static_cast<size_t>(num_expert_threads);
+  }
+
+  // Pre-initialize MLAS LUT kernel config before the parallel loop to avoid
+  // mutex contention from redundant per-thread calls in TryRunLutGemm.
+  if (can_use_fc1_lut_gemm && fc1_direct_lut_cache_ptr == nullptr) {
+    MlasInitLutGemmKernelConfig(static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size), 2,
+                                static_cast<size_t>(block_size_), fc1_zp_data != nullptr);
+  }
+  if (can_use_fc2_lut_gemm && fc2_direct_lut_cache_ptr == nullptr) {
+    MlasInitLutGemmKernelConfig(static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size), 2,
+                                static_cast<size_t>(block_size_), fc2_zp_data != nullptr);
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
