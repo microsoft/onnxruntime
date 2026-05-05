@@ -37,6 +37,30 @@ std::filesystem::path CreateManifestJson(const std::filesystem::path& package_ro
   return manifest_path;
 }
 
+std::string MakeVariantJson(std::string_view filename) {
+  std::ostringstream oss;
+  oss << R"({
+    "files": [
+      {
+        "filename": ")"
+      << filename << R"("
+      }
+    ]
+  })";
+  return oss.str();
+}
+
+void CreateVariantDescriptor(const std::filesystem::path& package_root,
+                             std::string_view component_model_name,
+                             std::string_view variant_name,
+                             std::string_view variant_json) {
+  const auto variant_root = package_root / "models" / std::string(component_model_name) / std::string(variant_name);
+  std::filesystem::create_directories(variant_root);
+
+  std::ofstream os(variant_root / "variant.json", std::ios::binary);
+  os << variant_json;
+}
+
 std::filesystem::path CreateModelPackage(
     const std::filesystem::path& package_root,
     std::string_view manifest_json,
@@ -51,9 +75,9 @@ std::filesystem::path CreateModelPackage(
 
   CreateManifestJson(package_root, manifest_json);
 
-  const auto models_root = package_root / "models" / component_model_name;
-  const auto variant1_dir = models_root / variant_name_1;
-  const auto variant2_dir = models_root / variant_name_2;
+  const auto models_root = package_root / "models" / std::string(component_model_name);
+  const auto variant1_dir = models_root / std::string(variant_name_1);
+  const auto variant2_dir = models_root / std::string(variant_name_2);
 
   std::filesystem::create_directories(variant1_dir);
   std::filesystem::create_directories(variant2_dir);
@@ -63,6 +87,12 @@ std::filesystem::path CreateModelPackage(
 
   std::filesystem::copy_file(source_model_1, variant1_model, std::filesystem::copy_options::overwrite_existing, ec);
   std::filesystem::copy_file(source_model_2, variant2_model, std::filesystem::copy_options::overwrite_existing, ec);
+
+  CreateVariantDescriptor(package_root, component_model_name, variant_name_1,
+                          MakeVariantJson(source_model_1.filename().string()));
+  CreateVariantDescriptor(package_root, component_model_name, variant_name_2,
+                          MakeVariantJson(source_model_2.filename().string()));
+
   return package_root;
 }
 
@@ -70,10 +100,8 @@ std::filesystem::path CreateComponentModelMetadata(
     const std::filesystem::path& package_root,
     std::string_view component_model_name,
     std::string_view metadata_json) {
-  const auto component_root = package_root / "models" / component_model_name;
-  std::error_code ec;
+  const auto component_root = package_root / "models" / std::string(component_model_name);
 
-  // Ensure component root and metadata.json exist
   std::filesystem::create_directories(component_root);
 
   const std::filesystem::path metadata_path = component_root / "metadata.json";
@@ -83,14 +111,11 @@ std::filesystem::path CreateComponentModelMetadata(
   return component_root;
 }
 
-std::string MakeManifestJson(std::string_view model_name,
-                             std::string_view component_model_name) {
+std::string MakeManifestJson(std::string_view component_model_name) {
   std::ostringstream oss;
   oss << R"({
-    "model_name": ")"
-      << model_name << R"(",
-    "model_version": "1.0",
-    "component_models": [")"
+    "schema_version": 1,
+    "components": [")"
       << component_model_name << R"("]
   })";
   return oss.str();
@@ -98,50 +123,38 @@ std::string MakeManifestJson(std::string_view model_name,
 
 std::string MakeMetadataJsonTwoVariants(std::string_view component_model_name,
                                         std::string_view variant_name_1,
-                                        std::string_view variant_file_1,
                                         std::string_view variant_ep_1,
-                                        std::string_view variant_device_type_1,
-                                        std::string_view variant_compatibility_info_1,
+                                        std::string_view variant_device_1,
+                                        std::string_view variant_compatibility_string_1,
                                         std::string_view variant_name_2,
-                                        std::string_view variant_file_2,
                                         std::string_view variant_ep_2,
-                                        std::string_view variant_device_type_2,
-                                        std::string_view variant_compatibility_info_2) {
+                                        std::string_view variant_device_2,
+                                        std::string_view variant_compatibility_string_2) {
   std::ostringstream oss;
   oss << R"({
     "component_model_name": ")"
       << component_model_name << R"(",
-    "model_variants": {
+    "variants": {
       ")"
       << variant_name_1 << R"(": {
-        "model_info": [{
-          "identifier": "main",
-          "model_file": ")"
-      << variant_file_1 << R"(",
-          "ep_compatibility": [{
-            "ep": ")"
+        "ep_compatibility": [{
+          "ep": ")"
       << variant_ep_1 << R"(",
-            "device_type": ")"
-      << variant_device_type_1 << R"(",
-            "compatibility_info": ")"
-      << variant_compatibility_info_1 << R"("
-          }]
+          "device": ")"
+      << variant_device_1 << R"(",
+          "compatibility_string": ")"
+      << variant_compatibility_string_1 << R"("
         }]
       },
       ")"
       << variant_name_2 << R"(": {
-        "model_info": [{
-          "identifier": "main",
-          "model_file": ")"
-      << variant_file_2 << R"(",
-          "ep_compatibility": [{
-            "ep": ")"
+        "ep_compatibility": [{
+          "ep": ")"
       << variant_ep_2 << R"(",
-            "device_type": ")"
-      << variant_device_type_2 << R"(",
-            "compatibility_info": ")"
-      << variant_compatibility_info_2 << R"("
-          }]
+          "device": ")"
+      << variant_device_2 << R"(",
+          "compatibility_string": ")"
+      << variant_compatibility_string_2 << R"("
         }]
       }
     }
@@ -163,14 +176,14 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
   {
     // Build model package on disk
     const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
-    CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
+    CreateModelPackage(package_root, MakeManifestJson("model_1"),
                        "model_1", "variant_1", "variant_2",
                        std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
     const std::string metadata_json = MakeMetadataJsonTwoVariants(
         "model_1",
-        "variant_1", "mul_1.onnx", "example_ep", "cpu", "",
-        "variant_2", "mul_16.onnx", "example_ep", "npu", "");
+        "variant_1", "example_ep", "cpu", "",
+        "variant_2", "example_ep", "npu", "");
 
     CreateComponentModelMetadata(package_root,
                                  "model_1",
@@ -222,14 +235,14 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
     // Build model package on disk
     const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
 
-    CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
+    CreateModelPackage(package_root, MakeManifestJson("model_1"),
                        "model_1", "variant_1", "variant_2",
                        std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
     const std::string metadata_json = MakeMetadataJsonTwoVariants(
         "model_1",
-        "variant_1", "mul_1.onnx", "example_ep", "cpu", "",
-        "variant_2", "mul_16.onnx", "example_ep", "npu", "");
+        "variant_1", "example_ep", "cpu", "",
+        "variant_2", "example_ep", "npu", "");
 
     const auto component_model_root = CreateComponentModelMetadata(package_root,
                                                                    "model_1",
@@ -278,14 +291,14 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   // Build model package on disk
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
 
-  CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
+  CreateModelPackage(package_root, MakeManifestJson("model_1"),
                      "model_1", "variant_1", "variant_2",
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
   const std::string metadata_json = MakeMetadataJsonTwoVariants(
       "model_1",
-      "variant_1", "mul_1.onnx", "example_ep", "cpu", "",
-      "variant_2", "mul_16.onnx", "example_ep", "npu", "");
+      "variant_1", "example_ep", "cpu", "",
+      "variant_2", "example_ep", "npu", "");
 
   CreateComponentModelMetadata(package_root,
                                "model_1",
@@ -355,15 +368,15 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
   // Build model package on disk
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_test";
 
-  CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
+  CreateModelPackage(package_root, MakeManifestJson("model_1"),
                      "model_1", "variant_2", "variant_1",
                      std::filesystem::path{"testdata/mul_16.onnx"}, std::filesystem::path{"plugin_ep_compat_test.onnx"});
 
   const std::string metadata_json = MakeMetadataJsonTwoVariants(
       "model_1",
-      "variant_2", "mul_16.onnx", "example_ep", "cpu",
+      "variant_2", "example_ep", "cpu",
       "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2",
-      "variant_1", "plugin_ep_compat_test.onnx", "example_ep", "cpu",
+      "variant_1", "example_ep", "cpu",
       "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1");
 
   CreateComponentModelMetadata(package_root,
@@ -401,8 +414,8 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
   const std::string component_model_name = "model_1";
   const std::string metadata_json = MakeMetadataJsonTwoVariants(
       "model_1",
-      "variant_1", "mul_1.onnx", "example_ep", "cpu", "",
-      "variant_2", "mul_16.onnx", "example_ep", "npu", "");
+      "variant_1", "example_ep", "cpu", "",
+      "variant_2", "example_ep", "npu", "");
 
   // Create metadata.json under models/model_1
   const auto component_root = CreateComponentModelMetadata(package_root,
@@ -451,119 +464,6 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
   std::filesystem::remove_all(package_root, ec);
 }
 
-TEST(ModelPackageTest, ParseVariantFileResolution) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_parse_variant";
-  std::error_code ec;
-
-  auto write_manifest = [&]() {
-    CreateManifestJson(package_root, MakeManifestJson("test_model", "model_1"));
-  };
-
-  auto write_metadata = [&](std::string_view metadata_json) {
-    CreateComponentModelMetadata(package_root, "model_1", metadata_json);
-  };
-
-  // Subcase 1: "model_file" points to a directory containing exactly one .onnx file.
-  {
-    std::filesystem::remove_all(package_root, ec);
-    write_manifest();
-
-    constexpr std::string_view metadata_json = R"({
-  "component_model_name": "model_1",
-  "model_variants": {
-    "variant_dir": {
-      "model_info": [{
-        "identifier": "main",
-        "model_file": "subdir",
-        "ep_compatibility": [{}]
-      }]
-    }
-  }
-})";
-    write_metadata(metadata_json);
-
-    const auto variant_dir = package_root / "models" / "model_1" / "variant_dir";
-    const auto subdir = variant_dir / "subdir";
-    std::filesystem::create_directories(subdir);
-    std::filesystem::copy_file("testdata/mul_1.onnx", subdir / "only.onnx",
-                               std::filesystem::copy_options::overwrite_existing, ec);
-
-    ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-    std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseVariantsFromRoot(package_root, variants);
-    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-    ASSERT_EQ(variants.size(), 1u);
-    EXPECT_EQ(variants[0].model_info[0].model_file_path.filename().string(), "only.onnx");
-  }
-
-  // Subcase 2: No "model_file" field; discover the single .onnx in the variant directory.
-  {
-    std::filesystem::remove_all(package_root, ec);
-    write_manifest();
-
-    constexpr std::string_view metadata_json = R"({
-  "component_model_name": "model_1",
-  "model_variants": {
-    "variant_dir": {
-      "model_info": [{
-        "identifier": "main",
-        "ep_compatibility": [{}]
-      }]
-    }
-  }
-})";
-    write_metadata(metadata_json);
-
-    const auto variant_dir = package_root / "models" / "model_1" / "variant_autodiscover";
-    std::filesystem::create_directories(variant_dir);
-    std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "auto.onnx",
-                               std::filesystem::copy_options::overwrite_existing, ec);
-
-    ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-    std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseVariantsFromRoot(package_root, variants);
-    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-    ASSERT_EQ(variants.size(), 1u);
-    EXPECT_EQ(variants[0].model_info[0].model_file_path.filename().string(), "auto.onnx");
-  }
-
-  // Subcase 3: Multiple .onnx files -> error.
-  {
-    std::filesystem::remove_all(package_root, ec);
-    write_manifest();
-
-    constexpr std::string_view metadata_json = R"({
-  "component_model_name": "model_1",
-  "model_variants": {
-    "variant_multi": {
-      "model_info": [{
-        "identifier": "main",
-        "model_file": ".",
-        "ep_compatibility": [{}]
-      }]
-    }
-  }
-})";
-    write_metadata(metadata_json);
-
-    const auto variant_dir = package_root / "models" / "model_1" / "variant_multi";
-    std::filesystem::create_directories(variant_dir);
-    std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "a.onnx",
-                               std::filesystem::copy_options::overwrite_existing, ec);
-    std::filesystem::copy_file("testdata/mul_16.onnx", variant_dir / "b.onnx",
-                               std::filesystem::copy_options::overwrite_existing, ec);
-
-    ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-    std::vector<ModelVariantInfo> variants;
-    auto status = parser.ParseVariantsFromRoot(package_root, variants);
-    ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.ErrorMessage(),
-                ::testing::HasSubstr("Multiple ONNX model files found under"));
-  }
-
-  std::filesystem::remove_all(package_root, ec);
-}
-
 TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_parse_from_package_root";
   std::error_code ec;
@@ -571,8 +471,8 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
 
   // package_root is a model package directory (has manifest.json).
   constexpr std::string_view manifest_json = R"({
-    "model_name": "test_model",
-    "component_models": ["model_1"]
+    "schema_version": 1,
+    "components": ["model_1"]
   })";
 
   CreateModelPackage(package_root, manifest_json,
@@ -581,25 +481,41 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
 
   constexpr std::string_view metadata_json = R"({
     "component_model_name": "model_1",
-    "model_variants": {
+    "variants": {
       "variant_1": {
-        "model_file": "mul_1.onnx",
-        "constraints": {
+        "ep_compatibility": [{
           "ep": "example_ep",
-          "device": "cpu",
-        }
+          "device": "cpu"
+        }]
       },
       "variant_2": {
-        "model_file": "mul_16.onnx",
-        "constraints": {
+        "ep_compatibility": [{
           "ep": "example_ep",
-          "device": "npu",
-        }
+          "device": "npu"
+        }]
       }
     }
   })";
 
   CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  // New schema: per-variant descriptor in variant.json
+  {
+    std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        { "filename": "mul_1.onnx" }
+      ]
+    })";
+  }
+  {
+    std::ofstream os(package_root / "models" / "model_1" / "variant_2" / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        { "filename": "mul_16.onnx" }
+      ]
+    })";
+  }
 
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
   std::vector<ModelVariantInfo> variants;
@@ -610,19 +526,22 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
 
   std::unordered_map<std::string, const ModelVariantInfo*> by_file;
   for (const auto& v : variants) {
-    by_file.emplace(v.model_info[0].model_file_path.filename().string(), &v);
+    ASSERT_EQ(v.files.size(), 1u);
+    by_file.emplace(v.files[0].model_file_path.filename().string(), &v);
   }
 
   ASSERT_EQ(by_file.count("mul_1.onnx"), 1u);
   ASSERT_EQ(by_file.count("mul_16.onnx"), 1u);
 
   const auto* v1 = by_file.at("mul_1.onnx");
-  EXPECT_EQ(v1->model_info[0].ep_compatibility[0].ep, "example_ep");
-  EXPECT_EQ(v1->model_info[0].ep_compatibility[0].device_type, "cpu");
+  ASSERT_FALSE(v1->ep_compatibility.empty());
+  EXPECT_EQ(v1->ep_compatibility[0].ep.value_or(""), "example_ep");
+  EXPECT_EQ(v1->ep_compatibility[0].device.value_or(""), "cpu");
 
   const auto* v2 = by_file.at("mul_16.onnx");
-  EXPECT_EQ(v2->model_info[0].ep_compatibility[0].ep, "example_ep");
-  EXPECT_EQ(v2->model_info[0].ep_compatibility[0].device_type, "npu");
+  ASSERT_FALSE(v2->ep_compatibility.empty());
+  EXPECT_EQ(v2->ep_compatibility[0].ep.value_or(""), "example_ep");
+  EXPECT_EQ(v2->ep_compatibility[0].device.value_or(""), "npu");
 
   std::filesystem::remove_all(package_root, ec);
 }
@@ -641,13 +560,12 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
 
   constexpr std::string_view metadata_json = R"({
     "component_model_name": "model_1",
-    "model_variants": {
+    "variants": {
       "variant_1": {
-        "model_file": "mul_1.onnx",
-        "constraints": {
+        "ep_compatibility": [{
           "ep": "example_ep",
-          "device": "cpu",
-        }
+          "device": "cpu"
+        }]
       }
     }
   })";
@@ -657,15 +575,27 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
     os << metadata_json;
   }
 
+  {
+    std::ofstream os(variant_dir / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        { "filename": "mul_1.onnx" }
+      ]
+    })";
+  }
+
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
   std::vector<ModelVariantInfo> variants;
   auto status = parser.ParseVariantsFromRoot(component_root, variants);
 
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_EQ(variants.size(), 1u);
-  EXPECT_EQ(variants[0].model_info[0].model_file_path.filename().string(), "mul_1.onnx");
-  EXPECT_EQ(variants[0].model_info[0].ep_compatibility[0].ep, "example_ep");
-  EXPECT_EQ(variants[0].model_info[0].ep_compatibility[0].device_type, "cpu");
+  ASSERT_EQ(variants[0].files.size(), 1u);
+  EXPECT_EQ(variants[0].files[0].model_file_path.filename().string(), "mul_1.onnx");
+
+  ASSERT_FALSE(variants[0].ep_compatibility.empty());
+  EXPECT_EQ(variants[0].ep_compatibility[0].ep.value_or(""), "example_ep");
+  EXPECT_EQ(variants[0].ep_compatibility[0].device.value_or(""), "cpu");
 
   std::filesystem::remove_all(component_root, ec);
 }
@@ -731,48 +661,67 @@ TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
 
-  CreateModelPackage(package_root, MakeManifestJson("test_model", "model_1"),
+  constexpr std::string_view manifest_json = R"({
+    "schema_version": 1,
+    "components": ["model_1"]
+  })";
+
+  CreateModelPackage(package_root, manifest_json,
                      "model_1", "variant_1", "variant_2",
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
-  // New metadata schema
+  // New metadata schema: variant-level EP compatibility only.
   constexpr std::string_view metadata_json = R"({
     "component_model_name": "model_1",
-    "model_variants": {
+    "variants": {
       "variant_1": {
-        "model_info": [{
-          "identifier": "main",
-          "model_file": "mul_1.onnx",
-          "ep_compatibility": [{
-            "ep": "example_ep",
-            "device_type": "cpu",
-            "compatibility_info": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1",
-            "session_options": {
-              "session.disable_prepacking": "1",
-              "session.intra_op.allow_spinning": "0"
-            },
-            "provider_options": {
-              "backend_path": "example_backend",
-              "enable_htp": "1"
-            }
-          }]
+        "ep_compatibility": [{
+          "ep": "example_ep",
+          "device": "cpu",
+          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1"
         }]
       },
       "variant_2": {
-        "model_info": [{
-          "identifier": "wrong",
-          "model_file": "mul_16.onnx",
-          "ep_compatibility": [{
-            "ep": "example_ep",
-            "device_type": "npu",
-            "compatibility_info": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2"
-          }]
+        "ep_compatibility": [{
+          "ep": "example_ep",
+          "device": "npu",
+          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2"
         }]
       }
     }
   })";
 
   CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  // File-level options are now in variant.json.
+  {
+    std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        {
+          "filename": "mul_1.onnx",
+          "session_options": {
+            "session.disable_prepacking": "1",
+            "session.intra_op.allow_spinning": "0"
+          },
+          "provider_options": {
+            "backend_path": "example_backend",
+            "enable_htp": "1"
+          }
+        }
+      ]
+    })";
+  }
+  {
+    std::ofstream os(package_root / "models" / "model_1" / "variant_2" / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        {
+          "filename": "mul_16.onnx"
+        }
+      ]
+    })";
+  }
 
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
@@ -791,9 +740,13 @@ TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
   auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
     if (p) pkg_api->ReleaseModelPackageContext(p);
   };
+  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  };
 
   std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> model_pkg_options(nullptr, options_deleter);
   std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> model_pkg_context(nullptr, context_deleter);
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> component_context(nullptr, component_context_deleter);
 
   OrtModelPackageOptions* raw_options = nullptr;
   ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
@@ -804,12 +757,12 @@ TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
   model_pkg_context.reset(raw_context);
 
   size_t component_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageContext_GetComponentModelCount(model_pkg_context.get(), &component_count));
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelCount(model_pkg_context.get(), &component_count));
   ASSERT_EQ(component_count, 1u);
 
   const char* const* component_names = nullptr;
   size_t component_name_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageContext_GetComponentModelNames(
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelNames(
       model_pkg_context.get(),
       &component_names,
       &component_name_count));
@@ -821,25 +774,27 @@ TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
   const char* component_name = component_names[0];
   EXPECT_STREQ(component_name, "model_1");
 
+  OrtModelPackageComponentContext* raw_component_context = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(model_pkg_context.get(),
+                                               component_name,
+                                               model_pkg_options.get(),
+                                               &raw_component_context));
+  component_context.reset(raw_component_context);
+
   size_t selected_file_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageContext_GetSelectedVariantFileCount(model_pkg_context.get(),
-                                                                               component_name,
-                                                                               &selected_file_count));
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileCount(component_context.get(),
+                                                                                 &selected_file_count));
   ASSERT_EQ(selected_file_count, 1u);
 
-  const char* file_identifier = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageContext_GetSelectedVariantFileIdentifier(model_pkg_context.get(),
-                                                                                    component_name,
-                                                                                    0,
-                                                                                    &file_identifier));
-  ASSERT_NE(file_identifier, nullptr);
-  EXPECT_STREQ(file_identifier, "main");
+  const ORTCHAR_T* selected_file_path = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(component_context.get(),
+                                                                                0,
+                                                                                &selected_file_path));
+  ASSERT_NE(selected_file_path, nullptr);
 
   OrtSession* raw_session = nullptr;
   ASSERT_ORTSTATUS_OK(pkg_api->CreateSession(*ort_env,
-                                             model_pkg_context.get(),
-                                             component_name,
-                                             file_identifier,
+                                             component_context.get(),
                                              session_options,
                                              &raw_session));
   Ort::Session session(raw_session);
@@ -860,14 +815,13 @@ TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
   gsl::span<const float> out_span(out, input_data.size());
   EXPECT_THAT(out_span, ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
 
-  // Validate ModelPackageGetFileSessionOptions API
+  // Validate file session options from selected component context.
   const char* const* session_option_keys = nullptr;
   const char* const* session_option_values = nullptr;
   size_t session_option_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageGetFileSessionOptions(
-      model_pkg_context.get(),
-      component_name,
-      file_identifier,
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileSessionOptions(
+      component_context.get(),
+      0,
       &session_option_keys,
       &session_option_values,
       &session_option_count));
@@ -886,14 +840,13 @@ TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
   EXPECT_EQ(session_options_from_api.at("session.disable_prepacking"), "1");
   EXPECT_EQ(session_options_from_api.at("session.intra_op.allow_spinning"), "0");
 
-  // Validate ModelPackageGetFileProviderOptions API
+  // Validate file provider options from selected component context.
   const char* const* provider_option_keys = nullptr;
   const char* const* provider_option_values = nullptr;
   size_t provider_option_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageGetFileProviderOptions(
-      model_pkg_context.get(),
-      component_name,
-      file_identifier,
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileProviderOptions(
+      component_context.get(),
+      0,
       &provider_option_keys,
       &provider_option_values,
       &provider_option_count));

@@ -85,28 +85,15 @@ class ModelPackageComponentContext {
   explicit ModelPackageComponentContext(const std::string& component_model_name,
                                         const ComponentModelInfo& component_model_info,
                                         gsl::span<const VariantSelectionEpInfo> ep_infos);
-  /*
-  size_t GetVariantCount() const noexcept;
-
-  Status GetVariantNames(gsl::span<const std::string>& out_variant_names) const;
-
-  Status GetFileCount(const std::string& variant_name,
-                      size_t& out_count) const;
-
-  Status GetFileIdentifiers(const std::string& variant_name,
-                            gsl::span<const std::string>& out_file_identifiers) const;
-
-  Status GetFilePath(const std::string& variant_name,
-                     const char* file_identifier,
-                     std::filesystem::path& out_path) const;
-  */
-
-  const ModelPackageOptions* Options() const noexcept;
 
   Status ResolveVariant();
 
   const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept {
     return component_model_info_.model_variants;
+  }
+
+  const ModelPackageOptions* Options() const noexcept {
+    return options_;
   }
 
   Status GetSelectedVariantFilePaths(gsl::span<const std::filesystem::path>& out_file_paths) const;
@@ -123,6 +110,11 @@ class ModelPackageComponentContext {
   Status GetSelectedVariantFileProviderOptions(size_t file_idx,
                                                gsl::span<const std::string>& out_keys,
                                                gsl::span<const std::string>& out_values) const;
+
+  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList();
+  const std::vector<const OrtEpDevice*>& ExecutionDevices() const;
+  const std::vector<const OrtEpDevice*>& DevicesSelected() const;
+  bool IsFromPolicy() const;
 
  private:
   std::string component_model_name_;
@@ -160,19 +152,6 @@ class ModelPackageContext {
   Status GetModelVariantNames(const std::string& component_name,
                               gsl::span<const std::string>& out_variant_names) const;
 
-  Status GetFileCount(const std::string& component_name,
-                      const std::string& variant_name,
-                      size_t& out_count) const;
-  Status GetFileIdentifiers(const std::string& component_name,
-                            const std::string& variant_name,
-                            gsl::span<const std::string>& out_file_identifiers) const;
-  Status GetFilePath(const std::string& component_name,
-                     const std::string& variant_name,
-                     const char* file_identifier /*may be null*/,
-                     std::filesystem::path& out_path) const;
-
-  const ModelPackageOptions* Options() const noexcept;
-
   const ModelPackageInfo& GetModelPackageInfo() const noexcept {
     return model_package_info_;
   }
@@ -181,61 +160,14 @@ class ModelPackageContext {
     return model_variant_infos_;
   }
 
-  Status GetSelectedVariantModelInfo(const std::string& component_name,
-                                     const char* file_identifier /*may be null*/,
-                                     const VariantModelInfo*& out_model_info) const;
-  Status GetSelectedVariantFileIdentifiers(const std::string& component_name,
-                                           gsl::span<const std::string>& out_file_identifiers) const;
-  Status ResolveSelectedVariantFilePath(const std::string& component_name,
-                                        const char* file_identifier /*may be null*/,
-                                        std::filesystem::path& out_path) const;
-
-  // Convenience API for single-component packages. Will return an error if there are 0 or >1 components.
-  Status GetSelectedVariantFilePath(std::filesystem::path& out_path) const;
-
-  // Resolved EP state (taken from ModelPackageOptions).
-  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList();
-  const std::vector<const OrtEpDevice*>& ExecutionDevices() const;
-  const std::vector<const OrtEpDevice*>& DevicesSelected() const;
-  bool IsFromPolicy() const;
-
-  Status GetSelectedVariantFileSessionOptions(const std::string& component_name,
-                                              const char* file_identifier /*may be null*/,
-                                              gsl::span<const std::string>& out_keys,
-                                              gsl::span<const std::string>& out_values) const;
-
-  Status GetSelectedVariantFileProviderOptions(const std::string& component_name,
-                                               const char* file_identifier /*may be null*/,
-                                               gsl::span<const std::string>& out_keys,
-                                               gsl::span<const std::string>& out_values) const;
-
  private:
-  const ModelPackageOptions* options_{};  // non-owning, immutable config source
+  ModelPackageInfo model_package_info_{};
   std::vector<ModelVariantInfo> model_variant_infos_;
 
-  ModelPackageInfo model_package_info_{};
   std::unordered_map<std::string, size_t> component_name_to_index_{};
   std::vector<std::string> component_names_cache_{};
   mutable std::unordered_map<std::string, std::vector<std::string>> component_to_variant_names_cache_{};
   mutable std::unordered_map<std::string, std::vector<std::string>> variant_to_file_identifiers_cache_{};
-
-  mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
-  mutable std::vector<std::string> selected_variant_session_option_keys_cache_{};
-  mutable std::vector<std::string> selected_variant_session_option_values_cache_{};
-  mutable std::vector<std::string> selected_variant_provider_option_keys_cache_{};
-  mutable std::vector<std::string> selected_variant_provider_option_values_cache_{};
-
-  // Resolved EP state owned by context
-  std::vector<VariantSelectionEpInfo> ep_infos_{};
-  std::vector<const OrtEpDevice*> execution_devices_{};
-  std::vector<const OrtEpDevice*> devices_selected_{};
-  bool from_policy_{false};
-  std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
-
-  Status ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos);
-
-  Status GetSelectedVariantForComponent(const std::string& component_name,
-                                        const ModelVariantInfo*& out_variant) const;
 };
 
 }  // namespace onnxruntime

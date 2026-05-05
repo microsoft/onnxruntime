@@ -20,45 +20,25 @@ ORT_API_STATUS_IMPL(CreateModelPackageContext,
                     _In_ const ORTCHAR_T* package_root,
                     _Outptr_ OrtModelPackageContext** out);
 
-ORT_API_STATUS_IMPL(ModelPackageContext_GetComponentModelCount,
+ORT_API_STATUS_IMPL(ModelPackage_GetComponentModelCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _Out_ size_t* out_count);
 
-ORT_API_STATUS_IMPL(ModelPackageContext_GetComponentModelNames,
+ORT_API_STATUS_IMPL(ModelPackage_GetComponentModelNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                     _Out_ size_t* out_count);
 
-ORT_API_STATUS_IMPL(ModelPackageContext_GetModelVariantCount,
+ORT_API_STATUS_IMPL(ModelPackage_GetModelVariantCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Out_ size_t* out_count);
 
-ORT_API_STATUS_IMPL(ModelPackageContext_GetModelVariantNames,
+ORT_API_STATUS_IMPL(ModelPackage_GetModelVariantNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
                     _Out_ size_t* out_count);
-
-ORT_API_STATUS_IMPL(ModelPackageContext_GetFileCount,
-                    _In_ const OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _In_ const char* variant_name,
-                    _Out_ size_t* out_count);
-
-ORT_API_STATUS_IMPL(ModelPackageContext_GetFileIdentifiers,
-                    _In_ const OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _In_ const char* variant_name,
-                    _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_file_identifiers,
-                    _Out_ size_t* out_count);
-
-ORT_API_STATUS_IMPL(ModelPackageContext_GetFilePath,
-                    _In_ const OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _In_ const char* variant_name,
-                    _In_opt_ const char* file_identifier,
-                    _Outptr_ const ORTCHAR_T** out_path);
 
 ORT_API_STATUS_IMPL(SelectComponent,
                     _In_ const OrtModelPackageContext* context,
@@ -96,38 +76,9 @@ ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFileProviderOptions,
                     _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
                     _Out_ size_t* num_entries);
 
-ORT_API_STATUS_IMPL(ModelPackageContext_GetSelectedVariantFileCount,
-                    _In_ const OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _Out_ size_t* out_count);
-
-ORT_API_STATUS_IMPL(ModelPackageContext_GetSelectedVariantFileIdentifier,
-                    _In_ const OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _In_ size_t index,
-                    _Outptr_ const char** out_file_identifier);
-
-ORT_API_STATUS_IMPL(ModelPackageGetFileSessionOptions,
-                    _In_ const OrtModelPackageContext* context,
-                    _In_ const char* component_name,
-                    _In_opt_ const char* file_identifier,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                    _Out_ size_t* num_entries);
-
-ORT_API_STATUS_IMPL(ModelPackageGetFileProviderOptions,
-                    _In_ const OrtModelPackageContext* context,
-                    _In_ const char* component_name,
-                    _In_opt_ const char* file_identifier,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                    _Out_ size_t* num_entries);
-
 ORT_API_STATUS_IMPL(CreateSession,
                     _In_ const OrtEnv* env,
-                    _In_ OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _In_opt_ const char* file_identifier,
+                    _In_ OrtModelPackageComponentContext* ctx,
                     _In_opt_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtSession** session);
 

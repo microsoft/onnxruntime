@@ -422,9 +422,25 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
       // Select the most suitable model variant based on EP info and model constraints.
       ModelPackageContext model_package_context(package_root);
-      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.ResolveVariant(ep_infos));
+      const auto& package_info = model_package_context.GetModelPackageInfo();
+      const ComponentModelInfo* component_info = nullptr;
 
-      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.GetSelectedVariantFilePath(selected_model_variant_path));
+      if (package_info.component_models.empty()) {
+        return OrtApis::CreateStatus(ORT_FAIL, "No component models found in the model package.");
+      } else if (package_info.component_models.size() > 1) {
+        return OrtApis::CreateStatus(ORT_FAIL,
+                                     "Multiple component models found in the model package. "
+                                     "Currently only single component model is supported.");
+      }
+
+      component_info = &package_info.component_models[0];
+      if (component_info == nullptr) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Component model not found.");
+      }
+
+      ModelPackageComponentContext component_context(component_info->component_model_name, *component_info, ep_infos);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.ResolveVariant());
+      ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.GetSelectedVariantFilePath(selected_model_variant_path));
       model_path_to_use = selected_model_variant_path.c_str();
 
       ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env, model_path_to_use,
@@ -969,7 +985,8 @@ Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>
   return Status::OK();
 }
 
-// Shared tail of the model-package session-creation flow.
+// Create session for model package workflow.
+//
 // Preconditions: caller has already
 //   1. resolved EP selection  -> provider_list (owns the IExecutionProvider instances),
 //   2. selected a model variant -> selected_model_path.
@@ -978,11 +995,11 @@ Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>
 //   a. creates and loads an InferenceSession for selected_model_path,
 //   b. registers the providers from provider_list (moves them into the session),
 //   c. optionally logs auto-EP-selection telemetry when from_policy is true.
-OrtStatus* CreateSessionForResolvedModelPackage(_In_ const OrtSessionOptions* options,
-                                                const onnxruntime::Environment& env,
-                                                const std::filesystem::path& selected_model_path,
-                                                onnxruntime::ModelPackageContext& model_package_context,
-                                                std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
+                                        const onnxruntime::Environment& env,
+                                        const std::filesystem::path& selected_model_path,
+                                        onnxruntime::ModelPackageComponentContext& model_package_context,
+                                        std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options, env,
                                                               selected_model_path.c_str(),
                                                               /*model_data*/ nullptr,

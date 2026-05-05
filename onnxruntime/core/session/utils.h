@@ -27,7 +27,7 @@ class Environment;
 class EpLibrary;
 class EpFactoryInternal;
 class IExecutionProvider;
-class ModelPackageContext;
+class ModelPackageComponentContext;
 struct IExecutionProviderFactory;
 struct SessionOptions;
 struct VariantSelectionEpInfo;
@@ -94,11 +94,11 @@ Status PrintAvailableAndSelectedEpInfos(const Environment& env,
                                         std::vector<VariantSelectionEpInfo>& ep_infos);
 
 // Create session for model package workflow.
-OrtStatus* CreateSessionForResolvedModelPackage(
+OrtStatus* CreateSessionForModelPackage(
     _In_ const OrtSessionOptions* options,
     const onnxruntime::Environment& env,
     const std::filesystem::path& selected_model_path,
-    onnxruntime::ModelPackageContext& model_package_context,
+    onnxruntime::ModelPackageComponentContext& model_package_context,
     std::unique_ptr<onnxruntime::InferenceSession>& sess);
 
 }  // namespace onnxruntime

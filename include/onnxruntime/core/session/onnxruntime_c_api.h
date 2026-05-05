@@ -8570,62 +8570,49 @@ struct OrtInteropApi {
 struct OrtModelPackageApi {
   /// \name OrtModelPackageOptions
   /// @{
-  ORT_CLASS_RELEASE(ModelPackageOptions);
-
   ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
                   _In_ const OrtEnv* env,
                   _In_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtModelPackageOptions** out);
+
+  ORT_CLASS_RELEASE(ModelPackageOptions);
   /// @}
   /// \name OrtModelPackageContext
   /// @{
-
-  ORT_CLASS_RELEASE(ModelPackageContext);
-
   ORT_API2_STATUS(CreateModelPackageContext,
                   _In_ const ORTCHAR_T* package_root,
                   _Outptr_ OrtModelPackageContext** out);
 
-  ORT_API2_STATUS(ModelPackageContext_GetComponentModelCount,
+  ORT_CLASS_RELEASE(ModelPackageContext);
+
+  ORT_API2_STATUS(ModelPackage_GetComponentModelCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackageContext_GetComponentModelNames,
+  ORT_API2_STATUS(ModelPackage_GetComponentModelNames,
                   _In_ const OrtModelPackageContext* ctx,
                   _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackageContext_GetModelVariantCount,
+  ORT_API2_STATUS(ModelPackage_GetModelVariantCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackageContext_GetModelVariantNames,
+  ORT_API2_STATUS(ModelPackage_GetModelVariantNames,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackageContext_GetFileCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _Out_ size_t* out_count);
-
-  ORT_API2_STATUS(ModelPackageContext_GetFileIdentifiers,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_file_identifiers,
-                  _Out_ size_t* out_count);
-
-  ORT_API2_STATUS(ModelPackageContext_GetFilePath,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _In_opt_ const char* file_identifier,
-                  _Outptr_ const ORTCHAR_T** out_path);
-
+  /** \brief Select a component model and return an opaque component instance.
+   *
+   * The variant selection is also performed during this call based on the component metadata and the provided options.
+   * The returned `OrtModelPackgeComponentContext*` is independent of `context` lifetime and must be released via
+   * `ReleaseComponentInstance`.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(SelectComponent,
                   _In_ const OrtModelPackageContext* context,
                   _In_ const char* component_name,
@@ -8647,6 +8634,13 @@ struct OrtModelPackageApi {
                   _In_ size_t file_idx,
                   _Outptr_ const ORTCHAR_T** out_path);
 
+  /** \brief Get session options for the specific model file within the selected variant as flat key/value entries.
+   *
+   * Returns NULL/empty arrays when none specified.
+   * Memory is owned by `ctx` and valid until the next model-package query call on that context.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFileSessionOptions,
                   _In_ const OrtModelPackageComponentContext* ctx,
                   _In_ size_t file_idx,
@@ -8654,69 +8648,19 @@ struct OrtModelPackageApi {
                   _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
                   _Out_ size_t* num_entries);
 
+  /** \brief Get provider options for the specific model file within the selected variant as flat key/value entries.
+   *
+   * Returns NULL/empty arrays when none specified.
+   * Memory is owned by `ctx` and valid until the next model-package query call on that context.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFileProviderOptions,
                   _In_ const OrtModelPackageComponentContext* ctx,
                   _In_ size_t file_idx,
                   _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
                   _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
                   _Out_ size_t* num_entries);
-
-  /** \brief Get session options for a selected file as flat key/value entries.
-   *
-   * Returns NULL/empty arrays when none specified.
-   * Memory is owned by `context` and valid until the next model-package query call on that context.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageGetFileSessionOptions,
-                  _In_ const OrtModelPackageContext* context,
-                  _In_ const char* component_name,
-                  _In_opt_ const char* file_identifier,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                  _Out_ size_t* num_entries);
-
-  /** \brief Get provider options for a selected file as flat key/value entries.
-   *
-   * EP-name nesting is not included (selected EP is already known).
-   * Returns NULL/empty arrays when none specified.
-   * Memory is owned by `context` and valid until the next model-package query call on that context.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageGetFileProviderOptions,
-                  _In_ const OrtModelPackageContext* context,
-                  _In_ const char* component_name,
-                  _In_opt_ const char* file_identifier,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                  _Out_ size_t* num_entries);
-
-  /** \brief Select a component model and return an opaque component instance.
-   *
-   * The model variant selection is also performed during this API call.
-   * The returned `OrtModelPackgeComponentContext*` is independent of `context` lifetime and must be released via
-   * `ReleaseComponentInstance`.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(SelectComponent,
-                  _In_ const OrtModelPackageContext* context,
-                  _In_ const char* component_name,
-                  _In_ const OrtModelPackageOptions* options,
-                  _Outptr_ OrtModelPackageComponentContext** out);
-
-  ORT_CLASS_RELEASE(ModelPackageComponentContext);
-
-  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _Out_ size_t* out_count);
-  ORT_API2_STATUS(ModelPackageContext_GetSelectedVariantFileIdentifier,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ size_t index,
-                  _Outptr_ const char** out_file_identifier);
 
   /// @}
   /** \brief Create an OrtSession for a selected file within a component model variant.
@@ -8740,9 +8684,7 @@ struct OrtModelPackageApi {
    */
   ORT_API2_STATUS(CreateSession,
                   _In_ const OrtEnv* env,
-                  _In_ OrtModelPackageContext* context,
-                  _In_ const char* component_name,
-                  _In_opt_ const char* file_identifier,
+                  _In_ OrtModelPackageComponentContext* context,
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtSession** session);
 
