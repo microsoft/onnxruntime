@@ -38,8 +38,8 @@ parameters:
    - MinSizeRel
 
 stages:
-    # Parameter validation. Always runs as the first stage so it serves as a single,
-    # explicit `dependsOn` anchor for every downstream platform-build template.
+    # Parameter validation. Runs first and unconditionally so it serves as a single,
+    # explicit dependency anchor for every downstream platform-build template.
     - stage: Validate_Parameters
       displayName: 'Validate parameters'
       dependsOn: []
