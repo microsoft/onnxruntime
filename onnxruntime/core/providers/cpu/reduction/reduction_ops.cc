@@ -7,6 +7,8 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/providers/common.h"
+
+#include <set>
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
@@ -879,25 +881,35 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
     return false;
   }
 
-  // input is an empty set
+  // input is an empty set — resolve effective axes
   std::vector<int64_t> input_axes;
   if (ctx->InputCount() == 2) {
     ORT_ENFORCE(axes.empty(), "Axes input and attribute should not both be present for reduction.");
-    // second input holds the axes.
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.insert(input_axes.begin(), data, data + nDims);
+    if (axes_tensor != nullptr) {
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
+      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
+      const auto* data = axes_tensor->Data<int64_t>();
+      input_axes.insert(input_axes.begin(), data, data + nDims);
+    }
+    // axes_tensor == nullptr means no axes provided → reduce all dims
   } else {
     input_axes.resize(axes.size());
     std::copy(axes.begin(), axes.end(), input_axes.begin());
   }
 
-  gsl::span<const int64_t> shape_dims = input_shape.GetDims();
-  const int64_t input_shape_size = narrow<int64_t>(shape_dims.size());
+  // Normalize negative axes
+  const int64_t rank = narrow<int64_t>(input_shape.NumDimensions());
+  for (auto& axis : input_axes) {
+    axis = HandleNegativeAxis(axis, rank);
+  }
+
+  // Build reduced output shape
+  std::set<int64_t> reduced_axes(input_axes.begin(), input_axes.end());
   TensorShapeVector output_shape_vector;
-  for (int64_t i = 0; i < input_shape_size; ++i) {
-    if (input_axes.empty() || std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
+  for (int64_t i = 0; i < rank; ++i) {
+    bool is_reduced = reduced_axes.empty() || reduced_axes.count(i) > 0;
+    if (is_reduced) {
       if (keepdims) {
         output_shape_vector.push_back(1);
       }
@@ -968,14 +980,19 @@ template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                        bool noop_with_empty_axes) {
-  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
+  // Resolve effective axes first (from input tensor or attribute).
+  TensorShapeVector tmp_axes;
+  auto effective_axes = GetEffectiveAxes(ctx, axes_, tmp_axes);
+
+  // noop_with_empty_axes takes precedence: if no axes, copy input as-is
+  // (applying element-wise transforms if any). This applies even to empty
+  // tensors — a {1,0} input should stay {1,0}, not be reduced to scalar.
+  if (effective_axes.empty() && noop_with_empty_axes) {
+    ApplyNoopEmptyAxesElementwise<AGG>(ctx);
     return;
   }
 
-  TensorShapeVector tmp_axes;
-  auto effective_axes = GetEffectiveAxes(ctx, axes_, tmp_axes);
-  if (effective_axes.empty() && noop_with_empty_axes) {
-    ApplyNoopEmptyAxesElementwise<AGG>(ctx);
+  if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
     return;
   }
 

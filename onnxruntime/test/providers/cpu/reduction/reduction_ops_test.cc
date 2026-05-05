@@ -6531,5 +6531,84 @@ TEST(ReductionOpTest, ReduceMean_EmptyTensor_MultiDim) {
   test.Run();
 }
 
+// --- Negative axes + empty tensor ---
+
+TEST(ReductionOpTest, ReduceSum_EmptyTensor_NegativeAxis) {
+  // {1, 0} reduce axis -1 (= axis 1) → {1}, identity = 0
+  OpTester test("ReduceSum", 13);
+  test.AddAttribute("keepdims", int64_t(0));
+  test.AddInput<float>("data", {1, 0}, {});
+  test.AddInput<int64_t>("axes", {1}, {-1});
+  test.AddOutput<float>("reduced", {1}, {0.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_EmptyTensor_NegativeAxis) {
+  // {2, 0, 3} reduce axis -2 (= axis 1) → {2, 3}, identity = -inf
+  OpTester test("ReduceMax", 18);
+  test.AddAttribute("keepdims", int64_t(0));
+  test.AddInput<float>("data", {2, 0, 3}, {});
+  test.AddInput<int64_t>("axes", {1}, {-2});
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  test.AddOutput<float>("reduced", {2, 3}, {neg_inf, neg_inf, neg_inf, neg_inf, neg_inf, neg_inf});
+  test.Run();
+}
+
+// --- noop_with_empty_axes + empty tensor ---
+
+TEST(ReductionOpTest, ReduceSum_EmptyTensor_NoopWithEmptyAxes) {
+  // {1, 0} with noop_with_empty_axes=1 and no axes → no-op, shape preserved
+  OpTester test("ReduceSum", 13);
+  test.AddAttribute("keepdims", int64_t(0));
+  test.AddAttribute("noop_with_empty_axes", int64_t(1));
+  test.AddInput<float>("data", {1, 0}, {});
+  // No axes input → noop: output = input (same shape {1, 0}, empty)
+  test.AddOutput<float>("reduced", {1, 0}, {});
+  test.Run();
+}
+
+// --- Default axes + keepdims + empty tensor ---
+
+TEST(ReductionOpTest, ReduceSum_EmptyTensor_DefaultAxes_KeepDims) {
+  // {1, 0} reduce all axes with keepdims → {1, 1}, identity = 0
+  OpTester test("ReduceSum", 13);
+  test.AddAttribute("keepdims", int64_t(1));
+  test.AddAttribute("noop_with_empty_axes", int64_t(0));
+  test.AddInput<float>("data", {1, 0}, {});
+  test.AddOutput<float>("reduced", {1, 1}, {0.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_EmptyTensor_DefaultAxes_KeepDims) {
+  // {1, 0} reduce all axes with keepdims → {1, 1}, identity = -inf
+  OpTester test("ReduceMax", 18);
+  test.AddAttribute("keepdims", int64_t(1));
+  test.AddInput<float>("data", {1, 0}, {});
+  test.AddOutput<float>("reduced", {1, 1}, {-std::numeric_limits<float>::infinity()});
+  test.Run();
+}
+
+// --- Bool reduction + empty tensor ---
+
+TEST(ReductionOpTest, ReduceMax_Bool_EmptyTensor) {
+  // ReduceMax on empty bool set → false
+  OpTester test("ReduceMax", 18);
+  test.AddAttribute("keepdims", int64_t(0));
+  test.AddInput<bool>("data", {1, 0}, {});
+  test.AddInput<int64_t>("axes", {1}, {1});
+  test.AddOutput<bool>("reduced", {1}, {false});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_Bool_EmptyTensor) {
+  // ReduceMin on empty bool set → true
+  OpTester test("ReduceMin", 18);
+  test.AddAttribute("keepdims", int64_t(0));
+  test.AddInput<bool>("data", {1, 0}, {});
+  test.AddInput<int64_t>("axes", {1}, {1});
+  test.AddOutput<bool>("reduced", {1}, {true});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

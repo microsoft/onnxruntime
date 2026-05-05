@@ -303,9 +303,12 @@ Status PrepareForReduce(const Tensor* X,
     }
   } else {
     // no axes provided (i.e.) default axes  => reduce on all dims
+    // Each reduced dim becomes 1 (even if the original dim was 0 — the
+    // reduction collapses the axis regardless of its size).
     prepare_reduce_metadata.output_dims.reserve(input_dims.size());
-    for (auto dim : input_dims) {
-      prepare_reduce_metadata.output_dims.push_back(dim == 0 ? 0 : 1);
+    for (size_t i = 0; i < input_dims.size(); ++i) {
+      prepare_reduce_metadata.output_dims.push_back(1);
+      reduced[i] = true;
     }
   }
 
@@ -370,12 +373,41 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
     // Empty input reduction: output may still be non-empty when only some
-    // axes are reduced. Per ONNX spec, fill with the reduction identity:
-    // Sum/Mean→0, Prod→1, Min→+inf, Max→-inf, L1/L2/SumSquare→0.
-    // ReduceComputeCore handles Sum, SumSquare, Mean, L1, L2 (identity=0).
+    // axes are reduced. Per ONNX spec, fill with the reduction identity.
     if (output_count > 0) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0,
-                                           output.SizeInBytes(), stream));
+      if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_AVG) {
+        // ReduceMean on empty set is undefined (0/0). Fill with NaN.
+        T nan_val = std::numeric_limits<T>::has_quiet_NaN
+                        ? std::numeric_limits<T>::quiet_NaN()
+                        : T(0);
+        std::vector<T> nans(output_count, nan_val);
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), nans.data(),
+                                             output.SizeInBytes(), cudaMemcpyHostToDevice, stream));
+      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {
+        // ReduceProd identity is 1.
+        T one_val = T(1);
+        std::vector<T> ones(output_count, one_val);
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), ones.data(),
+                                             output.SizeInBytes(), cudaMemcpyHostToDevice, stream));
+      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {
+        T inf_val = std::numeric_limits<T>::has_infinity
+                        ? std::numeric_limits<T>::infinity()
+                        : std::numeric_limits<T>::max();
+        std::vector<T> vals(output_count, inf_val);
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), vals.data(),
+                                             output.SizeInBytes(), cudaMemcpyHostToDevice, stream));
+      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {
+        T neg_inf_val = std::numeric_limits<T>::has_infinity
+                            ? -std::numeric_limits<T>::infinity()
+                            : std::numeric_limits<T>::lowest();
+        std::vector<T> vals(output_count, neg_inf_val);
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), vals.data(),
+                                             output.SizeInBytes(), cudaMemcpyHostToDevice, stream));
+      } else {
+        // Sum, SumSquare, L1, L2: identity is 0.
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0,
+                                             output.SizeInBytes(), stream));
+      }
     }
     return Status::OK();
   }

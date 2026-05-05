@@ -386,8 +386,10 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
   inline void update(const T& v) { this->accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
 
   static void fill_for_empty_set(Tensor& output) {
-    if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
-      ORT_NOT_IMPLEMENTED();
+    if constexpr (std::is_same_v<bool, T>) {
+      // ONNX spec: ReduceMax on empty bool set → false (boolean zero/identity)
+      auto* data = output.MutableData<bool>();
+      std::fill(data, data + output.Shape().Size(), false);
     } else {
       EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
     }
@@ -596,8 +598,10 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
   inline void update(const T& v) { this->accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
 
   static void fill_for_empty_set(Tensor& output) {
-    if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
-      ORT_NOT_IMPLEMENTED();
+    if constexpr (std::is_same_v<bool, T>) {
+      // ONNX spec: ReduceMin on empty bool set → true (boolean max/identity)
+      auto* data = output.MutableData<bool>();
+      std::fill(data, data + output.Shape().Size(), true);
     } else {
       EigenMap<T>(output).array() = std::numeric_limits<T>::infinity();
     }
