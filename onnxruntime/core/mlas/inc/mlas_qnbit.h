@@ -322,7 +322,8 @@ MlasLutGemmPackedSize(
  * @param[in]   QuantBZeroPoint     quantized B zero points (nullptr if HasZeroPoint is false).
  *                                  When IsFloatZeroPoint is false, this is packed uint8 data.
  *                                  When IsFloatZeroPoint is true, this is a float array with one
- *                                  value per quantization group, shape (N, K/BlkLen).
+ *                                  value per quantization group, shape (N, ceil(K/BlkLen)).
+ *                                  Only the first K/BlkLen groups per row are used by the packer.
  * @param[in]   IsFloatZeroPoint    if true, QuantBZeroPoint is interpreted as const float*
  * @param[out]  PackedBuf           output buffer (must be at least MlasLutGemmPackedSize bytes)
  * @param[in]   ThreadPool          thread pool for parallel packing
