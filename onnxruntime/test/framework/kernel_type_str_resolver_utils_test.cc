@@ -86,7 +86,7 @@ TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformatio
   ASSERT_FALSE(resolved_args.empty());
 }
 
-TEST(KernelTypeStrResolverUtilsTest, SavedOrtModelResolverContainsNhwcFusedConv) {
+TEST(KernelTypeStrResolverUtilsTest, LoadedOrtModelResolverCanResolveNhwcFusedConv) {
   const auto ort_model_path = std::filesystem::temp_directory_path() / "nhwc_fused_conv_resolver_test.ort";
   std::error_code remove_ec;
   std::filesystem::remove(ort_model_path, remove_ec);
@@ -98,6 +98,10 @@ TEST(KernelTypeStrResolverUtilsTest, SavedOrtModelResolverContainsNhwcFusedConv)
   InferenceSessionWrapper session{so, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.onnx")));
   ASSERT_STATUS_OK(session.Initialize());
+
+  InferenceSessionWrapper loaded_session{SessionOptions{}, GetEnvironment()};
+  ASSERT_STATUS_OK(loaded_session.Load(ort_model_path.native()));
+  ASSERT_STATUS_OK(loaded_session.Initialize());
 
   std::ifstream ort_model_stream(ort_model_path, std::ios::in | std::ios::binary);
   ASSERT_TRUE(ort_model_stream.good());
@@ -115,6 +119,8 @@ TEST(KernelTypeStrResolverUtilsTest, SavedOrtModelResolverContainsNhwcFusedConv)
 
   KernelTypeStrResolver resolver;
   ASSERT_STATUS_OK(resolver.LoadFromOrtFormat(*fbs_session->kernel_type_str_resolver()));
+  ASSERT_STATUS_OK(
+      kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(resolver));
 
   Model model("nhwc_fused_conv_saved_ort_model_resolver_test", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
