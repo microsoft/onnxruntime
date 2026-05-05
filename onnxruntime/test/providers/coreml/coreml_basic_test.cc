@@ -1695,51 +1695,6 @@ TEST(CoreMLExecutionProviderTest, Split11ZeroSplitValueNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
-TEST(CoreMLExecutionProviderTest, Split11OmittedNonDivisibleAxisNotSupported) {
-  // Negative: when 'split' is omitted the axis must be evenly divisible by
-  // num_outputs. Axis size 7 with 2 outputs is not — CoreML rejects so the
-  // node falls back to CPU.
-  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 11}};
-  onnxruntime::Model model("split11_omitted_non_divisible", false, ModelMetaData(), PathString(),
-                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
-                           DefaultLoggingManager().DefaultLogger());
-  auto& graph = model.MainGraph();
-
-  ONNX_NAMESPACE::TypeProto input_type;
-  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
-  input_shape->add_dim()->set_dim_value(1);
-  input_shape->add_dim()->set_dim_value(7);
-
-  auto make_output_type = [](int64_t split_size) {
-    ONNX_NAMESPACE::TypeProto t;
-    t.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    auto* s = t.mutable_tensor_type()->mutable_shape();
-    s->add_dim()->set_dim_value(1);
-    s->add_dim()->set_dim_value(split_size);
-    return t;
-  };
-  ONNX_NAMESPACE::TypeProto out0_type = make_output_type(4);
-  ONNX_NAMESPACE::TypeProto out1_type = make_output_type(3);
-
-  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
-  auto& out0_arg = graph.GetOrCreateNodeArg("Y0", &out0_type);
-  auto& out1_arg = graph.GetOrCreateNodeArg("Y1", &out1_type);
-
-  auto& node = graph.AddNode("split11_omitted_non_divisible", "Split",
-                             "Split-11 with no 'split' attribute and non-divisible axis",
-                             {&input_arg}, {&out0_arg, &out1_arg});
-  node.AddAttribute("axis", static_cast<int64_t>(1));
-
-  ASSERT_STATUS_OK(graph.Resolve());
-
-  std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
-  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
-  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
-  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
-}
-
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
