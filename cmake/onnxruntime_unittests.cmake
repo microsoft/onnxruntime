@@ -1609,8 +1609,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
 endif()
 
-
-  if(onnxruntime_USE_QNN)
+  # Build ep_weight_sharing_ctx_gen for all supported EPs (QNN, TensorRT, OpenVINO, VitisAI)
+  if(onnxruntime_USE_QNN OR onnxruntime_USE_TENSORRT OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_VITISAI)
     #qnn ctx generator
     set(ep_weight_sharing_ctx_gen_src_dir ${TEST_SRC_DIR}/ep_weight_sharing_ctx_gen)
     set(ep_weight_sharing_ctx_gen_src_patterns
