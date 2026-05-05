@@ -22,6 +22,7 @@ It requires:
   - Boolean padding mask (converted to seqlens_k internally)
 """
 
+import math
 import os
 import unittest
 from unittest.mock import patch
@@ -1915,6 +1916,321 @@ class TestONNXAttentionFlashGQASoftcap(unittest.TestCase):
             rtol=rtol["fp16"],
             atol=atol["fp16"],
         )
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionGQAAsymmetricHeadSize(unittest.TestCase):
+    """
+    Regression tests for GQA + asymmetric Q/V head sizes (head_size != v_head_size).
+
+    Guards against the silent-broken-output regression that was fixed by PR #28358
+    (microsoft/onnxruntime#28357). Before #28358, the GQA unfused path's
+    LaunchUngroup ENFORCEd head_size == v_head_size, hard-erroring at runtime, and
+    the MEA eligibility predicate did not exclude the asymmetric case, leading to
+    NaN / OOB reads when MEA was attempted on an asymmetric V tile.
+
+    These tests pin down the post-fix behaviour by running an asymmetric-GQA
+    config (q_num_heads=8, kv_num_heads=1, q/k head_size=32, v_head_size=64,
+    self-attention seq_len=4) on both fp16 and bf16 and asserting numerical
+    parity with the reference.
+
+    Asymmetric GQA always falls through to the unfused path on CUDA per the
+    (!is_gqa || head_size == v_head_size) clause of the MEA eligibility
+    predicate at core/providers/cuda/llm/attention.cc.
+    """
+
+    def _run_asymmetric_gqa_prompt(self, torch_type, ort_type):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            q_num_heads=8,
+            kv_num_heads=1,  # MQA: kv_num_heads=1, q_num_heads=8
+            head_size=32,  # small so the test runs fast on H100
+            v_head_size=64,  # asymmetric: V head twice as large as Q/K head
+            is_causal=1,
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        std = 0.2
+
+        q = (
+            torch.randn(
+                config.batch_size,
+                config.q_sequence_length,
+                config.q_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * std
+        )
+        k = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * std
+        )
+        v = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.v_head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * std
+        )
+
+        out_ref, _ = attention_ref(q=q, k=k, v=v, causal=True)
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+        )
+
+        out_ort = torch.reshape(
+            out_ort,
+            (config.batch_size, config.q_sequence_length, config.q_num_heads, config.v_head_size),
+        )
+
+        out_np = out_ort.to(torch.float32).detach().cpu().numpy()
+        out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+        # Sanity: no NaN propagation from the previously-broken asymmetric path.
+        self.assertFalse(numpy.isnan(out_np).any(), "NaN in output — asymmetric GQA path regressed")
+        # fp16/bf16 attention has wide tolerance bands when reductions are reordered.
+        atol_key = "fp16" if torch_type == torch.float16 else "bf16"
+        rtol_key = atol_key
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol[rtol_key], atol=atol[atol_key])
+
+    def test_gqa_asymmetric_v_head_size_prompt_fp16(self):
+        self._run_asymmetric_gqa_prompt(torch.float16, TensorProto.FLOAT16)
+
+    def test_gqa_asymmetric_v_head_size_prompt_bf16(self):
+        if not torch.cuda.is_bf16_supported():
+            self.skipTest("BFloat16 not supported on this device")
+        self._run_asymmetric_gqa_prompt(torch.bfloat16, TensorProto.BFLOAT16)
+
+
+@unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionGQAHeadSizeMod4(unittest.TestCase):
+    """
+    Sweep tests for the host-side head_size % 4 == 0 MEA eligibility guard (HS4).
+
+    The HS4 host-side gate at core/providers/cuda/llm/attention.cc is a
+    forward-looking alignment floor: Cutlass FMHA's BiasLoader uses a 128-bit /
+    sizeof_bits-element load for Q/bias tiles (= 4 elements for fp32,
+    8 for fp16/bf16), and head_size is the inner stride of those loads.
+
+    Today the HS4 clause is REDUNDANT because has_memory_efficient_attention()
+    already requires (qk_head_size & 7) == 0, which strictly implies %4. So
+    head_size values like 6, 10, 12 are filtered by the upstream %8 gate before
+    HS4 is ever consulted; this test merely verifies the fall-through (unfused)
+    path stays correct for those values. Once microsoft/onnxruntime#28365
+    relaxes the BiasLoader alignment check (and the upstream %8 invariant goes
+    away), this test will start exercising the HS4 host-side gate directly.
+    """
+
+    def _run_with_head_size(self, head_size, torch_type, ort_type):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,  # GQA on CUDA requires self-attention
+            q_num_heads=4,
+            kv_num_heads=2,  # GQA
+            head_size=head_size,
+            is_causal=1,
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        std = 0.2
+
+        q = torch.randn(1, 4, 4, head_size, device=device, dtype=torch_type) * std
+        k = torch.randn(1, 4, 2, head_size, device=device, dtype=torch_type) * std
+        v = torch.randn(1, 4, 2, head_size, device=device, dtype=torch_type) * std
+
+        out_ref, _ = attention_ref(q=q, k=k, v=v, causal=True)
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+        )
+        out_ort = torch.reshape(out_ort, (1, 4, 4, head_size))
+
+        out_np = out_ort.to(torch.float32).detach().cpu().numpy()
+        out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+        self.assertFalse(
+            numpy.isnan(out_np).any(),
+            f"NaN in output for head_size={head_size} — fall-through path regressed",
+        )
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+    @parameterized.expand([(hs,) for hs in (6, 10, 12, 16, 24)])
+    def test_gqa_head_size_modulo_4_sweep_fp16(self, head_size):
+        # Today's routing for these head_size values (HS4 is redundant with MEA's %8 gate):
+        #   - 6, 10, 12 are filtered upstream by has_memory_efficient_attention()'s %8
+        #     check, so they take the unfused fall-through path. This test verifies the
+        #     fall-through stays numerically correct.
+        #   - 16, 24 satisfy MEA's %8 gate AND HS4's %4 gate (no attn_mask keeps the
+        #     kernel selection simple) — exercises the MEA "happy path".
+        # Once microsoft/onnxruntime#28365 relaxes MEA's %8 invariant, head_size 6/10
+        # will start exercising the HS4 host-side gate directly.
+        self._run_with_head_size(head_size, torch.float16, TensorProto.FLOAT16)
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionGQAOutputQK(unittest.TestCase):
+    """
+    Tests that GQA + qk_matmul_output_mode == 0 (raw QK output) works.
+
+    Issue #28351 sub-item 1c: the output_qk path was implemented in the unfused
+    kernel but lacked test coverage for the GQA + raw-QK combination. The
+    output_qk shape is [batch, q_num_heads, q_seq, total_seq]; the unfused
+    kernel indexes per Q-head, and attention_helper.h infers the shape from
+    q_num_heads, so this combination should already work — these tests pin it.
+
+    Note: GQA on CUDA requires fp16/bf16 (the MEA fp32-GQA path is excluded
+    by the predicate in attention.cc; the unfused path requires LaunchUngroup
+    which only has fp16/bf16 instantiations).
+    """
+
+    def test_gqa_output_qk_raw_prompt_fp16(self):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            q_num_heads=8,
+            kv_num_heads=2,
+            head_size=32,
+            is_causal=1,
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        std = 0.2
+
+        q = torch.randn(1, 4, 8, 32, device=device, dtype=torch_type) * std
+        k = torch.randn(1, 4, 2, 32, device=device, dtype=torch_type) * std
+        v = torch.randn(1, 4, 2, 32, device=device, dtype=torch_type) * std
+
+        # Reference output_qk: raw scaled QK (no mask, no softcap, no softmax).
+        # Mode kQK == 0 outputs raw Q*K^T / sqrt(d) as the spec defines.
+        q_f, k_f = q.float(), k.float()
+        # Repeat K heads for GQA (kv_num_heads=2, q_num_heads=8 -> repeat factor 4)
+        k_rep = k_f.repeat_interleave(q.shape[2] // k.shape[2], dim=2)
+        ref_qk = torch.einsum("bthd,bshd->bhts", q_f, k_rep) / math.sqrt(q.shape[-1])
+
+        # Run ORT with output_qk=0 (kQK in the C++ enum: raw scaled QK).
+        _out_ort, _, _, qk_ort = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+            output_qk=0,  # kQK: raw scaled QK
+        )
+
+        qk_np = qk_ort.to(torch.float32).detach().cpu().numpy()
+        ref_qk_np = ref_qk.detach().cpu().numpy()
+        self.assertFalse(numpy.isnan(qk_np).any(), "NaN in output_qk")
+        self.assertEqual(
+            qk_np.shape,
+            (1, 8, 4, 4),
+            "output_qk shape must be [batch, q_num_heads, q_seq, total_seq]",
+        )
+        numpy.testing.assert_allclose(qk_np, ref_qk_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionGQASoftcapFloat32(unittest.TestCase):
+    """
+    Issue #28351 sub-item 1e: softcap coverage for the fp32 path.
+
+    fp32 GQA on CUDA always falls through to the unfused path (the MEA
+    predicate at attention.cc explicitly excludes is_gqa && std::is_same<T,
+    float>::value because LaunchUngroup has no fp32 instantiation). Existing
+    softcap tests are fp16/bf16; this test pins the fp32 + softcap +
+    asymmetric-or-symmetric-GQA combination so future kernel changes can't
+    silently break the unfused softcap branch for fp32.
+    """
+
+    def _run_softcap_fp32(self, head_size, v_head_size=None):
+        # v_head_size=None means "same as head_size" (symmetric V).
+        effective_v_head_size = v_head_size if v_head_size is not None else head_size
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,  # GQA on CUDA requires self-attention
+            q_num_heads=4,
+            kv_num_heads=2,
+            head_size=head_size,
+            # AttentionConfig.v_head_size uses 0 as the "same as head_size" sentinel
+            # (defined in common.py); translate from the test-local None convention.
+            v_head_size=v_head_size if v_head_size is not None else 0,
+            is_causal=1,
+            softcap=2.0,  # small softcap exposes ordering / clipping issues
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        torch_type = torch.float32
+        ort_type = TensorProto.FLOAT
+        std = 0.5
+
+        q = torch.randn(1, 4, 4, head_size, device=device, dtype=torch_type) * std
+        k = torch.randn(1, 4, 2, head_size, device=device, dtype=torch_type) * std
+        v = torch.randn(1, 4, 2, effective_v_head_size, device=device, dtype=torch_type) * std
+
+        out_ref, _ = attention_ref(q=q, k=k, v=v, causal=True, softcap=2.0)
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+        )
+        out_ort = torch.reshape(out_ort, (1, 4, 4, effective_v_head_size))
+
+        out_np = out_ort.to(torch.float32).detach().cpu().numpy()
+        out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+        self.assertFalse(numpy.isnan(out_np).any())
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp32"], atol=atol["fp32"])
+
+    def test_gqa_softcap_fp32_symmetric(self):
+        self._run_softcap_fp32(head_size=16, v_head_size=None)
+
+    def test_gqa_softcap_fp32_asymmetric_v_head(self):
+        self._run_softcap_fp32(head_size=16, v_head_size=32)
 
 
 if __name__ == "__main__":

@@ -100,10 +100,19 @@ def create_attention_node_and_io(
     config: AttentionConfig,
     ort_type,
     is_past=False,
-    output_qk: int = 0,  # CUDA does not support output_qk for GQA path
+    output_qk: int | None = None,
 ):
     """
     Create ONNX Attention op node and I/O definitions for testing.
+
+    output_qk: when set, enables the optional 4th output `output_qk` and sets
+    the `qk_matmul_output_mode` attribute to this value (0=kQK raw, 1=kQKMask,
+    2=kQKSoftCap, 3=kQKSoftMax). When None (default), the 4th output is not
+    emitted and the attribute defaults to 0.
+
+    NOTE: API contract — `output_qk=0` ENABLES the 4th output in raw-QK mode;
+    `output_qk=None` (the default) DISABLES it. Do not pass 0 expecting it to
+    mean "disabled" — pass None instead.
 
     ONNX Attention op (opset 23/24) inputs:
     - 0: Q (query) - required
@@ -142,7 +151,8 @@ def create_attention_node_and_io(
         "present_value",
     ]
 
-    if output_qk > 0:
+    enable_output_qk = output_qk is not None
+    if enable_output_qk:
         outputs.append("output_qk")
 
     # ONNX Attention op inputs: Q, K, V, attn_mask, past_key, past_value
@@ -171,7 +181,7 @@ def create_attention_node_and_io(
         kv_num_heads=config.kv_num_heads,
         q_num_heads=config.q_num_heads,
         softcap=config.softcap,
-        qk_matmul_output_mode=output_qk,
+        qk_matmul_output_mode=output_qk if enable_output_qk else 0,
         domain="",  # ai.onnx domain
     )
 
@@ -284,7 +294,7 @@ def create_attention_node_and_io(
         helper.make_tensor_value_info("present_value", cache_ort_type, output_v_shape),
     ]
 
-    if output_qk > 0:
+    if enable_output_qk:
         graph_output.append(
             helper.make_tensor_value_info(
                 "output_qk",
@@ -301,9 +311,9 @@ def _get_opset_version(config: AttentionConfig):
     return 24 if config.has_nonpad_kv_seqlen else 23
 
 
-def create_attention_graph_prompt(config: AttentionConfig, ort_type):
+def create_attention_graph_prompt(config: AttentionConfig, ort_type, output_qk: int | None = None):
     """Create ONNX graph for prompt phase (no past KV cache)."""
-    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False)
+    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False, output_qk=output_qk)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
     opset = _get_opset_version(config)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
@@ -380,6 +390,7 @@ def attention_prompt_func(
     device,
     ort_type=TensorProto.FLOAT16,
     nonpad_kv_seqlen=None,
+    output_qk: int | None = None,
 ):
     """
     Run ONNX Attention op for prompt phase (no past KV cache).
@@ -394,6 +405,12 @@ def attention_prompt_func(
         device: Device string (e.g., "cuda")
         ort_type: ONNX tensor type
         nonpad_kv_seqlen: Optional int64 tensor [batch_size] for opset 24
+        output_qk: When not None, enables the optional 4th output `output_qk`
+            and sets the `qk_matmul_output_mode` attribute to this value
+            (0=kQK raw, 1=kQKMask, 2=kQKSoftCap, 3=kQKSoftMax). The function
+            then returns a 4-tuple (out, present_k, present_v, qk) instead
+            of the usual 3-tuple. NOTE: pass None (the default) to DISABLE;
+            `output_qk=0` enables the 4th output in raw-QK mode.
     """
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -405,6 +422,7 @@ def attention_prompt_func(
     onnx_model_str = create_attention_graph_prompt(
         config=config,
         ort_type=ort_type,
+        output_qk=output_qk,
     )
 
     # Reshape inputs for ONNX graph
@@ -476,8 +494,19 @@ def attention_prompt_func(
     bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
+    output_qk_torch = None
+    if output_qk is not None:
+        output_qk_torch = torch.zeros(
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, present_seqlen),
+            dtype=out_dtype,
+            device=device,
+        )
+        bind_output_tensor(io_binding, "output_qk", output_qk_torch, device, ort_type)
+
     ort_session.run_with_iobinding(io_binding)
 
+    if output_qk is not None:
+        return out_torch, present_k, present_v, output_qk_torch
     return out_torch, present_k, present_v
 
 
