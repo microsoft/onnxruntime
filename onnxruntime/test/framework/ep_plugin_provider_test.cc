@@ -11,13 +11,17 @@
 #include "gtest/gtest.h"
 
 #include "core/common/logging/sinks/file_sink.h"
+#include "core/framework/config_options.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/resource_accountant.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"
 #include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
@@ -1413,6 +1417,100 @@ TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
     ASSERT_EQ(ep->GetGraphCaptureNodeAssignmentPolicy(), OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP);
     ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
   }
+}
+
+// Helper: create a no-threshold resource accountant via the real factory (config ",").
+static IResourceAccountant* CreateNoThresholdAccountant(std::optional<ResourceAccountantMap>& acc_map) {
+  ConfigOptions config;
+  EXPECT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, ","));
+  EXPECT_STATUS_OK(CreateAccountants(config, /*model_path=*/{}, acc_map));
+  auto it = acc_map->find(kCudaExecutionProvider);
+  return it != acc_map->end() ? it->second.get() : nullptr;
+}
+
+// Helper: call GetCapability on a mock EP with a no-threshold accountant, returning the accountant for inspection.
+static IResourceAccountant* CallGetCapabilityWithAccountant(
+    IExecutionProvider& ep,
+    test_plugin_ep::TestOrtEp* ort_ep,
+    std::optional<ResourceAccountantMap>& acc_map) {
+  ort_ep->GetCapability = GetCapabilityTakeAllNodesOneGroup;
+
+  std::shared_ptr<Model> model;
+  EXPECT_STATUS_OK(Model::Load(ORT_TSTR("testdata/add_mul_add.onnx"), model, nullptr,
+                               DefaultLoggingManager().DefaultLogger()));
+
+  auto* accountant = CreateNoThresholdAccountant(acc_map);
+  EXPECT_NE(accountant, nullptr);
+  EXPECT_FALSE(accountant->GetThreshold().has_value());
+
+  GraphViewer graph_viewer(model->MainGraph());
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  ep.SetLogger(&logger);
+  ep.GetCapability(graph_viewer,
+                   test_plugin_ep::MockKernelLookup(),
+                   GraphOptimizerRegistry(nullptr, nullptr, &logger),
+                   accountant);
+  return accountant;
+}
+
+// GetAvailableResource returns TotalBytes → threshold should be set to that value.
+TEST(PluginExecutionProviderTest, GetAvailableResource_SetsThresholdFromTotalBytes) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  constexpr uint64_t kBudget = 42000;
+
+  ort_ep->GetAvailableResource = [](const OrtEp* /*this_ptr*/, OrtResourceCount* available) noexcept -> OrtStatus* {
+    *available = OrtResourceCount::FromTotalBytes(42000);
+    return nullptr;
+  };
+
+  std::optional<ResourceAccountantMap> acc_map;
+  auto* accountant = CallGetCapabilityWithAccountant(*ep, ort_ep, acc_map);
+
+  ASSERT_TRUE(accountant->GetThreshold().has_value());
+  EXPECT_EQ(std::get<size_t>(*accountant->GetThreshold()), static_cast<size_t>(kBudget));
+}
+
+// GetAvailableResource returns None → threshold should remain unset (EP has no info).
+TEST(PluginExecutionProviderTest, GetAvailableResource_NoneKindLeavesThresholdUnset) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->GetAvailableResource = [](const OrtEp* /*this_ptr*/, OrtResourceCount* available) noexcept -> OrtStatus* {
+    *available = OrtResourceCount::None();
+    return nullptr;
+  };
+
+  std::optional<ResourceAccountantMap> acc_map;
+  auto* accountant = CallGetCapabilityWithAccountant(*ep, ort_ep, acc_map);
+
+  EXPECT_FALSE(accountant->GetThreshold().has_value());
+}
+
+// GetAvailableResource returns an error status → threshold should remain unset.
+TEST(PluginExecutionProviderTest, GetAvailableResource_ErrorLeavesThresholdUnset) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->GetAvailableResource = [](const OrtEp* this_ptr, OrtResourceCount* /*available*/) noexcept -> OrtStatus* {
+    auto* test_ep = static_cast<const test_plugin_ep::TestOrtEp*>(this_ptr);
+    return test_ep->ort_api->CreateStatus(ORT_RUNTIME_EXCEPTION, "device unavailable");
+  };
+
+  std::optional<ResourceAccountantMap> acc_map;
+  auto* accountant = CallGetCapabilityWithAccountant(*ep, ort_ep, acc_map);
+
+  EXPECT_FALSE(accountant->GetThreshold().has_value());
+}
+
+// GetAvailableResource is nullptr (old EP) → threshold should remain unset, no crash.
+TEST(PluginExecutionProviderTest, GetAvailableResource_NullCallbackLeavesThresholdUnset) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->GetAvailableResource = nullptr;
+
+  std::optional<ResourceAccountantMap> acc_map;
+  auto* accountant = CallGetCapabilityWithAccountant(*ep, ort_ep, acc_map);
+
+  EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
 }  // namespace onnxruntime::test

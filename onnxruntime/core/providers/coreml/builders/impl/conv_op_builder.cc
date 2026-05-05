@@ -76,6 +76,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto dilations = helper.Get("dilations", std::vector<int64_t>(num_spatial_dims, 1));
     auto groups = helper.GetInt64("group");
 
+    for (auto s : strides) {
+      ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive, got: ", s);
+    }
+    for (auto d : dilations) {
+      ORT_RETURN_IF_NOT(d > 0, "All dilation values must be positive, got: ", d);
+    }
+
     AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", strides));
     AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", dilations));
 
@@ -95,6 +102,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
     auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
     const auto group = helper.Get("group", static_cast<int64_t>(1));
+
+    for (auto s : strides) {
+      ORT_RETURN_IF_NOT(s > 0, "All stride values must be positive, got: ", s);
+    }
+    for (auto d : dilations) {
+      ORT_RETURN_IF_NOT(d > 0, "All dilation values must be positive, got: ", d);
+    }
 
     std::vector<int64_t> input_shape;
     ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");

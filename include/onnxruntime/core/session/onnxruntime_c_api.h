@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 26
+#define ORT_API_VERSION 27
 
 #ifdef __cplusplus
 extern "C" {
@@ -7344,7 +7344,7 @@ struct OrtApi {
 
   /** \brief Get the element data type and shape for an OrtValue that represents a Tensor (scalar, dense, or sparse).
    *
-   * \note This function is an alternative to ::GetTensorTypeAndShape() that does not allocate a new array for
+   * \note This function is an alternative to OrtApi::GetTensorTypeAndShape that does not allocate a new array for
    *       the shape data. The OrtValue instance's internal shape data is returned directly.
    *
    * \note Returns an error if the underlying OrtValue is not a Tensor.
@@ -7411,7 +7411,6 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
                   _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
 
-  /// @}
   /// \name OrtEnv
   /// @{
 

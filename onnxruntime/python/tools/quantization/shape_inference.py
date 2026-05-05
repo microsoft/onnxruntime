@@ -13,7 +13,6 @@ from pathlib import Path
 import onnx
 
 import onnxruntime
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 
 from .fusions import ReplaceUpsampleWithResize
@@ -88,6 +87,13 @@ def quant_pre_process(
                 model = save_and_reload_model_with_shape_infer(model)
 
         if not skip_symbolic_shape:
+            try:
+                from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference  # noqa: PLC0415
+            except ImportError as e:
+                raise ImportError(
+                    "sympy is required for symbolic shape inference in quantization preprocessing. "
+                    "Install with: 'pip install sympy' or pass skip_symbolic_shape=True to quant_pre_process()."
+                ) from e
             logger.info("Performing symbolic shape inference...")
             model = SymbolicShapeInference.infer_shapes(
                 model,

@@ -127,6 +127,14 @@ stages:
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
 
+    - task: PowerShell@2
+      displayName: 'Copy compliance config to workspace root'
+      inputs:
+        targetType: inline
+        script: |
+          New-Item -ItemType Directory -Force -Path "$(Build.SourcesDirectory)\.config" | Out-Null
+          Copy-Item -Path "$(Build.SourcesDirectory)\onnxruntime\.config\*" -Destination "$(Build.SourcesDirectory)\.config" -Recurse -Force
+
     - template: ../templates/setup-feeds-and-python-steps.yml
 
     - script: dir $(Build.SourcesDirectory)

@@ -12,6 +12,7 @@
 
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -130,6 +131,16 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   IsGraphCaptured = IsGraphCapturedImpl;
   ReplayGraph = ReplayGraphImpl;
   GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+
+  // Resource accounting — allows ORT to query available device memory for budget enforcement
+  GetAvailableResource = GetAvailableResourceImpl;
+
+  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time
+#if defined(ENABLE_CUDA_PROFILING)
+  CreateProfiler = CreateProfilerImpl;
+#else
+  CreateProfiler = nullptr;
+#endif
 
   const OrtApi& ort_api = factory_.GetOrtApi();
   Ort::Status log_status(ort_api.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_INFO,
@@ -598,6 +609,76 @@ OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL CudaEp::GetGraphCaptureNodeAssi
     const OrtEp* /*this_ptr*/) noexcept {
   return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
 }
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::GetAvailableResourceImpl(
+    const OrtEp* this_ptr, OrtResourceCount* available) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  if (available == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`available` must not be null");
+  }
+
+  auto* ep = static_cast<const CudaEp*>(this_ptr);
+  int current_device = 0;
+  auto cuda_err = cudaGetDevice(&current_device);
+  if (cuda_err != cudaSuccess) {
+    return Ort::GetApi().CreateStatus(
+        ORT_RUNTIME_EXCEPTION,
+        (std::string("cudaGetDevice failed: ") + cudaGetErrorString(cuda_err)).c_str());
+  }
+
+  // Switch to the EP's configured device if needed
+  if (current_device != ep->config_.device_id) {
+    cuda_err = cudaSetDevice(ep->config_.device_id);
+    if (cuda_err != cudaSuccess) {
+      return Ort::GetApi().CreateStatus(
+          ORT_RUNTIME_EXCEPTION,
+          (std::string("cudaSetDevice failed: ") + cudaGetErrorString(cuda_err)).c_str());
+    }
+  }
+
+  size_t free_memory = 0;
+  size_t total_memory = 0;
+  cuda_err = cudaMemGetInfo(&free_memory, &total_memory);
+
+  // Restore the original device
+  if (current_device != ep->config_.device_id) {
+    cudaSetDevice(current_device);  // best-effort restore
+  }
+
+  if (cuda_err != cudaSuccess) {
+    return Ort::GetApi().CreateStatus(
+        ORT_RUNTIME_EXCEPTION,
+        (std::string("cudaMemGetInfo failed: ") + cudaGetErrorString(cuda_err)).c_str());
+  }
+
+  *available = OrtResourceCount::FromTotalBytes(static_cast<uint64_t>(free_memory));
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+#if defined(ENABLE_CUDA_PROFILING)
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::CreateProfilerImpl(
+    OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  if (profiler == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`profiler` must not be null");
+  }
+
+  *profiler = nullptr;
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  auto profiler_impl = std::make_unique<CudaPluginEpProfiler>(ep->factory_.GetEpApi());
+  *profiler = profiler_impl.release();
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+#endif  // defined(ENABLE_CUDA_PROFILING)
 
 }  // namespace cuda_plugin
 }  // namespace onnxruntime

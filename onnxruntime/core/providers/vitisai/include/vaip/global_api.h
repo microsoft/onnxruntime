@@ -27,10 +27,19 @@ int vitisai_ep_set_ep_dynamic_options(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
     const char* const* keys,
     const char* const* values, size_t kv_len);
+
+// Notify EP that profiling has started with the base timestamp (in microseconds since epoch)
+// The EP can use this to:
+// 1. Calculate relative timestamps (event_ts - base_ts) for the profiling timeline
+// 2. Store the absolute base timestamp if needed for other purposes
+void profiler_start(uint64_t profiling_start_time_us);
+
+// Notify EP that profiling has stopped
+void profiler_stop();
+
 /**
- * Replace EventRecord with std::tuple<std::string, int ,int, long long, long long>,
- * because EventRecord is defined in profiler_common.h which is used inside onnxruntime.
- * However, profiler_collect function will call vitis ep which can't include profiler_common.h.
+ * EventInfo: Original 5-element tuple (v1 API)
+ * Kept for backward compatibility with older vaip versions.
  */
 using EventInfo = std::tuple<
     std::string,  // name
@@ -42,6 +51,28 @@ using EventInfo = std::tuple<
 void profiler_collect(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);
+
+/**
+ * EventInfoV2: Extended 6-element tuple with args map (v2 API)
+ * 6th element: args map for extended metadata (subgraph_name, flow_type, kernel_idx)
+ */
+using EventInfoV2 = std::tuple<
+    std::string,                                  // name
+    int,                                          // pid
+    int,                                          // tid
+    long long,                                    // timestamp
+    long long,                                    // duration
+    std::unordered_map<std::string, std::string>  // args
+    >;
+
+// v2 API
+// Returns true if the v2 collector symbol was present in the loaded VAIP
+// library (i.e. the EP is v2-capable). Returns false if the symbol is not
+// available, in which case callers should fall back to profiler_collect (v1).
+bool profiler_collect_v2(
+    std::vector<EventInfoV2>& api_events,
+    std::vector<EventInfoV2>& kernel_events);
+
 std::unique_ptr<onnxruntime::IExecutionProvider>
 CreateExecutionProviderFromAnotherEp(const std::string& lib, const OrtSessionOptions& session_options,
                                      std::unordered_map<std::string, std::string>& provider_options);

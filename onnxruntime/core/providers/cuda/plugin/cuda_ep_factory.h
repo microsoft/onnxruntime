@@ -100,7 +100,7 @@ class CudaEpFactory : public OrtEpFactory {
   const std::string ep_name_{"CudaPluginExecutionProvider"};
   const std::string vendor_{"NVIDIA"};
   const uint32_t vendor_id_ = 0x10DE;  // NVIDIA PCI vendor ID
-  const std::string ep_version_{"1.0.0"};
+  const std::string ep_version_{ORT_PLUGIN_EP_VERSION};
 
   struct DeviceCacheEntry {
     int cuda_device_id{-1};

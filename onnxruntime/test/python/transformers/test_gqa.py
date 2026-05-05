@@ -2550,6 +2550,123 @@ class TestGQARegressions(unittest.TestCase):
             atol=5e-2,
         )
 
+    # ------------------------------------------------------------------------
+    # Gemma 4 global attention layers (issue #28195): num_attention_heads=8,
+    # num_key_value_heads=4, head_dim=512. The unfused CUDA runner produced
+    # NaN at head_dim=512, scale=1.0 because raw Q*K^T overflowed fp16 even
+    # though cuBLAS accumulated in FP32 (output C was fp16). The new GQA
+    # unfused kernel writes QK to an FP32 scratch and fixes this.
+    # ------------------------------------------------------------------------
+    def _run_gemma4_gqa(
+        self,
+        torch_type,
+        ort_type,
+        q_sequence_length,
+        past_kv_sequence_length,
+        is_prompt,
+        local_window_size=-1,
+        softcap=0.0,
+    ):
+        if not has_cuda_provider():
+            self.skipTest("CUDA required")
+        if torch_type == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+            self.skipTest("BFloat16 not supported on this device")
+
+        # Force the unfused path: disable Flash (doesn't support head_size>256)
+        # and Memory-Efficient Attention (cutlass FMHA caps at head_size 256 too).
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+        os.environ["ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION"] = "1"
+        self.addCleanup(os.environ.pop, "ORT_DISABLE_FLASH_ATTENTION", None)
+        self.addCleanup(os.environ.pop, "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION", None)
+
+        config = GQAConfig(
+            batch_size=1,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            q_sequence_length=q_sequence_length,
+            kv_sequence_length=q_sequence_length,
+            past_kv_sequence_length=past_kv_sequence_length,
+            buffer_sequence_length=q_sequence_length + past_kv_sequence_length + 8,
+            local_window_size=local_window_size,
+            rotary=False,
+            rotary_interleaved=False,
+            packed=False,
+            share_buffer=True,
+            softcap=softcap,
+            use_smooth_softmax=False,
+            has_head_sink=False,
+            has_position_ids=False,
+        )
+
+        dtype_key = "fp16" if ort_type == TensorProto.FLOAT16 else "bf16"
+        check = parity_check_gqa_prompt if is_prompt else parity_check_gqa_past
+        check(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=rtol[dtype_key],
+            atol=atol[dtype_key],
+        )
+
+    def test_gqa_gemma4_global_prompt_fp16(self):
+        """#28195 exact repro: fp16 prompt with head_dim=512, Gemma 4 head config."""
+        self._run_gemma4_gqa(
+            torch.float16, TensorProto.FLOAT16, q_sequence_length=16, past_kv_sequence_length=0, is_prompt=True
+        )
+
+    def test_gqa_gemma4_global_decode_fp16(self):
+        """#28195: fp16 decode with past KV at head_dim=512."""
+        self._run_gemma4_gqa(
+            torch.float16, TensorProto.FLOAT16, q_sequence_length=1, past_kv_sequence_length=64, is_prompt=False
+        )
+
+    def test_gqa_gemma4_global_decode_fp16_long(self):
+        """Gemma 4 global attention with longer past at head_dim=512."""
+        self._run_gemma4_gqa(
+            torch.float16, TensorProto.FLOAT16, q_sequence_length=1, past_kv_sequence_length=2048, is_prompt=False
+        )
+
+    def test_gqa_gemma4_global_prompt_bf16(self):
+        """Gemma 4 global attention in bf16 prompt phase at head_dim=512."""
+        self._run_gemma4_gqa(
+            torch.bfloat16, TensorProto.BFLOAT16, q_sequence_length=16, past_kv_sequence_length=0, is_prompt=True
+        )
+
+    def test_gqa_gemma4_global_decode_bf16(self):
+        """Gemma 4 global attention in bf16 decode phase at head_dim=512."""
+        self._run_gemma4_gqa(
+            torch.bfloat16, TensorProto.BFLOAT16, q_sequence_length=1, past_kv_sequence_length=64, is_prompt=False
+        )
+
+    def test_gqa_gemma4_global_prompt_fp16_softcap(self):
+        """Gemma 4 global attention with softcap (Gemma family uses logit softcap)."""
+        self._run_gemma4_gqa(
+            torch.float16,
+            TensorProto.FLOAT16,
+            q_sequence_length=16,
+            past_kv_sequence_length=0,
+            is_prompt=True,
+            softcap=50.0,
+        )
+
+    def test_gqa_gemma4_local_window_decode_fp16(self):
+        """
+        Gemma 4 has mixed global + sliding-window (local) attention layers. This
+        exercises the unfused kernel's sliding-window mask at head_dim=512.
+        """
+        self._run_gemma4_gqa(
+            torch.float16,
+            TensorProto.FLOAT16,
+            q_sequence_length=1,
+            past_kv_sequence_length=256,
+            is_prompt=False,
+            local_window_size=128,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

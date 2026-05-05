@@ -14,6 +14,9 @@
 extern "C" {
 #endif
 
+/** \addtogroup Global
+ * @{
+ */
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
@@ -30,6 +33,7 @@ ORT_RUNTIME_CLASS(OpSchema);
 ORT_RUNTIME_CLASS(OpSchemaTypeConstraint);
 ORT_RUNTIME_CLASS(ProfilingEventsContainer);
 ORT_RUNTIME_CLASS(ProfilingEvent);  // Based on the Trace Event Format's "complete event"
+/// @}
 
 /** \brief Base struct for imported external memory handles.
  *
@@ -947,6 +951,69 @@ struct OrtScanKernelHelper {
 };
 
 /**
+ * \brief Discriminator for the resource count type stored in an OrtResourceCount.
+ *
+ * New resource accounting types can be added by appending new enum values.
+ * The OrtResourceCount union storage is large enough to hold all current and future types.
+ *
+ * \since Version 1.26.
+ */
+typedef enum OrtResourceCountKind {
+  OrtResourceCountKind_None = 0,        ///< Unset / zero-cost sentinel.
+  OrtResourceCountKind_TotalBytes = 1,  ///< Single uint64_t: byte count (cost or budget).
+} OrtResourceCountKind;
+
+/**
+ * \brief ABI-stable tagged union representing a resource cost or budget.
+ *
+ * This struct is a C-safe variant that can be passed by value across the plugin DLL boundary.
+ * The `kind` field selects which member of the `value` union is active. The
+ * `value.reserved_words` storage reserves space for future resource types without changing
+ * the struct layout.
+ *
+ * Adding new resource types requires only: (a) a new OrtResourceCountKind enum value,
+ * (b) a new union member. No new C API functions are needed.
+ *
+ * \since Version 1.26.
+ */
+typedef struct OrtResourceCount {
+  uint32_t kind;     /**< OrtResourceCountKind discriminator. */
+  uint32_t reserved; /**< Must be zero. Ensures natural alignment for the value union. */
+
+  union {
+    uint64_t total_bytes;       /**< Active when kind == OrtResourceCountKind_TotalBytes. */
+    uint64_t reserved_words[6]; /**< 48 bytes fixed storage for future resource types. */
+  } value;
+
+#ifdef __cplusplus
+  /** Default-construct a None (unset) resource count. */
+  OrtResourceCount() noexcept : kind{OrtResourceCountKind_None}, reserved{0}, value{} {}
+
+  /** Construct a zero/unset resource count. */
+  static OrtResourceCount None() noexcept {
+    return OrtResourceCount{};
+  }
+
+  /** Construct a resource count representing total bytes. */
+  static OrtResourceCount FromTotalBytes(uint64_t bytes) noexcept {
+    OrtResourceCount rc{};
+    rc.kind = OrtResourceCountKind_TotalBytes;
+    rc.value.total_bytes = bytes;
+    return rc;
+  }
+
+  /** Read the total_bytes value (caller must check kind first). */
+  uint64_t AsTotalBytes() const noexcept {
+    return value.total_bytes;
+  }
+#endif
+} OrtResourceCount;
+
+#ifdef __cplusplus
+static_assert(sizeof(OrtResourceCount) == 56, "OrtResourceCount size must not change to maintain ABI stability");
+#endif
+
+/**
  * \brief The OrtEpApi struct provides functions that are relevant to the implementation of an execution provider.
  *
  * \since Version 1.22.
@@ -1552,8 +1619,8 @@ struct OrtEpApi {
    * \param[in] kernel_info The ::OrtKernelInfo instance for an If node. This function returns error ORT_FAIL
    *                        if the opset version specified by `kernel_info` is unsupported.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the If node.
-   *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
-   *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
+   *                        Must be released via OrtEpApi::ReleaseKernelImpl, unless ownership is transferred
+   *                        to ORT (see OrtKernelCreateFunc and OrtEpApi::KernelRegistry_AddKernel).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
@@ -1588,8 +1655,8 @@ struct OrtEpApi {
    *                   execution to operate on tensors allocated with the EP's device memory.
    *                   ORT will call OrtLoopKernelHelper::Release() to release the helper and its resources.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the Loop node.
-   *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
-   *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
+   *                        Must be released via OrtEpApi::ReleaseKernelImpl, unless ownership is transferred
+   *                        to ORT (see OrtKernelCreateFunc and OrtEpApi::KernelRegistry_AddKernel).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
@@ -1620,8 +1687,8 @@ struct OrtEpApi {
    *                   execution to operate on tensors allocated with the EP's device memory.
    *                   ORT will call OrtScanKernelHelper::Release() to release the helper and its resources.
    * \param[out] kernel_out Output parameter set to the OrtKernelImpl instance for the Scan node.
-   *                        Must be released via ::ReleaseKernelImpl, unless ownership is transferred
-   *                        to ORT (see OrtKernelCreateFunc and ::KernelRegistry_AddKernel()).
+   *                        Must be released via OrtEpApi::ReleaseKernelImpl, unless ownership is transferred
+   *                        to ORT (see OrtKernelCreateFunc and OrtEpApi::KernelRegistry_AddKernel).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.24
@@ -2462,6 +2529,28 @@ struct OrtEp {
    */
   ORT_API_T(OrtGraphCaptureNodeAssignmentPolicy, GetGraphCaptureNodeAssignmentPolicy,
             _In_ const OrtEp* this_ptr);
+
+  /** \brief Query the available device resource for partitioning budget.
+   *
+   * Called by ORT during graph partitioning when no explicit resource budget threshold
+   * has been configured via session options. The EP should query its device for the
+   * currently available resource (e.g., free GPU memory) and return it as an OrtResourceCount.
+   *
+   * If the EP does not support resource querying, set this function pointer to NULL.
+   * ORT will skip threshold-based budget enforcement in that case.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] available The available device resource.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, no automatic
+   *       resource threshold is established and budget enforcement requires an explicit
+   *       threshold from session options.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
