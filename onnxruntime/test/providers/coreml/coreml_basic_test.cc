@@ -1363,6 +1363,220 @@ TEST(CoreMLExecutionProviderTest, Split11NoAttributeEven) {
 #endif
 }
 
+TEST(CoreMLExecutionProviderTest, Split13UnevenInput) {
+  // Parity with Split11UnevenAttribute: same shapes and split sizes, but using
+  // the opset-13 input form ('split' as a constant initializer) instead of the
+  // pre-13 attribute form. Locks in that the existing input path still works.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("split13_uneven_input", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(9);
+
+  auto make_output_type = [](int64_t split_size) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* s = t.mutable_tensor_type()->mutable_shape();
+    s->add_dim()->set_dim_value(1);
+    s->add_dim()->set_dim_value(split_size);
+    return t;
+  };
+  ONNX_NAMESPACE::TypeProto out0_type = make_output_type(4);
+  ONNX_NAMESPACE::TypeProto out1_type = make_output_type(3);
+  ONNX_NAMESPACE::TypeProto out2_type = make_output_type(2);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& out0_arg = graph.GetOrCreateNodeArg("Y0", &out0_type);
+  auto& out1_arg = graph.GetOrCreateNodeArg("Y1", &out1_type);
+  auto& out2_arg = graph.GetOrCreateNodeArg("Y2", &out2_type);
+
+  ONNX_NAMESPACE::TensorProto split_init;
+  split_init.set_name("split_sizes");
+  split_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  split_init.add_dims(3);
+  for (auto v : std::vector<int64_t>{4, 3, 2}) {
+    split_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(split_init);
+  auto& split_arg = graph.GetOrCreateNodeArg("split_sizes", nullptr);
+
+  auto& node = graph.AddNode("split13_uneven", "Split", "Split-13 with uneven 'split' input",
+                             {&input_arg, &split_arg}, {&out0_arg, &out1_arg, &out2_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 9};
+  std::vector<float> input_data = {0.5f, -1.0f, 2.25f, -3.5f, 4.0f, -0.125f, 7.5f, -8.0f, 0.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "Split13UnevenInput_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "Split13UnevenInput_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, Split13EvenInput) {
+  // Parity with Split11EvenAttribute via the opset-13 input form.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("split13_even_input", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(6);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(3);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& out0_arg = graph.GetOrCreateNodeArg("Y0", &output_type);
+  auto& out1_arg = graph.GetOrCreateNodeArg("Y1", &output_type);
+
+  ONNX_NAMESPACE::TensorProto split_init;
+  split_init.set_name("split_sizes");
+  split_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  split_init.add_dims(2);
+  for (auto v : std::vector<int64_t>{3, 3}) {
+    split_init.add_int64_data(v);
+  }
+  graph.AddInitializedTensor(split_init);
+  auto& split_arg = graph.GetOrCreateNodeArg("split_sizes", nullptr);
+
+  auto& node = graph.AddNode("split13_even", "Split", "Split-13 with even 'split' input",
+                             {&input_arg, &split_arg}, {&out0_arg, &out1_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 6};
+  std::vector<float> input_data = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "Split13EvenInput_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "Split13EvenInput_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, Split13NoSplitInputEven) {
+  // Parity with Split11NoAttributeEven: opset 13 with no 'split' input must
+  // fall through to the SinceVersion() < 18 even-split branch (num_splits =
+  // num_outputs) for both emitters.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("split13_no_split_input_even", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(8);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& out0_arg = graph.GetOrCreateNodeArg("Y0", &output_type);
+  auto& out1_arg = graph.GetOrCreateNodeArg("Y1", &output_type);
+
+  auto& node = graph.AddNode("split13_no_split_input", "Split", "Split-13 with no 'split' input",
+                             {&input_arg}, {&out0_arg, &out1_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 8};
+  std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "Split13NoSplitInputEven_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "Split13NoSplitInputEven_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
