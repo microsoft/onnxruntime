@@ -85,40 +85,68 @@ class ModelPackageComponentContext {
   explicit ModelPackageComponentContext(const std::string& component_model_name,
                                         const ComponentModelInfo& component_model_info,
                                         gsl::span<const VariantSelectionEpInfo> ep_infos);
+  /*
   size_t GetVariantCount() const noexcept;
+
   Status GetVariantNames(gsl::span<const std::string>& out_variant_names) const;
+
   Status GetFileCount(const std::string& variant_name,
                       size_t& out_count) const;
+
   Status GetFileIdentifiers(const std::string& variant_name,
                             gsl::span<const std::string>& out_file_identifiers) const;
+
   Status GetFilePath(const std::string& variant_name,
-                     const char* file_identifier /*may be null*/,
+                     const char* file_identifier,
                      std::filesystem::path& out_path) const;
+  */
+
+  const ModelPackageOptions* Options() const noexcept;
+
   Status ResolveVariant();
-  const std::vector<ModelVariantInfo>& GetModelVariants() const noexcept {
+
+  const std::vector<ModelVariantInfo>& GetModelVariantInfos() const noexcept {
     return component_model_info_.model_variants;
   }
-  const ModelPackageOptions* Options() const noexcept;
+
+  Status GetSelectedVariantFilePaths(gsl::span<const std::filesystem::path>& out_file_paths) const;
+
+  Status GetSelectedVariantFolderPath(const std::filesystem::path*& out_folder_path) const;
+
+  // Convenience API for single-file selected variants. Will return an error if there are 0 or >1 components.
+  Status GetSelectedVariantFilePath(std::filesystem::path& out_path) const;
+
+  Status GetSelectedVariantFileSessionOptions(size_t file_idx,
+                                              gsl::span<const std::string>& out_keys,
+                                              gsl::span<const std::string>& out_values) const;
+
+  Status GetSelectedVariantFileProviderOptions(size_t file_idx,
+                                               gsl::span<const std::string>& out_keys,
+                                               gsl::span<const std::string>& out_values) const;
 
  private:
   std::string component_model_name_;
   ComponentModelInfo component_model_info_{};
+
   const ModelPackageOptions* options_{};                // non-owning, immutable config source for EP intent
   gsl::span<const VariantSelectionEpInfo> ep_infos_{};  // non-owning EP intent when options_ is not used
-
-  mutable std::unordered_map<std::string, std::vector<std::string>> variant_to_file_identifiers_cache_{};
-  mutable std::vector<std::string> selected_variant_file_identifiers_cache_{};
-  mutable std::vector<std::string> selected_variant_session_option_keys_cache_{};
-  mutable std::vector<std::string> selected_variant_session_option_values_cache_{};
-  mutable std::vector<std::string> selected_variant_provider_option_keys_cache_{};
-  mutable std::vector<std::string> selected_variant_provider_option_values_cache_{};
-
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
 
   // optional runtime state mirrors (if needed by callers)
   std::vector<const OrtEpDevice*> execution_devices_{};
   std::vector<const OrtEpDevice*> devices_selected_{};
   bool from_policy_{false};
+
+  // Caches for selected variant info.
+  mutable std::filesystem::path folder_path_cache_{};
+  mutable std::vector<std::filesystem::path> file_paths_cache_{};
+  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_session_option_keys_cache_{};
+  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_session_option_values_cache_{};
+  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_provider_option_keys_cache_{};
+  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_provider_option_values_cache_{};
+
+  Status ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos);
+  Status GetSelectedVariantInfo(const ModelVariantInfo*& out_variant) const;
 };
 
 class ModelPackageContext {
@@ -142,10 +170,6 @@ class ModelPackageContext {
                      const std::string& variant_name,
                      const char* file_identifier /*may be null*/,
                      std::filesystem::path& out_path) const;
-
-  Status ResolveVariant(const ModelPackageOptions* options);
-
-  Status ResolveVariant(gsl::span<const VariantSelectionEpInfo> ep_infos);
 
   const ModelPackageOptions* Options() const noexcept;
 

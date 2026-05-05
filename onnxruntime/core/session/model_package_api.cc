@@ -30,6 +30,7 @@ void BuildCStringArray(gsl::span<const std::string> in,
   *out_count = in.size();
   *out = cache.empty() ? nullptr : cache.data();
 }
+
 }  // namespace
 
 using namespace onnxruntime;
@@ -290,28 +291,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetFilePath,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ResolveVariant,
-                    _Inout_ OrtModelPackageContext* ctx,
-                    _In_ const OrtModelPackageOptions* options) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || options == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and options must be non-null");
-  }
-
-  auto* cxx_ctx = reinterpret_cast<onnxruntime::ModelPackageContext*>(ctx);
-  const auto* cxx_options = reinterpret_cast<const onnxruntime::ModelPackageOptions*>(options);
-
-  ORT_API_RETURN_IF_STATUS_NOT_OK(cxx_ctx->ResolveVariant(cxx_options));
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(options);
-  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
-#endif
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFileCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
@@ -366,6 +345,248 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageContext_GetSelectedVariantFi
   ORT_UNUSED_PARAMETER(component_name);
   ORT_UNUSED_PARAMETER(index);
   ORT_UNUSED_PARAMETER(out_file_identifier);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::SelectComponent,
+                    _In_ const OrtModelPackageContext* context,
+                    _In_ const char* component_name,
+                    _In_ const OrtModelPackageOptions* options,
+                    _Outptr_ OrtModelPackageComponentContext** out) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (context == nullptr || component_name == nullptr || options == nullptr || out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "context, component_name, options, and out must be non-null");
+  }
+
+  const auto* cxx_ctx = reinterpret_cast<const onnxruntime::ModelPackageContext*>(context);
+  const auto* cxx_options = reinterpret_cast<const onnxruntime::ModelPackageOptions*>(options);
+
+  const auto& package_info = cxx_ctx->GetModelPackageInfo();
+  const ComponentModelInfo* component_info = nullptr;
+  for (const auto& component : package_info.component_models) {
+    if (component.component_model_name == component_name) {
+      component_info = &component;
+      break;
+    }
+  }
+
+  if (component_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Component model not found.");
+  }
+
+  auto cix = std::make_unique<onnxruntime::ModelPackageComponentContext>(
+      component_name, *component_info, cxx_options);
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(cix->ResolveVariant());
+
+  *out = reinterpret_cast<OrtModelPackageComponentContext*>(cix.release());
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(context);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(out);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageComponentContext,
+        _Frees_ptr_opt_ OrtModelPackageComponentContext* cix) {
+#if !defined(ORT_MINIMAL_BUILD)
+  delete reinterpret_cast<onnxruntime::ModelPackageComponentContext*>(cix);
+#else
+  ORT_UNUSED_PARAMETER(cix);
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFolderPath,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _Outptr_ const ORTCHAR_T** folder_path) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || folder_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and folder_path must be non-null");
+  }
+
+  const auto* cxx_ctx = reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx);
+
+  const std::filesystem::path* folder = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(cxx_ctx->GetSelectedVariantFolderPath(folder));
+  ORT_API_RETURN_IF(folder == nullptr, ORT_FAIL, "Selected variant folder path is null.");
+
+  *folder_path = folder->c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(folder_path);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileCount,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _Out_ size_t* num_files) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || num_files == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and num_files must be non-null");
+  }
+
+  const auto* cxx_ctx = reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx);
+
+  gsl::span<const std::filesystem::path> file_paths;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(cxx_ctx->GetSelectedVariantFilePaths(file_paths));
+
+  *num_files = file_paths.size();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(num_files);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFilePath,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _In_ size_t file_idx,
+                    _Outptr_ const ORTCHAR_T** out_path) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || out_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_path must be non-null");
+  }
+
+  const auto* cxx_ctx = reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx);
+
+  gsl::span<const std::filesystem::path> file_paths;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(cxx_ctx->GetSelectedVariantFilePaths(file_paths));
+
+  if (file_idx >= file_paths.size()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "file_idx out of range");
+  }
+
+  // Pointer lifetime is owned by ModelPackageComponentContext cache.
+  *out_path = file_paths[file_idx].c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(file_idx);
+  ORT_UNUSED_PARAMETER(out_path);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileSessionOptions,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _In_ size_t file_idx,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || option_keys == nullptr || option_values == nullptr || num_entries == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid null argument.");
+  }
+
+  gsl::span<const std::string> keys;
+  gsl::span<const std::string> values;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileSessionOptions(
+          file_idx, keys, values));
+
+  ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Session options keys/values size mismatch.");
+  *num_entries = keys.size();
+
+  if (*num_entries == 0) {
+    *option_keys = nullptr;
+    *option_values = nullptr;
+  } else {
+    static thread_local std::vector<const char*> key_ptrs;
+    static thread_local std::vector<const char*> value_ptrs;
+
+    key_ptrs.clear();
+    value_ptrs.clear();
+    key_ptrs.reserve(keys.size());
+    value_ptrs.reserve(values.size());
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      key_ptrs.push_back(keys[i].c_str());
+      value_ptrs.push_back(values[i].c_str());
+    }
+
+    *option_keys = key_ptrs.data();
+    *option_values = value_ptrs.data();
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(file_idx);
+  ORT_UNUSED_PARAMETER(option_keys);
+  ORT_UNUSED_PARAMETER(option_values);
+  ORT_UNUSED_PARAMETER(num_entries);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileProviderOptions,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _In_ size_t file_idx,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || option_keys == nullptr || option_values == nullptr || num_entries == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid null argument.");
+  }
+
+  gsl::span<const std::string> keys;
+  gsl::span<const std::string> values;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileProviderOptions(
+          file_idx, keys, values));
+
+  ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Provider options keys/values size mismatch.");
+  *num_entries = keys.size();
+
+  if (*num_entries == 0) {
+    *option_keys = nullptr;
+    *option_values = nullptr;
+  } else {
+    static thread_local std::vector<const char*> key_ptrs;
+    static thread_local std::vector<const char*> value_ptrs;
+
+    key_ptrs.clear();
+    value_ptrs.clear();
+    key_ptrs.reserve(keys.size());
+    value_ptrs.reserve(values.size());
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      key_ptrs.push_back(keys[i].c_str());
+      value_ptrs.push_back(values[i].c_str());
+    }
+
+    *option_keys = key_ptrs.data();
+    *option_values = value_ptrs.data();
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(file_idx);
+  ORT_UNUSED_PARAMETER(option_keys);
+  ORT_UNUSED_PARAMETER(option_values);
+  ORT_UNUSED_PARAMETER(num_entries);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END

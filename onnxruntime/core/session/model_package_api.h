@@ -60,14 +60,47 @@ ORT_API_STATUS_IMPL(ModelPackageContext_GetFilePath,
                     _In_opt_ const char* file_identifier,
                     _Outptr_ const ORTCHAR_T** out_path);
 
-ORT_API_STATUS_IMPL(ResolveVariant,
-                    _Inout_ OrtModelPackageContext* ctx,
-                    _In_ const OrtModelPackageOptions* options);
+ORT_API_STATUS_IMPL(SelectComponent,
+                    _In_ const OrtModelPackageContext* context,
+                    _In_ const char* component_name,
+                    _In_ const OrtModelPackageOptions* options,
+                    _Outptr_ OrtModelPackageComponentContext** out);
+
+ORT_API(void, ReleaseModelPackageComponentContext,
+        _Frees_ptr_opt_ OrtModelPackageComponentContext* ctx);
+
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFolderPath,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _Outptr_ const ORTCHAR_T** folder_path);
+
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFileCount,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _Out_ size_t* num_files);
+
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFilePath,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _In_ size_t file_idx,
+                    _Outptr_ const ORTCHAR_T** out_path);
+
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFileSessionOptions,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _In_ size_t file_idx,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries);
+
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFileProviderOptions,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _In_ size_t file_idx,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
+                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
+                    _Out_ size_t* num_entries);
 
 ORT_API_STATUS_IMPL(ModelPackageContext_GetSelectedVariantFileCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Out_ size_t* out_count);
+
 ORT_API_STATUS_IMPL(ModelPackageContext_GetSelectedVariantFileIdentifier,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
