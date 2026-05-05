@@ -331,7 +331,7 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
 // Graph: X[1,4 float16] -> Relu -> Y[1,4 float16]
 std::string BuildFp16ReluModelBytes() {
   ONNX_NAMESPACE::ModelProto model;
-  model.set_ir_version(7);
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto* opset = model.add_opset_import();
   opset->set_domain("");
   opset->set_version(14);
@@ -360,7 +360,7 @@ std::string BuildFp16ReluModelBytes() {
   node->add_output("Y");
 
   std::string bytes;
-  model.SerializeToString(&bytes);
+  EXPECT_TRUE(model.SerializeToString(&bytes)) << "Failed to serialize FP16 Relu ONNX model";
   return bytes;
 }
 
