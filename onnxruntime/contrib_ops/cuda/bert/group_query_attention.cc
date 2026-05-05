@@ -472,7 +472,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     int sm = (device_prop.major * 10) + device_prop.minor;
     bool use_memory_efficient_attention =
         !disable_memory_efficient_attention_ &&
-        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
+        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size) &&
+        // CUTLASS FMHA shared memory scales with queries_per_block × head_dim.
+        // For head_dim > 256 the kernel can exceed the SM's shared memory limit,
+        // causing cudaErrorInvalidValue on launch. Fall through to unfused
+        // attention which handles any head_dim via cuBLAS GEMM.
+        parameters.head_size <= 256;
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
     // KV buffer for head expansion (when num_heads != kv_num_heads)
