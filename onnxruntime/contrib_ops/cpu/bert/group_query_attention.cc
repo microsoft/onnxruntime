@@ -159,6 +159,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
+    // KV-shared decode: K/V already have RoPE from the source layer.
+    if (kv_sequence_length != sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "do_rotary is not supported when query and key have different sequence lengths. "
+                             "Apply RoPE externally before the GQA op for KV-shared layers.");
+    }
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};

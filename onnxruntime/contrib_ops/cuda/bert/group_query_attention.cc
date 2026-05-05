@@ -477,13 +477,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.past_seq_lens = seq_lens_buffer.get();
     data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
+    // For KV-shared decode (no past_key but not first_prompt), treat as first_prompt
+    // for sequence length computation so past_seq_lens = 0 (no past to offset from).
+    bool effective_is_first_prompt = parameters.is_first_prompt || (past_key == nullptr);
     ORT_RETURN_IF_ERROR(LaunchGetSequenceLengths(total_seq_lens_minus_one->Data<int>(),
                                                  data.past_seq_lens,
                                                  data.total_seq_lens,
                                                  data.padded_seq_lens,
                                                  parameters.batch_size,
                                                  parameters.sequence_length,
-                                                 parameters.is_first_prompt,
+                                                 effective_is_first_prompt,
                                                  cuda_stream,
                                                  device_prop.maxThreadsPerBlock));
     DUMP_TENSOR_INIT();
