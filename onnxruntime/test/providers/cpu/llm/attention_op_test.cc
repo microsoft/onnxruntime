@@ -2975,5 +2975,120 @@ TEST(AttentionTest, Attention4DCausalSquareNoPast) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// CPU/CUDA softcap-mask ordering guards (ONNX onnx/onnx#7867).
+// ---------------------------------------------------------------------------
+// These two tests use the small-softcap + poison-V technique to detect a
+// wrong softcap/mask ordering. The spec mandates:
+//     scale*QK -> softcap -> add bias/mask -> softmax
+// If softcap is applied AFTER mask-add, then tanh(-inf/softcap)*softcap = -softcap
+// (a finite value) leaks probability through softmax to the masked position.
+// With a 'poison' V value (1000) at the masked position, the wrong order
+// produces output ~mean(0.2, 1000) >> 50; the correct order produces
+// output ~0.2. softcap is set to a small value (1.0) so the leak lands in a
+// range softmax does not suppress.
+//
+// CPU variant (fp32): pre-fix this test FAILS, post-fix PASSES.
+// CUDA variant (fp16): sentinel — passes pre and post (CUDA was already correct).
+//
+// The pre-existing `Attention_Unfused_Softcap_AttnMask_FP16` test (above)
+// uses softcap=50.0, which is approximately identity for the small logits
+// in that test, so it is NOT an effective ordering guard — it passes
+// regardless of order. These two tests are the actual ordering oracles.
+
+TEST(AttentionTest, Attention_Unfused_Softcap_NegInfMask_PoisonV_CPU) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 1;
+  int kv_sequence_length = 3;
+  int head_size = 64;
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+  test.AddAttribute<float>("softcap", 1.0f);  // small — exposes the bug
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.0f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.2f);
+  // Poison: position 1 (the masked one) gets V=1000 across all heads/dims.
+  for (int n = 0; n < kv_num_heads; ++n) {
+    for (int h = 0; h < head_size; ++h) {
+      v[(n * kv_sequence_length + 1) * head_size + h] = 1000.0f;
+    }
+  }
+
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  test.AddInput<float>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, q);
+  test.AddInput<float>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, k);
+  test.AddInput<float>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, v);
+  test.AddInput<float>("attn_mask", {q_sequence_length, kv_sequence_length},
+                       std::vector<float>{0.0f, neg_inf, 0.0f});
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+
+  // Spec-correct expected output: softmax over positions 0 and 2 only
+  // (position 1 is -inf-masked AFTER softcap, so it stays -inf and softmax
+  // weight is 0). Both unmasked positions have V=0.2 -> output = 0.2.
+  std::vector<float> expected_y(batch_size * q_num_heads * q_sequence_length * head_size, 0.2f);
+  test.AddOutput<float>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                        expected_y, false, 0, 0.01f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(AttentionTest, Attention_Unfused_Softcap_NegInfMask_PoisonV_CUDA) {
+  if (!HasCudaEnvironment(530)) {
+    return;
+  }
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  int batch_size = 1;
+  int q_num_heads = 4;
+  int kv_num_heads = 2;
+  int q_sequence_length = 1;
+  int kv_sequence_length = 3;
+  int head_size = 64;
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+  test.AddAttribute<float>("softcap", 1.0f);
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.0f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.2f);
+  for (int n = 0; n < kv_num_heads; ++n) {
+    for (int h = 0; h < head_size; ++h) {
+      v[(n * kv_sequence_length + 1) * head_size + h] = 1000.0f;
+    }
+  }
+
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(v));
+  test.AddInput<MLFloat16>("attn_mask", {q_sequence_length, kv_sequence_length},
+                           ToFloat16(std::vector<float>{0.0f, neg_inf, 0.0f}));
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+
+  std::vector<float> expected_y(batch_size * q_num_heads * q_sequence_length * head_size, 0.2f);
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                            ToFloat16(expected_y), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

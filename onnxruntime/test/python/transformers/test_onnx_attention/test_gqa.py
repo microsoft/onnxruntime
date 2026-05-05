@@ -1917,5 +1917,190 @@ class TestONNXAttentionFlashGQASoftcap(unittest.TestCase):
         )
 
 
+class TestONNXAttentionCPUSoftcapMaskOrdering(unittest.TestCase):
+    """CPU-EP guard tests for ONNX Attention spec ordering (onnx/onnx#7867).
+
+    The spec mandates: scale*QK -> softcap -> add bias/mask -> softmax.
+    With a -inf entry in attn_mask and softcap > 0, the wrong order
+    (mask-before-softcap) produces tanh(-inf/softcap)*softcap = -softcap
+    (a finite value), which leaks probability through softmax to the masked
+    position. Combined with a 'poison' V at the masked position, the wrong
+    order produces a dramatically wrong output (~poison_value), while the
+    correct order produces ~mean(unmasked V).
+
+    These two tests mirror the CUDA-only guards already in this file
+    (test_gqa_large_head_unfused_softcap_additive_mask_poison_fp16 at
+    line 1501, and test_mea_gqa_softcap_mask_ordering_no_leakage_prompt_fp16
+    at line 1761) but force CPUExecutionProvider with fp32. CPU does not
+    have fp16 unfused-attention support; fp32 is the natural EP-native dtype
+    and makes the leakage math arithmetically obvious.
+
+    Pre-fix: both tests FAIL (max |output| ~= 100..1000 due to leak).
+    Post-fix: both tests PASS (max |output| < 1, parity vs attention_ref()).
+    """
+
+    def test_cpu_attention_softcap_additive_mask_poison_prompt_fp32(self):
+        """CPU mirror of test_gqa_large_head_unfused_softcap_additive_mask_poison_fp16."""
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=3,
+            past_kv_sequence_length=0,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=64,  # smaller than CUDA variant — CPU is slower; keeps test fast
+            is_causal=0,
+            softcap=1.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        device = "cpu"
+        torch_type = torch.float32
+        q = torch.zeros(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        k = torch.zeros(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        v = torch.full_like(k, 0.2)
+        v[:, 1, :, :] = 1000.0  # poison at the position about to be -inf-masked
+
+        attn_mask = torch.zeros(
+            config.batch_size,
+            config.q_num_heads,
+            config.q_sequence_length,
+            config.kv_sequence_length,
+            device=device,
+            dtype=torch_type,
+        )
+        attn_mask[:, :, :, 1] = float("-inf")
+
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT,
+        )
+
+        out = out_ort.reshape(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+        )
+        max_abs = float(out.abs().max())
+        self.assertLess(
+            max_abs,
+            50.0,
+            "CPU attention leakage detected: max |output| = "
+            f"{max_abs:.1f}. This means CPU applies softcap AFTER mask-add "
+            "(wrong ordering). Correct ordering per onnx/onnx#7867: "
+            "scale*QK -> softcap -> add bias/mask -> softmax.",
+        )
+        expected = torch.full_like(out, 0.2)
+        torch.testing.assert_close(out, expected, rtol=0, atol=2e-2)
+
+        # Also verify against the spec-correct reference.
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_mask, softcap=config.softcap)
+        numpy.testing.assert_allclose(
+            out.detach().cpu().numpy(),
+            out_ref.detach().cpu().numpy(),
+            rtol=1e-3,
+            atol=1e-3,
+        )
+
+    def test_cpu_attention_softcap_mask_ordering_no_leakage_prompt_fp32(self):
+        """CPU mirror of test_mea_gqa_softcap_mask_ordering_no_leakage_prompt_fp16.
+
+        CPU has only one Attention compute path (the unified ComputeAttentionProbs
+        loop) — there is no MEA/Flash distinction — so this test exercises the
+        same loop the production fix targets.
+        """
+        batch_size = 1
+        q_seq = 4
+        kv_seq = 8  # divisible by 4 (kept symmetric with the CUDA MEA variant)
+        q_num_heads = 4
+        kv_num_heads = 2
+        head_size = 64
+        softcap_val = 2.0
+        valid_kv_len = 4
+
+        config = AttentionConfig(
+            batch_size=batch_size,
+            q_sequence_length=q_seq,
+            kv_sequence_length=kv_seq,
+            q_num_heads=q_num_heads,
+            kv_num_heads=kv_num_heads,
+            head_size=head_size,
+            is_causal=0,
+            softcap=softcap_val,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(42)
+        device = "cpu"
+        torch_type = torch.float32
+
+        q = torch.randn(batch_size, q_seq, q_num_heads, head_size, dtype=torch_type, device=device) * 0.2
+        k = torch.randn(batch_size, kv_seq, kv_num_heads, head_size, dtype=torch_type, device=device) * 0.2
+        v = torch.randn(batch_size, kv_seq, kv_num_heads, head_size, dtype=torch_type, device=device) * 0.2
+
+        # Poison values in V at masked positions.
+        poison_value = 1000.0
+        v[:, valid_kv_len:, :, :] = poison_value
+
+        attn_mask = torch.zeros(batch_size, q_num_heads, q_seq, kv_seq, dtype=torch_type, device=device)
+        attn_mask[:, :, :, valid_kv_len:] = float("-inf")
+
+        out, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT,
+        )
+
+        out_np = out.detach().cpu().numpy().flatten()
+        max_abs = float(numpy.max(numpy.abs(out_np)))
+        self.assertLess(
+            max_abs,
+            50.0,
+            "CPU attention leakage detected: max |output| = "
+            f"{max_abs:.1f}. This means CPU applies softcap AFTER mask-add "
+            "(wrong ordering). Correct ordering per onnx/onnx#7867: "
+            "scale*QK -> softcap -> add bias/mask -> softmax.",
+        )
+
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_mask, softcap=softcap_val)
+        out_reshaped = torch.reshape(out, (batch_size, q_seq, q_num_heads, head_size))
+        numpy.testing.assert_allclose(
+            out_reshaped.detach().cpu().numpy(),
+            out_ref.detach().cpu().numpy(),
+            rtol=2e-2,
+            atol=2e-2,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
