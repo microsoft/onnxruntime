@@ -142,8 +142,8 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
     }
   }
 
-  graph->inputs.reserve(inputs_len);
   graph->inputs.clear();
+  graph->inputs.reserve(inputs_len);
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "inputs cannot contain null entries");
@@ -201,8 +201,8 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
     }
   }
 
-  graph->outputs.reserve(outputs_len);
   graph->outputs.clear();
+  graph->outputs.reserve(outputs_len);
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "outputs cannot contain null entries");
