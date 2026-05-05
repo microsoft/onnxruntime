@@ -46,7 +46,7 @@ parameters:
   type: string
   values:
   - release
-  - RC
+  # - RC  # not implemented yet
   - dev
   default: dev
 

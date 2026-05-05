@@ -1751,6 +1751,39 @@ Returns:
 )pbdoc");
 
   m.def(
+      "get_hardware_devices",
+      []() -> const std::vector<const OrtHardwareDevice*>& {
+        return GetEnv().GetSortedOrtHardwareDevices();
+      },
+      R"pbdoc(Get the list of available hardware devices.)pbdoc",
+      py::return_value_policy::reference);
+
+  m.def(
+      "get_hardware_device_ep_incompatibility_details",
+      [](const std::string& ep_name,
+         const OrtHardwareDevice* hw) -> py::dict {
+        std::unique_ptr<OrtDeviceEpIncompatibilityDetails> details;
+        OrtPybindThrowIfError(GetEnv().GetHardwareDeviceEpIncompatibilityDetails(ep_name, hw, details));
+
+        py::dict result;
+        result["reasons_bitmask"] = details->reasons_bitmask;
+        if (!details->notes.empty()) {
+          result["notes"] = py::str(details->notes);
+        } else {
+          result["notes"] = py::none();
+        }
+        result["error_code"] = details->error_code;
+        return result;
+      },
+      R"pbdoc(Check for known incompatibility issues between hardware device and a specific execution provider.
+
+Returns a dictionary with:
+  - reasons_bitmask: Bitmask of OrtDeviceEpIncompatibilityReason values (0 = no known incompatibility)
+  - notes: Optional human-readable notes about the incompatibility
+  - error_code: EP-specific error code (0 = no error code set)
+)pbdoc");
+
+  m.def(
       "copy_tensors",
       [](const std::vector<const OrtValue*>& src, const std::vector<OrtValue*>& dest, py::object& py_arg) {
         const OrtEnv* ort_env = GetOrtEnv();
@@ -1941,6 +1974,13 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("EP_SUPPORTED_OPTIMAL", OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL)
       .value("EP_SUPPORTED_PREFER_RECOMPILATION", OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION)
       .value("EP_UNSUPPORTED", OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+
+  py::enum_<OrtDeviceEpIncompatibilityReason>(m, "OrtDeviceEpIncompatibilityReason", py::arithmetic())
+      .value("NONE", OrtDeviceEpIncompatibility_NONE)
+      .value("DRIVER_INCOMPATIBLE", OrtDeviceEpIncompatibility_DRIVER_INCOMPATIBLE)
+      .value("DEVICE_INCOMPATIBLE", OrtDeviceEpIncompatibility_DEVICE_INCOMPATIBLE)
+      .value("MISSING_DEPENDENCY", OrtDeviceEpIncompatibility_MISSING_DEPENDENCY)
+      .value("UNKNOWN", OrtDeviceEpIncompatibility_UNKNOWN);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)

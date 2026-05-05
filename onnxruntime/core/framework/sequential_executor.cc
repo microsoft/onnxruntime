@@ -364,6 +364,7 @@ class KernelScope {
         forward_range.End();
         backward_range.Begin();
       }
+      node_compute_range_.Begin();
     }
 #endif
 

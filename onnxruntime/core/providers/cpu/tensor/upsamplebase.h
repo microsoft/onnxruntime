@@ -462,6 +462,12 @@ class UpsampleBase {
         };
       case ROUND_PREFER_CEIL:
         return [](float x_original, bool) {
+          // for half way cases prefer ceil
+          // std::round rounds away from zero which is correct for positive .5 values
+          // but for negative .5 values (e.g., -0.5) it rounds to -1 instead of 0 (ceil)
+          if (x_original == static_cast<int64_t>(x_original) - 0.5f) {
+            return static_cast<int64_t>(std::ceil(x_original));
+          }
           return static_cast<int64_t>(std::round(x_original));
         };
       case FLOOR:

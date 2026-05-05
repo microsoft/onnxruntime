@@ -10,12 +10,12 @@ namespace profiling {
 
 #if defined(USE_VITISAI)
 
-bool VitisaiProfiler::StartProfiling(TimePoint tp) {
+Status VitisaiProfiler::StartProfiling(TimePoint tp) {
   // Notify VAIP EP that profiling has started with base timestamp
   profiler_start(std::chrono::duration_cast<std::chrono::microseconds>(
                      tp.time_since_epoch())
                      .count());
-  return true;
+  return Status::OK();
 }
 
 void VitisaiProfiler::EndProfiling(TimePoint tp, Events& events) {
