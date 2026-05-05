@@ -261,8 +261,12 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
             zp_fp32_buf.resize(zp_count);
             if (zero_points->IsDataType<float>()) {
               std::copy_n(zero_points->Data<float>(), zp_count, zp_fp32_buf.data());
-            } else {
+            } else if (zero_points->IsDataType<MLFloat16>()) {
               MlasConvertHalfToFloatBuffer(zero_points->Data<MLFloat16>(), zp_fp32_buf.data(), zp_count);
+            } else {
+              ORT_THROW(
+                  "Unsupported float zero_points type for LUT GEMM prepack. "
+                  "Only float32 and float16 are supported.");
             }
             zp_ptr = zp_fp32_buf.data();
           } else {
@@ -484,8 +488,12 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
             zp_fp32_buf.resize(zp_count);
             if (zero_points->IsDataType<float>()) {
               std::copy_n(zero_points->Data<float>(), zp_count, zp_fp32_buf.data());
-            } else {
+            } else if (zero_points->IsDataType<MLFloat16>()) {
               MlasConvertHalfToFloatBuffer(zero_points->Data<MLFloat16>(), zp_fp32_buf.data(), zp_count);
+            } else {
+              ORT_THROW(
+                  "Unsupported float zero_points type for LUT GEMM prepack. "
+                  "Only float32 and float16 are supported.");
             }
             zp_ptr = zp_fp32_buf.data();
           } else {
