@@ -49,7 +49,24 @@ stages:
         pool:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
+        # Skip the repo checkout entirely — this job only inspects template parameters.
+        # Suppress SDL/TSA scans that the 1ES PT would otherwise inject (they require
+        # `.config/tsaoptions.json` from the source tree and have nothing to scan here).
+        templateContext:
+          sdl:
+            tsa:
+              enabled: false
+            credscan:
+              enabled: false
+            policheck:
+              enabled: false
+            codeSignValidation:
+              enabled: false
+            binskim:
+              enabled: false
         steps:
+        - checkout: none
+
         - powershell: |
             $x64       = [System.Convert]::ToBoolean('${{ parameters.build_windows_x64 }}')
             $arm64     = [System.Convert]::ToBoolean('${{ parameters.build_windows_arm64 }}')
