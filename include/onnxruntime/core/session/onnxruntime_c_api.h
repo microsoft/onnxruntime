@@ -7437,7 +7437,7 @@ struct OrtApi {
 
   /// @}
 
-  /** \brief Get the current state of the memory pattern optimization setting.
+  /** \brief Check if the memory pattern optimization is enabled in the session options.
    *
    * \param[in] options
    * \param[out] out Set to 1 if the memory pattern optimization is enabled, 0 otherwise.
