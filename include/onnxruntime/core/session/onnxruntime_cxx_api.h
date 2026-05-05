@@ -629,6 +629,7 @@ namespace detail {
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(CustomOpDomain);
+ORT_DEFINE_RELEASE(DeviceEpIncompatibilityDetails);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(ExternalInitializerInfo);
 ORT_DEFINE_RELEASE(Graph);
@@ -1133,6 +1134,27 @@ using ConstHardwareDevice = detail::HardwareDeviceImpl<Ort::detail::Unowned<cons
 
 namespace detail {
 template <typename T>
+struct DeviceEpIncompatibilityDetailsImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  uint32_t GetReasonsBitmask() const;  ///< Wraps DeviceEpIncompatibilityDetails_GetReasonsBitmask
+  const char* GetNotes() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetNotes
+  int32_t GetErrorCode() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetErrorCode
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtDeviceEpIncompatibilityDetails
+ * \remarks DeviceEpIncompatibilityDetails is always read-only for API users.
+ */
+struct DeviceEpIncompatibilityDetails : detail::DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails> {
+  explicit DeviceEpIncompatibilityDetails(std::nullptr_t) {}  ///< No instance is created
+  explicit DeviceEpIncompatibilityDetails(OrtDeviceEpIncompatibilityDetails* p)
+      : DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails>{p} {}  ///< Take ownership of a pointer created by C API
+};
+
+namespace detail {
+template <typename T>
 struct EpDeviceImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
@@ -1384,6 +1406,35 @@ struct Env : detail::Base<OrtEnv> {
   Env& UnregisterExecutionProviderLibrary(const char* registration_name);                                          ///< Wraps OrtApi::UnregisterExecutionProviderLibrary
 
   std::vector<ConstEpDevice> GetEpDevices() const;
+
+  /** \brief Get the number of available hardware devices.
+   *
+   * Returns the count of hardware devices discovered on the system.
+   * \return The number of hardware devices available.
+   * \throws Ort::Exception on error.
+   */
+  size_t GetNumHardwareDevices() const;  ///< Wraps OrtApi::GetNumHardwareDevices
+
+  /** \brief Get the list of available hardware devices.
+   *
+   * Enumerates hardware devices available on the system.
+   * \return A vector of hardware devices.
+   * \throws Ort::Exception on error.
+   */
+  std::vector<ConstHardwareDevice> GetHardwareDevices() const;  ///< Wraps OrtApi::GetHardwareDevices
+
+  /** \brief Check for known incompatibility issues between hardware device and a specific execution provider.
+   *
+   * If returned incompatibility details have non-zero reasons, it indicates the device is not compatible.
+   * However, if the returned details have reasons == 0, that does not guarantee 100% compatibility for all models.
+   *
+   * \param ep_name The name of the execution provider to check.
+   * \param hw The hardware device to check for incompatibility.
+   * \return DeviceEpIncompatibilityDetails containing reasons for incompatibility if any.
+   * \throws Ort::Exception on error.
+   */
+  DeviceEpIncompatibilityDetails GetHardwareDeviceEpIncompatibilityDetails(
+      const char* ep_name, ConstHardwareDevice hw) const;  ///< Wraps OrtApi::GetHardwareDeviceEpIncompatibilityDetails
 
   Status CopyTensors(const std::vector<Value>& src_tensors,
                      const std::vector<Value>& dst_tensors,

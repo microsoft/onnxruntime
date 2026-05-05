@@ -247,6 +247,13 @@ Return Value:
 
 --*/
 {
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && !defined(FORCE_GENERIC_ALGORITHMS)
+    if (GetMlasPlatform().GemmFloatKernel != nullptr) {
+        MlasSgemmCopyPackBRvv(D, B, ldb, CountX, CountY);
+        return;
+    }
+#endif
+
     //
     // Copy data from matrix B into the destination buffer 16 columns at a
     // time.
@@ -1004,6 +1011,14 @@ Return Value:
 
 #if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#elif defined(MLAS_TARGET_RISCV64) && !defined(FORCE_GENERIC_ALGORITHMS)
+        if (GetMlasPlatform().GemmFloatKernel != nullptr) {
+            RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+        } else if (ZeroMode) {
+            RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        } else {
+            RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
+        }
 #else
         if (ZeroMode) {
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);

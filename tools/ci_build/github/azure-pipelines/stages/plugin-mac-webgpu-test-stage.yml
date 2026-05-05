@@ -1,0 +1,39 @@
+stages:
+- stage: MacOS_plugin_webgpu_arm64_Test
+  dependsOn: []
+  jobs:
+  - job: MacOS_plugin_webgpu_arm64_Python_Test
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'arm64'
+
+    # Download the Python wheel produced by the packaging pipeline run that
+    # triggered this pipeline (or that was selected at queue time).
+    - download: build
+      artifact: webgpu_plugin_python_macos_arm64
+      displayName: 'Download Python wheel'
+
+    - script: |
+        set -e -x
+        python3 -m venv "$(Build.BinariesDirectory)/test_venv"
+        source "$(Build.BinariesDirectory)/test_venv/bin/activate"
+        python3 -m pip install onnxruntime onnx numpy
+        wheel=$(find "$(Pipeline.Workspace)/build/webgpu_plugin_python_macos_arm64" -name "onnxruntime_ep_webgpu-*.whl" | head -1)
+        python3 -m pip install "$wheel"
+        python3 -u "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py"
+      displayName: 'Install and test Python package'
+      env:
+        ORT_TEST_VERBOSE: $(System.Debug)

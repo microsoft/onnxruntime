@@ -60,7 +60,7 @@ template <typename T>
 void ApplyActivationToBatches(const Tensor* sequence_lens, const T* h_prev, T* Y_buffer_data_current_frame,
                               int64_t time_step, int64_t batch_size, int64_t hidden_size,
                               T alpha, T beta, T clip, std::function<T(T, T, T)> activation_func) {
-  const int* seq_len_data = sequence_lens ? sequence_lens->Data<int>() : nullptr;
+  const int32_t* seq_len_data = sequence_lens ? sequence_lens->Data<int32_t>() : nullptr;
 
   for (int batch = 0; batch < batch_size; batch++) {
     bool valid = true;
@@ -95,17 +95,22 @@ void Assign_Y_h(const T* Y_buffer_data, Tensor* Y_h, const Tensor* sequence_lens
   }
 
   for (int batch = 0; batch < batch_size; batch++) {
-    int64_t last_time_step = isReverse ? 0 : seq_length - 1;
-    if (nullptr != sequence_lens && !isReverse) {
-      last_time_step = sequence_lens->Data<int>()[batch] - 1;
-      if (last_time_step < 0) {
-        // sequence_lens[batch] == 0: no data was processed for this batch; zero out Y_h.
+    // Handle zero-length sequences for both forward and reverse directions consistently.
+    if (nullptr != sequence_lens) {
+      int32_t seq_len = sequence_lens->Data<int32_t>()[batch];
+      if (seq_len == 0) {
         int64_t Y_h_offset = direction * batch_size * hidden_size + batch * hidden_size;
         math::Set<T, CPUMathUtil>(narrow<size_t>(hidden_size), T{0},
                                   Y_h->MutableData<T>() + Y_h_offset, &CPUMathUtil::Instance());
         continue;
       }
     }
+
+    int64_t last_time_step = isReverse ? 0 : seq_length - 1;
+    if (nullptr != sequence_lens && !isReverse) {
+      last_time_step = sequence_lens->Data<int32_t>()[batch] - 1;
+    }
+
     int64_t y_offset = last_time_step * num_directions * batch_size * hidden_size +
                        direction * batch_size * hidden_size +
                        batch * hidden_size;
@@ -121,8 +126,8 @@ void ClearMissingFrames(T* Y_buffer_data, const Tensor* sequence_lens,
                         int64_t num_directions, int64_t batch_size, int64_t seq_length, int64_t hidden_size) {
   for (int direction = 0; direction < num_directions; direction++) {
     for (int batch = 0; batch < batch_size; batch++) {
-      if (sequence_lens->Data<int>()[batch] < seq_length) {
-        for (int seq = sequence_lens->Data<int>()[batch]; seq < seq_length; seq++) {
+      if (sequence_lens->Data<int32_t>()[batch] < seq_length) {
+        for (int seq = sequence_lens->Data<int32_t>()[batch]; seq < seq_length; seq++) {
           int64_t offset =
               seq * num_directions * batch_size * hidden_size +
               direction * batch_size * hidden_size +
@@ -168,6 +173,19 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
 
   std::vector<int64_t> Y_h_dims({num_directions, batch_size, hidden_size_});
   Tensor* Y_h = ctx->Output(1, Y_h_dims);
+
+  // Reset output and return if max sequence length is 0
+  if (sequence_lens != nullptr && sequence_lens->Shape().Size() > 0) {
+    int32_t max_sequence_length = *std::max_element(sequence_lens->Data<int32_t>(),
+                                                    sequence_lens->Data<int32_t>() + sequence_lens->Shape().Size());
+    if (max_sequence_length == 0) {
+      if (Y != nullptr)
+        std::fill_n(Y->MutableData<float>(), Y->Shape().Size(), 0.f);
+      if (Y_h != nullptr)
+        std::fill_n(Y_h->MutableData<float>(), Y_h->Shape().Size(), 0.f);
+      return Status::OK();
+    }
+  }
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));

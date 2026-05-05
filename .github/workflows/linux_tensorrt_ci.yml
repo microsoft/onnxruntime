@@ -38,12 +38,33 @@ jobs:
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Pass token for reusable workflow needs (e.g., docker build action)
 
+  build-linux-TensorRT-CUDA-Minimal-x64-release:
+    name: Build Linux TensorRT CUDA Minimal x64 Release
+    # Build-only job for CUDA minimal build (no tests, no unit tests)
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1 --build-arg TRT_VERSION=10.14.1.48-1.cuda12.9 --network=host'
+      docker_image_repo: onnxruntimetensorrt86gpubuild
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.8 --cuda_home=/usr/local/cuda-12.8 --cudnn_home=/usr/local/cuda-12.8 --use_tensorrt --tensorrt_home /usr --build_java --enable_cuda_minimal_build --disable_generation_ops --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=OFF'
+      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      run_tests: false
+      upload_build_output: false
+      execution_providers: 'cuda tensorrt'
+      job_identifier: build-linux-TensorRT-CUDA-Minimal-x64-release
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test-linux-TensorRT-x64-release:
     name: Test Linux TensorRT x64 Release
     needs: build-linux-TensorRT-x64-release
     runs-on:
       - self-hosted
       - "1ES.Pool=onnxruntime-github-linux-a10"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
       - "JobId=test-linux-TensorRT-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     permissions:
       contents: read

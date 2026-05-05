@@ -3,6 +3,9 @@ parameters:
   type: string
   default: dev
 
+- name: version_file
+  type: string
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -52,6 +55,7 @@ stages:
     - template: ../templates/set-plugin-build-variables-step.yml
       parameters:
         package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
 
     - script: |
         set -e -x
@@ -90,6 +94,25 @@ stages:
 
     - script: |
         set -e -x
+        zip webgpu_plugin_ep_binaries.zip libonnxruntime_providers_webgpu.dylib
+      displayName: 'Zip plugin binary for signing'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/bin'
+
+    - template: ../templates/mac-esrp-dylib.yml
+      parameters:
+        FolderPath: '$(Build.ArtifactStagingDirectory)/bin'
+        Pattern: 'webgpu_plugin_ep_binaries.zip'
+
+    - script: |
+        set -e -x
+        unzip -o webgpu_plugin_ep_binaries.zip
+        rm -- webgpu_plugin_ep_binaries.zip
+        codesign --display --verbose=3 libonnxruntime_providers_webgpu.dylib
+      displayName: 'Unzip and verify signed binary'
+      workingDirectory: '$(Build.ArtifactStagingDirectory)/bin'
+
+    - script: |
+        set -e -x
         mkdir -p "$(Build.ArtifactStagingDirectory)/version"
         touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
       displayName: 'Create version marker file'
@@ -109,3 +132,52 @@ stages:
         vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-macos-arm64'
         versionOption: custom
         versionPublish: '$(PluginUniversalPackageVersion)'
+
+  # Python package build job
+  - job: MacOS_plugin_webgpu_arm64_Python_Package
+    dependsOn: MacOS_plugin_webgpu_arm64_Build
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: AcesShared
+      os: macOS
+      demands:
+      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)/python
+        artifactName: webgpu_plugin_python_macos_arm64
+    variables:
+    - template: ../templates/common-variables.yml
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: 'arm64'
+
+    - template: ../templates/set-nightly-build-option-variable-step.yml
+
+    - template: ../templates/set-plugin-build-variables-step.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
+
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download plugin build artifacts'
+      inputs:
+        artifactName: webgpu_plugin_macos_arm64
+        targetPath: '$(Build.BinariesDirectory)/plugin_artifacts'
+
+    - script: |
+        set -e -x
+        python3 -m pip install -r "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/requirements-build-wheel.txt"
+        python3 "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/build_wheel.py" \
+          --binary_dir "$(Build.BinariesDirectory)/plugin_artifacts/bin" \
+          --version "$(PluginPythonPackageVersion)" \
+          --output_dir "$(Build.ArtifactStagingDirectory)/python"
+      displayName: 'Build Python wheel'

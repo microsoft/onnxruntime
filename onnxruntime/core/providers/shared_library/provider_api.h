@@ -303,6 +303,7 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSInternalNHWCDomain = "com.ms.internal.nhwc";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";

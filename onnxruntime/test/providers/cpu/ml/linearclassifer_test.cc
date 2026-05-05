@@ -129,7 +129,7 @@ TEST(MLOpTest, LinearClassifierBinaryWithLabels) {
 TEST(MLOpTest, LinearClassifierInvalidCoefficientsSize) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
-  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f, 3.f});
   test.AddAttribute("intercepts", std::vector<float>{0.f, 0.f});
   test.AddAttribute("classlabels_ints", std::vector<int64_t>{0, 1});
 
@@ -202,6 +202,26 @@ TEST(MLOpTest, LinearClassifierInvalidCoefficientsSizeFails) {
            "coefficients size (3) is less than class_count (3) * num_features (2)");
 }
 
+TEST(MLOpTest, LinearClassifierExtraCoefficientsAreIgnored) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f,
+                                     -0.68051993f, -0.1975279f, 0.03748541f,
+                                     101.f, 102.f, 103.f};
+  std::vector<int64_t> classes = {1, 2, 3};
+  std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {2LL});
+  test.AddOutput<float>("Z", {1, 3}, {-4.14164229f, 1.1092185f, -0.06021539f});
+
+  test.Run();
+}
+
 // Regression test: coefficients not divisible by class_count.
 TEST(MLOpTest, LinearClassifierCoefficientsSizeNotDivisibleByClassCountFails) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
@@ -220,7 +240,27 @@ TEST(MLOpTest, LinearClassifierCoefficientsSizeNotDivisibleByClassCountFails) {
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "coefficients size (5) must be a multiple of the number of classes (3)");
+           "coefficients size (5) is less than class_count (3) * num_features (2)");
+}
+
+TEST(MLOpTest, LinearClassifierInputFeatureCountMismatchFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {-0.22562418f, 0.34188559f, 0.68346153f,
+                                     -0.68051993f, -0.1975279f, 0.03748541f};
+  std::vector<int64_t> classes = {1, 2, 3};
+  std::vector<float> intercepts = {-3.91601811f, 0.42575697f, 0.13731251f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 3}, {1.f, 0.f, 0.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "coefficients size (6) is less than class_count (3) * num_features (3)");
 }
 }  // namespace test
 }  // namespace onnxruntime

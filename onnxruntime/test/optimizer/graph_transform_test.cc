@@ -4713,6 +4713,81 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
   }
 }
 
+// Regression test: FuseContiguousReshapes must not collapse a chain of Reshapes
+// when the inferred output shape contains a literal 0 dim. Doing so would create
+// a single Reshape whose shape data contains 0 and (because allowzero defaults
+// to 0) be misinterpreted as "copy from input dim", silently producing wrong shape.
+// See https://github.com/microsoft/onnxruntime/issues/28348.
+TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithZeroDim) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  Model model("ReshapeFusionContiguousReshapesWithZeroDim", false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), *logger_);
+  auto& graph = model.MainGraph();
+
+  // X: float[0, 6, 2]  (zero-sized first dim, fully concrete)
+  TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(0);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(6);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  TypeProto y_type;
+  y_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  auto& X = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& mid = graph.GetOrCreateNodeArg("mid", &y_type);
+  auto& Y = graph.GetOrCreateNodeArg("Y", &y_type);
+
+  // shape1 = [3, 2, -1]  -> mid shape (3, 2, 0)
+  ONNX_NAMESPACE::TensorProto shape1_proto;
+  shape1_proto.set_name("shape1");
+  shape1_proto.set_data_type(TensorProto_DataType_INT64);
+  shape1_proto.add_dims(3);
+  for (int64_t v : {3, 2, -1}) shape1_proto.add_int64_data(v);
+  graph.AddInitializedTensor(shape1_proto);
+
+  // shape2 = [0, 0, 3] with allowzero=1 -> Y shape (0, 0, 3)
+  ONNX_NAMESPACE::TensorProto shape2_proto;
+  shape2_proto.set_name("shape2");
+  shape2_proto.set_data_type(TensorProto_DataType_INT64);
+  shape2_proto.add_dims(3);
+  for (int64_t v : {0, 0, 3}) shape2_proto.add_int64_data(v);
+  graph.AddInitializedTensor(shape2_proto);
+
+  auto& shape1 = graph.GetOrCreateNodeArg("shape1", nullptr);
+  auto& shape2 = graph.GetOrCreateNodeArg("shape2", nullptr);
+
+  graph.AddNode("reshape1", "Reshape", "first reshape", {&X, &shape1}, {&mid});
+  auto& reshape2 = graph.AddNode("reshape2", "Reshape", "second reshape (allowzero=1)",
+                                 {&mid, &shape2}, {&Y});
+  reshape2.AddAttribute("allowzero", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::map<std::string, int> op_to_count_before = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count_before["Reshape"], 2);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ReshapeFusion>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Fusion must NOT collapse the two reshapes, otherwise the resulting single
+  // Reshape would (mis)compute output shape (0, 6, 3) instead of (0, 0, 3).
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Reshape"], 2);
+
+  // Y's inferred shape must remain (0, 0, 3).
+  const auto* y_shape = graph.GetNodeArg("Y")->Shape();
+  ASSERT_NE(y_shape, nullptr);
+  ASSERT_EQ(y_shape->dim_size(), 3);
+  EXPECT_EQ(y_shape->dim(0).dim_value(), 0);
+  EXPECT_EQ(y_shape->dim(1).dim_value(), 0);
+  EXPECT_EQ(y_shape->dim(2).dim_value(), 3);
+}
+
 TEST_F(GraphTransformationTests, ReshapeFusionWithSlice1) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/reshape_fusion_with_slice1.onnx";
   std::shared_ptr<Model> p_model;
@@ -5099,33 +5174,29 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionTest) {
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
-    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
-    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
-    return Status::OK();
-  };
-
-  auto post_graph_checker = [get_op_count](Graph& graph) {
-    const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
-    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
+    ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
+    ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
+    ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
 
     for (const auto& node : graph.Nodes()) {
       if (node.OpType() == "SpaceToDepth") {
         const auto* blocksize_attr = graph_utils::GetNodeAttribute(node, "blocksize");
-        TEST_RETURN_IF_NOT(blocksize_attr != nullptr && utils::HasInt(*blocksize_attr) && blocksize_attr->i() == 2);
+        ASSERT_TRUE(blocksize_attr != nullptr && utils::HasInt(*blocksize_attr) && blocksize_attr->i() == 2);
       }
     }
-
-    return Status::OK();
   };
 
-  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNodesTest) {
@@ -5178,26 +5249,22 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithConstantNode
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
-    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
-    TEST_RETURN_IF_NOT(op_to_count.at("Constant") == 7);
-    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
-    return Status::OK();
+    ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
+    ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
+    ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
   };
 
-  auto post_graph_checker = [get_op_count](Graph& graph) {
-    const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
-    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
-    return Status::OK();
-  };
-
-  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBlockOrderTest) {
@@ -5234,27 +5301,23 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionWithPermutedBloc
     builder.AddNode("Identity", {concat_out}, {output});
   };
 
-  auto pre_graph_checker = [get_op_count](Graph& graph) {
+  auto check_transformed_graph = [get_op_count](InferenceSessionWrapper& session) {
+    const Graph& graph = session.GetGraph();
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("Slice") == 4);
-    TEST_RETURN_IF_NOT(op_to_count.at("Concat") == 1);
-    TEST_RETURN_IF(get_op_count(op_to_count, "SpaceToDepth") != 0);
-    TEST_RETURN_IF(get_op_count(op_to_count, "Gather") != 0);
-    return Status::OK();
+    ASSERT_TRUE(op_to_count.count("Slice") == 0 || op_to_count.at("Slice") == 0);
+    ASSERT_TRUE(op_to_count.count("Concat") == 0 || op_to_count.at("Concat") == 0);
+    ASSERT_EQ(get_op_count(op_to_count, "SpaceToDepth"), 1);
+    ASSERT_EQ(get_op_count(op_to_count, "Gather"), 1);
   };
 
-  auto post_graph_checker = [get_op_count](Graph& graph) {
-    const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF(op_to_count.count("Slice") != 0 && op_to_count.at("Slice") != 0);
-    TEST_RETURN_IF(op_to_count.count("Concat") != 0 && op_to_count.at("Concat") != 0);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "SpaceToDepth") == 1);
-    TEST_RETURN_IF_NOT(get_op_count(op_to_count, "Gather") == 1);
-    return Status::OK();
-  };
-
-  auto transformer = std::make_unique<SliceConcatToSpaceToDepthFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(transformer), TransformerLevel::Level1,
-                                        1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    13,
+                    0.0,
+                    0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
 }
 
 TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForDynamicChannelPermutedBlockOrderTest) {
@@ -6107,7 +6170,7 @@ static void BuildMobileClipAttentionTestCase(ModelTestBuilder& builder,
   builder.AddNode("Add", std::vector<NodeArg*>{input_skip, layer_scale_out}, std::vector<NodeArg*>{output});
 }
 
-static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
+static Status CheckMobileClipAttentionFusedGraph(const Graph& graph) {
   auto op_to_count = CountOpsInGraph(graph);
   TEST_RETURN_IF_NOT(op_to_count["com.microsoft.MultiHeadAttention"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
@@ -6116,14 +6179,13 @@ static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
   TEST_RETURN_IF_NOT(op_to_count["Split"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["Transpose"] == 2);
-  TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 4);
   TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
   TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
 
   int mha_nodes = 0;
   int gemm_nodes = 0;
   int split_nodes = 0;
-  for (Node& node : graph.Nodes()) {
+  for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
       ++mha_nodes;
       TEST_RETURN_IF_NOT(node.GetAttributes().at("num_heads").i() == 16);
@@ -6170,14 +6232,22 @@ static Status CheckMobileClipAttentionFusedGraph(Graph& graph) {
   return Status::OK();
 }
 
-static Status CheckMobileClipAttentionFusedGraphOnProvider(Graph& graph, const char* provider) {
+static Status CheckMobileClipAttentionFusedGraphOnProvider(const Graph& graph, const char* provider) {
   ORT_RETURN_IF_ERROR(CheckMobileClipAttentionFusedGraph(graph));
 
-  for (Node& node : graph.Nodes()) {
+  for (const Node& node : graph.Nodes()) {
     TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == provider);
   }
 
   return Status::OK();
+}
+
+static void CheckMobileClipAttentionFusedSession(InferenceSessionWrapper& session) {
+  ASSERT_STATUS_OK(CheckMobileClipAttentionFusedGraph(session.GetGraph()));
+}
+
+static void CheckMobileClipAttentionFusedCudaSession(InferenceSessionWrapper& session) {
+  ASSERT_STATUS_OK(CheckMobileClipAttentionFusedGraphOnProvider(session.GetGraph(), kCudaExecutionProvider));
 }
 
 static Status CheckMobileClipAttentionUnfusedProjectionGemmGraph(Graph& graph) {
@@ -6230,8 +6300,14 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
   };
 
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>());
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
@@ -6239,52 +6315,60 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest)
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
   };
 
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, CheckMobileClipAttentionFusedGraph));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>());
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCudaEpTest) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
   };
 
-  auto pre_graph_checker = [](Graph& graph) {
-    for (Node& node : graph.Nodes()) {
-      node.SetExecutionProviderType(kCudaExecutionProvider);
-    }
-
-    return Status::OK();
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
-      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedCudaSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+                    {},
+                    {},
+                    std::move(cuda_ep));
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmCudaEpTest) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
   };
 
-  auto pre_graph_checker = [](Graph& graph) {
-    for (Node& node : graph.Nodes()) {
-      node.SetExecutionProviderType(kCudaExecutionProvider);
-    }
-
-    return Status::OK();
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    return CheckMobileClipAttentionFusedGraphOnProvider(graph, kCudaExecutionProvider);
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(
-      build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
-      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedCudaSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    14,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>(InlinedHashSet<std::string_view>{kCudaExecutionProvider}),
+                    {},
+                    {},
+                    std::move(cuda_ep));
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaInvalidQkvWeightShapeTest) {
@@ -7982,6 +8066,24 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
          const std::map<std::string, int>& original_op_counts,
          const std::map<std::string, int>& transformed_op_counts) {
         EXPECT_EQ(original_op_counts, transformed_op_counts);
+      },
+      {kCpuExecutionProvider});
+}
+
+TEST_F(GraphTransformationTests, MatMulScaleFusionDoubleType) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_double.onnx", *logger_,
+      [](Graph& graph) {
+        for (auto& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCpuExecutionProvider);
+        }
+      },
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 0);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
       },
       {kCpuExecutionProvider});
 }

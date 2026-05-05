@@ -51,6 +51,7 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
+#include "core/platform/threadpool_config.h"
 #include "core/session/onnxruntime_c_api.h"
 
 // Forward declaration for callback policy types
@@ -866,11 +867,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   typedef RunQueue<CallbackPolicy, Tag, 1024> Queue;
 
   ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, int spin_duration_us,
+                  unsigned int spin_backoff_max,
                   Environment& env, const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
-        spin_count_(ComputeSpinCount(spin_duration_us)),
+        spin_backoff_max_(NormalizeBackoff(spin_backoff_max)),
+        spin_count_(ScaleSpinCountForBackoff(ComputeSpinCount(spin_duration_us), spin_backoff_max_)),
         steal_interval_(std::max(spin_count_ / 100, 1)),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
         callback_policy_(thread_options),
@@ -1620,10 +1623,69 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     return static_cast<int>(std::min<int64_t>(count, 1 << 30));
   }
 
+  // Clamp user-supplied backoff cap into a valid range. Any value < 1 is
+  // treated as 1 (no backoff, one SpinPause() per iteration), and very large
+  // values are capped so a single wait() cannot emit an excessive pause burst.
+  static unsigned int NormalizeBackoff(unsigned int spin_backoff_max) {
+    return std::min(std::max(spin_backoff_max, 1U), onnxruntime::concurrency::kSpinBackoffMaxLimit);
+  }
+
+  // With exponential backoff capped at M, ThreadPoolWaiter::wait() ramps up to
+  // M SpinPause() calls per iteration and then stays at M. To preserve the
+  // targeted spin budget, divide the iteration budget by M so that
+  // (iterations) x (steady-state pauses per iter) ~= original pause budget.
+  // For explicit spin_duration_us > 0 this keeps the wall-clock spin window
+  // close to the requested duration. For the legacy default path
+  // (spin_duration_us < 0), the original semantic was "spin for ~1M
+  // iterations", so this scaling intentionally preserves only an approximate
+  // pause budget rather than the historical outer-loop iteration count. The
+  // ramp-up phase is O(log M) iterations and is negligible for typical M
+  // (<=64).
+  static int ScaleSpinCountForBackoff(int spin_count, unsigned int spin_backoff_max) {
+    if (spin_count <= 0 || spin_backoff_max <= 1U) {
+      return spin_count;
+    }
+    const int divisor = static_cast<int>(spin_backoff_max);
+    return std::max(spin_count / divisor, 1);
+  }
+
+  // Exponential-backoff waiter adapted from the approach in
+  // https://github.com/microsoft/onnxruntime/pull/23278 and combined with the
+  // configurable spin-window in this PR. Each call to wait() emits a growing
+  // number of SpinPause() instructions (1, 2, 4, ... capped at max_backoff_),
+  // reducing CPU/power density during the spin window. The object must be reset
+  // between unrelated spin windows (cheap: just reconstruct).
+  class ThreadPoolWaiter {
+    unsigned pause_time_{0};
+    const unsigned max_backoff_;
+
+   public:
+    explicit ThreadPoolWaiter(unsigned max_backoff) : max_backoff_(max_backoff) {}
+
+    template <typename ShouldInterrupt>
+    bool wait(ShouldInterrupt should_interrupt) {
+      unsigned pause_count = 1U;
+      if (max_backoff_ > 1U) {
+        // Double pause_time_ each call (starting from 1) and cap at max_backoff_.
+        // Produces the sequence 1, 2, 4, ..., max_backoff_, max_backoff_, ...
+        pause_count = (pause_time_ == 0U) ? 1U : std::min(pause_time_ * 2U, max_backoff_);
+      }
+      pause_time_ = pause_count;
+      for (unsigned i = 0; i < pause_count; ++i) {
+        if (should_interrupt()) {
+          return true;
+        }
+        onnxruntime::concurrency::SpinPause();
+      }
+      return should_interrupt();
+    }
+  };
+
   Environment& env_;
   const unsigned num_threads_;
-  const int spin_count_;      // Number of SpinPause iterations before blocking (0 = no spin)
-  const int steal_interval_;  // Attempt work steal every steal_interval_ iterations
+  const unsigned int spin_backoff_max_;  // 1 = no backoff, >=2 exp-backoff cap
+  const int spin_count_;                 // Number of spin iterations before blocking (0 = no spin)
+  const int steal_interval_;             // Attempt work steal every steal_interval_ iterations
   const bool set_denormal_as_zero_;
   CallbackPolicy callback_policy_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
@@ -1675,7 +1737,16 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         //   default (-1): 1<<20 iterations (original behavior)
         //   0: no spinning (skip loop entirely)
         //   >0 us: iteration count derived from one-time SpinPause() calibration
+        // When spin_backoff_max_ > 1, ThreadPoolWaiter emits an exponentially
+        // growing number of SpinPause() calls per iteration to reduce pause
+        // density; spin_count_ has already been scaled to preserve the
+        // targeted wall-clock window.
         // steal_interval_ = max(spin_count_/100, 1), yielding ~100 steal attempts per spin window.
+        // When backoff stretches each outer iteration, the wall-clock spacing
+        // between steal attempts also grows. We keep the same approximate
+        // number of steal attempts per spin window to preserve the legacy
+        // steal-vs-block trade-off.
+        ThreadPoolWaiter waiter{spin_backoff_max_};
         int steal_countdown = steal_interval_;
         for (int i = 0; i < spin_count_ && !done_; i++) {
           if (--steal_countdown == 0) {
@@ -1688,7 +1759,16 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
-          onnxruntime::concurrency::SpinPause();
+          if (waiter.wait([&]() {
+                if (done_.load(std::memory_order_relaxed) ||
+                    spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
+                  return true;
+                }
+                w = q.PopFront();
+                return static_cast<bool>(w);
+              })) {
+            break;
+          }
         }
 
         // Attempt to block

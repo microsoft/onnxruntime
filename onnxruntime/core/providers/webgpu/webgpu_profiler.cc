@@ -11,9 +11,9 @@ namespace webgpu {
 
 WebGpuProfiler::WebGpuProfiler(WebGpuContext& context) : context_{context} {}
 
-bool WebGpuProfiler::StartProfiling(TimePoint) {
+Status WebGpuProfiler::StartProfiling(TimePoint) {
   enabled_ = true;
-  return true;
+  return Status::OK();
 }
 
 void WebGpuProfiler::EndProfiling(TimePoint tp, onnxruntime::profiling::Events& events) {

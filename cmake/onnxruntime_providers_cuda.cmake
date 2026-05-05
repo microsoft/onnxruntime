@@ -6,6 +6,8 @@
     file(GLOB onnxruntime_providers_cuda_cc_srcs CONFIGURE_DEPENDS
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/ml/*.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/ml/*.cc"
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.h"
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/tunable/*.cc"
     )
@@ -44,6 +46,7 @@
   else()
     set(onnxruntime_providers_cuda_cu_srcs
         "${ONNXRUNTIME_ROOT}/core/providers/cuda/math/unary_elementwise_ops_impl.cu"
+        "${ONNXRUNTIME_ROOT}/core/providers/cuda/ml/label_encoder_impl.cu"
         )
   endif()
   # Exclude plugin directory if it was picked up by GLOB_RECURSE
