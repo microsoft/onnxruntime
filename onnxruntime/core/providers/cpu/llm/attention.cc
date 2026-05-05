@@ -99,8 +99,10 @@ inline void ComputeAttentionSoftcapInplace(MLFloat16* scores, int sequence_lengt
 // Used to apply attn_mask / attn_bias to the QK scores after softcap, per the
 // ONNX Attention v23/24 spec ordering (onnx/onnx#7867 + #7913). For float,
 // delegates to MLAS. For MLFloat16, uses a portable scalar fallback because
-// MlasEltwiseAdd<MLAS_FP16> requires hardware fp16 add support that is not
-// available on every target.
+// MlasEltwiseAdd<MLAS_FP16> requires the per-platform EltwiseDispatch->Add_Fp16
+// kernel slot to be populated, and only the ARM NEON build provides it
+// (see onnxruntime/core/mlas/lib/eltwise.cpp:92-103); x86 and other targets
+// would throw at runtime.
 template <typename T>
 inline void AddInPlace(T* scores, const T* addend, size_t count) {
   MlasEltwiseAdd<T>(addend, scores, scores, count);
@@ -452,16 +454,22 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       // When softcap is active, we run GEMM with `beta = 0`, apply softcap inplace,
       // then add the mask explicitly via AddInPlace.
       //
+      // The fold is also skipped when the caller wants a kQK / kPostSoftCap snapshot,
+      // so the snapshot reflects the raw / post-softcap QK without the mask folded in.
+      //
       //                     original                 transposed             each iteration
       // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
       // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
       // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
       const bool softcap_active = (parameters.softcap > 0.0f);
+      const bool snapshot_needs_pre_mask =
+          out_qk != nullptr &&
+          (parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK ||
+           parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kPostSoftCap);
+      const bool fold_mask_into_gemm =
+          (mask_data != nullptr) && !softcap_active && !snapshot_needs_pre_mask;
       float beta;
-      if (mask_data != nullptr && !softcap_active &&
-          (out_qk == nullptr ||
-           (parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK &&
-            parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kPostSoftCap))) {
+      if (fold_mask_into_gemm) {
         // Broadcast mask data: SxT -> SxT
         memcpy(output, mask_data + mask_data_offset, probs_matrix_bytes);
         beta = 1;
@@ -512,15 +520,9 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
         memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
       }
 
-      // Add mask explicitly when it wasn't folded into GEMM.  The fold path is taken
-      // iff (mask != null && !softcap_active && snapshot mode is not kQK/kPostSoftCap).
-      // When the fold path was skipped but mask is present, add it now.
-      const bool mask_was_folded =
-          (mask_data != nullptr && !softcap_active &&
-           (out_qk == nullptr ||
-            (parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK &&
-             parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kPostSoftCap)));
-      if (mask_data != nullptr && !mask_was_folded) {
+      // Add mask explicitly when it wasn't folded into GEMM (single source of truth:
+      // a non-zero `beta` is exactly the case where the mask was preloaded into C).
+      if (mask_data != nullptr && !fold_mask_into_gemm) {
         AddInPlace(output, mask_data + mask_data_offset, probs_matrix_size);
       }
 
