@@ -656,7 +656,7 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   std::vector<const Tensor*> matmul_inputs = {input, weights, bias};
 
   // Call MatMul: packed_qkv = input * weights + bias
-  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(&context, Activation(), matmul_inputs, &packed_qkv, true));
+  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(&context, Activation(), matmul_inputs, &packed_qkv));
 
   // Output Q, K, V in BSD format
   return SplitPackedQKV(context, parameters, &packed_qkv, q, k, v, parameters.hidden_size_);

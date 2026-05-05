@@ -168,6 +168,9 @@ class MatMulComputeHelper {
       if (num_output_dims == 0) {
         // for left and right being both vector, output is scalar thus no shape
         ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1, "M_ == 1 && N_ == 1 was false");
+        ORT_RETURN_IF_NOT(K_ == right_shape[0],
+                          "MatMul dimension mismatch. Left vector K (",
+                          K_, ") != right vector K (", right_shape[0], ")");
       } else {
         if (left_num_dims == 1) {
           ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims, "num_dims_with_pad - 1 != num_output_dims");

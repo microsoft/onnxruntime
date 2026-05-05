@@ -1407,7 +1407,9 @@ TEST(NchwcOptimizerTests, UpsampleLinear) {
 }
 
 TEST(NchwcOptimizerTests, Activation) {
-  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1431,23 +1433,93 @@ TEST(NchwcOptimizerTests, Activation) {
       EXPECT_EQ(op_to_count["Add"], 1);
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Verify that the optimizer doesn't add reorders for these activations in
-  // this pattern. Relu/Sigmoid/Tanh are generally fusable with a
+  // this pattern. Relu/Sigmoid/Tanh/HardSigmoid are generally fusable with a
   // preceding convolution, but not here because the Conv output is consumed
   // both by the activation node and directly by the Add node. Gelu/QuickGelu
   // are also expected to remain as separate nodes.
   test_case("Relu");
   test_case("Sigmoid");
   test_case("Tanh");
+  test_case("HardSigmoid");
+  test_case("Gelu", kOnnxDomain, 20);
   test_case("Gelu", kMSDomain);
   test_case("QuickGelu", kMSDomain);
 }
 
-TEST(NchwcOptimizerTests, ActivationSingleConsumerConvGuard) {
-  auto test_case = [&](const std::string& activation_op_type, const std::string& domain = kOnnxDomain) {
+TEST(NchwcOptimizerTests, ActivationSingleConsumerConvFusion) {
+  constexpr float kHardSigmoidAlpha = 0.125f;
+  constexpr float kHardSigmoidBeta = 0.625f;
+
+  auto test_case = [&](const std::string& activation_op_type) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
+      auto* conv1_output_arg = helper.MakeIntermediate();
+      auto* activation_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv1_output_arg, {32, 48, 3, 3});
+      auto& activation_node = helper.AddNode(activation_op_type, {conv1_output_arg}, {activation_output_arg});
+      if (activation_op_type == "HardSigmoid") {
+        activation_node.AddAttribute("alpha", kHardSigmoidAlpha);
+        activation_node.AddAttribute("beta", kHardSigmoidBeta);
+      }
+      helper.AddConvNode(activation_output_arg, output_arg, {16, 32, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto& graph = session.GetGraph();
+      auto op_to_count = CountOpsInGraph(graph);
+
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 2);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count[activation_op_type], 0);
+
+      size_t fused_conv_count = 0;
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() != "Conv" || node.Domain() != kMSNchwcDomain) {
+          continue;
+        }
+
+        const auto& attributes = node.GetAttributes();
+        auto activation_it = attributes.find("activation");
+        if (activation_it == attributes.end()) {
+          continue;
+        }
+
+        fused_conv_count++;
+        EXPECT_EQ(activation_it->second.s(), activation_op_type);
+
+        auto activation_params_it = attributes.find("activation_params");
+        if (activation_op_type == "HardSigmoid") {
+          ASSERT_NE(activation_params_it, attributes.end());
+          ASSERT_EQ(activation_params_it->second.floats_size(), 2);
+          EXPECT_FLOAT_EQ(activation_params_it->second.floats(0), kHardSigmoidAlpha);
+          EXPECT_FLOAT_EQ(activation_params_it->second.floats(1), kHardSigmoidBeta);
+        } else {
+          EXPECT_EQ(activation_params_it, attributes.end());
+        }
+      }
+
+      EXPECT_EQ(fused_conv_count, 1U);
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  for (const auto& activation_op_type : {"Relu", "Sigmoid", "Tanh", "HardSigmoid"}) {
+    test_case(activation_op_type);
+  }
+}
+
+TEST(NchwcOptimizerTests, ActivationSingleConsumerConvNoFusion) {
+  auto test_case = [&](const std::string& activation_op_type,
+                       const std::string& domain = kOnnxDomain,
+                       int opset_version = 13) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({1, 48, 11, 15});
       auto* conv1_output_arg = helper.MakeIntermediate();
@@ -1477,12 +1549,13 @@ TEST(NchwcOptimizerTests, ActivationSingleConsumerConvGuard) {
       }
     };
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
   };
 
   // Gelu/QuickGelu must remain separate even with a single-consumer Conv input,
   // because the NCHWc Conv activation fuse guard only allows a fixed subset of
   // activations.
+  test_case("Gelu", kOnnxDomain, 20);
   test_case("Gelu", kMSDomain);
   test_case("QuickGelu", kMSDomain);
 }

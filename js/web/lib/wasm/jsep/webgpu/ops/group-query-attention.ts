@@ -193,9 +193,24 @@ export const validateInputs = (
       passPastInKv = true;
     }
   }
+  // Spec requires 1D shape (batch_size), but older model builders may add unit
+  // dimensions (e.g. [B, 1] instead of [B]). Allow shapes where each dim is 1 or batchSize.
   const seqlLens = inputs.length > 4 ? inputs[5] : undefined;
-  if (seqlLens && seqlLens.dims.length !== 1 && seqlLens.dims[0] !== batchSize) {
-    throw new Error('Input "seqlens" is expected to have 1 dimension and the same dim 0 as batch_size');
+  if (seqlLens) {
+    if (seqlLens.dims.length === 0) {
+      throw new Error('seqlens_k must be at least 1D, got scalar.');
+    }
+    const seqlLenSize = seqlLens.dims.reduce((a, b) => a * b, 1);
+    if (seqlLenSize !== batchSize) {
+      throw new Error(`seqlens_k must have batch_size (${batchSize}) elements, got ${seqlLenSize}.`);
+    }
+    for (let i = 0; i < seqlLens.dims.length; i++) {
+      if (seqlLens.dims[i] !== 1 && seqlLens.dims[i] !== batchSize) {
+        throw new Error(
+          `seqlens_k has unexpected shape. Each dimension must be 1 or batch_size (${batchSize}), got dims[${i}] = ${seqlLens.dims[i]}.`,
+        );
+      }
+    }
   }
   const totalSequenceLength = -1;
   const maxSequenceLength = -1;

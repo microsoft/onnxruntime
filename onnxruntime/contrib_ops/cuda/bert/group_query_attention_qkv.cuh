@@ -292,8 +292,13 @@ Status DispatchUnpackRoPEAppendHeadSize(
         packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
         num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
         cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
+  } else if (head_size <= 512) {
+    UnpackRoPEAppend<T, U, BIT_WIDTH, 512><<<grid, block, 0, stream>>>(
+        packed_qkv, query, key, value, unpacked_q, k_cache, v_cache, k_scale, v_scale,
+        num_heads, kv_num_heads, head_size, d, max_seqlen, past_seq_lens,
+        cos_cache, sin_cache, rotary_dim, position_ids, interleaved, is_cache_bnsh, per_channel);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size (", head_size, ") exceeds maximum supported MAX_HEAD_SIZE (256).");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Head size (", head_size, ") exceeds maximum supported MAX_HEAD_SIZE (512).");
   }
   return CUDA_CALL(cudaGetLastError());
 }

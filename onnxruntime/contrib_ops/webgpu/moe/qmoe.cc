@@ -124,6 +124,23 @@ class SwigLuProgram final : public Program<SwigLuProgram> {
  private:
 };
 
+class FusedFinalMix1TokenProgram final : public Program<FusedFinalMix1TokenProgram> {
+ public:
+  FusedFinalMix1TokenProgram() : Program<FusedFinalMix1TokenProgram>{"QmoeFusedFinalMix1Token"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
+    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "moe/fused_final_mix_1token.wgsl.template");
+  }
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"k", ProgramUniformVariableDataType::Uint32});
+};
+
 class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
  public:
   QMoEFinalMixProgram() : Program<QMoEFinalMixProgram>{"QMoEFinalMix"} {}
@@ -142,26 +159,6 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
       {"num_experts", ProgramUniformVariableDataType::Uint32},
       {"expert_idx", ProgramUniformVariableDataType::Uint32},
       {"token_offset", ProgramUniformVariableDataType::Uint32});
-
- private:
-};
-
-class QMoEFinalMix1TokenProgram final : public Program<QMoEFinalMix1TokenProgram> {
- public:
-  QMoEFinalMix1TokenProgram() : Program<QMoEFinalMix1TokenProgram>{"QMoEFinalMix1TokenProgram"} {}
-
-  Status GenerateShaderCode(ShaderHelper& shader) const override {
-    shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
-    shader.AddInput("indirect_experts", ShaderUsage::UseElementTypeAlias);
-    shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-
-    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix_1token.wgsl.template");
-  }
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"expert_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
 };
@@ -235,86 +232,96 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   Status status;
 
   Tensor* output_tensor = context.Output(0, input_shape);
-  const int total_output_size = (static_cast<int>(input_shape.Size()) + 3) / 4;
-
-  // we are accumulating expert results into output_tensor, need to initialize to zero
-  ZeroTensorProgram zero;
-  zero
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
-      .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
-  ORT_RETURN_IF_ERROR(context.RunProgram(zero));
 
   if (moe_params.num_rows == 1) {
-    // Optimized code path for 1 token to avoid gpu -> cpu copy
+    // Fused MoE path for 1 token: instead of looping k times with separate dispatches,
+    // run a single batched MatMulNBits with M=k where each row uses a different expert's
+    // weights via weight_index_indirect. A's single row is broadcast to all k rows.
+    // This reduces dispatches from 1 + k*4 = 17 to 5 (gate + fc1 + swiglu + fc2 + mix).
 
-    const int num_tokens = 1;
+    const uint32_t k = static_cast<uint32_t>(k_);
+    const uint32_t num_tokens = 1;
     TensorShape gate_value_shape({num_tokens, num_experts});
-    TensorShape indirect_experts_shape({k_});
+    TensorShape indirect_experts_shape({k});
 
     Tensor router_values = context.CreateGPUTensor(dtype, gate_value_shape);
     Tensor indirect_experts = context.CreateGPUTensor(dtype_uint32, indirect_experts_shape);
 
+    // Step 1: Gate — select top-k experts
     Gate1TokenProgram gate{k_, is_fp16};
     gate
         .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}})
         .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&indirect_experts, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(num_experts)
-        .SetDispatchGroupSize(static_cast<uint32_t>(num_tokens))
-        .AddUniformVariables({static_cast<uint32_t>(num_tokens), num_experts})
+        .SetDispatchGroupSize(num_tokens)
+        .AddUniformVariables({num_tokens, num_experts})
         .CacheHint(k_, is_fp16 ? "fp16" : "fp32");
-
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
-    for (uint32_t expert_idx = 0; expert_idx < static_cast<uint32_t>(k_); expert_idx++) {
-      TensorShape fc1_output_shape({num_tokens, fc1_output_size});
-      Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
-      TensorShape fc1_activated_shape({num_tokens, moe_params.inter_size});
-      Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
-      TensorShape fc2_output_shape({num_tokens, N_fc2});
-      Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
+    // Step 2: Batched fc1 MatMulNBits with M=k, per-row expert selection.
+    // A is (1, hidden_size) but dispatched with override_M=k; shader broadcasts A row 0.
+    TensorShape fc1_output_shape({static_cast<int64_t>(k), fc1_output_size});
+    Tensor fc1_outputs = context.CreateGPUTensor(dtype, fc1_output_shape);
+    status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
+                              K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
+                              &fc1_outputs, 0, &indirect_experts, /*override_M=*/k);
+    ORT_RETURN_IF_ERROR(status);
 
-      status = ApplyMatMulNBits(hidden_state, fc1_experts_weights, fc1_scales, nullptr, fc1_experts_bias_optional,
-                                K_fc1, N_fc1, block_size_fc1, accuracy_level, expert_weight_bits_, context,
-                                &fc1_outputs, expert_idx, &indirect_experts);
-      ORT_RETURN_IF_ERROR(status);
-
-      if (is_swiglu) {
-        SwigLuProgram swiglu;
-        swiglu
-            .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type, 2}})
-            .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
-            .SetWorkgroupSize(128)
-            .SetDispatchGroupSize(((num_tokens * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
-            .AddUniformVariables({static_cast<uint32_t>(num_tokens),
-                                  static_cast<uint32_t>(moe_params.inter_size),
-                                  activation_alpha_,
-                                  activation_beta_,
-                                  swiglu_limit_});
-        ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
-      } else {
-        ORT_THROW("only swiglu is supported for WebGPU.");
-      }
-
-      status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
-                                K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
-                                &fc2_outputs, expert_idx, &indirect_experts);
-      ORT_RETURN_IF_ERROR(status);
-
-      QMoEFinalMix1TokenProgram final_mix;
-      final_mix
-          .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{&indirect_experts, ProgramTensorMetadataDependency::Type}})
-          .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
-          .SetDispatchGroupSize(1)
-          .AddUniformVariables({hidden_size, expert_idx});
-
-      ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
+    // Step 3: SwiGLU on all k rows at once
+    TensorShape fc1_activated_shape({static_cast<int64_t>(k), moe_params.inter_size});
+    Tensor fc1_activated = context.CreateGPUTensor(dtype, fc1_activated_shape);
+    if (is_swiglu) {
+      SwigLuProgram swiglu;
+      swiglu
+          .AddInputs({{&fc1_outputs, ProgramTensorMetadataDependency::Type, 2}})
+          .AddOutput({&fc1_activated, ProgramTensorMetadataDependency::None})
+          .SetWorkgroupSize(128)
+          .SetDispatchGroupSize(((k * static_cast<uint32_t>(moe_params.inter_size)) + 127) / 128)
+          .AddUniformVariables({k,
+                                static_cast<uint32_t>(moe_params.inter_size),
+                                activation_alpha_,
+                                activation_beta_,
+                                swiglu_limit_});
+      ORT_RETURN_IF_ERROR(context.RunProgram(swiglu));
+    } else {
+      ORT_THROW("only swiglu is supported for WebGPU.");
     }
+
+    // Step 4: Batched fc2 MatMulNBits with M=k, per-row expert selection
+    // fc1_activated already has k rows (one per expert), no override_M needed.
+    TensorShape fc2_output_shape({static_cast<int64_t>(k), N_fc2});
+    Tensor fc2_outputs = context.CreateGPUTensor(dtype, fc2_output_shape);
+    status = ApplyMatMulNBits(&fc1_activated, fc2_experts_weights, fc2_scales, nullptr, fc2_experts_bias_optional,
+                              K_fc2, N_fc2, block_size_fc2, accuracy_level, expert_weight_bits_, context,
+                              &fc2_outputs, 0, &indirect_experts, /*override_M=*/0);
+    ORT_RETURN_IF_ERROR(status);
+
+    // Step 5: Fused FinalMix — accumulate all k expert results weighted by router_values
+    // Dispatch across hidden_size (not k) to avoid race: each thread accumulates all k experts.
+    const uint32_t mix_wg_size = 256;
+    FusedFinalMix1TokenProgram final_mix;
+    final_mix
+        .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
+        .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
+        .AddInputs({{&indirect_experts, ProgramTensorMetadataDependency::Type}})
+        .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
+        .SetWorkgroupSize(mix_wg_size)
+        .SetDispatchGroupSize((hidden_size + mix_wg_size - 1) / mix_wg_size)
+        .AddUniformVariables({hidden_size, k});
+    ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
+
     return Status::OK();
   }
+
+  // Multi-token path: accumulates into output_tensor, need to initialize to zero.
+  const int total_output_size = (static_cast<int>(input_shape.Size()) + 3) / 4;
+  ZeroTensorProgram zero;
+  zero
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})
+      .SetDispatchGroupSize((total_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({static_cast<uint32_t>(total_output_size)});
+  ORT_RETURN_IF_ERROR(context.RunProgram(zero));
 
   // path for num_tokens > 1
   // process tokens in chunks of max_tokens to put some cap on memory usage

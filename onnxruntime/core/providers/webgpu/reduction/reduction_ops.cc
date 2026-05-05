@@ -187,7 +187,7 @@ std::unordered_map<ReduceOpType, ReduceOpSpecificCode> reduce_op_naive_code_map 
 };
 
 ReduceOpType StringToReduceOp(std::string name) {
-  ORT_ENFORCE(reduce_op_types.find(name) != reduce_op_types.end(), "Unsupported reduction op type: ", name);
+  ORT_ENFORCE(reduce_op_types.contains(name), "Unsupported reduction op type: ", name);
   return reduce_op_types[name];
 }
 

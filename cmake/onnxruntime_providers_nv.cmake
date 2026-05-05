@@ -132,6 +132,7 @@ endif ()
   # However, starting from TRT 10 GA, nvonnxparser_static doesn't link against tensorrt libraries.
   # Therefore, the above code finds ${TENSORRT_LIBRARY_INFER}
   set(trt_link_libs ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
+
   file(GLOB_RECURSE onnxruntime_providers_nv_tensorrt_rtx_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/*.cc"
@@ -148,10 +149,15 @@ endif ()
   onnxruntime_add_include_to_target(onnxruntime_providers_nv_tensorrt_rtx onnxruntime_common)
   target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE Eigen3::Eigen  onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
   add_dependencies(onnxruntime_providers_nv_tensorrt_rtx onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  # Make NVML linkage optional: only link CUDA::nvml if the target exists.
+  set(_nvml_lib "")
+  if (TARGET CUDA::nvml)
+    set(_nvml_lib CUDA::nvml)
+  endif()
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} PUBLIC CUDA::cudart CUDA::cuda_driver)
+    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} ${_nvml_lib} PUBLIC CUDA::cudart CUDA::cuda_driver)
   else()
-    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart CUDA::cuda_driver)
+    target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} ${_nvml_lib} PUBLIC CUDA::cudart CUDA::cuda_driver)
   endif()
   target_include_directories(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${TENSORRT_RTX_INCLUDE_DIR} ${onnx_tensorrt_SOURCE_DIR}
     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
@@ -160,6 +166,9 @@ endif ()
   set_target_properties(onnxruntime_providers_nv_tensorrt_rtx PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_nv_tensorrt_rtx PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ONNXIFI_BUILD_LIBRARY=1)
+  if (TARGET CUDA::nvml)
+    target_compile_definitions(onnxruntime_providers_nv_tensorrt_rtx PRIVATE HAVE_NVML=1)
+  endif()
   target_compile_options(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
   if (WIN32)
     target_compile_options(onnxruntime_providers_nv_tensorrt_rtx INTERFACE /wd4456)

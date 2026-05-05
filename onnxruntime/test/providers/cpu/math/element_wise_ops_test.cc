@@ -4280,6 +4280,56 @@ TEST(ModOpTest, Int32_mod_bcast) {
   test.Run();
 }
 
+TEST(ModOpTest, Mod_int8_by_zero) {
+  OpTester test("Mod", ModOp_ver);
+  test.AddInput<int8_t>("X", {3}, {4, 8, 8});
+  test.AddInput<int8_t>("Y", {3}, {1, 0, 2});
+  test.AddOutput<int8_t>("Z", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer modulo by zero",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(ModOpTest, Mod_int32_by_zero) {
+  OpTester test("Mod", ModOp_ver);
+  test.AddInput<int32_t>("X", {3}, {4, 8, 8});
+  test.AddInput<int32_t>("Y", {3}, {1, 0, 2});
+  test.AddOutput<int32_t>("Z", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer modulo by zero",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(ModOpTest, Mod_int64_by_zero_scalar) {
+  // Scalar divisor of 0
+  OpTester test("Mod", ModOp_ver);
+  test.AddInput<int64_t>("X", {3}, {4, 8, 8});
+  test.AddInput<int64_t>("Y", {}, {0});
+  test.AddOutput<int64_t>("Z", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer modulo by zero",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(ModOpTest, Mod_int32_by_zero_constant_initializer) {
+  // Divisor is a constant initializer — validated once at kernel creation time
+  OpTester test("Mod", ModOp_ver);
+  test.AddInput<int32_t>("X", {3}, {4, 8, 8});
+  test.AddInput<int32_t>("Y", {3}, {1, 0, 2}, true);  // is_initializer = true
+  test.AddOutput<int32_t>("Z", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer modulo by zero",
+           {}, nullptr, &execution_providers);
+}
+
 TEST(BitShiftOpTest, SimpleLeft) {
   OpTester test("BitShift", 11);
   test.AddAttribute("direction", "LEFT");
@@ -4368,6 +4418,62 @@ TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
   test.AddInput<uint8_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
   test.AddOutput<uint8_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
   test.Run();
+}
+
+// Test that shift amounts >= bit width produce 0 (not undefined behavior).
+// DirectML EP has the same hardware-level shift masking behavior, so skip these tests for DML.
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, LeftShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint32) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {3}, {32, 32, 32});
+  test.AddOutput<uint32_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, RightShiftByMoreThanBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {2}, {1000, 42});
+  test.AddInput<uint64_t>("Y", {2}, {65, 128});
+  test.AddOutput<uint64_t>("Z", {2}, {0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, ScalarRightShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {1}, {1000});
+  test.AddInput<uint64_t>("Y", {3}, {64, 65, 128});
+  test.AddOutput<uint64_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, ScalarLeftShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {3}, {1000, 255, 42});
+  test.AddInput<uint64_t>("Y", {1}, {64});
+  test.AddOutput<uint64_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
 TEST(MathOpTest, BitwiseAnd) {

@@ -261,10 +261,24 @@ Status CheckInputs(const T* query,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
 
-  const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
-  if (seqlens_k_dim.size() != 1 && seqlens_k_dim[0] != batch_size) {
+  // Spec requires 1D shape (batch_size), but older model builders may add unit
+  // dimensions (e.g. [B, 1] instead of [B]). Allow shapes where each dim is 1 or batch_size.
+  if (seqlens_k->Shape().NumDimensions() == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "seqlens_k must be shape (batch_size).");
+                           "seqlens_k must be at least 1D, got scalar.");
+  }
+  const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
+  if (seqlens_k->Shape().Size() != static_cast<int64_t>(batch_size)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "seqlens_k must have batch_size (", batch_size, ") elements, got ",
+                           seqlens_k->Shape().Size(), ".");
+  }
+  for (size_t i = 0; i < seqlens_k_dim.size(); ++i) {
+    if (seqlens_k_dim[i] != 1 && seqlens_k_dim[i] != static_cast<int64_t>(batch_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "seqlens_k has unexpected shape. Each dimension must be 1 or batch_size (",
+                             batch_size, "), got dim[", i, "] = ", seqlens_k_dim[i], ".");
+    }
   }
 
   if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
@@ -275,6 +289,10 @@ Status CheckInputs(const T* query,
   // When graph capture is enabled, total_seqlen is on GPU and cannot be read. Skip validation.
   const bool is_total_seqlen_on_cpu = (total_seqlen->Location().device.Type() == OrtDevice::CPU);
   int total_sequence_length = is_total_seqlen_on_cpu ? *((*total_seqlen).template Data<int32_t>()) : 0;
+  if (is_total_seqlen_on_cpu && total_sequence_length <= 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "total_sequence_length must be positive, got ", total_sequence_length, ".");
+  }
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
   int rotary_dim = 0;

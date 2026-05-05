@@ -578,10 +578,10 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
 }
 
 template <typename T>
-Status QMoECPU<T>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
-                                                int input_idx,
-                                                /*out*/ bool& used_shared_buffers) {
+Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                             gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                             int input_idx,
+                                             /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
   if (expert_weight_bits_ != 4) {
@@ -1577,11 +1577,11 @@ template QMoECPU<float>::QMoECPU(const OpKernelInfo& op_kernel_info);
 
 template Status QMoECPU<float>::Compute(OpKernelContext* context) const;
 template Status QMoECPU<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
-template Status QMoECPU<float>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
+template Status QMoECPU<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 template QMoECPU<MLFloat16>::QMoECPU(const OpKernelInfo& op_kernel_info);
 template Status QMoECPU<MLFloat16>::Compute(OpKernelContext* context) const;
 template Status QMoECPU<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed, PrePackedWeights* prepacked_weights);
-template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers_V2(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
+template Status QMoECPU<MLFloat16>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, gsl::span<const size_t> prepacked_buffer_sizes, int input_idx, bool& used_shared_buffers);
 
 // Kernel Registration
 ONNX_OPERATOR_TYPED_KERNEL_EX(

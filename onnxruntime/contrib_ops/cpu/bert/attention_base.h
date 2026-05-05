@@ -121,6 +121,20 @@ inline Status AttentionBase::CheckMask(const Tensor* mask_index,
     }
     mask_type = (mask_dims[0] == batch_size ? AttentionMaskType::MASK_1D_KEY_SEQ_LEN : mask_dims[0] == 2 * batch_size ? AttentionMaskType::MASK_1D_END_START
                                                                                                                       : AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
+
+    // Validate that end_position values (first batch_size elements) are non-negative.
+    // Negative end_position causes out-of-bounds writes in PrepareMask.
+    // Only validate when mask_index is on CPU; GPU tensors are clamped in the CUDA kernel.
+    if (mask_index->Location().device.Type() == OrtDevice::CPU) {
+      const int32_t* mask_data = mask_index->Data<int32_t>();
+      for (int64_t i = 0; i < batch_size; i++) {
+        if (mask_data[i] < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "mask_index value ", mask_data[i], " at index ", i,
+                                 " is negative. mask_index end_position values must be non-negative.");
+        }
+      }
+    }
   } else if (mask_dims.size() == 2) {
     if (mask_dims[0] == batch_size && mask_dims[1] == total_sequence_length) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;

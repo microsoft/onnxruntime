@@ -181,7 +181,7 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
         // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
         s_.memory_for_cudnn_conv_results =
             GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size,
-                                   context->GetComputeStream());
+                                   GetComputeStream(context));
         s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
       } else {
         // No post slicing needed. Fill the output tensor's buffer directly.
@@ -338,7 +338,7 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
       }
       if (s_.post_slicing_required) {
         s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(
-            TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
+            TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, GetComputeStream(context));
         s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
       } else {
         s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
@@ -358,7 +358,7 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
     bool has_b = nullptr != s_.b_data;
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
-    IAllocatorUniquePtr<void> workspace = GetWorkSpace(context->GetComputeStream());
+    IAllocatorUniquePtr<void> workspace = GetWorkSpace(GetComputeStream(context));
     auto cudnn_status = cudnnConvolutionBiasActivationForward(cudnnHandle,
                                                               &alpha,
                                                               s_.x_tensor,
@@ -422,7 +422,7 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
     return Status::OK();
   }
 
-  inline IAllocatorUniquePtr<void> GetWorkSpace(onnxruntime::Stream* stream) const {
+  inline IAllocatorUniquePtr<void> GetWorkSpace(void* stream) const {
     return GetScratchBuffer<void>(s_.workspace_bytes, stream);
   }
 

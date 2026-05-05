@@ -881,12 +881,21 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
 
     const bool can_fuse_activation = (node.OpType() == "Relu") ||
                                      (node.OpType() == "Sigmoid") ||
-                                     (node.OpType() == "Tanh");
+                                     (node.OpType() == "Tanh") ||
+                                     (node.OpType() == "HardSigmoid");
     if ((nchwc_node.OpType() == "Conv") && (nchwc_node.Domain() == kMSNchwcDomain) &&
         can_fuse_activation &&
         (nchwc_input->starting_original_uses_ == 1) &&
         (graph_utils::GetNodeAttribute(nchwc_node, "activation") == nullptr)) {
       nchwc_node.AddAttribute("activation", node.OpType());
+      if (node.OpType() == "HardSigmoid") {
+        const auto* alpha_attr = graph_utils::GetNodeAttribute(node, "alpha");
+        const auto* beta_attr = graph_utils::GetNodeAttribute(node, "beta");
+        InlinedVector<float> activation_params{
+            alpha_attr == nullptr ? 0.2f : alpha_attr->f(),
+            beta_attr == nullptr ? 0.5f : beta_attr->f()};
+        nchwc_node.AddAttribute("activation_params", activation_params);
+      }
       FuseNchwcArgument(node, *nchwc_input);
       removed_nodes_.push_front(node.Index());
     } else {
@@ -1265,8 +1274,10 @@ void NchwcTransformerImpl::Transform(Node& node) {
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11, 13})) {
       TransformConcat(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6, 22}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13}) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {20}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gelu", {1}, kMSDomain) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "QuickGelu", {1}, kMSDomain)) {
       TransformActivation(node);

@@ -125,6 +125,7 @@ struct TestAllocator : public OrtAllocator {
 
     GetStats = nullptr;
     AllocOnStream = nullptr;
+    Shrink = nullptr;
   }
 
   // initializers that are used directly by the model. as there's no copy they must remain valid.

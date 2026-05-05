@@ -454,11 +454,15 @@ class MatMulSelector : public BaseSelector {
                      compatible_providers) {}
 };
 
-// Convert "1 DQ node for input B -> MatMul" to "MatMulNBits"
+// Convert "1 DQ node for input B -> MatMul/Gemm" to "MatMulNBits"
 class DQMatMulToMatMulNBitsSelector : public BaseSelector {
  public:
   explicit DQMatMulToMatMulNBitsSelector(gsl::span<const char*> compatible_providers = {})
       : BaseSelector(std::make_unique<DQMatMulNodeGroupSelector>(), compatible_providers) {}
+
+  // Only keep the weight DQ in the selection. Any bias DQ (for Gemm) is excluded
+  // so that RemoveNodes does not remove it — its output is wired through to MatMulNBits.
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const override;
 };
 
 // Input: DQ nodes for A, B and optional C

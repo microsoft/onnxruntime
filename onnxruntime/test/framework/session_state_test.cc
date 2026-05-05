@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
 #include <iostream>
 #include <absl/base/config.h>
 
@@ -9,9 +10,11 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/ep_context_options.h"
+#include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -280,7 +283,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
                 graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
           },
           sess_options.config_options,
-          DefaultLoggingManager().DefaultLogger()));
+          DefaultLoggingManager().DefaultLogger(), nullptr /*layering_index*/));
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
 
@@ -367,7 +370,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
                                                              cpu_allocator, debug_graph_fn);
         },
         sess_options.config_options,
-        default_logger));
+        default_logger,
+        nullptr /*layering_index*/));
 
     EXPECT_STATUS_OK(session_state.FinalizeSessionState(model.ModelPath(), krm));
 
@@ -414,9 +418,50 @@ namespace {
 
 using ParitionVerifierFn = std::function<void(const Graph&)>;
 
+// Collect unique node names from a graph and all its subgraphs
+// using the same naming scheme as the resource accountant.
+static void CollectNodeNames(const Graph& graph, std::vector<std::string>& names) {
+  for (const auto& node : graph.Nodes()) {
+    names.push_back(IResourceAccountant::MakeUniqueNodeName(node));
+    for (const auto& [_, subgraph] : node.GetAttributeNameToSubgraphMap()) {
+      CollectNodeNames(*subgraph, names);
+    }
+  }
+}
+
+// Generates a node stats file dynamically from the current graph,
+// assigning each node a fixed cost. Returns the total cost across
+// all nodes so callers can choose a threshold relative to the actual total.
+// This avoids relying on a pre-baked stats file whose node name hashes
+// become stale when graph optimizers change node input/output names.
+static void GenerateDynamicNodeStatsFile(const ORTCHAR_T* model_path,
+                                         const std::filesystem::path& output_path,
+                                         size_t& total_cost,
+                                         size_t cost_per_node = 1024) {
+  const auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<onnxruntime::Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, default_logger));
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::vector<std::string> node_names;
+  CollectNodeNames(graph, node_names);
+
+  std::ofstream ofs(output_path);
+  ASSERT_TRUE(ofs.is_open());
+  ofs << "#name,input_sizes,initializers_sizes,total_dynamic_sizes,total_temp_allocations\n";
+  for (const auto& name : node_names) {
+    ofs << name << "," << cost_per_node << ",0,0,0\n";
+  }
+  ofs.close();
+
+  total_cost = node_names.size() * cost_per_node;
+}
+
 void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
                                        const SessionOptions& sess_options,
-                                       const ParitionVerifierFn& verifier_fn) {
+                                       const ParitionVerifierFn& verifier_fn,
+                                       const std::string& layering_config = std::string()) {
   const auto& log_manager = DefaultLoggingManager();
   log_manager.SetDefaultLoggerSeverity(onnxruntime::logging::Severity::kVERBOSE);
   const auto& default_logger = log_manager.DefaultLogger();
@@ -431,9 +476,12 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 
   ExecutionProviders execution_providers;
-  auto tmp_cpu_execution_provider = DefaultCudaExecutionProvider();
-  tmp_cpu_execution_provider->SetLogger(&default_logger);
-  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_cpu_execution_provider)));
+  auto tmp_execution_provider = DefaultCudaExecutionProvider();
+  tmp_execution_provider->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_execution_provider)));
+  tmp_execution_provider = DefaultCpuExecutionProvider();
+  tmp_execution_provider->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(tmp_execution_provider)));
 
   KernelRegistryManager krm;
   ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
@@ -445,6 +493,16 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   SessionState session_state(model->MainGraph(), execution_providers, tp.get(), nullptr, dtm, edlm,
                              default_logger, profiler, sess_options);
 
+  LayeringIndex* layering_index = nullptr;
+  std::optional<LayeringIndex> layering_index_storage;
+  if (!layering_config.empty()) {
+    ASSERT_STATUS_OK(LayeringIndex::Create(graph, layering_config, {}, execution_providers,
+                                           default_logger, layering_index_storage));
+    if (layering_index_storage.has_value()) {
+      layering_index = &layering_index_storage.value();
+    }
+  }
+
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&sess_options,
                                                                            execution_providers.Get(onnxruntime::kCpuExecutionProvider),
@@ -455,7 +513,8 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   layout_transformation::DebugGraphFn debug_graph_fn;
   ASSERT_STATUS_OK(
       partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-                            sess_options.config_options, default_logger, GraphPartitioner::Mode::kNormal,
+                            sess_options.config_options, default_logger, layering_index,
+                            GraphPartitioner::Mode::kNormal,
                             epctx::ModelGenOptions{},
                             debug_graph_fn));
 
@@ -484,16 +543,28 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_NoLimit) {
 
 TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
-  constexpr const char* limit_setting = "10000,tiny_gpt2_beamsearch_node_stats.txt";
+  std::error_code ec;
+  const std::filesystem::path stats_path =
+      std::filesystem::temp_directory_path(ec) / "tiny_gpt2_beamsearch_dynamic_stats_large.txt";
+  ASSERT_FALSE(ec) << "temp_directory_path failed: " << ec.message();
 
-  // Large limit, all nodes are still assigned
+  // Generate node stats dynamically so names always match the current graph
+  constexpr size_t cost_per_node = 1024;
+  size_t total_cost = 0;
+  GenerateDynamicNodeStatsFile(model_path, stats_path, total_cost, cost_per_node);
+  ASSERT_GT(total_cost, 0U);
+
+  // Use a limit much larger than total cost so all nodes are assigned CUDA.
+  size_t large_limit_kb = (total_cost * 2) / 1024 + 1;
+  std::string limit_setting = std::to_string(large_limit_kb) + "," + stats_path.string();
+
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = false;
   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = false;
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting.c_str()));
 
   LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
     const auto& graph_nodes = graph.Nodes();
@@ -501,20 +572,36 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
       EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
     }
   });
+
+  std::error_code remove_ec;
+  std::filesystem::remove(stats_path, remove_ec);
 }
 
 TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
   constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
-  constexpr const char* limit_setting = "5000,tiny_gpt2_beamsearch_node_stats.txt";
+  std::error_code ec;
+  const std::filesystem::path stats_path =
+      std::filesystem::temp_directory_path(ec) / "tiny_gpt2_beamsearch_dynamic_stats_offload.txt";
+  ASSERT_FALSE(ec) << "temp_directory_path failed: " << ec.message();
 
-  // Large limit, all nodes are still assigned
+  // Generate node stats dynamically so names always match the current graph.
+  constexpr size_t cost_per_node = 1024;
+  size_t total_cost = 0;
+  GenerateDynamicNodeStatsFile(model_path, stats_path, total_cost, cost_per_node);
+  ASSERT_GT(total_cost, 0U);
+
+  // Set threshold to half the total cost so some nodes must be offloaded to CPU.
+  size_t half_limit_kb = (total_cost / 2) / 1024;
+  ASSERT_GT(half_limit_kb, 0U);
+  std::string limit_setting = std::to_string(half_limit_kb) + "," + stats_path.string();
+
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = false;
   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = false;
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting.c_str()));
 
   LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
     const auto& graph_nodes = graph.Nodes();
@@ -527,6 +614,38 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
     }
     EXPECT_TRUE(cpu_node_found);
   });
+
+  std::error_code remove_ec;
+  std::filesystem::remove(stats_path, remove_ec);
+}
+
+TEST(SessionStateTest, TestLayeringPartitioning) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/layering/tiny_gpt2_beamsearch_layering.onnx");
+  constexpr const char* layering_setting =
+      "cpu(Embed,Decode);gpu(GptAttention0,GptAttention1,GptAttention2,GptAttention3,GptAttention4)";
+
+  // Set the session options for layering
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = false;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsLayerAssignmentSettings, layering_setting));
+
+  LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
+     const auto& graph_nodes = graph.Nodes();
+     for (const auto& node : graph_nodes) {
+       const std::string& name = node.Name();
+       const bool expected_on_cpu = (name.find("EmbedLayer") == 0) || (name == "LayerNorm_10") || (name == "MatMul_1165");
+
+       const std::string& ep = node.GetExecutionProviderType();
+       if (expected_on_cpu) {
+         EXPECT_EQ(ep, kCpuExecutionProvider) << "Node " << name << " expected on CPU but found on " << ep;
+       } else {
+         EXPECT_EQ(ep, kCudaExecutionProvider) << "Node " << name << " expected on CUDA but found on " << ep;
+       }
+     } }, layering_setting);
 }
 
 #endif  // USE_CUDA
@@ -543,6 +662,7 @@ class PrePackingTestOpKernel : public OpKernel {
   }
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override {
     ORT_UNUSED_PARAMETER(input_idx);
@@ -909,9 +1029,8 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
   std::vector<float> float_data(1, 1);
   auto value = std::make_unique<OrtValue>();
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
-                       TensorShape(std::vector<int64_t>{1}), reinterpret_cast<void*>(float_data.data()),
-                       mem_info, *value);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                       float_data.data(), mem_info, *value);
 
   ASSERT_STATUS_OK(sess_options.AddInitializer("node_0_input_1", value.get()));
 
@@ -1379,6 +1498,5 @@ INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                                          PrepackingTestParam{true, false},
                                          PrepackingTestParam{true, true}));
 #endif
-
 }  // namespace test
 }  // namespace onnxruntime

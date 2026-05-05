@@ -3,12 +3,19 @@
 
 #include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
+#include "core/providers/cpu/llm/rotary_embedding_int32_utils.h"
+
+#include <algorithm>
+#include <limits>
 
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
 using onnxruntime::concurrency::ThreadPool;
 using namespace onnxruntime::contrib::rotary_embedding_helper;
+using onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff;
+
+using onnxruntime::rotary_embedding_int32_utils::CheckedPtrdiffMulToPtrdiff;
 
 namespace onnxruntime {
 namespace contrib {
@@ -32,8 +39,16 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   scale = info.GetAttrOrDefault<float>("scale", 1.0);
-  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
-  num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
+  const int64_t rotary_embedding_dim_attr = info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0);
+  const int64_t num_heads_attr = info.GetAttrOrDefault<int64_t>("num_heads", 0);
+  ORT_ENFORCE(rotary_embedding_dim_attr >= 0 && rotary_embedding_dim_attr <= std::numeric_limits<int>::max(),
+              "rotary_embedding_dim must be in range [0, ", std::numeric_limits<int>::max(),
+              "]. Actual value: ", rotary_embedding_dim_attr);
+  ORT_ENFORCE(num_heads_attr >= 0 && num_heads_attr <= std::numeric_limits<int>::max(),
+              "num_heads must be in range [0, ", std::numeric_limits<int>::max(),
+              "]. Actual value: ", num_heads_attr);
+  rotary_embedding_dim = static_cast<int>(rotary_embedding_dim_attr);
+  num_heads = static_cast<int>(num_heads_attr);
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
   is_packed_batching = (info.GetAttrOrDefault<int64_t>("is_packed_batching", 0) == 1);
 
@@ -72,8 +87,12 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
                              " exceeds cos/sin cache range [0, ", max_sequence_length, ")");
     }
   } else if (position_ids_format == 1) {
+    std::ptrdiff_t position_count = 0;
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+        batch_size, sequence_length, "position_ids element count", position_count));
+
     // Format 1: 2D array (batch_size, sequence_length)
-    for (int i = 0; i < batch_size * sequence_length; ++i) {
+    for (std::ptrdiff_t i = 0; i < position_count; ++i) {
       int64_t pos = position_ids[i];
       if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -84,7 +103,37 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   }
 
   // Parallel to calculate based on head_size
-  const int loop_len = batch_size * sequence_length * n_heads;
+  std::ptrdiff_t loop_len = 0;
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      batch_size, sequence_length, n_heads, "total_elements", loop_len));
+
+  std::ptrdiff_t max_batch_offset = 0;
+  std::ptrdiff_t max_seq_offset = 0;
+  std::ptrdiff_t max_head_offset = 0;
+  std::ptrdiff_t max_block_offset = 0;
+  std::ptrdiff_t max_b_s_index = 0;
+  [[maybe_unused]] std::ptrdiff_t max_cache_offset = 0;
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      std::max(batch_size - 1, 0), batch_stride, "max_batch_offset", max_batch_offset));
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      std::max(sequence_length - 1, 0), seq_stride, "max_seq_offset", max_seq_offset));
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+      std::max(n_heads - 1, 0), head_stride, "max_head_offset", max_head_offset));
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff(
+      max_batch_offset, max_seq_offset, "max_block_offset", max_block_offset));
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedAddToPtrdiff(
+      max_block_offset, max_head_offset, "max_block_offset", max_block_offset));
+  if (position_ids_format == 0) {
+    std::ptrdiff_t total_b_s_count = 0;
+    ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedMulToPtrdiff(
+        batch_size, sequence_length, "total_b_s_count", total_b_s_count));
+    max_b_s_index = total_b_s_count > 0 ? total_b_s_count - 1 : 0;
+  } else {
+    max_b_s_index = std::max(max_sequence_length - 1, 0);
+  }
+  ORT_RETURN_IF_ERROR(onnxruntime::rotary_embedding_int32_utils::CheckedPtrdiffMulToPtrdiff(
+      max_b_s_index, half_rotary_emb_dim, "max_cache_offset", max_cache_offset));
+
   // The cost is calculated as:
   //   - head_size * sizeof(T) for reading input
   //   - head_size * sizeof(T) for writing output
@@ -97,16 +146,18 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const int n = static_cast<int>(ptr % n_heads);
       // Identify the index of batch, sequence, and head (specific range) in the input/output tensor
       // for read/write
-      const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
+      const std::ptrdiff_t block_offset = static_cast<std::ptrdiff_t>(b) * batch_stride +
+                                          static_cast<std::ptrdiff_t>(s) * seq_stride +
+                                          static_cast<std::ptrdiff_t>(n) * head_stride;
 
       const T* input_data = input + block_offset;
       T* output_data = output + block_offset;
 
       // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-      const int position_id = (position_ids_format == 0)
-                                  ? static_cast<int>(position_ids[0]) + s
-                                  : static_cast<int>(position_ids[b * sequence_length + s]);
-      const int cache_offset = position_id * half_rotary_emb_dim;
+      const std::ptrdiff_t position_id = (position_ids_format == 0)
+                                             ? static_cast<std::ptrdiff_t>(position_ids[0]) + s
+                                             : static_cast<std::ptrdiff_t>(position_ids[static_cast<std::ptrdiff_t>(b) * sequence_length + s]);
+      const std::ptrdiff_t cache_offset = position_id * half_rotary_emb_dim;
       const T* cos_data = cos_cache + cache_offset;
       const T* sin_data = sin_cache + cache_offset;
 

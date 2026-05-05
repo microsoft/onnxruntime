@@ -398,11 +398,9 @@ stages:
     - checkout: self
       submodules: false
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
-        architecture: x64
+    - template: templates/setup-feeds-and-python-steps.yml
+      parameters:
+        architecture: 'x64'
 
     - task: CmdLine@2
       displayName: 'Run build_custom_android_package.py'
@@ -432,11 +430,10 @@ stages:
       vmImage: "macOS-14"
 
     steps:
-    - task: UsePythonVersion@0
-      inputs:
+    - template: templates/setup-feeds-and-python-steps.yml
+      parameters:
         versionSpec: "3.12"
-        addToPath: true
-        architecture: "x64"
+        architecture: 'x64'
 
     - template: templates/use-xcode-version.yml
 

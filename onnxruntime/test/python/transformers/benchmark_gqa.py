@@ -266,6 +266,13 @@ def run_performance_test(
         (32, 96, 32, 131072, None, "Phi-3-mini-128k"),
         (32, 128, 8, 131072, None, "Phi-3-small-128k"),  # Sparsity is not used in this test
         (40, 128, 10, 131072, None, "Phi-3-medium-128K"),
+        # Gemma 4 global attention layers: num_attention_heads=8,
+        # num_key_value_heads=4, head_dim=512. Head_dim > 256 is unsupported by
+        # Flash / Memory-Efficient Attention, so this exercises the GQA unfused
+        # fallback kernel (issue #28195). Listed twice: global (dense) and local
+        # (sliding window) variants.
+        (8, 512, 4, 32768, None, "Gemma4-global-h512"),
+        (8, 512, 4, 32768, 4096, "Gemma4-local-h512"),
     ]
 
     if fast:

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <initializer_list>
+
 #ifdef _WIN32
 #pragma warning(disable : 4267)
 #endif
@@ -42,6 +44,27 @@ inline Direction MakeDirection(const std::string& direction) {
   }
   ORT_THROW("Invalid 'direction' argument of '", direction,
             "'. Must be one of 'forward', 'reverse', or 'bidirectional'.");
+}
+
+inline size_t CalculateBufferElementCount(std::initializer_list<int> dimensions) {
+  SafeInt<size_t> count{1};
+
+  for (int dimension : dimensions) {
+    count *= dimension;
+  }
+
+  return count;
+}
+
+inline int CalculateOutputStepLength(int batch_size, int hidden_size, int num_directions, Direction direction) {
+  SafeInt<int> output_step_length{batch_size};
+  output_step_length *= hidden_size;
+
+  if (direction == kForward && num_directions == 2) {
+    output_step_length *= 2;
+  }
+
+  return output_step_length;
 }
 
 /** Allocate a unique_ptr using allocator_, and return a span to the allocated memory so usage is safe

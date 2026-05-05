@@ -4,6 +4,7 @@
 import argparse
 import glob
 import os
+import re
 import shutil
 
 from generate_nuspec_for_native_nuget import generate_metadata
@@ -18,6 +19,10 @@ def generate_files(lines, args):
     }
 
     avoid_keywords = {"pdb", "onnxruntime_providers_cuda"}
+    # On macOS the build output contains both libonnxruntime.dylib and a versioned
+    # duplicate like libonnxruntime.1.version_minor.version_patch.dylib (identical contents).
+    # Skip the versioned dylib to avoid bloating the NuGet package with duplicate binaries.
+    versioned_dylib_re = re.compile(r"^lib.+\.\d+(\.\d+)*\.dylib$")
     processed_includes = set()
     for platform, platform_dir in platform_map.items():
         for file in glob.glob(os.path.join(platform_dir, "lib", "*")):
@@ -26,6 +31,9 @@ def generate_files(lines, args):
 
             file_name = os.path.basename(file)
             if any(keyword in file_name for keyword in avoid_keywords):
+                continue
+
+            if platform.startswith("osx-") and versioned_dylib_re.match(file_name):
                 continue
 
             files_list.append(f'<file src="{file}" target="runtimes/{platform}/native/{file_name}" />')
