@@ -190,6 +190,30 @@ class MatMulNBits final : public OpKernel {
                            const MatMulComputeHelper& helper) const;
 };
 
+// Helper to convert float/fp16 zero points to float32 for LUT GEMM prepack.
+// Returns pointer to float32 ZP data in the provided buffer.
+static const float* ConvertFloatZeroPointsForLutGemm(
+    const Tensor* zero_points,
+    size_t N, size_t K, size_t block_size,
+    std::vector<float>& zp_fp32_buf) {
+  size_t k_blocks = (K + block_size - 1) / block_size;
+  size_t zp_count = N * k_blocks;
+  ORT_ENFORCE(static_cast<size_t>(zero_points->Shape().Size()) == zp_count,
+              "Float zero_points tensor size mismatch: expected ", zp_count,
+              ", got ", zero_points->Shape().Size());
+  zp_fp32_buf.resize(zp_count);
+  if (zero_points->IsDataType<float>()) {
+    std::copy_n(zero_points->Data<float>(), zp_count, zp_fp32_buf.data());
+  } else if (zero_points->IsDataType<MLFloat16>()) {
+    MlasConvertHalfToFloatBuffer(zero_points->Data<MLFloat16>(), zp_fp32_buf.data(), zp_count);
+  } else {
+    ORT_THROW(
+        "Unsupported float zero_points type for LUT GEMM prepack. "
+        "Only float32 and float16 are supported.");
+  }
+  return zp_fp32_buf.data();
+}
+
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
@@ -251,24 +275,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
         if (zero_points != nullptr) {
           if (has_unquantized_zero_point_) {
-            // Float or float16 zero points — convert to float32 array
             is_float_zp = true;
-            size_t k_blocks = (K_ + block_size_ - 1) / block_size_;
-            size_t zp_count = N_ * k_blocks;
-            ORT_ENFORCE(static_cast<size_t>(zero_points->Shape().Size()) == zp_count,
-                        "Float zero_points tensor size mismatch: expected ", zp_count,
-                        ", got ", zero_points->Shape().Size());
-            zp_fp32_buf.resize(zp_count);
-            if (zero_points->IsDataType<float>()) {
-              std::copy_n(zero_points->Data<float>(), zp_count, zp_fp32_buf.data());
-            } else if (zero_points->IsDataType<MLFloat16>()) {
-              MlasConvertHalfToFloatBuffer(zero_points->Data<MLFloat16>(), zp_fp32_buf.data(), zp_count);
-            } else {
-              ORT_THROW(
-                  "Unsupported float zero_points type for LUT GEMM prepack. "
-                  "Only float32 and float16 are supported.");
-            }
-            zp_ptr = zp_fp32_buf.data();
+            zp_ptr = ConvertFloatZeroPointsForLutGemm(zero_points, N_, K_, block_size_, zp_fp32_buf);
           } else {
             zp_ptr = zero_points->DataRaw();
           }
@@ -480,22 +488,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         if (zero_points != nullptr) {
           if (has_unquantized_zero_point_) {
             is_float_zp = true;
-            size_t k_blocks = (K_ + block_size_ - 1) / block_size_;
-            size_t zp_count = N_ * k_blocks;
-            ORT_ENFORCE(static_cast<size_t>(zero_points->Shape().Size()) == zp_count,
-                        "Float zero_points tensor size mismatch: expected ", zp_count,
-                        ", got ", zero_points->Shape().Size());
-            zp_fp32_buf.resize(zp_count);
-            if (zero_points->IsDataType<float>()) {
-              std::copy_n(zero_points->Data<float>(), zp_count, zp_fp32_buf.data());
-            } else if (zero_points->IsDataType<MLFloat16>()) {
-              MlasConvertHalfToFloatBuffer(zero_points->Data<MLFloat16>(), zp_fp32_buf.data(), zp_count);
-            } else {
-              ORT_THROW(
-                  "Unsupported float zero_points type for LUT GEMM prepack. "
-                  "Only float32 and float16 are supported.");
-            }
-            zp_ptr = zp_fp32_buf.data();
+            zp_ptr = ConvertFloatZeroPointsForLutGemm(zero_points, N_, K_, block_size_, zp_fp32_buf);
           } else {
             zp_ptr = zero_points->DataRaw();
           }

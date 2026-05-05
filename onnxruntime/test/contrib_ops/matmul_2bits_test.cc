@@ -439,11 +439,13 @@ void RunTest2BitsFloatZP(int64_t M, int64_t N, int64_t K, int64_t block_size, fl
   std::vector<float> float_zp(N * k_blocks, zp_value);
 
   // Dequantize with float ZP for reference
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
   for (int64_t n = 0; n < N; n++) {
     for (int64_t k = 0; k < K; k++) {
       int64_t blk = k / block_size;
       float scale = scales[n * k_blocks + blk];
-      int64_t packed_idx = n * (K / 4) + k / 4;
+      int64_t packed_idx = n * bytes_per_col + k / 4;
       int bit_offset = static_cast<int>((k % 4) * 2);
       uint8_t q = (input1_vals[packed_idx] >> bit_offset) & 0x3;
       input1_fp32_vals[n * K + k] = (static_cast<float>(q) - zp_value) * scale;
@@ -571,6 +573,82 @@ TEST(MatMul2Bits, Float32_2b_FloatZP_Fallback) {
   test.SetOutputRelErr("Y", 0.02f);
 
   // No LUT session option — forces fallback dequant path
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+// Non-aligned K fallback test — K=48 is not a multiple of block_size=32, exercises padded stride
+TEST(MatMul2Bits, Float32_2b_FloatZP_Fallback_NonAlignedK) {
+  RandomValueGenerator random{1234};
+  const int64_t M = 1, N = 32, K = 48, block_size = 32;
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), nullptr,
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  const float zp_value = 1.5f;
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  std::vector<float> float_zp(N * k_blocks, zp_value);
+
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t k = 0; k < K; k++) {
+      int64_t blk = k / block_size;
+      float scale = scales[n * k_blocks + blk];
+      int64_t packed_idx = n * bytes_per_col + k / 4;
+      int bit_offset = static_cast<int>((k % 4) * 2);
+      uint8_t q = (input1_vals[packed_idx] >> bit_offset) & 0x3;
+      input1_fp32_vals[n * K + k] = (static_cast<float>(q) - zp_value) * scale;
+    }
+  }
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<float>("A", {M, K}, input0_fp32_vals, false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+  test.AddInput<float>("zero_points", {N, k_blocks}, float_zp, true);
+
+  test.AddOutput<float>("Y", {M, N}, expected_vals);
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
   test.ConfigEp(DefaultCpuExecutionProvider())
       .RunWithConfig();
 }

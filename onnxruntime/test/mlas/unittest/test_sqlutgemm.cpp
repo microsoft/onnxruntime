@@ -172,7 +172,7 @@ class MlasSQLutGemmTest : public MlasTestBase {
                                               static_cast<int>(N), GetMlasThreadPool());
 
     // Create float zero point array — one per quantization group, all set to zp_value
-    size_t k_blocks = K / BlkLen;
+    size_t k_blocks = (K + BlkLen - 1) / BlkLen;
     std::vector<float> FloatZeroPoints(N * k_blocks, zp_value);
 
     MlasInitLutGemmKernelConfig(N, K, BlkBitWidth, BlkLen, true);  // HasZeroPoint = true
@@ -194,12 +194,15 @@ class MlasSQLutGemmTest : public MlasTestBase {
 
     // Reference: scalar dequant with float ZP, then GEMM
     float* DequantizedBData = BufferDequantizedB.GetBuffer(K * N);
+    const size_t elems_per_byte = 8 / BlkBitWidth;
+    size_t packed_k = k_blocks * BlkLen;
+    size_t bytes_per_col = packed_k / elems_per_byte;
     for (size_t n = 0; n < N; n++) {
       for (size_t k = 0; k < K; k++) {
         size_t block_idx = k / BlkLen;
         float scale = QuantBScale[n * k_blocks + block_idx];
-        size_t packed_idx = n * (K / (8 / BlkBitWidth)) + k / (8 / BlkBitWidth);
-        size_t bit_offset = (k % (8 / BlkBitWidth)) * BlkBitWidth;
+        size_t packed_idx = n * bytes_per_col + k / elems_per_byte;
+        size_t bit_offset = (k % elems_per_byte) * BlkBitWidth;
         uint8_t q = (QuantBData[packed_idx] >> bit_offset) & ((1 << BlkBitWidth) - 1);
         // Use float ZP directly, not the midpoint-based default
         DequantizedBData[n * K + k] = (static_cast<float>(q) - zp_value) * scale;
