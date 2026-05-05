@@ -26,14 +26,12 @@ csharp/
 
 ## Building the NuGet Package
 
-Use `pack_nuget.py` to stage native binaries and run `dotnet pack`. The script copies
-everything into a staging directory before building — the source tree is never modified.
-By default, an auto-cleaned temporary directory is used; pass `--staging-dir` to use an
-explicit one (required when running with `--build-only` or `--pack-only`).
+Use `pack_nuget.py` to stage native binaries and run `dotnet pack`. The script copies everything into a staging
+directory before building — the source tree is never modified. By default, an auto-cleaned temporary directory is used;
+pass `--staging-dir` to use an explicit one (required when running with `--build-only` or `--pack-only`).
 
-At least one binary directory (or `--artifacts-dir` with matching subdirectories) must be
-provided. Platforms without a binary directory are skipped. Run
-`python pack_nuget.py --help` for the full list of options and their defaults.
+At least one binary directory (or `--artifacts-dir` with matching subdirectories) must be provided. Platforms without
+a binary directory are skipped. Run `python pack_nuget.py --help` for the full list of options and their defaults.
 
 ### Pack with a local build (single platform)
 
@@ -46,9 +44,9 @@ python pack_nuget.py --version 0.1.0-dev `
 
 ### Pack multiple platforms
 
-Each `--binary-dir-*` points at the directory containing that platform's already-built
-native binaries. In practice the four binaries are produced on different machines and
-combined in CI; locally you'd typically only set the one(s) you have available.
+Each `--binary-dir-*` points at the directory containing that platform's already-built native binaries. In practice
+the four binaries are produced on different machines and combined in CI; locally you'd typically only set the one(s)
+you have available.
 
 ```powershell
 python pack_nuget.py --version 0.1.0-dev `
@@ -88,8 +86,7 @@ runtimes/osx-arm64/native/libonnxruntime_providers_webgpu.dylib
 
 ## Testing the Package
 
-The test app registers the WebGPU EP, creates a session, runs a simple Mul model, and
-validates the output.
+The test app registers the WebGPU EP, creates a session, runs a simple Mul model, and validates the output.
 
 ```powershell
 # Point the test project's nuget.config at the pack output
@@ -126,8 +123,8 @@ The NuGet packaging is integrated into the WebGPU plugin pipeline:
 - **Pipeline:** `tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml`
 - **Packaging stage:** `tools/ci_build/github/azure-pipelines/stages/plugin-webgpu-nuget-packaging-stage.yml`
 
-The CI stage downloads build artifacts from all enabled platform stages, invokes
-`pack_nuget.py`, ESRP-signs the package, and runs the test app on a GPU agent.
+The CI stage downloads build artifacts from all enabled platform stages, invokes `pack_nuget.py`, ESRP-signs the
+package, and runs the test app on a GPU agent.
 
 ## Native Binaries Per Platform
 
@@ -138,6 +135,6 @@ The CI stage downloads build artifacts from all enabled platform stages, invokes
 | `linux-x64` | `libonnxruntime_providers_webgpu.so` |
 | `osx-arm64` | `libonnxruntime_providers_webgpu.dylib` |
 
-On Windows, `dxil.dll` and `dxcompiler.dll` are the DirectX Shader Compiler binaries
-downloaded from the [DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases).
-The CI pipeline handles this automatically.
+On Windows, `dxil.dll` and `dxcompiler.dll` are the DirectX Shader Compiler binaries downloaded from the
+[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases). The CI pipeline handles this
+automatically.
