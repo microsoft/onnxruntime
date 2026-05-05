@@ -79,7 +79,7 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          dependsOn:
+          depends_on:
           - Validate_Parameters
 
     # Windows ARM64
@@ -90,7 +90,7 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          dependsOn:
+          depends_on:
           - Validate_Parameters
 
     # Linux x64
@@ -100,7 +100,7 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          dependsOn:
+          depends_on:
           - Validate_Parameters
 
     # macOS ARM64
@@ -110,7 +110,7 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          dependsOn:
+          depends_on:
           - Validate_Parameters
 
     # NuGet packaging (runs after all platform builds)

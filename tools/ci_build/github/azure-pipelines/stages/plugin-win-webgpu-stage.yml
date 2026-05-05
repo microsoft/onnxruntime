@@ -25,7 +25,7 @@ parameters:
   type: string
   default: 'https://pkgs.dev.azure.com/aiinfra/_packaging/ONNXRuntime_WebGPU_BuildDependencies/npm/registry/'
 
-- name: dependsOn
+- name: depends_on
   type: object
   default: []
 
@@ -34,10 +34,10 @@ stages:
     ${{ if eq(parameters.arch, 'arm64') }}:
       dependsOn:
       - Win_plugin_webgpu_x64_Build
-      - ${{ each dep in parameters.dependsOn }}:
+      - ${{ each dep in parameters.depends_on }}:
         - ${{ dep }}
     ${{ else }}:
-      dependsOn: ${{ parameters.dependsOn }}
+      dependsOn: ${{ parameters.depends_on }}
     jobs:
     - job: Win_plugin_webgpu_${{ parameters.arch }}_Build
       timeoutInMinutes: 360

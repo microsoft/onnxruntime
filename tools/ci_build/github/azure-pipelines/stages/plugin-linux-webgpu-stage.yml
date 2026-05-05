@@ -23,13 +23,13 @@ parameters:
   type: string
   default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1'
 
-- name: dependsOn
+- name: depends_on
   type: object
   default: []
 
 stages:
 - stage: Linux_plugin_webgpu_x64_Build
-  dependsOn: ${{ parameters.dependsOn }}
+  dependsOn: ${{ parameters.depends_on }}
   jobs:
   - job: Linux_plugin_webgpu_x64_Build
     timeoutInMinutes: 240
