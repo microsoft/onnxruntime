@@ -5,6 +5,8 @@
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
+#include <cmath>
+
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -449,6 +451,12 @@ static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
   const auto w_scales = w_scale_init.DataAsSpan<float>();
   const auto b_scales = b_scale_init.DataAsSpan<float>();
 
+  // Guard against empty initializers — an empty span would cause an out-of-bounds
+  // access on x_scales[0] or w_scales[i] / b_scales[i] below.
+  if (x_scales.empty() || w_scales.empty() || b_scales.empty()) {
+    return false;
+  }
+
   const float x_scale = x_scales[0];
   const size_t w_num = w_scales.size();  // 1 for per-tensor weight scale, C_out for per-channel
   const size_t b_num = b_scales.size();  // 1 for scalar bias scale, C_out for per-channel
@@ -470,6 +478,12 @@ static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
   for (size_t i = 0; i < num_channels; ++i) {
     const float w_scale = (w_num == 1) ? w_scales[0] : w_scales[i];
     const float b_scale = (b_num == 1) ? b_scales[0] : b_scales[i];
+    // Reject non-finite values: NaN compares unequal to itself so the tolerance
+    // check below could pass or fail unpredictably; Inf * Inf = Inf which also
+    // produces unreliable results.  Be conservative and refuse fusion.
+    if (!std::isfinite(x_scale) || !std::isfinite(w_scale) || !std::isfinite(b_scale)) {
+      return false;
+    }
     const float expected = x_scale * w_scale;
     if (std::abs(b_scale - expected) > (atol + rtol * std::abs(expected))) {
       return false;
@@ -507,7 +521,14 @@ static bool CheckConvBiasZeroPoint(const GraphViewer& graph_viewer, const Node& 
     return false;  // unexpected dtype for bias zero-point
   }
 
-  for (const int32_t v : zp_init.DataAsSpan<int32_t>()) {
+  const auto zp_values = zp_init.DataAsSpan<int32_t>();
+  // An empty zero-point initializer is malformed; reject fusion rather than
+  // silently treating it as "all zeros".
+  if (zp_values.empty()) {
+    return false;
+  }
+
+  for (const int32_t v : zp_values) {
     if (v != 0) {
       return false;
     }
