@@ -22,6 +22,21 @@ TEST(CApiTest, session_options_deterministic_compute) {
   options.SetDeterministicCompute(true);
 }
 
+TEST(CApiTest, session_options_get_mem_pattern_enabled) {
+  Ort::SessionOptions options;
+
+  // Memory pattern is enabled by default
+  ASSERT_TRUE(options.GetMemPatternEnabled());
+
+  // Disable and verify
+  options.DisableMemPattern();
+  ASSERT_FALSE(options.GetMemPatternEnabled());
+
+  // Re-enable and verify
+  options.EnableMemPattern();
+  ASSERT_TRUE(options.GetMemPatternEnabled());
+}
+
 #if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
 
 TEST(CApiTest, session_options_oversized_affinity_string) {

@@ -7436,6 +7436,19 @@ struct OrtApi {
                   _In_ const OrtThreadPoolCallbacksConfig* config);
 
   /// @}
+
+  /** \brief Get the current state of the memory pattern optimization setting.
+   *
+   * \param[in] options
+   * \param[out] out Set to 1 if the memory pattern optimization is enabled, 0 otherwise.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.26.
+   *
+   * \see OrtApi::EnableMemPattern, OrtApi::DisableMemPattern
+   */
+  ORT_API2_STATUS(GetMemPatternEnabled, _In_ const OrtSessionOptions* options, _Out_ int* out);
 };
 
 /*

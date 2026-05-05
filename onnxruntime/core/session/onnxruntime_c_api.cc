@@ -4894,6 +4894,8 @@ static constexpr OrtApi ort_api_1_to_26 = {
     &OrtApis::KernelInfoGetAttributeArray_string,
     &OrtApis::SetPerSessionThreadPoolCallbacks,
     // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetMemPatternEnabled,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
