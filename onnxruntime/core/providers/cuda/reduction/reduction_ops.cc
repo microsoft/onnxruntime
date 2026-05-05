@@ -36,14 +36,14 @@ namespace cuda {
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       name<T>);
 
-#define REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(name, T, begin, end)                                                      \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                         \
-      name,                                                                                                                        \
-      kOnnxDomain,                                                                                                                 \
-      begin, end,                                                                                                                  \
-      T,                                                                                                                           \
-      kCudaExecutionProvider,                                                                                                      \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1),  \
+#define REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(name, T, begin, end)                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                        \
+      name,                                                                                                                       \
+      kOnnxDomain,                                                                                                                \
+      begin, end,                                                                                                                 \
+      T,                                                                                                                          \
+      kCudaExecutionProvider,                                                                                                     \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1), \
       name<T>);
 
 #define REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(name, T, last, cur) \
