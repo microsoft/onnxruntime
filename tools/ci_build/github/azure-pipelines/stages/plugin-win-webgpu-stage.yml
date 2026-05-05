@@ -28,6 +28,7 @@ parameters:
 stages:
   - stage: Win_plugin_webgpu_${{ parameters.arch }}_Build
     ${{ if eq(parameters.arch, 'arm64') }}:
+      # The ARM64 build consumes the x64 tblgen.exe artifact published by the Windows x64 stage.
       dependsOn: Win_plugin_webgpu_x64_Build
     ${{ else }}:
       dependsOn: []
