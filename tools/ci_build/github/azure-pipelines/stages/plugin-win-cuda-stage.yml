@@ -23,6 +23,9 @@ parameters:
   type: string
   default: '12.8'
 
+- name: python_package_name
+  type: string
+
 - name: cmake_cuda_archs
   type: string
   default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
@@ -74,6 +77,7 @@ stages:
         parameters:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
+          python_command: python
 
       - script: |
           python -m pip install -r "$(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt"
@@ -81,28 +85,35 @@ stages:
         env:
           TMPDIR: "$(Agent.TempDirectory)"
 
-      - powershell: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }}" "$(Agent.TempDirectory)"
+      - task: AzureCLI@2
         displayName: 'Download CUDA SDK v${{ parameters.cuda_version }}'
-        env:
-          AZCOPY_AUTO_LOGIN_TYPE: MSI
-          AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "$(Agent.TempDirectory)"
 
+      # Since CUDA 13.0, CUDA DLLs are in bin\x64 folder instead of bin folder for Windows.
       - powershell: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "CUDA Path: $(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
+          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin\x64"
           Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
         displayName: 'Add CUDA to PATH'
 
       # Download cuDNN separately for CUDA 13.0
       - ${{ if eq(parameters.cuda_version, '13.0') }}:
-        - powershell: |
-            azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_9/9.14.0.64_cuda13" "$(Agent.TempDirectory)"
+        - task: AzureCLI@2
           displayName: 'Download cuDNN for CUDA 13.0'
-          env:
-            AZCOPY_AUTO_LOGIN_TYPE: MSI
-            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 "$(Agent.TempDirectory)"
 
       # CUDA 12.x build (no separate cuDNN)
       - ${{ if ne(parameters.cuda_version, '13.0') }}:
@@ -130,9 +141,6 @@ stages:
               --cmake_extra_defines $(PluginEpVersionDefine)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
-          env:
-            AZCOPY_AUTO_LOGIN_TYPE: MSI
-            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
       # CUDA 13.0 build (separate cuDNN folder)
       - ${{ if eq(parameters.cuda_version, '13.0') }}:
@@ -161,9 +169,6 @@ stages:
               --cmake_extra_defines $(PluginEpVersionDefine)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
-          env:
-            AZCOPY_AUTO_LOGIN_TYPE: MSI
-            AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml
@@ -209,6 +214,58 @@ stages:
           command: publish
           publishDirectory: '$(Build.BinariesDirectory)\universal_package'
           vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-win-x64'
+          vstsFeedPackagePublish: "onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-win-x64"
           versionOption: custom
           versionPublish: '$(PluginUniversalPackageVersion)'
+
+    - job: Win_plugin_cuda_x64_Python_Package
+      dependsOn: Win_plugin_cuda_x64_Build
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      templateContext:
+        outputs:
+        - output: pipelineArtifact
+          targetPath: '$(Build.ArtifactStagingDirectory)\python'
+          artifactName: cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
+      variables:
+      - template: ../templates/common-variables.yml
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: 'x64'
+          python_version: ${{ parameters.python_version }}
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
+          python_command: python
+
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download plugin build artifacts'
+        inputs:
+          artifactName: cuda_plugin_win_x64
+          targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
+
+      - task: PowerShell@2
+        displayName: 'Build Python wheel'
+        inputs:
+          targetType: inline
+          pwsh: true
+          script: |
+            python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
+            python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
+              --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
+              --version "$(PluginPythonPackageVersion)" `
+              --package_name "${{ parameters.python_package_name }}" `
+              --output_dir "$(Build.ArtifactStagingDirectory)\python"
