@@ -33,7 +33,7 @@ ONNX_OPERATOR_KERNEL_EX(Concat,
                         Concat);
 
 Status Concat::ComputeInternal(OpKernelContext* ctx) const {
-  auto input_count = Node().InputArgCount().front();
+  auto input_count = ctx->InputCount();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   InlinedTensorsVector input_tensors;
@@ -43,7 +43,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   Prepare p;
-  ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, input_tensors, p));
+  ORT_RETURN_IF_ERROR(PrepareForComputeImpl(ctx, input_tensors, p));
 
   // Return at this point if output tensor is going to be empty
   if (p.output_num_elements == 0)
@@ -76,7 +76,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
           Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
           p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements)));
     } else {
-      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
+      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(GetComputeStream(ctx)));
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
           Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
           p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
@@ -89,10 +89,10 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
       concat_sizes_range[i] += concat_sizes_range[i - 1];
     }
     CudaAsyncBuffer<int64_t> concat_sizes_range_gpu(this, concat_sizes_range);
-    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(ctx->GetComputeStream()));
-    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(ctx->GetComputeStream()));
-    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(ctx->GetComputeStream()));
-    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(ctx->GetComputeStream()));
+    ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(GetComputeStream(ctx)));
+    ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(GetComputeStream(ctx)));
+    ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(GetComputeStream(ctx)));
+    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(GetComputeStream(ctx)));
     ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim,
                                    concat_sizes_gpu.GpuPtr(), concat_sizes_range_gpu.GpuPtr(),
                                    axis_dimension_input_output_mapping_gpu.GpuPtr(), p.output_tensor->MutableDataRaw(),

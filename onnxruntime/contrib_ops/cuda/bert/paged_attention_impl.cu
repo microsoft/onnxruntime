@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
@@ -237,6 +238,101 @@ Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* valu
   return CUDA_CALL(cudaGetLastError());
 }
 
+// Gather paged KV into packed-varlen [total_kv_tokens, num_heads, head_size], expanding GQA heads.
+// total_elems = total_kv_tokens * num_heads * head_size can exceed INT32_MAX for realistic
+// large-context GQA configs (e.g., 2M tokens * 64 * 128 = 16.4B), so the linear index is int64_t
+// and the kernel uses a grid-stride loop instead of a single (tid >= total_elems) early-exit.
+template <typename T>
+__global__ void GatherAndExpandPagedKVCache(const T* __restrict__ key_cache,
+                                            const T* __restrict__ value_cache,
+                                            T* __restrict__ gathered_key,
+                                            T* __restrict__ gathered_value,
+                                            const int* __restrict__ block_table,
+                                            const int* __restrict__ cumulative_seqlens_kv,
+                                            const int batch_size,
+                                            const int num_heads,
+                                            const int kv_num_heads,
+                                            const int head_size,
+                                            const int block_size,
+                                            const int max_num_blocks_per_seq,
+                                            const int64_t total_elems) {
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  const int64_t num_heads_times_head = static_cast<int64_t>(num_heads) * head_size;
+  const int q_kv_head_ratio = num_heads / kv_num_heads;
+  const int64_t page_stride = static_cast<int64_t>(block_size) * kv_num_heads * head_size;
+
+  for (int64_t tid = threadIdx.x + static_cast<int64_t>(blockIdx.x) * blockDim.x;
+       tid < total_elems;
+       tid += stride) {
+    const int h = static_cast<int>(tid % head_size);
+    const int head_id = static_cast<int>((tid / head_size) % num_heads);
+    const int token_id = static_cast<int>(tid / num_heads_times_head);
+
+    // cumulative_seqlens_kv is a prefix sum of non-negative per-batch KV lengths
+    // (past_seqlens[i] + new_tokens[i]), so it is monotonically non-decreasing for
+    // any valid op input — the same assumption the previous linear scan made.
+    // Binary-search for the batch this token belongs to: log2(batch_size) is strictly
+    // better than the linear scan, which ran once per (token, head, h) element and
+    // multiplied its cost by num_heads * head_size.
+    int left = 0;
+    int right = batch_size;
+    while (left < right) {
+      const int mid = left + (right - left) / 2;
+      if (token_id < cumulative_seqlens_kv[mid + 1]) {
+        right = mid;
+      } else {
+        left = mid + 1;
+      }
+    }
+    const int batch_id = left;
+
+    const int pos = token_id - cumulative_seqlens_kv[batch_id];
+    const int block_idx_in_seq = pos / block_size;
+    const int block_offset = pos % block_size;
+    const int block_id = block_table[batch_id * max_num_blocks_per_seq + block_idx_in_seq];
+
+    // GQA expansion: each output head maps to kv_head_id = head_id / (num_heads / kv_num_heads).
+    // For MHA (num_heads == kv_num_heads) this is the identity.
+    const int kv_head_id = head_id / q_kv_head_ratio;
+
+    const int64_t paged_idx = static_cast<int64_t>(block_id) * page_stride +
+                              static_cast<int64_t>(block_offset) * kv_num_heads * head_size +
+                              kv_head_id * head_size +
+                              h;
+
+    gathered_key[tid] = key_cache[paged_idx];
+    gathered_value[tid] = value_cache[paged_idx];
+  }
+}
+
+template <typename T>
+Status LaunchGatherAndExpandPagedKVCache(const T* key_cache, const T* value_cache,
+                                         T* gathered_key, T* gathered_value,
+                                         const int* block_table, const int* cumulative_seqlens_kv,
+                                         const int batch_size, const int num_heads,
+                                         const int kv_num_heads, const int head_size,
+                                         const int block_size, const int max_num_blocks_per_seq,
+                                         const int total_kv_tokens, cudaStream_t stream,
+                                         const int max_threads_per_block) {
+  const int64_t total_elems = static_cast<int64_t>(total_kv_tokens) * num_heads * head_size;
+  if (total_elems == 0) {
+    return Status::OK();
+  }
+  // With the op's batch_size <= 256 precondition (paged_attention.cc) and MEA's
+  // head_size <= 1024 cap, blocks_needed = ceil(total_elems / threads) stays comfortably
+  // within int range for any realistic input, so no explicit clamp is needed. The kernel
+  // uses a grid-stride loop so launching fewer blocks than total_elems / threads would
+  // also be correct — we don't need an artificial "keep SMs busy" cap.
+  const int threads = static_cast<int>(std::min<int64_t>(max_threads_per_block, total_elems));
+  const int blocks = static_cast<int>((total_elems + threads - 1) / threads);
+  GatherAndExpandPagedKVCache<T><<<blocks, threads, 0, stream>>>(
+      key_cache, value_cache, gathered_key, gathered_value,
+      block_table, cumulative_seqlens_kv,
+      batch_size, num_heads, kv_num_heads, head_size,
+      block_size, max_num_blocks_per_seq, total_elems);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 ////////// Launch Kernels
 
 #if USE_FLASH_ATTENTION
@@ -276,12 +372,11 @@ Status FlashAttention(
     value = reinterpret_cast<T*>(key) + static_cast<size_t>(kv_num_heads * head_size);
   }
 
-  // Calculate cumulative present sequence length in cumulative_seqlens_kv
+  // cumulative_seqlens_kv is populated by the caller (paged_attention.cc) before QkvToContext;
+  // shared across FA and MEA dispatch paths so the host can also read total_kv_tokens.
   int* cumulative_seqlens_q = const_cast<int*>(data.cumulative_seqlens_q);
   int* past_seqlens = const_cast<int*>(data.past_seqlens);
   int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
-  ORT_RETURN_IF_ERROR(LaunchGetCumulativeSeqlensKV(cumulative_seqlens_kv, cumulative_seqlens_q, past_seqlens,
-                                                   batch_size, stream));
 
   if (parameters.do_rotary) {
     // Will unpack Q and K in case of packed_qkv
@@ -335,6 +430,127 @@ Status FlashAttention(
 }
 #endif
 
+#if USE_MEMORY_EFFICIENT_ATTENTION
+// Fallback when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION=1).
+// Mirrors the FlashAttention preprocessing (rotary, unpack, ReshapeAndCache), then gathers
+// the paged KV cache into a packed-varlen [total_kv_tokens, num_heads, head_size] buffer and
+// dispatches to CUTLASS memory-efficient attention via its seqstart_q / seqstart_k varlen ABI.
+// Caller must populate data.gathered_key / data.gathered_value / data.total_kv_tokens.
+template <typename T>
+Status EfficientAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T>& data,
+    float scale) {
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+  const int batch_size = parameters.batch_size;
+  const int token_count = parameters.token_count;
+  const int q_hidden_size = parameters.hidden_size;
+  const int kv_hidden_size = parameters.kv_hidden_size;
+  const int num_heads = parameters.num_heads;
+  const int kv_num_heads = parameters.kv_num_heads;
+  const int head_size = parameters.head_size;
+  const int block_size = parameters.block_size;
+  const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
+  const int local_window_size = parameters.local_window_size;
+  const int total_kv_tokens = data.total_kv_tokens;
+  // Use the caller-computed actual max of per-batch new-query lengths, not the
+  // `token_count - batch_size + 1` heuristic: the heuristic assumes >=1 new token per batch
+  // and underestimates otherwise, which would silently drop query tokens from the
+  // rotary grid and from MEA's `grid_x = ceil_div(sequence_length, kQueriesPerBlock)`.
+  const int max_query_len = data.max_query_len;
+
+  T* query = const_cast<T*>(data.query);
+  T* key;
+  T* value;
+  if (!parameters.is_packed_qkv) {
+    key = const_cast<T*>(data.key);
+    value = const_cast<T*>(data.value);
+  } else {
+    key = reinterpret_cast<T*>(query) + static_cast<size_t>(num_heads * head_size);
+    value = reinterpret_cast<T*>(key) + static_cast<size_t>(kv_num_heads * head_size);
+  }
+
+  // cumulative_seqlens_kv is populated by the caller (paged_attention.cc) before QkvToContext;
+  // shared across FA and MEA dispatch paths.
+  int* cumulative_seqlens_q = const_cast<int*>(data.cumulative_seqlens_q);
+  int* past_seqlens = const_cast<int*>(data.past_seqlens);
+  int* cumulative_seqlens_kv = data.cumulative_seqlens_kv;
+
+  if (parameters.do_rotary) {
+    auto q_buffer = data.workspace_buffer;
+    auto k_buffer = data.workspace_buffer + token_count * num_heads * head_size;
+    const int packed_seq_stride = parameters.is_packed_qkv ? (num_heads + 2 * kv_num_heads) * head_size : -1;
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
+        stream, q_buffer, query, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
+        max_query_len, num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
+    ORT_RETURN_IF_ERROR(LaunchRotaryEmbeddingKernel<T>(
+        stream, k_buffer, key, past_seqlens, cumulative_seqlens_q, data.cos_cache, data.sin_cache, batch_size,
+        max_query_len, kv_num_heads, head_size, parameters.rotary_dim, parameters.rotary_interleaved, packed_seq_stride,
+        max_threads_per_block));
+    query = q_buffer;
+    key = k_buffer;
+  } else if (parameters.is_packed_qkv) {
+    auto q_buffer = data.workspace_buffer;
+    const int packed_seq_stride = q_hidden_size + 2 * kv_hidden_size;
+    ORT_RETURN_IF_ERROR(LaunchUnpackCumulative<T>(
+        query, q_buffer, token_count, q_hidden_size, packed_seq_stride, stream, max_threads_per_block));
+    query = q_buffer;
+  }
+
+  int* block_table = const_cast<int*>(data.block_table);
+  const int key_stride = parameters.is_packed_qkv && !parameters.do_rotary ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
+  const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
+  ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, block_table, past_seqlens,
+                                               cumulative_seqlens_q, batch_size, max_num_blocks_per_seq, token_count,
+                                               kv_hidden_size, block_size, key_stride, value_stride, stream,
+                                               max_threads_per_block));
+
+  ORT_RETURN_IF_ERROR(LaunchGatherAndExpandPagedKVCache<T>(
+      data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
+      block_table, cumulative_seqlens_kv, batch_size, num_heads, kv_num_heads,
+      head_size, block_size, max_num_blocks_per_seq, total_kv_tokens, stream, max_threads_per_block));
+
+  MemoryEfficientAttentionParams p;
+  p.sm = device_prop.major * 10 + device_prop.minor;
+  p.is_bf16 = std::is_same<T, BFloat16>::value;
+  p.is_half = !p.is_bf16 && (sizeof(T) == 2);
+  p.batch_size = batch_size;
+  p.num_heads = num_heads;
+  p.sequence_length = max_query_len;
+  p.kv_sequence_length = total_kv_tokens;
+  p.max_sequence_length = total_kv_tokens;
+  p.qk_head_size = head_size;
+  p.v_head_size = head_size;
+  p.causal = true;
+  p.scale = scale;
+  p.softcap = parameters.softcap;
+  p.local_window_size = local_window_size;
+  p.seqstart_q_ptr = cumulative_seqlens_q;
+  p.seqstart_k_ptr = cumulative_seqlens_kv;
+  p.seqlen_k_ptr = nullptr;
+  p.query = query;
+  p.key = data.gathered_key;
+  p.value = data.gathered_value;
+  p.attn_bias = nullptr;
+  p.is_kv_bsnh = true;
+  p.has_custom_right_padding = false;
+  p.output = data.output;
+  p.workspace = MemoryEfficientAttentionParams::need_workspace(head_size, sizeof(T) == sizeof(float))
+                    ? data.fmha_buffer
+                    : nullptr;
+  p.stream = stream;
+  run_memory_efficient_attention(p);
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("mea paged attention output", data.output, token_count, num_heads, head_size);
+
+  return Status::OK();
+}
+#endif
+
 ////////// API Functions
 
 template <typename T>
@@ -353,7 +569,13 @@ Status QkvToContext(
   }
 #endif
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Paged Attention not implemented.");
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  if (data.use_memory_efficient_attention) {
+    return EfficientAttention(device_prop, stream, parameters, data, scale);
+  }
+#endif
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
 }
 
 template struct PagedAttentionData<half>;

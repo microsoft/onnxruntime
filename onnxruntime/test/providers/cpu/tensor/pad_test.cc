@@ -124,6 +124,37 @@ static void RunAllOpsetAllDomainPadTests(
   }
 }
 
+#ifdef USE_CUDA
+template <typename T>
+static void RunCudaOnlyOnnxOpsetPadTest(
+    int opset,
+    const std::vector<int64_t>& input_dims,
+    const std::vector<T>& input,
+    const std::vector<int64_t>& pads,
+    T value,
+    const std::vector<int64_t>& output_dims,
+    const std::vector<T>& output,
+    const std::string& mode = "constant") {
+  auto cuda_execution_provider = DefaultCudaExecutionProvider();
+  if (cuda_execution_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  OpTester test("Pad", opset);
+  if (mode != "constant") {
+    test.AddAttribute("mode", mode);
+  }
+  test.AddInput<T>("data", input_dims, input);
+  test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);
+  test.AddInput<T>("value", {}, {value}, true);
+  test.AddOutput<T>("output", output_dims, output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(cuda_execution_provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 // Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
 // Those tests will fallback to other EP.
 
@@ -198,6 +229,48 @@ TYPED_TEST(PadOpTest, Pad_Edge_1D) {
                                   {T(1), T(1), T(1), T(2), T(2), T(3), T(3), T(3), T(4), T(4), T(5), T(5), T(5), T(6), T(6)},
                                   "edge");
 }
+
+#ifdef USE_CUDA
+TEST(PadOpTest, Pad_Edge_CudaOnly_MLFloat16_SupportedOpsets) {
+  const std::vector<int> supported_opsets{18, 19, 20, 21, 22, 23, 24, 25};
+  for (int opset : supported_opsets) {
+    SCOPED_TRACE(MakeString("opset: ", opset));
+    RunCudaOnlyOnnxOpsetPadTest<MLFloat16>(
+        opset,
+        {3, 2},
+        {MLFloat16(1.0f), MLFloat16(2.0f),
+         MLFloat16(3.0f), MLFloat16(4.0f),
+         MLFloat16(5.0f), MLFloat16(6.0f)},
+        {0, 2, 0, 1},
+        MLFloat16(0.0f),
+        {3, 5},
+        {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(2.0f),
+         MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(4.0f), MLFloat16(4.0f),
+         MLFloat16(5.0f), MLFloat16(5.0f), MLFloat16(5.0f), MLFloat16(6.0f), MLFloat16(6.0f)},
+        "edge");
+  }
+}
+
+TEST(PadOpTest, Pad_Wrap_CudaOnly_Float_SupportedOpsets) {
+  const std::vector<int> supported_opsets{19, 20, 21, 22, 23, 24, 25};
+  for (int opset : supported_opsets) {
+    SCOPED_TRACE(MakeString("opset: ", opset));
+    RunCudaOnlyOnnxOpsetPadTest<float>(
+        opset,
+        {3, 2},
+        {1.0f, 2.0f,
+         3.0f, 4.0f,
+         5.0f, 6.0f},
+        {0, 1, 0, 1},
+        0.0f,
+        {3, 4},
+        {2.0f, 1.0f, 2.0f, 1.0f,
+         4.0f, 3.0f, 4.0f, 3.0f,
+         6.0f, 5.0f, 6.0f, 5.0f},
+        "wrap");
+  }
+}
+#endif
 
 TYPED_TEST(PadOpTest, Pad_Constant_2D) {
   using T = TypeParam;
@@ -1391,9 +1464,7 @@ TEST(PadOpTest, Pad_Wrap_NegativeFront_PositiveBack) {
   // Post-slice core: [4]; wrap 3 -> [4, 4, 4, 4]
   const std::vector<float> expected_data = {4, 4, 4, 4};
 
-  // CUDA registers only up to 18 and does not impl wrap mode
-  // so we force version to 19 to automatically exclude EPs that do not
-  // implement wrap mode similar to the above tests.
+  // Use opset 19 to exercise wrap mode, which is supported from Pad-19 onward.
   OpTester test("Pad", 19);
   test.AddInput<float>("data", input_shape, input_data);
   test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, true);

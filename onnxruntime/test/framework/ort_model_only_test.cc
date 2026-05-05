@@ -37,6 +37,7 @@ struct OrtModelTestInfo {
   bool run_use_buffer{false};
   bool disable_copy_ort_buffer{false};
   bool use_buffer_for_initializers{false};
+  bool use_memory_mapped_load{false};
   TransformerLevel optimization_level = TransformerLevel::Level3;
 };
 
@@ -49,10 +50,15 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 
   if (test_info.disable_copy_ort_buffer) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1"));
+  }
 
-    if (test_info.use_buffer_for_initializers) {
-      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "1"));
-    }
+  if (test_info.use_memory_mapped_load) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseMemoryMappedOrtModel, "1"));
+  }
+
+  if (test_info.use_buffer_for_initializers &&
+      (test_info.disable_copy_ort_buffer || (test_info.use_memory_mapped_load && !test_info.run_use_buffer))) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "1"));
   }
 
   so.graph_optimization_level = test_info.optimization_level;
@@ -555,6 +561,31 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopyInitializersUseBuffer)
   test_info.disable_copy_ort_buffer = true;
   test_info.use_buffer_for_initializers = true;
   RunOrtModel(test_info);
+}
+
+// Load the model from a file using memory-mapped I/O
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMemoryMapped) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.use_memory_mapped_load = true;
+  RunOrtModel(test_info);
+}
+
+// Load the model from a file using memory-mapped I/O, with initializers referencing the mapped bytes
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMemoryMappedWithInitializersFromMap) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.use_memory_mapped_load = true;
+  test_info.use_buffer_for_initializers = true;
+  RunOrtModel(test_info);
+}
+
+// Verify that mmap loading fails gracefully on a non-existent file
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMemoryMappedFailsOnMissingFile) {
+  SessionOptions so;
+  so.session_logid = "MemoryMappedMissingFile";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseMemoryMappedOrtModel, "1"));
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  auto status = session_object.Load(ORT_TSTR("nonexistent_model.ort"));
+  ASSERT_FALSE(status.IsOK());
 }
 
 // regression test for 2 issues covered by PR #17000 (internally reported issue).

@@ -16,16 +16,10 @@ parameters:
 steps:
 - template: telemetry-steps.yml
 
-- task: UsePythonVersion@0
-  displayName: 'Use Python ${{ parameters.python_version }} ${{ parameters.host_cpu_arch }}'
-  inputs:
+- template: setup-feeds-and-python-steps.yml
+  parameters:
     versionSpec: ${{ parameters.python_version }}
     architecture: ${{ parameters.host_cpu_arch }}
-
-- task: PipAuthenticate@1
-  displayName: 'Pip Authenticate'
-  inputs:
-    artifactFeeds: 'Lotus'
 
 # The following task does not support different arches.
 - task: UseNode@1

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Pre-commit hook: runs lintrunner on files being committed.
+# Skip with: git commit --no-verify
+
+if ! command -v lintrunner >/dev/null 2>&1; then
+    echo "Warning: lintrunner not found - skipping pre-commit lint."
+    echo "  Install: pip install -r requirements-lintrunner.txt && lintrunner init"
+    exit 0
+fi
+
+lintrunner --paths-cmd='git diff --cached --name-only --diff-filter=ACMR'
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "Lint failed. Run 'lintrunner -a' to auto-fix, re-stage, and commit again."
+    exit 1
+fi

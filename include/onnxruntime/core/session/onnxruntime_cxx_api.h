@@ -629,6 +629,7 @@ namespace detail {
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(CustomOpDomain);
+ORT_DEFINE_RELEASE(DeviceEpIncompatibilityDetails);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(ExternalInitializerInfo);
 ORT_DEFINE_RELEASE(Graph);
@@ -661,6 +662,8 @@ ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelRegistry, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(OpSchema, GetEpApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(ProfilingEvent, GetEpApi);
 
 // This is defined explicitly since OrtTensorRTProviderOptionsV2 is not a C API type,
 // but the struct has V2 in its name to indicate that it is the second version of the options.
@@ -1046,6 +1049,7 @@ struct AllocatorImpl : Base<T> {
   using B::B;
 
   void* Alloc(size_t size);
+  void* Reserve(size_t size);
   MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
   ConstMemoryInfo GetInfo() const;
@@ -1055,6 +1059,12 @@ struct AllocatorImpl : Base<T> {
    * \return A pointer to a KeyValuePairs object that will be filled with the allocator statistics.
    */
   KeyValuePairs GetStats() const;
+
+  /** \brief Release unused memory held by the allocator.
+   *
+   * Calls the optional Shrink function pointer if available; does nothing otherwise.
+   */
+  void Shrink();
 };
 }  // namespace detail
 
@@ -1121,6 +1131,27 @@ struct HardwareDeviceImpl : Ort::detail::Base<T> {
  * \remarks HardwareDevice is always read-only for API users.
  */
 using ConstHardwareDevice = detail::HardwareDeviceImpl<Ort::detail::Unowned<const OrtHardwareDevice>>;
+
+namespace detail {
+template <typename T>
+struct DeviceEpIncompatibilityDetailsImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  uint32_t GetReasonsBitmask() const;  ///< Wraps DeviceEpIncompatibilityDetails_GetReasonsBitmask
+  const char* GetNotes() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetNotes
+  int32_t GetErrorCode() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetErrorCode
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtDeviceEpIncompatibilityDetails
+ * \remarks DeviceEpIncompatibilityDetails is always read-only for API users.
+ */
+struct DeviceEpIncompatibilityDetails : detail::DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails> {
+  explicit DeviceEpIncompatibilityDetails(std::nullptr_t) {}  ///< No instance is created
+  explicit DeviceEpIncompatibilityDetails(OrtDeviceEpIncompatibilityDetails* p)
+      : DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails>{p} {}  ///< Take ownership of a pointer created by C API
+};
 
 namespace detail {
 template <typename T>
@@ -1230,6 +1261,95 @@ struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
  */
 using ConstEpAssignedSubgraph = detail::EpAssignedSubgraphImpl<Ort::detail::Unowned<const OrtEpAssignedSubgraph>>;
 
+namespace detail {
+template <typename T>
+struct ConstProfilingEventImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  /// \brief Get the event category. Wraps OrtEpApi::ProfilingEvent_GetCategory
+  OrtProfilingEventCategory GetCategory() const;
+
+  /// \brief Get the event name. Wraps OrtEpApi::ProfilingEvent_GetName
+  /// \return Null-terminated UTF-8 string owned by the OrtProfilingEvent instance. Do not free.
+  const char* GetName() const;
+
+  /// \brief Get the start timestamp in microseconds. Wraps OrtEpApi::ProfilingEvent_GetTimestampUs
+  int64_t GetTimestampUs() const;
+
+  /// \brief Get the duration in microseconds. Wraps OrtEpApi::ProfilingEvent_GetDurationUs
+  int64_t GetDurationUs() const;
+
+  /// \brief Get the value of an event argument by key. Wraps OrtEpApi::ProfilingEvent_GetArgValue
+  /// \param[in] key Null-terminated argument key to look up.
+  /// \return Null-terminated UTF-8 string owned by the OrtProfilingEvent, or nullptr if key not found.
+  const char* GetArgValue(const char* key) const;
+};
+}  // namespace detail
+
+/** \brief Non-owning const wrapper around ::OrtProfilingEvent.
+ *
+ * Use this to read fields from the OrtProfilingEvent pointer passed to OrtEpProfilerImpl::StopEvent.
+ *
+ * This is based on the Trace Event Format's "complete event".
+ * \since Version 1.25.
+ */
+using ConstProfilingEvent = detail::ConstProfilingEventImpl<Ort::detail::Unowned<const OrtProfilingEvent>>;
+
+/** \brief Owning wrapper around ::OrtProfilingEvent.
+ *
+ * Use this to create profiling events via OrtEpApi::CreateProfilingEvent. The event is released
+ * automatically on destruction.
+ * \since Version 1.25.
+ */
+struct ProfilingEvent : detail::ConstProfilingEventImpl<OrtProfilingEvent> {
+  explicit ProfilingEvent(std::nullptr_t) {}  ///< No instance is created
+  explicit ProfilingEvent(OrtProfilingEvent* p)
+      : ConstProfilingEventImpl<OrtProfilingEvent>{p} {}  ///< Take ownership
+
+  /// \brief Wraps OrtEpApi::CreateProfilingEvent
+  ProfilingEvent(OrtProfilingEventCategory category,
+                 int32_t process_id,
+                 int32_t thread_id,
+                 const char* event_name,
+                 int64_t timestamp_us,
+                 int64_t duration_us,
+                 const std::unordered_map<std::string, std::string>& args = {});
+
+  /// \brief Wraps OrtEpApi::CreateProfilingEvent
+  ProfilingEvent(OrtProfilingEventCategory category,
+                 int32_t process_id,
+                 int32_t thread_id,
+                 const char* event_name,
+                 int64_t timestamp_us,
+                 int64_t duration_us,
+                 const char* const* arg_keys,
+                 const char* const* arg_values,
+                 size_t num_args);
+
+  ConstProfilingEvent GetConst() const { return ConstProfilingEvent{this->p_}; }
+};
+
+namespace detail {
+template <typename T>
+struct ProfilingEventsContainerImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  /// \brief Adds profiling events to this container. Events are copied.
+  /// Wraps OrtEpApi::ProfilingEventsContainer_AddEvents.
+  Ort::Status AddEvents(const OrtProfilingEvent* const* events, size_t num_events);
+  Ort::Status AddEvents(const std::vector<ProfilingEvent>& events);
+};
+}  // namespace detail
+
+/** \brief Non-owning wrapper around ::OrtProfilingEventsContainer.
+ *
+ * Use this to add EP profiling events to a container owned by ORT during the call to OrtEpProfilerImpl::EndProfiling.
+ * \since Version 1.25.
+ */
+using UnownedProfilingEventsContainer = detail::ProfilingEventsContainerImpl<detail::Unowned<OrtProfilingEventsContainer>>;
+
 /** \brief The Env (Environment)
  *
  * The Env holds the logging state used by all other objects.
@@ -1287,9 +1407,48 @@ struct Env : detail::Base<OrtEnv> {
 
   std::vector<ConstEpDevice> GetEpDevices() const;
 
+  /** \brief Get the number of available hardware devices.
+   *
+   * Returns the count of hardware devices discovered on the system.
+   * \return The number of hardware devices available.
+   * \throws Ort::Exception on error.
+   */
+  size_t GetNumHardwareDevices() const;  ///< Wraps OrtApi::GetNumHardwareDevices
+
+  /** \brief Get the list of available hardware devices.
+   *
+   * Enumerates hardware devices available on the system.
+   * \return A vector of hardware devices.
+   * \throws Ort::Exception on error.
+   */
+  std::vector<ConstHardwareDevice> GetHardwareDevices() const;  ///< Wraps OrtApi::GetHardwareDevices
+
+  /** \brief Check for known incompatibility issues between hardware device and a specific execution provider.
+   *
+   * If returned incompatibility details have non-zero reasons, it indicates the device is not compatible.
+   * However, if the returned details have reasons == 0, that does not guarantee 100% compatibility for all models.
+   *
+   * \param ep_name The name of the execution provider to check.
+   * \param hw The hardware device to check for incompatibility.
+   * \return DeviceEpIncompatibilityDetails containing reasons for incompatibility if any.
+   * \throws Ort::Exception on error.
+   */
+  DeviceEpIncompatibilityDetails GetHardwareDeviceEpIncompatibilityDetails(
+      const char* ep_name, ConstHardwareDevice hw) const;  ///< Wraps OrtApi::GetHardwareDeviceEpIncompatibilityDetails
+
   Status CopyTensors(const std::vector<Value>& src_tensors,
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
+
+  /// Wraps OrtApi::CopyTensors
+  /// Copies only one src tensor to another dst tensor.
+  Status CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const;
+
+  /// \brief Wraps OrtApi::SetPerSessionThreadPoolCallbacks
+  /// Stores work callbacks on the Env for per-session thread pools.
+  /// Only affects sessions created after this call. Does not affect global thread pools.
+  /// Requires ORT built with --enable_session_threadpool_callbacks.
+  Env& SetPerSessionThreadPoolCallbacks(const OrtThreadPoolCallbacksConfig& config);
 };
 
 /** \brief Custom Op Domain
@@ -3517,6 +3676,81 @@ struct KernelRegistry : detail::Base<OrtKernelRegistry> {
 
 namespace detail {
 template <typename T>
+struct OpSchemaTypeConstraintImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetTypeParamName
+  std::string GetTypeParamName() const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetAllowedTypes
+  std::vector<std::string> GetAllowedTypes() const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetInputIndices
+  std::vector<size_t> GetInputIndices() const;
+
+  ///< Wraps OrtEpApi::OpSchemaTypeConstraint_GetOutputIndices
+  std::vector<size_t> GetOutputIndices() const;
+};
+}  // namespace detail
+
+/// Non-owning wrapper around a `const OrtOpSchemaTypeConstraint*`.
+/// Holds a single type constraint from an operator schema, providing access to
+/// the constraint's name, allowed data types, and associated input/output indices.
+using ConstOpSchemaTypeConstraint = detail::OpSchemaTypeConstraintImpl<detail::Unowned<const OrtOpSchemaTypeConstraint>>;
+
+namespace detail {
+template <typename T>
+struct OpSchemaImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  ///< Wraps OrtEpApi::OpSchema_GetSinceVersion
+  int GetSinceVersion() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetNumInputs
+  size_t GetNumInputs() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetInputName
+  std::string GetInputName(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetInputTypeConstraint. Returns the type constraint for the given input,
+  ///< or a wrapper around nullptr if the input has no type constraint.
+  ConstOpSchemaTypeConstraint GetInputTypeConstraint(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetNumOutputs
+  size_t GetNumOutputs() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetOutputName
+  std::string GetOutputName(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetOutputTypeConstraint. Returns the type constraint for the given output,
+  ///< or a wrapper around nullptr if the output has no type constraint.
+  ConstOpSchemaTypeConstraint GetOutputTypeConstraint(size_t index) const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraintCount
+  size_t GetTypeConstraintCount() const;
+
+  ///< Wraps OrtEpApi::OpSchema_GetTypeConstraint. Returns the i-th type constraint.
+  ConstOpSchemaTypeConstraint GetTypeConstraint(size_t index) const;
+};
+}  // namespace detail
+
+/// Owning wrapper around an `OrtOpSchema*`.
+/// Provides access to operator schema metadata such as version, input/output names,
+/// and type constraints. The underlying OrtOpSchema is owned by this wrapper and
+/// released automatically on destruction.
+using OpSchema = detail::OpSchemaImpl<OrtOpSchema>;
+
+/// \brief Get an operator schema from the global schema registry.
+///
+/// Wraps OrtEpApi::GetOpSchema. Returns an OpSchema that may wrap nullptr if the schema is not found.
+/// Available schemas include standard ONNX ops (domain "" or "ai.onnx"), ONNX ML ops ("ai.onnx.ml"),
+/// and ORT contrib ops ("com.microsoft").
+OpSchema GetOpSchema(const char* name, int max_inclusive_version, const char* domain);
+
+namespace detail {
+template <typename T>
 struct SharedPrePackedWeightCacheImpl : Ort::detail::Base<T> {
   using B = Ort::detail::Base<T>;
   using B::B;
@@ -3546,5 +3780,6 @@ using UnownedSharedPrePackedWeightCache =
 
 ///< Wraps OrtEpApi::GetEnvConfigEntries()
 Ort::KeyValuePairs GetEnvConfigEntries();
+
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

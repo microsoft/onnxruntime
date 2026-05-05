@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onnxruntime-ep-webgpu"
+version = "@version@"
+description = "ONNX Runtime WebGPU Plugin Execution Provider"
+readme = "onnxruntime_ep_webgpu/README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+  "onnxruntime>=@min_onnxruntime_version@",
+]
+
+[tool.setuptools.packages.find]
+include = ["onnxruntime_ep_webgpu*"]
+
+[tool.setuptools.package-data]
+onnxruntime_ep_webgpu = ["*.dll", "*.so", "*.so.*", "*.dylib"]

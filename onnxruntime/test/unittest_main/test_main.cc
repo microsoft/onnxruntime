@@ -3,12 +3,14 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 #ifdef _WIN32
-#include <iostream>
 #include <locale>
 #endif
 
@@ -51,6 +53,9 @@ constexpr const char* kLogLevel = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
 // Specify dynamic plugin EP configuration JSON.
 // Refer to `onnxruntime::test::dynamic_plugin_ep_infra::ParseInitializationConfig()` for more information.
 constexpr const char* kDynamicPluginEpConfigJson = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON";
+// Specify a file path from which to read dynamic plugin EP configuration JSON.
+// Mutually exclusive with kDynamicPluginEpConfigJson.
+constexpr const char* kDynamicPluginEpConfigJsonFile = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON_FILE";
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 }  // namespace env_var_names
 
@@ -79,9 +84,27 @@ extern "C" void ortenv_setup() {
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
     {
       namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
-      if (auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
-              env_var_names::kDynamicPluginEpConfigJson);
-          dynamic_plugin_ep_config_json.has_value()) {
+
+      auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
+          env_var_names::kDynamicPluginEpConfigJson);
+      auto dynamic_plugin_ep_config_json_file = onnxruntime::ParseEnvironmentVariable<std::string>(
+          env_var_names::kDynamicPluginEpConfigJsonFile);
+
+      ORT_ENFORCE(!dynamic_plugin_ep_config_json.has_value() || !dynamic_plugin_ep_config_json_file.has_value(),
+                  "Only one of ", env_var_names::kDynamicPluginEpConfigJson,
+                  " and ", env_var_names::kDynamicPluginEpConfigJsonFile,
+                  " should be set, not both.");
+
+      if (dynamic_plugin_ep_config_json_file.has_value()) {
+        const auto& config_file_path = *dynamic_plugin_ep_config_json_file;
+        std::cout << "Reading dynamic plugin EP configuration from file: " << config_file_path << "\n";
+        std::ifstream config_file{config_file_path};
+        ORT_ENFORCE(config_file, "Failed to open dynamic plugin EP configuration file: ", config_file_path);
+        dynamic_plugin_ep_config_json.emplace(
+            std::istreambuf_iterator<char>{config_file}, std::istreambuf_iterator<char>{});
+      }
+
+      if (dynamic_plugin_ep_config_json.has_value()) {
         std::cout << "Initializing dynamic plugin EP infrastructure with configuration:\n"
                   << *dynamic_plugin_ep_config_json << "\n";
         dynamic_plugin_ep_infra::InitializationConfig config{};

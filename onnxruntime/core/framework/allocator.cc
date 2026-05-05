@@ -191,12 +191,7 @@ void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve
 }
 
 IArena* IArena::SafeArenaCast(IAllocator* allocator) {
-#if !defined(ORT_NO_RTTI)
-  auto* result = dynamic_cast<IArena*>(allocator);
-  return result;
-#else
-  return static_cast<IArena*>(allocator);
-#endif
+  return allocator ? allocator->AsArena() : nullptr;
 }
 
 }  // namespace onnxruntime

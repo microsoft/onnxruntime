@@ -4,6 +4,11 @@
 
 #pragma once
 
+#include <span>
+#include <string>
+#include <memory>
+#include <vector>
+
 #include "core/framework/execution_provider.h"
 #include "core/framework/session_options.h"
 #include "core/graph/constants.h"
@@ -28,6 +33,9 @@ class GpuBufferAllocator;
 
 // Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
 struct CapturedCommandInfo;
+
+// The actual implementation of kernel registration.
+std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, bool enable_int64);
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
@@ -44,13 +52,21 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   WebGpuExecutionProvider(int context_id, webgpu::WebGpuContext& context, WebGpuExecutionProviderConfig&& config);
   ~WebGpuExecutionProvider() override;
 
+  inline auto GetKernelRegistryImpl() const {
+    return webgpu::GetKernelRegistry(enable_graph_capture_, enable_int64_);
+  }
+
+#if !defined(ORT_USE_EP_API_ADAPTERS)
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph_viewer,
       const IKernelLookup& /*kernel_lookup*/,
       const GraphOptimizerRegistry& /* graph_optimizer_registry */,
       IResourceAccountant* /* resource_accountant */) const override;
 
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override {
+    return GetKernelRegistryImpl();
+  }
+#endif
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 #if defined(__wasm__)
   std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
@@ -81,9 +97,22 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+  }
   webgpu::BufferManager& BufferManager() const;
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
+  std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
+    return *ep_logger_;
+  }
+  inline void SetEpLogger(const OrtLogger* logger) {
+    ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
+  }
+#endif
 
  private:
   bool IsGraphCaptureAllowed() const;
@@ -99,7 +128,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
-  const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+  const int min_num_runs_before_cuda_graph_capture_ = 1;  // Required regular runs before graph capture for any necessary allocations.
   int m_current_graph_annotation_id = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -114,6 +143,10 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   // Allocator for prepacked weights (uses buffers without mapping)
   AllocatorPtr prepack_allocator_;
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  std::unique_ptr<onnxruntime::ep::adapter::Logger> ep_logger_;
+#endif
 };
 
 }  // namespace onnxruntime

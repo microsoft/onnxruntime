@@ -5,6 +5,7 @@
 
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 #include "MLOperatorAuthorPrivate.h"
+#include "core/providers/dml/DmlExecutionProvider/src/SafeMakeOrThrow.h"
 #include "core/framework/int4.h"
 #include <gsl/gsl>
 #include <optional>
@@ -972,7 +973,7 @@ public:
     {
         ORT_TRY
         {
-            Microsoft::WRL::ComPtr<MLOperatorKernel> kernel = wil::MakeOrThrow<MLOperatorKernel>(MLOperatorKernelCreationContext(&info));
+            Microsoft::WRL::ComPtr<MLOperatorKernel> kernel = Dml::SafeMakeOrThrow<MLOperatorKernel>(MLOperatorKernelCreationContext(&info));
 
             *opKernel = kernel.Detach();
             return S_OK;

@@ -1462,6 +1462,12 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded", "unknown version"});
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "unknown version"});
     broken_tests->insert({"convinteger_with_padding", "unknown version"});
+    // Fails since ONNX==1.21.0
+    broken_tests->insert({"dft_irfft", "unknown version"});
+    broken_tests->insert({"dft_irfft_opset19", "unknown version"});
+    broken_tests->insert({"dft_rfft", "unknown version"});
+    broken_tests->insert({"dft_rfft_opset19", "unknown version"});
+    broken_tests->insert({"bitcast_bool_to_uint8", "ORT BitCast kernel does not register bool type"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

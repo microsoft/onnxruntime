@@ -344,13 +344,17 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
   program.AddOutputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});  // [B, N, split_k, head_size]
   const uint32_t batch_heads = static_cast<uint32_t>(parameters.batch_size_ * parameters.num_heads_);
   if (use_indirect_dispatch) {
-    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None})
-        .SetIndirectDispatchTensor(indirect_buffer);
-  } else {
-    program.SetDispatchGroupSize(batch_heads * num_total_seq_length_tile);
+    program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
   if (has_head_sink) {
     program.AddInput({head_sink, ProgramTensorMetadataDependency::Type});
+  }
+  // SetIndirectDispatchTensor must be called after all AddInput calls because it
+  // appends the indirect buffer as the last program input.
+  if (use_indirect_dispatch) {
+    program.SetIndirectDispatchTensor(indirect_buffer);
+  } else {
+    program.SetDispatchGroupSize(batch_heads * num_total_seq_length_tile);
   }
   program.CacheHint(tile_size, head_size_vec, use_indirect_dispatch, has_head_sink)
       .SetWorkgroupSize(64)
