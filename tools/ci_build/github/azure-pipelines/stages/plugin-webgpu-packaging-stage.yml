@@ -45,7 +45,7 @@ stages:
       dependsOn: []
       jobs:
       - job: Validate
-        displayName: 'Validate parameter combination'
+        displayName: 'Validate parameters'
         pool:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
