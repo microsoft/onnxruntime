@@ -36,34 +36,36 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
     } else if (adapter_info.architecture == std::string_view{"xe-2lpg"} ||
                adapter_info.architecture == std::string_view{"xe-2hpg"} ||
                adapter_info.architecture == std::string_view{"gen-12hp"}) {
-      // Below thresholds are only verified on Intel discreate GPUs and Lunar Lake iGPUs.
+      // Below thresholds are only verified on Intel discrete GPUs and Lunar Lake iGPUs.
       enable_split_k_ = true;
 
+      max_batch_size_ = 8;
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
-      configs_per_dim_inner_range_.emplace_back(768, 52.0f);
-      configs_per_dim_inner_range_.emplace_back(2304, 35.0f);
-      configs_per_dim_inner_range_.emplace_back(3072, 21.5f);
-      configs_per_dim_inner_range_.emplace_back(4096, 16.0f);
+      configs_per_dim_inner_range_.emplace_back(768, 52.0);
+      configs_per_dim_inner_range_.emplace_back(2304, 35.0);
+      configs_per_dim_inner_range_.emplace_back(3072, 21.5);
+      configs_per_dim_inner_range_.emplace_back(4096, 16.0);
     } else {
       // Below are the default thresholds on newer Intel GPUs. These values are chosen on
       // Intel "gen-12lp" GPU with 32EUs.
       enable_split_k_ = true;
 
+      max_batch_size_ = 8;
       split_dim_inner_ = 256;
       min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
 
-      configs_per_dim_inner_range_.emplace_back(768, 20.0f);
-      configs_per_dim_inner_range_.emplace_back(1792, 13.0f);
-      configs_per_dim_inner_range_.emplace_back(3072, 8.0f);
-      configs_per_dim_inner_range_.emplace_back(4096, 6.0f);
+      configs_per_dim_inner_range_.emplace_back(768, 20.0);
+      configs_per_dim_inner_range_.emplace_back(1792, 13.0);
+      configs_per_dim_inner_range_.emplace_back(3072, 8.0);
+      configs_per_dim_inner_range_.emplace_back(4096, 6.0);
     }
   }
 }
 
-SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, float rate)
-    : max_dim_inner_with_rate(max_dim_inner), max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner(rate) {}
+SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, double rate)
+    : max_dim_inner_with_rate(max_dim_inner), max_dim_a_outer_x_dim_b_outer_x_batch_size_divides_dim_inner(rate) {}
 
 uint32_t SplitKConfig::GetMaxDimInnerWithSplitK() const {
   assert(!configs_per_dim_inner_range_.empty());
@@ -87,7 +89,10 @@ bool SplitKConfig::UseSplitK(
   // TODO: support the cases below.
   use_split_k &= activation_kind == ActivationKind::None;
   use_split_k &= is_vec4;
-  use_split_k &= batch_size == 1;
+
+  // Larger batches increase parallelism on their own, so we temporarily set a batch size threshold
+  // for using Split-K.
+  use_split_k &= batch_size <= max_batch_size_;
 
   // `is_channels_last` should only affect Split-K gating when bias is applied in the non-GEMM
   // MatMul/Conv|MatMul path. For GEMM and for MatMul or Conv|MatMul without bias, we need to
@@ -97,8 +102,8 @@ bool SplitKConfig::UseSplitK(
   use_split_k &= is_channels_last;
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
-  // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer)` and
-  // `dim_inner)` as the metric to decide whether to use Split-K or not.
+  // `dim_b_outer`. Currently we use the factor between `(dim_a_outer * dim_b_outer * batch_size)`
+  // and `dim_inner` as the metric to decide whether to use Split-K or not.
   use_split_k &= dim_inner >= min_dim_inner_with_split_k_;
   use_split_k &= dim_inner <= GetMaxDimInnerWithSplitK();
 
@@ -106,10 +111,10 @@ bool SplitKConfig::UseSplitK(
     return false;
   }
 
-  const float rate = dim_a_outer * dim_b_outer * 1.0f / dim_inner;
+  const double rate = static_cast<double>(dim_a_outer) * static_cast<double>(dim_b_outer) * static_cast<double>(batch_size) / static_cast<double>(dim_inner);
   for (const auto& config_at_range : configs_per_dim_inner_range_) {
     if (dim_inner <= config_at_range.max_dim_inner_with_rate) {
-      return rate <= config_at_range.max_dim_a_outer_multiplies_dim_b_outer_divides_dim_inner;
+      return rate <= config_at_range.max_dim_a_outer_x_dim_b_outer_x_batch_size_divides_dim_inner;
     }
   }
   return false;

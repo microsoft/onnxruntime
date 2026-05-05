@@ -877,6 +877,293 @@ TEST(CoreMLExecutionProviderTest, Pad1DMLProgram) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
 #endif
 }
+
+TEST(CoreMLExecutionProviderTest, HardSigmoidTest) {
+  // Single-node HardSigmoid model; verify it is claimed entirely by the
+  // CoreML EP in both NeuralNetwork and MLProgram formats, and that the
+  // output matches the CPU EP reference.
+  onnxruntime::Model model("hard_sigmoid_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(2);
+  input_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(3);
+  output_shape->add_dim()->set_dim_value(2);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  auto& node = graph.AddNode("hard_sigmoid", "HardSigmoid", "HardSigmoid with non-default alpha/beta",
+                             {&input_arg}, {&output_arg});
+  // Use non-default values so the test catches any attribute-wiring bug.
+  node.AddAttribute("alpha", 0.1f);
+  node.AddAttribute("beta", 0.6f);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  // Inputs span the three HardSigmoid regions (saturated-low, linear, saturated-high)
+  // for alpha=0.1, beta=0.6: values < -6 clamp to 0, values > 4 clamp to 1, others are linear.
+  std::vector<int64_t> dims = {1, 3, 2, 4};
+  std::vector<float> input_data = {-10.0f, -7.0f, -6.0f, -5.0f, -3.0f, -1.0f, 0.0f, 1.0f,
+                                   2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 10.0f, 0.5f, -0.5f,
+                                   -4.0f, -2.0f, 1.5f, 2.5f, -1.5f, 3.5f, -3.5f, 4.5f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "HardSigmoidTest_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "HardSigmoidTest_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, QuickGeluTest) {
+  // Single com.microsoft:QuickGelu node (produced by ORT's QuickGeluFusion pass
+  // from the pattern x * sigmoid(alpha * x)). Verify the CoreML MLProgram path
+  // claims the whole graph and produces the same output as CPU.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(13);
+  auto* ms_opset = model_proto.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("quick_gelu_test");
+
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_shape = input->mutable_type()->mutable_tensor_type()->mutable_shape();
+  input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(2);
+  input_shape->add_dim()->set_dim_value(4);
+
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_shape = output->mutable_type()->mutable_tensor_type()->mutable_shape();
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(3);
+  output_shape->add_dim()->set_dim_value(2);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("QuickGelu");
+  node->set_domain("com.microsoft");
+  node->add_input("X");
+  node->add_output("Y");
+  // Use a non-default alpha so the test catches any attribute-wiring bug.
+  auto* alpha_attr = node->add_attribute();
+  alpha_attr->set_name("alpha");
+  alpha_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+  alpha_attr->set_f(1.5f);
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 3, 2, 4};
+  std::vector<float> input_data = {-10.0f, -3.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 3.0f,
+                                   10.0f, -5.0f, 5.0f, 2.0f, -2.0f, 4.0f, -4.0f, 0.25f,
+                                   -0.25f, 7.0f, -7.0f, 1.5f, -1.5f, 0.1f, -0.1f, 20.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_span, "QuickGeluTest_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, QuickGeluTestAlphaOne) {
+  // alpha == 1.0 triggers the "skip leading mul" optimization in the op
+  // builder. Verify correctness on that branch — the emitted MIL graph is
+  // sigmoid(x) -> mul(x, sigmoid(x)) instead of the 3-op decomposition.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(13);
+  auto* ms_opset = model_proto.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("quick_gelu_alpha_one_test");
+
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_shape = input->mutable_type()->mutable_tensor_type()->mutable_shape();
+  input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(2);
+  input_shape->add_dim()->set_dim_value(4);
+
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_shape = output->mutable_type()->mutable_tensor_type()->mutable_shape();
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(3);
+  output_shape->add_dim()->set_dim_value(2);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("QuickGelu");
+  node->set_domain("com.microsoft");
+  node->add_input("X");
+  node->add_output("Y");
+  auto* alpha_attr = node->add_attribute();
+  alpha_attr->set_name("alpha");
+  alpha_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+  alpha_attr->set_f(1.0f);
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 3, 2, 4};
+  std::vector<float> input_data = {-10.0f, -3.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 3.0f,
+                                   10.0f, -5.0f, 5.0f, 2.0f, -2.0f, 4.0f, -4.0f, 0.25f,
+                                   -0.25f, 7.0f, -7.0f, 1.5f, -1.5f, 0.1f, -0.1f, 20.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_span, "QuickGeluTestAlphaOne_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, QuickGeluTestFp16) {
+  // FLOAT16 variant of QuickGeluTest. Exercises the MLFloat16 branch of the
+  // alpha-scalar wiring in QuickGeluOpBuilder::AddToModelBuilderImpl.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model_proto.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(13);
+  auto* ms_opset = model_proto.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("quick_gelu_fp16_test");
+
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_shape = input->mutable_type()->mutable_tensor_type()->mutable_shape();
+  input->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(3);
+  input_shape->add_dim()->set_dim_value(2);
+  input_shape->add_dim()->set_dim_value(4);
+
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_shape = output->mutable_type()->mutable_tensor_type()->mutable_shape();
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(3);
+  output_shape->add_dim()->set_dim_value(2);
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("QuickGelu");
+  node->set_domain("com.microsoft");
+  node->add_input("X");
+  node->add_output("Y");
+  auto* alpha_attr = node->add_attribute();
+  alpha_attr->set_name("alpha");
+  alpha_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOAT);
+  alpha_attr->set_f(1.5f);
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 3, 2, 4};
+  const std::vector<float> input_floats = {-10.0f, -3.0f, -1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 3.0f,
+                                           10.0f, -5.0f, 5.0f, 2.0f, -2.0f, 4.0f, -4.0f, 0.25f,
+                                           -0.25f, 7.0f, -7.0f, 1.5f, -1.5f, 0.1f, -0.1f, 20.0f};
+  std::vector<MLFloat16> input_data;
+  input_data.reserve(input_floats.size());
+  for (float f : input_floats) input_data.emplace_back(f);
+
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<MLFloat16>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  // fp16 accumulates larger absolute error than fp32 across the three-op
+  // decomposition (mul, sigmoid, mul). Outputs are bounded by |x|, max ~20 in
+  // this test; fp16 ulp at that magnitude is ~0.01, so 2e-2 leaves headroom.
+  params.fp32_abs_err = 2e-2f;
+
+  RunAndVerifyOutputsWithEP(model_span, "QuickGeluTestFp16_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime

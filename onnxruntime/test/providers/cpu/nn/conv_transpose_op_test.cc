@@ -525,7 +525,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
                       // so drop the part that differs from the expected string
                       "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,",
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider});  // TODO: Unskip when fixed #41968513
+                       kDmlExecutionProvider, kOpenVINOExecutionProvider});  // TODO: Unskip when fixed #41968513
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {

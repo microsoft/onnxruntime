@@ -30,7 +30,6 @@ skip_js_changes = [
     "win-ci-pipeline.yml",
     "win-gpu-dml-ci-pipeline.yml",
     "win-gpu-cuda-ci-pipeline.yml",
-    "win-gpu-doc-gen-ci-pipeline.yml",
     "win-gpu-tensorrt-ci-pipeline.yml",
     "win-gpu-webgpu-ci-pipeline.yml",
     "win-openvino-ci-pipeline.yml",

@@ -60,6 +60,9 @@ Abstract:
 #if defined(__s390x__)
 #define MLAS_TARGET_S390X
 #endif
+#if defined(__riscv) && defined(__riscv_xlen) && (__riscv_xlen == 64)
+#define MLAS_TARGET_RISCV64
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER

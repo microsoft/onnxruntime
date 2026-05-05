@@ -1,3 +1,8 @@
+# Packaging pipeline for the WebGPU EP plugin. This pipeline only builds
+# and publishes artifacts. Tests that consume those artifacts live in
+# plugin-webgpu-test-pipeline.yml, which is resource-triggered on
+# successful runs of this pipeline.
+
 trigger: none
 
 schedules:
@@ -55,6 +60,9 @@ parameters:
     - MinSizeRel
 
 variables:
+  # Path (relative to the repository root) of the VERSION_NUMBER file used for plugin package versioning.
+  - name: epVersionFile
+    value: plugin-ep-webgpu/VERSION_NUMBER
   # Windows ARM64 build requires Windows x64 build to be enabled (ARM64 cross-compilation depends on x64 build artifacts)
   - name: invalidARM64Config
     value: ${{ and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, false)) }}
@@ -122,4 +130,5 @@ extends:
             build_linux_x64: ${{ parameters.build_linux_x64 }}
             build_macos_arm64: ${{ parameters.build_macos_arm64 }}
             package_version: ${{ parameters.package_version }}
+            version_file: ${{ variables.epVersionFile }}
             cmake_build_type: ${{ parameters.cmake_build_type }}
