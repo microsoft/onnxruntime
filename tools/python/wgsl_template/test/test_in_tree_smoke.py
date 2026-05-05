@@ -15,15 +15,17 @@ import unittest
 from pathlib import Path
 
 _THIS_DIR = Path(__file__).resolve().parent
-_PARENT_DIR = _THIS_DIR.parent
+_PARENT_DIR = _THIS_DIR.parent.parent
 if str(_PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(_PARENT_DIR))
 
 from wgsl_template import build  # noqa: E402
 
 
-# Path to the WebGPU EP source root that contains the real templates.
-_WEBGPU_ROOT = _PARENT_DIR.parent  # core/providers/webgpu/
+# Repo root: tools/python/wgsl_template/test/ -> ../../../..
+_REPO_ROOT = _THIS_DIR.parent.parent.parent.parent
+# WebGPU EP source root, where the real templates live.
+_WEBGPU_ROOT = _REPO_ROOT / "onnxruntime" / "core" / "providers" / "webgpu"
 
 _EXPECTED_TEMPLATES = {
     "nn/im2col_matmul.wgsl.template",

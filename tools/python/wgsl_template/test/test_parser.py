@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import List
 
 _THIS_DIR = Path(__file__).resolve().parent
-_PARENT_DIR = _THIS_DIR.parent
+_PARENT_DIR = _THIS_DIR.parent.parent
 if str(_PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(_PARENT_DIR))
 

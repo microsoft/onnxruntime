@@ -274,10 +274,12 @@
   if (onnxruntime_WGSL_TEMPLATE)
     # Define the WGSL templates directory and output directory
     set(WGSL_TEMPLATES_DIR "${ONNXRUNTIME_ROOT}/core/providers/webgpu/wgsl_templates")
+    # The Python wgsl-gen tool lives at the repo level under tools/python.
+    set(WGSL_GEN_PYTHON_DIR "${REPO_ROOT}/tools/python")
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
 
-    # The static path uses the in-tree Python tool (wgsl_gen.py).
-    # The dynamic path still uses the npm wrapper.
+    # The static path uses the in-tree Python tool (tools/python/wgsl_gen.py).
+    # The dynamic path still uses the npm wrapper next to the EP.
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
       # The top-level find_package(Python ...) in cmake/CMakeLists.txt
       # is gated on BUILD_SHARED_LIB OR ENABLE_PYTHON, so Python_EXECUTABLE
@@ -348,9 +350,9 @@
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
       add_custom_command(
         OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
-        COMMAND ${Python_EXECUTABLE} "${WGSL_TEMPLATES_DIR}/wgsl_gen.py" ${WGSL_GEN_OPTIONS}
+        COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_gen.py" ${WGSL_GEN_OPTIONS}
         DEPENDS ${WGSL_TEMPLATE_FILES}
-        WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
+        WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
         COMMENT "Generating WGSL templates from *.wgsl.template files (Python)"
         COMMAND_EXPAND_LISTS
         VERBATIM
@@ -398,8 +400,8 @@
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static" AND BUILD_TESTING)
       add_test(
         NAME wgsl_template_python_tests
-        COMMAND ${Python_EXECUTABLE} "${WGSL_TEMPLATES_DIR}/test/run_tests.py"
-        WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
+        COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_template/test/run_tests.py"
+        WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
       )
     endif()
   endif()

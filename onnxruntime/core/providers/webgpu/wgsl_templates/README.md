@@ -2,7 +2,7 @@
 
 This directory contains the infrastructure, scripts, and documentation for the WGSL template system used by the ONNX Runtime WebGPU Execution Provider (EP). The template system enables the generation of optimized WGSL shaders at build time or runtime, with parameterization and reusability across different operators.
 
-The template engine is implemented in Python (`wgsl_gen.py` plus the `wgsl_template/` package) for the static build path.
+The template engine for the static build path is implemented in Python and lives at [`tools/python/wgsl_gen.py`](../../../../../tools/python/wgsl_gen.py) (with the supporting package at [`tools/python/wgsl_template/`](../../../../../tools/python/wgsl_template/)). See [`tools/python/DESIGN_wgsl_python_port.md`](../../../../../tools/python/DESIGN_wgsl_python_port.md) for the design.
 The original Node.js [`@fs-eire/wgsl-template`](https://github.com/fs-eire/wgsl-template) tool is still used for the `dynamic` generator mode.
 
 ## Overview
@@ -122,10 +122,10 @@ This section includes instructions for how to use the template system in the dev
 
 ## Python tool reference (static mode only)
 
-The static build path invokes `wgsl_gen.py` directly from CMake; you should not normally need to run it by hand. The CLI surface is:
+The static build path invokes [`tools/python/wgsl_gen.py`](../../../../../tools/python/wgsl_gen.py) directly from CMake; you should not normally need to run it by hand. The CLI surface is:
 
 ```
-python wgsl_gen.py \
+python tools/python/wgsl_gen.py \
     -i <source-dir> [-i <source-dir> ...] \
     --output <out-dir> \
     --generator {static-cpp|static-cpp-literal} \
@@ -150,7 +150,7 @@ ctest -R wgsl_template_python_tests
 You can also run the suite directly from the source tree:
 
 ```
-python test/run_tests.py
+python tools/python/wgsl_template/test/run_tests.py
 ```
 
 Tests cover the loader, parser, generator, build orchestrator, and a smoke test against the in-tree templates (Pad, Transpose, im2col-matmul). Several fixtures are pulled directly from the upstream `wgsl-template` test corpus when that checkout is available locally; the suite skips them transparently otherwise.
