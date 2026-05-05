@@ -105,20 +105,19 @@ def create_attention_node_and_io(
     """
     Create ONNX Attention op node and I/O definitions for testing.
 
-    output_qk: when set to a non-negative int, enables the optional 4th output
-    `output_qk` and sets the `qk_matmul_output_mode` attribute to this value
-    (0=kQK raw, 1=kQKMask, 2=kQKSoftCap, 3=kQKSoftMax). When None (default) or
-    when set to any negative value (matching the C++ `kNone = -1` sentinel in
-    onnxruntime/core/providers/cpu/llm/attention_parameters.h), the 4th output
-    is not emitted and the attribute defaults to 0.
+    output_qk: when set to an int in {0, 1, 2, 3}, enables the optional 4th
+    output `output_qk` and sets the `qk_matmul_output_mode` attribute to
+    that value (0=kQK raw, 1=kQKMask, 2=kQKSoftCap, 3=kQKSoftMax). When None
+    (the default), the 4th output is not emitted and the attribute defaults
+    to 0. Any other int value (negative, or >= 4) raises an AssertionError.
 
-    NOTE: API contract — `output_qk >= 0` ENABLES the 4th output and selects
-    the mode; `output_qk=0` enables it in raw-QK mode. `output_qk=None` (the
-    default) OR any negative int (e.g. `-1`, mirroring the C++ enum's `kNone`)
-    DISABLES it. Do not pass 0 expecting it to mean "disabled" — pass None
-    instead. The negative-value branch is defensive: a caller who reads the
-    C++ enum and passes -1 must not silently bind a 4th output and have the
-    unfused kernel populate it as raw-QK.
+    NOTE: API contract — `output_qk=None` (the default) DISABLES the 4th
+    output. `output_qk=k` for k in {0, 1, 2, 3} ENABLES it and selects the
+    corresponding mode (`output_qk=0` is raw-QK). Passing anything else —
+    including the C++ `kNone = -1` sentinel from attention_parameters.h, or
+    any unknown mode like `4`/`5` — raises immediately rather than silently
+    binding the 4th output (the unfused CUDA kernel would populate it as
+    raw-QK regardless of an out-of-range mode).
 
     ONNX Attention op (opset 23/24) inputs:
     - 0: Q (query) - required
@@ -157,11 +156,17 @@ def create_attention_node_and_io(
         "present_value",
     ]
 
-    # Treat `output_qk is None` AND any negative int (e.g. -1, matching the C++
-    # `kNone` enum value in attention_parameters.h) as "disabled". Otherwise a
-    # caller who passes -1 would silently get the 4th output bound and the
-    # unfused CUDA kernel would populate it as raw-QK regardless.
-    enable_output_qk = output_qk is not None and output_qk >= 0
+    # Strict validation: only None or one of the known QKMatMulOutputMode values
+    # {0, 1, 2, 3} is accepted. Anything else (including the C++ `kNone = -1`
+    # sentinel, or unknown modes like 4/5) raises immediately, so callers can't
+    # silently bind a 4th output the unfused CUDA kernel would populate as raw-QK.
+    if output_qk is not None:
+        assert output_qk in (0, 1, 2, 3), (
+            f"output_qk must be one of {{0, 1, 2, 3}} or None, got {output_qk!r}"
+        )
+        enable_output_qk = True
+    else:
+        enable_output_qk = False
     if enable_output_qk:
         outputs.append("output_qk")
 
@@ -415,13 +420,14 @@ def attention_prompt_func(
         device: Device string (e.g., "cuda")
         ort_type: ONNX tensor type
         nonpad_kv_seqlen: Optional int64 tensor [batch_size] for opset 24
-        output_qk: When set to a non-negative int, enables the optional 4th
-            output `output_qk` and sets the `qk_matmul_output_mode` attribute
-            to this value (0=kQK raw, 1=kQKMask, 2=kQKSoftCap, 3=kQKSoftMax).
-            The function then returns a 4-tuple (out, present_k, present_v, qk)
-            instead of the usual 3-tuple. NOTE: pass None (the default) — or
-            any negative int (matching the C++ `kNone = -1` enum sentinel) — to
-            DISABLE; `output_qk=0` enables the 4th output in raw-QK mode.
+        output_qk: When set to an int in {0, 1, 2, 3}, enables the optional
+            4th output `output_qk` and sets the `qk_matmul_output_mode`
+            attribute to that value (0=kQK raw, 1=kQKMask, 2=kQKSoftCap,
+            3=kQKSoftMax). The function then returns a 4-tuple
+            (out, present_k, present_v, qk) instead of the usual 3-tuple.
+            Pass None (the default) to DISABLE. Any other int value
+            (negative, or >= 4) raises an AssertionError; do NOT pass the
+            C++ `kNone = -1` sentinel — use Python `None`.
     """
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -506,10 +512,9 @@ def attention_prompt_func(
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
     output_qk_torch = None
-    # Mirror the `enable_output_qk` convention from create_attention_node_and_io:
-    # treat negative ints (e.g. C++ `kNone = -1`) as "disabled" so we don't bind
-    # a 4th output the graph never declared.
-    output_qk_enabled = output_qk is not None and output_qk >= 0
+    # `create_attention_node_and_io` (called above via `create_attention_graph_prompt`)
+    # has already validated `output_qk in {0, 1, 2, 3}` or None. Just gate on `is not None`.
+    output_qk_enabled = output_qk is not None
     if output_qk_enabled:
         output_qk_torch = torch.zeros(
             (config.batch_size, config.q_num_heads, config.q_sequence_length, present_seqlen),

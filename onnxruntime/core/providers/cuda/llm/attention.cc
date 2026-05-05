@@ -1383,31 +1383,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         (past_key == nullptr || parameters.head_size == parameters.v_head_size) &&
         // GQA+MEA requires LaunchUngroup which only has fp16/bf16 instantiations.
         // FP32 GQA must fall through to the unfused path.
-        !(is_gqa && std::is_same<T, float>::value) &&
-        // Forward-looking alignment floor: head_size must be a multiple of 4
-        // for Cutlass FMHA's BiasLoader, which uses a 128-bit / sizeof_bits
-        // element-aligned load for the Q and additive-bias tiles (= 4 elements
-        // for fp32, 8 for fp16/bf16). head_size is the inner stride of those
-        // loads.
-        //
-        // Redundant today: has_memory_efficient_attention() already requires
-        // (qk_head_size & 7) == 0 (memory_efficient_attention.h), which strictly
-        // implies %4. Kept as an explicit, dtype-agnostic alignment floor so
-        // it remains correct once microsoft/onnxruntime#28365 lands and
-        // relaxes BiasLoader to use kAlignmentA / DispatchIsAligned (at which
-        // point MEA's %8 invariant goes away).
-        //
-        // Delete this clause ONLY when BOTH conditions hold:
-        //   (a) `has_memory_efficient_attention` no longer enforces the
-        //       (qk_head_size & 7) == 0 invariant (post-microsoft/onnxruntime#28365
-        //       likely relaxes it to %4 via BiasLoader = kAlignmentA), AND
-        //   (b) no other host-side gate above this point would let head_size < 4
-        //       (e.g. head_size == 2) reach LaunchUngroup, which still enforces
-        //       head_size % 4 == 0 internally (see ORT_ENFORCE near line 723-724
-        //       of this file). Removing this clause without (b) would let GQA+MEA
-        //       configurations crash inside LaunchUngroup instead of falling
-        //       through to the unfused path here.
-        (parameters.head_size % 4 == 0);
+        !(is_gqa && std::is_same<T, float>::value);
 
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
     // "unaligned" kernel path. When an attention mask is present (with or without
