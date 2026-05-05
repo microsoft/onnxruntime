@@ -1375,8 +1375,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
         !has_output_qk &&
-        // MEA decode requires head_size == v_head_size for LaunchConcatNewToPastKV
-        // (single head_size parameter). Fall back to unfused when they differ.
+        // MEA requires head_size == v_head_size in two internal paths:
+        //   - LaunchConcatNewToPastKV (decode with past_key)
+        //   - LaunchUngroup (GQA head expansion)
+        // Fall back to unfused attention when they differ.
+        (!is_gqa || parameters.head_size == parameters.v_head_size) &&
         (past_key == nullptr || parameters.head_size == parameters.v_head_size) &&
         // GQA+MEA requires LaunchUngroup which only has fp16/bf16 instantiations.
         // FP32 GQA must fall through to the unfused path.
