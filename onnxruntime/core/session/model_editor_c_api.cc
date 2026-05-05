@@ -127,14 +127,13 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
   onnxruntime::InlinedHashSet<const OrtValueInfo*> seen;
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
-      continue;  // null entries are validated in the transfer loop below
+      continue;
     }
     if (!seen.insert(inputs[i]).second) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Duplicate OrtValueInfo pointer found in inputs array. "
                                    "Each OrtValueInfo can only appear once.");
     }
-    // Reject already-owned ValueInfos (prevents double-free if reused across calls)
     onnxruntime::ModelEditorValueInfo* vi = onnxruntime::ModelEditorValueInfo::ToInternal(inputs[i]);
     if (vi != nullptr && vi->owned_) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
@@ -143,7 +142,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
     }
   }
 
-  graph->inputs.reserve(inputs_len);  // pre-allocate so push_back won't reallocate during ownership transfer
+  graph->inputs.reserve(inputs_len);
   graph->inputs.clear();
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
@@ -187,14 +186,13 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
   onnxruntime::InlinedHashSet<const OrtValueInfo*> seen;
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
-      continue;  // null entries are validated in the transfer loop below
+      continue;
     }
     if (!seen.insert(outputs[i]).second) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Duplicate OrtValueInfo pointer found in outputs array. "
                                    "Each OrtValueInfo can only appear once.");
     }
-    // Reject already-owned ValueInfos (prevents double-free if reused across calls)
     onnxruntime::ModelEditorValueInfo* vi = onnxruntime::ModelEditorValueInfo::ToInternal(outputs[i]);
     if (vi != nullptr && vi->owned_) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
@@ -203,7 +201,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
     }
   }
 
-  graph->outputs.reserve(outputs_len);  // pre-allocate so push_back won't reallocate during ownership transfer
+  graph->outputs.reserve(outputs_len);
   graph->outputs.clear();
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
@@ -278,9 +276,6 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     }
   }
 
-  // All validation done. Copy the OrtValue into the graph.
-  // OrtValue uses shared_ptr internally, so copying is cheap (refcount increment, no data copy).
-  // The caller retains their original OrtValue and is responsible for releasing it.
   auto& m = data_is_external ? graph->external_initializers : graph->initializers;
   auto [it, inserted] = m.emplace(name, *ort_value);
   ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
@@ -320,14 +315,11 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
                                  "Each OrtNode can only be added once.");
   }
 
-  // All validation done. Take ownership.
-  // Reserve with geometric growth so emplace_back won't reallocate.
-  // If reserve() throws, node is not yet owned by a unique_ptr and the caller still safely owns it.
   node->id = graph->nodes.size();
   if (graph->nodes.size() == graph->nodes.capacity()) {
     graph->nodes.reserve(std::max(graph->nodes.capacity() * 2, size_t{1}));
   }
-  graph->nodes.emplace_back(node);  // constructs unique_ptr in-place; won't reallocate
+  graph->nodes.emplace_back(node);
   node->owned_ = true;
   return nullptr;
   API_IMPL_END

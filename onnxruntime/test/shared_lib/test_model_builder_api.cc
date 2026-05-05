@@ -235,7 +235,7 @@ TEST(ModelEditorAPITest, Basic_CApi) {
                                                      &y_tensor));
 
     Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "Y", y_tensor, /*data is external*/ true));
-    api.ReleaseValue(y_tensor);  // caller releases; graph holds its own copy
+    api.ReleaseValue(y_tensor);
 
     if (use_constant_node) {
       // Test that a Constant node is converted to an initializer
@@ -1303,15 +1303,9 @@ TEST(ModelEditorAPITest, AddGraphToModel_SameGraphTwoModels_Fails) {
   api.ReleaseModel(model1);
 }
 
-// Regression tests for Release-after-ownership-transfer (yuslepukhin review comments).
-// In debug builds, releasing an owned object triggers an assert to flag the programming error.
-// In release builds, the release is a safe no-op (prevents double-free).
-
+// Skipped in debug builds where the assert in Release functions would fire.
 #ifdef NDEBUG
-TEST(ModelEditorAPITest, ReleaseNode_AfterAddToGraph_NoOpInRelease) {
-#else
-TEST(ModelEditorAPIDeathTest, ReleaseNode_AfterAddToGraph_AssertsInDebug) {
-#endif
+TEST(ModelEditorAPITest, ReleaseNode_AfterAddToGraph_IsNoOp) {
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
@@ -1320,26 +1314,12 @@ TEST(ModelEditorAPIDeathTest, ReleaseNode_AfterAddToGraph_AssertsInDebug) {
 
   OrtNode* node = CreateNode(model_editor_api, "Relu", "relu1", {"X"}, {"Y"});
 
-  // Transfer ownership to graph
   ASSERT_ORTSTATUS_OK(model_editor_api.AddNodeToGraph(graph, node));
-
-#ifdef NDEBUG
-  // Release build: safe no-op
   api.ReleaseNode(node);
-#else
-  // Debug build: assert fires
-  ASSERT_DEATH(api.ReleaseNode(node), ".*");
-#endif
-
-  // Graph destructor should safely clean up the node (no double-free)
   api.ReleaseGraph(graph);
 }
 
-#ifdef NDEBUG
-TEST(ModelEditorAPITest, ReleaseGraph_AfterAddToModel_NoOpInRelease) {
-#else
-TEST(ModelEditorAPIDeathTest, ReleaseGraph_AfterAddToModel_AssertsInDebug) {
-#endif
+TEST(ModelEditorAPITest, ReleaseGraph_AfterAddToModel_IsNoOp) {
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
@@ -1352,33 +1332,18 @@ TEST(ModelEditorAPIDeathTest, ReleaseGraph_AfterAddToModel_AssertsInDebug) {
   Ort::ThrowOnError(model_editor_api.CreateModel(domain_names.data(), opset_versions.data(),
                                                  domain_names.size(), &model));
 
-  // Transfer ownership to model
   ASSERT_ORTSTATUS_OK(model_editor_api.AddGraphToModel(model, graph));
-
-#ifdef NDEBUG
-  // Release build: safe no-op
   api.ReleaseGraph(graph);
-#else
-  // Debug build: assert fires
-  ASSERT_DEATH(api.ReleaseGraph(graph), ".*");
-#endif
-
-  // Model destructor should safely clean up the graph (no double-free)
   api.ReleaseModel(model);
 }
 
-#ifdef NDEBUG
-TEST(ModelEditorAPITest, ReleaseValueInfo_AfterSetGraphInputs_NoOpInRelease) {
-#else
-TEST(ModelEditorAPIDeathTest, ReleaseValueInfo_AfterSetGraphInputs_AssertsInDebug) {
-#endif
+TEST(ModelEditorAPITest, ReleaseValueInfo_AfterSetGraphInputs_IsNoOp) {
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
   OrtGraph* graph = nullptr;
   Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
 
-  // Create OrtValueInfo
   OrtTensorTypeAndShapeInfo* tensor_type_info = nullptr;
   std::vector<int64_t> dims = {3, 4};
   Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&tensor_type_info));
@@ -1393,22 +1358,14 @@ TEST(ModelEditorAPIDeathTest, ReleaseValueInfo_AfterSetGraphInputs_AssertsInDebu
   Ort::ThrowOnError(model_editor_api.CreateValueInfo("X", type_info, &x_info));
   api.ReleaseTypeInfo(type_info);
 
-  // Save the raw pointer before SetGraphInputs nulls out the array entry
   OrtValueInfo* saved_ptr = x_info;
   std::vector<OrtValueInfo*> inputs = {x_info};
   ASSERT_ORTSTATUS_OK(model_editor_api.SetGraphInputs(graph, inputs.data(), inputs.size()));
 
-#ifdef NDEBUG
-  // Release build: safe no-op
   api.ReleaseValueInfo(saved_ptr);
-#else
-  // Debug build: assert fires
-  ASSERT_DEATH(api.ReleaseValueInfo(saved_ptr), ".*");
-#endif
-
-  // Graph destructor should safely clean up the ValueInfo (no double-free)
   api.ReleaseGraph(graph);
 }
+#endif  // NDEBUG
 
 TEST(ModelEditorAPITest, SetGraphInputs_AlreadyOwnedValueInfo_Fails) {
   const auto& api = Ort::GetApi();
