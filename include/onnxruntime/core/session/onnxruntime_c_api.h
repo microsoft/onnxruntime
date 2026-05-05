@@ -7449,6 +7449,19 @@ struct OrtApi {
    * \see OrtApi::EnableMemPattern, OrtApi::DisableMemPattern
    */
   ORT_API2_STATUS(GetMemPatternEnabled, _In_ const OrtSessionOptions* options, _Out_ int* out);
+
+  /** \brief Get the current execution mode setting.
+   *
+   * \param[in] options
+   * \param[out] out Set to the current execution mode (ORT_SEQUENTIAL or ORT_PARALLEL).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.26.
+   *
+   * \see OrtApi::SetSessionExecutionMode
+   */
+  ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
 };
 
 /*

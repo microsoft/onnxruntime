@@ -1435,6 +1435,13 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetExecutionMode(ExecutionM
 }
 
 template <typename T>
+inline ExecutionMode SessionOptionsImpl<T>::GetExecutionMode() const {
+  ExecutionMode out;
+  ThrowOnError(GetApi().GetSessionExecutionMode(this->p_, &out));
+  return out;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetLoadCancellationFlag(bool value) {
   ThrowOnError(GetApi().SessionOptionsSetLoadCancellationFlag(this->p_, value));
   return *this;

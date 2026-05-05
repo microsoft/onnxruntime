@@ -1597,6 +1597,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   bool GetMemPatternEnabled() const;        ///< Wraps OrtApi::GetMemPatternEnabled
 
   SessionOptionsImpl& SetExecutionMode(ExecutionMode execution_mode);  ///< Wraps OrtApi::SetSessionExecutionMode
+  ExecutionMode GetExecutionMode() const;                              ///< Wraps OrtApi::GetSessionExecutionMode
 
   SessionOptionsImpl& SetLoadCancellationFlag(bool value);  ///< Wraps OrtApi::SessionOptionsSetLoadCancellationFlag
 

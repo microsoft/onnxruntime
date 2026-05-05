@@ -152,6 +152,10 @@ ORT_API_STATUS_IMPL(OrtApis::GetMemPatternEnabled, _In_ const OrtSessionOptions*
   *out = options->value.enable_mem_pattern ? 1 : 0;
   return nullptr;
 }
+ORT_API_STATUS_IMPL(OrtApis::GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out) {
+  *out = options->value.execution_mode;
+  return nullptr;
+}
 
 // enable the memory arena on CPU
 // Arena may pre-allocate memory for future usage.
