@@ -284,6 +284,28 @@ TEST(Utf8UtilTest, WideToUtf8_BufferTooSmall) {
   EXPECT_FALSE(WideToUtf8(ws, result).IsOK());
 }
 
+TEST(Utf8UtilTest, WideToUtf8_EmptyDestinationBuffer) {
+  std::wstring ws = L"A";
+  std::string result;
+  EXPECT_FALSE(WideToUtf8(ws, result).IsOK());
+}
+
+TEST(Utf8UtilTest, WideToUtf8_ThreeByteBufferTooSmall) {
+  std::wstring ws;
+  ws += static_cast<wchar_t>(0x4E16);  // 3 bytes in UTF-8
+  std::string result;
+  result.resize(2);
+  EXPECT_FALSE(WideToUtf8(ws, result).IsOK());
+}
+
+TEST(Utf8UtilTest, WideToUtf8_FourByteBufferTooSmall) {
+  std::wstring ws;
+  ws += static_cast<wchar_t>(0x1F600);  // 4 bytes in UTF-8
+  std::string result;
+  result.resize(3);
+  EXPECT_FALSE(WideToUtf8(ws, result).IsOK());
+}
+
 TEST(Utf8UtilTest, WideToUtf8_RoundTrip_Multibyte) {
   // Build wide string with various codepoints
   std::wstring ws;

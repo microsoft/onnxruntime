@@ -209,25 +209,29 @@ inline Status WideToUtf8(const std::wstring& wstr, std::string& str) {
                              "Invalid Unicode surrogate codepoint during UTF-8 conversion");
     }
     if (cp <= 0x7F) {
-      if (dest >= dest_end) {
+      const size_t remaining = static_cast<size_t>(dest_end - dest);
+      if (remaining < 1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
       }
       *dest++ = static_cast<char>(cp);
     } else if (cp <= 0x7FF) {
-      if (dest + 1 >= dest_end) {
+      const size_t remaining = static_cast<size_t>(dest_end - dest);
+      if (remaining < 2) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
       }
       *dest++ = static_cast<char>(0xC0 | (cp >> 6));
       *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
     } else if (cp <= 0xFFFF) {
-      if (dest + 2 >= dest_end) {
+      const size_t remaining = static_cast<size_t>(dest_end - dest);
+      if (remaining < 3) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
       }
       *dest++ = static_cast<char>(0xE0 | (cp >> 12));
       *dest++ = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
       *dest++ = static_cast<char>(0x80 | (cp & 0x3F));
     } else if (cp <= 0x10FFFF) {
-      if (dest + 3 >= dest_end) {
+      const size_t remaining = static_cast<size_t>(dest_end - dest);
+      if (remaining < 4) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Destination buffer too small for UTF-8 conversion");
       }
       *dest++ = static_cast<char>(0xF0 | (cp >> 18));
