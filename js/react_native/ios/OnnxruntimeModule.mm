@@ -47,6 +47,10 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
   }
 }
 
+- (void)invalidate {
+  env.reset();
+}
+
 - (void)dealloc {
   env.reset();
 }

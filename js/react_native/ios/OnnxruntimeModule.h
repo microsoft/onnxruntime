@@ -5,8 +5,9 @@
 #define OnnxruntimeModule_h
 
 #import <React/RCTBridgeModule.h>
+#import <React/RCTInvalidating.h>
 
-@interface OnnxruntimeModule : NSObject <RCTBridgeModule>
+@interface OnnxruntimeModule : NSObject <RCTBridgeModule, RCTInvalidating>
 
 @end
 
