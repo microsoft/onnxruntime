@@ -15,13 +15,9 @@ parameters:
    - RelWithDebInfo
    - MinSizeRel
 
-- name: depends_on
-  type: object
-  default: []
-
 stages:
 - stage: MacOS_plugin_webgpu_arm64_Build
-  dependsOn: ${{ parameters.depends_on }}
+  dependsOn: []
   jobs:
   - job: MacOS_plugin_webgpu_arm64_Build
     timeoutInMinutes: 240

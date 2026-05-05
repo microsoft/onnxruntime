@@ -38,48 +38,6 @@ parameters:
    - MinSizeRel
 
 stages:
-    # Parameter validation. Runs first and unconditionally so it serves as a single,
-    # explicit dependency anchor for every downstream platform-build template.
-    - stage: Validate_Parameters
-      displayName: 'Validate parameters'
-      dependsOn: []
-      jobs:
-      - job: Validate
-        displayName: 'Validate parameters'
-        pool:
-          name: onnxruntime-Win-CPU-VS2022-Latest
-          os: windows
-        # Skip the repo checkout entirely — this job only inspects parameters.
-        # Suppress SDL/TSA scans that the 1ES PT would otherwise inject (they require
-        # `.config/tsaoptions.json` from the source tree and have nothing to scan here).
-        templateContext:
-          sdl:
-            tsa:
-              enabled: false
-        steps:
-        - checkout: none
-
-        - powershell: |
-            $x64       = [System.Convert]::ToBoolean('${{ parameters.build_windows_x64 }}')
-            $arm64     = [System.Convert]::ToBoolean('${{ parameters.build_windows_arm64 }}')
-            $linux     = [System.Convert]::ToBoolean('${{ parameters.build_linux_x64 }}')
-            $mac       = [System.Convert]::ToBoolean('${{ parameters.build_macos_arm64 }}')
-            Write-Host "Resolved parameter matrix:"
-            Write-Host "  build_windows_x64   = $x64"
-            Write-Host "  build_windows_arm64 = $arm64"
-            Write-Host "  build_linux_x64     = $linux"
-            Write-Host "  build_macos_arm64   = $mac"
-            Write-Host "  package_version     = ${{ parameters.package_version }}"
-            Write-Host "  cmake_build_type    = ${{ parameters.cmake_build_type }}"
-
-            if ($arm64 -and -not $x64) {
-              Write-Error ("build_windows_arm64=true requires build_windows_x64=true: " +
-                "the ARM64 build consumes the x64 tblgen.exe artifact published by the Windows x64 stage.")
-              exit 1
-            }
-            Write-Host "Parameters OK."
-          displayName: 'Validate parameters'
-
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:
       - template: plugin-win-webgpu-stage.yml
@@ -88,8 +46,6 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          depends_on:
-          - Validate_Parameters
 
     # Windows ARM64
     - ${{ if eq(parameters.build_windows_arm64, true) }}:
@@ -99,8 +55,6 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          depends_on:
-          - Validate_Parameters
 
     # Linux x64
     - ${{ if eq(parameters.build_linux_x64, true) }}:
@@ -109,8 +63,6 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          depends_on:
-          - Validate_Parameters
 
     # macOS ARM64
     - ${{ if eq(parameters.build_macos_arm64, true) }}:
@@ -119,8 +71,6 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
-          depends_on:
-          - Validate_Parameters
 
     # NuGet packaging (runs after all platform builds)
     - template: plugin-webgpu-nuget-packaging-stage.yml
