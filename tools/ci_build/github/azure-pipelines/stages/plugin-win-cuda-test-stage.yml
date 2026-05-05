@@ -35,13 +35,25 @@ stages:
         scriptLocation: 'inlineScript'
         inlineScript: |
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "$(Agent.TempDirectory)"
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "%AGENT_TEMPDIRECTORY%"
+
+    # Download cuDNN separately for CUDA 13.0
+    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+      - task: AzureCLI@2
+        displayName: 'Download cuDNN for CUDA 13.0'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 "%AGENT_TEMPDIRECTORY%"
 
     - powershell: |
         Write-Host "Adding CUDA to PATH"
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin\x64"
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin\x64"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
       displayName: 'Add CUDA to PATH'
 
     - task: PowerShell@2
@@ -55,18 +67,18 @@ stages:
           $ErrorActionPreference = 'Stop'
 
           echo "creating test_venv"
-          python -m venv "$(Build.BinariesDirectory)\test_venv"
+          python -m venv "$env:BUILD_BINARIESDIRECTORY\test_venv"
 
           echo "activating test_venv"
-          & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
+          & "$env:BUILD_BINARIESDIRECTORY\test_venv\Scripts\Activate.ps1"
 
           echo "installing onnxruntime onnx numpy"
           python -m pip install onnxruntime onnx numpy
 
-          $wheelDir = "$(Pipeline.Workspace)\build\cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}"
+          $wheelDir = "$env:PIPELINE_WORKSPACE\build\cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}"
           $wheel = (Get-ChildItem "$wheelDir\onnxruntime*ep*cuda*.whl")[0]
-          echo "installing ${wheel}"
+          echo "installing $($wheel.Name)"
           python -m pip install $wheel.FullName
 
           echo "running test_cuda_plugin_ep.py"
-          python -u "$(Build.SourcesDirectory)\plugin-ep-cuda\python\test\test_cuda_plugin_ep.py"
+          python -u "$env:BUILD_SOURCESDIRECTORY\plugin-ep-cuda\python\test\test_cuda_plugin_ep.py"

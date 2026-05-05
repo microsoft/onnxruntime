@@ -9,7 +9,7 @@ For more information about plugin EPs, see the documentation [here](https://onnx
 
 - [`VERSION_NUMBER`](VERSION_NUMBER) — Base plugin EP version consumed by the CI pipeline. The pipeline derives the
   final package version (release, dev) from this via
-  [`tools/ci_build/github/azure-pipelines/templates/set-plugin-build-variables-step.yml`](../tools/ci_build/github/azure-pipelines/templates/set-plugin-build-variables-step.yml).
+  [`tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml`](../tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml).
 - [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) — Minimum compatible core `onnxruntime` version. Single source
   of truth shared by all packages built from this directory.
 - [`python/`](python/) — Sources and build script for the `onnxruntime-ep-webgpu` Python wheel. See
