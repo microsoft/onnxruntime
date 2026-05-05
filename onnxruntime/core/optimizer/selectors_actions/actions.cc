@@ -88,10 +88,8 @@ static Status CreateReplacementNode(Graph& graph,
                                     &replacement_attributes,
                                     domain);
 
-  // Inherit the target's EP assignment. If the target hasn't been partitioned yet (empty EP),
-  // leave the replacement's EP empty too so a later partitioning pass can place it freely.
-  // Forcing CPU here would silently pin the new node to CPU and prevent any non-CPU EP from
-  // claiming it via GetCapability. This matters for fusions registered before partitioning.
+  // If the target hasn't been partitioned yet (empty EP), leave the replacement's EP empty too
+  // so a later partitioning pass can place it freely.
   const auto& target_provider = target.GetExecutionProviderType();
   if (!target_provider.empty()) {
     replacement.SetExecutionProviderType(target_provider);
