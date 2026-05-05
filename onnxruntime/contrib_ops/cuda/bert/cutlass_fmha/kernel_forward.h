@@ -859,16 +859,12 @@ struct AttentionKernel {
             cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.scale, accum);
       }
 
-      // apply softcap if applicable
-      if (p.softcap > 0.0) {
-        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(1.0 / p.softcap, accum);
-        for (int i = 0; i < accum.size(); ++i) {
-          accum[i] = cutlass::fast_tanh(accum[i]);
-        }
-        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.softcap, accum);
-      }
-
-      // apply attention bias if applicable
+      // apply attention bias if applicable (BEFORE softcap, per ONNX opset 24
+      // Attention spec: scale*Q@K^T + bias -> softcap -> softmax. See
+      // cmake/external/onnx/onnx/defs/nn/defs.cc reference function lines
+      // 3657-3675.) Bias is loaded from gmem to smem and added into the
+      // accumulator register fragment before softcap saturates the combined
+      // pre-softmax scores.
       if (kSupportsBias && p.attn_bias_ptr != nullptr) {
         // load bias tile Bij into shared memory
         typename MM0::BiasLoader::GmemTileIterator bias_iter(
@@ -897,6 +893,15 @@ struct AttentionKernel {
               }
             },
             [&](int accum_m) {});
+      }
+
+      // apply softcap if applicable (AFTER bias, per ONNX opset 24 spec)
+      if (p.softcap > 0.0) {
+        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(1.0 / p.softcap, accum);
+        for (int i = 0; i < accum.size(); ++i) {
+          accum[i] = cutlass::fast_tanh(accum[i]);
+        }
+        accum = cutlass::multiplies<typename MM0::Mma::FragmentC>()(p.softcap, accum);
       }
 
       // Mask out last if causal

@@ -543,9 +543,11 @@ Status Attention<T>::RunFlashAttention(
 //   Eligibility: see has_memory_efficient_attention() (SM50+/53+/80+ by dtype,
 //                head_size <= 1024, head_size divisible by 8), plus: no output_qk, bias stride alignment.
 //   Note: softcap is forwarded to the MEA kernel via p.softcap. CUTLASS applies
-//   softcap before bias (fused in kernel tiles), matching ONNX spec ordering
-//   (onnx/onnx#7865): QK → softcap → mask/bias → softmax. softmax_precision
-//   is inherently satisfied (cutlass FMHA accumulates softmax in FP32).
+//   bias before softcap (fused in kernel tiles), matching ONNX opset 24
+//   Attention spec ordering: QK -> scale -> +bias -> softcap -> softmax.
+//   See cmake/external/onnx/onnx/defs/nn/defs.cc reference function lines
+//   3657-3675.
+//   softmax_precision is inherently satisfied (cutlass FMHA accumulates softmax in FP32).
 //
 template <typename T>
 Status Attention<T>::RunMemoryEfficientAttention(

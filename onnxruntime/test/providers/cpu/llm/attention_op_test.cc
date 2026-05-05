@@ -2975,5 +2975,146 @@ TEST(AttentionTest, Attention4DCausalSquareNoPast) {
   );
 }
 
+// Regression test for the softcap / attn_mask ordering bug — spec ordering is
+// scale*Q@K^T + bias -> softcap -> softmax (see ONNX opset 24 Attention
+// reference function in cmake/external/onnx/onnx/defs/nn/defs.cc lines
+// 3322-3341 and 3657-3675). Pre-fix CUDA kernels applied softcap *before*
+// bias, which let large negative bias values escape the softcap saturation.
+//
+// This fp32 / head_size=8 / kv_seq=2 config has total_sequence_length=2 which
+// fails MEA's bias-stride %4 alignment, so it routes to the unified unfused
+// kernel on CUDA. The CPU EP runs in the same RunTest4D loop. Both must
+// produce the spec-correct output.
+//
+// Inputs are designed so the two orderings produce materially different Y:
+//   spec:  Y[i] ≈ 1.0320  (softcap saturates the masked combined score to ≈ -5)
+//   buggy: Y[i] ≈ 1.0002  (bias of -10 added after softcap dominates softmax)
+// A pre-fix run fails the 3e-5f tolerance; the post-fix run passes.
+TEST(AttentionTest, Attention4DSoftcapFloatBias_Unfused_FP32) {
+  // CUDA-EP regression: skip on CPU-only builds so the test does not silently
+  // pass via CPU alone. CPU is left enabled below for parity verification when
+  // CUDA is available.
+  if (!HasCudaEnvironment(0)) {
+    return;
+  }
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 1;
+  int head_size = 8;
+  int kv_sequence_length = 2;  // total_sequence_length=2, %4!=0 → MEA rejected → unfused
+  int kv_num_heads = 1;
+  int v_head_size = 8;
+  int past_sequence_length = 0;
+
+  std::vector<float> q(static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size), 0.01f);
+  std::vector<float> k(static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size), 0.01f);
+  std::vector<float> v(static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  // V row 0 = 1.0, V row 1 = 5.0 (across all v_head_size dims).
+  for (int s = 0; s < kv_sequence_length; ++s) {
+    float val = (s == 0) ? 1.0f : 5.0f;
+    for (int h = 0; h < v_head_size; ++h) {
+      v[static_cast<size_t>(s * v_head_size + h)] = val;
+    }
+  }
+
+  // Float attn_mask = additive bias. Position 1 has -10 bias.
+  std::vector<float> attn_mask = {0.0f, -10.0f};
+
+  // Expected Y derivation (spec ordering, per ONNX opset 24 reference function:
+  // QK -> scale -> +bias -> softcap -> softmax -> @V):
+  //   scale       = 1/sqrt(8) ≈ 0.353553
+  //   Q[i]*K[j]   = 8 * (0.01 * 0.01) = 8e-4   for both kv positions j=0,1
+  //   scaled      = 0.353553 * 8e-4 ≈ 2.828427e-4
+  //   +bias       = [2.828427e-4, 2.828427e-4 + (-10)] ≈ [2.828e-4, -9.99972]
+  //   softcap=5   = 5*tanh(x/5) → [2.828e-4 (≈linear here), -4.99977 (saturated)]
+  //   softmax     ≈ [0.99326, 0.00674]
+  //   Y           = 0.99326 * 1.0 + 0.00674 * 5.0 ≈ 1.0319962
+  // Pre-fix (softcap-then-bias) collapses softcap before bias dominates the
+  // softmax, yielding Y ≈ 1.0002 — delta 0.032, well outside 3e-5.
+  std::vector<float> y(static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size), 1.0319962f);
+
+  // disable_dml=true: DML EP does not implement opset-24 Attention with float
+  // additive bias + softcap; excluding it keeps this test focused on
+  // CPU<->CUDA parity for the spec ordering fix.
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, attn_mask, std::initializer_list<bool>(), std::vector<float>(), std::vector<float>(),
+            -1, -1, std::numeric_limits<float>::quiet_NaN(), 5.0f, -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
+            y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
+
+// Companion test forcing the CUTLASS MEA path: fp16, kv_seq=4 so
+// total_sequence_length=4 satisfies MEA's bias-stride alignment, and Flash is
+// disabled via env var so the dispatcher must pick MEA. Verifies the CUTLASS
+// score-compute loop also applies bias before softcap (per spec).
+TEST(AttentionTest, Attention4DSoftcapFloatBias_MEA_FP16) {
+  if (!HasCudaEnvironment(530)) {
+    return;
+  }
+  // Force MEA: disable Flash. (MEA is preferred over unfused when eligible.)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{onnxruntime::contrib::attention::kDisableFlashAttention, "1"}}};
+
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 1;
+  int head_size = 8;
+  int kv_sequence_length = 4;  // total=4, %4==0 → MEA bias-stride OK
+  int kv_num_heads = 1;
+  int v_head_size = 8;
+
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<float>("softcap", 5.0f);
+
+  std::vector<float> q(static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size), 0.01f);
+  std::vector<float> k(static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size), 0.01f);
+  std::vector<float> v(static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  // V[s] = (1.0, 5.0, 3.0, 2.0) for s = 0..3, replicated across head dim.
+  const float v_vals[4] = {1.0f, 5.0f, 3.0f, 2.0f};
+  for (int s = 0; s < kv_sequence_length; ++s) {
+    for (int h = 0; h < v_head_size; ++h) {
+      v[static_cast<size_t>(s * v_head_size + h)] = v_vals[s];
+    }
+  }
+  // attn_mask: positions 1 and 2 strongly biased.
+  std::vector<float> attn_mask = {0.0f, -10.0f, -10.0f, 0.0f};
+
+  // Expected Y derivation (spec ordering, fp16; mirrors the FP32 test):
+  //   scale       = 1/sqrt(8) ≈ 0.353553
+  //   Q[i]*K[j]   = 8 * (0.01 * 0.01) = 8e-4   for all 4 kv positions
+  //   scaled      ≈ 2.828e-4
+  //   +bias       ≈ [2.828e-4, -9.99972, -9.99972, 2.828e-4]
+  //   softcap=5   ≈ [2.828e-4, -4.99977, -4.99977, 2.828e-4]
+  //   softmax     ≈ [0.49831, 0.00169, 0.00169, 0.49831]
+  //   Y           = 0.49831*1 + 0.00169*5 + 0.00169*3 + 0.49831*2 ≈ 1.5202
+  //   (rounded to 1.5200 within fp16 + 5e-3 tolerance)
+  // Pre-fix (softcap-then-bias) yields Y ≈ 1.5001 — delta ≈ 0.020, outside 5e-3.
+
+  test.AddInput<MLFloat16>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", {batch_size, kv_num_heads, kv_sequence_length, v_head_size}, ToFloat16(v));
+  test.AddInput<MLFloat16>("attn_mask", {q_sequence_length, kv_sequence_length}, ToFloat16(attn_mask));
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+
+  // Spec-ordered expected: ≈ 1.5200. Pre-fix CUDA produced ≈ 1.5001 — a delta
+  // of ≈ 0.02 that exceeds the 5e-3 tolerance below.
+  std::vector<float> expected_y(
+      static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size), 1.5200f);
+  test.AddOutput<MLFloat16>("Y", {batch_size, q_num_heads, q_sequence_length, v_head_size},
+                            ToFloat16(expected_y), false, 0, 5e-3f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  // TODO(pr-followup): Assert MEA is the actually-dispatched kernel (not a
+  // silent fall-through to unfused). Current dispatcher does not expose a
+  // public counter; the env var + shape selection is the strongest indirect
+  // guarantee available without adding test-only instrumentation.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

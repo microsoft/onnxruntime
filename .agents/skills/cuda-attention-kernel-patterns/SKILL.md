@@ -36,7 +36,7 @@ Unified Unfused      → RunUnfusedAttention()
 
 **Flash eligibility**: fp16/bf16 only, SM≥8.0 (Ampere+), `head_size == v_head_size`, `head_size <= 256`, no `output_qk`, `attn_mask == nullptr`. Uses `mha_fwd` / `mha_fwd_kvcache`.
 
-**MEA eligibility**: SM50+/53+/80+ by dtype, `head_size <= 1024` and divisible by 8, no `output_qk`. Decode requires `head_size == v_head_size` (for `LaunchConcatNewToPastKV`). Bias stride must satisfy `total_sequence_length % 4 == 0`. GQA with FP32 is excluded (LaunchUngroup only has fp16/bf16 instantiations). Supports `softcap + attn_mask` — CUTLASS applies softcap before bias in kernel tiles, matching ONNX spec ordering (onnx/onnx#7865).
+**MEA eligibility**: SM50+/53+/80+ by dtype, `head_size <= 1024` and divisible by 8, no `output_qk`. MEA requires `head_size == v_head_size` in two internal paths: `LaunchConcatNewToPastKV` (decode with past_key) and `LaunchUngroup` (GQA head expansion). Both share the constraint because each uses a single `head_size` parameter for the K and V tiles. Bias stride must satisfy `total_sequence_length % 4 == 0`. GQA with FP32 is excluded (LaunchUngroup only has fp16/bf16 instantiations). Supports `softcap + attn_mask` — CUTLASS applies bias before softcap in kernel tiles, matching the ONNX opset 24 reference function (`cmake/external/onnx/onnx/defs/nn/defs.cc` lines 3657-3675: bias-add then softcap then softmax).
 
 **Unified Unfused Attention**: Always available as the final fallback. Handles both MHA (`num_heads == kv_num_heads`, group=1) and GQA (`num_heads != kv_num_heads`, group>1) via a reshape-Q trick with stride-based cuBLAS batched GEMM (no K/V head replication). Uses FP32 QK scratch for precision. Supports all features:
 - softcap + attn_mask (spec-correct ordering)
@@ -78,15 +78,38 @@ if (parameters.total_sequence_length % min_bias_align != 0) {
 
 ## 4. Softcap Ordering
 
-ONNX spec ordering (onnx/onnx#7865): `QK → scale → softcap → add mask/bias → softmax`
+ONNX opset 24 Attention spec ordering: `QK → scale → +bias/mask → softcap → softmax`.
+The reference function in `cmake/external/onnx/onnx/defs/nn/defs.cc` (lines 3322-3341
+ASCII pipeline; lines 3657-3675 reference graph) is unambiguous: `Add(QK, AttnBias)`
+runs *before* the `softcap` block (`Div`/`Tanh`/`Mul`). The CPU EP at
+`core/providers/cpu/llm/attention.cc` matches this. All CUDA kernels must too.
 
-- **MEA (CUTLASS)**: Fuses softcap before bias in kernel tile loop (`kernel_forward.h`). Matches spec ordering.
-- **Flash**: Handles softcap natively in `mha_fwd`/`mha_fwd_kvcache` but rejects `attn_mask`, so ordering with mask is moot.
-- **Unfused**: Handles spec-correct ordering in the fused softmax kernel: `QK → scale → softcap → add bias → softmax`.
+- **Unfused** (`unfused_attention.cu`): the fused `UnfusedSoftmaxKernel` does
+  `qk*scale → +bias → softcap → softmax`. Three identical orderings across the
+  max/sum/normalize passes.
+- **MEA (CUTLASS)** (`cutlass_fmha/kernel_forward.h`): in the score-compute block
+  the order is `scale → bias-add → softcap`. Bias is loaded gmem→smem and added
+  into the accumulator register fragment **before** the `1/softcap`,`fast_tanh`,
+  `*softcap` triple.
+- **Flash**: handles softcap natively in `mha_fwd`/`mha_fwd_kvcache` but rejects
+  `attn_mask` at eligibility, so bias/softcap ordering with mask never executes
+  on this path.
 
-All three paths apply softcap BEFORE mask/bias. If softcap were applied after masking, `tanh(-inf/sc) = -sc` (finite), leaking probability to masked positions.
+Why this ordering matters: softcap saturates scores into `[-cap, +cap]`. Adding
+bias *after* saturation lets bias values escape the cap (a `-10` additive mask
+combined with `cap=5` becomes `≈ -5 + (-10) = -15` instead of the spec's
+`tanh((scaled_qk - 10)/5)*5 ≈ -5`). For hard masks (`bias = lowest()`) both
+orderings drive masked positions to ~0 softmax weight, but for moderate float
+biases (e.g. ALiBi-style position biases combined with softcap, as in some
+Gemma-family models) the two orderings produce materially different softmax
+distributions.
 
-The unfused path does: `QK → scale → softcap → add bias → softmax` (all fused in `UnfusedSoftmaxKernel`).
+Historical note: an earlier version of this skill cited `onnx/onnx#7865` and
+asserted softcap-then-bias was correct. That claim was wrong relative to the
+v24 spec text bundled in this repo and was inverted in late 2025 to match the
+ONNX v24 spec (`cmake/external/onnx/onnx/defs/nn/defs.cc` lines 3657-3675).
+If you find any remaining "softcap before bias" references in ORT, treat them
+as bugs.
 
 ## 5. Grid-Stride Loops for CUDA Kernels
 
@@ -176,7 +199,7 @@ Run tests with `disable_cpu=false` to always validate against CPU. The C++ test 
 
 | File | Purpose |
 |------|---------|
-| `contrib_ops/cuda/bert/unfused_attention.cu` | Unified unfused attention: QK GEMM (FP32), fused softmax kernel (scale+softcap+bias+causal), V GEMM. Handles MHA and GQA. |
+| `contrib_ops/cuda/bert/unfused_attention.cu` | Unified unfused attention: QK GEMM (FP32), fused softmax kernel (scale+bias+softcap+causal, in spec order), V GEMM. Handles MHA and GQA. |
 | `contrib_ops/cuda/bert/unfused_attention.h` | `UnfusedAttentionParams`, `LaunchUnfusedAttention`, workspace size |
 | `contrib_ops/cuda/bert/attention_impl.cu` | Legacy unfused `QkvToContext` (contrib MHA only). Also `ApplySoftcap`, `ConcatPastToPresent` |
 | `contrib_ops/cuda/bert/attention_softmax.h` | CUDA softmax kernels (`ComputeSoftmax`, `ComputeSoftmaxWithRawMask`) — used by legacy contrib path |

@@ -73,10 +73,13 @@ __global__ void ScaledCopyQkKernel(
 // ---------------------------------------------------------------------------
 // Softmax kernel: reads FP32 QK scores, writes T softmax output.
 //
-// Applies (in this order):
+// Applies (in this order, matching the ONNX opset 24 Attention reference function:
+// QKAttnWeight = MatMul(Q, K^T); QKAttnWeightWithBias = Add(QKAttnWeight, AttnBias);
+// then softcap; then softmax). See cmake/external/onnx/onnx/defs/nn/defs.cc lines
+// 3322-3341 (pipeline diagram) and 3657-3675 (reference function).
 //   1. scale: x = scale * qk
-//   2. softcap (if > 0):            x = softcap * tanh(x / softcap)
-//   3. attn_bias (if provided):     x += bias
+//   2. attn_bias (if provided):     x += bias        (BEFORE softcap, per spec)
+//   3. softcap (if > 0):            x = softcap * tanh(x / softcap)
 //   4. mask (causal + sliding window + per-batch seqlens_k)
 //   5. stable softmax across [start, end) for each row
 //
@@ -152,15 +155,17 @@ __global__ void UnfusedSoftmaxKernel(
   __shared__ float s_inv_sum;
 
   // Pass 1: compute max of masked values.
+  // Score order: scale → +bias (if any) → softcap (if any). bias-then-softcap
+  // matches the ONNX opset 24 spec — see header doc and SKILL.md §4.
   float thread_max = -CUDART_INF_F;
   for (int i = threadIdx.x; i < total_kv_length; i += TPB) {
     if (i < start || i >= end) continue;
     float x = qk_in[row_offset + i] * scale;
-    if (softcap > 0.f) {
-      x = softcap * tanhf(x / softcap);
-    }
     if (has_bias) {
       x += ToFloat(attn_bias[bias_row_offset + i]);
+    }
+    if (softcap > 0.f) {
+      x = softcap * tanhf(x / softcap);
     }
     if (x > thread_max) thread_max = x;
   }
@@ -182,15 +187,16 @@ __global__ void UnfusedSoftmaxKernel(
   }
 
   // Pass 2: compute sum of exp.
+  // Score order: scale → +bias → softcap (bias-then-softcap, see SKILL.md §4).
   float thread_sum = 0.f;
   for (int i = threadIdx.x; i < total_kv_length; i += TPB) {
     if (i < start || i >= end) continue;
     float x = qk_in[row_offset + i] * scale;
-    if (softcap > 0.f) {
-      x = softcap * tanhf(x / softcap);
-    }
     if (has_bias) {
       x += ToFloat(attn_bias[bias_row_offset + i]);
+    }
+    if (softcap > 0.f) {
+      x = softcap * tanhf(x / softcap);
     }
     thread_sum += expf(x - s_max);
   }
@@ -204,15 +210,16 @@ __global__ void UnfusedSoftmaxKernel(
   __syncthreads();
 
   // Pass 3: write softmax output in type T.
+  // Score order: scale → +bias → softcap (bias-then-softcap, see SKILL.md §4).
   for (int i = threadIdx.x; i < total_kv_length; i += TPB) {
     float y = 0.f;
     if (i >= start && i < end) {
       float x = qk_in[row_offset + i] * scale;
-      if (softcap > 0.f) {
-        x = softcap * tanhf(x / softcap);
-      }
       if (has_bias) {
         x += ToFloat(attn_bias[bias_row_offset + i]);
+      }
+      if (softcap > 0.f) {
+        x = softcap * tanhf(x / softcap);
       }
       y = expf(x - s_max) * s_inv_sum;
     }
