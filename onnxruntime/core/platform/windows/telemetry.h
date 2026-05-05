@@ -78,7 +78,7 @@ class WindowsTelemetry : public Telemetry {
                        const char* function, uint32_t line) const override;
 
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                      std::unordered_map<int64_t, long long> duration_per_batch_size) const override;
+                      const std::unordered_map<int64_t, long long>& duration_per_batch_size) const override;
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
 
@@ -93,6 +93,21 @@ class WindowsTelemetry : public Telemetry {
   void LogProviderOptions(const std::string& provider_id,
                           const std::string& provider_options_string,
                           bool captureState) const override;
+
+  void LogModelLoadStart(uint32_t session_id) const override;
+
+  void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
+
+  void LogSessionCreationEnd(uint32_t session_id,
+                             const common::Status& status) const override;
+
+  void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                       const std::string& lib_path) const override;
+
+  void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
+
+  void LogRegisterEpLibraryEnd(const std::string& registration_name,
+                               const common::Status& status) const override;
 
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,

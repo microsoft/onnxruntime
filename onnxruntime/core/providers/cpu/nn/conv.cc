@@ -215,6 +215,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
 
   if (kernel_rank >= 1 && kernel_rank <= 3) {
     MLAS_CONV_PARAMETERS Parameters;
+    Parameters.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
+
     size_t WorkingBufferSize;
     MlasConvPrepare(&Parameters,
                     kernel_rank,
@@ -281,7 +283,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             col_data.get(),
             Beta,
             &Ydata[group_id * Y_offset],
-            thread_pool);
+            thread_pool,
+            &mlas_backend_kernel_selector_config_);
       }
 
       MlasActivation(&activation_, Ydata.data(), Bdata, narrow<size_t>(M), narrow<size_t>(output_image_size), narrow<size_t>(output_image_size));

@@ -23,12 +23,9 @@ jobs:
     ANDROID_AVD_HOME: $(Agent.TempDirectory)
   timeoutInMinutes: 90
   steps:
-  - task: UsePythonVersion@0
-    displayName: Use python 3.12
-    inputs:
-      versionSpec: "3.12"
-      addToPath: true
-      architecture: "x64"
+  - template: ../../templates/setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: 'x64'
 
   - task: JavaToolInstaller@0
     displayName: Use jdk 17

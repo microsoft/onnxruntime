@@ -1,10 +1,10 @@
+cmake_minimum_required(VERSION 3.13)
 project(OnnxruntimeJSI)
-cmake_minimum_required(VERSION 3.9.0)
 
 set(PACKAGE_NAME "onnxruntime-react-native")
 set(BUILD_DIR ${CMAKE_SOURCE_DIR}/build)
 set(CMAKE_VERBOSE_MAKEFILE ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 option(ORT_EXTENSIONS_ENABLED "Enable Ort Extensions" NO)
 option(USE_NNAPI "Use NNAPI" YES)
@@ -80,10 +80,10 @@ add_library(
   ../cpp/SessionUtils.cpp
   ../cpp/TensorUtils.cpp)
 
-# Configure C++ 17
+# Configure C++20
 set_target_properties(
   onnxruntimejsi
-  PROPERTIES CXX_STANDARD 17
+  PROPERTIES CXX_STANDARD 20
              CXX_EXTENSIONS OFF
              POSITION_INDEPENDENT_CODE ON)
 
@@ -97,3 +97,6 @@ target_link_libraries(
   ${log-lib} # <-- Logcat logger
   android # <-- Android JNI core
 )
+
+# 16KB page size support (Android 15+ requirement)
+target_link_options(onnxruntimejsi PRIVATE "-Wl,-z,max-page-size=16384")

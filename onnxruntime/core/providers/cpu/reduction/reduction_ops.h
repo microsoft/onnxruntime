@@ -273,7 +273,8 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
         tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]), ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
         [one, data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
           for (ptrdiff_t d = begin; d < last; ++d) {
-            math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N), onnxruntime::narrow<ptrdiff_t>(fast_shape[1]), one.data(), data + stridei * d, out + strideo * d, nullptr);
+            // TODO(hasesh): Plumb through the mlas backend kernel selector config here
+            math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N), onnxruntime::narrow<ptrdiff_t>(fast_shape[1]), one.data(), data + stridei * d, out + strideo * d, nullptr, nullptr);
           }
         });
   }

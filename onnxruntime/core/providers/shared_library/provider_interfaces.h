@@ -1293,6 +1293,7 @@ struct ProviderHost {
   virtual const UInt2x4* Tensor__Data_UInt2x4(const Tensor* p) = 0;
 
   virtual gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) = 0;
+  virtual gsl::span<const int32_t> Tensor__DataAsSpan_int32(const Tensor* p) = 0;
 
   virtual void* Allocator__AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) = 0;
 

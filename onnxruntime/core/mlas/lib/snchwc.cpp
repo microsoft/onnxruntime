@@ -54,6 +54,7 @@ struct MLAS_NCHWC_CONV_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
     size_t GroupCount;
     bool ZeroMode;
     bool UseBf16;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig;
 };
 
 //
@@ -75,6 +76,7 @@ struct MLAS_NCHWC_POOL_WORK_BLOCK : MLAS_NCHWC_WORK_BLOCK
 #define MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION         0x00000002
 #define MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION       0x00000004
 #define MLAS_CONV_KERNEL_FLAG_OTHER_ACTIVATION      0x00000008
+#define MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI      0x00000010
 
 size_t
 MLASCALL
@@ -440,6 +442,12 @@ struct MLAS_NCHWC_CONV_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
             }
         }
 
+        if (WorkBlock != nullptr &&
+            (WorkBlock->BackendKernelSelectorConfig == nullptr ||
+             WorkBlock->BackendKernelSelectorConfig->use_kleidiai)) {
+            KernelFlags |= MLAS_CONV_KERNEL_MLAS_ARM_USE_KLEIDIAI;
+        }
+
         return KernelFlags;
     }
 
@@ -787,6 +795,12 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || (defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC))
         MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwFloatKernel;
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+        MLAS_CONV_FLOAT_KERNEL* const KernelFloat = GetMlasPlatform().ConvNchwFloatKernel;
+        if (WorkBlock->UseBf16) {
+            Kernel = GetMlasPlatform().ConvNchwBf16Kernel;
+        }
+#endif
 #else
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwFloatKernel;
 #endif
@@ -805,6 +819,26 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
             ComputeEffectiveKernel(ph, BlockSize * KernelWidth, &filter, &ih,
                 &EffectiveKernelHeight);
 
+            MLAS_CONV_FLOAT_KERNEL* KernelToUse = Kernel;
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+            if (WorkBlock->UseBf16 &&
+                EffectiveKernelHeight == 3 &&
+                KernelWidth == 3) {
+                //
+                // The current direct BF16 asm uses a two-output load pattern
+                // that reads one float past the end of the third source row.
+                // That is valid for interior rows because the next row is
+                // contiguous in memory, but it would step into the guard page
+                // on the final source row of the image.
+                //
+                const bool HasTrailingSourceRow =
+                    (ih + (EffectiveKernelHeight - 1) * DilationHeight + 1) < InputHeight;
+                if (!HasTrailingSourceRow) {
+                    KernelToUse = KernelFloat;
+                }
+            }
+#endif
+
             //
             // Apply the convolution kernel to each channel of the input tensor.
             //
@@ -820,7 +854,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
                 // Invoke the convolution kernel.
                 //
 
-                Kernel(input + (ih * InputWidth - PaddingLeftX), filter, output,
+                KernelToUse(input + (ih * InputWidth - PaddingLeftX), filter, output,
                     StrideWidthBytes, DilationWidthBytes, FilterCount, InputStrideBytes,
                     FilterStrideBytes, OutputStrideBytes, EffectiveKernelHeight,
                     KernelWidth, input + (ih * InputWidth), InputWidthBytes,
@@ -887,7 +921,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         // output positions at once and significantly reduces memory traffic.
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* const KernelFast = MlasConvPointwiseFloatKernelNeonAsm;
 #endif
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
         if (WorkBlock->UseBf16) {
             Kernel = GetMlasPlatform().ConvPointwiseBf16Kernel;
         }
@@ -1040,6 +1074,11 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* const KernelFast = MlasConvDepthwiseFloatKernelNeonAsm;
 #endif
+#if defined(MLAS_USE_ARM_NEON_NCHWC) && defined(__linux__)
+        if (WorkBlock->UseBf16) {
+            Kernel = GetMlasPlatform().ConvDepthwiseBf16Kernel;
+        }
+#endif
 #else
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasConvDepthwiseFloatKernel;
 #endif
@@ -1065,7 +1104,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
             MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* KernelToUse = Kernel;
 #if defined(MLAS_TARGET_ARM64) && defined(MLAS_USE_ARM_NEON_NCHWC) && !defined(_WIN32)
-            if (OutputWidth >= 4) {
+            if (!WorkBlock->UseBf16 && OutputWidth >= 4) {
                 KernelToUse = KernelFast;
             }
 #endif
@@ -1253,6 +1292,7 @@ MlasNchwcConv(
     const MLAS_ACTIVATION* Activation,
     bool ZeroMode,
     MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
     const bool UseBf16
     )
 /*++
@@ -1320,6 +1360,7 @@ Return Value:
     WorkBlock.Activation = Activation;
     WorkBlock.ZeroMode = ZeroMode;
     WorkBlock.UseBf16 = UseBf16;
+    WorkBlock.BackendKernelSelectorConfig = BackendKernelSelectorConfig;
 
     //
     // Capture the generic shape parameters to the work block.

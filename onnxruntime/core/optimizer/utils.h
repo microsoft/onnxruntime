@@ -175,6 +175,8 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 // Check if NodeArg takes in a scalar tensor.
 bool IsScalar(const NodeArg& input_arg);
 
+void DuplicateNodeAnnotation(const Node& src, Node& dst);
+
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils

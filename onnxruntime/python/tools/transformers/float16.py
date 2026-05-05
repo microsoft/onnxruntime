@@ -238,6 +238,14 @@ def convert_float_to_float16(
     op_block_list = set(op_block_list)
     node_block_list = set(node_block_list)
 
+    # Build opset-aware always_float_inputs: Resize input layout differs between opset 10 and 11+.
+    # Opset 10: [X, scales] — scales at index 1 must stay float32.
+    # Opset 11+: [X, roi, scales, sizes] — scales at index 2 must stay float32; roi (index 1) allows fp16.
+    onnx_opset = max((o.version for o in model.opset_import if o.domain in ("", "ai.onnx")), default=11)
+    always_float_inputs = dict(ALWAYS_FLOAT_INPUTS)
+    if onnx_opset <= 10:
+        always_float_inputs["Resize"] = [1]
+
     logger.debug(
         f"fp16 parameters: min_positive_val={min_positive_val} max_finite_val={max_finite_val} keep_io_types={keep_io_types} disable_shape_infer={disable_shape_infer} op_block_list={op_block_list} node_block_list={node_block_list} force_fp16_initializers={force_fp16_initializers}"
     )
@@ -334,7 +342,7 @@ def convert_float_to_float16(
                         if input_name in fp32_initializers:
                             # For Resize/GroupNorm, only the first input can be float16
                             use_fp32_weight = is_node_blocked or (
-                                i in ALWAYS_FLOAT_INPUTS.get(n.op_type, [])
+                                i in always_float_inputs.get(n.op_type, [])
                                 and i not in force_fp16_inputs_dict.get(n.op_type, [])
                             )
                             fp32_initializers[input_name].add_node(n, use_fp32_weight)
@@ -371,7 +379,7 @@ def convert_float_to_float16(
                                 n.attribute.extend([helper.make_attribute("dtype", TensorProto.FLOAT16)])
 
                         # For Resize/GroupNorm, attribute data type cannot be changed
-                        if n.op_type not in ALWAYS_FLOAT_INPUTS or n.op_type in force_fp16_inputs_dict:
+                        if n.op_type not in always_float_inputs or n.op_type in force_fp16_inputs_dict:
                             for attr in n.attribute:
                                 next_level.append(attr)  # noqa: PERF402
                         else:
@@ -417,18 +425,18 @@ def convert_float_to_float16(
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.
     for node in mixed_float_type_node_list:
         for i, input_name in enumerate(node.input):
-            if i not in ALWAYS_FLOAT_INPUTS[node.op_type] or i in force_fp16_inputs_dict.get(node.op_type, []):
+            if i not in always_float_inputs[node.op_type] or i in force_fp16_inputs_dict.get(node.op_type, []):
                 continue
             for value_info in value_info_list:
                 if input_name == value_info.name:
                     # create new value_info for current node's new input name
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
-                    output_name = node.name + "_input_cast_" + str(i)
+                    output_name = input_name + "_cast_to_fp32"
                     new_value_info.name = output_name
                     new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
                     # add Cast node (from tensor(float16) to tensor(float) before current node
-                    node_name = node.name + "_input_cast" + str(i)
+                    node_name = input_name + "_cast_to_fp32_node"
                     new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
@@ -448,11 +456,11 @@ def convert_float_to_float16(
                     # create new value_info for current node's new input name
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
-                    output_name = node.name + "_input_cast_" + str(i)
+                    output_name = input_name + "_cast_to_fp32"
                     new_value_info.name = output_name
                     new_value_info.type.tensor_type.elem_type = accuracy_type
                     # add Cast node (from tensor(float16) to tensor(float) before current node
-                    node_name = node.name + "_input_cast" + str(i)
+                    node_name = input_name + "_cast_to_fp32_node"
                     new_node = [helper.make_node("Cast", [input_name], [output_name], to=accuracy_type, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
@@ -467,15 +475,15 @@ def convert_float_to_float16(
                     # create new value_info for current node's new output
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
-                    input_name = node.name + "_output_cast_" + str(i)
-                    new_value_info.name = input_name
+                    output_cast_name = output + "_cast_to_fp16"
+                    new_value_info.name = output_cast_name
                     new_value_info.type.tensor_type.elem_type = accuracy_type
                     # add Cast node (from tensor(float) to tensor(float16) after current node
-                    node_name = node.name + "_output_cast" + str(i)
-                    new_node = [helper.make_node("Cast", [input_name], [output], to=10, name=node_name)]
+                    node_name = output + "_cast_to_fp16_node"
+                    new_node = [helper.make_node("Cast", [output_cast_name], [output], to=10, name=node_name)]
                     model.graph.node.extend(new_node)
-                    # change current node's input name
-                    node.output[i] = input_name
+                    # change current node's output name
+                    node.output[i] = output_cast_name
                     break
     return model
 

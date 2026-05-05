@@ -125,6 +125,8 @@ ORT_API_STATUS_IMPL(RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options);
 ORT_API(void, RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream);
 ORT_API_STATUS_IMPL(RunOptionsEnableProfiling, _Inout_ OrtRunOptions* options, _In_ const ORTCHAR_T* profile_file_prefix);
 ORT_API_STATUS_IMPL(RunOptionsDisableProfiling, _Inout_ OrtRunOptions* options);
+ORT_API_STATUS_IMPL(KernelInfoGetAttributeArray_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*size) char*** out, _Out_ size_t* size);
 
 ORT_API_STATUS_IMPL(CreateTensorAsOrtValue, _Inout_ OrtAllocator* allocator,
                     _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
@@ -423,6 +425,9 @@ ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, _In_ OrtEnv* ort_env, OrtLoggin
 
 ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options,
                     const char* affinity_string);
+
+ORT_API_STATUS_IMPL(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
+                    _In_ const OrtThreadPoolCallbacksConfig* config);
 
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
                     _In_ const ORTCHAR_T* library_name);
@@ -815,4 +820,5 @@ ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtVal
                     _Out_ ONNXTensorElementDataType* elem_type,
                     _Outptr_result_maybenull_ const int64_t** shape_data,
                     _Out_ size_t* shape_data_count);
+
 }  // namespace OrtApis

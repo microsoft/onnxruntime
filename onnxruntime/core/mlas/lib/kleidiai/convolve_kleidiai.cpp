@@ -1,24 +1,27 @@
 //
-// SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2025-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 //
 // SPDX-License-Identifier: MIT
 //
 
 #include <cassert>
-#include <map>
-#include <iostream>
 #include <algorithm>
-#include "mlasi_kleidiai.h"
+#include <cstddef>
 #include <functional>
+#include <array>
+#include <vector>
+
 #include <unordered_map>
 
-#include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa.h"
-#include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa.h"
+#include "mlasi_kleidiai.h"
+
+#include "kai_ukernel_interface.h"
+
 #include "kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme.h"
-#if defined(ENABLE_QMX_KERNELS)
-#include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa.h"
-#endif // ENABLE_QMX_KERNELS
+
+
+const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
 
 
 // Right-hand-side (weights) cache key
@@ -302,8 +305,7 @@ static void MultiThreadedLHSPackSme(MLAS_THREADPOOL* ThreadPool, const size_t ci
                                     const size_t kw, const void * const* lhs_ptrs, std::byte* lhs_data,
                                     const float* in_data,
                                     const float* pad_ptr) {
-    size_t m_step = ArmKleidiAI::UseSME2 ? kai_get_m_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa()
-                                         : kai_get_m_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+    size_t m_step = imatmul_conv.ukernel.get_m_step();
 
     // Minimize the kernel call count for the number of available threads
     auto RequiredTiles = MlasDivRoundup(m, m_step);
@@ -387,8 +389,7 @@ static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t i
 
     const auto m = ComputeConvOutSize(ih, kh, padding, sh) * ComputeConvOutSize(iw, kw, padding, sw);
 
-    const auto m_step = ArmKleidiAI::UseSME2 ? kai_get_m_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa()
-                                             : kai_get_m_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+    const auto m_step = imatmul_conv.ukernel.get_m_step();
 
     const auto lhs_ptrs_k = kh * kw;
     const auto lhs_ptrs_m = m_step * MlasDivRoundup(m, m_step);
@@ -468,28 +469,14 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     // pad_ptr must be at least 'ci' floats for padding pixels.
     // Using a thread_local grow-only buffer to avoid cross-thread interference and ensure sizing is correct.
+    //
+    // The pad buffer contents are always zero. Since the buffer is grow-only and never written with non-zero data,
+    // we only need to zero-initialize newly-grown elements.
     thread_local std::vector<float> pad_ptr;
-    const float* old_pad_ptr = pad_ptr.data();
-    bool has_pad_ptr_changed = false;
 
     if (pad_ptr.size() < padsize) {
         pad_ptr.resize(padsize, 0.f);
-        if (pad_ptr.data() != old_pad_ptr) {
-            has_pad_ptr_changed = true;
-        }
-    } else {
-        // Ensure any previously-used region remains zeroed (grow-only means it should already be zeros,
-        // but keep this explicit for safety).
-        std::fill(pad_ptr.begin(), pad_ptr.end(), 0.f);
     }
-
-    LhsCacheKey key = {
-        ci, ih, iw,
-        padding, sh, sw,
-        kh, kw,
-        1, 1,
-        HashWeights(in)
-    };
 
     //create lhs in format required for imatmul
     const auto m = ComputeConvOutSize(ih, kh, padding, sh) * ComputeConvOutSize(iw, kw, padding, sw);
@@ -499,18 +486,31 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     auto nhwc = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
 
-    // Cache of computed lhs ptr offsets.  thread_local to prevent interference from parallel sessions.
-    thread_local std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
+    // Cache of computed lhs ptr offsets. thread_local to prevent interference from parallel sessions.
+    //
+    // Entries include pointers to the pad buffer for out-of-bounds pixels, so we must not reuse entries after the
+    // pad buffer is reallocated. To avoid clearing the entire cache, we group caches by pad buffer identity and
+    // invalidate only the old group when the pad buffer moves.
+    using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
+    thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
 
-    if (has_pad_ptr_changed)
-    {
-        // If the pad buffer was resized and a re-allocation has occurred, the cached lhs ptrs are invalid as they
-        // would be referencing the old pad buffer.
-        // See discussion in https://github.com/microsoft/onnxruntime/pull/27214.
-        // TODO(hasesh / JonathanC-ARM): A better approach would be to include the pad buffer address in the cache key
-        // or any other approach that would reduce unnecessary cache invalidations.
-        lhs_ptrs_cache.clear();
+    // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
+    thread_local const float* last_pad_ptr = nullptr;
+    const float* cur_pad_ptr = pad_ptr.data();
+    if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
+        lhs_ptrs_cache_by_pad.erase(last_pad_ptr);
     }
+    last_pad_ptr = cur_pad_ptr;
+
+    LhsCacheKey key = {
+        ci, ih, iw,
+        padding, sh, sw,
+        kh, kw,
+        1, 1,
+        HashWeights(in)
+    };
+
+    auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
 
     std::shared_ptr<const void*[]> lhs_ptrs;
     if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {
@@ -553,10 +553,8 @@ static void ConvolveSme(const size_t co, //channels out
     const auto m = ComputeConvOutSize(ih, d_kh, padding, sh) *
                    ComputeConvOutSize(iw, d_kw, padding, sw);
 
-    size_t n_step = ArmKleidiAI::UseSME2 ? kai_get_n_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa()
-                                         : kai_get_n_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
-    size_t m_step = ArmKleidiAI::UseSME2 ? kai_get_m_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa()
-                                         : kai_get_m_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa();
+    size_t n_step = imatmul_conv.ukernel.get_n_step();
+    size_t m_step = imatmul_conv.ukernel.get_m_step();
 
     // tile iteration dimensions
     std::array<size_t,3> dim;
@@ -601,16 +599,16 @@ static void ConvolveSme(const size_t co, //channels out
             ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
 
             // Get rhs tile, B
-            const size_t rhs_packed_offset = ArmKleidiAI::UseSME2 ? kai_get_rhs_packed_offset_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa(NIdx * n_step, d_kh * d_kw, ci)
-                                                                  : kai_get_rhs_packed_offset_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(NIdx * n_step, d_kh * d_kw, ci);
+            const size_t rhs_packed_offset =
+                imatmul_conv.ukernel.get_rhs_packed_offset(NIdx * n_step, d_kh * d_kw, ci);
 
             auto BTile = reinterpret_cast<const void*>(
                 reinterpret_cast<const std::byte*>(rhs.get()) + rhs_packed_offset
             );
 
             // Get lhs tile, A
-            const size_t lhs_packed_offset = ArmKleidiAI::UseSME2 ? kai_get_lhs_packed_offset_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa(MIdx * m_step, d_kh * d_kw, ci)
-                                                                  : kai_get_lhs_packed_offset_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(MIdx * m_step, d_kh * d_kw, ci);
+            const size_t lhs_packed_offset =
+                imatmul_conv.ukernel.get_lhs_packed_offset(MIdx * m_step, d_kh * d_kw, ci);
 
             auto ATile = reinterpret_cast<const float*>(
                 reinterpret_cast<const std::byte*>(lhs.get()) + lhs_packed_offset
@@ -624,37 +622,13 @@ static void ConvolveSme(const size_t co, //channels out
                 MIdx * m_step * co * sizeof(float) +
                 NIdx * n_step * sizeof(float)];
 
-            if (ArmKleidiAI::UseSME2) {
-                KLEIDIAI_KERNEL_LOG("kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa" << " M=" << TileSizeM << " N=" << TileSizeN << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
-                kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa(
-                    TileSizeM, TileSizeN, d_kh * d_kw, ci, ATile, BTile, CTile, co * sizeof(float),
-                    -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-                );
-            } else {
-                        #if defined(ENABLE_QMX_KERNELS)
-                            if (ArmKleidiAI::vendor_name.compare("Qualcomm") == 0)
-                            {
-                                KLEIDIAI_KERNEL_LOG("kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa" << " M=" << TileSizeM << " N=" << TileSizeN << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
-                                kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_qmx_mopa(
-                                    TileSizeM, TileSizeN, d_kh * d_kw, ci, ATile, BTile, CTile, co * sizeof(float),
-                                    -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-                                );
-                            }
-                            else {
-                                KLEIDIAI_KERNEL_LOG("kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa" << " M=" << TileSizeM << " N=" << TileSizeN << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
-                                kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(
-                                    TileSizeM, TileSizeN, d_kh * d_kw, ci, ATile, BTile, CTile, co * sizeof(float),
-                                    -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-                                );
-                            }
-                        #else
-                            KLEIDIAI_KERNEL_LOG("kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa" << " M=" << TileSizeM << " N=" << TileSizeN << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
-                            kai_run_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme_mopa(
-                                TileSizeM, TileSizeN, d_kh * d_kw, ci, ATile, BTile, CTile, co * sizeof(float),
-                                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-                            );
-                        #endif // ENABLE_QMX_KERNELS
-            }
+            KLEIDIAI_KERNEL_LOG(imatmul_conv.name
+                                << " M=" << TileSizeM << " N=" << TileSizeN
+                                << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
+            imatmul_conv.ukernel.run_imatmul(
+                TileSizeM, TileSizeN, d_kh * d_kw, ci, ATile, BTile, CTile, co * sizeof(float),
+                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+            );
         });
 
         if (result == tmp_mlas_aligned) {
@@ -689,6 +663,12 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool)
 {
+    // Check if the user wants to use KleidiAI
+    if (Parameters->BackendKernelSelectorConfig && !Parameters->BackendKernelSelectorConfig->use_kleidiai) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning false from MlasConvPrepare.");
+        return false;
+    }
+
     //Check dimensions before accessing
     if (Dimensions < 2) {
         return false;
@@ -753,6 +733,12 @@ ArmKleidiAI::MlasConv(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+    // Check if the user wants to use KleidiAI
+    if (Parameters->BackendKernelSelectorConfig && !Parameters->BackendKernelSelectorConfig->use_kleidiai) {
+        KLEIDIAI_DEBUG_LOG("User explicitly disabled KleidiAI, returning false from MlasConv.");
+        return false;
+    }
+
     if(!CheckCapabilitiesSme(Parameters)){
         // Fallback to Default Mlas
         return false;

@@ -293,6 +293,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     base_opts.output_abs_error = 0.1f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
     base_opts.output_abs_error = 0.055f;
+  } else {
+    base_opts.output_abs_error = 0.05f;
   }
 
   if (rel_error.has_value()) {
@@ -300,6 +302,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   } else if (base_opts.accuracy_level == 4) {
     base_opts.output_rel_error = 0.02f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
+    base_opts.output_rel_error = 0.02f;
+  } else {
     base_opts.output_rel_error = 0.02f;
   }
 
@@ -356,8 +360,6 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   }
 #endif
 }
-
-#if !defined(USE_OPENVINO)
 
 TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
@@ -465,6 +467,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 0>();
 }
 
 TEST(MatMulNBits, Float16_4b_Accuracy4) {
@@ -495,13 +499,15 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 4>();
 
   // See PR #27412 for details on the following test case,
   // which is added to cover a specific failure case in the past.
   // 6144, 2048
 
-  // Since K is larger (more change of larger error),
-  // and N is larger (more chance of havinga value with larger error),
+  // Since K is larger (more chance of larger error),
+  // and N is larger (more chance of having a value with larger error),
   // we set a higher tolerance for this case to avoid false positives
   // and flaky failures.
   TestMatMulNBitsTyped<MLFloat16, 369, 6144, 2048, 32, 4>(0.2f, 0.03f);
@@ -591,7 +597,6 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
   RunTest<float>(opts);
 }
 
-#endif
 #endif
 #endif
 
@@ -879,6 +884,95 @@ TEST(MatMulNBits, Basic_M10_N128_K512) {
   RunQnnEpTest(10, 128, 512, false, abs_error);
 }
 #endif
+
+// Test that out-of-range g_idx values are rejected with INVALID_ARGUMENT.
+// CUDA EP is excluded from these tests, so no risk of hitting CUDA_KERNEL_ASSERT.
+TEST(MatMulNBits, InvalidGIdx_OutOfRange) {
+  constexpr int64_t M = 2, N = 4, K = 32, block_size = 16;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;  // 2
+  constexpr int64_t blob_size = block_size * QBits / 8;            // 8
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  // A: [M, K]
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  // B: [N, k_blocks, blob_size]
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  // scales: [N, k_blocks]
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  // zero_points: optional (skip)
+  test.AddOptionalInputEdge<uint8_t>();
+
+  // g_idx with out-of-range values (valid range is [0, k_blocks) = [0, 2))
+  std::vector<int32_t> g_idx(K);
+  for (int64_t i = 0; i < K; i++) {
+    g_idx[i] = 99999;  // way out of range
+  }
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  // bias: optional (skip)
+  test.AddOptionalInputEdge<float>();
+
+  // Output placeholder (won't actually be compared since we expect failure)
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
+// Test that negative g_idx values are rejected.
+TEST(MatMulNBits, InvalidGIdx_Negative) {
+  constexpr int64_t M = 2, N = 4, K = 32, block_size = 16;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  test.AddOptionalInputEdge<uint8_t>();
+
+  // g_idx with negative values
+  std::vector<int32_t> g_idx(K);
+  for (int64_t i = 0; i < K; i++) {
+    g_idx[i] = -1;
+  }
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  test.AddOptionalInputEdge<float>();
+
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
 
 }  // namespace test
 }  // namespace onnxruntime

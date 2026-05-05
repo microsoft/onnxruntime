@@ -65,6 +65,9 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
 
     ///< optional post processing to apply to result matrix
     MLAS_GEMM_POSTPROCESSOR<T>* PostProcessor = nullptr;
+
+    const float* BZpCorr = nullptr;       ///< optional: BZpCorrection for KleidiAI asymmetric path (N * BlockCountK floats)
+    const float* AFloatBlkSum = nullptr;  ///< optional: float-domain A block sums for KleidiAI asymmetric path (M * BlockCountK floats)
 };
 
 /**
@@ -94,6 +97,7 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
                                     If MlasQNBitGemmBatchWorkspaceSize() returns a non-zero value, this must be a
                                     buffer with at least that many bytes. Otherwise, it may be nullptr.
  * @param[in]       ThreadPool      optional thread pool to use
+ * @param[in]       BackendKernelSelectorConfig  backend kernel selector configuration
  */
 template <typename T>
 void MLASCALL
@@ -107,7 +111,8 @@ MlasQNBitGemmBatch(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
     const MLAS_QNBIT_GEMM_DATA_PARAMS<T>* DataParams,
     void* Workspace,
-    MLAS_THREADPOOL* ThreadPool = nullptr
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 /**
@@ -136,6 +141,7 @@ MlasIsQNBitGemmAvailable(
  * @param[in]   BlkLen          number of quantized values per block
  * @param[in]   HasZeroPoint    whether zero points are provided
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   BackendKernelSelectorConfig  backend kernel selector configuration
  */
 size_t MLASCALL
 MlasQNBitGemmBatchWorkspaceSize(
@@ -146,7 +152,8 @@ MlasQNBitGemmBatchWorkspaceSize(
     size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 /**
@@ -162,6 +169,7 @@ MlasQNBitGemmBatchWorkspaceSize(
  * @param[in]   BlkLen          number of quantized values per block
  * @param[in]   HasZeroPoint    whether zero points are provided
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+ * @param[in]   BackendKernelSelectorConfig  backend kernel selector configuration
  */
 size_t MLASCALL
 MlasQNBitGemmPackQuantBDataSize(
@@ -170,7 +178,8 @@ MlasQNBitGemmPackQuantBDataSize(
     size_t BlkBitWidth,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 /**
@@ -212,7 +221,8 @@ MlasQNBitGemmPackQuantBData(
     const void* QuantBScale,
     bool HasZeroPoint,
     const void* QuantBZeroPoint,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 /**
@@ -223,6 +233,7 @@ MlasQNBitGemmPackQuantBData(
  * @param[in]   BlkLen          number of quantized values per block
  * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
  * @param[in]   HasZeroPoint    whether QuantBZeroPoint is provided
+ * @param[in]   BackendKernelSelectorConfig  backend kernel selector configuration
  */
 bool MLASCALL
 MlasQNBitGemmScalesPacked(
@@ -230,7 +241,8 @@ MlasQNBitGemmScalesPacked(
     size_t BlkBitWidth,
     size_t BlkLen,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    bool HasZeroPoint
+    bool HasZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
 /**

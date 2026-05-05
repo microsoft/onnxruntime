@@ -31,6 +31,7 @@ constexpr size_t kMaxExecutionProviderNameLen = 30;
 
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
+constexpr const char* kCudaPluginExecutionProvider = "CudaPluginExecutionProvider";
 constexpr const char* kCudaNHWCExecutionProvider = "CUDANHWCExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
@@ -43,7 +44,6 @@ constexpr const char* kRknpuExecutionProvider = "RknpuExecutionProvider";
 constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
-constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
 constexpr const char* kJsExecutionProvider = "JsExecutionProvider";
 constexpr const char* kSnpeExecutionProvider = "SNPEExecutionProvider";
@@ -54,8 +54,5 @@ constexpr const char* kWebGpuExecutionProvider = "WebGpuExecutionProvider";
 constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 constexpr const char* kVSINPUExecutionProvider = "VSINPUExecutionProvider";
-
-constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
-constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";
 
 }  // namespace onnxruntime

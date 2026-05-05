@@ -11,6 +11,7 @@
 #include <list>
 #include <type_traits>
 #include <core/framework/allocator.h>
+#include <core/platform/threadpool_config.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
@@ -54,7 +55,6 @@ RunTiming OnnxRuntimeTestSession::Run() {
 
   RunTiming timing;
   if (CUDA == device_memory_name_) {
-    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
     Ort::IoBinding io_binding(session_);
     auto mem_info = allocator_.GetInfo();
 
@@ -64,6 +64,10 @@ RunTiming OnnxRuntimeTestSession::Run() {
     for (auto& name : output_names_) {
       io_binding.BindOutput(name.c_str(), mem_info);
     }
+
+    // Use async execution and rely on IO binding's SynchronizeOutputs to synchronize.
+    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+
     // do not time IO binding creation
     start = std::chrono::high_resolution_clock::now();
     session_.Run(run_options, io_binding);
@@ -71,6 +75,14 @@ RunTiming OnnxRuntimeTestSession::Run() {
     io_binding.SynchronizeOutputs();
     timing.total_timing = std::chrono::high_resolution_clock::now() - start;
   } else {
+    // For outputs with data-dependent shapes (e.g. NonZero), the shape changes
+    // between runs. ORT caches the allocated tensor and fails shape verification
+    // on the next run. Reset outputs so ORT always allocates fresh buffers.
+    // Only do this for models with dynamic output shapes to avoid the allocation
+    // overhead on fixed-shape models.
+    if (has_dynamic_output_shapes_) {
+      for (auto& output : outputs_) output = Ort::Value(nullptr);
+    }
     session_.Run(run_options, input_names_.data(), input.data(), input_names_.size(),
                  output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
@@ -92,10 +104,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   // Add EP devices if any (created by plugin EP)
   if (!performance_test_config.registered_plugin_eps.empty()) {
     perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config);
+
+    if (performance_test_config.run_config.enable_cuda_io_binding &&
+        perftest::utils::UsesNvidiaDevice(env, performance_test_config) &&
+        device_memory_name_.empty()) {
+      device_memory_name_ = CUDA;
+    }
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   std::unordered_map<std::string, std::string> provider_options;
+
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
@@ -565,13 +584,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
-                                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
-#else
-    ORT_THROW("ArmNN is not supported in this build\n");
-#endif
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
@@ -653,6 +665,43 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     warn_dup_config_entry(kOrtSessionOptionsConfigAllowIntraOpSpinning);
     fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
+  }
+
+  if (performance_test_config.run_config.spin_duration_us >= 0) {
+    if (performance_test_config.run_config.disable_spinning) {
+      fprintf(stdout, "Ignoring intra-op spin duration because spinning is disabled\n");
+    } else {
+      warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinDurationUs);
+      auto val = std::to_string(performance_test_config.run_config.spin_duration_us);
+      fprintf(stdout, "Setting intra-op spin duration to %s us\n", val.c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinDurationUs, val.c_str());
+    }
+  }
+
+  if (performance_test_config.run_config.spin_backoff_max_set &&
+      performance_test_config.run_config.spin_backoff_max >= 1) {
+    if (performance_test_config.run_config.disable_spinning) {
+      fprintf(stdout, "Ignoring intra-op spin backoff max because spinning is disabled\n");
+    } else {
+      warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax);
+      const auto requested_spin_backoff_max = performance_test_config.run_config.spin_backoff_max;
+      const auto effective_spin_backoff_max =
+          std::min(static_cast<unsigned int>(requested_spin_backoff_max), concurrency::kSpinBackoffMaxLimit);
+      if (effective_spin_backoff_max != static_cast<unsigned int>(requested_spin_backoff_max)) {
+        fprintf(stdout,
+                "Requested intra-op spin backoff max %d exceeds the runtime limit %u; clamping to %u\n",
+                requested_spin_backoff_max,
+                concurrency::kSpinBackoffMaxLimit,
+                effective_spin_backoff_max);
+      }
+      auto val = std::to_string(effective_spin_backoff_max);
+      fprintf(stdout, "Setting intra-op spin backoff max to %s\n", val.c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, val.c_str());
+    }
+  } else if (performance_test_config.run_config.spin_backoff_max_set) {
+    fprintf(stderr,
+            "Warning: --spin_backoff_max must be >= 1; got %d. Ignoring (using default).\n",
+            performance_test_config.run_config.spin_backoff_max);
   }
 
   if (performance_test_config.run_config.disable_spinning_between_run) {
@@ -942,6 +991,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
     auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic) {
+      has_dynamic_output_shapes_ = true;
+    }
     if (is_dynamic || device_memory_name_.empty()) {
       outputs_.emplace_back(Ort::Value(nullptr));
     } else {

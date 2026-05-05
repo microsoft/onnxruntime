@@ -11,12 +11,15 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 class GQAAttentionBase {
  protected:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
   GQAAttentionBase(const OpKernelInfo& info, bool has_local) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
@@ -37,6 +40,8 @@ class GQAAttentionBase {
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
 
     qk_output_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)));
+
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -201,9 +206,9 @@ class GQAAttentionBase {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
-        const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
+        const size_t total_seqlen = SafeInt<size_t>(seqlens_k[batch_index]) + 1;
         const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
-        const size_t past_chunk_length = past_seqlen * head_size;
+        const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
         U* output = attention_probs + output_offset;
@@ -258,14 +263,14 @@ class GQAAttentionBase {
         if constexpr (std::is_same<T, float>::value) {
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
                                           static_cast<int>(head_size), k, static_cast<int>(head_size), 0.0f /*bata*/,
-                                          output, static_cast<int>(present_buffer_sequence_length), nullptr);
+                                          output, static_cast<int>(present_buffer_sequence_length), nullptr, &mlas_backend_kernel_selector_config_);
         } else if constexpr (std::is_same<U, MLFloat16>::value) {
           MlasGemm(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size,
                    q, static_cast<int>(head_size), k, static_cast<int>(head_size), output,
                    static_cast<int>(present_buffer_sequence_length),
                    MLFloat16(alpha).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
         } else {
-          size_t bytes = head_size * (sequence_length + total_seqlen) * sizeof(float);
+          size_t bytes = SafeInt<size_t>(head_size) * (sequence_length + total_seqlen) * sizeof(float);
           auto q_k_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(q_k_fp32, BufferDeleter(allocator));
 
@@ -277,7 +282,7 @@ class GQAAttentionBase {
 
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q_fp32,
                                           static_cast<int>(head_size), k_fp32, static_cast<int>(head_size), 0.0f /*bata*/,
-                                          output, static_cast<int>(present_buffer_sequence_length), nullptr);
+                                          output, static_cast<int>(present_buffer_sequence_length), nullptr, &mlas_backend_kernel_selector_config_);
         }
 
         // Pre-allocate buffer for attention mask to avoid allocating it for every processed token
@@ -286,7 +291,7 @@ class GQAAttentionBase {
           if constexpr (!std::is_same_v<U, T>) {
             static_assert(std::is_same_v<U, float> && std::is_same_v<T, MLFloat16>);
 
-            size_t bytes = attention_total_seqlen * sizeof(float);
+            size_t bytes = SafeInt<size_t>(attention_total_seqlen) * sizeof(float);
             attention_bias_thread_fp32 = static_cast<float*>(allocator->Alloc(bytes));
           }
         }
@@ -435,9 +440,9 @@ class GQAAttentionBase {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
-        const size_t total_seqlen = static_cast<size_t>(seqlens_k[batch_index]) + 1;
+        const size_t total_seqlen = SafeInt<size_t>(seqlens_k[batch_index]) + 1;
         const size_t past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;  // Assume no padding sequence length
-        const size_t past_chunk_length = past_seqlen * head_size;
+        const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const T* v;
         if (packed_qkv) {
@@ -459,7 +464,7 @@ class GQAAttentionBase {
                                           1.f, /*alpha*/ attention_probs + attention_probs_offset,
                                           static_cast<int>(present_buffer_sequence_length), v,
                                           static_cast<int>(head_size), 0.0f /*beta*/, output_current,
-                                          static_cast<int>(hidden_size), nullptr);
+                                          static_cast<int>(hidden_size), nullptr, &mlas_backend_kernel_selector_config_);
         } else if constexpr (std::is_same<U, MLFloat16>::value) {
           T* output_current = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
           MlasGemm(CblasNoTrans, CblasNoTrans, sequence_length, head_size, total_seqlen,
@@ -467,7 +472,7 @@ class GQAAttentionBase {
                    v, static_cast<int>(head_size), output_current, static_cast<int>(hidden_size),
                    MLFloat16(1.0f).val, static_cast<uint16_t>(0) /*beta*/, nullptr);
         } else {
-          size_t bytes = head_size * total_seqlen * sizeof(float);
+          size_t bytes = SafeInt<size_t>(head_size) * total_seqlen * sizeof(float);
           auto v_fp32 = allocator->Alloc(bytes);
           BufferUniquePtr scratch_buffer(v_fp32, BufferDeleter(allocator));
 
@@ -480,7 +485,7 @@ class GQAAttentionBase {
                                           1.f, /*alpha*/ attention_probs + attention_probs_offset,
                                           static_cast<int>(present_buffer_sequence_length), v_fp32_ptr,
                                           static_cast<int>(head_size), 0.0f /*beta*/, output_fp32_current,
-                                          static_cast<int>(hidden_size), nullptr);
+                                          static_cast<int>(hidden_size), nullptr, &mlas_backend_kernel_selector_config_);
         }
       }
     });

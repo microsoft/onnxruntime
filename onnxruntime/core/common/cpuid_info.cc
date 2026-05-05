@@ -162,13 +162,7 @@ void CPUIDInfo::X86Init() {
         // Check for TPAUSE
         CheckIntelResult check_intel = CheckIntel();
         if (check_intel.is_intel) {
-#ifdef __linux__
-#if !defined(__ANDROID__)
-          has_tpause_ = __builtin_cpu_supports("waitpkg") != 0;
-#endif
-#else
           has_tpause_ = (data[2] & (1 << 5)) != 0;
-#endif
         }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);
@@ -366,7 +360,11 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
   // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
+  // On Wasm/Emscripten, cpuinfo cannot detect the CPU vendor so skip to avoid
+  // an unhelpful "Unknown CPU vendor" warning.
+#if !defined(__wasm__)
   VendorInfoInit();
+#endif
 
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();

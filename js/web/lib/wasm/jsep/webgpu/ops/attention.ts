@@ -809,14 +809,17 @@ export const applyAttention = (
 ) => {
   // Assumption is that presentKey/presentValue exists only if pastKey/pastValue exists.
   const outputCount = Math.min(context.outputCount, 1 + (pastKey ? 1 : 0) + (pastValue ? 1 : 0));
+  // When there are no present key/value outputs (outputCount <= 1), ignore past to match CPU EP semantics.
+  const effectivePastKey = outputCount > 1 ? pastKey : undefined;
+  const effectivePastValue = outputCount > 1 ? pastValue : undefined;
   const pastSequenceLength = outputCount > 1 ? parameters.pastSequenceLength : 0;
   const totalSequenceLength = pastSequenceLength + parameters.kvSequenceLength;
   const attentionBias =
     attentionBiasInput && ShapeUtil.size(attentionBiasInput.dims) > 0 ? attentionBiasInput : undefined;
 
   const inputsK = [q, k];
-  if (outputCount > 1 && pastKey && ShapeUtil.size(pastKey.dims) > 0) {
-    inputsK.push(pastKey);
+  if (effectivePastKey && ShapeUtil.size(effectivePastKey.dims) > 0) {
+    inputsK.push(effectivePastKey);
   }
   if (attentionBias) {
     inputsK.push(attentionBias);
@@ -833,7 +836,7 @@ export const applyAttention = (
       outputCount,
       q,
       k,
-      pastKey,
+      effectivePastKey,
       attentionBias,
       parameters,
       pastSequenceLength,
@@ -860,8 +863,8 @@ export const applyAttention = (
 
   // Run AttentionScore
   const inputsV = [probs, v];
-  if (outputCount > 1 && pastValue && ShapeUtil.size(pastValue.dims) > 0) {
-    inputsV.push(pastValue);
+  if (effectivePastValue && ShapeUtil.size(effectivePastValue.dims) > 0) {
+    inputsV.push(effectivePastValue);
   }
   if (seqLens) {
     inputsV.push(seqLens);
@@ -874,7 +877,7 @@ export const applyAttention = (
       outputCount,
       probs,
       v,
-      pastValue,
+      effectivePastValue,
       parameters,
       pastSequenceLength,
       seqLens,

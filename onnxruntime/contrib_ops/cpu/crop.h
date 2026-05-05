@@ -4,7 +4,9 @@
 #pragma once
 
 #include "core/common/common.h"
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
+#endif
 
 #include <gsl/gsl>
 
@@ -13,9 +15,10 @@ namespace contrib {
 
 class CropBase {
  protected:
-  CropBase(const OpKernelInfo& info)
-      : border_(info.GetAttrsOrDefault<int64_t>("border")),
-        scale_(info.GetAttrsOrDefault<int64_t>("scale")) {
+  template <typename KernelInfoType>
+  CropBase(const KernelInfoType& info)
+      : border_(info.template GetAttrsOrDefault<int64_t>("border")),
+        scale_(info.template GetAttrsOrDefault<int64_t>("scale")) {
   }
 
   Status ValidateInput(const Tensor* X) const {

@@ -259,6 +259,203 @@ def create_bert_attention(
     return helper.make_model(graph, opset_imports=(opsetid,))
 
 
+def create_bert_attention_pre_ln(
+    input_hidden_size=16,
+    num_heads=2,
+    pruned_qk_hidden_size=16,
+    pruned_v_hidden_size=16,
+    switch_add_inputs=False,
+):
+    """Create a pre-layer-norm first block attention graph (no mask).
+
+    Unlike post-LN, the first block of a pre-LN model has no Add before the
+    first LayerNormalization — the graph input feeds LN directly.  The residual
+    skip connection adds the graph input (not the LN output) to the attention
+    output.  No attention mask is included so the graph exercises the
+    ``is_no_mask_attention`` code path (Softmax -> Div -> MatMul).
+
+    Graph structure::
+
+        input_1 -> LN -> MatMul Q/K/V -> ... -> Add(attn_out, input_1) -> LN -> output
+    """
+    nodes = [
+        # First LayerNormalization takes graph input directly (no preceding Add)
+        helper.make_node(
+            "LayerNormalization",
+            ["input_1", "layer_norm_weight", "layer_norm_bias"],
+            ["layernorm_out"],
+            "layernorm",
+            axis=-1,
+            epsion=0.000009999999747378752,
+        ),
+        # q nodes
+        helper.make_node("MatMul", ["layernorm_out", "matmul_q_weight"], ["matmul_q_out"], "matmul_q"),
+        helper.make_node(
+            "Add",
+            reverse_if(["matmul_q_out", "add_q_weight"], switch_add_inputs),
+            ["add_q_out"],
+            "add_q",
+        ),
+        helper.make_node(
+            "Reshape",
+            ["add_q_out", "reshape_weight_qk"],
+            ["reshape_q_out"],
+            "reshape_q",
+        ),
+        helper.make_node(
+            "Transpose",
+            ["reshape_q_out"],
+            ["transpose_q_out"],
+            "transpose_q",
+            perm=[0, 2, 1, 3],
+        ),
+        # k nodes
+        helper.make_node("MatMul", ["layernorm_out", "matmul_k_weight"], ["matmul_k_out"], "matmul_k"),
+        helper.make_node(
+            "Add",
+            reverse_if(["matmul_k_out", "add_k_weight"], switch_add_inputs),
+            ["add_k_out"],
+            "add_k",
+        ),
+        helper.make_node(
+            "Reshape",
+            ["add_k_out", "reshape_weight_qk"],
+            ["reshape_k_out"],
+            "reshape_k",
+        ),
+        helper.make_node(
+            "Transpose",
+            ["reshape_k_out"],
+            ["transpose_k_out"],
+            "transpose_k",
+            perm=[0, 2, 3, 1],
+        ),
+        # qk nodes (no mask — uses the is_no_mask_attention path: Softmax -> Div -> MatMul)
+        helper.make_node(
+            "MatMul",
+            ["transpose_q_out", "transpose_k_out"],
+            ["matmul_qk_out"],
+            "matmul_qk",
+        ),
+        helper.make_node("Div", ["matmul_qk_out", "div_weight"], ["div_qk_out"], "div_qk"),
+        helper.make_node("Softmax", ["div_qk_out"], ["softmax_qk_out"], "softmax_qk", axis=3),
+        # v nodes
+        helper.make_node("MatMul", ["layernorm_out", "matmul_v_weight"], ["matmul_v_out"], "matmul_v"),
+        helper.make_node("Add", ["matmul_v_out", "add_v_weight"], ["add_v_out"], "add_v"),
+        helper.make_node("Reshape", ["add_v_out", "reshape_weight_v"], ["reshape_v_out"], "reshape_v"),
+        helper.make_node(
+            "Transpose",
+            ["reshape_v_out"],
+            ["transpose_v_out"],
+            "transpose_v",
+            perm=[0, 2, 1, 3],
+        ),
+        # qkv nodes
+        helper.make_node(
+            "MatMul",
+            ["softmax_qk_out", "transpose_v_out"],
+            ["matmul_qkv_1_out"],
+            "matmul_qkv_1",
+        ),
+        helper.make_node(
+            "Transpose",
+            ["matmul_qkv_1_out"],
+            ["transpose_qkv_out"],
+            "transpose_qkv",
+            perm=[0, 2, 1, 3],
+        ),
+        helper.make_node(
+            "Reshape",
+            ["transpose_qkv_out", "reshape_weight_qkv"],
+            ["reshape_qkv_out"],
+            "reshape_qkv",
+        ),
+        helper.make_node(
+            "MatMul",
+            ["reshape_qkv_out", "matmul_qkv_weight"],
+            ["matmul_qkv_2_out"],
+            "matmul_qkv_2",
+        ),
+        helper.make_node(
+            "Add",
+            reverse_if(["matmul_qkv_2_out", "add_qkv_weight"], switch_add_inputs),
+            ["add_qkv_out"],
+            "add_qkv",
+        ),
+        # Residual skip: adds attention output with original graph input (not LN output)
+        helper.make_node(
+            "Add",
+            reverse_if(["add_qkv_out", "input_1"], switch_add_inputs),
+            ["skip_output"],
+            "add_skip",
+        ),
+        helper.make_node(
+            "LayerNormalization",
+            ["skip_output", "layer_norm_weight_2", "layer_norm_bias_2"],
+            ["output"],
+            "layernorm2",
+            axis=-1,
+            epsion=0.000009999999747378752,
+        ),
+    ]
+
+    pruned_qk_head_size = int(pruned_qk_hidden_size / num_heads)
+    pruned_v_head_size = int(pruned_v_hidden_size / num_heads)
+    initializers = [
+        float_tensor("layer_norm_weight", [input_hidden_size]),
+        float_tensor("layer_norm_bias", [input_hidden_size]),
+        float_tensor("layer_norm_weight_2", [input_hidden_size]),
+        float_tensor("layer_norm_bias_2", [input_hidden_size]),
+        float_tensor("matmul_q_weight", [input_hidden_size, pruned_qk_hidden_size]),
+        float_tensor("matmul_k_weight", [input_hidden_size, pruned_qk_hidden_size]),
+        float_tensor("matmul_v_weight", [input_hidden_size, pruned_v_hidden_size]),
+        float_tensor("matmul_qkv_weight", [pruned_v_hidden_size, input_hidden_size]),
+        float_tensor("add_q_weight", [pruned_qk_hidden_size]),
+        float_tensor("add_k_weight", [pruned_qk_hidden_size]),
+        float_tensor("add_v_weight", [pruned_v_hidden_size]),
+        float_tensor("add_qkv_weight", [input_hidden_size]),
+        helper.make_tensor("div_weight", TensorProto.FLOAT, [1], [math.sqrt(pruned_qk_head_size)]),
+        helper.make_tensor(
+            "reshape_weight_qk",
+            TensorProto.INT64,
+            [4],
+            [0, 0, num_heads, pruned_qk_head_size],
+        ),
+        helper.make_tensor(
+            "reshape_weight_v",
+            TensorProto.INT64,
+            [4],
+            [0, 0, num_heads, pruned_v_head_size],
+        ),
+        helper.make_tensor("reshape_weight_qkv", TensorProto.INT64, [3], [0, 0, pruned_v_hidden_size]),
+    ]
+
+    batch_size = 1
+    sequence_length = 3
+    graph = helper.make_graph(
+        [node for node in nodes if node],
+        "PreLNAttentionFusion",
+        [  # inputs: only one embedding input (no preceding Add)
+            helper.make_tensor_value_info(
+                "input_1",
+                TensorProto.FLOAT,
+                [batch_size, sequence_length, input_hidden_size],
+            ),
+        ],
+        [  # outputs
+            helper.make_tensor_value_info(
+                "output",
+                TensorProto.FLOAT,
+                [batch_size, sequence_length, input_hidden_size],
+            ),
+        ],
+        initializers,
+    )
+
+    opsetid = helper.make_opsetid("ai.onnx", min(onnx.defs.onnx_opset_version(), 16))
+    return helper.make_model(graph, opset_imports=(opsetid,))
+
+
 def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, use_float_mask=False):
     # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
     has_unsqueeze_two_inputs = version.parse(onnx.__version__) >= version.parse("1.8.0")

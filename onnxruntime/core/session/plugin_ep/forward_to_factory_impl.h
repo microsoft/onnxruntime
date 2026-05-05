@@ -95,6 +95,17 @@ struct ForwardToFactoryImpl {
     return static_cast<TFactory*>(this_ptr)->GetHardwareDeviceIncompatibilityDetails(hw, details);
   }
 
+  static OrtStatus* ORT_API_CALL InitGraphicsInterop(_In_ OrtEpFactory* this_ptr,
+                                                     _In_ const OrtEpDevice* ep_device,
+                                                     _In_ const OrtGraphicsInteropConfig* config) noexcept {
+    return static_cast<TFactory*>(this_ptr)->InitGraphicsInterop(ep_device, config);
+  }
+
+  static OrtStatus* ORT_API_CALL DeinitGraphicsInterop(_In_ OrtEpFactory* this_ptr,
+                                                       _In_ const OrtEpDevice* ep_device) noexcept {
+    return static_cast<TFactory*>(this_ptr)->DeinitGraphicsInterop(ep_device);
+  }
+
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }

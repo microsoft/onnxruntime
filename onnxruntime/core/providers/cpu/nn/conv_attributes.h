@@ -33,6 +33,10 @@ struct ConvAttributes {
       strides.resize(kernel_shape_.size(), 1);
     }
 
+    for (auto stride : strides) {
+      ORT_ENFORCE(stride > 0, "All stride values must be positive, got: ", stride);
+    }
+
     std::vector<int64_t> pads_attr;
     status = info.GetAttrs("pads", pads_attr);
     if (!status.IsOK()) {
@@ -51,6 +55,10 @@ struct ConvAttributes {
     status = info.GetAttrs("dilations", dilations);
     if (kernel_shape_specified && (!status.IsOK() || dilations.empty())) {
       dilations.resize(kernel_shape_.size(), 1);
+    }
+
+    for (auto dilation : dilations) {
+      ORT_ENFORCE(dilation > 0, "All dilation values must be positive, got: ", dilation);
     }
 
     status = info.template GetAttr<int64_t>("group", &group);

@@ -31,8 +31,6 @@ public enum OrtProvider {
   MI_GRAPH_X("MIGraphXExecutionProvider"),
   /** The ARM Compute Library execution provider. */
   ACL("ACLExecutionProvider"),
-  /** The ARM NN execution provider. */
-  ARM_NN("ArmNNExecutionProvider"),
   /** The AMD ROCm execution provider. */
   ROCM("ROCMExecutionProvider"),
   /** The Apple CoreML execution provider. */

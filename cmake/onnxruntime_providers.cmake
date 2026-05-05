@@ -92,10 +92,6 @@ endif()
 if(onnxruntime_USE_ACL)
   set(PROVIDERS_ACL onnxruntime_providers_acl)
 endif()
-if(onnxruntime_USE_ARMNN)
-  set(PROVIDERS_ARMNN onnxruntime_providers_armnn)
-endif()
-
 if (onnxruntime_USE_XNNPACK)
   set(PROVIDERS_XNNPACK onnxruntime_providers_xnnpack)
 endif()
@@ -180,10 +176,6 @@ endif()
 
 if (onnxruntime_USE_ACL)
   include(onnxruntime_providers_acl.cmake)
-endif()
-
-if (onnxruntime_USE_ARMNN)
-  include(onnxruntime_providers_armnn.cmake)
 endif()
 
 if (onnxruntime_USE_VSINPU)

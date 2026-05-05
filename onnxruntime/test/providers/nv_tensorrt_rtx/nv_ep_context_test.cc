@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/path_utils.h"
+#include "core/graph/onnx_protobuf.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/nv_tensorrt_rtx/test_nv_trt_rtx_ep_util.h"
 
 #include <fstream>
+#include <filesystem>
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -197,6 +199,163 @@ INSTANTIATE_TEST_SUITE_P(
     [](const testing::TestParamInfo<CompileApiTest::ParamType>& info) {
       return info.param.to_string();
     });
+
+/*
+ * Helper to create a synthetic EPContext ONNX model with a specific "source" attribute.
+ * Uses raw ONNX protobuf to bypass schema validation (EPContext is a contrib op).
+ */
+void CreateSyntheticEPContextModel(const PathString& model_path,
+                                   const std::string& source_attr,
+                                   bool include_source_attr = true) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(11);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("EPContextSourceTest");
+
+  // Input
+  auto* input = graph->add_input();
+  input->set_name("input");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(1);
+  input_type->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // Output
+  auto* output = graph->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+  output_type->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // EPContext node
+  auto* node = graph->add_node();
+  node->set_op_type("EPContext");
+  node->set_domain("com.microsoft");
+  node->set_name("ep_context_node");
+  node->add_input("input");
+  node->add_output("output");
+
+  // embed_mode attribute
+  auto* attr_embed = node->add_attribute();
+  attr_embed->set_name("embed_mode");
+  attr_embed->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_embed->set_i(1);
+
+  // ep_cache_context attribute (dummy data)
+  auto* attr_cache = node->add_attribute();
+  attr_cache->set_name("ep_cache_context");
+  attr_cache->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  attr_cache->set_s("dummy_context_data");
+
+  // source attribute (conditionally added)
+  if (include_source_attr) {
+    auto* attr_source = node->add_attribute();
+    attr_source->set_name("source");
+    attr_source->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    attr_source->set_s(source_attr);
+  }
+
+  // Save to file
+  std::ofstream ofs(model_path, std::ios::binary);
+  ASSERT_TRUE(ofs.is_open());
+  ASSERT_TRUE(model.SerializeToOstream(&ofs));
+}
+
+/*
+ * Test: NvTensorRTRTX EP should NOT claim an EPContext node whose "source"
+ * attribute belongs to a different EP (e.g., OpenVINO).
+ *
+ * Expected: Session initialization fails because no EP claims the node.
+ */
+TEST(NvExecutionProviderTest, EPContextNode_ForeignSourceSkipped) {
+  PathString model_path = path_utils::MakePathString("ep_context_foreign_source_nv.onnx");
+  CreateSyntheticEPContextModel(model_path, "OpenVINOExecutionProvider");
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> option_map;
+  auto ep = AppendTrtEtxEP(session_options, option_map);
+
+  // Loading a model with a foreign-source EPContext node should fail during
+  // session creation because the NvTensorRTRTX EP correctly skips the node
+  // and no other EP can handle it.
+  try {
+    Ort::Session session(*ort_env, model_path.c_str(), session_options);
+    FAIL() << "Expected session creation to fail for EPContext node with foreign source";
+  } catch (const Ort::Exception& e) {
+    std::string error_msg = e.what();
+    EXPECT_TRUE(error_msg.find("EPContext") != std::string::npos)
+        << "Error should mention EPContext. Actual: " << error_msg;
+  }
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
+/*
+ * Test: NvTensorRTRTX EP should NOT claim an EPContext node whose "source"
+ * attribute is set to the classic TensorRT EP name.
+ */
+TEST(NvExecutionProviderTest, EPContextNode_ClassicTrtSourceSkipped) {
+  PathString model_path = path_utils::MakePathString("ep_context_classic_trt_source_nv.onnx");
+  CreateSyntheticEPContextModel(model_path, "TensorrtExecutionProvider");
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> option_map;
+  auto ep = AppendTrtEtxEP(session_options, option_map);
+
+  try {
+    Ort::Session session(*ort_env, model_path.c_str(), session_options);
+    FAIL() << "Expected session creation to fail for EPContext node with classic TRT source";
+  } catch (const Ort::Exception& e) {
+    std::string error_msg = e.what();
+    EXPECT_TRUE(error_msg.find("EPContext") != std::string::npos)
+        << "Error should mention EPContext. Actual: " << error_msg;
+  }
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
+/*
+ * Test: NvTensorRTRTX EP should still claim an EPContext node that has NO
+ * "source" attribute (backward compatibility with legacy context models).
+ *
+ * Expected: The EP claims the node. It may fail later during engine
+ * deserialization (since context data is synthetic), but the error must NOT
+ * be "is not compatible with any execution provider", which would indicate
+ * the node was not claimed at all.
+ */
+TEST(NvExecutionProviderTest, EPContextNode_NoSourceAttribute_BackwardCompat) {
+  PathString model_path = path_utils::MakePathString("ep_context_no_source_nv.onnx");
+  CreateSyntheticEPContextModel(model_path, "", /*include_source_attr=*/false);
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> option_map;
+  auto ep = AppendTrtEtxEP(session_options, option_map);
+
+  try {
+    Ort::Session session(*ort_env, model_path.c_str(), session_options);
+    // If session creation succeeds, backward compatibility is working.
+  } catch (const Ort::Exception& e) {
+    std::string error_msg = e.what();
+    // The node should have been claimed by the EP. Any failure should be
+    // EP-internal (e.g., bad engine data), NOT the "not compatible" error
+    // that indicates no EP claimed the node.
+    EXPECT_TRUE(error_msg.find("is not compatible with any execution provider") == std::string::npos)
+        << "Legacy EPContext node without source should still be claimed by EP. Error: " << error_msg;
+  }
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

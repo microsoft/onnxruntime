@@ -4,6 +4,10 @@ parameters:
 - name: OS
   displayName: Operating System
   type: string
+  values:
+    - linux
+    - macOS
+    - windows
 
 - name: PoolName
   type: string
@@ -17,10 +21,13 @@ stages:
   dependsOn: []
   jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
+    templateContext:
+      type: validationJob
     workspace:
       clean: all
-    ${{ if eq(parameters.OS, 'MacOS') }}:
+    ${{ if eq(parameters.OS, 'macOS') }}:
       pool:
+        os: macOS
         # Use PoolName if provided, otherwise fallback to macOS-15
         ${{ if ne(parameters.PoolName, '') }}:
           ${{ if contains(parameters.PoolName, '-') }}:
@@ -31,8 +38,9 @@ stages:
               demands: ${{ parameters.PoolDemands }}
         ${{ else }}:
           vmImage: 'macOS-15'
-    ${{ if eq(parameters.OS, 'Linux') }}:
+    ${{ if eq(parameters.OS, 'linux') }}:
       pool:
+        os: linux
         name: ${{ parameters.PoolName }}
     variables:
     - name: runCodesignValidationInjection
@@ -89,10 +97,10 @@ stages:
         options: '-DoutputDirectory=$(Pipeline.Workspace)/build/onnxruntime-java'
         publishJUnitTestResults: false
         mavenVersionOption: 'Default'
-        ${{ if eq(parameters.OS, 'MacOS') }}:
+        ${{ if eq(parameters.OS, 'macOS') }}:
           javaHomeOption: 'Path'
           jdkDirectory: '$(JAVA_HOME)'
-        ${{ if eq(parameters.OS, 'Linux') }}:
+        ${{ if eq(parameters.OS, 'linux') }}:
           javaHomeOption: 'JDKVersion'
           jdkVersionOption: '1.17'
 

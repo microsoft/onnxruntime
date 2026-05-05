@@ -296,5 +296,63 @@ TEST(TensorScatterTest, InPlace_IOBinding) {
       << "Output should alias the original cache_data buffer";
 }
 
+// Negative write_indices should fail validation.
+// Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
+TEST(TensorScatterTest, Linear_NegativeWriteIndex) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  test.AddInput<float>("past_cache", {1, 4, 3},
+                       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  test.AddInput<float>("update", {1, 1, 3}, {1, 2, 3});
+  test.AddInput<int64_t>("write_indices", {1}, {-1});
+  test.AddOutput<float>("present_cache", {1, 4, 3},
+                        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
+           {}, nullptr, &execution_providers);
+}
+
+// Linear mode: write_indices + sequence_length > max_sequence_length should fail.
+// Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
+TEST(TensorScatterTest, Linear_OutOfBoundsWriteIndex) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "linear");
+
+  // max_seq=4, update seq_len=2, wi=3 -> 3+2=5 > 4
+  test.AddInput<float>("past_cache", {1, 4, 3},
+                       {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+  test.AddInput<float>("update", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<int64_t>("write_indices", {1}, {3});
+  test.AddOutput<float>("present_cache", {1, 4, 3},
+                        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds max_sequence_length",
+           {}, nullptr, &execution_providers);
+}
+
+// Circular mode: negative write_indices should still fail.
+// Run CPU-only: CUDA validates asynchronously via CUDA_KERNEL_ASSERT.
+TEST(TensorScatterTest, Circular_NegativeWriteIndex) {
+  OpTester test("TensorScatter", 24);
+  test.AddAttribute<std::string>("mode", "circular");
+
+  test.AddInput<float>("past_cache", {1, 4, 2},
+                       {0, 0, 0, 0, 0, 0, 0, 0});
+  test.AddInput<float>("update", {1, 1, 2}, {1, 2});
+  test.AddInput<int64_t>("write_indices", {1}, {-2});
+  test.AddOutput<float>("present_cache", {1, 4, 2},
+                        {0, 0, 0, 0, 0, 0, 0, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is negative",
+           {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

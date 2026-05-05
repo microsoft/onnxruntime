@@ -1,0 +1,121 @@
+# Tests an ONNX Runtime binary archive produced by the packaging pipeline.
+
+parameters:
+- name: artifactName
+  type: string
+- name: artifactPipelineResource
+  type: string
+- name: previousStageName
+  type: string
+  default: ''
+- name: platform
+  type: string
+- name: agentPool
+  type: object
+- name: agentSetupSteps
+  type: stepList
+  default: []
+
+stages:
+- stage: Binary_Archive_Testing_${{ replace(parameters.platform, '-', '_') }}
+  ${{ if ne(parameters.previousStageName, '') }}:
+    dependsOn: ${{ parameters.previousStageName }}
+
+  jobs:
+  - job: Binary_Archive_Testing_${{ replace(parameters.platform, '-', '_') }}
+    pool: ${{ parameters.agentPool }}
+
+    variables:
+    - name: buildConfig
+      value: Release
+    - name: relativePathFromBuildToOutputDir
+      ${{ if startsWith(parameters.platform, 'win') }}:
+        value: "${{ variables['buildConfig'] }}"
+      ${{ else }}:
+        value: "."
+
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - ${{ each agentSetupStep in parameters.agentSetupSteps }}:
+      - ${{ agentSetupStep }}
+
+    - download: ${{ parameters.artifactPipelineResource }}
+      artifact: ${{ parameters.artifactName }}
+      patterns: |
+        *.zip
+        *.tgz
+      displayName: Download binary archive for ${{ parameters.platform }}
+
+    # Extract the binary archive.
+    # The archive contains a top-level directory like onnxruntime-<platform>-<version>/.
+    # After extraction, set ORT_PACKAGE_DIR to the extracted directory.
+    - ${{ if startsWith(parameters.platform, 'win') }}:
+      - task: PowerShell@2
+        displayName: 'Extract binary archive'
+        inputs:
+          targetType: 'inline'
+          script: |
+            $artifactDir = "$(Pipeline.Workspace)/${{ parameters.artifactPipelineResource }}/${{ parameters.artifactName }}"
+            $archive = (Get-ChildItem -Path $artifactDir -Filter *.zip)[0].FullName
+            Write-Host "Extracting $archive"
+            Expand-Archive -Path $archive -DestinationPath $(Build.BinariesDirectory)
+            $extractedDir = (Get-ChildItem -Path $(Build.BinariesDirectory) -Directory | Where-Object { $_.Name -like "onnxruntime-*" })[0].FullName
+            Write-Host "Extracted to $extractedDir"
+            Write-Host "##vso[task.setvariable variable=ORT_PACKAGE_DIR]$extractedDir"
+
+    - ${{ else }}:
+      - bash: |
+          set -ex
+          artifact_dir="$(Pipeline.Workspace)/${{ parameters.artifactPipelineResource }}/${{ parameters.artifactName }}"
+          archive=$(find "$artifact_dir" -name '*.tgz' | head -1)
+          echo "Extracting $archive"
+          tar -xzf "$archive" -C $(Build.BinariesDirectory)
+          extracted_dir=$(find $(Build.BinariesDirectory) -maxdepth 1 -type d -name 'onnxruntime-*' | head -1)
+          echo "Extracted to $extracted_dir"
+
+          # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
+          set +x
+          echo "##vso[task.setvariable variable=ORT_PACKAGE_DIR]$extracted_dir"
+        displayName: 'Extract binary archive'
+
+    # Build and run the C++ sample using the extracted ONNX Runtime package.
+
+    - script: >
+        cmake
+        -S $(Build.SourcesDirectory)/samples/cxx
+        -B $(Build.BinariesDirectory)/sample_build
+        -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
+        -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
+      displayName: 'Generate C++ sample build system'
+
+    - script: |
+        cmake --build $(Build.BinariesDirectory)/sample_build --config $(buildConfig)
+      displayName: 'Build C++ sample'
+
+    - script: >
+        $(Build.BinariesDirectory)/sample_build/$(relativePathFromBuildToOutputDir)/onnxruntime_sample_program
+        $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
+      displayName: 'Run C++ sample'
+
+    # For win-arm64x, also build and run for ARM64EC.
+    - ${{ if eq(parameters.platform, 'win-arm64x') }}:
+      - script: >
+          cmake
+          -S $(Build.SourcesDirectory)/samples/cxx
+          -B $(Build.BinariesDirectory)/sample_build_arm64ec
+          -DORT_HEADER_DIR:PATH=$(ORT_PACKAGE_DIR)/include
+          -DORT_LIBRARY_DIR:PATH=$(ORT_PACKAGE_DIR)/lib
+          -A ARM64EC
+        displayName: 'Generate C++ sample build system (ARM64EC)'
+
+      - script: |
+          cmake --build $(Build.BinariesDirectory)/sample_build_arm64ec --config $(buildConfig)
+        displayName: 'Build C++ sample (ARM64EC)'
+
+      - script: >
+          $(Build.BinariesDirectory)/sample_build_arm64ec/$(relativePathFromBuildToOutputDir)/onnxruntime_sample_program
+          $(Build.SourcesDirectory)/samples/cxx/add_model.onnx
+        displayName: 'Run C++ sample (ARM64EC)'

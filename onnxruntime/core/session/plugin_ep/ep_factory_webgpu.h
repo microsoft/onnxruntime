@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 #include "core/session/plugin_ep/ep_factory_internal_impl.h"
 
 #include "core/graph/constants.h"
@@ -34,4 +34,4 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
 };
 }  // namespace onnxruntime
 
-#endif  // defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)

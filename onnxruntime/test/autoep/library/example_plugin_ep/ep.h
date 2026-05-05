@@ -61,6 +61,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
  public:
   struct Config {
     bool enable_ep_context = false;
+    bool enable_weightless_ep_context_nodes = false;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 
@@ -102,10 +103,17 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(OrtEp* this_ptr,
                                                                         const OrtGraph* graph) noexcept;
 
+  static OrtStatus* ORT_API_CALL SyncImpl(_In_ OrtEp* this_ptr) noexcept;
+
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
-  OrtStatus* SaveConstantInitializers(const OrtGraph* graph);
+  // Returns true if the EP should save constant initializers so that they are available during inference.
+  bool CopiesConstantInitializers() const;
+
+  // If the given `OrtValueInfo` represents a constant initializer, this function saves a copy of the initializer data
+  // within this EP instance so that it is available during inference.
+  OrtStatus* TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer);
 
   ExampleEpFactory& factory_;
   std::string name_;

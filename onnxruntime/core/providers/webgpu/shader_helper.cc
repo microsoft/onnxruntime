@@ -499,7 +499,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 
   // store shape uniform ranks in shape_uniform_ranks
   bool use_any_shape_uniform = false;
-  ORT_ENFORCE(shape_uniform_ranks.size() == 0);
+  ORT_ENFORCE(shape_uniform_ranks.empty());
   shape_uniform_ranks.reserve(input_vars_.size() + output_vars_.size() + indices_vars_.size());
 
   for (const auto& input : input_vars_) {

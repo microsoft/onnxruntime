@@ -78,8 +78,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_vitisai"):
     package_name = "onnxruntime-vitisai"
 elif parse_arg_remove_boolean(sys.argv, "--use_acl"):
     package_name = "onnxruntime-acl"
-elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
-    package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
@@ -401,6 +399,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libHtpPrepare.so",
     ]
     dl_libs.extend(qnn_deps)
+    libs.extend(qnn_deps)
     # NV TensorRT RTX
     nv_tensorrt_rtx_deps = ["libtensorrt_rtx.so", "libtensorrt_onnxparser_rtx.so"]
     dl_libs.extend(nv_tensorrt_rtx_deps)
@@ -842,8 +841,10 @@ def save_build_and_package_info(package_name, version_number, cuda_version, qnn_
 save_build_and_package_info(package_name, version_number, cuda_version, qnn_version)
 
 # sympy is optional - only needed for symbolic shape inference
+# ml_dtypes is optional - needed for quantization utilities
 extras_require = {
     "symbolic": ["sympy"],
+    "quantization": ["ml_dtypes"],
 }
 if package_name == "onnxruntime-gpu" and cuda_major_version:
     # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11
@@ -871,6 +872,7 @@ setup(
     author_email="onnxruntime@microsoft.com",
     cmdclass=cmd_classes,
     license="MIT License",
+    license_files=["LICENSE", "ThirdPartyNotices.txt"],
     packages=packages,
     ext_modules=ext_modules,
     package_data=package_data,
@@ -879,7 +881,7 @@ setup(
     data_files=data_files,
     install_requires=install_requires,
     extras_require=extras_require,
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     keywords="onnx machine learning",
     entry_points={
         "console_scripts": [

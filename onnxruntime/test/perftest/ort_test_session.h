@@ -59,6 +59,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::string provider_name_;
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
   const std::unordered_map<std::string, std::string>& run_config_entries_;
+  bool has_dynamic_output_shapes_ = false;
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
   cudaStream_t stream_;  // Device stream if required by IO bindings
 #endif

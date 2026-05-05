@@ -11,6 +11,8 @@
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
+
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
     : OrtEpFactory{},
       ApiPtrs(apis),
@@ -210,10 +212,15 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
   std::string ep_context_enable;
-  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, "ep.context_enable", "0", ep_context_enable));
+  std::string weightless_ep_context_nodes_enable;
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
+                                                 ep_context_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
+                                                 "0", weightless_ep_context_nodes_enable));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
+  config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
   auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
 
@@ -477,10 +484,27 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
   // Check ORT API version if present
   if (ort_version_pos != std::string::npos) {
     size_t ort_version_start = ort_version_pos + 16;  // length of "ort_api_version="
-    std::string ort_version = info.substr(ort_version_start);
+    size_t ort_version_end = info.find(';', ort_version_start);
+    std::string ort_version = (ort_version_end != std::string::npos)
+                                  ? info.substr(ort_version_start, ort_version_end - ort_version_start)
+                                  : info.substr(ort_version_start);
     std::string current_ort_version = std::to_string(ORT_API_VERSION);
     if (ort_version != current_ort_version) {
       // Different ORT version - might still work but prefer recompilation
+      *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+      return nullptr;
+    }
+  }
+
+  // Check hardware architecture compatibility if that information is included in the compatibility_info string.
+  size_t hardware_arch_pos = info.find("hardware_architecture=");
+  if (hardware_arch_pos != std::string::npos) {
+    size_t hardware_arch_start = hardware_arch_pos + 22;  // length of "hardware_architecture="
+    std::string hardware_arch = info.substr(hardware_arch_start);
+    std::string current_hardware_arch = "arch1";  // "arch1" is for test purpose.
+                                                  // Replace with actual hardware architecture detection if needed
+    if (hardware_arch != current_hardware_arch) {
+      // Different hardware architecture - might still work but prefer recompilation
       *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
       return nullptr;
     }

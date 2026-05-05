@@ -55,13 +55,16 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
   const auto* repeats_data = repeats_tensor->Data<int64_t>();
   std::vector<uint32_t> repeats;
 
-  for (size_t i = 0; i < static_cast<uint32_t>(repeats_tensor->Shape().Size()); i++) {
-    repeats.push_back(static_cast<uint32_t>(repeats_data[i]));
-  }
-
   auto output_dims = input_shape.AsShapeVector();
   for (size_t axis = 0; axis < input_rank; axis++) {
-    output_dims[axis] *= repeats[axis];
+    if (repeats_data[axis] < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile repeat value must be non-negative, got: ", repeats_data[axis]);
+    }
+    output_dims[axis] = SafeInt<int64_t>(output_dims[axis]) * repeats_data[axis];
+  }
+  for (size_t i = 0; i < static_cast<size_t>(repeats_tensor->Shape().Size()); i++) {
+    repeats.push_back(static_cast<uint32_t>(repeats_data[i]));
   }
 
   TensorShape output_shape(output_dims);

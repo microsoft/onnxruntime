@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import { isMainThread } from 'worker_threads';
+
 import { InferenceSession, OnnxValue, Tensor, TensorConstructor, env } from 'onnxruntime-common';
 
 type SessionOptions = InferenceSession.SessionOptions;
@@ -57,7 +59,7 @@ export const binding =
     // eslint-disable-next-line @typescript-eslint/naming-convention
     InferenceSession: Binding.InferenceSessionConstructor;
     listSupportedBackends: () => Binding.SupportedBackend[];
-    initOrtOnce: (logLevel: number, tensorConstructor: TensorConstructor) => void;
+    initOrtOnce: (logLevel: number, tensorConstructor: TensorConstructor, isMainThread: boolean) => void;
   };
 
 let ortInitialized = false;
@@ -86,6 +88,6 @@ export const initOrt = (): void => {
           throw new Error(`Unsupported log level: ${env.logLevel}`);
       }
     }
-    binding.initOrtOnce(logLevel, Tensor);
+    binding.initOrtOnce(logLevel, Tensor, isMainThread);
   }
 };

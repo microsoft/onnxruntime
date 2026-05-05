@@ -451,7 +451,7 @@ TEST(MatMul2Bits, Float32_2b_Accuracy4) {
   TestMatMul2BitsTyped<float, 100, 288, 16, 16, 4>();
 }
 
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 namespace {
 
@@ -594,7 +594,7 @@ TEST(MatMul2BitsWebGpu, Float32_ZeroPoint_DP4A) {
   RunTest2Bits<float>(opts);
 }
 
-#endif  // USE_WEBGPU
+#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 }  // namespace test
 }  // namespace onnxruntime

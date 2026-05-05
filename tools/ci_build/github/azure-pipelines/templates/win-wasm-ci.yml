@@ -71,10 +71,8 @@ jobs:
      git submodule update --init --recursive
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodules'
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.12'
-      addToPath: true
+  - template: setup-feeds-and-python-steps.yml
+    parameters:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:

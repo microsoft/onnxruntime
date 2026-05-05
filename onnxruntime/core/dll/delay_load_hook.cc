@@ -21,13 +21,13 @@
 // - https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order#alternate-search-order-for-unpackaged-apps
 //
 // The DLL DelayLoad hook is only enabled when the compiler is MSVC and at least one of the following is True:
-// - all of the following are defined:
-//   - USE_WEBGPU
-//   - BUILD_WEBGPU_EP_STATIC_LIB
-//   - BUILD_DAWN_SHARED_LIBRARY
+// - all of the following are true:
+//   - USE_WEBGPU is defined
+//   - ORT_USE_EP_API_ADAPTERS is NOT defined (i.e., WebGPU EP is statically linked)
+//   - BUILD_DAWN_SHARED_LIBRARY is defined
 // - USE_DML is defined
 //
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB) && defined(BUILD_DAWN_SHARED_LIBRARY)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS) && defined(BUILD_DAWN_SHARED_LIBRARY)
 #define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL 1
 #else
 #define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL 0

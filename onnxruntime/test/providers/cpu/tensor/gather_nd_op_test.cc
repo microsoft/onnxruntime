@@ -372,5 +372,29 @@ TEST(GatherNDOpTest, GatherND_zero_batch_dims_error) {
            &cpu_only_ep);  // force CPU
 }
 
+// Test that GatherND returns an error when a non-batch dimension is zero and index is 0.
+// This is a regression test: the original code used `int64_t err_index = 0` as a sentinel,
+// so an out-of-bounds index of 0 was incorrectly treated as "no error".
+TEST(GatherNDOpTest, GatherND_zero_dim_error) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+
+  // Input shape {2, 0, 3}: the second dimension has size 0, so any index into it is invalid.
+  // Indices shape {1, 2}: last dim is 2, so each index targets dimensions 0 and 1.
+  // Index {0, 0} targets dim 0 (size 2, valid) then dim 1 (size 0, invalid).
+  // Output shape would be {1, 3} (non-empty), so the early-exit doesn't trigger.
+  test.AddInput<float>("data", {2, 0, 3}, {});
+  test.AddInput<int64_t>("indices", {1, 2}, {0LL, 0LL});
+  test.AddOutput<float>("output", {1, 3}, {0.f, 0.f, 0.f});  // dummy output, won't be used
+
+  std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> cpu_only_ep;
+  cpu_only_ep.push_back(DefaultCpuExecutionProvider());
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "invalid index found, index = 0",
+           {},
+           nullptr,
+           &cpu_only_ep);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
