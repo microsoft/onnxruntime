@@ -982,22 +982,26 @@ def update_opset_version(
     needs_opset21_for_16bit = weight_quant_type in _int16_types or activation_quant_type in _int16_types
 
     # Also check TensorQuantOverrides for any 16-bit types, including per-override convert.quant_type.
+    # Validation of structure is deferred to TensorQuantOverridesHelper.is_valid(); skip bump heuristic on malformed input.
     if not needs_opset21_for_16bit and tensor_quant_overrides:
         _int16_quant_types = {QuantType.QInt16, QuantType.QUInt16}
-        for overrides_list in tensor_quant_overrides.values():
-            for override in overrides_list:
-                qt = override.get("quant_type")
-                if qt in _int16_quant_types:
-                    needs_opset21_for_16bit = True
-                    break
-                convert = override.get("convert")
-                if convert is not None:
-                    convert_qt = convert.get("quant_type")
-                    if convert_qt in _int16_quant_types:
+        try:
+            for overrides_list in tensor_quant_overrides.values():
+                for override in overrides_list:
+                    qt = override.get("quant_type")
+                    if qt in _int16_quant_types:
                         needs_opset21_for_16bit = True
                         break
-            if needs_opset21_for_16bit:
-                break
+                    convert = override.get("convert")
+                    if convert is not None:
+                        convert_qt = convert.get("quant_type")
+                        if convert_qt in _int16_quant_types:
+                            needs_opset21_for_16bit = True
+                            break
+                if needs_opset21_for_16bit:
+                    break
+        except (AttributeError, TypeError):
+            pass
 
     if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
         logging.warning(
