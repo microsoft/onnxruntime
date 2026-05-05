@@ -149,17 +149,33 @@ Status PrepareQKV(
 
     // K/V: transpose BSNH → BNSH directly into present buffer at offset 0.
     // No RoPE needed (already applied by source layer), no append offset (no past).
+    // Transpose_BSNH_to_BNSH accepts half/BFloat16/float, not CUDA native types.
     if constexpr (std::is_same<T, U>::value) {
-      ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
-          batch_size, kv_sequence_length, kv_num_heads, head_size,
-          reinterpret_cast<const T*>(data.key),
-          reinterpret_cast<T*>(data.present_key),
-          stream, max_threads_per_block)));
-      ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
-          batch_size, kv_sequence_length, kv_num_heads, head_size,
-          reinterpret_cast<const T*>(data.value),
-          reinterpret_cast<T*>(data.present_value),
-          stream, max_threads_per_block)));
+      static_assert(std::is_same<T, __half>::value || std::is_same<T, __nv_bfloat16>::value,
+                    "KV-shared decode transpose only supports __half and __nv_bfloat16.");
+      if constexpr (std::is_same<T, __half>::value) {
+        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
+            batch_size, kv_sequence_length, kv_num_heads, head_size,
+            reinterpret_cast<const half*>(data.key),
+            reinterpret_cast<half*>(data.present_key),
+            stream, max_threads_per_block)));
+        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
+            batch_size, kv_sequence_length, kv_num_heads, head_size,
+            reinterpret_cast<const half*>(data.value),
+            reinterpret_cast<half*>(data.present_value),
+            stream, max_threads_per_block)));
+      } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
+        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
+            batch_size, kv_sequence_length, kv_num_heads, head_size,
+            reinterpret_cast<const onnxruntime::BFloat16*>(data.key),
+            reinterpret_cast<onnxruntime::BFloat16*>(data.present_key),
+            stream, max_threads_per_block)));
+        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
+            batch_size, kv_sequence_length, kv_num_heads, head_size,
+            reinterpret_cast<const onnxruntime::BFloat16*>(data.value),
+            reinterpret_cast<onnxruntime::BFloat16*>(data.present_value),
+            stream, max_threads_per_block)));
+      }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "KV-shared decode (query_seq_len != kv_seq_len) with quantized KV cache "
