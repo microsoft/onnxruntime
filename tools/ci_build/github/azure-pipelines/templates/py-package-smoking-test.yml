@@ -37,9 +37,8 @@ jobs:
   steps:
   - checkout: none
 
-  - task: UsePythonVersion@0
-    displayName: 'Use Python'
-    inputs:
+  - template: setup-feeds-and-python-steps.yml
+    parameters:
       versionSpec: $(PythonVersion)
 
   - download: build   # pipeline resource identifier.

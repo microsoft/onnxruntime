@@ -1569,6 +1569,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.",
                "T1",
                OpSchema::Optional)
+        .Input(14,
+               "router_weights",
+               "2D optional tensor with shape (num_tokens, num_experts). "
+               "When provided, router_probs is used only for Top-K expert selection, and router_weights is used "
+               "for aggregating expert outputs (the values at the selected expert indices are gathered and used as "
+               "mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for "
+               "selection and aggregation. When not provided, router_probs is used for both selection and aggregation "
+               "(backward compatible).",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "output tensor with same shape of input",

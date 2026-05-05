@@ -134,7 +134,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T1>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = GetScratchBuffer<T1>(static_cast<size_t>(m) * n, GetComputeStream(context));
 
   CudaT one = ToCudaType<T1>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T1>::FromFloat(0.0f);

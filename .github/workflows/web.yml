@@ -38,6 +38,7 @@ jobs:
     needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
+      job_name: wasm_Debug
       build_config: Debug
       extra_build_args: "--enable_wasm_profiling"
       build_jsep: true
@@ -47,6 +48,7 @@ jobs:
     needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
+      job_name: wasm_Release
       build_config: Release
       extra_build_args: "--target onnxruntime_webassembly --skip_tests --disable_rtti"
       build_jsep: true
@@ -56,6 +58,7 @@ jobs:
     needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
+      job_name: wasm_Release_static_library
       build_config: Release
       extra_build_args: "--skip_tests --disable_rtti --build_wasm_static_lib"
       use_vcpkg: false
@@ -68,6 +71,7 @@ jobs:
       - wasm_Debug
     uses: ./.github/workflows/windows-web-ci-workflow.yml
     with:
+      job_name: web_Debug
       commit_override: ${{ needs.precheck.outputs.commit_sha }}
       build_config: Debug
 
@@ -77,5 +81,6 @@ jobs:
       - wasm_Release
     uses: ./.github/workflows/windows-web-ci-workflow.yml
     with:
+      job_name: web_Release
       commit_override: ${{ needs.precheck.outputs.commit_sha }}
       build_config: Release

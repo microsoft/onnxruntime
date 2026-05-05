@@ -22,6 +22,6 @@ struct WebGpuProviderFactoryCreator {
 // C API to create data transfer for WebGPU EP with lazy initialization
 // Context will be determined from tensors during the first CopyTensors call
 // Caller takes ownership of the returned OrtDataTransferImpl*
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer();
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id = 0);
 
 }  // namespace onnxruntime

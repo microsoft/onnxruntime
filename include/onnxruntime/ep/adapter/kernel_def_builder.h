@@ -130,6 +130,8 @@ struct KernelDefBuilder {
     return *this;
   }
 
+  // ExecQueueId is intentionally a no-op. The plugin EP manages stream
+  // assignment externally; the queue id hint is not needed.
   KernelDefBuilder& ExecQueueId(int /*queue_id*/) { return *this; }
 
   Ort::KernelDef Build() { return builder_.Build(); }

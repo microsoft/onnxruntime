@@ -146,7 +146,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
   }
 
   Tensor* tensor_Y = context->Output(0, shapeY);
-  cublasLtHandle_t cublasLt = CublasLtHandle();
+  cublasLtHandle_t cublasLt = this->GetCublasLtHandle(context);
   cudaStream_t stream = Stream(context);
   auto& device_prop = GetDeviceProp();
 

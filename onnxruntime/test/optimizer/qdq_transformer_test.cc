@@ -3252,7 +3252,7 @@ TEST(QDQTransformerTests, ClipQuantFusion_MultipleInputEdges) {
                     18);  // opset
 }
 
-template <typename ScaleType, typename ZpType>
+template <typename ScaleType, typename ZpTypeDq, typename ZpTypeQ>
 void TestWhereWithDqInput(bool is_dq_1,
                           bool is_dq_2,
                           int expected_num_where,
@@ -3268,9 +3268,9 @@ void TestWhereWithDqInput(bool is_dq_1,
   NodeArg* where_in2 = nullptr;
   if (is_dq_1) {
     // DQ
-    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_Input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0.0, 1.0);
     auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
-    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, 0.0, 1.0);
     where_in1 = builder.MakeIntermediate();
     builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in1});
   } else {
@@ -3278,9 +3278,9 @@ void TestWhereWithDqInput(bool is_dq_1,
   }
   if (is_dq_2) {
     // DQ
-    auto* dq_Input = builder.MakeInput<ZpType>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_Input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0.0, 1.0);
     auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
-    auto* dq_zp = builder.MakeInitializer<ZpType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, 0.0, 1.0);
     where_in2 = builder.MakeIntermediate();
     builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in2});
   } else {
@@ -3294,7 +3294,7 @@ void TestWhereWithDqInput(bool is_dq_1,
 
   // Q
   auto* q_scale = builder.MakeInitializer<float>({}, 0.0, 1.0);
-  auto* q_zp = builder.MakeInitializer<uint16_t>({}, 0.0, 1.0);
+  auto* q_zp = builder.MakeInitializer<ZpTypeQ>({}, 0.0, 1.0);
   auto* q_out = builder.MakeOutput();
   builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out});
 
@@ -3315,14 +3315,200 @@ void TestWhereWithDqInput(bool is_dq_1,
 };
 
 TEST(QDQTransformerTests, WhereDummyDqTest) {
-  TestWhereWithDqInput<float, uint8_t>(true, true, 1, 2, 1, false);
-  TestWhereWithDqInput<float, uint8_t>(true, false, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint8_t>(false, true, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint8_t>(false, false, 1, 0, 1, false);
-  TestWhereWithDqInput<float, uint16_t>(true, true, 1, 2, 1, false);
-  TestWhereWithDqInput<float, uint16_t>(true, false, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint16_t>(false, true, 1, 2, 1, true);
-  TestWhereWithDqInput<float, uint16_t>(false, false, 1, 0, 1, false);
+  // is_dq_1, is_dq_2, expected_num_where, expected_num_dq, expected_num_q, expected_modified
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint8_t, uint8_t>(false, false, 1, 0, 1, false);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(true, true, 1, 2, 1, false);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(true, false, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(false, true, 1, 2, 1, true);
+  TestWhereWithDqInput<float, uint16_t, uint16_t>(false, false, 1, 0, 1, false);
+  // DQ uses uint8 but Q uses uint16
+  TestWhereWithDqInput<float, uint8_t, uint16_t>(true, false, 1, 1, 1, false);
+  TestWhereWithDqInput<float, uint8_t, uint16_t>(false, true, 1, 1, 1, false);
+}
+
+// Tests WhereDummyDq with non-QuantizeLinear consumers.
+// The optimizer should NOT add dummy DQ nodes when the Where output is not consumed by a QuantizeLinear.
+template <typename ScaleType, typename ZpTypeDq>
+void TestWhereWithNonQLinearConsumer(bool is_dq_1,
+                                     bool is_dq_2,
+                                     int expected_num_where,
+                                     int expected_num_dq,
+                                     bool expected_modified,
+                                     bool use_op_consumer = false) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("WhereDummyDqNonQLinearConsumerTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* where_in1 = nullptr;
+  NodeArg* where_in2 = nullptr;
+  if (is_dq_1) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, 0.0, 1.0);
+    where_in1 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in1});
+  } else {
+    where_in1 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+  if (is_dq_2) {
+    // DQ
+    auto* dq_Input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0.0, 1.0);
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, 0.0, 1.0);
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, 0.0, 1.0);
+    where_in2 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_Input, dq_scale, dq_zp}, {where_in2});
+  } else {
+    where_in2 = builder.MakeInitializer<float>({}, 0.0, 1.0);
+  }
+
+  // Where
+  auto* where_cond = builder.MakeInputBool({4, 3, 32});
+
+  if (use_op_consumer) {
+    // Where output consumed by another op (e.g., Add) instead of QuantizeLinear
+    auto* where_out = builder.MakeIntermediate();
+    builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+    auto* add_input = builder.MakeInput<float>({4, 3, 32}, 0.0, 1.0);
+    auto* add_out = builder.MakeOutput();
+    builder.AddNode("Add", {where_out, add_input}, {add_out});
+  } else {
+    // Where output is a direct graph output (no consumer node)
+    auto* where_out = builder.MakeOutput();
+    builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+  }
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto where_optimizer = std::make_unique<WhereDummyDq>();
+  bool modified = false;
+  ASSERT_STATUS_OK(where_optimizer->Apply(graph, modified, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Where"], expected_num_where);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], expected_num_dq);
+  ASSERT_EQ(op_to_count["QuantizeLinear"], 0);
+  ASSERT_EQ(modified, expected_modified);
+}
+
+TEST(QDQTransformerTests, WhereDummyDqTest_NonQLinearConsumer) {
+  // When Where output is a direct graph output (no QuantizeLinear consumer),
+  // the optimizer should NOT add dummy DQ nodes.
+  // is_dq_1, is_dq_2, expected_num_where, expected_num_dq, expected_modified
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(true, true, 1, 2, false);
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(true, false, 1, 1, false);
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(false, true, 1, 1, false);
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(false, false, 1, 0, false);
+  TestWhereWithNonQLinearConsumer<float, uint16_t>(true, true, 1, 2, false);
+  TestWhereWithNonQLinearConsumer<float, uint16_t>(true, false, 1, 1, false);
+  TestWhereWithNonQLinearConsumer<float, uint16_t>(false, true, 1, 1, false);
+  TestWhereWithNonQLinearConsumer<float, uint16_t>(false, false, 1, 0, false);
+
+  // When Where output is consumed by another op (e.g., Add) instead of QuantizeLinear,
+  // the optimizer should NOT add dummy DQ nodes.
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(true, true, 1, 2, false, true /*use_op_consumer*/);
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(true, false, 1, 1, false, true /*use_op_consumer*/);
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(false, true, 1, 1, false, true /*use_op_consumer*/);
+  TestWhereWithNonQLinearConsumer<float, uint8_t>(false, false, 1, 0, false, true /*use_op_consumer*/);
+}
+
+// Tests WhereDummyDq with multiple consumers of the Where output.
+// The optimizer should NOT add dummy DQ nodes when the Where output has multiple consumers,
+// even if one of the consumers is a QuantizeLinear.
+template <typename ScaleType, typename ZpTypeDq>
+void TestWhereWithMultipleConsumers(bool is_dq_1,
+                                    bool is_dq_2,
+                                    int expected_num_where,
+                                    int expected_num_dq,
+                                    bool expected_modified,
+                                    bool use_two_q_consumers = true) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("WhereDummyDqMultipleConsumersTester", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* where_in1 = nullptr;
+  NodeArg* where_in2 = nullptr;
+  if (is_dq_1) {
+    auto* dq_input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0, std::numeric_limits<ZpTypeDq>::max());
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, {1.0f});
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, {static_cast<ZpTypeDq>(0)});
+    where_in1 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_input, dq_scale, dq_zp}, {where_in1});
+  } else {
+    where_in1 = builder.MakeInput<ScaleType>({4, 3, 32}, -1.0f, 1.0f);
+  }
+  if (is_dq_2) {
+    auto* dq_input = builder.MakeInput<ZpTypeDq>({4, 3, 32}, 0, std::numeric_limits<ZpTypeDq>::max());
+    auto* dq_scale = builder.MakeInitializer<ScaleType>({}, {1.0f});
+    auto* dq_zp = builder.MakeInitializer<ZpTypeDq>({}, {static_cast<ZpTypeDq>(0)});
+    where_in2 = builder.MakeIntermediate();
+    builder.AddNode("DequantizeLinear", {dq_input, dq_scale, dq_zp}, {where_in2});
+  } else {
+    where_in2 = builder.MakeInput<ScaleType>({4, 3, 32}, -1.0f, 1.0f);
+  }
+
+  // Where
+  auto* where_cond = builder.MakeInputBool({4, 3, 32});
+  auto* where_out = builder.MakeIntermediate();
+  builder.AddNode("Where", {where_cond, where_in1, where_in2}, {where_out});
+
+  // First consumer: QuantizeLinear
+  auto* q_scale = builder.MakeInitializer<ScaleType>({}, {1.0f});
+  auto* q_zp = builder.MakeInitializer<ZpTypeDq>({}, {static_cast<ZpTypeDq>(0)});
+  auto* q_out1 = builder.MakeOutput();
+  builder.AddNode("QuantizeLinear", {where_out, q_scale, q_zp}, {q_out1});
+
+  if (use_two_q_consumers) {
+    // Second consumer: another QuantizeLinear
+    auto* q_scale2 = builder.MakeInitializer<ScaleType>({}, {1.0f});
+    auto* q_zp2 = builder.MakeInitializer<ZpTypeDq>({}, {static_cast<ZpTypeDq>(0)});
+    auto* q_out2 = builder.MakeOutput();
+    builder.AddNode("QuantizeLinear", {where_out, q_scale2, q_zp2}, {q_out2});
+  } else {
+    // Second consumer: Add op
+    auto* add_input = builder.MakeInput<ScaleType>({4, 3, 32}, -1.0f, 1.0f);
+    auto* add_out = builder.MakeOutput();
+    builder.AddNode("Add", {where_out, add_input}, {add_out});
+  }
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto where_optimizer = std::make_unique<WhereDummyDq>();
+  bool modified = false;
+  ASSERT_STATUS_OK(where_optimizer->Apply(graph, modified, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Where"], expected_num_where);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], expected_num_dq);
+  ASSERT_EQ(modified, expected_modified);
+}
+
+TEST(QDQTransformerTests, WhereDummyDqTest_MultipleConsumers) {
+  // When Where output has two QuantizeLinear consumers,
+  // the optimizer should NOT add dummy DQ nodes (child_nodes.size() != 1).
+  // is_dq_1, is_dq_2, expected_num_where, expected_num_dq, expected_modified
+  TestWhereWithMultipleConsumers<float, uint8_t>(true, true, 1, 2, false);
+  TestWhereWithMultipleConsumers<float, uint8_t>(true, false, 1, 1, false);
+  TestWhereWithMultipleConsumers<float, uint8_t>(false, true, 1, 1, false);
+  TestWhereWithMultipleConsumers<float, uint8_t>(false, false, 1, 0, false);
+  TestWhereWithMultipleConsumers<float, uint16_t>(true, true, 1, 2, false);
+  TestWhereWithMultipleConsumers<float, uint16_t>(true, false, 1, 1, false);
+  TestWhereWithMultipleConsumers<float, uint16_t>(false, true, 1, 1, false);
+  TestWhereWithMultipleConsumers<float, uint16_t>(false, false, 1, 0, false);
+
+  // When Where output has one QuantizeLinear consumer and one non-QuantizeLinear consumer (Add),
+  // the optimizer should NOT add dummy DQ nodes (child_nodes.size() != 1).
+  TestWhereWithMultipleConsumers<float, uint8_t>(true, true, 1, 2, false, false /*use_two_q_consumers*/);
+  TestWhereWithMultipleConsumers<float, uint8_t>(true, false, 1, 1, false, false /*use_two_q_consumers*/);
+  TestWhereWithMultipleConsumers<float, uint8_t>(false, true, 1, 1, false, false /*use_two_q_consumers*/);
+  TestWhereWithMultipleConsumers<float, uint8_t>(false, false, 1, 0, false, false /*use_two_q_consumers*/);
 }
 
 TEST(QDQTransformerTests, Concat) {

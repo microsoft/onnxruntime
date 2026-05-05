@@ -28,10 +28,10 @@ samples/cxx/
 Download and extract an ONNX Runtime release archive. For example:
 
 ```
-tar -xf onnxruntime-win-x64-1.25.0.zip
+tar -xf onnxruntime-win-x64-1.26.0.zip
 ```
 
-This creates a directory like `onnxruntime-win-x64-1.25.0/` containing `include/` and `lib/` subdirectories.
+This creates a directory like `onnxruntime-win-x64-1.26.0/` containing `include/` and `lib/` subdirectories.
 
 ### 2. [Optional] Generate the ONNX model
 
@@ -50,16 +50,16 @@ From the `samples/cxx` directory:
 **Windows:**
 ```
 cmake -S . -B build ^
-    -DORT_HEADER_DIR:PATH=path\to\onnxruntime-win-x64-1.25.0\include ^
-    -DORT_LIBRARY_DIR:PATH=path\to\onnxruntime-win-x64-1.25.0\lib
+    -DORT_HEADER_DIR:PATH=path\to\onnxruntime-win-x64-1.26.0\include ^
+    -DORT_LIBRARY_DIR:PATH=path\to\onnxruntime-win-x64-1.26.0\lib
 cmake --build build --config Release
 ```
 
 **Linux / macOS:**
 ```
 cmake -S . -B build \
-    -DORT_HEADER_DIR:PATH=path/to/onnxruntime-linux-x64-1.25.0/include \
-    -DORT_LIBRARY_DIR:PATH=path/to/onnxruntime-linux-x64-1.25.0/lib
+    -DORT_HEADER_DIR:PATH=path/to/onnxruntime-linux-x64-1.26.0/include \
+    -DORT_LIBRARY_DIR:PATH=path/to/onnxruntime-linux-x64-1.26.0/lib
 cmake --build build --config Release
 ```
 

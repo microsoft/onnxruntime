@@ -9,6 +9,45 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
+namespace {
+
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+// PLUGIN BUILD ADAPTATION: TileOp::IsTileMemcpy (CPU provider) cannot be
+// linked into the plugin. Reimplement the memcpy fast-path check here.
+// Keep in sync with TileOp::IsTileMemcpy in cpu/tensor/tile.cc.
+bool IsTileMemcpyForPlugin(const TensorShape& input_shape,
+                           const int64_t* repeats,
+                           size_t rank,
+                           /*out*/ bool& is_batched_memcpy,
+                           /*out*/ size_t& num_of_elements_per_batch,
+                           /*out*/ size_t& num_of_copies_per_batch,
+                           /*out*/ size_t& num_of_batch_copies) {
+  for (int64_t i = static_cast<int64_t>(rank) - 1; i >= 0; --i) {
+    if (repeats[i] != 1) {
+      if (input_shape.SizeToDimension(onnxruntime::narrow<size_t>(i)) == 1) {
+        num_of_copies_per_batch = 1;
+        for (int64_t j = 0; j <= i; ++j) {
+          num_of_copies_per_batch *= onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(j)]);
+        }
+        is_batched_memcpy = false;
+        return true;
+      } else if (i == 1) {
+        num_of_elements_per_batch = static_cast<size_t>(input_shape.SizeFromDimension(1));
+        num_of_copies_per_batch = onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(i)]);
+        num_of_batch_copies = onnxruntime::narrow<size_t>(repeats[0]);
+        is_batched_memcpy = true;
+        return true;
+      } else {
+        break;
+      }
+    }
+  }
+  return false;
+}
+#endif
+
+}  // namespace
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Tile,
     kOnnxDomain,
@@ -109,6 +148,15 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   size_t num_of_elements_per_batch = 1;
   size_t num_of_copies_per_batch = 1;
   size_t num_of_batch_copies = 1;
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  if (IsTileMemcpyForPlugin(input_shape,
+                            repeats,
+                            input_rank,
+                            is_batched_memcpy,
+                            num_of_elements_per_batch,
+                            num_of_copies_per_batch,
+                            num_of_batch_copies)) {
+#else
   if (TileOp::IsTileMemcpy(input_shape,
                            repeats,
                            input_rank,
@@ -116,6 +164,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
                            num_of_elements_per_batch,
                            num_of_copies_per_batch,
                            num_of_batch_copies)) {
+#endif
     if (!is_batched_memcpy) {
       switch (element_size) {
         CASE_TILE_MEMCPY(float);
