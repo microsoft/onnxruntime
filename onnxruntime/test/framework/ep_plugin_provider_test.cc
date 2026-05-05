@@ -1513,7 +1513,7 @@ TEST(PluginExecutionProviderTest, GetAvailableResource_NullCallbackLeavesThresho
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 
-// OnSessionInitializationEnd is nullptr → falls back to base class (returns OK).
+// OnSessionInitializationEnd is nullptr -> falls back to base class (returns OK).
 TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_NullCallback) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
@@ -1532,7 +1532,7 @@ TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_Success) {
   ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
 }
 
-// OnSessionInitializationEnd returns an error status → error propagates.
+// OnSessionInitializationEnd returns an error status -> error propagates.
 TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_Error) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
@@ -1546,7 +1546,7 @@ TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_Error) {
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cleanup failed"));
 }
 
-// OnSessionInitializationEnd with old ort_version_supported → falls back to base class even if pointer is set.
+// OnSessionInitializationEnd with old ort_version_supported -> falls back to base class even if pointer is set.
 TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_OldVersionFallback) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
