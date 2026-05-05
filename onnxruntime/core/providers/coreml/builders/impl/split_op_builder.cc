@@ -210,8 +210,8 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
                             << split_dims_at_axis << " Actual: " << sum_of_splits;
       return false;
     }
-    if (std::find(split_attr->begin(), split_attr->end(), 0) != split_attr->end()) {
-      LOGS(logger, VERBOSE) << "Invalid value in 'split' attribute (zero size).";
+    if (std::any_of(split_attr->begin(), split_attr->end(), [](int64_t v) { return v <= 0; })) {
+      LOGS(logger, VERBOSE) << "Invalid value in 'split' attribute (sizes must be positive).";
       return false;
     }
     if (split_dims_at_axis == -1) {
@@ -240,8 +240,12 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     } else if (node.OutputDefs().size() < 2) {
       LOGS(logger, VERBOSE) << "CoreML Split must produce at least 2 outputs.";
       return false;
-    } else if (split_dims_at_axis == -1 ||
-               split_dims_at_axis % static_cast<int64_t>(node.OutputDefs().size()) != 0) {
+    } else if (split_dims_at_axis == -1) {
+      // No 'split' attr or input: ONNX spec says split evenly, but we cannot
+      // verify divisibility without a known axis size.
+      LOGS(logger, VERBOSE) << "Dim at the splitting axis is not allowed to be dynamic when 'split' is omitted.";
+      return false;
+    } else if (split_dims_at_axis % static_cast<int64_t>(node.OutputDefs().size()) != 0) {
       // No 'split' attr or input: ONNX spec says split evenly. CoreML's
       // num_splits requires the axis size be evenly divisible.
       LOGS(logger, VERBOSE) << "Even split required when 'split' is omitted; axis size "
