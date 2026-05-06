@@ -2,22 +2,18 @@ parameters:
 - name: build_windows_x64
   displayName: 'Build Windows x64'
   type: boolean
-  default: true
 
 - name: build_windows_arm64
   displayName: 'Build Windows ARM64'
   type: boolean
-  default: false
 
 - name: build_linux_x64
   displayName: 'Build Linux x64'
   type: boolean
-  default: false
 
 - name: build_macos_arm64
   displayName: 'Build macOS ARM64'
   type: boolean
-  default: false
 
 - name: package_version
   displayName: 'Package Version'
@@ -26,7 +22,7 @@ parameters:
   values:
   - dev
   - release
-  - RC
+  # TODO: release candidate (RC) versioning is not yet implemented
 
 - name: version_file
   type: string
@@ -52,9 +48,7 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # Windows ARM64
-    # ARM64 build requires the x64 tblgen.exe (used during the build), which is not correctly
-    # generated in a cross build. So we require x64 to be built first and download tblgen.exe from it.
-    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+    - ${{ if eq(parameters.build_windows_arm64, true) }}:
       - template: plugin-win-webgpu-stage.yml
         parameters:
           arch: 'arm64'
@@ -77,3 +71,167 @@ stages:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
+
+    # NuGet packaging (runs after all platform builds)
+    - template: plugin-webgpu-nuget-packaging-stage.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
+        DoEsrp: true
+        platforms:
+          win_x64: ${{ parameters.build_windows_x64 }}
+          win_arm64: ${{ parameters.build_windows_arm64 }}
+          linux_x64: ${{ parameters.build_linux_x64 }}
+          macos_arm64: ${{ parameters.build_macos_arm64 }}
+
+    # Create zip packages for Foundry Local consumption
+    - stage: Package_Foundry_Local_WebGPU_Zips
+      displayName: 'Package Foundry Local WebGPU Plugin-EP Zips'
+      dependsOn:
+        - ${{ if eq(parameters.build_windows_x64, true) }}:
+          - Win_plugin_webgpu_x64_Build
+        - ${{ if eq(parameters.build_windows_arm64, true) }}:
+          - Win_plugin_webgpu_arm64_Build
+        - ${{ if eq(parameters.build_linux_x64, true) }}:
+          - Linux_plugin_webgpu_x64_Build
+        - ${{ if eq(parameters.build_macos_arm64, true) }}:
+          - MacOS_plugin_webgpu_arm64_Build
+      jobs:
+      - job: CreateZipPackages
+        displayName: 'Create Foundry Local WebGPU Plugin-EP Zip Packages'
+        pool:
+          name: 'onnxruntime-Win-CPU-VS2022-Latest'
+          os: windows
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            targetPath: $(Build.ArtifactStagingDirectory)/webgpu-deps-package
+            artifactName: foundry-local-webgpu-plugin-ep-zips
+        steps:
+        # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
+        # Use a sparse checkout to pull only the .config directory (avoids full repo clone).
+        - checkout: self
+          fetchDepth: 1
+          sparseCheckoutDirectories: .config
+
+        - ${{ if eq(parameters.build_windows_x64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_win_x64'
+            inputs:
+              artifactName: webgpu_plugin_win_x64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-win-x64
+
+        - ${{ if eq(parameters.build_windows_arm64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_win_arm64'
+            inputs:
+              artifactName: webgpu_plugin_win_arm64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-win-arm64
+
+        - ${{ if eq(parameters.build_linux_x64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_linux_x64'
+            inputs:
+              artifactName: webgpu_plugin_linux_x64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-linux-x64
+
+        - ${{ if eq(parameters.build_macos_arm64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download webgpu_plugin_macos_arm64'
+            inputs:
+              artifactName: webgpu_plugin_macos_arm64
+              targetPath: $(Build.SourcesDirectory)/webgpu-plugin-macos-arm64
+
+        - task: PowerShell@2
+          displayName: 'Create version.json and zip packages for each platform'
+          inputs:
+            targetType: inline
+            script: |
+              $outputDir = '$(Build.ArtifactStagingDirectory)/webgpu-deps-package'
+              New-Item -ItemType Directory -Path $outputDir -Force
+
+              $platforms = @(
+                @{ name = 'win-x64';      dir = '$(Build.SourcesDirectory)/webgpu-plugin-win-x64' },
+                @{ name = 'win-arm64';    dir = '$(Build.SourcesDirectory)/webgpu-plugin-win-arm64' },
+                @{ name = 'linux-x64';    dir = '$(Build.SourcesDirectory)/webgpu-plugin-linux-x64' },
+                @{ name = 'macos-arm64';  dir = '$(Build.SourcesDirectory)/webgpu-plugin-macos-arm64' }
+              )
+
+              $resolvedVersion = $null
+
+              foreach ($platform in $platforms) {
+                $depsDir = $platform.dir
+                $platformName = $platform.name
+
+                if (-not (Test-Path $depsDir)) {
+                  Write-Host "Skipping $platformName (not built)"
+                  continue
+                }
+
+                $binDir = Join-Path $depsDir "bin"
+                $versionDir = Join-Path $depsDir "version"
+
+                if (-not (Test-Path $binDir)) {
+                  throw "Bin directory not found for $platformName $binDir"
+                }
+
+                Write-Host "--- Processing $platformName ---"
+
+                $versionString = "Unknown"
+                if (Test-Path $versionDir) {
+                   $versionFile = Get-ChildItem -Path $versionDir -File | Select-Object -First 1
+                   if ($versionFile) {
+                       $versionString = $versionFile.Name.Trim()
+                   }
+                }
+
+                # Track the resolved version (all platforms must agree)
+                # Version formats (full -> filename):
+                #   release: 0.1.0 -> 0.1.0
+                #   dev:     0.1.0-dev.20260401+2a1ffff2 -> 0.1.0.dev.20260401.2a1ffff2
+                # Dev versions have - and + replaced with . for filename compatibility.
+                # Full version string is preserved in version.json.
+                # TODO: RC versioning (e.g. 0.1.0-rc1) is not yet implemented
+                $filenameVersion = $versionString -replace '[-+]', '.'
+                if ($null -eq $resolvedVersion) {
+                  $resolvedVersion = $filenameVersion
+                } elseif ($resolvedVersion -ne $filenameVersion) {
+                  throw "Version mismatch across platforms: expected '$resolvedVersion' but $platformName has '$filenameVersion'"
+                }
+
+                $versionInfo = @{
+                  version = $versionString
+                }
+
+                $json = $versionInfo | ConvertTo-Json
+                $versionPath = Join-Path $binDir "version.json"
+                Set-Content -Path $versionPath -Value $json -Encoding UTF8
+                Write-Host "Created version.json:"
+                Write-Host $json
+
+                # Collect the binaries (dll, so, dylib) and version.json
+                $filesToZip = Get-ChildItem -Path $binDir -File | Where-Object {
+                  $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -eq 'version.json'
+                }
+
+                $zipPath = Join-Path $outputDir "webgpu_ep_${filenameVersion}_${platformName}.zip"
+                if ($filesToZip) {
+                  $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
+                  Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
+                } else {
+                  throw "No files found to zip for $platformName in $binDir"
+                }
+                Write-Host ""
+              }
+
+              if ($null -eq $resolvedVersion) {
+                throw "No platforms were processed — cannot determine version."
+              }
+
+              # Create a version folder in the output artifact with a file whose name is the version string.
+              # This follows the same convention as the per-platform artifacts (e.g. webgpu_plugin_win_x64/version/)
+              # and allows downstream pipelines to read the version without parsing zip filenames.
+              $versionOutputDir = Join-Path $outputDir "version"
+              New-Item -ItemType Directory -Path $versionOutputDir -Force
+              New-Item -ItemType File -Path (Join-Path $versionOutputDir $resolvedVersion) -Force | Out-Null
+              Write-Host "Created version marker: $versionOutputDir/$resolvedVersion"
