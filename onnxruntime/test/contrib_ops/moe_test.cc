@@ -1741,6 +1741,126 @@ TEST(MoETest, QMoETest_CPU_Int2_InvalidHiddenSize) {
 #endif
 }
 
+// Regression test: row-wise asymmetric 2-bit with dimensions that trigger
+// non-4-aligned parallel dequant block size. Without the alignment fix in
+// GetDequantBlockSize, zero-point lane indexing is incorrect for shards
+// starting at non-4-aligned rows, producing wrong output.
+TEST(MoETest, QMoETest_CPU_Int2_RowWiseAsymmetricParallelDequant) {
+#ifdef USE_MLAS
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (!cpu_ep) {
+    GTEST_SKIP() << "CPU execution provider not available";
+  }
+
+  // Dimensions chosen so GetDequantBlockSize(fc1_out_features=200, num_expert_tokens=100)
+  // returns 25 (not divisible by zp_pack_size=4) without the alignment fix.
+  constexpr int64_t num_rows = 100;
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 32;
+  constexpr int64_t inter_size = 100;
+  constexpr int64_t expert_weight_bits = 2;
+  constexpr int64_t pack_size = 8 / expert_weight_bits;
+  constexpr int64_t fc1_out_features = 2 * inter_size;  // swiglu
+
+  // Construct ZP with varying lanes: byte pattern 0x1B = lanes [3, 2, 1, 0] (LSB first)
+  // Then construct weights where each row's 2-bit values equal that row's ZP,
+  // so dequantized = scale * (value - zp) = 0 for all elements.
+  // If wrong ZP lane is read due to alignment bug, output != 0.
+  auto make_zp_byte = [](uint8_t lane0, uint8_t lane1, uint8_t lane2, uint8_t lane3) -> uint8_t {
+    return static_cast<uint8_t>((lane0 & 0x3) | ((lane1 & 0x3) << 2) | ((lane2 & 0x3) << 4) | ((lane3 & 0x3) << 6));
+  };
+  // ZP pattern: lanes [0, 1, 2, 3] repeating → byte 0xE4
+  const uint8_t zp_byte = make_zp_byte(0, 1, 2, 3);
+
+  // FC1 ZP: fc1_out_features / 4 = 50 bytes per expert
+  const int64_t fc1_zp_size = fc1_out_features / pack_size;
+  std::vector<uint8_t> fc1_zp(static_cast<size_t>(num_experts * fc1_zp_size), zp_byte);
+
+  // FC2 ZP: hidden_size / 4 = 8 bytes per expert
+  const int64_t fc2_zp_size = hidden_size / pack_size;
+  std::vector<uint8_t> fc2_zp(static_cast<size_t>(num_experts * fc2_zp_size), zp_byte);
+
+  // Build weight bytes: for each row, all 2-bit values = that row's ZP
+  auto build_weights = [&](int64_t rows, int64_t cols) -> std::vector<uint8_t> {
+    const int64_t packed_cols = cols / pack_size;
+    std::vector<uint8_t> weights(static_cast<size_t>(num_experts * rows * packed_cols));
+    for (int64_t e = 0; e < num_experts; ++e) {
+      for (int64_t r = 0; r < rows; ++r) {
+        // Get this row's ZP value from the packed ZP byte
+        const uint8_t row_zp_byte = zp_byte;  // same pattern for all groups of 4
+        const int lane = static_cast<int>(r % pack_size);
+        const uint8_t row_zp = (row_zp_byte >> (lane * 2)) & 0x3;
+        // Pack all columns with this ZP value
+        const uint8_t weight_byte = make_zp_byte(row_zp, row_zp, row_zp, row_zp);
+        const size_t row_offset = static_cast<size_t>((e * rows + r) * packed_cols);
+        std::fill(weights.begin() + row_offset,
+                  weights.begin() + row_offset + static_cast<size_t>(packed_cols),
+                  weight_byte);
+      }
+    }
+    return weights;
+  };
+
+  std::vector<uint8_t> fc1_weights = build_weights(fc1_out_features, hidden_size);
+  std::vector<uint8_t> fc2_weights = build_weights(hidden_size, inter_size);
+
+  // Scales = 1.0 (so dequantized = value - zp = 0 when correct)
+  std::vector<float> fc1_scales(static_cast<size_t>(num_experts * fc1_out_features), 1.0f);
+  std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size), 1.0f);
+
+  // Input: random-ish non-zero values
+  std::vector<float> input(static_cast<size_t>(num_rows * hidden_size));
+  for (size_t i = 0; i < input.size(); ++i) {
+    input[i] = 0.1f * static_cast<float>(static_cast<int>(i % 7) - 3);
+  }
+
+  // Router: all tokens → single expert
+  std::vector<float> router_probs(static_cast<size_t>(num_rows * num_experts), 1.0f);
+
+  // Expected: all weights dequantize to 0 → output is 0
+  std::vector<float> expected_output(static_cast<size_t>(num_rows * hidden_size), 0.0f);
+
+  OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+  cpu_tester.AddAttribute<int64_t>("k", 1);
+  cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
+  cpu_tester.AddAttribute<int64_t>("swiglu_fusion", static_cast<int64_t>(1));
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", expert_weight_bits);
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  std::vector<int64_t> fc1_weights_dims = {num_experts, fc1_out_features, hidden_size / pack_size};
+  std::vector<int64_t> fc2_weights_dims = {num_experts, hidden_size, inter_size / pack_size};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, fc1_out_features};
+  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+  std::vector<int64_t> fc1_zp_dims = {num_experts, fc1_zp_size};
+  std::vector<int64_t> fc2_zp_dims = {num_experts, fc2_zp_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  cpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  cpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  cpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_weights_dims, fc1_weights);
+  cpu_tester.AddInput<float>("fc1_scales", fc1_scales_dims, fc1_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
+  cpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_weights_dims, fc2_weights);
+  cpu_tester.AddInput<float>("fc2_scales", fc2_scales_dims, fc2_scales);
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc2_experts_bias
+  cpu_tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
+  cpu_tester.AddOptionalInputEdge<float>();      // fc3_scales
+  cpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
+  cpu_tester.AddInput<uint8_t>("fc1_zero_points", fc1_zp_dims, fc1_zp);
+  cpu_tester.AddInput<uint8_t>("fc2_zero_points", fc2_zp_dims, fc2_zp);
+  cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
+  cpu_tester.SetOutputTolerance(0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
+  cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
+  cpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_providers);
+#else
+  GTEST_SKIP() << "Skipping CPU QMoE test";
+#endif
+}
+
 TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
 #ifdef USE_MLAS
   // Skip this test if we're not testing CPU execution provider
