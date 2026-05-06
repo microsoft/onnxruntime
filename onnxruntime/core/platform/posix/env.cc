@@ -38,12 +38,11 @@ limitations under the License.
 #include <utility>  // for std::forward
 #include <vector>
 
-// We can not use CPUINFO if it is not supported and we do not want to used
+// We can not use CPUINFO if it is not supported and we do not want to use
 // it on certain platforms because of the binary size increase.
 // We could use it to find out the number of physical cores for certain supported platforms
-#if defined(CPUINFO_SUPPORTED) && !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+#if defined(CPUINFO_SUPPORTED) && defined(__linux__)
 #include <cpuinfo.h>
-#define ORT_USE_CPUINFO
 #endif
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
@@ -266,17 +265,17 @@ class PosixEnv : public Env {
 
   // Return the number of physical cores
   int GetNumPhysicalCpuCores() const override {
-#ifdef ORT_USE_CPUINFO
+#if defined(CPUINFO_SUPPORTED) && defined(__linux__)
     if (cpuinfo_available_) {
       return narrow<int>(cpuinfo_get_cores_count());
     }
-#endif  // ORT_USE_CPUINFO
+#endif  // defined(CPUINFO_SUPPORTED) && defined(__linux__)
     return DefaultNumCores();
   }
 
   std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
     std::vector<LogicalProcessors> ret;
-#ifdef ORT_USE_CPUINFO
+#if defined(CPUINFO_SUPPORTED) && defined(__linux__)
     if (cpuinfo_available_) {
       auto num_phys_cores = cpuinfo_get_cores_count();
       ret.reserve(num_phys_cores);
@@ -292,7 +291,7 @@ class PosixEnv : public Env {
         ret.push_back(std::move(th_aff));
       }
     }
-#endif
+#endif  // defined(CPUINFO_SUPPORTED) && defined(__linux__)
     // Just the size of the thread-pool
     if (ret.empty()) {
       ret.resize(GetNumPhysicalCpuCores());
@@ -614,7 +613,7 @@ class PosixEnv : public Env {
 
  private:
   Telemetry telemetry_provider_;
-#ifdef ORT_USE_CPUINFO
+#if defined(CPUINFO_SUPPORTED) && defined(__linux__)
   PosixEnv() {
     cpuinfo_available_ = cpuinfo_initialize();
     if (!cpuinfo_available_) {
@@ -622,7 +621,7 @@ class PosixEnv : public Env {
     }
   }
   bool cpuinfo_available_{false};
-#endif  // ORT_USE_CPUINFO
+#endif  // defined(CPUINFO_SUPPORTED) && defined(__linux__)
 };
 
 }  // namespace
