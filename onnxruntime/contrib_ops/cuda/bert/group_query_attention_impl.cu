@@ -103,9 +103,12 @@ Status PrepareQKV(
   U* v = reinterpret_cast<U*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;
 
-  if (!parameters.past_present_share_buffer && kv_sequence_length != sequence_length) {
-    // KV-shared decode: Transpose_BSNH_to_BNSH will write every element of the
-    // present buffer, so skip the memset to save a kernel launch.
+  if (!parameters.past_present_share_buffer && kv_sequence_length != sequence_length && kv_sequence_length > 0) {
+    // KV-shared decode (kv_seq != q_seq, kv_seq > 0): Transpose_BSNH_to_BNSH
+    // will write every element of the present buffer, so skip the memset.
+    // Note: kv_sequence_length == 0 (shared KV with past) does NOT run the
+    // transpose path — it copies past→present instead, so memset is still needed
+    // for the region beyond the copied data.
   } else if (!parameters.past_present_share_buffer) {
     size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * max_cache_length * head_size * sizeof(U);
     CUDA_CALL_THROW(cudaMemsetAsync(data.present_key, 0, kv_buffer_size, stream));

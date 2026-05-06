@@ -211,19 +211,23 @@ class GQAAttentionBase {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
         const size_t total_seqlen = SafeInt<size_t>(seqlens_k[batch_index]) + 1;
-        // Determine how much data comes from the past buffer.
-        // - Normal prompt (no past): past_seqlen = 0
-        // - Normal decode (past exists, new K appended): past_seqlen = total - seq_len
-        // - Shared KV (kv_sequence_length=0, past has all data): past_seqlen = total
+        // past_seqlen: how much data to copy from past buffer in ConcatStateChunkGQA.
+        // causal_past_seqlen: offset for causal masking (seq_causal_length = causal_past_seqlen + seq + 1).
+        // These differ for shared KV prompt: copy all past data, but causal starts at 0.
         size_t past_seqlen;
+        size_t causal_past_seqlen;
         if (past_key == nullptr) {
           past_seqlen = 0;
+          causal_past_seqlen = 0;
         } else if (kv_sequence_length == 0) {
-          past_seqlen = total_seqlen;  // All KV data is in past (shared KV)
+          past_seqlen = total_seqlen;  // Copy all KV data from past (shared KV)
+          causal_past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
         } else if (is_prompt) {
           past_seqlen = 0;
+          causal_past_seqlen = 0;
         } else {
           past_seqlen = total_seqlen - sequence_length;
+          causal_past_seqlen = past_seqlen;
         }
         const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
@@ -317,7 +321,7 @@ class GQAAttentionBase {
         // compute Softmax
         U* output_softmax = output;
         for (size_t seq = 0; seq < sequence_length; seq++) {
-          size_t seq_causal_length = past_seqlen + seq + 1;
+          size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
           const bool should_apply_local_window = local_window_size_ >= 0 &&
                                                  seq_causal_length > static_cast<size_t>(local_window_size_);
@@ -463,7 +467,7 @@ class GQAAttentionBase {
         if (past_value == nullptr) {
           past_seqlen = 0;
         } else if (kv_sequence_length == 0) {
-          past_seqlen = total_seqlen;  // All KV data is in past (shared KV)
+          past_seqlen = total_seqlen;
         } else if (is_prompt) {
           past_seqlen = 0;
         } else {

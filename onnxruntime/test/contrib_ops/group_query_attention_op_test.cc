@@ -595,8 +595,7 @@ TEST(GroupQueryAttentionTest, OptionalPresent_KVSharedDecode) {
 }
 
 // CUDA KV-shared decode: Q_seq=1, KV_seq=8, no past, present omitted.
-// Exercises the CUDA split path (Transpose_BSNH_to_BNSH for K/V, Q used directly).
-// CUDA KV-shared decode: Q_seq=1, KV_seq=8, exercises the CUDA Transpose_BSNH_to_BNSH path.
+// Exercises the CUDA Transpose_BSNH_to_BNSH path and cross-checks against CPU.
 TEST(GroupQueryAttentionTest, OptionalPresent_CudaKVSharedDecode) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
@@ -639,6 +638,330 @@ TEST(GroupQueryAttentionTest, OptionalPresent_CudaKVSharedDecode) {
     EXPECT_NEAR(cuda_with[i], cpu_with[i], 1e-4f)
         << "CUDA vs CPU KV-shared decode mismatch at index " << i;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Tests for kv_sequence_length=0 with borrowed past_key/past_value
+// (Gemma4 shared KV pattern: empty K/V inputs, all KV data in past buffer)
+// ---------------------------------------------------------------------------
+
+// Helper: run GQA with empty K/V and past_key/past_value (shared KV pattern).
+// Returns the attention output.
+static std::vector<float> RunGQASharedKV(
+    int batch_size,
+    int q_seq_len,
+    int past_seq_len,
+    const std::vector<float>& query_data,
+    const std::vector<float>& past_key_data,
+    const std::vector<float>& past_value_data,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    bool use_cuda = false) {
+  const int hidden_size = num_heads * head_size;
+  const int total_seq_len = past_seq_len;  // all KV data is in past
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  // Q: [batch, q_seq_len, hidden_size]
+  tester.AddInput<float>("query", {batch_size, q_seq_len, hidden_size}, query_data);
+  // K/V: empty [batch, 0, kv_hidden_size] — kv_sequence_length = 0
+  const int kv_hidden_size = kv_num_heads * head_size;
+  tester.AddInput<float>("key", {batch_size, 0, kv_hidden_size}, {});
+  tester.AddInput<float>("value", {batch_size, 0, kv_hidden_size}, {});
+
+  // past_key/past_value: [batch, kv_num_heads, past_seq_len, head_size] BNSH
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, past_key_data);
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_value_data);
+
+  std::vector<int32_t> seqlens_k_data(batch_size, static_cast<int32_t>(total_seq_len - 1));
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k_data);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {static_cast<int32_t>(total_seq_len)});
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  const int output_size = batch_size * q_seq_len * hidden_size;
+  tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size},
+                          std::vector<float>(output_size, 0.0f));
+
+  // present_key/value: required when past is provided
+  const int present_size = batch_size * kv_num_heads * past_seq_len * head_size;
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, past_seq_len, head_size},
+                          std::vector<float>(present_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, past_seq_len, head_size},
+                          std::vector<float>(present_size, 0.0f));
+
+  tester.SetOutputTolerance(1e6f);  // We compare fetched outputs ourselves
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  if (use_cuda) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  } else {
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const float* out_data = fetches[0].Get<Tensor>().Data<float>();
+  return std::vector<float>(out_data, out_data + output_size);
+}
+
+// CPU: kv_sequence_length=0 with past_key/past_value (shared KV decode).
+// Validates output matches the equivalent non-empty K/V path.
+// CPU: kv_sequence_length=0 with past_key/past_value (shared KV decode).
+// Validates output is non-zero (attention over past KV produces valid output).
+// Note: cannot compare against RunGQAAndGetOutput because the two paths have
+// different causal masking semantics (past_seqlen differs).
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 8;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  // Verify non-zero and no NaN
+  bool all_zero = true;
+  for (size_t i = 0; i < output.size(); i++) {
+    EXPECT_FALSE(std::isnan(output[i])) << "NaN at index " << i;
+    if (output[i] != 0.0f) all_zero = false;
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+}
+
+// CPU: kv_sequence_length=0 with past, prompt phase (q_seq_len == total_seq_len).
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Prompt_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 8;
+  constexpr int past_seq_len = 8;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  bool all_zero = true;
+  for (size_t i = 0; i < output.size(); i++) {
+    EXPECT_FALSE(std::isnan(output[i])) << "NaN at index " << i;
+    if (output[i] != 0.0f) all_zero = false;
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+}
+
+// CUDA: kv_sequence_length=0 with past, decode (q_seq=1).
+// Cross-checks CUDA against CPU for correctness.
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 8;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto cuda_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/true);
+
+  auto cpu_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_CUDA_vs_CPU");
+}
+
+// CPU: kv_sequence_length=0 with past, head_size=64.
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_LargeHeadSize_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 64;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 11 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 5 + 1);
+
+  auto output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  bool all_zero = true;
+  for (size_t i = 0; i < output.size(); i++) {
+    EXPECT_FALSE(std::isnan(output[i])) << "NaN at index " << i;
+    if (output[i] != 0.0f) all_zero = false;
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+}
+
+// CPU: GQA ratio num_heads=8, kv_num_heads=1 (matches Gemma4 config).
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_GQARatio8_CPU) {
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 4;
+  constexpr int num_heads = 8;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 13 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 5 + 1);
+
+  auto output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  bool all_zero = true;
+  for (size_t i = 0; i < output.size(); i++) {
+    EXPECT_FALSE(std::isnan(output[i])) << "NaN at index " << i;
+    if (output[i] != 0.0f) all_zero = false;
+  }
+  EXPECT_FALSE(all_zero) << "Output should not be all zeros";
+}
+
+// CUDA: kv_sequence_length=0 with past, prompt phase. Cross-checks against CPU.
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Prompt_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 8;
+  constexpr int past_seq_len = 8;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  auto cuda_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/true);
+  auto cpu_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_Prompt_CUDA_vs_CPU");
+}
+
+// CUDA: kv_sequence_length=0 with past, head_size=16 (different from default 8).
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_LargeHeadSize_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 11 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 5 + 1);
+
+  auto cuda_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/true);
+  auto cpu_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_LargeHead_CUDA_vs_CPU");
+}
+
+// CUDA: kv_sequence_length=0 with past, GQA ratio 8:1. Cross-checks against CPU.
+TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_GQARatio8_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 4;
+  constexpr int num_heads = 8;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;
+  constexpr int hidden_size = num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 13 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 5 + 1);
+
+  auto cuda_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/true);
+  auto cpu_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+
+  ExpectOutputsMatch(cuda_output, cpu_output, 0.15f, "SharedKV_GQA8_CUDA_vs_CPU");
 }
 
 }  // namespace test
