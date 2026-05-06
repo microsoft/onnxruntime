@@ -23,6 +23,7 @@ public class CudaPluginEpTests
 {
     private readonly OrtEnv ortEnvInstance = OrtEnv.Instance();
 
+    // EP name as returned by OrtEpDevice.EpName. Also used as the registration name for convenience.
     private const string CudaPluginEpName = "CudaPluginExecutionProvider";
 
     private static string GetCudaPluginLibraryPath()
