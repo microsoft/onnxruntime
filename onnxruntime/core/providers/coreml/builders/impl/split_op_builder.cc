@@ -177,6 +177,10 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
       return false;
     }
 
+    if (split_dims_at_axis == -1) {
+      LOGS(logger, VERBOSE) << "Dim at the splitting axis is not allowed to be dynamic.";
+      return false;
+    }
     Initializer unpacked_tensor(input_params.graph_viewer.GetGraph(), *splits_tensor,
                                 input_params.graph_viewer.ModelPath());
     auto splits_span = unpacked_tensor.DataAsSpan<int64_t>();
@@ -193,15 +197,15 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
       LOGS(logger, VERBOSE) << "Invalid value in 'splits' input.";
       return false;
     }
-    if (split_dims_at_axis == -1) {
-      LOGS(logger, VERBOSE) << "Dim at the splitting axis is not allowed to be dynamic.";
-      return false;
-    }
   } else if (const auto split_attr = helper.GetInt64s("split"); split_attr) {
     // pre-opset-13: 'split' is an INTS attribute. Validate the same way we
     // validate the input form above.
     if (split_attr->size() < 2) {
       LOGS(logger, VERBOSE) << "CoreML Split must produce at least 2 outputs.";
+      return false;
+    }
+    if (split_dims_at_axis == -1) {
+      LOGS(logger, VERBOSE) << "Dim at the splitting axis is not allowed to be dynamic.";
       return false;
     }
     int64_t sum_of_splits = std::accumulate(split_attr->begin(), split_attr->end(), int64_t{0});
@@ -212,10 +216,6 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     }
     if (std::any_of(split_attr->begin(), split_attr->end(), [](int64_t v) { return v <= 0; })) {
       LOGS(logger, VERBOSE) << "Invalid value in 'split' attribute (sizes must be positive).";
-      return false;
-    }
-    if (split_dims_at_axis == -1) {
-      LOGS(logger, VERBOSE) << "Dim at the splitting axis is not allowed to be dynamic.";
       return false;
     }
   } else {
