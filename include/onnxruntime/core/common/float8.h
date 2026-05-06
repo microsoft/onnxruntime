@@ -690,7 +690,7 @@ inline void FloatToFloat8E5M2FNUZ(const float* flt, Float8E5M2FNUZ* blf, size_t 
 // All representable values are powers of two: 2^(val - 127).
 // Special value: 0xFF = NaN.
 struct Float8E8M0 {
-  uint8_t val{0};
+  uint8_t val{0};  // Raw 8-bit exponent value. Represents 2^(val - 127). 0xFF = NaN.
 #if defined(__HIP__)
   ORT_HOST_DEVICE Float8E8M0() = default;
 #else
@@ -1088,7 +1088,7 @@ class numeric_limits<onnxruntime::Float8E8M0> {
   }
 
   static constexpr onnxruntime::Float8E8M0 epsilon() {
-    return onnxruntime::Float8E8M0(0x80, onnxruntime::Float8E8M0::FromBits());  // 2^1 (next representable after 1.0 is 2.0)
+    return onnxruntime::Float8E8M0(0x7F, onnxruntime::Float8E8M0::FromBits());  // 2^0 = 1.0 (next representable after 1.0 is 2.0, so eps = 1.0)
   }
 
   static constexpr onnxruntime::Float8E8M0 round_error() {
