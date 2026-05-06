@@ -52,15 +52,8 @@ stages:
       clean: all
     pool: onnxruntime-Win-CPU-VS2022-Latest
     steps:
-    - task: PowerShell@2
-      displayName: 'Add Build Tag'
-      env:
-        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-      inputs:
-        targetType: inline
-        script: |
-          $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
-          $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
-          $headers.Add("Content-Type", "application/json")
-          $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
-          Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT
+    - template: templates/add-build-tag-via-rest.yml
+      parameters:
+        pipelineResourceAlias: build
+        tag: 'test pass'
+        displayName: 'Add Build Tag'

@@ -95,3 +95,48 @@ extends:
       # macOS ARM64
       - ${{ if eq(parameters.test_macos_arm64, true) }}:
         - template: stages/plugin-mac-webgpu-test-stage.yml
+
+      # Tag the upstream packaging build with `tests-passed` once all
+      # enabled test stages have succeeded. The publish pipeline (in a
+      # separate repo) consumes this tag via
+      # `resources.pipelines.X.trigger.tags` to gate nightly publishing
+      # on a green test cycle.
+      #
+      # Compile-time `${{ if }}` blocks build the dependsOn list so that
+      # disabling a test_* parameter doesn't reference a non-existent
+      # stage (which would fail YAML validation).
+      - stage: Tag_Packaging_Build
+        displayName: 'Tag packaging build as tests-passed'
+        dependsOn:
+        - ${{ if eq(parameters.test_windows_x64, true) }}:
+          - Win_plugin_webgpu_x64_Test
+        - ${{ if eq(parameters.test_linux_x64, true) }}:
+          - Linux_plugin_webgpu_x64_Test
+        - ${{ if eq(parameters.test_macos_arm64, true) }}:
+          - MacOS_plugin_webgpu_arm64_Test
+        jobs:
+        - job: Tag_Packaging_Build
+          displayName: 'Tag packaging build'
+          # Run only if all preceding test stages succeeded. Manual test
+          # re-runs against an existing packaging build are intentionally
+          # allowed to apply the tag (lets operators recover a missed tag
+          # without re-running the slow packaging pipeline). The publish
+          # pipeline only auto-publishes to the nightly feed on this tag;
+          # release publishing requires a separate manual queue and a
+          # publish-side wheel-version validation.
+          condition: succeeded()
+          timeoutInMinutes: 10
+          variables:
+            skipComponentGovernanceDetection: true
+          workspace:
+            clean: all
+          pool:
+            name: onnxruntime-Win-CPU-VS2022-Latest
+            os: windows
+          steps:
+          - checkout: none
+          - template: templates/add-build-tag-via-rest.yml
+            parameters:
+              pipelineResourceAlias: build
+              tag: tests-passed
+              displayName: 'Tag packaging build as tests-passed'

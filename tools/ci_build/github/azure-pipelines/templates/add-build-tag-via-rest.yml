@@ -1,0 +1,59 @@
+# Adds a single tag to a referenced pipeline-resource build via the
+# Azure DevOps REST API.
+#
+# This is the "cross-pipeline" tagging primitive: a job in pipeline A
+# adds a tag to a build of pipeline B. For self-tagging (a build tagging
+# itself), use the ADO logging command instead:
+#   echo ##vso[build.addbuildtag]<tag>
+#
+# Auth: uses the build's OAuth access token via `$(System.AccessToken)`.
+# The pipeline's Project Build Service identity must have `Edit build`
+# permission on the target pipeline (granted in
+# `Project Settings -> Pipelines -> Security`).
+#
+# Example usage:
+#   - template: ../templates/add-build-tag-via-rest.yml
+#     parameters:
+#       pipelineResourceAlias: build
+#       tag: tests-passed
+
+parameters:
+# The local alias declared under `resources.pipelines.<alias>:` in the
+# calling pipeline. The template targets the build identified by
+# `$(resources.pipeline.<alias>.runID)`.
+- name: pipelineResourceAlias
+  type: string
+
+# Tag to apply. Will be URL-encoded before being spliced into the REST
+# URL, so spaces and other characters are safe.
+- name: tag
+  type: string
+
+- name: displayName
+  type: string
+  default: 'Add build tag'
+
+steps:
+# Uses the `pwsh` shortcut (PowerShell Core) so the template runs on
+# Windows, Linux, and macOS agents.
+- pwsh: |
+    $ErrorActionPreference = 'Stop'
+
+    $runId = "$(resources.pipeline.${{ parameters.pipelineResourceAlias }}.runID)"
+    if ([string]::IsNullOrWhiteSpace($runId)) {
+        throw "resources.pipeline.${{ parameters.pipelineResourceAlias }}.runID is empty. Verify that '${{ parameters.pipelineResourceAlias }}' is declared under resources.pipelines in the calling pipeline."
+    }
+
+    $encodedTag = [System.Uri]::EscapeDataString("${{ parameters.tag }}")
+    $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$runId/tags/$encodedTag`?api-version=6.0"
+
+    $headers = @{
+        Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN"
+        'Content-Type' = 'application/json'
+    }
+
+    Write-Host "PUT $uri"
+    Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT | Out-String | Write-Host
+  displayName: ${{ parameters.displayName }}
+  env:
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
