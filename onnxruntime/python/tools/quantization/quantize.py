@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import tempfile
 from collections.abc import Callable
@@ -727,17 +728,32 @@ def quantize_static(
     if _cache_path is not None and _cache_path.exists() and not _cache_path.is_file():
         raise ValueError(f"calibration_cache_path is not a file: {_cache_path}")
     _cache_hit = _cache_path is not None and _cache_path.is_file()
+    _smooth_quant = bool(extra_options.get("SmoothQuant", False))
 
     if _cache_hit:
-        tensors_range = load_tensors_data(_cache_path)
-        if tensors_range.calibration_method != calibrate_method:
-            raise ValueError(
-                f"Calibration cache at {_cache_path} was produced with "
-                f"{tensors_range.calibration_method}, but quantize_static was called "
-                f"with calibrate_method={calibrate_method}. Delete the cache or "
-                f"pass a matching calibrate_method."
+        with _cache_path.open("r") as _f:
+            _raw = json.load(_f)
+        _cached_sq = bool(_raw.get("smooth_quant", False))
+        if _cached_sq != _smooth_quant:
+            logging.warning(
+                "Calibration cache at %s was produced with smooth_quant=%s; "
+                "current run uses smooth_quant=%s. Recomputing ranges and overwriting cache.",
+                _cache_path,
+                _cached_sq,
+                _smooth_quant,
             )
-    else:
+            _cache_hit = False
+        else:
+            tensors_range = load_tensors_data(_cache_path)
+            if tensors_range.calibration_method != calibrate_method:
+                raise ValueError(
+                    f"Calibration cache at {_cache_path} was produced with "
+                    f"{tensors_range.calibration_method}, but quantize_static was called "
+                    f"with calibrate_method={calibrate_method}. Delete the cache or "
+                    f"pass a matching calibrate_method."
+                )
+
+    if not _cache_hit:
         if calibration_data_reader is None:
             raise ValueError("Either calibration_data_reader or an existing calibration_cache_path must be provided.")
         with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
@@ -784,7 +800,7 @@ def quantize_static(
             del calibrator
 
         if _cache_path is not None:
-            save_tensors_data(tensors_range, _cache_path)
+            save_tensors_data(tensors_range, _cache_path, smooth_quant=_smooth_quant)
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 
