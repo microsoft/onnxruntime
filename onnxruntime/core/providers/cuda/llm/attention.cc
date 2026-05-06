@@ -1385,6 +1385,15 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // FP32 GQA must fall through to the unfused path.
         !(is_gqa && std::is_same<T, float>::value);
 
+    // CUTLASS FMHA with custom right padding (nonpad_kv_seqlen path) uses a
+    // kernel variant whose shared memory scales with queries_per_block × head_dim.
+    // For head_dim > 256 this exceeds the SM shared memory limit, causing
+    // cudaErrorInvalidValue on launch. Skip MEA for this combination only;
+    // the standard MEA path (without nonpad_kv_seqlen) works for any head_dim.
+    if (mea_eligible && nonpad_kv_seqlen != nullptr && parameters.head_size > 256) {
+      mea_eligible = false;
+    }
+
     // Cutlass FMHA requires bias strides to satisfy minimum alignment even in the
     // "unaligned" kernel path. When an attention mask is present (with or without
     // nonpad_kv_seqlen), it becomes an additive bias with bias_strideM =
