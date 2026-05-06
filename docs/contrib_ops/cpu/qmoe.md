@@ -70,10 +70,10 @@ Weight tensor shapes (same as row-wise — block-wise only changes scales):
 - FC1: `(num_experts, fc1_out_features, hidden_size / pack_size)`
 - FC2: `(num_experts, hidden_size, inter_size / pack_size)`
 
-Scale tensor shapes:
+Scale tensor shapes (ceiling division for partial last blocks):
 
-- FC1: `(num_experts, fc1_out_features, hidden_size / block_size)`
-- FC2: `(num_experts, hidden_size, inter_size / block_size)`
+- FC1: `(num_experts, fc1_out_features, ceil(hidden_size / block_size))`
+- FC2: `(num_experts, hidden_size, ceil(inter_size / block_size))`
 
 For packed weights:
 

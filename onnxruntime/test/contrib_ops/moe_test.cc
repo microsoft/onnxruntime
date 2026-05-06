@@ -1763,7 +1763,7 @@ TEST(MoETest, QMoETest_CPU_Int2_RowWiseAsymmetricParallelDequant) {
   constexpr int64_t pack_size = 8 / expert_weight_bits;
   constexpr int64_t fc1_out_features = 2 * inter_size;  // swiglu
 
-  // Construct ZP with varying lanes: byte pattern 0x1B = lanes [3, 2, 1, 0] (LSB first)
+  // Construct ZP with varying lanes: byte 0xE4 = lanes [0, 1, 2, 3] (LSB first).
   // Then construct weights where each row's 2-bit values equal that row's ZP,
   // so dequantized = scale * (value - zp) = 0 for all elements.
   // If wrong ZP lane is read due to alignment bug, output != 0.
