@@ -703,7 +703,7 @@ def attention_ref(
 
     scores = torch.einsum("bthd,bshd->bhts", q, k) / math.sqrt(q.shape[-1])
 
-    # Corrected ordering per onnx/onnx#7865: QK → softcap → add bias/mask → softmax
+    # Corrected ordering per onnx/onnx#7867: QK → softcap → add bias/mask → softmax
     # Softcap must be applied before mask so that -inf mask values are not
     # squashed to finite -softcap, which would leak probability to masked positions.
     if softcap > 0:
