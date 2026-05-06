@@ -6510,24 +6510,23 @@ TEST(ReductionOpTest, ReduceProd_EmptyTensor_DefaultAxes) {
 // --- ReduceMean empty tensor tests ---
 
 TEST(ReductionOpTest, ReduceMean_EmptyTensor_ExplicitAxis) {
-  // {1, 0} reduce axis 1 → {1}, mean of empty set = 0/0 = NaN
+  // {1, 0} reduce axis 1 → {1}, mean of empty set = 0/0.
+  // ORT fills with 0 (undefined per ONNX spec).
   OpTester test("ReduceMean", 18);
   test.AddAttribute("keepdims", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
-  // NaN: use 0 as placeholder — OpTester compares with NaN-aware logic
-  test.AddOutput<float>("reduced", {1}, {std::numeric_limits<float>::quiet_NaN()});
+  test.AddOutput<float>("reduced", {1}, {0.0f});
   test.Run();
 }
 
 TEST(ReductionOpTest, ReduceMean_EmptyTensor_MultiDim) {
-  // {2, 0, 3} reduce axis 1 → {2, 3}, all NaN
+  // {2, 0, 3} reduce axis 1 → {2, 3}, all zeros
   OpTester test("ReduceMean", 18);
   test.AddAttribute("keepdims", int64_t(0));
   test.AddInput<float>("data", {2, 0, 3}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
-  float nan_val = std::numeric_limits<float>::quiet_NaN();
-  test.AddOutput<float>("reduced", {2, 3}, {nan_val, nan_val, nan_val, nan_val, nan_val, nan_val});
+  test.AddOutput<float>("reduced", {2, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   test.Run();
 }
 
@@ -6597,7 +6596,8 @@ TEST(ReductionOpTest, ReduceMax_Bool_EmptyTensor) {
   test.AddInput<bool>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<bool>("reduced", {1}, {false});
-  test.Run();
+  // Bool reduction only supported on CPU
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 TEST(ReductionOpTest, ReduceMin_Bool_EmptyTensor) {
@@ -6607,7 +6607,8 @@ TEST(ReductionOpTest, ReduceMin_Bool_EmptyTensor) {
   test.AddInput<bool>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<bool>("reduced", {1}, {true});
-  test.Run();
+  // Bool reduction only supported on CPU
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 }  // namespace test
