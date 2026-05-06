@@ -47,7 +47,7 @@ jobs:
     submodules: none
 
   # Authenticate to Lotus to pull pip in UsePythonVersion task
-  - template: ../templates/setup-feeds-and-python-steps.yml
+  - template: setup-feeds-and-python-steps.yml
     parameters:
       architecture: ${{ parameters.OnnxruntimeArch }}
 
@@ -75,6 +75,7 @@ jobs:
         mkdir -p $HOME/.onnx
         docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
         -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+        -e PIP_INDEX_URL \
         --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
         --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
         --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \

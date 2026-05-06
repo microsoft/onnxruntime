@@ -12,6 +12,7 @@
 
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -133,6 +134,13 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
 
   // Resource accounting — allows ORT to query available device memory for budget enforcement
   GetAvailableResource = GetAvailableResourceImpl;
+
+  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time
+#if defined(ENABLE_CUDA_PROFILING)
+  CreateProfiler = CreateProfilerImpl;
+#else
+  CreateProfiler = nullptr;
+#endif
 
   const OrtApi& ort_api = factory_.GetOrtApi();
   Ort::Status log_status(ort_api.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_INFO,
@@ -650,6 +658,27 @@ OrtStatus* ORT_API_CALL CudaEp::GetAvailableResourceImpl(
 
   EXCEPTION_TO_STATUS_END
 }
+
+#if defined(ENABLE_CUDA_PROFILING)
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::CreateProfilerImpl(
+    OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  if (profiler == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`profiler` must not be null");
+  }
+
+  *profiler = nullptr;
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  auto profiler_impl = std::make_unique<CudaPluginEpProfiler>(ep->factory_.GetEpApi());
+  *profiler = profiler_impl.release();
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+#endif  // defined(ENABLE_CUDA_PROFILING)
 
 }  // namespace cuda_plugin
 }  // namespace onnxruntime

@@ -13,7 +13,7 @@ namespace contrib {
 namespace cuda {
 
 // ============================================================================
-// GQA Unfused Attention (CUDA fallback for large head_size / fp16 overflow)
+// Unified Unfused Attention (CUDA fallback for large head_size / fp16 overflow)
 // ============================================================================
 //
 // Purpose:
@@ -38,18 +38,20 @@ namespace cuda {
 //   - scale is applied to raw QK (before softcap / bias).
 //   - softcap (> 0) is applied after scale:  x = softcap * tanh(x / softcap).
 //   - attn_bias (if non-null) is added after softcap (additive mask).
-//   - causal: k > (past + q) is -inf where past = total_kv - S_q.
+//   - causal: k > (past_kv_length + q) is -inf.
+//     When past_kv_length=0 (no past), gives upper-left alignment: q_i attends to kv[0..i].
+//     When past_kv_length=total_kv-S_q (decode with past), gives lower-right alignment.
 //   - local_window_size (>= 0): k < (past + q) - local_window_size is -inf.
 //     local_window_size == -1 disables the sliding-window mask.
 //
 // The new kernel is suitable only as a fallback when Flash / MEA are ineligible
-// (head_size > 256, past_key present with mask, GQA with MHA-only unfused, etc).
+// (head_size > 256, past_key present with mask, etc).
 // The QK GEMM runs with CUBLAS_COMPUTE_32F and writes a FP32 scratch to avoid
 // fp16 overflow.
 //
 // ============================================================================
 
-struct GqaUnfusedAttentionParams {
+struct UnfusedAttentionParams {
   int batch_size = 0;
   int num_heads = 0;     // N_q
   int kv_num_heads = 0;  // N_kv (num_heads % kv_num_heads == 0)
@@ -68,6 +70,7 @@ struct GqaUnfusedAttentionParams {
 
   bool is_causal = false;
   int local_window_size = -1;  // -1 disables sliding window
+  int past_kv_length = 0;      // number of past KV positions (for causal alignment)
   float scale = 1.0f;
   float softcap = 0.0f;  // 0 disables
 
@@ -77,27 +80,30 @@ struct GqaUnfusedAttentionParams {
 };
 
 // Returns required scratch size in bytes. Caller must allocate
-// GetGqaUnfusedAttentionWorkspaceSize(...) bytes and pass as workspace.
-size_t GetGqaUnfusedAttentionWorkspaceSize(int batch_size,
-                                           int num_heads,
-                                           int q_sequence_length,
-                                           int total_kv_length);
+// GetUnfusedAttentionWorkspaceSize(...) bytes and pass as workspace.
+size_t GetUnfusedAttentionWorkspaceSize(int batch_size,
+                                        int num_heads,
+                                        int q_sequence_length,
+                                        int total_kv_length);
 
 // Compute: Y = softmax(scale * Q * K^T [softcap, causal, window, bias, seqlens_k]) * V.
 // All pointers are on device. Q/K/V/output are in type T (fp16/bf16/float).
 // attn_bias (if present) is in type T.
+// output_qk (optional): when non-null, writes scale * Q @ K^T (FP32→T) before softcap/mask/softmax.
+//   Shape: [B, N_q, S_q, total_kv]. Caller allocates.
 template <typename T>
-common::Status LaunchGqaUnfusedAttention(
+common::Status LaunchUnfusedAttention(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,
-    const GqaUnfusedAttentionParams& params,
+    const UnfusedAttentionParams& params,
     const T* query,
     const T* key,
     const T* value,
     const T* attn_bias,
     T* output,
-    void* workspace);
+    void* workspace,
+    T* output_qk = nullptr);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -6318,5 +6318,209 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
   test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
+// Opset 20 tests for ReduceMax and ReduceMin on CUDA.
+// Verifies CUDA kernel registration at opset 20 works for all supported types.
+#if defined(USE_CUDA)
+
+TEST(ReductionOpTest, ReduceMax_float_Opset20_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<float>("reduced", {3, 1, 1}, {4.0f, 8.0f, 12.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMax_double_Opset20_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0, 2.0, 3.0, 4.0,
+                         5.0, 6.0, 7.0, 8.0,
+                         9.0, 10.0, 11.0, 12.0});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<double>("reduced", {3, 1, 1}, {4.0, 8.0, 12.0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMax_half_Opset20_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<MLFloat16>("data", {3, 2, 2},
+                           FloatsToMLFloat16s({1.0f, 2.0f, 3.0f, 4.0f,
+                                               5.0f, 6.0f, 7.0f, 8.0f,
+                                               9.0f, 10.0f, 11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<MLFloat16>("reduced", {3, 1, 1}, FloatsToMLFloat16s({4.0f, 8.0f, 12.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMax_int32_Opset20_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int32_t>("data", {3, 2, 2},
+                         {1, 2, 3, 4,
+                          5, 6, 7, 8,
+                          9, 10, 11, 12});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<int32_t>("reduced", {3, 1, 1}, {4, 8, 12});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMax_int64_Opset20_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2, 3, 4,
+                          5, 6, 7, 8,
+                          9, 10, 11, 12});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<int64_t>("reduced", {3, 1, 1}, {4, 8, 12});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMin_float_Opset20_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<float>("reduced", {3, 1, 1}, {1.0f, 5.0f, 9.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMin_double_Opset20_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<double>("data", {3, 2, 2},
+                        {1.0, 2.0, 3.0, 4.0,
+                         5.0, 6.0, 7.0, 8.0,
+                         9.0, 10.0, 11.0, 12.0});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<double>("reduced", {3, 1, 1}, {1.0, 5.0, 9.0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMin_half_Opset20_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<MLFloat16>("data", {3, 2, 2},
+                           FloatsToMLFloat16s({1.0f, 2.0f, 3.0f, 4.0f,
+                                               5.0f, 6.0f, 7.0f, 8.0f,
+                                               9.0f, 10.0f, 11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<MLFloat16>("reduced", {3, 1, 1}, FloatsToMLFloat16s({1.0f, 5.0f, 9.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMin_int32_Opset20_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int32_t>("data", {3, 2, 2},
+                         {1, 2, 3, 4,
+                          5, 6, 7, 8,
+                          9, 10, 11, 12});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<int32_t>("reduced", {3, 1, 1}, {1, 5, 9});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMin_int64_Opset20_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2, 3, 4,
+                          5, 6, 7, 8,
+                          9, 10, 11, 12});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<int64_t>("reduced", {3, 1, 1}, {1, 5, 9});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMin_int8_Opset20_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int8_t>("data", {3, 2, 2},
+                        {1, 2, 3, 4,
+                         5, 6, 7, 8,
+                         9, 10, 11, 12});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<int8_t>("reduced", {3, 1, 1}, {1, 5, 9});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(ReductionOpTest, ReduceMin_uint8_Opset20_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<uint8_t>("data", {3, 2, 2},
+                         {1, 2, 3, 4,
+                          5, 6, 7, 8,
+                          9, 10, 11, 12});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<uint8_t>("reduced", {3, 1, 1}, {1, 5, 9});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test ReduceMax at opset 20 with keepdims=0 on CUDA
+TEST(ReductionOpTest, ReduceMax_float_Opset20_NoKeepdims_Cuda) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<float>("reduced", {3}, {4.0f, 8.0f, 12.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test ReduceMin at opset 20 with keepdims=0 on CUDA
+TEST(ReductionOpTest, ReduceMin_float_Opset20_NoKeepdims_Cuda) {
+  OpTester test("ReduceMin", 20);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f, 3.0f, 4.0f,
+                        5.0f, 6.0f, 7.0f, 8.0f,
+                        9.0f, 10.0f, 11.0f, 12.0f});
+  test.AddInput<int64_t>("axes", {2}, {1, 2});
+  test.AddOutput<float>("reduced", {3}, {1.0f, 5.0f, 9.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+#endif  // defined(USE_CUDA)
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -4420,6 +4420,62 @@ TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
   test.Run();
 }
 
+// Test that shift amounts >= bit width produce 0 (not undefined behavior).
+// DirectML EP has the same hardware-level shift masking behavior, so skip these tests for DML.
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, LeftShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint32) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {3}, {32, 32, 32});
+  test.AddOutput<uint32_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, RightShiftByMoreThanBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {2}, {1000, 42});
+  test.AddInput<uint64_t>("Y", {2}, {65, 128});
+  test.AddOutput<uint64_t>("Z", {2}, {0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, ScalarRightShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {1}, {1000});
+  test.AddInput<uint64_t>("Y", {3}, {64, 65, 128});
+  test.AddOutput<uint64_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, ScalarLeftShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {3}, {1000, 255, 42});
+  test.AddInput<uint64_t>("Y", {1}, {64});
+  test.AddOutput<uint64_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
 TEST(MathOpTest, BitwiseAnd) {
   OpTester test("BitwiseAnd", 18);
   std::vector<int64_t> dims{3};
