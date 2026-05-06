@@ -967,6 +967,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       // now produces the new-spec output, which disagrees with the still-old
       // fixtures shipped in v1.21.0. Skip until cmake/external/onnx is bumped
       // to >= v1.22.
+      // TODO(onnx-v1.22): remove this block when cmake/external/onnx is bumped to v1.22+ which includes ONNX PRs #7867 + #7913.
       {"attention_3d_with_past_and_present_qk_matmul_softcap",
        "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
       {"attention_3d_with_past_and_present_qk_matmul_softcap_expanded",

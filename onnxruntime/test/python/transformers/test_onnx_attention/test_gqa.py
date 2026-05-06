@@ -2295,6 +2295,98 @@ class TestONNXAttentionCPUSoftcapMaskOrdering(unittest.TestCase):
             atol=1e-4,
         )
 
+    def test_cpu_attention_qk_matmul_output_mode_post_mask_bias_with_softcap_and_nonpad_fp32(self):
+        """Internal review Major #2: pin the kPostMaskBias x softcap x nonpad_kv_seqlen
+        matrix cell. The kPostMaskBias snapshot (qk_matmul_output_mode == 2 in the
+        post-#7913 numbering) is taken AFTER softcap, after `attn_mask` is added,
+        AND after `nonpad_kv_seqlen` fills padded positions with the finite
+        `mask_filter_value<float>() == std::numeric_limits<float>::lowest()`
+        sentinel (CPU softmax expects only finite inputs; see attention.h).
+
+        Forces CPU EP. Mirror of the C++ test
+        Attention_QkMatmulOutputMode_PostMaskBias_WithSoftcapAndNonpad_CPU.
+        """
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=4,
+            past_kv_sequence_length=0,
+            q_num_heads=1,
+            kv_num_heads=1,
+            head_size=4,
+            is_causal=0,
+            softcap=1.0,
+            has_attn_mask=True,
+            attn_mask_dims=2,
+            attn_mask_type="additive",
+            has_nonpad_kv_seqlen=True,
+        )
+        valid_kv_len = 2
+        # Mode 2 (post-#7913) = kPostMaskBias = post-mask/bias, pre-softmax.
+        output_qk_mode = 2
+
+        device = "cpu"
+        torch_type = torch.float32
+
+        # Q = [1, 0, 0, 0]; K[i] = [a_i, 0, 0, 0] -> raw scale*QK = [0.5, 1.0, 0.5, 0.5]
+        q = torch.tensor([[[[1.0, 0.0, 0.0, 0.0]]]], dtype=torch_type, device=device)
+        k = torch.zeros(1, 4, 1, 4, dtype=torch_type, device=device)
+        k[0, 0, 0, 0] = 1.0
+        k[0, 1, 0, 0] = 2.0
+        k[0, 2, 0, 0] = 1.0
+        k[0, 3, 0, 0] = 1.0
+        # V poison at padded positions (indices 2, 3) must NOT leak.
+        v = torch.ones(1, 4, 1, 4, dtype=torch_type, device=device)
+        v[:, valid_kv_len:, :, :] = 1000.0
+
+        # Mask large finite negative at valid position 1; sidesteps -inf
+        # comparison concerns in the snapshot, equivalent in softmax behaviour.
+        large_neg = -1.0e9
+        attn_mask = torch.tensor([[0.0, large_neg, 0.0, 0.0]], dtype=torch_type, device=device)
+        nonpad_kv_seqlen = torch.tensor([valid_kv_len], dtype=torch.int64, device=device)
+
+        out_ort, _, _, qk_ort = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT,
+            nonpad_kv_seqlen=nonpad_kv_seqlen,
+            output_qk=output_qk_mode,
+        )
+
+        # ---- Snapshot pin (the matrix cell under test) ----
+        qk_np = qk_ort.detach().cpu().numpy().reshape(-1)
+        self.assertEqual(
+            qk_np.shape,
+            (4,),
+            f"output_qk shape must be [batch, q_num_heads, q_seq, kv_seq] = [1,1,1,4]; got {qk_ort.shape}",
+        )
+        # Print a few values to evidence the matrix cell is genuinely exercised.
+        print(
+            f"\n[kPostMaskBias x softcap x nonpad snapshot] "
+            f"valid[0]={qk_np[0]:.6f} (expect ~tanh(0.5)={math.tanh(0.5):.6f}), "
+            f"valid[1]={qk_np[1]:.3e} (expect ~{large_neg:.0e}), "
+            f"padded[2]={qk_np[2]:.3e} (expect lowest()=~{numpy.finfo(numpy.float32).min:.3e}), "
+            f"padded[3]={qk_np[3]:.3e}"
+        )
+        # Position 0 valid: tanh(scale*QK[0]) = tanh(0.5)
+        self.assertAlmostEqual(float(qk_np[0]), math.tanh(0.5), places=5)
+        # Position 1 valid + masked: tanh(1.0) + large_neg ~= large_neg
+        self.assertLess(float(qk_np[1]), -1e8, "position-1 snapshot must contain the additive attn_mask")
+        # Positions 2, 3 padded: lowest() sentinel from nonpad_kv_seqlen
+        self.assertLess(float(qk_np[2]), -1e30, "position-2 must be the lowest() nonpad sentinel")
+        self.assertLess(float(qk_np[3]), -1e30, "position-3 must be the lowest() nonpad sentinel")
+
+        # ---- Final Y bound (no V leakage) ----
+        out_reshaped = torch.reshape(out_ort, (1, 1, 1, 4))
+        out_np = out_reshaped.detach().cpu().numpy()
+        # Only valid position 0 wins softmax; Y should be V[0] = [1, 1, 1, 1].
+        numpy.testing.assert_allclose(out_np, numpy.ones((1, 1, 1, 4), dtype=numpy.float32), rtol=1e-4, atol=1e-4)
+
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})

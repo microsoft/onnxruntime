@@ -32,6 +32,12 @@ namespace attention_helper {
 //   stage 1: softcap (if > 0)
 //   stage 2: + attn_bias / + attn_mask
 //   stage 3: softmax
+//
+// TODO(onnx-v1.22): when cmake/external/onnx is bumped to v1.22+ which
+// includes ONNX PRs #7867 + #7913, drop the "ORT leads ONNX" caveat above
+// and re-enable the corresponding ONNX backend node tests by removing the
+// skip blocks in onnxruntime/test/onnx/TestCase.cc::GetBrokenTests() and
+// onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc.
 enum QKMatMulOutputMode {
   kNone = -1,         // No optional output.
   kQK = 0,            // Raw scale * Q @ K^T (pre-softcap).

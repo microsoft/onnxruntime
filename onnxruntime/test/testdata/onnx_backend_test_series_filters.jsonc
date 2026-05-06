@@ -56,6 +56,7 @@
         // (cmake/external/onnx, v1.21.0) still encodes the pre-edit ordering. Remove these
         // 7 entries when cmake/external/onnx is bumped to v1.22+. See also the matching
         // C++ skip block in onnxruntime/test/onnx/TestCase.cc::GetBrokenTests().
+        // TODO(onnx-v1.22): remove the 7 entries below when cmake/external/onnx is bumped to v1.22+ which includes ONNX PRs #7867 + #7913.
         "^test_attention_3d_with_past_and_present_qk_matmul_bias_cpu", // pre-onnx#7913 fixture
         "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cpu", // pre-onnx#7867 fixture
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_cpu", // pre-onnx#7913 fixture

@@ -223,7 +223,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostSoftCap ||
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostMaskBias ||
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostSoftMax,
-              "qk_matmul_output_mode must be 0, 1, 2, or 3.");
+              "qk_matmul_output_mode must be -1 (absent), 0, 1, 2, or 3.");
   // The default scale depends on the input dimensions. It is set to nan to indicate that it should be computed.
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
