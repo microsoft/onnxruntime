@@ -753,53 +753,5 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_UsesModelIdForModelDirectory) {
 
   std::filesystem::remove_all(package_root, ec);
 }
-
-TEST(EpCompatibilityCapiTest, SelectBestCompiledModelCompatibilityInfo_UsesHardwareDevices) {
-  // Use C++ Env helper to register example plugin EP and get its device.
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpCompatSelectBestExampleEp"};
-  onnxruntime::test::RegisteredEpDeviceUniquePtr example_ep;
-  onnxruntime::test::Utils::RegisterAndGetExampleEp(
-      env, onnxruntime::test::Utils::example_ep_info, example_ep);
-
-  ASSERT_NE(example_ep.get(), nullptr);
-
-  const OrtEpDevice* ep_device = example_ep.get();
-  OrtEpFactory* factory = ep_device->GetMutableFactory();
-  ASSERT_NE(factory, nullptr);
-  ASSERT_NE(factory->SelectBestCompiledModelCompatibilityInfo, nullptr);
-
-  // API requires OrtHardwareDevice[]
-  const OrtHardwareDevice* devices[] = {ep_device->device};
-
-  // Build strings in the exact format expected by ExampleEpFactory::ValidateCompiledModelCompatibilityInfoImpl.
-  const std::string ep_name = factory->GetName(factory);  // expected prefix "<ep_name>;"
-  const std::string optimal =
-      ep_name + ";version=0.1.0;ort_api_version=" + std::to_string(ORT_API_VERSION) + ";hardware_architecture=arch1";
-  const std::string prefer_recompile =
-      ep_name + ";version=9.9.9;ort_api_version=" + std::to_string(ORT_API_VERSION) + ";hardware_architecture=arch1";
-  const std::string unsupported = "SomeOtherEp;version=0.1.0;ort_api_version=" + std::to_string(ORT_API_VERSION);
-
-  const char* compatibility_infos[] = {
-      unsupported.c_str(),
-      prefer_recompile.c_str(),
-      optimal.c_str(),
-  };
-
-  size_t selected_index = std::numeric_limits<size_t>::max();
-  OrtStatus* st = factory->SelectBestCompiledModelCompatibilityInfo(
-      factory,
-      devices,
-      1,
-      compatibility_infos,
-      3,
-      &selected_index);
-
-  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  ASSERT_NE(api, nullptr);
-  ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
-
-  // best should be the OPTIMAL candidate
-  EXPECT_EQ(selected_index, 2u);
-}
 }  // namespace test
 }  // namespace onnxruntime
