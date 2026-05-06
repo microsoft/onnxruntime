@@ -423,27 +423,29 @@ TEST(ContribOpTest, StringNormalizer2DInputAllFilteredOut) {
 }
 
 TEST(ContribOpTest, StringNormalizerInvalidDimensions3D) {
-  // Input with 3 dimensions → should fail.
+  // Input with 3 dimensions -> bypass shape metadata so the kernel validation path runs.
   OpTester test("StringNormalizer", opset_ver, domain);
+  test.AddShapeToTensorData(false);
   InitTestAttr(test, "NONE", true, {}, test_locale);
   std::vector<int64_t> dims{1, 1, 2};
   std::vector<std::string> input = {"hello", "world"};
   test.AddInput<std::string>("T", dims, input);
   test.AddOutput<std::string>("Y", {1, 1, 2}, input);
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Input shape must have either [C] or [1,C] dimensions where C > 0");
+           "Input dimensions are either[C > 0] or [1][C > 0] allowed");
 }
 
 TEST(ContribOpTest, StringNormalizerInvalidDimensions2DFirstNotOne) {
-  // 2D input with first dim != 1 → should fail.
+  // 2D input with first dim != 1 -> bypass shape metadata so the kernel validation path runs.
   OpTester test("StringNormalizer", opset_ver, domain);
+  test.AddShapeToTensorData(false);
   InitTestAttr(test, "NONE", true, {}, test_locale);
   std::vector<int64_t> dims{2, 2};
   std::vector<std::string> input = {"a", "b", "c", "d"};
   test.AddInput<std::string>("T", dims, input);
   test.AddOutput<std::string>("Y", {2, 2}, input);
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Input shape must have either [C] or [1,C] dimensions where C > 0");
+           "Input dimensions are either[C > 0] or [1][C > 0] allowed");
 }
 
 TEST(ContribOpTest, StringNormalizerEmpty1DInputRejectedForCompatibility) {
