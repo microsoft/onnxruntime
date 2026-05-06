@@ -162,11 +162,433 @@ std::string MakeMetadataJsonTwoVariants(std::string_view component_model_name,
   return oss.str();
 }
 
+std::filesystem::path CreateModelPackageApiTestPackage(bool multi_file_variant = false) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_api_test";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  constexpr std::string_view manifest_json = R"({
+    "schema_version": 1,
+    "components": ["model_1"]
+  })";
+
+  CreateModelPackage(package_root, manifest_json,
+                     "model_1", "variant_1", "variant_2",
+                     std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
+
+  constexpr std::string_view metadata_json = R"({
+    "component_model_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep_compatibility": [{
+          "ep": "example_ep",
+          "device": "cpu",
+          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1"
+        }]
+      },
+      "variant_2": {
+        "ep_compatibility": [{
+          "ep": "example_ep",
+          "device": "npu",
+          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2"
+        }]
+      }
+    }
+  })";
+
+  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  if (!multi_file_variant) {
+    std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        {
+          "filename": "mul_1.onnx",
+          "session_options": {
+            "session.disable_prepacking": "1",
+            "session.intra_op.allow_spinning": "0"
+          },
+          "provider_options": {
+            "backend_path": "example_backend",
+            "enable_htp": "1"
+          }
+        }
+      ]
+    })";
+  } else {
+    const auto variant1_dir = package_root / "models" / "model_1" / "variant_1";
+    std::filesystem::copy_file(variant1_dir / "mul_1.onnx",
+                               variant1_dir / "mul_1_stage2.onnx",
+                               std::filesystem::copy_options::overwrite_existing,
+                               ec);
+
+    std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        {
+          "filename": "mul_1.onnx",
+          "session_options": {
+            "session.disable_prepacking": "1",
+            "session.intra_op.allow_spinning": "0"
+          },
+          "provider_options": {
+            "backend_path": "example_backend",
+            "enable_htp": "1"
+          }
+        },
+        {
+          "filename": "mul_1_stage2.onnx",
+          "session_options": {
+            "session.disable_prepacking": "0"
+          },
+          "provider_options": {
+            "backend_path": "example_backend_stage2"
+          }
+        }
+      ]
+    })";
+  }
+
+  {
+    std::ofstream os(package_root / "models" / "model_1" / "variant_2" / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [
+        {
+          "filename": "mul_16.onnx"
+        }
+      ]
+    })";
+  }
+
+  return package_root;
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------
-// Model package end-to-end test
+// Model Package API tests
 // ------------------------------------------------------------------
+TEST(ModelPackageApiTest, PackageContextQueries) {
+  const auto package_root = CreateModelPackageApiTestPackage();
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  ASSERT_NE(pkg_api, nullptr);
+
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api->ReleaseModelPackageContext(p);
+  };
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> model_pkg_context(nullptr, context_deleter);
+
+  OrtModelPackageContext* raw_context = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
+  model_pkg_context.reset(raw_context);
+
+  // Query: component count + names
+  size_t component_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelCount(model_pkg_context.get(), &component_count));
+  ASSERT_EQ(component_count, 1u);
+
+  const char* const* component_names = nullptr;
+  size_t component_name_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelNames(
+      model_pkg_context.get(), &component_names, &component_name_count));
+  ASSERT_EQ(component_name_count, 1u);
+  ASSERT_NE(component_names, nullptr);
+  ASSERT_NE(component_names[0], nullptr);
+  EXPECT_STREQ(component_names[0], "model_1");
+
+  // Query: variant count + names
+  size_t variant_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetModelVariantCount(
+      model_pkg_context.get(), "model_1", &variant_count));
+  ASSERT_EQ(variant_count, 2u);
+
+  const char* const* variant_names = nullptr;
+  size_t variant_name_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetModelVariantNames(
+      model_pkg_context.get(), "model_1", &variant_names, &variant_name_count));
+  ASSERT_EQ(variant_name_count, 2u);
+
+  std::unordered_set<std::string> variant_name_set;
+  for (size_t i = 0; i < variant_name_count; ++i) {
+    ASSERT_NE(variant_names[i], nullptr);
+    variant_name_set.insert(variant_names[i]);
+  }
+  EXPECT_EQ(variant_name_set.count("variant_1"), 1u);
+  EXPECT_EQ(variant_name_set.count("variant_2"), 1u);
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateSession) {
+  const auto package_root = CreateModelPackageApiTestPackage();
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  ASSERT_NE(pkg_api, nullptr);
+
+  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) {
+    if (p) pkg_api->ReleaseModelPackageOptions(p);
+  };
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api->ReleaseModelPackageContext(p);
+  };
+  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  };
+
+  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> model_pkg_options(nullptr, options_deleter);
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> model_pkg_context(nullptr, context_deleter);
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> component_context(nullptr, component_context_deleter);
+
+  OrtModelPackageOptions* raw_options = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
+  model_pkg_options.reset(raw_options);
+
+  OrtModelPackageContext* raw_context = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
+  model_pkg_context.reset(raw_context);
+
+  OrtModelPackageComponentContext* raw_component_context = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(model_pkg_context.get(),
+                                               "model_1",
+                                               model_pkg_options.get(),
+                                               &raw_component_context));
+  component_context.reset(raw_component_context);
+
+  size_t selected_file_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileCount(component_context.get(),
+                                                                                 &selected_file_count));
+  ASSERT_EQ(selected_file_count, 1u);
+
+  const ORTCHAR_T* selected_file_path = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(component_context.get(),
+                                                                                0,
+                                                                                &selected_file_path));
+  ASSERT_NE(selected_file_path, nullptr);
+
+  // Validate file session options from selected component context.
+  const char* const* session_option_keys = nullptr;
+  const char* const* session_option_values = nullptr;
+  size_t session_option_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileSessionOptions(
+      component_context.get(),
+      0,
+      &session_option_keys,
+      &session_option_values,
+      &session_option_count));
+
+  ASSERT_EQ(session_option_count, 2u);
+  ASSERT_NE(session_option_keys, nullptr);
+  ASSERT_NE(session_option_values, nullptr);
+
+  std::unordered_map<std::string, std::string> session_options_from_api;
+  for (size_t i = 0; i < session_option_count; ++i) {
+    ASSERT_NE(session_option_keys[i], nullptr);
+    ASSERT_NE(session_option_values[i], nullptr);
+    session_options_from_api.emplace(session_option_keys[i], session_option_values[i]);
+  }
+
+  EXPECT_EQ(session_options_from_api.at("session.disable_prepacking"), "1");
+  EXPECT_EQ(session_options_from_api.at("session.intra_op.allow_spinning"), "0");
+
+  // Validate file provider options from selected component context.
+  const char* const* provider_option_keys = nullptr;
+  const char* const* provider_option_values = nullptr;
+  size_t provider_option_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileProviderOptions(
+      component_context.get(),
+      0,
+      &provider_option_keys,
+      &provider_option_values,
+      &provider_option_count));
+
+  ASSERT_EQ(provider_option_count, 2u);
+  ASSERT_NE(provider_option_keys, nullptr);
+  ASSERT_NE(provider_option_values, nullptr);
+
+  std::unordered_map<std::string, std::string> provider_options_from_api;
+  for (size_t i = 0; i < provider_option_count; ++i) {
+    ASSERT_NE(provider_option_keys[i], nullptr);
+    ASSERT_NE(provider_option_values[i], nullptr);
+    provider_options_from_api.emplace(provider_option_keys[i], provider_option_values[i]);
+  }
+
+  EXPECT_EQ(provider_options_from_api.at("backend_path"), "example_backend");
+  EXPECT_EQ(provider_options_from_api.at("enable_htp"), "1");
+
+  OrtSession* raw_session = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateSession(*ort_env,
+                                             component_context.get(),
+                                             session_options,
+                                             &raw_session));
+  Ort::Session session(raw_session);
+
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  Ort::Value input = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
+                                                     shape.data(), shape.size());
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y"};
+  std::vector<Ort::Value> inputs;
+  inputs.push_back(std::move(input));
+
+  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, inputs.data(), inputs.size(), output_names, 1);
+  ASSERT_EQ(outputs.size(), 1u);
+  const float* out = outputs[0].GetTensorData<float>();
+  gsl::span<const float> out_span(out, input_data.size());
+  EXPECT_THAT(out_span, ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageApiTest, MultiFileVariantInComponent_SelectComponentAndCreateSession) {
+  const auto package_root = CreateModelPackageApiTestPackage(/*multi_file_variant*/ true);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  ASSERT_NE(pkg_api, nullptr);
+
+  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) {
+    if (p) pkg_api->ReleaseModelPackageOptions(p);
+  };
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api->ReleaseModelPackageContext(p);
+  };
+  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  };
+
+  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> model_pkg_options(nullptr, options_deleter);
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> model_pkg_context(nullptr, context_deleter);
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> component_context(nullptr, component_context_deleter);
+
+  OrtModelPackageOptions* raw_options = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
+  model_pkg_options.reset(raw_options);
+
+  OrtModelPackageContext* raw_context = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
+  model_pkg_context.reset(raw_context);
+
+  OrtModelPackageComponentContext* raw_component_context = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(model_pkg_context.get(),
+                                               "model_1",
+                                               model_pkg_options.get(),
+                                               &raw_component_context));
+  component_context.reset(raw_component_context);
+
+  size_t file_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileCount(component_context.get(), &file_count));
+  ASSERT_GT(file_count, 1u);
+
+  const ORTCHAR_T* folder = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFolderPath(component_context.get(), &folder));
+  ASSERT_NE(folder, nullptr);
+
+  const auto variant_json_path = std::filesystem::path(folder) / "variant.json";
+  ASSERT_TRUE(std::filesystem::exists(variant_json_path));
+
+  std::ifstream vf(variant_json_path, std::ios::binary);
+  ASSERT_TRUE(vf.good());
+
+  json vm = json::parse(vf);
+  ASSERT_TRUE(vm.contains("files"));
+  ASSERT_TRUE(vm["files"].is_array());
+  ASSERT_EQ(vm["files"].size(), file_count);
+
+  for (size_t i = 0; i < file_count; ++i) {
+    const auto& file_entry = vm["files"][i];
+    ASSERT_TRUE(file_entry.contains("filename"));
+    ASSERT_TRUE(file_entry["filename"].is_string());
+
+    const std::string expected_filename = file_entry["filename"].get<std::string>();
+
+    const ORTCHAR_T* file_path = nullptr;
+    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(component_context.get(), i, &file_path));
+    ASSERT_NE(file_path, nullptr);
+    EXPECT_EQ(std::filesystem::path(file_path).filename().string(), expected_filename);
+
+    const char* const* session_keys = nullptr;
+    const char* const* session_values = nullptr;
+    size_t session_options_count = 0;
+    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileSessionOptions(
+        component_context.get(), i, &session_keys, &session_values, &session_options_count));
+
+    const size_t expected_session_options_count =
+        (file_entry.contains("session_options") && file_entry["session_options"].is_object())
+            ? file_entry["session_options"].size()
+            : 0u;
+    EXPECT_EQ(session_options_count, expected_session_options_count);
+
+    const char* const* provider_keys = nullptr;
+    const char* const* provider_values = nullptr;
+    size_t provider_options_count = 0;
+    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileProviderOptions(
+        component_context.get(), i, &provider_keys, &provider_values, &provider_options_count));
+
+    const size_t expected_provider_options_count =
+        (file_entry.contains("provider_options") && file_entry["provider_options"].is_object())
+            ? file_entry["provider_options"].size()
+            : 0u;
+    EXPECT_EQ(provider_options_count, expected_provider_options_count);
+
+    // Build per-file session options and create a stage session from the resolved file path.
+    Ort::SessionOptions stage_session_options;
+
+    // Apply per-file session options (as config entries).
+    for (size_t k = 0; k < session_options_count; ++k) {
+      ASSERT_NE(session_keys[k], nullptr);
+      ASSERT_NE(session_values[k], nullptr);
+      ASSERT_NO_THROW(stage_session_options.AddConfigEntry(session_keys[k], session_values[k]));
+    }
+
+    // Apply per-file provider options.
+    std::unordered_map<std::string, std::string> stage_provider_options;
+    for (size_t k = 0; k < provider_options_count; ++k) {
+      ASSERT_NE(provider_keys[k], nullptr);
+      ASSERT_NE(provider_values[k], nullptr);
+      stage_provider_options.emplace(provider_keys[k], provider_values[k]);
+    }
+
+    stage_session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, stage_provider_options);
+
+    // Create per-file stage session.
+    Ort::Session stage_session(*ort_env, file_path, stage_session_options);
+
+    // Smoke-run to ensure created session is functional.
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::vector<int64_t> shape = {3, 2};
+    std::vector<float> input_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+    Ort::Value input = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
+                                                       shape.data(), shape.size());
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    std::vector<Ort::Value> inputs;
+    inputs.push_back(std::move(input));
+
+    auto outputs = stage_session.Run(Ort::RunOptions{nullptr}, input_names, inputs.data(), inputs.size(), output_names, 1);
+    ASSERT_EQ(outputs.size(), 1u);
+  }
+}
+
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
   // Test Case 1:
   // package_root is a model package directory which contains a manifest.json.
@@ -598,274 +1020,6 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
   EXPECT_EQ(variants[0].ep_compatibility[0].device.value_or(""), "cpu");
 
   std::filesystem::remove_all(component_root, ec);
-}
-
-/*
-TEST(ModelPackageTest, ParseVariantsFromRoot_UsesModelIdForModelDirectory) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_model_id_dir_test";
-  std::error_code ec;
-  std::filesystem::remove_all(package_root, ec);
-
-  constexpr std::string_view manifest_json = R"({
-    "model_name": "test_model",
-    "model_version": "1.0",
-    "component_models": ["model_1"]
-  })";
-
-  CreateManifestJson(package_root, manifest_json);
-
-  // Variant name intentionally does not match the model_id-derived directory name.
-  // model_id = "phi4-cpu:1" should map to directory "phi4-cpu_1".
-  constexpr std::string_view metadata_json = R"({
-    "component_model_name": "model_1",
-    "model_variants": {
-      "catalog_variant": {
-        "model_id": "phi4-cpu:1",
-        "model_file": "model.onnx",
-        "constraints": {
-          "ep": "example_ep",
-          "device": "cpu",
-          "architecture": "arch1"
-        }
-      }
-    }
-  })";
-
-  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
-
-  // Create the model under model_id-derived directory: models/model_1/phi4-cpu_1/model.onnx
-  const auto model_dir = package_root / "models" / "model_1" / "phi4-cpu_1";
-  std::filesystem::create_directories(model_dir);
-  std::filesystem::copy_file("testdata/mul_1.onnx",
-                             model_dir / "model.onnx",
-                             std::filesystem::copy_options::overwrite_existing,
-                             ec);
-
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<ModelVariantInfo> variants;
-  auto status = parser.ParseVariantsFromRoot(package_root, variants);
-
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-  ASSERT_EQ(variants.size(), 1u);
-
-  EXPECT_EQ(variants[0].model_info[0].model_file_path.filename().string(), "model.onnx");
-  EXPECT_EQ(variants[0].model_info[0].model_file_path.parent_path().filename().string(), "phi4-cpu_1");
-  EXPECT_EQ(variants[0].model_info[0].ep_compatibility[0].ep, "example_ep");
-  EXPECT_EQ(variants[0].model_info[0].ep_compatibility[0].device_type, "cpu");
-
-  std::filesystem::remove_all(package_root, ec);
-}
-*/
-TEST(ModelPackageTest, ModelPackageApi_CreateContextQueryAndCreateSession) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_api_test";
-  std::error_code ec;
-  std::filesystem::remove_all(package_root, ec);
-
-  constexpr std::string_view manifest_json = R"({
-    "schema_version": 1,
-    "components": ["model_1"]
-  })";
-
-  CreateModelPackage(package_root, manifest_json,
-                     "model_1", "variant_1", "variant_2",
-                     std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
-
-  // New metadata schema: variant-level EP compatibility only.
-  constexpr std::string_view metadata_json = R"({
-    "component_model_name": "model_1",
-    "variants": {
-      "variant_1": {
-        "ep_compatibility": [{
-          "ep": "example_ep",
-          "device": "cpu",
-          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1"
-        }]
-      },
-      "variant_2": {
-        "ep_compatibility": [{
-          "ep": "example_ep",
-          "device": "npu",
-          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2"
-        }]
-      }
-    }
-  })";
-
-  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
-
-  // File-level options are now in variant.json.
-  {
-    std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
-    os << R"({
-      "files": [
-        {
-          "filename": "mul_1.onnx",
-          "session_options": {
-            "session.disable_prepacking": "1",
-            "session.intra_op.allow_spinning": "0"
-          },
-          "provider_options": {
-            "backend_path": "example_backend",
-            "enable_htp": "1"
-          }
-        }
-      ]
-    })";
-  }
-  {
-    std::ofstream os(package_root / "models" / "model_1" / "variant_2" / "variant.json", std::ios::binary);
-    os << R"({
-      "files": [
-        {
-          "filename": "mul_16.onnx"
-        }
-      ]
-    })";
-  }
-
-  RegisteredEpDeviceUniquePtr example_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-
-  Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> ep_options;
-  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
-
-  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) {
-    if (p) pkg_api->ReleaseModelPackageOptions(p);
-  };
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
-    if (p) pkg_api->ReleaseModelPackageContext(p);
-  };
-  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
-    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
-  };
-
-  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> model_pkg_options(nullptr, options_deleter);
-  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> model_pkg_context(nullptr, context_deleter);
-  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> component_context(nullptr, component_context_deleter);
-
-  OrtModelPackageOptions* raw_options = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
-  model_pkg_options.reset(raw_options);
-
-  OrtModelPackageContext* raw_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
-  model_pkg_context.reset(raw_context);
-
-  size_t component_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelCount(model_pkg_context.get(), &component_count));
-  ASSERT_EQ(component_count, 1u);
-
-  const char* const* component_names = nullptr;
-  size_t component_name_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelNames(
-      model_pkg_context.get(),
-      &component_names,
-      &component_name_count));
-
-  ASSERT_EQ(component_name_count, 1u);
-  ASSERT_NE(component_names, nullptr);
-  ASSERT_NE(component_names[0], nullptr);
-
-  const char* component_name = component_names[0];
-  EXPECT_STREQ(component_name, "model_1");
-
-  OrtModelPackageComponentContext* raw_component_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(model_pkg_context.get(),
-                                               component_name,
-                                               model_pkg_options.get(),
-                                               &raw_component_context));
-  component_context.reset(raw_component_context);
-
-  size_t selected_file_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileCount(component_context.get(),
-                                                                                 &selected_file_count));
-  ASSERT_EQ(selected_file_count, 1u);
-
-  const ORTCHAR_T* selected_file_path = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(component_context.get(),
-                                                                                0,
-                                                                                &selected_file_path));
-  ASSERT_NE(selected_file_path, nullptr);
-
-  OrtSession* raw_session = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateSession(*ort_env,
-                                             component_context.get(),
-                                             session_options,
-                                             &raw_session));
-  Ort::Session session(raw_session);
-
-  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-  std::vector<int64_t> shape = {3, 2};
-  std::vector<float> input_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
-  Ort::Value input = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
-                                                     shape.data(), shape.size());
-  const char* input_names[] = {"X"};
-  const char* output_names[] = {"Y"};
-  std::vector<Ort::Value> inputs;
-  inputs.push_back(std::move(input));
-
-  auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names, inputs.data(), inputs.size(), output_names, 1);
-  ASSERT_EQ(outputs.size(), 1u);
-  const float* out = outputs[0].GetTensorData<float>();
-  gsl::span<const float> out_span(out, input_data.size());
-  EXPECT_THAT(out_span, ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
-
-  // Validate file session options from selected component context.
-  const char* const* session_option_keys = nullptr;
-  const char* const* session_option_values = nullptr;
-  size_t session_option_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileSessionOptions(
-      component_context.get(),
-      0,
-      &session_option_keys,
-      &session_option_values,
-      &session_option_count));
-
-  ASSERT_EQ(session_option_count, 2u);
-  ASSERT_NE(session_option_keys, nullptr);
-  ASSERT_NE(session_option_values, nullptr);
-
-  std::unordered_map<std::string, std::string> session_options_from_api;
-  for (size_t i = 0; i < session_option_count; ++i) {
-    ASSERT_NE(session_option_keys[i], nullptr);
-    ASSERT_NE(session_option_values[i], nullptr);
-    session_options_from_api.emplace(session_option_keys[i], session_option_values[i]);
-  }
-
-  EXPECT_EQ(session_options_from_api.at("session.disable_prepacking"), "1");
-  EXPECT_EQ(session_options_from_api.at("session.intra_op.allow_spinning"), "0");
-
-  // Validate file provider options from selected component context.
-  const char* const* provider_option_keys = nullptr;
-  const char* const* provider_option_values = nullptr;
-  size_t provider_option_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileProviderOptions(
-      component_context.get(),
-      0,
-      &provider_option_keys,
-      &provider_option_values,
-      &provider_option_count));
-
-  ASSERT_EQ(provider_option_count, 2u);
-  ASSERT_NE(provider_option_keys, nullptr);
-  ASSERT_NE(provider_option_values, nullptr);
-
-  std::unordered_map<std::string, std::string> provider_options_from_api;
-  for (size_t i = 0; i < provider_option_count; ++i) {
-    ASSERT_NE(provider_option_keys[i], nullptr);
-    ASSERT_NE(provider_option_values[i], nullptr);
-    provider_options_from_api.emplace(provider_option_keys[i], provider_option_values[i]);
-  }
-
-  EXPECT_EQ(provider_options_from_api.at("backend_path"), "example_backend");
-  EXPECT_EQ(provider_options_from_api.at("enable_htp"), "1");
-
-  std::filesystem::remove_all(package_root, ec);
 }
 
 }  // namespace test

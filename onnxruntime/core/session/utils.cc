@@ -366,20 +366,6 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
 
     if (std::filesystem::is_directory(package_root, ec) && !ec) {
 #if !defined(ORT_MINIMAL_BUILD)
-      /*
-      std::vector<std::unique_ptr<onnxruntime::IExecutionProvider>> provider_list;
-      ModelPackageOptions model_package_options(env, *options);  // EPs resolved at construction.
-      provider_list = model_package_options.ProviderList();
-      std::vector<onnxruntime::VariantSelectionEpInfo> ep_infos;
-      ORT_API_RETURN_IF_STATUS_NOT_OK(GetVariantSelectionEpInfo(provider_list, ep_infos));
-
-      ModelPackageContext model_package_context(env, package_root, ep_infos);
-      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.ResolveVariant());
-
-      ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.GetSelectedVariantFilePath(selected_model_variant_path));
-      model_path_to_use = selected_model_variant_path.c_str();
-      */
-
       OrtSessionOptions* options_to_use = nullptr;
       OrtSessionOptions ort_sess_options = options ? *options : OrtSessionOptions();
       if (options) {
