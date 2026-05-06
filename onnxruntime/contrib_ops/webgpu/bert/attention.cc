@@ -726,7 +726,7 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention
-  if (CanApplyFlashAttention(nullptr, parameters, context)) {
+  if (CanApplyFlashAttention(parameters, context)) {
     // FlashAttention supports Q_K_V_BSNH format directly
     return ApplyFlashAttention(&Q_bsd, &K_bsd, &V_bsd, attention_bias, output, nullptr, nullptr, nullptr, nullptr,
                                parameters, context, nullptr);

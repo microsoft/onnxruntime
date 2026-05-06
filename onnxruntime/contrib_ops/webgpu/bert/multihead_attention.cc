@@ -104,7 +104,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   Tensor* output_qk = context.Output(3, output_qk_shape);
 
   if (output_qk == nullptr &&  // Flash attention does not output QK scores
-      CanApplyFlashAttention(bias, parameters, context)) {
+      CanApplyFlashAttention(parameters, context)) {
     if (bias != nullptr) {
       // Apply bias and transpose Q from BSD to BNSH before FlashAttention
       TensorShapeVector q_dims({parameters.batch_size_, parameters.num_heads_,
