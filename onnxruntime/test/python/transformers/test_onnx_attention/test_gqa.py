@@ -1568,6 +1568,103 @@ class TestONNXAttentionGQALargeHeadUnfused(unittest.TestCase):
         self.assertLess(out.float().max().item(), 1.0)
 
 
+class TestONNXAttentionGQALargeHeadUnfusedCPU(unittest.TestCase):
+    """CPU twin of TestONNXAttentionGQALargeHeadUnfused.
+
+    CPU's only attention path is the unfused kernel, so head_size > 128 is
+    naturally exercised here. fp16 only (CPU does not have a bf16 attention
+    instantiation broadly available; the bf16 source method is intentionally
+    not twinned). Configs reused verbatim from the CUDA source so the
+    spec-property assertions stay paired.
+    """
+
+    @parameterized.expand(gqa_large_head_unfused_test_cases())
+    def test_gqa_large_head_unfused_cpu_fp16(self, name, config):
+        func = parity_check_gqa_past if "decode" in name else parity_check_gqa_prompt
+        func(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_gqa_large_head_unfused_softcap_additive_mask_poison_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=3,
+            past_kv_sequence_length=0,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            is_causal=0,
+            softcap=1.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        device = "cpu"
+        torch_type = torch.float16
+        q = torch.zeros(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        k = torch.zeros(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            device=device,
+            dtype=torch_type,
+        )
+        v = torch.full_like(k, 0.2)
+        v[:, 1, :, :] = 1000.0
+
+        # Use a large finite negative instead of -inf for the additive mask
+        # because the CPU softmax expects only finite inputs (see attention.h
+        # mask_filter_value<T>()). softmax behaviour is identical via
+        # underflow.
+        attn_mask = torch.zeros(
+            config.batch_size,
+            config.q_num_heads,
+            config.q_sequence_length,
+            config.kv_sequence_length,
+            device=device,
+            dtype=torch_type,
+        )
+        attn_mask[:, :, :, 1] = -1.0e4  # fp16-representable large negative
+
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT16,
+        )
+
+        out = out_ort.reshape(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+        )
+        expected = torch.full_like(out, 0.2)
+        torch.testing.assert_close(out, expected, rtol=0, atol=2e-2)
+        self.assertLess(out.float().max().item(), 1.0)
+
+
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionMemoryEfficientGQAFloatMaskDecode(unittest.TestCase):
@@ -2495,6 +2592,94 @@ class TestONNXAttentionGQAAsymmetricHeadSize(unittest.TestCase):
         self._run_asymmetric_gqa_prompt(torch.bfloat16, TensorProto.BFLOAT16)
 
 
+class TestONNXAttentionGQAAsymmetricHeadSizeCPU(unittest.TestCase):
+    """CPU twin of TestONNXAttentionGQAAsymmetricHeadSize.
+
+    Pins post-#28358 behaviour on CPU as well: asymmetric Q/V head sizes
+    (head_size != v_head_size) on a GQA shape must produce numerically
+    parity-clean output with no NaN propagation. fp16 only (no bf16 twin
+    by design — broad CPU bf16 attention is not in scope for these guards).
+    """
+
+    def _run_asymmetric_gqa_prompt_cpu(self, torch_type, ort_type, atol_key):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            q_num_heads=8,
+            kv_num_heads=1,
+            head_size=32,
+            v_head_size=64,
+            is_causal=1,
+        )
+
+        torch.manual_seed(0)
+        device = "cpu"
+        std = 0.2
+
+        q = (
+            torch.randn(
+                config.batch_size,
+                config.q_sequence_length,
+                config.q_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * std
+        )
+        k = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * std
+        )
+        v = (
+            torch.randn(
+                config.batch_size,
+                config.kv_sequence_length,
+                config.kv_num_heads,
+                config.v_head_size,
+                device=device,
+                dtype=torch_type,
+            )
+            * std
+        )
+
+        out_ref, _ = attention_ref(q=q, k=k, v=v, causal=True)
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+        )
+
+        out_ort = torch.reshape(
+            out_ort,
+            (config.batch_size, config.q_sequence_length, config.q_num_heads, config.v_head_size),
+        )
+
+        out_np = out_ort.to(torch.float32).detach().cpu().numpy()
+        out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+        self.assertFalse(numpy.isnan(out_np).any(), "NaN in output - asymmetric GQA path regressed on CPU")
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol[atol_key], atol=atol[atol_key])
+
+    def test_gqa_asymmetric_v_head_size_prompt_cpu_fp16(self):
+        self._run_asymmetric_gqa_prompt_cpu(torch.float16, TensorProto.FLOAT16, "fp16")
+
+    def test_gqa_asymmetric_v_head_size_prompt_cpu_fp32(self):
+        self._run_asymmetric_gqa_prompt_cpu(torch.float32, TensorProto.FLOAT, "fp32")
+
+
 @unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionGQAOutputQK(unittest.TestCase):
@@ -2566,6 +2751,106 @@ class TestONNXAttentionGQAOutputQK(unittest.TestCase):
         numpy.testing.assert_allclose(qk_np, ref_qk_np, rtol=rtol["fp16"], atol=atol["fp16"])
 
 
+class TestONNXAttentionGQAOutputQKCPU(unittest.TestCase):
+    """CPU twin of TestONNXAttentionGQAOutputQK -- expanded to all 4 modes.
+
+    The CUDA source class only exercises mode 0 (kQK, raw scaled QK). On CPU
+    (post-#28379 spec fix and post-#7913 enum swap) all 4 modes are
+    supported, so this twin parameterizes over kQK=0, kPostSoftCap=1,
+    kPostMaskBias=2, kPostSoftMax=3 and computes the per-mode reference
+    snapshot directly from torch ops. fp32 is used so the comparison is
+    deterministic and the per-mode arithmetic ladder is checked tightly.
+
+    Pipeline (per attention.cc CPU EP, see SKILL.md SS4):
+       raw = scale * Q @ K^T
+       mode 0 (kQK)          = raw
+       mode 1 (kPostSoftCap) = softcap * tanh(raw / softcap)
+       mode 2 (kPostMaskBias)= mode1 + attn_mask
+       mode 3 (kPostSoftMax) = softmax(mode2, dim=-1)
+    """
+
+    @parameterized.expand([("kQK", 0), ("kPostSoftCap", 1), ("kPostMaskBias", 2), ("kPostSoftMax", 3)])
+    def test_gqa_output_qk_all_modes_cpu_fp32(self, _name, mode):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=2,
+            kv_sequence_length=4,
+            past_kv_sequence_length=0,
+            q_num_heads=4,
+            kv_num_heads=2,
+            head_size=8,
+            is_causal=0,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(0)
+        device = "cpu"
+        torch_type = torch.float32
+        ort_type = TensorProto.FLOAT
+        std = 0.5
+
+        q = torch.randn(1, 2, 4, 8, device=device, dtype=torch_type) * std
+        k = torch.randn(1, 4, 2, 8, device=device, dtype=torch_type) * std
+        v = torch.randn(1, 4, 2, 8, device=device, dtype=torch_type) * std
+
+        # Mask one valid position with a large finite negative (CPU softmax
+        # requires finite inputs; -inf is replaced by mask_filter_value()
+        # internally for nonpad, but for explicit attn_mask we keep it
+        # finite to keep the per-mode arithmetic check tractable).
+        attn_mask = torch.zeros(1, config.q_num_heads, 2, 4, device=device, dtype=torch_type)
+        attn_mask[:, :, :, 2] = -1.0e6
+
+        # Per-mode reference, computed directly from torch ops.
+        scale = 1.0 / math.sqrt(config.head_size)
+        # GQA: repeat KV heads (kv_num_heads=2 -> q_num_heads=4, factor 2).
+        k_rep = k.repeat_interleave(config.q_num_heads // config.kv_num_heads, dim=2)
+        # raw[b,h,t,s] = scale * sum_d Q[b,t,h,d] * K_rep[b,s,h,d]
+        raw = scale * torch.einsum("bthd,bshd->bhts", q, k_rep)
+        if mode == 0:
+            ref_qk = raw
+        else:
+            after_softcap = config.softcap * torch.tanh(raw / config.softcap)
+            if mode == 1:
+                ref_qk = after_softcap
+            else:
+                after_mask = after_softcap + attn_mask
+                if mode == 2:
+                    ref_qk = after_mask
+                else:  # mode == 3
+                    ref_qk = torch.softmax(after_mask, dim=-1)
+
+        _out_ort, _, _, qk_ort = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+            output_qk=mode,
+        )
+
+        qk_np = qk_ort.to(torch.float32).detach().cpu().numpy()
+        ref_qk_np = ref_qk.detach().cpu().numpy()
+        self.assertFalse(numpy.isnan(qk_np).any(), f"NaN in output_qk for mode {mode}")
+        self.assertEqual(
+            qk_np.shape,
+            (1, config.q_num_heads, 2, 4),
+            f"output_qk shape must be [batch, q_num_heads, q_seq, kv_seq]; got {qk_ort.shape} for mode {mode}",
+        )
+        numpy.testing.assert_allclose(
+            qk_np,
+            ref_qk_np,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+            err_msg=f"output_qk parity failed for mode {mode}",
+        )
+
+
 @unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionGQASoftcapFloat32(unittest.TestCase):
@@ -2635,6 +2920,62 @@ class TestONNXAttentionGQASoftcapFloat32(unittest.TestCase):
 
     def test_gqa_softcap_fp32_asymmetric_v_head(self):
         self._run_softcap_fp32(head_size=16, v_head_size=32)
+
+
+class TestONNXAttentionGQASoftcapFloat32CPU(unittest.TestCase):
+    """CPU twin of TestONNXAttentionGQASoftcapFloat32.
+
+    fp32 + softcap + GQA on the CPU EP. Same shapes as the CUDA source so
+    the unmasked-softcap parity check stays paired across EPs.
+    """
+
+    def _run_softcap_fp32_cpu(self, head_size, v_head_size=None):
+        effective_v_head_size = v_head_size if v_head_size is not None else head_size
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            q_num_heads=4,
+            kv_num_heads=2,
+            head_size=head_size,
+            v_head_size=v_head_size if v_head_size is not None else 0,
+            is_causal=1,
+            softcap=2.0,
+        )
+
+        torch.manual_seed(0)
+        device = "cpu"
+        torch_type = torch.float32
+        ort_type = TensorProto.FLOAT
+        std = 0.5
+
+        q = torch.randn(1, 4, 4, head_size, device=device, dtype=torch_type) * std
+        k = torch.randn(1, 4, 2, head_size, device=device, dtype=torch_type) * std
+        v = torch.randn(1, 4, 2, effective_v_head_size, device=device, dtype=torch_type) * std
+
+        out_ref, _ = attention_ref(q=q, k=k, v=v, causal=True, softcap=2.0)
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+        )
+        out_ort = torch.reshape(out_ort, (1, 4, 4, effective_v_head_size))
+
+        out_np = out_ort.to(torch.float32).detach().cpu().numpy()
+        out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+        self.assertFalse(numpy.isnan(out_np).any())
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp32"], atol=atol["fp32"])
+
+    def test_gqa_softcap_fp32_symmetric_cpu(self):
+        self._run_softcap_fp32_cpu(head_size=16, v_head_size=None)
+
+    def test_gqa_softcap_fp32_asymmetric_v_head_cpu(self):
+        self._run_softcap_fp32_cpu(head_size=16, v_head_size=32)
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
