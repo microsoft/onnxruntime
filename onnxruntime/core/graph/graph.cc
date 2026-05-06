@@ -6788,12 +6788,12 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     }
   };
 
-  auto add_initializers = [this](const std::unordered_map<std::string, std::unique_ptr<OrtValue>>& initializers,
+  auto add_initializers = [this](const std::unordered_map<std::string, OrtValue>& initializers,
                                  bool is_external) {
     for (auto& name_and_ortvalue : initializers) {
       // convert from OrtValue to TensorProto
       const std::string& name = name_and_ortvalue.first;
-      OrtValue& v = *name_and_ortvalue.second;
+      const OrtValue& v = name_and_ortvalue.second;
 
       ORT_ENFORCE(v.IsTensor(), "Initializers must be Tensors");
       const Tensor& t = v.Get<Tensor>();
@@ -6814,7 +6814,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
                                                      offset, t.SizeInBytes(), tensor_proto);
 
         // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.
-        ortvalue_initializers_.emplace(name, std::move(v));
+        ortvalue_initializers_.emplace(name, v);
       } else {
         onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, t.DataRaw(), t.SizeInBytes());
       }
