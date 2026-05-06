@@ -127,11 +127,37 @@ Status PrepareQKV(
                                       cudaMemcpyDeviceToDevice, stream));
   }
 
-  // When kv_sequence_length differs from sequence_length (KV-shared decode),
-  // K/V are borrowed from a source layer with the full context length and already
-  // have RoPE applied. We transpose Q and K/V separately via Transpose_BSNH_to_BNSH
-  // since they have different sequence lengths.
-  if (kv_sequence_length != sequence_length) {
+  // Shared KV path: K/V inputs are empty (kv_sequence_length == 0) and the
+  // past buffer already contains the full shared KV cache.  When
+  // past_present_share_buffer is true the present buffer aliases past, so we
+  // only need to process Q (apply RoPE if configured) and skip all K/V work.
+  if (kv_sequence_length == 0) {
+    if (parameters.do_rotary && data.cos_cache != nullptr && data.sin_cache != nullptr) {
+      // Apply RoPE to Q only.  Launch the kernel with kv_num_heads=0 so that
+      // only QUERY head threads are spawned — no KEY/VALUE threads at all.
+      ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+          nullptr,  // packed_qkv
+          reinterpret_cast<const T*>(data.query),
+          nullptr,  // key (empty)
+          nullptr,  // value (empty)
+          q_out,
+          nullptr,  // k_cache (unused)
+          nullptr,  // v_cache (unused)
+          data.k_scale, data.v_scale,
+          num_heads, 0 /* kv_num_heads=0: no K/V threads */, head_size, sequence_length, batch_size,
+          max_cache_length, data.past_seq_lens,
+          reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
+          parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+          is_cache_bnsh, parameters.k_quant_type,
+          stream, max_threads_per_block)));
+    }
+    // If do_rotary is false, Q is used directly from data.query (q_out == nullptr).
+    // K/V present buffers already point to the shared past — no work needed.
+  } else if (kv_sequence_length != sequence_length) {
+    // When kv_sequence_length differs from sequence_length (KV-shared decode),
+    // K/V are borrowed from a source layer with the full context length and already
+    // have RoPE applied. We transpose Q and K/V separately via Transpose_BSNH_to_BNSH
+    // since they have different sequence lengths.
     // KV-shared decode does not support do_rotary or packed QKV — RoPE is applied
     // externally before the GQA op, and Q/K/V are separate inputs.
     if (parameters.do_rotary) {

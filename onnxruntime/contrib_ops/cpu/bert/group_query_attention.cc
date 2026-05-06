@@ -159,8 +159,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
-    // KV-shared decode: K/V already have RoPE from the source layer.
-    if (kv_sequence_length != sequence_length) {
+    // KV-shared decode with empty K/V: only apply RoPE to Q, skip K.
+    if (kv_sequence_length != sequence_length && kv_sequence_length != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "do_rotary is not supported when query and key have different sequence lengths. "
                              "Apply RoPE externally before the GQA op for KV-shared layers.");
@@ -222,19 +222,22 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = RotaryK.GetMutable<Tensor>()->MutableData<T>();
     }
-    // Run rotary embedding for Q and K
+    // Run rotary embedding for Q
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
                                               pos_ids_data, cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
 
-    rotary_params.num_heads = kv_num_heads_;
-    rotary_params.hidden_size = parameters.kv_hidden_size;
-    if (!packed_qkv) {
-      rotary_params.batch_stride = kv_num_heads_ * rotary_params.head_stride;
+    // Run rotary embedding for K (skip when kv_sequence_length == 0, i.e. shared KV with no new tokens)
+    if (kv_sequence_length > 0) {
+      rotary_params.num_heads = kv_num_heads_;
+      rotary_params.hidden_size = parameters.kv_hidden_size;
+      if (!packed_qkv) {
+        rotary_params.batch_stride = kv_num_heads_ * rotary_params.head_stride;
+      }
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
+                                                pos_ids_data, cos_cache->Data<T>(),
+                                                sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
     }
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
-                                              pos_ids_data, cos_cache->Data<T>(),
-                                              sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
     // Pack V into rotary QKV buffer
     if (packed_qkv) {
       const T* v_input = k_input + kv_num_heads_ * sequence_length * head_size;

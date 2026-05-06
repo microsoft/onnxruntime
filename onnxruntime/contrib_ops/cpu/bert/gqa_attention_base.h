@@ -211,8 +211,20 @@ class GQAAttentionBase {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
         const size_t total_seqlen = SafeInt<size_t>(seqlens_k[batch_index]) + 1;
-        // past_seqlen is 0 when there is no past (first prompt or KV-shared with no past_key).
-        const size_t past_seqlen = (is_prompt || past_key == nullptr) ? 0 : total_seqlen - sequence_length;
+        // Determine how much data comes from the past buffer.
+        // - Normal prompt (no past): past_seqlen = 0
+        // - Normal decode (past exists, new K appended): past_seqlen = total - seq_len
+        // - Shared KV (kv_sequence_length=0, past has all data): past_seqlen = total
+        size_t past_seqlen;
+        if (past_key == nullptr) {
+          past_seqlen = 0;
+        } else if (kv_sequence_length == 0) {
+          past_seqlen = total_seqlen;  // All KV data is in past (shared KV)
+        } else if (is_prompt) {
+          past_seqlen = 0;
+        } else {
+          past_seqlen = total_seqlen - sequence_length;
+        }
         const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * sequence_length * present_buffer_sequence_length;
@@ -447,7 +459,16 @@ class GQAAttentionBase {
         const size_t batch_index = i / num_heads_;
         const size_t head_index = i % num_heads_;
         const size_t total_seqlen = SafeInt<size_t>(seqlens_k[batch_index]) + 1;
-        const size_t past_seqlen = (is_prompt || past_value == nullptr) ? 0 : total_seqlen - sequence_length;
+        size_t past_seqlen;
+        if (past_value == nullptr) {
+          past_seqlen = 0;
+        } else if (kv_sequence_length == 0) {
+          past_seqlen = total_seqlen;  // All KV data is in past (shared KV)
+        } else if (is_prompt) {
+          past_seqlen = 0;
+        } else {
+          past_seqlen = total_seqlen - sequence_length;
+        }
         const size_t past_chunk_length = SafeInt<size_t>(past_seqlen) * head_size;
 
         const T* v;

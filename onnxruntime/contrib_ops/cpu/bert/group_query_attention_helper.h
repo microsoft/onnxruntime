@@ -257,12 +257,15 @@ Status CheckInputs(const T* query,
   int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length));
-    // When past KV exists, Q and K/V must have the same sequence length.
-    // The KV concat/append paths assume sequence_length == kv_sequence_length.
-    if (kv_sequence_length != sequence_length) {
+    // When past KV exists, Q and K/V must have the same sequence length,
+    // UNLESS kv_sequence_length is 0 (shared KV: new K/V are empty, past buffer
+    // already contains the full shared KV cache — no append needed).
+    if (kv_sequence_length != sequence_length && kv_sequence_length != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "query and key must have the same sequence length when past_key is provided. "
-                             "Different Q/K sequence lengths are only supported for KV-shared layers with no past.");
+                             "query and key must have the same sequence length when past_key is provided, "
+                             "or key sequence length must be 0 for shared KV (no new KV to append). "
+                             "Got sequence_length=",
+                             sequence_length, ", kv_sequence_length=", kv_sequence_length);
     }
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
