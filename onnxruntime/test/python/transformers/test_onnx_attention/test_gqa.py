@@ -22,6 +22,7 @@ It requires:
   - Boolean padding mask (converted to seqlens_k internally)
 """
 
+import math
 import os
 import unittest
 from unittest.mock import patch
@@ -1931,9 +1932,10 @@ class TestONNXAttentionCPUSoftcapMaskOrdering(unittest.TestCase):
     These two tests mirror the CUDA-only guards already in this file
     (test_gqa_large_head_unfused_softcap_additive_mask_poison_fp16 at
     line 1501, and test_mea_gqa_softcap_mask_ordering_no_leakage_prompt_fp16
-    at line 1761) but force CPUExecutionProvider with fp32. CPU does not
-    have fp16 unfused-attention support; fp32 is the natural EP-native dtype
-    and makes the leakage math arithmetically obvious.
+    at line 1761) but force CPUExecutionProvider with fp32. CPU Attention
+    does support fp16 (the kernel is registered for MLFloat16), but fp32 is
+    the natural EP-native dtype on CPU and makes the leakage math
+    arithmetically obvious.
 
     Pre-fix: both tests FAIL (max |output| ~= 100..1000 due to leak).
     Post-fix: both tests PASS (max |output| < 1, parity vs attention_ref()).
@@ -2099,6 +2101,198 @@ class TestONNXAttentionCPUSoftcapMaskOrdering(unittest.TestCase):
             out_ref.detach().cpu().numpy(),
             rtol=2e-2,
             atol=2e-2,
+        )
+
+    def test_cpu_attention_qk_matmul_output_mode_post_softcap_with_softcap_fp32(self):
+        """Differentiating test for the qk_matmul_output_mode 1<->2 enum value
+        swap per onnx/onnx#7913.
+
+        With softcap > 0 active and qk_matmul_output_mode=1 (kPostSoftCap, the
+        post-#7913 numbering used here), the qk snapshot must equal
+        ``softcap * tanh(scale * Q @ K^T / softcap)`` and MUST NOT include the
+        additive mask. Under the pre-#7913 numbering (where mode 1 meant the
+        old kQKMask = scale*Q@K^T + mask), the snapshot would contain the
+        large negative mask sentinel at masked positions — drastically
+        different. Without softcap > 0, mode 1 (post-softcap) aliases mode 0
+        (raw QK), so the swap is observationally indistinguishable.
+
+        Forces CPU EP. Mirror of the C++ test
+        Attention_QkMatmulOutputMode_PostSoftCap_WithSoftcap_CPU.
+        """
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=2,
+            past_kv_sequence_length=0,
+            q_num_heads=1,
+            kv_num_heads=1,
+            head_size=4,
+            is_causal=0,
+            softcap=1.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        device = "cpu"
+        torch_type = torch.float32
+
+        # Q = [1, 0, 0, 0]; K[0] = [1, 0, 0, 0]; K[1] = [2, 0, 0, 0]
+        # Raw Q @ K^T = [1, 2]; scale = 1/sqrt(4) = 0.5; scale*QK = [0.5, 1.0].
+        q = torch.tensor([[[[1.0, 0.0, 0.0, 0.0]]]], dtype=torch_type, device=device).transpose(1, 2)
+        k = torch.tensor(
+            [[[[1.0, 0.0, 0.0, 0.0]], [[2.0, 0.0, 0.0, 0.0]]]],
+            dtype=torch_type,
+            device=device,
+        ).transpose(1, 2)
+        # V: position 0 = 0.5 across the head_size dim, position 1 = 100 (poison).
+        v = torch.tensor(
+            [[[[0.5, 0.5, 0.5, 0.5]], [[100.0, 100.0, 100.0, 100.0]]]],
+            dtype=torch_type,
+            device=device,
+        ).transpose(1, 2)
+
+        # Mask -inf at position 1 — would dominate the snapshot under pre-#7913 numbering.
+        attn_mask = torch.zeros(
+            config.batch_size,
+            config.q_num_heads,
+            config.q_sequence_length,
+            config.kv_sequence_length,
+            dtype=torch_type,
+            device=device,
+        )
+        attn_mask[:, :, :, 1] = float("-inf")
+
+        out_ort, _, _, qk_snapshot = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT,
+            output_qk=1,  # kPostSoftCap (post-#7913 numbering)
+        )
+
+        # The snapshot must be softcap * tanh(scale * Q @ K^T / softcap) with NO
+        # mask contribution. Under pre-#7913 numbering it would have been
+        # [0.5, lowest()] (raw QK + mask sentinel) — wildly different.
+        scale = 1.0 / math.sqrt(config.head_size)
+        raw_qk = numpy.array([1.0, 2.0]) * scale
+        expected_snapshot = config.softcap * numpy.tanh(raw_qk / config.softcap)
+
+        snapshot_np = qk_snapshot.detach().cpu().numpy().reshape(-1)
+        numpy.testing.assert_allclose(
+            snapshot_np,
+            expected_snapshot,
+            rtol=1e-5,
+            atol=1e-5,
+            err_msg=(
+                "qk_matmul_output_mode=1 snapshot mismatch. Expected post-softcap "
+                "(post-#7913 semantics): softcap*tanh(scale*QK/softcap). If the snapshot "
+                "instead contains the mask sentinel, the implementation is using the "
+                "pre-#7913 numbering where mode 1 meant post-mask/bias."
+            ),
+        )
+
+        # Position 1 is -inf-masked AFTER softcap, so output should equal V[0] = 0.5.
+        out_reshaped = torch.reshape(
+            out_ort,
+            (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size),
+        )
+        numpy.testing.assert_allclose(
+            out_reshaped.detach().cpu().numpy(),
+            numpy.full((1, 1, 1, 4), 0.5, dtype=numpy.float32),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+    def test_cpu_attention_softcap_nonpad_kv_seqlen_no_leakage_prompt_fp32(self):
+        """Bonus latent fix: with softcap > 0, the nonpad_kv_seqlen sentinel
+        is now applied AFTER softcap (per onnx/onnx#7867 ordering).
+
+        Under the pre-fix ordering the nonpad sentinel would be squashed by
+        tanh into ~-softcap, leaking probability through softmax to padded
+        positions. With poison V at padded positions this would dominate the
+        output. Spec-correct ordering keeps the output bounded.
+
+        Forces CPU EP. Mirror of the C++ test
+        Attention_NonPadKVSeqLen_WithSoftcap_NoLeakage_CPU.
+        """
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=4,
+            past_kv_sequence_length=0,
+            q_num_heads=1,
+            kv_num_heads=1,
+            head_size=2,
+            is_causal=0,
+            softcap=1.0,
+            has_attn_mask=False,
+            has_nonpad_kv_seqlen=True,
+        )
+        valid_kv_len = 2
+
+        device = "cpu"
+        torch_type = torch.float32
+
+        # Uniform Q,K so all 4 raw scores equal -> uniform attention sans nonpad masking.
+        q = torch.ones(
+            config.batch_size,
+            config.q_sequence_length,
+            config.q_num_heads,
+            config.head_size,
+            dtype=torch_type,
+            device=device,
+        )
+        k = torch.ones(
+            config.batch_size,
+            config.kv_sequence_length,
+            config.kv_num_heads,
+            config.head_size,
+            dtype=torch_type,
+            device=device,
+        )
+        # V: first valid_kv_len positions = 1.0, padded positions = 1000.0 (poison).
+        v = torch.full_like(k, 1.0)
+        v[:, valid_kv_len:, :, :] = 1000.0
+
+        nonpad_kv_seqlen = torch.tensor([valid_kv_len], dtype=torch.int64, device=device)
+
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT,
+            nonpad_kv_seqlen=nonpad_kv_seqlen,
+        )
+
+        out_reshaped = torch.reshape(
+            out_ort,
+            (config.batch_size, config.q_sequence_length, config.q_num_heads, config.head_size),
+        )
+        max_abs = float(out_reshaped.abs().max())
+        self.assertLess(
+            max_abs,
+            50.0,
+            "CPU attention leakage detected: max |output| = "
+            f"{max_abs:.1f}. With softcap > 0, the nonpad_kv_seqlen sentinel "
+            "must be applied AFTER softcap (onnx/onnx#7867); otherwise tanh "
+            "squashes the sentinel into a finite value and poison V at padded "
+            "positions leaks through softmax.",
+        )
+        # Spec-correct: uniform attention over the 2 valid positions, V=1.0.
+        numpy.testing.assert_allclose(
+            out_reshaped.detach().cpu().numpy(),
+            numpy.ones((1, 1, 1, 2), dtype=numpy.float32),
+            rtol=1e-4,
+            atol=1e-4,
         )
 
 

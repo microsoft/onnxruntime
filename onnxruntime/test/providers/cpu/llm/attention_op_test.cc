@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <cmath>
 #include <limits>
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -1572,11 +1573,15 @@ TEST(AttentionTest, Attention4DWithPastAndPresentQkMatmul) {
   );
 
   // Regenerated against attention_ref() (test_onnx_attention/common.py) per
-  // ONNX Attention v24 spec ordering (onnx#7867 + #7913: scale -> softcap ->
-  // bias -> mask -> softmax). Independent oracle verification:
-  // see lead-39245992/pr1v2-oracle-verify.py (max |y - oracle| ~5e-7,
-  // max |qk_matmul - oracle| ~6e-7, well inside fp16 tolerance).
-  // Pre-fix values were calibrated to the buggy bias-before-softcap ordering.
+  // the shared opset 23/24 ordering established by onnx/onnx#7867 + #7913
+  // (scale -> softcap -> bias -> mask -> softmax). Note: RunTest4D below
+  // builds the model at opset 23, but the corrected ordering applies to
+  // both opset 23 (after the spec PR was retro-applied) and opset 24, so
+  // these reference values are stable across both. Independent oracle
+  // verification: see lead-39245992/pr1v2-oracle-verify.py
+  // (max |y - oracle| ~5e-7, max |qk_matmul - oracle| ~6e-7, well inside
+  // fp16 tolerance). Pre-fix values were calibrated to the buggy
+  // bias-before-softcap ordering.
   y = std::vector<float>{0.460770f, 0.454139f, 0.436373f, 0.530611f, 0.478473f, 0.605294f, 0.410891f, 0.523415f, 0.448294f, 0.465655f, 0.423769f, 0.546186f, 0.481425f, 0.638210f, 0.472949f, 0.552695f, 0.459947f, 0.468009f, 0.473728f, 0.550101f, 0.485709f, 0.616083f, 0.482690f, 0.556058f, 0.465264f, 0.431693f, 0.406644f, 0.526143f, 0.478929f, 0.587423f, 0.449356f, 0.612983f, 0.587659f, 0.543406f, 0.500451f, 0.610703f, 0.540261f, 0.509550f, 0.530066f, 0.529884f, 0.577096f, 0.548273f, 0.530376f, 0.579728f, 0.531157f, 0.515588f, 0.563691f, 0.588064f, 0.597485f, 0.529672f, 0.533823f, 0.619008f, 0.525027f, 0.511254f, 0.542048f, 0.589996f, 0.600307f, 0.530930f, 0.491654f, 0.601619f, 0.497336f, 0.500901f, 0.553950f, 0.481831f, 0.547279f, 0.468055f, 0.557464f, 0.489616f, 0.514214f, 0.478365f, 0.487558f, 0.573694f, 0.522515f, 0.483339f, 0.583475f, 0.476234f, 0.495144f, 0.474916f, 0.457966f, 0.565620f, 0.547892f, 0.467020f, 0.537206f, 0.472298f, 0.485790f, 0.495484f, 0.498997f, 0.587174f, 0.518947f, 0.440784f, 0.514668f, 0.543183f, 0.487476f, 0.476684f, 0.512664f, 0.570332f, 0.517656f, 0.573586f, 0.428534f, 0.468409f, 0.490595f, 0.525813f, 0.505147f, 0.448603f, 0.532501f, 0.537732f, 0.420210f, 0.496980f, 0.499212f, 0.525542f, 0.495815f, 0.404036f, 0.523729f, 0.601938f, 0.408747f, 0.456217f, 0.460051f, 0.528307f, 0.490815f, 0.436985f, 0.538734f, 0.585472f, 0.444724f, 0.458502f, 0.482920f, 0.472105f, 0.472771f, 0.432475f, 0.484446f, 0.413842f, 0.546025f, 0.441506f, 0.532838f, 0.452566f, 0.460715f, 0.446972f, 0.453487f, 0.407658f, 0.498823f, 0.467003f, 0.519096f, 0.452394f, 0.491850f, 0.461291f, 0.487161f, 0.437593f, 0.568126f, 0.432553f, 0.518779f, 0.463737f, 0.485340f, 0.445940f, 0.532132f, 0.453317f, 0.523075f, 0.406810f, 0.534930f, 0.487362f, 0.456141f, 0.487940f, 0.540068f, 0.492468f, 0.422477f, 0.365588f, 0.630927f, 0.692257f, 0.305439f, 0.540925f, 0.576973f, 0.493124f, 0.450331f, 0.349129f, 0.600636f, 0.631124f, 0.307899f, 0.533244f, 0.558822f, 0.492458f, 0.419733f, 0.356706f, 0.590545f, 0.667920f, 0.270197f, 0.526651f, 0.503723f, 0.520016f, 0.376705f, 0.329448f, 0.603018f, 0.718603f, 0.329134f, 0.569075f};
   qk_matmul = std::vector<float>{1.641293f, 1.577506f, 1.315419f, 0.952183f, 0.911756f, 0.942678f, 1.631262f, 0.926316f, 1.058831f, 1.188886f, 1.509518f, 1.514031f, 0.783145f, 0.977256f, 1.598264f, 1.592724f, 0.808987f, 0.709548f, 0.947352f, 0.770102f, 1.053919f, 0.765568f, 1.138083f, 0.967282f, 1.192430f, 0.811009f, 1.524683f, 1.653404f, 1.153281f, 0.840400f, 0.811156f, 0.861595f, 0.739005f, 1.367698f, 1.108424f, 0.892340f, 1.562650f, 1.533255f, 1.723227f, 1.132423f, 1.626465f, 1.600738f, 1.151128f, 1.317620f, 0.872582f, 1.581629f, 0.920745f, 0.864195f, 0.905869f, 0.961063f, 1.553997f, 1.378439f, 1.312530f, 0.583309f, 1.049944f, 0.731366f, 0.794214f, 1.539591f, 0.806634f, 1.552722f, 1.436309f, 0.677778f, 1.076696f, 0.631617f, 1.376016f, 1.088920f, 1.367458f, 0.902817f, 1.530786f, 0.763468f, 0.893582f, 1.179855f, 1.452602f, 1.481396f, 1.381251f, 0.872455f, 0.945228f, 0.938810f, 1.547038f, 0.911454f, 1.016529f, 0.974161f, 1.506312f, 1.483649f, 0.723776f, 1.179856f, 1.365703f, 1.600991f, 0.952311f, 0.806349f, 0.581083f, 0.684843f, 0.853356f, 0.471791f, 1.206010f, 0.843253f, 1.185010f, 0.711047f, 1.412754f, 1.408864f, 0.895774f, 0.819548f, 0.767001f, 1.041798f, 0.523938f, 1.126098f, 1.053532f, 0.865014f, 1.144003f, 1.271449f, 1.372681f, 0.731553f, 1.519266f, 1.365661f, 0.889842f, 1.102268f, 0.634224f, 1.274442f, 0.595910f, 0.826137f, 0.685971f, 0.982971f, 1.221360f, 0.977503f, 1.156987f, 0.458667f, 0.693089f, 0.475050f, 0.598359f, 1.262330f, 0.712379f, 1.343161f, 1.291253f, 0.521873f, 1.016430f, 0.408319f, 1.212668f, 1.120007f, 1.276109f, 0.943908f, 1.320484f, 0.596509f, 0.799037f, 1.195215f, 1.522589f, 1.361087f, 1.287564f, 0.766289f, 0.686613f, 0.748792f, 1.466734f, 0.867691f, 1.040056f, 1.044076f, 1.435063f, 1.642716f, 0.739184f, 1.122084f, 1.383168f, 1.471762f, 0.569751f, 0.684153f, 0.966710f, 0.468397f, 0.959068f, 0.615914f, 0.907278f, 0.688647f, 1.058192f, 0.707265f, 1.447999f, 1.567207f, 0.822206f, 0.938591f, 0.758353f, 1.053440f, 0.407512f, 1.029900f, 0.687173f, 0.746087f, 1.244575f, 1.130003f, 1.405193f, 0.802582f, 1.379059f, 1.133511f, 0.935703f, 1.079847f, 0.763127f, 1.288690f, 0.527056f, 0.789847f, 0.626067f, 1.015668f, 1.116372f, 0.921531f, 0.841283f, 0.486956f, 1.088858f, 0.605745f, 0.769806f, 1.521042f, 0.681151f, 1.380839f, 1.481197f, 0.791503f, 1.297212f, 0.728355f, 1.122444f, 1.376868f, 1.303745f, 1.203919f, 1.216960f, 0.491676f, 0.688432f, 1.318296f, 1.469498f, 1.365645f, 1.121399f, 0.838571f, 0.761569f, 0.894836f, 1.656762f, 1.087076f, 0.915660f, 1.229995f, 1.294933f, 1.556392f, 0.578489f, 1.049228f, 1.482396f, 1.473313f, 0.741742f, 0.917847f, 0.799015f, 0.761813f, 1.034959f, 0.845352f, 1.109218f, 1.008248f, 1.319164f, 0.931500f, 1.487055f, 1.724736f, 0.980730f, 0.969347f, 0.679526f, 1.111367f, 0.707048f, 1.338431f, 1.068264f, 1.149433f, 1.447490f, 1.409161f, 1.515636f, 1.070979f, 1.548284f, 1.598973f, 1.171908f, 1.490208f, 0.870892f, 1.706964f, 0.785048f, 1.047984f, 0.734912f, 1.158322f, 1.451356f, 1.310391f, 1.259155f, 0.865162f, 0.831211f, 0.748618f, 0.728799f, 1.642712f, 0.778474f, 1.543098f, 1.495402f, 0.890028f, 1.140394f, 0.879165f, 1.233532f, 1.322082f, 1.273440f, 1.123017f, 1.526173f, 0.698611f, 1.025223f, 1.458456f, 1.494469f, 1.021574f, 1.239337f, 0.900794f, 0.865123f, 0.812992f, 1.620131f, 0.686599f, 0.929910f, 1.116477f, 1.371649f, 1.562227f, 0.717770f, 0.804053f, 1.349367f, 1.147753f, 0.497988f, 0.748190f, 0.887840f, 0.511830f, 1.151428f, 0.836799f, 1.328758f, 1.052521f, 1.415765f, 0.667747f, 1.686610f, 1.712523f, 1.161341f, 1.091554f, 1.004928f, 1.036249f, 0.766651f, 0.993392f, 1.014122f, 1.144354f, 1.517848f, 1.241700f, 1.619711f, 1.145657f, 1.721687f, 1.586582f, 1.169412f, 1.321368f, 1.058886f, 1.582872f, 0.886082f, 1.079689f, 0.933412f, 1.105102f, 1.554576f, 1.003744f, 1.210192f, 0.705009f, 0.930144f, 0.522836f, 0.732897f, 1.555586f, 0.882781f, 1.553574f, 1.482246f, 0.633069f, 1.219549f, 0.603790f, 1.397770f, 1.347668f, 1.354315f, 1.063511f, 1.633760f, 0.322157f, 0.922550f, 1.207162f, 1.643563f, 1.517785f, 1.334991f, 0.932987f, 0.766434f, 0.923145f, 1.730492f, 0.798302f, 1.046942f, 1.350631f, 1.521468f, 1.526333f, 0.782090f, 1.083318f, 1.566533f, 1.553973f, 0.753723f, 1.033049f, 0.773201f, 0.476088f, 0.942563f, 0.492384f, 1.050897f, 0.802189f, 1.085467f, 0.521840f, 1.345884f, 1.530352f, 0.646801f, 0.654415f, 0.696301f, 1.048332f, 0.633034f, 1.116764f, 0.819388f, 1.026945f, 1.298155f, 1.314779f, 1.548773f, 0.922369f, 1.535392f, 1.449738f, 0.910892f, 1.084208f, 0.796646f, 1.674391f, 0.573130f, 0.647228f, 0.759130f, 1.112506f, 1.381437f, 1.015183f, 0.936844f, 0.800672f, 1.050522f, 0.732247f, 0.852033f, 1.570817f, 0.779407f, 1.596434f, 1.565062f, 0.681076f, 1.145238f, 0.906997f, 1.330618f, 1.308484f, 1.427191f, 1.126353f, 1.679303f, 0.703860f, 0.863175f, 1.546613f};
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
@@ -3101,6 +3106,122 @@ TEST(AttentionTest, Attention_Unfused_Softcap_NegInfMask_PoisonV_CUDA) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Differentiating test for the qk_matmul_output_mode 1<->2 enum value swap
+// per onnx/onnx#7913. With softcap > 0 active, mode 1 (kPostSoftCap, the
+// post-#7913 numbering used here) snapshots `softcap * tanh(scale*Q@K^T / softcap)`
+// and MUST NOT contain the additive mask. If the implementation followed the
+// pre-#7913 numbering (where mode 1 meant kPostMaskBias = scale*Q@K^T + mask),
+// the snapshot would contain the large negative mask sentinel at masked
+// positions, producing a drastically different array. Without this test, the
+// 1<->2 swap is observationally equivalent to a rename — softcap must be
+// active to differentiate. Forces CPU EP.
+TEST(AttentionTest, Attention_QkMatmulOutputMode_PostSoftCap_WithSoftcap_CPU) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  constexpr int batch_size = 1;
+  constexpr int q_num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int q_sequence_length = 1;
+  constexpr int kv_sequence_length = 2;
+  constexpr int head_size = 4;
+  constexpr float softcap = 1.0f;
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+  test.AddAttribute<float>("softcap", softcap);
+  // Mode 1 (post-#7913) = kPostSoftCap = post-softcap, pre-mask/bias.
+  test.AddAttribute<int64_t>("qk_matmul_output_mode", static_cast<int64_t>(1));
+
+  // Q = [1, 0, 0, 0]; K[0] = [1, 0, 0, 0]; K[1] = [2, 0, 0, 0]
+  // Raw Q @ K^T = [1, 2]; scale = 1/sqrt(head_size) = 0.5; scale*QK = [0.5, 1.0]
+  // After softcap=1.0:  [tanh(0.5)*1, tanh(1.0)*1] ~= [0.46211716, 0.76159416]
+  std::vector<float> q = {1.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> k = {1.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 0.0f};
+  std::vector<float> v = {0.5f, 0.5f, 0.5f, 0.5f, 100.0f, 100.0f, 100.0f, 100.0f};
+
+  // Mask -inf at position 1 — would dominate the snapshot under pre-#7913 numbering.
+  const float neg_inf = -std::numeric_limits<float>::infinity();
+  std::vector<float> attn_mask = {0.0f, neg_inf};
+
+  test.AddInput<float>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, q);
+  test.AddInput<float>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, k);
+  test.AddInput<float>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, v);
+  test.AddInput<float>("attn_mask", {q_sequence_length, kv_sequence_length}, attn_mask);
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+
+  // Y: position 1 is -inf masked AFTER softcap, so softmax weight is 0.
+  // Output = V[0] = [0.5, 0.5, 0.5, 0.5].
+  std::vector<float> expected_y = {0.5f, 0.5f, 0.5f, 0.5f};
+  test.AddOutput<float>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                        expected_y, false, 0, 1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  // Mode 1 snapshot = softcap * tanh(scale*Q@K^T / softcap), NO mask.
+  // Pre-#7913 numbering would have produced [0.5, lowest()] here instead.
+  std::vector<float> expected_qk = {std::tanh(0.5f), std::tanh(1.0f)};
+  test.AddOutput<float>("qk_matmul_output",
+                        {batch_size, q_num_heads, q_sequence_length, kv_sequence_length},
+                        expected_qk, false, 0, 1e-5f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Bonus latent fix: with softcap > 0, the `nonpad_kv_seqlen` masking sentinel
+// is now applied AFTER softcap (per onnx/onnx#7867 ordering). Without this
+// ordering, the sentinel value would be squashed by tanh and leak via softmax.
+// Constructs a softcap > 0 scenario with kv_seq > nonpad_kv_seqlen, no
+// attn_mask, and poison V at padded positions. Output must be bounded
+// (no leakage from poisoned V). Forces CPU EP.
+TEST(AttentionTest, Attention_NonPadKVSeqLen_WithSoftcap_NoLeakage_CPU) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  constexpr int batch_size = 1;
+  constexpr int q_num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int q_sequence_length = 1;
+  constexpr int kv_sequence_length = 4;
+  constexpr int head_size = 2;
+  constexpr int valid_kv_len = 2;
+
+  test.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  test.AddAttribute<int64_t>("q_num_heads", q_num_heads);
+  test.AddAttribute<float>("softcap", 1.0f);
+
+  // Uniform Q,K so all 4 raw scores are equal -> uniform attention if no masking.
+  std::vector<float> q = {1.0f, 1.0f};
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 1.0f);
+
+  // V: first 2 positions = 1.0, last 2 (padded) = 1000.0 (poison).
+  std::vector<float> v = {1.0f, 1.0f, 1.0f, 1.0f, 1000.0f, 1000.0f, 1000.0f, 1000.0f};
+
+  test.AddInput<float>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, q);
+  test.AddInput<float>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, k);
+  test.AddInput<float>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask (none)
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {batch_size}, {valid_kv_len});
+
+  // Spec-correct: padded positions hold the sentinel after softcap, softmax
+  // weight there is 0, attention is uniform over the 2 valid positions with V=1.
+  // Pre-fix (sentinel before softcap): tanh squashes the sentinel into ~-softcap,
+  // softmax leaks ~25% to each padded position, output ~= mean(1, 1, 1000, 1000) ~= 500.
+  std::vector<float> expected_y = {1.0f, 1.0f};
+  test.AddOutput<float>("Y", {batch_size, q_num_heads, q_sequence_length, head_size},
+                        expected_y, false, 0, 1e-4f);
+  // Per spec, present_key/present_value should not be used with nonpad_kv_seqlen.
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 

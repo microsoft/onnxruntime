@@ -527,7 +527,11 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       }
 
       // Apply nonpad_kv_seqlen masking (Opset 24+): mask out KV positions >= valid length per batch.
-      // Done AFTER softcap+mask so the masked positions are guaranteed -inf.
+      // Done AFTER softcap+mask so the masked positions hold the `mask_filter_value<T>()` sentinel
+      // (`std::numeric_limits<T>::lowest()` for floats, `MLFloat16::MinValue` for fp16 — see
+      // `onnxruntime/core/providers/cpu/llm/attention.h`). The CPU softmax uses this finite sentinel
+      // (not IEEE -inf) because MLAS' softmax kernel expects only finite inputs; the value is small
+      // enough relative to any softcap-saturated score that the corresponding softmax weight is 0.
       if (parameters.has_nonpad_kv_seqlen) {
         int valid_kv_len = static_cast<int>(parameters.nonpad_kv_seqlen_data[batch_i]);
         for (int s = 0; s < parameters.q_sequence_length; ++s) {

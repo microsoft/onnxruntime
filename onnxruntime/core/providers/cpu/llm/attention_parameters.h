@@ -9,7 +9,19 @@ namespace onnxruntime {
 // Declares enum QKMatMulOutputMode and struct AttentionParameters inside namespace onnxruntime::attention_helper.
 namespace attention_helper {
 
-// enum equivalent to the onnx defintion of qk_matmul_output_mode.
+// enum equivalent to the ONNX definition of qk_matmul_output_mode.
+//
+// IMPORTANT — ORT intentionally LEADS the bundled ONNX submodule on this
+// numbering. The bundled ONNX (cmake/external/onnx) is currently v1.21.0,
+// which was tagged BEFORE onnx/onnx#7913 was merged upstream; that bundled
+// schema therefore still reflects the OLD value mapping (1 = post-mask/bias,
+// 2 = post-softcap). This implementation already follows the corrected
+// post-#7913 numbering so that ORT will be spec-correct as soon as the next
+// ONNX release (v1.22) is bundled, with no behavior change required at
+// that point. As a side effect, the as-shipped opset-23 ONNX backend node
+// tests under cmake/external/onnx that pin the OLD numbering will fail
+// against this implementation until the submodule is bumped — this is
+// expected; see PR description for details.
 //
 // Mode integer numbering follows the ONNX Attention v23/24 pipeline stage
 // order, per onnx/onnx#7867 (which corrected the ordering to apply softcap

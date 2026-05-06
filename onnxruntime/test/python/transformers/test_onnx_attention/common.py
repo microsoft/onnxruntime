@@ -301,9 +301,9 @@ def _get_opset_version(config: AttentionConfig):
     return 24 if config.has_nonpad_kv_seqlen else 23
 
 
-def create_attention_graph_prompt(config: AttentionConfig, ort_type):
+def create_attention_graph_prompt(config: AttentionConfig, ort_type, output_qk: int = 0):
     """Create ONNX graph for prompt phase (no past KV cache)."""
-    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False)
+    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False, output_qk=output_qk)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
     opset = _get_opset_version(config)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
@@ -380,6 +380,7 @@ def attention_prompt_func(
     device,
     ort_type=TensorProto.FLOAT16,
     nonpad_kv_seqlen=None,
+    output_qk: int = 0,
 ):
     """
     Run ONNX Attention op for prompt phase (no past KV cache).
@@ -394,6 +395,10 @@ def attention_prompt_func(
         device: Device string (e.g., "cuda")
         ort_type: ONNX tensor type
         nonpad_kv_seqlen: Optional int64 tensor [batch_size] for opset 24
+        output_qk: qk_matmul_output_mode value (0=disable, 1..3=request snapshot;
+            see attention_parameters.h::QKMatMulOutputMode for stage mapping).
+            Returns the output_qk tensor as the 4th return value when > 0;
+            otherwise returns None for that slot.
     """
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -405,6 +410,7 @@ def attention_prompt_func(
     onnx_model_str = create_attention_graph_prompt(
         config=config,
         ort_type=ort_type,
+        output_qk=output_qk,
     )
 
     # Reshape inputs for ONNX graph
@@ -476,8 +482,19 @@ def attention_prompt_func(
     bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
+    output_qk_tensor = None
+    if output_qk > 0:
+        output_qk_tensor = torch.zeros(
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.kv_sequence_length),
+            dtype=out_dtype,
+            device=device,
+        )
+        bind_output_tensor(io_binding, "output_qk", output_qk_tensor, device, ort_type)
+
     ort_session.run_with_iobinding(io_binding)
 
+    if output_qk > 0:
+        return out_torch, present_k, present_v, output_qk_tensor
     return out_torch, present_k, present_v
 
 
