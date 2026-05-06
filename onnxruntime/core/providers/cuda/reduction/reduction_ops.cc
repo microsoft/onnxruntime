@@ -378,7 +378,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
       // For types that don't support std::numeric_limits natively (MLFloat16,
       // BFloat16), use float intermediary and convert via CudaT.
       if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_AVG) {
-        // ReduceMean on empty set is undefined (0/0). Fill with 0.
+        // ReduceMean on empty set is undefined (0/0) per ONNX spec.
+        // Fill with 0 for consistency with CPU (ReduceAggregatorMean inherits
+        // ReduceAggregatorSum::fill_for_empty_set which fills 0).
         CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0,
                                              output.SizeInBytes(), stream));
       } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {

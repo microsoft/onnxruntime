@@ -6323,7 +6323,7 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
 //
 // Per ONNX spec, reducing over an empty set produces the operator identity:
 //   ReduceSum → 0, ReduceProd → 1, ReduceMin → +inf, ReduceMax → -inf,
-//   ReduceMean → undefined (NaN)
+//   ReduceMean → 0 (undefined per ONNX spec; ORT fills with 0 for consistency)
 //
 // These tests verify both CPU and CUDA providers handle empty tensors
 // correctly for various shapes, keepdims settings, and axis configurations.
@@ -6466,6 +6466,15 @@ TEST(ReductionOpTest, ReduceMin_EmptyTensor_MultiDim) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMin_EmptyTensor_DefaultAxes) {
+  // {1, 0} reduce all → scalar, identity = +inf
+  OpTester test("ReduceMin", 18);
+  test.AddAttribute("keepdims", int64_t(0));
+  test.AddInput<float>("data", {1, 0}, {});
+  test.AddOutput<float>("reduced", {}, {std::numeric_limits<float>::infinity()});
+  test.Run();
+}
+
 // --- ReduceProd empty tensor tests ---
 
 TEST(ReductionOpTest, ReduceProd_EmptyTensor_ExplicitAxis) {
@@ -6511,7 +6520,7 @@ TEST(ReductionOpTest, ReduceProd_EmptyTensor_DefaultAxes) {
 
 TEST(ReductionOpTest, ReduceMean_EmptyTensor_ExplicitAxis) {
   // {1, 0} reduce axis 1 → {1}, mean of empty set = 0/0.
-  // ORT fills with 0 (undefined per ONNX spec).
+  // Undefined per ONNX spec; ORT fills with 0 for consistency with CPU/CUDA.
   OpTester test("ReduceMean", 18);
   test.AddAttribute("keepdims", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
@@ -6527,6 +6536,15 @@ TEST(ReductionOpTest, ReduceMean_EmptyTensor_MultiDim) {
   test.AddInput<float>("data", {2, 0, 3}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {2, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_EmptyTensor_DefaultAxes) {
+  // {1, 0} reduce all → scalar, empty mean = 0
+  OpTester test("ReduceMean", 18);
+  test.AddAttribute("keepdims", int64_t(0));
+  test.AddInput<float>("data", {1, 0}, {});
+  test.AddOutput<float>("reduced", {}, {0.0f});
   test.Run();
 }
 
@@ -6584,6 +6602,15 @@ TEST(ReductionOpTest, ReduceMax_EmptyTensor_DefaultAxes_KeepDims) {
   test.AddAttribute("keepdims", int64_t(1));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {1, 1}, {-std::numeric_limits<float>::infinity()});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_EmptyTensor_DefaultAxes_KeepDims) {
+  // {1, 0} reduce all axes with keepdims → {1, 1}, identity = +inf
+  OpTester test("ReduceMin", 18);
+  test.AddAttribute("keepdims", int64_t(1));
+  test.AddInput<float>("data", {1, 0}, {});
+  test.AddOutput<float>("reduced", {1, 1}, {std::numeric_limits<float>::infinity()});
   test.Run();
 }
 
