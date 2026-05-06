@@ -17,10 +17,6 @@ namespace coreml {
 
 namespace {
 
-// Set of activations that ORT's ConvActivationFusion may fold into a FusedConv
-// and that the CoreML EP has MLProgram equivalents for.
-// See onnxruntime/core/optimizer/conv_activation_fusion.cc:82-99 for the
-// producer side.
 bool IsSupportedFusedConvActivation(const std::string& name) {
   return name == "Relu" || name == "Sigmoid" || name == "Tanh" ||
          name == "LeakyRelu" || name == "Clip" || name == "HardSigmoid";
