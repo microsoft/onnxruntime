@@ -4,6 +4,7 @@
 #include "core/providers/webgpu/rnn/lstm.h"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 
@@ -19,12 +20,12 @@ std::string ActivationToWgslFn(const std::string& activation) {
   std::string lower;
   lower.reserve(activation.size());
   for (char c : activation) {
-    lower.push_back(static_cast<char>(std::tolower(c)));
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
   }
   if (lower == "sigmoid") return "sigmoid_f";
   if (lower == "tanh") return "tanh_f";
   if (lower == "relu") return "relu_f";
-  return "sigmoid_f";
+  ORT_THROW("Unsupported LSTM activation for WebGPU: ", activation);
 }
 
 }  // namespace
@@ -54,6 +55,7 @@ Lstm::Lstm(const OpKernelInfo& info) : WebGpuKernel(info) {
       activations_.push_back("Tanh");
     }
   }
+  ORT_ENFORCE(activations_.size() == static_cast<size_t>(num_directions) * 3);
 }
 
 // ===========================================================================
@@ -97,7 +99,7 @@ Status LstmStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 // ===========================================================================
-// LstmCellProgram — one cell step, always flat [batch, H] for h_prev/c_prev
+// LstmCellProgram - one cell step, always flat [batch, H] for h_prev/c_prev
 // ===========================================================================
 Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("x", ShaderUsage::UseElementTypeAlias);
@@ -135,7 +137,7 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "  let batch_idx = global_idx / H;\n"
        << "  let j = global_idx % H;\n\n";
 
-  // Sequence length masking — early exit if past this batch's seq length.
+  // Sequence length masking - early exit if past this batch's seq length.
   // Use timestep (not processing_step) so that reverse direction masks correctly:
   // for forward, timestep == processing_step; for reverse, timestep counts down.
   if (has_seq_lens_) {
@@ -176,7 +178,7 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "    gate_c += xv * f32(w[w_base + (3u * H + j) * I + k]);\n"
        << "  }\n\n";
 
-  // H_prev * R^T  (h_prev always [batch, H] — flat indexing)
+  // H_prev * R^T  (h_prev always [batch, H] - flat indexing)
   body << "  let r_base = dir * 4u * H * H;\n"
        << "  let h_base = batch_idx * H;\n"
        << "  for (var k: u32 = 0u; k < H; k++) {\n"
@@ -258,7 +260,7 @@ Status LstmCellProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 // ===========================================================================
-// LstmWriteYProgram — copies h_new to Y with optional seq_lens masking.
+// LstmWriteYProgram - copies h_new to Y with optional seq_lens masking.
 // Used when the cell program cannot include Y output due to storage buffer limits.
 // ===========================================================================
 Status LstmWriteYProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -439,6 +441,9 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
         c_read = &C_a;
         h_write = &H_b;
         c_write = &C_b;
+      } else {
+        h_read = &H_b;
+        c_read = &C_b;
         h_write = &H_a;
         c_write = &C_a;
       }

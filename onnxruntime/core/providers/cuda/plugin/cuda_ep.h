@@ -5,6 +5,7 @@
 
 #include "cuda_plugin_utils.h"
 #include "cuda_graph_plugin.h"
+#include "cuda_profiler_plugin.h"
 #include "ep/adapters.h"
 
 #include <memory>
@@ -90,6 +91,11 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
 
   static OrtStatus* ORT_API_CALL GetAvailableResourceImpl(
       const OrtEp* this_ptr, OrtResourceCount* available) noexcept;
+
+#if defined(ENABLE_CUDA_PROFILING)
+  static OrtStatus* ORT_API_CALL CreateProfilerImpl(
+      OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept;
+#endif
 
   /// Helper to parse the graph annotation ID from run options.
   CudaGraphAnnotation_t GetGraphAnnotationId(const OrtRunOptions* run_options) const;

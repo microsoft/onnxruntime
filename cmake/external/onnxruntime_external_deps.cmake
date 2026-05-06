@@ -376,6 +376,18 @@ if (CPUINFO_SUPPORTED)
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
+    onnxruntime_fetchcontent_declare(
+      pytorch_cpuinfo
+      URL ${DEP_URL_pytorch_cpuinfo}
+      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+      EXCLUDE_FROM_ALL
+      PATCH_COMMAND
+        # https://github.com/microsoft/onnxruntime/issues/10038
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch
+      FIND_PACKAGE_ARGS NAMES cpuinfo
+    )
   else()
     onnxruntime_fetchcontent_declare(
       pytorch_cpuinfo

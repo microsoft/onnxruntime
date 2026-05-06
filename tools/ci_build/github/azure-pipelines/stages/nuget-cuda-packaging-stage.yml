@@ -34,8 +34,6 @@ stages:
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
-      BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
 
     steps:
     - checkout: self
@@ -134,8 +132,14 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
-                              -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime)'
+        msbuildArguments: >-
+          -t:CreatePackage
+          "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
+          -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
+          "-p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}"
+          "-p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)"
+          "-p:CurrentDate=$(ORT_CI_BUILD_DATE)"
+          "-p:CurrentTime=$(ORT_CI_BUILD_TIME)"
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1

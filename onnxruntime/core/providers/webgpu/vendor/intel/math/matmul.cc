@@ -55,18 +55,18 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   TensorShape output_shape = helper.OutputShape();
 
-  const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
-  // check if A is batch of vector (bach is not 1, M is 1) and B is a matrix (batch is 1)
-  if (batchA != 1 && dim_output_outer == 1 && batchB == 1) {
-    // optimization for batched vector matrix multiplication
-    // dimensions of A: [1,`batchA`,K]
-    TensorShapeVector dims_a = {1, batchA, helper.K()};
+  // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
+  // performance (e.g., [2,3,5] → [1,6,5]).
+  if (batchA != 1 && batchB == 1) {
+    // dimensions of A: [1,`batchA`, M, K]
+    int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
+    TensorShapeVector dims_a = {1, batchAndM, helper.K()};
     // dimensions of B: [1,K,N]
     TensorShapeVector dims_b = {1, helper.K(), helper.N()};
 
     a_shape = TensorShape(dims_a);
     b_shape = TensorShape(dims_b);
-    output_shape = {1, batchA, helper.N()};
+    output_shape = {1, batchAndM, helper.N()};
   }
 
   // helpful dimension variables

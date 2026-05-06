@@ -52,3 +52,4 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
 |ai.onnx:Unsqueeze||
+|com.microsoft:QuickGelu|Produced by ORT's `QuickGeluFusion` optimizer pass. Decomposed into `mul` / `sigmoid` / `mul`.|

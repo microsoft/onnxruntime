@@ -63,6 +63,8 @@ stages:
     pool:
       name: ${{ parameters.machine_pool }}
       os: linux
+      ${{ if eq(parameters.arch, 'aarch64') }}:
+        hostArchitecture: Arm64
     templateContext:
       outputs:
       - output: pipelineArtifact
@@ -80,10 +82,17 @@ stages:
           value: ''
       - template: ../templates/common-variables.yml
       - name: trt_version
-        ${{ if eq(parameters.cuda_version, '13.0') }}:
+        ${{ if eq(parameters.arch, 'aarch64') }}:
+          value: ${{ variables.aarch64_trt_version }}
+        ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
           value: ${{ variables.linux_trt_version_cuda13 }}
-        ${{ if eq(parameters.cuda_version, '12.8') }}:
+        ${{ if and(ne(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '12.8')) }}:
           value: ${{ variables.linux_trt_version_cuda12 }}
+      - name: trt_download_url
+        ${{ if and(eq(parameters.arch, 'aarch64'), eq(parameters.cuda_version, '13.0')) }}:
+          value: ${{ variables.aarch64_trt_download_url_cuda13 }}
+        ${{ else }}:
+          value: ''
     steps:
       - checkout: self
         clean: true
@@ -99,7 +108,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
-          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg TRT_DOWNLOAD_URL=${{ variables.trt_download_url }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
 
