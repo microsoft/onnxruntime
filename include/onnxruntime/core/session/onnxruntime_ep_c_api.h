@@ -2971,7 +2971,7 @@ struct OrtEpFactory {
    * Evaluates each candidate compatibility string against the given hardware devices and returns the selected index.
    *
    * Context about having this function:
-   * The existed ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
+   * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
    * compatible model when there are multiple candidates. For example, an EP may support multiple compilation modes
    * (e.g., "speed optimized" vs "memory optimized") that produce different compatibility strings. The EP can implement
    * this function to evaluate the candidate strings and select the best compatible one based on its own criteria and
