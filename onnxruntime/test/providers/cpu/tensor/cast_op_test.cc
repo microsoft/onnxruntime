@@ -3127,5 +3127,28 @@ TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
   }
 }
 
+// Regression test for https://github.com/microsoft/onnxruntime/issues/XXXXX
+// The CUDA Cast kernel used CUDA_LONG (int32_t) for element indices, which caused
+// int32 overflow and illegal memory access on tensors with >2^31 elements.
+// This test validates that a large tensor cast works correctly. The full reproducer
+// requires >2^31 elements (>8GB for float), so this test uses a moderately large
+// tensor to exercise the same code path and validate correctness.
+TEST(CastOpTest, LargeTensorCastNoCrash) {
+  // Use a tensor large enough to be meaningful but not require excessive memory.
+  // 2^24 = 16M elements is enough to exercise the kernel grid calculation while
+  // staying within typical CI GPU memory limits.
+  constexpr int64_t num_elements = 1 << 24;  // 16M elements
+  const std::vector<int64_t> shape = {num_elements};
+
+  std::vector<float> input(num_elements);
+  std::vector<int32_t> expected(num_elements);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    input[i] = static_cast<float>(i % 1000);
+    expected[i] = static_cast<int32_t>(i % 1000);
+  }
+
+  TestCastOp<float, int32_t>(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
