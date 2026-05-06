@@ -93,6 +93,12 @@ endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
 endif()
+# pybind11 3.0 headers trigger -Wmaybe-uninitialized in GCC's flow analysis
+# of property accessor lambdas. Suppress it for this target only.
+# See https://github.com/microsoft/onnxruntime/issues/25681
+if(HAS_MAYBE_UNINITIALIZED)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-maybe-uninitialized")
+endif()
 
 # We export symbols using linker and the compiler does not know anything about it
 # There is a problem with classes that have pybind types as members.
