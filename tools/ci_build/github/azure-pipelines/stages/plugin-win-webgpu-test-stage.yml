@@ -41,7 +41,7 @@ stages:
         & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
 
         echo "installing test dependencies"
-        python -m pip install onnx numpy
+        python -m pip install onnx onnxruntime numpy
 
         $wheelDir = "$(Pipeline.Workspace)\build\webgpu_plugin_python_win_${{ parameters.arch }}"
         $wheel = (Get-ChildItem "$wheelDir\onnxruntime_ep_webgpu-*.whl")[0]
