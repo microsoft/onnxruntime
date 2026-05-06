@@ -7,8 +7,6 @@
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/providers/common.h"
-
-#include <set>
 // TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26451)
@@ -904,11 +902,11 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
     axis = HandleNegativeAxis(axis, rank);
   }
 
-  // Build reduced output shape
-  std::set<int64_t> reduced_axes(input_axes.begin(), input_axes.end());
+  // Build reduced output shape (linear scan — rank is always < 8)
   TensorShapeVector output_shape_vector;
   for (int64_t i = 0; i < rank; ++i) {
-    bool is_reduced = reduced_axes.empty() || reduced_axes.count(i) > 0;
+    bool is_reduced = input_axes.empty() ||
+                      std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end();
     if (is_reduced) {
       if (keepdims) {
         output_shape_vector.push_back(1);
