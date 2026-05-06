@@ -161,9 +161,7 @@ def create_attention_node_and_io(
     # sentinel, or unknown modes like 4/5) raises immediately, so callers can't
     # silently bind a 4th output the unfused CUDA kernel would populate as raw-QK.
     if output_qk is not None:
-        assert output_qk in (0, 1, 2, 3), (
-            f"output_qk must be one of {{0, 1, 2, 3}} or None, got {output_qk!r}"
-        )
+        assert output_qk in (0, 1, 2, 3), f"output_qk must be one of {{0, 1, 2, 3}} or None, got {output_qk!r}"
         enable_output_qk = True
     else:
         enable_output_qk = False
