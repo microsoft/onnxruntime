@@ -14,7 +14,6 @@
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_options.h"
 #include "core/session/utils.h"
-#endif
 
 namespace {
 void BuildCStringArray(gsl::span<const std::string> in,
@@ -32,6 +31,7 @@ void BuildCStringArray(gsl::span<const std::string> in,
 }
 
 }  // namespace
+#endif
 
 using namespace onnxruntime;
 
