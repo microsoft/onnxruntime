@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <climits>
+#include <limits>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"

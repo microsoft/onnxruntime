@@ -4,6 +4,7 @@
 #include "ep_factory.h"
 
 #include <cassert>
+#include <limits>
 
 #include "ep.h"
 #include "ep_allocator.h"
@@ -12,6 +13,22 @@
 #include "ep_stream_support.h"
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
+
+namespace {
+int CompatibilityRank(OrtCompiledModelCompatibility c) {
+  switch (c) {
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
+      return 3;
+    case OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION:
+      return 2;
+    case OrtCompiledModelCompatibility_EP_NOT_APPLICABLE:
+      return 1;
+    case OrtCompiledModelCompatibility_EP_UNSUPPORTED:
+    default:
+      return 0;
+  }
+}
+}  // namespace
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
     : OrtEpFactory{},
@@ -45,6 +62,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   GetNumCustomOpDomains = GetNumCustomOpDomainsImpl;
   GetCustomOpDomains = GetCustomOpDomainsImpl;
   ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
+  SelectBestCompiledModelCompatibilityInfo = SelectBestCompiledModelCompatibilityInfoImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
@@ -512,5 +530,58 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
 
   // Everything matches - the compiled model is fully compatible
   *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL ExampleEpFactory::SelectBestCompiledModelCompatibilityInfoImpl(
+    OrtEpFactory* this_ptr,
+    const OrtHardwareDevice* const* devices,
+    size_t num_devices,
+    const char* const* compatibility_infos,
+    size_t num_compatibility_infos,
+    size_t* selected_index) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+
+  if (selected_index == nullptr) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "selected_index cannot be nullptr");
+  }
+
+  *selected_index = std::numeric_limits<size_t>::max();
+
+  if (compatibility_infos == nullptr || num_compatibility_infos == 0) {
+    return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "compatibility_infos cannot be nullptr or empty");
+  }
+
+  int best_rank = -1;
+  size_t best_idx = std::numeric_limits<size_t>::max();
+
+  for (size_t i = 0; i < num_compatibility_infos; ++i) {
+    if (compatibility_infos[i] == nullptr) {
+      return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                          "compatibility_infos contains a nullptr entry");
+    }
+
+    OrtCompiledModelCompatibility compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    OrtStatus* status = ValidateCompiledModelCompatibilityInfoImpl(
+        this_ptr, devices, num_devices, compatibility_infos[i], &compatibility);
+    if (status != nullptr) {
+      return status;
+    }
+
+    const int rank = CompatibilityRank(compatibility);
+    if (rank > best_rank) {
+      best_rank = rank;
+      best_idx = i;
+    }
+  }
+
+  // all unsupported => SIZE_MAX
+  if (best_rank <= CompatibilityRank(OrtCompiledModelCompatibility_EP_UNSUPPORTED)) {
+    *selected_index = std::numeric_limits<size_t>::max();
+  } else {
+    *selected_index = best_idx;
+  }
+
   return nullptr;
 }

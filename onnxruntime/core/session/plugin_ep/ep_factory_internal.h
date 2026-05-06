@@ -106,6 +106,16 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->DeinitGraphicsInterop(ep_device);
   }
 
+  OrtStatus* SelectBestCompiledModelCompatibilityInfo(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                                      _In_ size_t num_devices,
+                                                      _In_reads_(num_compatibility_infos) const char* const* compatibility_infos,
+                                                      _In_ size_t num_compatibility_infos,
+                                                      _Out_ size_t* selected_index) noexcept {
+    return impl_->SelectBestCompiledModelCompatibilityInfo(devices, num_devices,
+                                                           compatibility_infos, num_compatibility_infos,
+                                                           selected_index);
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* /*ep*/) noexcept {
     // we never create an OrtEp so we should never be trying to release one

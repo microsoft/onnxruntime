@@ -36,6 +36,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::GetHardwareDeviceIncompatibilityDetails = Forward::GetHardwareDeviceIncompatibilityDetails;
   OrtEpFactory::InitGraphicsInterop = Forward::InitGraphicsInterop;
   OrtEpFactory::DeinitGraphicsInterop = Forward::DeinitGraphicsInterop;
+  OrtEpFactory::SelectBestCompiledModelCompatibilityInfo = Forward::SelectBestCompiledModelCompatibilityInfo;
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,

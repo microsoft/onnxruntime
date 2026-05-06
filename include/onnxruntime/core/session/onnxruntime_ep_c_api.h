@@ -2965,6 +2965,38 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(DeinitGraphicsInterop, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device);
+
+  /** \brief Select the best compiled model compatibility info from candidate strings.
+   *
+   * Evaluates each candidate compatibility string against the given hardware devices and returns the selected index.
+   *
+   * Context about having this function:
+   * The existed ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
+   * compatible model when there are multiple candidates. For example, an EP may support multiple compilation modes
+   * (e.g., "speed optimized" vs "memory optimized") that produce different compatibility strings. The EP can implement
+   * this function to evaluate the candidate strings and select the best compatible one based on its own criteria and
+   * the target devices.
+   *
+   * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] devices Array of OrtHardwareDevice pointers that the EP would run on. All must map to this EP.
+   * \param[in] num_devices Number of entries in `devices`.
+   * \param[in] compatibility_infos Array of candidate compatibility strings.
+   * \param[in] num_compatibility_infos Number of entries in `compatibility_infos`.
+   * \param[out] selected_index Index of selected candidate, or SIZE_MAX if all candidates are unsupported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(SelectBestCompiledModelCompatibilityInfo,
+                  _In_ OrtEpFactory* this_ptr,
+                  _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                  _In_ size_t num_devices,
+                  _In_reads_(num_compatibility_infos) const char* const* compatibility_infos,
+                  _In_ size_t num_compatibility_infos,
+                  _Out_ size_t* selected_index);
 };
 
 #ifdef __cplusplus
