@@ -3531,7 +3531,7 @@ struct GraphImpl : ConstGraphImpl<T> {
   // <Wraps GetModelEditorApi().SetGraphOutputs()
   void SetOutputs(std::vector<ValueInfo>& outputs);
   // <Wraps GetModelEditorApi().AddInitializerToGraph()
-  void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
+  void AddInitializer(const std::string& name, const Value& initializer, bool data_is_external);  // Graph copies the OrtValue internally
   // <Wraps GetModelEditorApi().AddNodeToGraph()
   void AddNode(Node& node);  // Graph takes ownership of Node
 #endif                       // !defined(ORT_MINIMAL_BUILD)

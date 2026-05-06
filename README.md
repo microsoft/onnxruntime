@@ -20,6 +20,9 @@
   - ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
   - ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
 
+* **Plugin EP repositories**:
+  - ONNX Runtime QNN Plugin EP: [onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn)
+
 ## Releases
 
 The current release and past releases can be found here: https://github.com/microsoft/onnxruntime/releases.
