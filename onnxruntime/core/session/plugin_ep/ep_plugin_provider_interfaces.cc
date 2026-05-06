@@ -122,10 +122,10 @@ struct PluginEpMetaDefNameFunctor {
 //
 
 // Single source of truth for the OrtEp::GetMemoryInfoByMemType callback (added in EP API
-// version 26): version-gated, null-checked. Returns nullptr if the EP did not opt in or if
+// version 27): version-gated, null-checked. Returns nullptr if the EP did not opt in or if
 // the EP returned nullptr to defer to ORT's built-in fallback.
 static const OrtMemoryInfo* TryGetEpMemoryInfo(const OrtEp& ep, OrtMemType mem_type) {
-  if (ep.ort_version_supported >= 26 && ep.GetMemoryInfoByMemType != nullptr) {
+  if (ep.ort_version_supported >= 27 && ep.GetMemoryInfoByMemType != nullptr) {
     return ep.GetMemoryInfoByMemType(&ep, mem_type);
   }
   return nullptr;

@@ -2573,7 +2573,7 @@ struct OrtEp {
    * \note Implementation of this function is optional. If set to NULL, ORT applies its
    *       built-in resolution for every OrtMemType.
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    */
   ORT_API_T(const OrtMemoryInfo*, GetMemoryInfoByMemType, _In_ const OrtEp* this_ptr,
             _In_ OrtMemType mem_type);

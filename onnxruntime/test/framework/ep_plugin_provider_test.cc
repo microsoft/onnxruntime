@@ -430,7 +430,7 @@ TEST(PluginExecutionProviderTest, GetMemoryInfoByMemType_SeedsDefaultDevice) {
   ASSERT_GE(ort_ep->get_memory_info_by_mem_type_call_count.load(), 2);
 }
 
-// Version gate: ort_version_supported < 26 must bypass the callback at both call sites.
+// Version gate: ort_version_supported < 27 must bypass the callback at both call sites.
 // Without this guard ORT would call into a function pointer the EP didn't claim to support.
 TEST(PluginExecutionProviderTest, GetMemoryInfoByMemType_VersionGateBypassesCallback) {
   auto callback_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
@@ -445,7 +445,7 @@ TEST(PluginExecutionProviderTest, GetMemoryInfoByMemType_VersionGateBypassesCall
   std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
 
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices, [&](test_plugin_ep::TestOrtEp& test_ep) {
-    test_ep.ort_version_supported = 25;  // older than the GetMemoryInfoByMemType API version
+    test_ep.ort_version_supported = 26;  // older than the GetMemoryInfoByMemType API version
     test_ep.GetMemoryInfoByMemType = test_plugin_ep::TestOrtEp::GetMemoryInfoByMemTypeImpl;
     test_ep.test_mem_info_default = &callback_mem_info;
   });
