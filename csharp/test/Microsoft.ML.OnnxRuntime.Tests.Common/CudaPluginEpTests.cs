@@ -18,6 +18,7 @@ using Xunit;
 /// Tests for the CUDA Plugin Execution Provider registration and functionality.
 /// These tests are skipped if the CUDA Plugin EP library is not available.
 /// </summary>
+[Collection("Ort Inference Tests")]
 public class CudaPluginEpTests
 {
     private readonly OrtEnv ortEnvInstance = OrtEnv.Instance();
@@ -92,6 +93,8 @@ public class CudaPluginEpTests
 
             using var sessionOptions = new SessionOptions();
             sessionOptions.AppendExecutionProvider(ortEnvInstance, cudaPluginDevices, null);
+            // Ensure all nodes are placed on the CUDA Plugin EP; fail if any would fall back to CPU
+            sessionOptions.AddSessionConfigEntry("session.disable_cpu_ep_fallback", "1");
 
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
@@ -150,8 +153,10 @@ public class CudaPluginEpTests
         try
         {
             var epDevices = ortEnvInstance.GetEpDevices();
-            var cudaPluginDevice = epDevices.First(
+            var cudaPluginDevice = epDevices.FirstOrDefault(
                 d => d.EpName == CudaPluginEpName);
+            Assert.True(cudaPluginDevice != null,
+                "CUDA Plugin EP was registered, but no matching device was exposed.");
 
             // Validate device properties
             Assert.NotEmpty(cudaPluginDevice.EpName);
@@ -189,15 +194,20 @@ public class CudaPluginEpTests
 
             Assert.NotEmpty(cudaPluginDevices);
 
+            // Extract actual device_id from the first discovered device's memory info
+            var firstDevice = cudaPluginDevices[0];
+            var deviceMemInfo = firstDevice.GetMemoryInfo(OrtDeviceMemoryType.DEFAULT);
+            int deviceId = deviceMemInfo.Id;
+
             using var sessionOptions = new SessionOptions();
 
-            // Pass provider options (e.g., device_id)
+            // Pass provider options with device_id matching the discovered device
             var epOptions = new Dictionary<string, string>
             {
-                { "device_id", "0" }
+                { "device_id", deviceId.ToString() }
             };
 
-            sessionOptions.AppendExecutionProvider(ortEnvInstance, cudaPluginDevices, epOptions);
+            sessionOptions.AppendExecutionProvider(ortEnvInstance, new[] { firstDevice }.ToList(), epOptions);
 
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
@@ -224,6 +234,8 @@ public class CudaPluginEpTests
 
             // Use automatic EP selection which should pick up the registered CUDA Plugin EP
             sessionOptions.SetEpSelectionPolicy(ExecutionProviderDevicePolicy.PREFER_GPU);
+            // Ensure the CUDA Plugin EP is actually selected, not silently falling back to CPU
+            sessionOptions.AddSessionConfigEntry("session.disable_cpu_ep_fallback", "1");
 
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
@@ -253,15 +265,21 @@ public class CudaPluginEpTests
 
             Assert.NotEmpty(cudaPluginDevices);
 
+            // Get CUDA device memory info for output binding
+            var cudaDevice = cudaPluginDevices[0];
+            var cudaDeviceMemInfo = cudaDevice.GetMemoryInfo(OrtDeviceMemoryType.DEFAULT);
+            var expectedVendorId = cudaDeviceMemInfo.GetVendorId();
+
             using var sessionOptions = new SessionOptions();
             sessionOptions.AppendExecutionProvider(ortEnvInstance, cudaPluginDevices, null);
+            // Ensure all nodes are placed on the CUDA Plugin EP; fail if any would fall back to CPU
+            sessionOptions.AddSessionConfigEntry("session.disable_cpu_ep_fallback", "1");
 
             var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
             using var session = new InferenceSession(model, sessionOptions);
 
             float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in");
-            float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
             long[] expectedShape = { 1, 1000, 1, 1 };
 
             var inputMeta = session.InputMetadata;
@@ -274,7 +292,8 @@ public class CudaPluginEpTests
 
             using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
             ioBinding.BindInput(inputName, inputOrtValue);
-            ioBinding.BindOutputToDevice(outputName, OrtMemoryInfo.DefaultInstance);
+            // Bind output to CUDA device memory
+            ioBinding.BindOutputToDevice(outputName, cudaDeviceMemInfo);
 
             ioBinding.SynchronizeBoundInputs();
 
@@ -290,9 +309,10 @@ public class CudaPluginEpTests
             Assert.Equal(TensorElementType.Float, typeShape.ElementDataType);
             Assert.Equal(expectedShape, typeShape.Shape);
 
-            var resultArray = output.GetTensorDataAsSpan<float>().ToArray();
-            Assert.Equal(expectedOutput.Length, resultArray.Length);
-            Assert.Equal(expectedOutput, resultArray, new FloatComparer());
+            // Verify output resides on GPU device memory
+            var outputMemInfo = output.GetTensorMemoryInfo();
+            Assert.Equal(OrtDeviceMemoryType.DEFAULT, outputMemInfo.GetDeviceMemoryType());
+            Assert.Equal(expectedVendorId, outputMemInfo.GetVendorId());
         }
         finally
         {
