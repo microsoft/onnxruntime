@@ -1473,6 +1473,7 @@ TEST(MoETest, QMoETest_CPU_Int2_MLAS) {
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 2);
   cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
+  cpu_tester.AddAttribute<int64_t>("swiglu_fusion", static_cast<int64_t>(1));
   cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   cpu_tester.AddAttribute<int64_t>("expert_weight_bits", expert_weight_bits);
 
