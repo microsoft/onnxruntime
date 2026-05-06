@@ -2296,8 +2296,7 @@ class TestONNXAttentionCPUSoftcapMaskOrdering(unittest.TestCase):
         )
 
     def test_cpu_attention_qk_matmul_output_mode_post_mask_bias_with_softcap_and_nonpad_fp32(self):
-        """Internal review Major #2: pin the kPostMaskBias x softcap x nonpad_kv_seqlen
-        matrix cell. The kPostMaskBias snapshot (qk_matmul_output_mode == 2 in the
+        """Pin the kPostMaskBias x softcap x nonpad_kv_seqlen coverage matrix cell. The kPostMaskBias snapshot (qk_matmul_output_mode == 2 in the
         post-#7913 numbering) is taken AFTER softcap, after `attn_mask` is added,
         AND after `nonpad_kv_seqlen` fills padded positions with the finite
         `mask_filter_value<float>() == std::numeric_limits<float>::lowest()`

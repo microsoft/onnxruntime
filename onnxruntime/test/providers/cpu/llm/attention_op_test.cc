@@ -3224,8 +3224,7 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_WithSoftcap_NoLeakage_CPU) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// PR #28379 internal review (Major #2): close the matrix cell at
-// qk_matmul_output_mode == kPostMaskBias x softcap > 0 x nonpad_kv_seqlen.
+// Closes the kPostMaskBias x softcap x nonpad_kv_seqlen coverage matrix cell.
 // The kPostMaskBias snapshot is taken AFTER softcap, after `attn_mask` is
 // added, AND after `nonpad_kv_seqlen` fills padded positions with the
 // finite `mask_filter_value<float>() == std::numeric_limits<float>::lowest()`
