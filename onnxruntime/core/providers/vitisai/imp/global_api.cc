@@ -93,9 +93,16 @@ struct OrtVitisAIEpAPI {
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
       const char* const* keys,
       const char* const* values, size_t kv_len) = nullptr;
+  void (*profiler_start)(uint64_t profiling_start_time_us) = nullptr;
+  void (*profiler_stop)() = nullptr;
+  // v1: Original 5-element EventInfo
   void (*profiler_collect)(
       std::vector<EventInfo>& api_events,
-      std::vector<EventInfo>& kernel_events);
+      std::vector<EventInfo>& kernel_events) = nullptr;
+  // v2: Extended 6-element EventInfoV2 with args
+  void (*profiler_collect_v2)(
+      std::vector<EventInfoV2>& api_events,
+      std::vector<EventInfoV2>& kernel_events) = nullptr;
   const char* (*get_compiled_model_compatibility_info)(
       const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>* eps,
       const void* graph_viewer) = nullptr;
@@ -144,7 +151,10 @@ struct OrtVitisAIEpAPI {
     }
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_start", (void**)&profiler_start);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_stop", (void**)&profiler_stop);
     std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect_v2", (void**)&profiler_collect_v2);
     std::ignore = env.GetSymbolFromLibrary(handle_, "get_compiled_model_compatibility_info", (void**)&get_compiled_model_compatibility_info);
     std::ignore = env.GetSymbolFromLibrary(handle_, "validate_compiled_model_compatibility_info", (void**)&validate_compiled_model_compatibility_info);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
@@ -167,6 +177,12 @@ struct OrtVitisAIEpAPI {
       auto status = env.UnloadDynamicLibrary(handle_);
       vai_assert(status.IsOK(), status.ErrorMessage());
       handle_ = nullptr;
+      // reset profiler function pointers introduced by #27808
+      // this is to avoid calling the function pointers after the library is unloaded
+      profiler_start = nullptr;
+      profiler_stop = nullptr;
+      profiler_collect = nullptr;
+      profiler_collect_v2 = nullptr;
     }
   }
 
@@ -181,12 +197,34 @@ static vaip_core::OrtApiForVaip the_global_api;
 std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kernel_registry_vitisaiep; }
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
 
+void profiler_start(uint64_t profiling_start_time_us) {
+  if (s_library_vitisaiep.profiler_start) {
+    s_library_vitisaiep.profiler_start(profiling_start_time_us);
+  }
+}
+
+void profiler_stop() {
+  if (s_library_vitisaiep.profiler_stop) {
+    s_library_vitisaiep.profiler_stop();
+  }
+}
+
 void profiler_collect(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events) {
   if (s_library_vitisaiep.profiler_collect) {
     s_library_vitisaiep.profiler_collect(api_events, kernel_events);
   }
+}
+
+bool profiler_collect_v2(
+    std::vector<EventInfoV2>& api_events,
+    std::vector<EventInfoV2>& kernel_events) {
+  if (s_library_vitisaiep.profiler_collect_v2) {
+    s_library_vitisaiep.profiler_collect_v2(api_events, kernel_events);
+    return true;
+  }
+  return false;
 }
 
 std::string get_compiled_model_compatibility_info(
