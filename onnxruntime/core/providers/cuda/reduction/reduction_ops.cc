@@ -807,13 +807,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                                Y->SizeInBytes(), cudaMemcpyHostToDevice, Stream(ctx)));                   \
         } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {                                                          \
           /* ONNX spec: "yields plus infinity (if supported) or max value" */                                             \
-          CudaT_local inf_val = ToCudaType<T>::FromFloat(std::numeric_limits<float>::infinity());                          \
+          CudaT_local inf_val = ToCudaType<T>::FromFloat(std::numeric_limits<float>::infinity());                         \
           std::vector<CudaT_local> vals(Y->Shape().Size(), inf_val);                                                      \
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->MutableDataRaw(), vals.data(),                                          \
                                                Y->SizeInBytes(), cudaMemcpyHostToDevice, Stream(ctx)));                   \
         } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {                                                          \
           /* ONNX spec: "yields minus infinity (if supported) or minimum value" */                                        \
-          CudaT_local neg_inf_val = ToCudaType<T>::FromFloat(-std::numeric_limits<float>::infinity());                     \
+          CudaT_local neg_inf_val = ToCudaType<T>::FromFloat(-std::numeric_limits<float>::infinity());                    \
           std::vector<CudaT_local> vals(Y->Shape().Size(), neg_inf_val);                                                  \
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->MutableDataRaw(), vals.data(),                                          \
                                                Y->SizeInBytes(), cudaMemcpyHostToDevice, Stream(ctx)));                   \
