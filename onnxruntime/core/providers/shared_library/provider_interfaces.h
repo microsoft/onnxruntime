@@ -769,6 +769,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_Float8E4M3FNUZ() = 0;
   virtual MLDataType DataTypeImpl__GetType_Float8E5M2() = 0;
   virtual MLDataType DataTypeImpl__GetType_Float8E5M2FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetType_Float8E8M0() = 0;
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual MLDataType DataTypeImpl__GetType_Float4E2M1x2() = 0;
@@ -797,6 +798,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetTensorType_Float8E4M3FNUZ() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_Float8E5M2FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_Float8E8M0() = 0;
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual MLDataType DataTypeImpl__GetTensorType_Float4E2M1x2() = 0;
@@ -827,6 +829,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2() = 0;
   virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ() = 0;
+  virtual MLDataType DataTypeImpl__GetSparseTensorType_Float8E8M0() = 0;
 #endif
 #endif
 
@@ -1255,6 +1258,7 @@ struct ProviderHost {
   virtual Float8E4M3FNUZ* Tensor__MutableData_Float8E4M3FNUZ(Tensor* p) = 0;
   virtual Float8E5M2* Tensor__MutableData_Float8E5M2(Tensor* p) = 0;
   virtual Float8E5M2FNUZ* Tensor__MutableData_Float8E5M2FNUZ(Tensor* p) = 0;
+  virtual Float8E8M0* Tensor__MutableData_Float8E8M0(Tensor* p) = 0;
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual Float4E2M1x2* Tensor__MutableData_Float4E2M1x2(Tensor* p) = 0;
@@ -1283,6 +1287,7 @@ struct ProviderHost {
   virtual const Float8E4M3FNUZ* Tensor__Data_Float8E4M3FNUZ(const Tensor* p) = 0;
   virtual const Float8E5M2* Tensor__Data_Float8E5M2(const Tensor* p) = 0;
   virtual const Float8E5M2FNUZ* Tensor__Data_Float8E5M2FNUZ(const Tensor* p) = 0;
+  virtual const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) = 0;
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual const Float4E2M1x2* Tensor__Data_Float4E2M1x2(const Tensor* p) = 0;
@@ -1322,6 +1327,7 @@ struct ProviderHost {
   virtual bool Tensor__IsDataType_Float8E4M3FNUZ(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_Float8E5M2(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_Float8E5M2FNUZ(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
   virtual bool Tensor__IsDataType_Float4E2M1x2(const Tensor* p) noexcept = 0;

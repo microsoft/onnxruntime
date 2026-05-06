@@ -60,7 +60,8 @@ using AllFixedSizeIRv9 =
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
-        Float8E5M2FNUZ>;
+        Float8E5M2FNUZ,
+        Float8E8M0>;
 #else
 using AllFixedSizeIRv9 = AllFixedSizeIRv4;
 #endif
@@ -79,7 +80,8 @@ using AllIRv9 =
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
-        Float8E5M2FNUZ>;
+        Float8E5M2FNUZ,
+        Float8E8M0>;
 
 #else
 using AllIRv9 = AllIRv4;
@@ -120,7 +122,8 @@ using AllFloat8 =
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
-        Float8E5M2FNUZ>;
+        Float8E5M2FNUZ,
+        Float8E8M0>;
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)
