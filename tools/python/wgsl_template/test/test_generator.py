@@ -31,7 +31,6 @@ from wgsl_template.generator import generate  # noqa: E402
 from wgsl_template.loader import load_from_directory  # noqa: E402
 from wgsl_template.parser import parse  # noqa: E402
 
-
 _UPSTREAM_TESTCASES = Path("d:/wgsl-template/test/testcases")
 
 
@@ -111,7 +110,7 @@ class GeneratorPropertyTest(unittest.TestCase):
         self.assertIn("__var_output.Rank()", out)
 
     def test_method_call(self) -> None:
-        out = _gen('#use .offsetToIndices\nlet i = output.offsetToIndices(j);\n')
+        out = _gen("#use .offsetToIndices\nlet i = output.offsetToIndices(j);\n")
         self.assertIn("__var_output.OffsetToIndices", out)
 
 
@@ -123,11 +122,11 @@ class GeneratorFunctionTest(unittest.TestCase):
 
 class GeneratorParamErrorsTest(unittest.TestCase):
     def test_invalid_param_name_with_dot(self) -> None:
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):
             _gen("#param a.b\n")
 
     def test_invalid_param_starts_with_number(self) -> None:
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValueError):
             _gen("#param 9bad\n")
 
 
@@ -153,11 +152,7 @@ _FIXTURE_SKIPS = {
 def _normalize_lines(text: str) -> list:
     """Match the upstream test runner: split on newlines, drop blank
     lines, trim whitespace per line."""
-    return [
-        line.strip()
-        for line in re.split(r"\r?\n", text)
-        if line.strip() != ""
-    ]
+    return [line.strip() for line in re.split(r"\r?\n", text) if line.strip() != ""]
 
 
 def _build_fixture_suite() -> unittest.TestSuite:
@@ -193,9 +188,7 @@ def _build_fixture_suite() -> unittest.TestSuite:
                 if gen_name not in _SUPPORTED_GENERATORS:
                     continue
                 # Only require .gen golden if no expectsError.
-                expects_error = gen_cfg.get("expectsError") or config.get(
-                    "expectsError"
-                )
+                expects_error = gen_cfg.get("expectsError") or config.get("expectsError")
                 golden_path = case_dir / f"{template_path}.{gen_name}.gen"
                 if not expects_error and not golden_path.is_file():
                     continue
@@ -214,16 +207,12 @@ def _build_fixture_suite() -> unittest.TestSuite:
             continue
 
         case_class = _make_generator_case(case_dir, config, applicable_entries)
-        suite.addTests(
-            unittest.defaultTestLoader.loadTestsFromTestCase(case_class)
-        )
+        suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(case_class))
 
     return suite
 
 
-def _make_generator_case(
-    case_dir: Path, config: dict, applicable_entries: list
-) -> type:
+def _make_generator_case(case_dir: Path, config: dict, applicable_entries: list) -> type:
     case_name = case_dir.name
     preserve_code_reference = bool(config.get("preserveCodeReference"))
 
@@ -252,7 +241,7 @@ def _make_generator_case(
                     cg,
                     preserve_code_reference=self._preserve,
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 if entry["expects_error"]:
                     if isinstance(entry["expects_error"], str):
                         self.assertIn(entry["expects_error"], str(e))
@@ -276,11 +265,12 @@ def _make_generator_case(
                 f"line count mismatch; expected {len(expected_lines)} "
                 f"got {len(actual_lines)}\n"
                 f"--- expected ---\n" + "\n".join(expected_lines) + "\n"
-                f"--- actual ---\n" + "\n".join(actual_lines),
+                "--- actual ---\n" + "\n".join(actual_lines),
             )
-            for i, (a, b) in enumerate(zip(actual_lines, expected_lines)):
+            for i, (a, b) in enumerate(zip(actual_lines, expected_lines, strict=True)):
                 self.assertEqual(
-                    a, b,
+                    a,
+                    b,
                     f"{entry['template_path']} ({entry['generator']}): "
                     f"line {i + 1} mismatch\n"
                     f"  expected: {b!r}\n"
@@ -303,7 +293,7 @@ def _make_generator_case(
     return _Case
 
 
-def load_tests(loader, standard_tests, pattern):  # noqa: D401, ARG001
+def load_tests(loader, standard_tests, pattern):
     standard_tests.addTests(_build_fixture_suite())
     return standard_tests
 

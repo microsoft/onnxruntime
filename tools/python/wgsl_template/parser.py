@@ -15,7 +15,6 @@ Three sub-passes run in order on each top-level template:
 from __future__ import annotations
 
 import re
-from typing import Dict, List
 
 from .errors import WgslTemplateParseError
 from .types import (
@@ -27,9 +26,7 @@ from .types import (
 )
 
 _INCLUDE_RE = re.compile(r"^\s*#include\s+(.+)$")
-_DEFINE_FULL_RE = re.compile(
-    r"^\s*#define\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+)$"
-)
+_DEFINE_FULL_RE = re.compile(r"^\s*#define\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+)$")
 _DEFINE_EMPTY_RE = re.compile(r"^\s*#define\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*$")
 _DEFINE_INVALID_NAME_RE = re.compile(r"^\s*#define\s+(\S+)(?:\s+(.+))?$")
 
@@ -39,18 +36,18 @@ _DEFINE_INVALID_NAME_RE = re.compile(r"^\s*#define\s+(\S+)(?:\s+(.+))?$")
 # ----------------------------------------------------------------------
 
 
-def _strip_comments(file_path: str, raw: List[str]) -> List[str]:
+def _strip_comments(file_path: str, raw: list[str]) -> list[str]:
     """Strip ``//`` and ``/* */`` comments while preserving line count.
 
     NOT string-aware. WGSL has no string type, but template arguments
     like ``getElementAt("a/*b", "c")`` would be mis-stripped.
     """
 
-    out: List[str] = []
+    out: list[str] = []
     in_multi = False
 
     for line in raw:
-        processed: List[str] = []
+        processed: list[str] = []
         i = 0
         n = len(line)
 
@@ -93,16 +90,16 @@ def _strip_comments(file_path: str, raw: List[str]) -> List[str]:
 
 
 class _ParseEntry:
-    __slots__ = ("lines", "include_processed")
+    __slots__ = ("include_processed", "lines")
 
-    def __init__(self, lines: List[ParsedLine]) -> None:
-        self.lines: List[ParsedLine] = lines
+    def __init__(self, lines: list[ParsedLine]) -> None:
+        self.lines: list[ParsedLine] = lines
         self.include_processed: bool = False
 
 
 def _expand_includes(
-    parse_state: Dict[str, "_ParseEntry"],
-    include_stack: List[str],
+    parse_state: dict[str, _ParseEntry],
+    include_stack: list[str],
 ) -> None:
     """Recursively expand ``#include`` directives in place.
 
@@ -123,7 +120,7 @@ def _expand_includes(
     if current.include_processed:
         return
 
-    flattened: List[ParsedLine] = []
+    flattened: list[ParsedLine] = []
     for line_index, parsed_line in enumerate(current.lines):
         line = parsed_line.line
         m = _INCLUDE_RE.match(line)
@@ -175,7 +172,7 @@ def _expand_includes(
 # ----------------------------------------------------------------------
 
 
-def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
+def _apply_macros(lines: list[ParsedLine], file_name: str) -> list[ParsedLine]:
     """Process ``#define`` directives and apply substitutions.
 
     Rules:
@@ -187,8 +184,8 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
         duplicate definitions, empty / whitespace-only values.
     """
 
-    macros: Dict[str, str] = {}
-    out: List[ParsedLine] = []
+    macros: dict[str, str] = {}
+    out: list[ParsedLine] = []
 
     for line_index, parsed_line in enumerate(lines):
         line = parsed_line.line
@@ -201,7 +198,7 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
                 if empty is not None:
                     raise WgslTemplateParseError(
                         f"Invalid macro definition in file {file_name} at "
-                        f"line {line_index + 1}: macro \"{empty.group(1)}\" "
+                        f'line {line_index + 1}: macro "{empty.group(1)}" '
                         f"has no value",
                         "syntax-error",
                         file_path=file_name,
@@ -213,7 +210,7 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
                     raise WgslTemplateParseError(
                         f"Invalid macro definition in file {file_name} at "
                         f"line {line_index + 1}: invalid macro name "
-                        f"\"{invalid.group(1)}\" (must start with letter or "
+                        f'"{invalid.group(1)}" (must start with letter or '
                         f"underscore, contain only letters, numbers, and "
                         f"underscores)",
                         "syntax-error",
@@ -235,7 +232,7 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
             if macro_value == "":
                 raise WgslTemplateParseError(
                     f"Invalid macro definition in file {file_name} at line "
-                    f"{line_index + 1}: macro \"{macro_name}\" has empty "
+                    f'{line_index + 1}: macro "{macro_name}" has empty '
                     f"value (whitespace only)",
                     "syntax-error",
                     file_path=file_name,
@@ -245,7 +242,7 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
             if macro_name in macros:
                 raise WgslTemplateParseError(
                     f"Duplicate macro definition in file {file_name} at line "
-                    f"{line_index + 1}: \"{macro_name}\" is already defined",
+                    f'{line_index + 1}: "{macro_name}" is already defined',
                     "define-expansion",
                     file_path=file_name,
                     line_number=line_index + 1,
@@ -256,7 +253,7 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
             if self_ref.search(macro_value):
                 raise WgslTemplateParseError(
                     f"Circular macro reference in file {file_name} at line "
-                    f"{line_index + 1}: macro \"{macro_name}\" references "
+                    f'{line_index + 1}: macro "{macro_name}" references '
                     f"itself",
                     "define-expansion",
                     file_path=file_name,
@@ -275,8 +272,8 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
                         raise WgslTemplateParseError(
                             f"Circular macro reference in file {file_name} "
                             f"at line {line_index + 1}: macro "
-                            f"\"{macro_name}\" creates circular dependency "
-                            f"with \"{existing_name}\"",
+                            f'"{macro_name}" creates circular dependency '
+                            f'with "{existing_name}"',
                             "define-expansion",
                             file_path=file_name,
                             line_number=line_index + 1,
@@ -291,9 +288,7 @@ def _apply_macros(lines: List[ParsedLine], file_name: str) -> List[ParsedLine]:
                 regex = re.compile(rf"\b{re.escape(macro_name)}\b")
                 line = regex.sub(macro_value, line)
 
-        out.append(
-            ParsedLine(line=line, code_reference=parsed_line.code_reference)
-        )
+        out.append(ParsedLine(line=line, code_reference=parsed_line.code_reference))
 
     return out
 
@@ -308,7 +303,7 @@ def parse(repo: TemplateRepository) -> TemplateRepository:
 
     # STEP 1 — strip comments. Build the initial parse_state with raw
     # lines turned into ParsedLine objects.
-    parse_state: Dict[str, _ParseEntry] = {}
+    parse_state: dict[str, _ParseEntry] = {}
     for template_key, template in repo.templates.items():
         assert isinstance(template, TemplatePass0)
         stripped = _strip_comments(template_key, template.raw)
@@ -325,7 +320,7 @@ def parse(repo: TemplateRepository) -> TemplateRepository:
         parse_state[template_key] = _ParseEntry(parsed_lines)
 
     # STEP 2 — expand #include directives in every top-level template.
-    pass1_templates: Dict[str, object] = {}
+    pass1_templates: dict[str, object] = {}
     for template_key, template in repo.templates.items():
         assert isinstance(template, TemplatePass0)
         _expand_includes(parse_state, [template_key])

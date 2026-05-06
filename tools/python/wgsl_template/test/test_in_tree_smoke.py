@@ -9,6 +9,7 @@ manual step performed before opening the PR.
 
 from __future__ import annotations
 
+import shutil
 import sys
 import tempfile
 import unittest
@@ -20,7 +21,6 @@ if str(_PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(_PARENT_DIR))
 
 from wgsl_template import build  # noqa: E402
-
 
 # Repo root: tools/python/wgsl_template/test/ -> ../../../..
 _REPO_ROOT = _THIS_DIR.parent.parent.parent.parent
@@ -46,7 +46,6 @@ class InTreeTemplatesSmokeTest(unittest.TestCase):
                 preserve_code_reference=True,
             )
         except Exception:
-            import shutil
             shutil.rmtree(out, ignore_errors=True)
             raise
         return out
@@ -65,7 +64,6 @@ class InTreeTemplatesSmokeTest(unittest.TestCase):
                     f"missing generated/{base}.h",
                 )
         finally:
-            import shutil
             shutil.rmtree(out, ignore_errors=True)
 
     def test_static_cpp_builds(self) -> None:
@@ -86,7 +84,6 @@ class InTreeTemplatesSmokeTest(unittest.TestCase):
             for tpl in _EXPECTED_TEMPLATES:
                 self.assertIn(tpl, index_text)
         finally:
-            import shutil
             shutil.rmtree(out, ignore_errors=True)
 
 

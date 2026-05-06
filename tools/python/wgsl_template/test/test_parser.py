@@ -14,7 +14,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import List
 
 _THIS_DIR = Path(__file__).resolve().parent
 _PARENT_DIR = _THIS_DIR.parent.parent
@@ -26,7 +25,6 @@ from wgsl_template.loader import load_from_directory  # noqa: E402
 from wgsl_template.parser import parse  # noqa: E402
 from wgsl_template.types import TemplatePass1  # noqa: E402
 
-
 # Path to the upstream wgsl-template test fixtures.
 _UPSTREAM_TESTCASES = Path("d:/wgsl-template/test/testcases")
 
@@ -36,7 +34,7 @@ def _write(path: Path, content: str) -> None:
     path.write_bytes(content.encode("utf-8"))
 
 
-def _parse_text(text: str) -> List[str]:
+def _parse_text(text: str) -> list[str]:
     """Helper: feed a single template through PASS0+PASS1, return the
     resulting line strings."""
 
@@ -94,7 +92,7 @@ class ParserCommentsTest(unittest.TestCase):
 
 
 class ParserIncludeTest(unittest.TestCase):
-    def _run(self, files: dict, top: str) -> List[str]:
+    def _run(self, files: dict, top: str) -> list[str]:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name, content in files.items():
@@ -234,7 +232,7 @@ def _build_fixture_suite() -> unittest.TestSuite:
             continue
         # Skip loader-directories cases — they don't exercise PASS1
         # and need a different harness.
-        if config.get("type") not in ("parser",):
+        if config.get("type") != "parser":
             continue
 
         case_class = _make_case(case_dir, config)
@@ -264,7 +262,7 @@ def _make_case(case_dir: Path, config: dict) -> type:
             try:
                 repo = load_from_directory(self._dir)
                 parsed = parse(repo)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 if self._expects_error:
                     if isinstance(self._expects_error, str):
                         self.assertIn(self._expects_error, str(e))
@@ -272,20 +270,14 @@ def _make_case(case_dir: Path, config: dict) -> type:
                 raise
 
             if self._expects_error:
-                self.fail(
-                    f"Expected error containing {self._expects_error!r} "
-                    f"but parse() succeeded"
-                )
+                self.fail(f"Expected error containing {self._expects_error!r} but parse() succeeded")
 
             # Compare each template's pass1 lines against its .pass1 golden.
             for template_key, template in parsed.templates.items():
                 assert isinstance(template, TemplatePass1)
                 golden_path = self._dir / f"{template_key}.pass1"
                 if not golden_path.is_file():
-                    self.fail(
-                        f"Missing golden file for {template_key} at "
-                        f"{golden_path}"
-                    )
+                    self.fail(f"Missing golden file for {template_key} at {golden_path}")
                 expected_text = golden_path.read_text(encoding="utf-8")
                 # Normalize line endings to match the loader's split.
                 expected_lines = expected_text.replace("\r\n", "\n").split("\n")
@@ -298,11 +290,11 @@ def _make_case(case_dir: Path, config: dict) -> type:
                     f"actual: {actual_lines!r}\n"
                     f"expected: {expected_lines!r}",
                 )
-                for i, (a, b) in enumerate(zip(actual_lines, expected_lines)):
+                for i, (a, b) in enumerate(zip(actual_lines, expected_lines, strict=True)):
                     self.assertEqual(
-                        a, b,
-                        f"Line {i + 1} mismatch in {template_key}: "
-                        f"actual={a!r} expected={b!r}",
+                        a,
+                        b,
+                        f"Line {i + 1} mismatch in {template_key}: actual={a!r} expected={b!r}",
                     )
 
     _Case.__name__ = f"Fixture_{case_name.replace('-', '_')}"
@@ -310,7 +302,7 @@ def _make_case(case_dir: Path, config: dict) -> type:
     return _Case
 
 
-def load_tests(loader, standard_tests, pattern):  # noqa: D401, ARG001
+def load_tests(loader, standard_tests, pattern):
     standard_tests.addTests(_build_fixture_suite())
     return standard_tests
 

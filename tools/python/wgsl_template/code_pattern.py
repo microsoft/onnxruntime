@@ -9,8 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Pattern, Tuple, Union
-
+from re import Pattern
 
 # ----------------------------------------------------------------------
 # Pattern data class
@@ -32,17 +31,17 @@ class CodePattern:
     """
 
     type: str
-    pattern: Union[str, Pattern[str]]
+    pattern: str | Pattern[str]
 
     # If present, replaces matched group(s). For function/method/property
     # patterns: index 0 replaces the receiver capture (group 1), index 1
     # replaces the name capture (group 2). A ``None`` element means
     # "leave that group as-is".
-    replace: Optional[Union[str, List[Optional[str]]]] = None
+    replace: str | list[str | None] | None = None
 
-    variable_type: Optional[str] = None  # "shader-variable"
-    param_type: Optional[str] = None     # "int"
-    arg_types: List[str] = field(default_factory=list)  # "expression"|"string"|"auto"
+    variable_type: str | None = None  # "shader-variable"
+    param_type: str | None = None  # "int"
+    arg_types: list[str] = field(default_factory=list)  # "expression"|"string"|"auto"
 
 
 # ----------------------------------------------------------------------
@@ -50,7 +49,7 @@ class CodePattern:
 # ----------------------------------------------------------------------
 
 
-DEFAULT_PATTERNS: List[CodePattern] = [
+DEFAULT_PATTERNS: list[CodePattern] = [
     CodePattern(type="control", pattern=re.compile(r"\(")),
     CodePattern(type="control", pattern=re.compile(r"\)")),
     CodePattern(type="control", pattern=re.compile(r",")),
@@ -68,7 +67,7 @@ DEFAULT_PATTERNS: List[CodePattern] = [
 # ----------------------------------------------------------------------
 
 
-_BUILT_IN_PATTERNS: List[Tuple[str, CodePattern]] = [
+_BUILT_IN_PATTERNS: list[tuple[str, CodePattern]] = [
     (
         "guardAgainstOutOfBoundsWorkgroupSizes",
         CodePattern(
@@ -95,7 +94,7 @@ _BUILT_IN_PATTERNS: List[Tuple[str, CodePattern]] = [
 # ----------------------------------------------------------------------
 
 
-_INDICES_HELPER_PATTERNS: List[Tuple[str, CodePattern]] = [
+_INDICES_HELPER_PATTERNS: list[tuple[str, CodePattern]] = [
     (
         ".rank",
         CodePattern(
@@ -201,7 +200,7 @@ _INDICES_HELPER_PATTERNS: List[Tuple[str, CodePattern]] = [
 ]
 
 
-_PATTERN_MAP: Dict[str, CodePattern] = dict(_BUILT_IN_PATTERNS + _INDICES_HELPER_PATTERNS)
+_PATTERN_MAP: dict[str, CodePattern] = dict(_BUILT_IN_PATTERNS + _INDICES_HELPER_PATTERNS)
 
 
 # ----------------------------------------------------------------------
@@ -212,7 +211,7 @@ _PATTERN_MAP: Dict[str, CodePattern] = dict(_BUILT_IN_PATTERNS + _INDICES_HELPER
 _IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
-def lookup_pattern(name: str) -> Optional[CodePattern]:
+def lookup_pattern(name: str) -> CodePattern | None:
     """Look up a built-in pattern by ``#use`` name. Returns ``None`` if
     the name isn't recognized."""
     return _PATTERN_MAP.get(name)

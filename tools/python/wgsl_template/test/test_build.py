@@ -15,7 +15,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from typing import List
 
 _THIS_DIR = Path(__file__).resolve().parent
 _PARENT_DIR = _THIS_DIR.parent.parent
@@ -25,7 +24,6 @@ if str(_PARENT_DIR) not in sys.path:
 from wgsl_template import build  # noqa: E402
 from wgsl_template.errors import WgslTemplateError  # noqa: E402
 from wgsl_template.types import SourceDir  # noqa: E402
-
 
 _UPSTREAM_TESTCASES = Path("d:/wgsl-template/test/testcases")
 
@@ -52,10 +50,10 @@ def _write(path: Path, content: str) -> None:
     path.write_bytes(content.encode("utf-8"))
 
 
-def _walk_files(root: Path) -> List[str]:
+def _walk_files(root: Path) -> list[str]:
     """Return every file under ``root`` as a sorted POSIX path
     relative to ``root``."""
-    out: List[str] = []
+    out: list[str] = []
     for dirpath, _dirs, files in os.walk(root):
         for f in files:
             full = Path(dirpath) / f
@@ -83,9 +81,7 @@ class BuildIdempotentWriteTest(unittest.TestCase):
                 out_dir=out,
                 generator="static-cpp-literal",
             )
-            mtimes_before = {
-                p: (out / p).stat().st_mtime_ns for p in _walk_files(out)
-            }
+            mtimes_before = {p: (out / p).stat().st_mtime_ns for p in _walk_files(out)}
             self.assertTrue(mtimes_before, "expected files in output dir")
 
             # Second build with identical sources — files must not be rewritten.
@@ -94,9 +90,7 @@ class BuildIdempotentWriteTest(unittest.TestCase):
                 out_dir=out,
                 generator="static-cpp-literal",
             )
-            mtimes_after = {
-                p: (out / p).stat().st_mtime_ns for p in _walk_files(out)
-            }
+            mtimes_after = {p: (out / p).stat().st_mtime_ns for p in _walk_files(out)}
             self.assertEqual(mtimes_before, mtimes_after)
 
     def test_changed_file_is_rewritten(self) -> None:
@@ -167,17 +161,15 @@ def _build_fixture_suite() -> unittest.TestSuite:
         # Filter generators down to ones we support, dropping skipped pairs.
         gen_cfg = config.get("generators") or {}
         applicable = {
-            name: cfg for name, cfg in gen_cfg.items()
-            if name in _SUPPORTED_GENERATORS
-            and (entry, name) not in _FIXTURE_SKIPS
+            name: cfg
+            for name, cfg in gen_cfg.items()
+            if name in _SUPPORTED_GENERATORS and (entry, name) not in _FIXTURE_SKIPS
         }
         if not applicable:
             continue
 
         case_class = _make_build_case(case_dir, config, applicable)
-        suite.addTests(
-            unittest.defaultTestLoader.loadTestsFromTestCase(case_class)
-        )
+        suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(case_class))
     return suite
 
 
@@ -201,9 +193,7 @@ def _make_build_case(case_dir: Path, config: dict, applicable: dict) -> type:
             src_dir = self._dir / "src"
             expected_dir = self._dir / "expected"
             self.assertTrue(src_dir.is_dir(), f"missing src dir: {src_dir}")
-            self.assertTrue(
-                expected_dir.is_dir(), f"missing expected dir: {expected_dir}"
-            )
+            self.assertTrue(expected_dir.is_dir(), f"missing expected dir: {expected_dir}")
 
             for gen_name, gen_cfg in self._applicable.items():
                 with tempfile.TemporaryDirectory() as tmp:
@@ -232,7 +222,7 @@ def _make_build_case(case_dir: Path, config: dict, applicable: dict) -> type:
                             template_ext=self._template_ext,
                             generator=gen_name,
                         )
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         if expects_error:
                             if isinstance(expects_error, str):
                                 self.assertIn(expects_error, str(e))
@@ -240,10 +230,7 @@ def _make_build_case(case_dir: Path, config: dict, applicable: dict) -> type:
                         raise
 
                     if expects_error:
-                        self.fail(
-                            f"{gen_name}: expected error containing "
-                            f"{expects_error!r} but build succeeded"
-                        )
+                        self.fail(f"{gen_name}: expected error containing {expects_error!r} but build succeeded")
 
                     expected_gen = expected_dir / gen_name
                     self.assertTrue(
@@ -255,7 +242,8 @@ def _make_build_case(case_dir: Path, config: dict, applicable: dict) -> type:
                     expected_files = _walk_files(expected_gen)
 
                     self.assertEqual(
-                        actual_files, expected_files,
+                        actual_files,
+                        expected_files,
                         f"{case_name} ({gen_name}): file set mismatch\n"
                         f"actual:   {actual_files}\n"
                         f"expected: {expected_files}",
@@ -269,7 +257,8 @@ def _make_build_case(case_dir: Path, config: dict, applicable: dict) -> type:
                         # them on Windows checkout).
                         expected_bytes = expected_bytes.replace(b"\r\n", b"\n")
                         self.assertEqual(
-                            actual_bytes, expected_bytes,
+                            actual_bytes,
+                            expected_bytes,
                             f"{case_name} ({gen_name}): {rel} differs\n"
                             f"actual:\n{actual_bytes!r}\n"
                             f"expected:\n{expected_bytes!r}",
@@ -280,7 +269,7 @@ def _make_build_case(case_dir: Path, config: dict, applicable: dict) -> type:
     return _Case
 
 
-def load_tests(loader, standard_tests, pattern):  # noqa: D401, ARG001
+def load_tests(loader, standard_tests, pattern):
     standard_tests.addTests(_build_fixture_suite())
     return standard_tests
 

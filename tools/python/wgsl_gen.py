@@ -21,8 +21,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Sequence
+
+# Make the sibling wgsl_template package importable when invoked from any cwd.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from wgsl_template import build
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -58,8 +63,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--include-prefix",
         default="",
         metavar="PREFIX",
-        help='Include path prefix used when emitting #include directives in '
-             'index_impl.h (e.g. "wgsl_template_gen/").',
+        help='Include path prefix used when emitting #include directives in index_impl.h (e.g. "wgsl_template_gen/").',
     )
     parser.add_argument(
         "-e",
@@ -98,7 +102,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # argparse can't express "this option is required only when no
     # subcommand is given"; validate -i/--input and --output here.
-    errors: List[str] = []
+    errors: list[str] = []
     if not args.input:
         errors.append("at least one -i/--input directory is required")
     if not args.output:
@@ -119,8 +123,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  preserve-code-ref: {args.preserve_code_ref}")
         print(f"  clean: {args.clean}")
 
-    from wgsl_template import build
-
     build(
         source_dirs=[Path(p) for p in args.input],
         out_dir=Path(args.output),
@@ -135,6 +137,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    # Make the sibling wgsl_template package importable when run as a script.
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     raise SystemExit(main())

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 
 class WgslTemplateError(Exception):
     """Base class for all WGSL template errors."""
@@ -13,8 +11,8 @@ class WgslTemplateError(Exception):
         message: str,
         kind: str = "",
         *,
-        file_path: Optional[str] = None,
-        line_number: Optional[int] = None,
+        file_path: str | None = None,
+        line_number: int | None = None,
     ) -> None:
         super().__init__(message)
         self.kind = kind

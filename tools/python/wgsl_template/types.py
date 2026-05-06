@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -27,7 +26,7 @@ class TemplatePass0:
     """Result of PASS0 (load): raw lines straight from disk."""
 
     file_path: str  # absolute resolved path on disk
-    raw: List[str]  # split on /\r?\n/
+    raw: list[str]  # split on /\r?\n/
 
 
 @dataclass
@@ -35,8 +34,8 @@ class TemplatePass1:
     """Result of PASS1 (parse): pre-processed but not yet code-generated."""
 
     file_path: str
-    raw: List[str]
-    pass1: List[ParsedLine]
+    raw: list[str]
+    pass1: list[ParsedLine]
 
 
 @dataclass
@@ -44,8 +43,8 @@ class GenerateResult:
     """Result of running PASS2 over a single template."""
 
     code: str
-    params: Dict[str, str] = field(default_factory=dict)  # name -> param-type
-    variables: Dict[str, str] = field(default_factory=dict)  # name -> variable-type
+    params: dict[str, str] = field(default_factory=dict)  # name -> param-type
+    variables: dict[str, str] = field(default_factory=dict)  # name -> variable-type
     has_main_function: bool = False
 
 
@@ -66,7 +65,7 @@ class TemplateRepository:
     """
 
     base_path: str
-    templates: Dict[str, object]
+    templates: dict[str, object]
 
 
 # ----------------------------------------------------------------------
@@ -83,4 +82,4 @@ class SourceDir:
     """
 
     path: str
-    alias: Optional[str] = None
+    alias: str | None = None

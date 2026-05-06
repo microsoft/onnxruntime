@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Optional, Sequence, Union
 
+from .code_generator import resolve_code_generator
 from .errors import (
     WgslTemplateBuildError,
     WgslTemplateError,
@@ -21,19 +22,23 @@ from .errors import (
     WgslTemplateLoadError,
     WgslTemplateParseError,
 )
+from .generator import generate_directory
+from .loader import load_from_directories
+from .parser import parse
+from .types import SourceDir
 
 
 def build(
     *,
-    source_dirs: Sequence[Union[str, "os.PathLike[str]", "SourceDir"]],
-    out_dir: Union[str, "os.PathLike[str]"],
+    source_dirs: Sequence[str | os.PathLike[str] | SourceDir],
+    out_dir: str | os.PathLike[str],
     template_ext: str = ".wgsl.template",
     generator: str = "static-cpp-literal",
     include_path_prefix: str = "",
     preserve_code_reference: bool = False,
     clean: bool = False,
     verbose: bool = False,
-) -> List[str]:
+) -> list[str]:
     """Run the full build pipeline: load → parse → generate → emit.
 
     Returns the list of relative output paths that were inspected (one
@@ -42,12 +47,6 @@ def build(
     tracking honest.
     """
 
-    # Local imports to avoid a load-time cycle with .types.
-    from .code_generator import resolve_code_generator
-    from .generator import generate_directory
-    from .loader import load_from_directories
-    from .parser import parse
-
     if not source_dirs:
         raise WgslTemplateBuildError(
             "source_dirs must be provided and cannot be empty",
@@ -55,8 +54,6 @@ def build(
         )
 
     out_path = Path(out_dir).resolve()
-    if not out_path.is_absolute():
-        out_path = Path.cwd() / out_path
 
     # --clean wipes the output directory before building.
     if clean and out_path.exists():
@@ -64,8 +61,7 @@ def build(
             print(f"Cleaning output directory: {out_path}")
         if out_path.is_file():
             raise WgslTemplateBuildError(
-                f'Output path "{out_path}" is an existing file; expected a '
-                f"directory",
+                f'Output path "{out_path}" is an existing file; expected a directory',
                 "invalid-options",
             )
         shutil.rmtree(out_path)
@@ -102,7 +98,7 @@ def build(
     # Write files. Idempotent: only overwrite when content differs.
     out_path.mkdir(parents=True, exist_ok=True)
 
-    written: List[str] = []
+    written: list[str] = []
     for rel_path, content in files.templates.items():
         assert isinstance(content, str)
         full_path = (out_path / rel_path).resolve()
@@ -111,8 +107,7 @@ def build(
             full_path.relative_to(out_path)
         except ValueError as e:
             raise WgslTemplateBuildError(
-                f"Security violation: attempted to write file outside output "
-                f"directory: {rel_path}",
+                f"Security violation: attempted to write file outside output directory: {rel_path}",
                 "path-security-violation",
                 file_path=str(rel_path),
             ) from e
@@ -125,7 +120,7 @@ def build(
         # across Windows / Linux.
         normalized = content.replace("\r\n", "\n")
         new_bytes = normalized.encode("utf-8")
-        existing_bytes: Optional[bytes] = None
+        existing_bytes: bytes | None = None
         if full_path.exists():
             try:
                 existing_bytes = full_path.read_bytes()
@@ -141,16 +136,12 @@ def build(
     return written
 
 
-# Re-export SourceDir for convenience.
-from .types import SourceDir  # noqa: E402
-
-
 __all__ = [
-    "build",
     "SourceDir",
+    "WgslTemplateBuildError",
     "WgslTemplateError",
+    "WgslTemplateGenerateError",
     "WgslTemplateLoadError",
     "WgslTemplateParseError",
-    "WgslTemplateGenerateError",
-    "WgslTemplateBuildError",
+    "build",
 ]

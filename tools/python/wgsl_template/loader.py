@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Optional, Sequence, Union
+from typing import Union
 
 from .errors import WgslTemplateLoadError
 from .types import SourceDir, TemplatePass0, TemplateRepository
@@ -42,7 +43,7 @@ def _load_directory(
     source_dir: Path,
     base_dir: Path,
     ext: str,
-    alias: Optional[str],
+    alias: str | None,
     templates: dict,
 ) -> None:
     """Recursively scan ``source_dir`` for files ending in ``ext``."""
@@ -84,14 +85,13 @@ def _load_directory(
 def _load_file(
     file_path: Path,
     base_dir: Path,
-    alias: Optional[str],
+    alias: str | None,
     templates: dict,
 ) -> None:
     resolved_file = file_path.resolve()
     if not _resolve_within(base_dir, resolved_file):
         raise WgslTemplateLoadError(
-            f"Security violation: attempted to read file outside base "
-            f"directory: {file_path}",
+            f"Security violation: attempted to read file outside base directory: {file_path}",
             "read-file",
             file_path=str(file_path),
         )
@@ -145,7 +145,7 @@ def load_from_directories(
         )
 
     raw_templates: dict = {}
-    resolved_base_paths: List[Path] = []
+    resolved_base_paths: list[Path] = []
 
     for raw_item in directories:
         spec = _normalize_source_dir(raw_item)
@@ -177,9 +177,7 @@ def load_from_directories(
         resolved_base_paths.append(resolved_base)
 
     # Sort by template name for stable, host-independent ordering.
-    sorted_templates = {
-        name: raw_templates[name] for name in sorted(raw_templates)
-    }
+    sorted_templates = {name: raw_templates[name] for name in sorted(raw_templates)}
 
     # Use the first input directory as the repository's base path.
     base_path = str(resolved_base_paths[0]) if resolved_base_paths else ""

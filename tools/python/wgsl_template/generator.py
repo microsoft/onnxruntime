@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 
 from .code_generator.static_cpp import (
     CodeSegment,
@@ -33,7 +32,6 @@ from .types import (
     TemplateRepository,
 )
 
-
 # ----------------------------------------------------------------------
 # Generator state
 # ----------------------------------------------------------------------
@@ -43,34 +41,34 @@ from .types import (
 class _FunctionCallState:
     name: str
     parentheses_state: int
-    params: List[List[CodeSegment]] = field(default_factory=list)
-    current_param: List[CodeSegment] = field(default_factory=list)
-    caller: Optional[str] = None
-    arg_types: List[str] = field(default_factory=list)
+    params: list[list[CodeSegment]] = field(default_factory=list)
+    current_param: list[CodeSegment] = field(default_factory=list)
+    caller: str | None = None
+    arg_types: list[str] = field(default_factory=list)
 
 
 # preprocessIfStack entry: (type, init_paren, init_bracket, prev_paren, prev_bracket)
-_IfStackEntry = List[object]
+_IfStackEntry = list[object]
 
 
 @dataclass
 class _GeneratorState:
     repo: TemplateRepository
-    pass1: List[ParsedLine]
+    pass1: list[ParsedLine]
     code_generator: StaticCodeGenerator
     file_path: str
 
     current_line: int = 0
     current_column: int = 0
-    preprocess_if_stack: List[_IfStackEntry] = field(default_factory=list)
-    patterns: List[CodePattern] = field(default_factory=lambda: list(DEFAULT_PATTERNS))
-    current_function_call: List[_FunctionCallState] = field(default_factory=list)
+    preprocess_if_stack: list[_IfStackEntry] = field(default_factory=list)
+    patterns: list[CodePattern] = field(default_factory=lambda: list(DEFAULT_PATTERNS))
+    current_function_call: list[_FunctionCallState] = field(default_factory=list)
     current_parentheses_state: int = 0
     main_function: str = "not-started"  # "not-started" | "started" | "ended"
     current_bracket_state: int = 0
-    result: List[CodeSegment] = field(default_factory=list)
-    used_params: Dict[str, str] = field(default_factory=dict)  # name -> param-type
-    used_variables: Dict[str, str] = field(default_factory=dict)  # name -> variable-type
+    result: list[CodeSegment] = field(default_factory=list)
+    used_params: dict[str, str] = field(default_factory=dict)  # name -> param-type
+    used_variables: dict[str, str] = field(default_factory=dict)  # name -> variable-type
 
 
 # ----------------------------------------------------------------------
@@ -78,10 +76,10 @@ class _GeneratorState:
 # ----------------------------------------------------------------------
 
 
-def _merge_adjacent_segments(segments: List[CodeSegment]) -> List[CodeSegment]:
+def _merge_adjacent_segments(segments: list[CodeSegment]) -> list[CodeSegment]:
     """Merge runs of adjacent ``raw`` or ``code`` segments to keep the
     final ``emit`` output compact."""
-    out: List[CodeSegment] = []
+    out: list[CodeSegment] = []
     for seg in segments:
         if out and out[-1].type == seg.type and seg.type in ("raw", "code"):
             out[-1].content += seg.content
@@ -91,13 +89,13 @@ def _merge_adjacent_segments(segments: List[CodeSegment]) -> List[CodeSegment]:
 
 
 def _match_next_pattern(
-    content: str, patterns: List[CodePattern]
-) -> Optional[Tuple[CodePattern, int, int, "re.Match[str] | None"]]:
+    content: str, patterns: list[CodePattern]
+) -> tuple[CodePattern, int, int, re.Match[str] | None] | None:
     """Find the pattern that starts earliest in ``content``.
 
     Returns ``(pattern, start_index, length, match)`` or ``None``.
     """
-    earliest: Optional[Tuple[CodePattern, int, int, re.Match]] = None
+    earliest: tuple[CodePattern, int, int, re.Match] | None = None
     for pattern in patterns:
         regex = pattern.pattern
         if isinstance(regex, str):
@@ -126,7 +124,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
     # current_pre_processor_expression:
     #   None  - normal output flow
     #   list  - buffering segments for an #if/#elif condition
-    pre_processor_expression: Optional[List[CodeSegment]] = None
+    pre_processor_expression: list[CodeSegment] | None = None
 
     def output(typ: str, content: str) -> None:
         nonlocal pre_processor_expression
@@ -151,8 +149,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
         if fn_call:
             if typ == "raw":
                 raise WgslTemplateGenerateError(
-                    f"Raw content inside function call at line "
-                    f"{state.current_line + 1}, column {state.current_column}",
+                    f"Raw content inside function call at line {state.current_line + 1}, column {state.current_column}",
                     "code-generation-failed",
                     file_path=state.file_path,
                     line_number=state.current_line + 1,
@@ -161,22 +158,17 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
         else:
             state.result.append(seg)
 
-    def process_pattern_match(
-        line: str, restline: str, next_match
-    ) -> None:
+    def process_pattern_match(line: str, restline: str, next_match) -> None:
         """Handle one pattern match. Mutates state in place."""
         nonlocal pre_processor_expression
         pattern, start_idx, length, match = next_match
-        indices = match  # we use match.span(group) for indices
 
-        matched = line[
-            state.current_column + start_idx : state.current_column + start_idx + length
-        ]
+        matched = line[state.current_column + start_idx : state.current_column + start_idx + length]
 
         # Advance past the matched text.
         state.current_column += start_idx + length
 
-        caller: Optional[str] = None
+        caller: str | None = None
         name = matched
 
         ptype = pattern.type
@@ -186,17 +178,11 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_parentheses_state += 1
                 output("code", "(")
             elif matched == ",":
-                if (
-                    fn_call
-                    and fn_call[-1].parentheses_state + 1
-                    == state.current_parentheses_state
-                ):
+                if fn_call and fn_call[-1].parentheses_state + 1 == state.current_parentheses_state:
                     call = fn_call[-1]
                     if not call.current_param:
                         raise WgslTemplateGenerateError(
-                            f"Empty parameter at line "
-                            f"{state.current_line + 1}, column "
-                            f"{state.current_column}",
+                            f"Empty parameter at line {state.current_line + 1}, column {state.current_column}",
                             "parameter-missing",
                             file_path=state.file_path,
                             line_number=state.current_line + 1,
@@ -216,11 +202,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
                     )
-                if (
-                    fn_call
-                    and fn_call[-1].parentheses_state
-                    == state.current_parentheses_state
-                ):
+                if fn_call and fn_call[-1].parentheses_state == state.current_parentheses_state:
                     call = fn_call.pop()
                     if call.current_param:
                         call.params.append(call.current_param)
@@ -261,9 +243,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_bracket_state -= 1
                 if state.current_bracket_state < 0:
                     raise WgslTemplateGenerateError(
-                        f"Unmatched closing bracket at line "
-                        f"{state.current_line + 1}, column "
-                        f"{state.current_column}",
+                        f"Unmatched closing bracket at line {state.current_line + 1}, column {state.current_column}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -329,33 +309,21 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
         elif ptype == "variable":
             variable_name = matched
-            if (
-                isinstance(pattern.replace, list)
-                and pattern.replace
-                and pattern.replace[0]
-            ):
+            if isinstance(pattern.replace, list) and pattern.replace and pattern.replace[0]:
                 variable_name = pattern.replace[0]
-            state.used_variables[variable_name] = (
-                pattern.variable_type or "shader-variable"
-            )
+            state.used_variables[variable_name] = pattern.variable_type or "shader-variable"
             output("expression", cg.variable(variable_name))
 
         elif ptype in ("method", "function"):
             # Method-call patterns first extract their receiver, then
             # fall through to the same logic as a plain function call.
             if ptype == "method":
-                if (
-                    isinstance(pattern.replace, list)
-                    and pattern.replace
-                    and pattern.replace[0]
-                ):
+                if isinstance(pattern.replace, list) and pattern.replace and pattern.replace[0]:
                     caller = pattern.replace[0]
                 else:
                     span = match.span(1)
                     caller = restline[span[0] : span[1]]
-                state.used_variables[caller] = (
-                    pattern.variable_type or "shader-variable"
-                )
+                state.used_variables[caller] = pattern.variable_type or "shader-variable"
 
             # Resolve function/method name.
             replace_index = 1 if caller else 0
@@ -381,23 +349,13 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             state.current_parentheses_state += 1
 
         elif ptype == "property":
-            if (
-                isinstance(pattern.replace, list)
-                and pattern.replace
-                and pattern.replace[0]
-            ):
+            if isinstance(pattern.replace, list) and pattern.replace and pattern.replace[0]:
                 caller = pattern.replace[0]
             else:
                 span = match.span(1)
                 caller = restline[span[0] : span[1]]
-            state.used_variables[caller] = (
-                pattern.variable_type or "shader-variable"
-            )
-            if (
-                isinstance(pattern.replace, list)
-                and len(pattern.replace) > 1
-                and pattern.replace[1]
-            ):
+            state.used_variables[caller] = pattern.variable_type or "shader-variable"
+            if isinstance(pattern.replace, list) and len(pattern.replace) > 1 and pattern.replace[1]:
                 name = pattern.replace[1]
             else:
                 span = match.span(2)
@@ -411,7 +369,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             nxt = _match_next_pattern(restline, patterns)
             if nxt is None:
                 break
-            pattern, start_idx, length, match = nxt
+            start_idx = nxt[1]
             if start_idx > 0:
                 output(
                     "code",
@@ -466,8 +424,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 params = [p for p in stripped[7:].split(" ") if p.strip()]
                 if not params:
                     raise WgslTemplateGenerateError(
-                        f"No parameters specified in #param directive at "
-                        f"line {state.current_line + 1}",
+                        f"No parameters specified in #param directive at line {state.current_line + 1}",
                         "parameter-missing",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -481,12 +438,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                             p
                             for p in patterns
                             if p.type == "param"
-                            and (
-                                p.pattern.pattern
-                                if hasattr(p.pattern, "pattern")
-                                else str(p.pattern)
-                            )
-                            == pat_str
+                            and (p.pattern.pattern if hasattr(p.pattern, "pattern") else str(p.pattern)) == pat_str
                         ),
                         None,
                     )
@@ -497,8 +449,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         new_type = pat.param_type or "int"
                         if existing_type != new_type:
                             raise WgslTemplateGenerateError(
-                                f"Duplicate param with different type: "
-                                f"{param} at line {state.current_line + 1}",
+                                f"Duplicate param with different type: {param} at line {state.current_line + 1}",
                                 "parameter-type-mismatch",
                                 file_path=state.file_path,
                                 line_number=state.current_line + 1,
@@ -506,8 +457,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             elif stripped.startswith("#if "):
                 if fn_call:
                     raise WgslTemplateGenerateError(
-                        f"Preprocessor directive inside function call at "
-                        f"line {state.current_line + 1}",
+                        f"Preprocessor directive inside function call at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -515,8 +465,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 condition = stripped[4:].strip()
                 if not condition:
                     raise WgslTemplateGenerateError(
-                        f"Empty condition in #if directive at line "
-                        f"{state.current_line + 1}",
+                        f"Empty condition in #if directive at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -540,8 +489,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 process_current_line(line)
                 if state.current_parentheses_state != 0:
                     raise WgslTemplateGenerateError(
-                        f"Unmatched parentheses in preprocessor "
-                        f"expression at line {state.current_line + 1}",
+                        f"Unmatched parentheses in preprocessor expression at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -549,8 +497,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_parentheses_state = cached_paren
                 if fn_call:
                     raise WgslTemplateGenerateError(
-                        f"Incomplete function call at line "
-                        f"{state.current_line + 1}",
+                        f"Incomplete function call at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -567,8 +514,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                     )
                 if fn_call:
                     raise WgslTemplateGenerateError(
-                        f"Preprocessor directive inside function call at "
-                        f"line {state.current_line + 1}",
+                        f"Preprocessor directive inside function call at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -602,8 +548,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 condition = stripped[6:].strip()
                 if not condition:
                     raise WgslTemplateGenerateError(
-                        f"Empty condition in #elif directive at line "
-                        f"{state.current_line + 1}",
+                        f"Empty condition in #elif directive at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -619,8 +564,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 process_current_line(line)
                 if state.current_parentheses_state != 0:
                     raise WgslTemplateGenerateError(
-                        f"Unmatched parentheses in preprocessor "
-                        f"expression at line {state.current_line + 1}",
+                        f"Unmatched parentheses in preprocessor expression at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -628,8 +572,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                 state.current_parentheses_state = cached_paren
                 if fn_call:
                     raise WgslTemplateGenerateError(
-                        f"Incomplete function call at line "
-                        f"{state.current_line + 1}",
+                        f"Incomplete function call at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -646,8 +589,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                     )
                 if fn_call:
                     raise WgslTemplateGenerateError(
-                        f"Preprocessor directive inside function call at "
-                        f"line {state.current_line + 1}",
+                        f"Preprocessor directive inside function call at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -680,8 +622,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
                 if stripped[5:].strip() != "":
                     raise WgslTemplateGenerateError(
-                        f"Unexpected content after #else at line "
-                        f"{state.current_line + 1}",
+                        f"Unexpected content after #else at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -697,8 +638,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                     )
                 if fn_call:
                     raise WgslTemplateGenerateError(
-                        f"Preprocessor directive inside function call at "
-                        f"line {state.current_line + 1}",
+                        f"Preprocessor directive inside function call at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -727,8 +667,7 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
 
                 if stripped[6:].strip() != "":
                     raise WgslTemplateGenerateError(
-                        f"Unexpected content after #endif at line "
-                        f"{state.current_line + 1}",
+                        f"Unexpected content after #endif at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
@@ -738,15 +677,13 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
             else:
                 if stripped in ("#use", "#param", "#if", "#elif"):
                     raise WgslTemplateGenerateError(
-                        f"Missing content after preprocessor directive at "
-                        f"line {state.current_line + 1}",
+                        f"Missing content after preprocessor directive at line {state.current_line + 1}",
                         "code-generation-failed",
                         file_path=state.file_path,
                         line_number=state.current_line + 1,
                     )
                 raise WgslTemplateGenerateError(
-                    f"Unknown preprocessor directive: {stripped} at line "
-                    f"{state.current_line + 1}",
+                    f"Unknown preprocessor directive: {stripped} at line {state.current_line + 1}",
                     "code-generation-failed",
                     file_path=state.file_path,
                     line_number=state.current_line + 1,
@@ -836,7 +773,7 @@ def generate_directory(
 ) -> TemplateRepository:
     """Run PASS2 on every template in the repository."""
 
-    out_templates: Dict[str, object] = {}
+    out_templates: dict[str, object] = {}
     for file_path in repo.templates:
         result = generate(
             file_path,

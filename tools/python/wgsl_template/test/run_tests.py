@@ -18,7 +18,7 @@ if str(_PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(_PARENT_DIR))
 
 
-def load_tests(loader, standard_tests, pattern):  # noqa: D401, ARG001
+def load_tests(loader, standard_tests, pattern):
     discovered = loader.discover(
         start_dir=str(_THIS_DIR),
         pattern="test_*.py",
