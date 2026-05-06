@@ -775,7 +775,16 @@ struct Float8E8M0 {
       return float_res;
     }
 
-    // Value is 2^(val - 127)
+    if (val == 0) {
+      // 2^(-127) is a denormalized float32: sign=0, exponent=0, mantissa=2^22
+      // Denorm value = 2^(-126) * (mantissa/2^23) = 2^(-126) * 0.5 = 2^(-127)
+      uint32_t res = 0x00400000;
+      float float_res;
+      std::memcpy(&float_res, &res, sizeof(float));
+      return float_res;
+    }
+
+    // For val 1-254: Value is 2^(val - 127)
     // In float32: exponent field = val, mantissa = 0, sign = 0
     uint32_t res = static_cast<uint32_t>(val) << 23;
     float float_res;
