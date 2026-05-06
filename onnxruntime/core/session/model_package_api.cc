@@ -98,9 +98,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageContext,
   *out = reinterpret_cast<OrtModelPackageContext*>(ctx.release());
   return nullptr;
 #else
-  ORT_UNUSED_PARAMETER(env);
   ORT_UNUSED_PARAMETER(package_root);
-  ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(out);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
@@ -544,8 +542,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
 #else
   ORT_UNUSED_PARAMETER(env);
   ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(component_name);
-  ORT_UNUSED_PARAMETER(file_identifier);
   ORT_UNUSED_PARAMETER(session_options);
   ORT_UNUSED_PARAMETER(session);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
