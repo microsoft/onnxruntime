@@ -19,19 +19,13 @@ Wheels are built via `build_wheel.py`. Running `pip install` or `pip wheel` dire
 supported — the source tree contains `pyproject.toml.in` (a template), not a real `pyproject.toml`.
 
 ```bash
-python build_wheel.py \
-  --binary_dir <path-to-built-binaries> \
-  --version <PEP-440-version> \
-  --output_dir <output-directory>
+python build_wheel.py --binary_dir <path-to-built-binaries> --version <PEP-440-version> --output_dir <output-directory>
 ```
 
 Example:
 
 ```bash
-python build_wheel.py \
-  --binary_dir ./build/Release \
-  --version 0.1.0.dev20260429 \
-  --output_dir ./dist
+python build_wheel.py --binary_dir ./build/Release --version 0.1.0.devYYYYMMDD --output_dir ./dist
 ```
 
 The script combines the pre-built plugin EP binaries with the package source to produce a platform-specific wheel.
@@ -44,7 +38,7 @@ Install the wheel and dependencies in a clean environment, then run the smoke te
 python -m venv test_venv
 source test_venv/bin/activate  # or test_venv\Scripts\Activate.ps1 on Windows
 pip install onnx numpy
-pip install dist/onnxruntime_ep_webgpu-*.whl  # pulls in onnxruntime>=1.24.4
+pip install dist/onnxruntime_ep_webgpu-*.whl  # pulls in the minimum compatible onnxruntime
 python test/test_webgpu_plugin_ep.py
 ```
 

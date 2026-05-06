@@ -12,7 +12,7 @@ parameters:
 
 - name: machine_pool
   type: string
-  default: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
 
 - name: package_version
   type: string
@@ -37,6 +37,9 @@ parameters:
 - name: cuda_version
   type: string
   default: '12.8'
+
+- name: python_package_name
+  type: string
 
 - name: cmake_cuda_archs
   type: string
@@ -81,20 +84,25 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
+      - template: ../templates/setup-feeds-and-python-steps.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
+
       - template: ../templates/set-plugin-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
 
-      - template: ../templates/setup-feeds-and-python-steps.yml
-        parameters:
-          architecture: ${{ parameters.arch }}
-
       - template: ../templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u ) --build-arg TRT_VERSION="
+          DockerBuildArgs: >-
+            --network=host
+            --secret id=PIP_INDEX_URL
+            --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+            --build-arg TRT_VERSION=
+            --build-arg BUILD_UID=$( id -u )
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
 
       - script: >-
@@ -147,6 +155,65 @@ stages:
           command: publish
           publishDirectory: '$(Build.BinariesDirectory)/universal_package'
           vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-linux-${{ parameters.arch }}'
+          vstsFeedPackagePublish: "onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-linux-${{ parameters.arch }}"
           versionOption: custom
           versionPublish: '$(PluginUniversalPackageVersion)'
+
+  - ${{ if eq(parameters.arch, 'x64') }}:
+    - job: ${{ parameters.stage_name }}_Python_Package
+      dependsOn: ${{ parameters.stage_name }}
+      timeoutInMinutes: 60
+      workspace:
+        clean: all
+      pool:
+        name: ${{ parameters.machine_pool }}
+        os: linux
+      templateContext:
+        outputs:
+        - output: pipelineArtifact
+          targetPath: $(Build.ArtifactStagingDirectory)/python
+          artifactName: cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
+      variables:
+      - template: ../templates/common-variables.yml
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/setup-feeds-and-python-steps.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
+
+      - template: ../templates/set-plugin-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
+
+      - template: ../templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --network=host
+            --secret id=PIP_INDEX_URL
+            --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+            --build-arg TRT_VERSION=
+            --build-arg BUILD_UID=$( id -u )
+          Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }}
+
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download plugin build artifacts'
+        inputs:
+          artifactName: ${{ parameters.artifact_name }}
+          targetPath: '$(Build.BinariesDirectory)/plugin_artifacts'
+
+      - script: |
+          set -e -x
+          $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_plugin_python_package.sh \
+            -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}pluginbuild${{ parameters.arch }} \
+            -p ${{ parameters.docker_python_exe_path }} \
+            -v "$(PluginPythonPackageVersion)" \
+            -n "${{ parameters.python_package_name }}"
+        displayName: 'Build Python wheel'
