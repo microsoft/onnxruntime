@@ -3127,7 +3127,8 @@ TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
   }
 }
 
-// Regression test for https://github.com/microsoft/onnxruntime/issues/XXXXX
+// Regression test for CUDA Cast kernel int32 overflow (same family as
+// https://github.com/microsoft/onnxruntime/issues/28107).
 // The CUDA Cast kernel used CUDA_LONG (int32_t) for element indices, which caused
 // int32 overflow and illegal memory access on tensors with >2^31 elements.
 // This test validates that a large tensor cast works correctly. The full reproducer
