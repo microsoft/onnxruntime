@@ -1695,6 +1695,46 @@ TEST(CoreMLExecutionProviderTest, Split11ZeroSplitValueNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
+  // Negative: a Split node with only 1 output. CoreML SplitND requires ≥2,
+  // so the attribute-form path's split_attr->size() < 2 check rejects it.
+  // ONNX schema allows variadic ≥1 outputs and CPU's Split kernel accepts
+  // a single output, so this case can be observed via partition assertion.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 11}};
+  onnxruntime::Model model("split11_single_output", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto input_type;
+  input_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* input_shape = input_type.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_value(1);
+  input_shape->add_dim()->set_dim_value(5);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(5);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &input_type);
+  auto& out0_arg = graph.GetOrCreateNodeArg("Y0", &output_type);
+
+  auto& node = graph.AddNode("split11_single_output", "Split",
+                             "Split-11 with a single output",
+                             {&input_arg}, {&out0_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+  node.AddAttribute("split", std::vector<int64_t>{5});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
