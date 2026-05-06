@@ -825,6 +825,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
   // manifest.json without "component_models"; discovery should scan models/* with metadata.json.
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_discover_test";
   constexpr std::string_view manifest_json = R"({
+    "schema_version": 1,
     "model_name": "test_model"
   })";
 
