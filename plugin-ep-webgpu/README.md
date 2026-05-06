@@ -11,7 +11,9 @@ For more information about plugin EPs, see the documentation [here](https://onnx
   final package version (release, dev) from this via
   [`tools/ci_build/github/azure-pipelines/templates/set-plugin-build-variables-step.yml`](../tools/ci_build/github/azure-pipelines/templates/set-plugin-build-variables-step.yml).
 - [`MIN_ONNXRUNTIME_VERSION`](MIN_ONNXRUNTIME_VERSION) — Minimum compatible core `onnxruntime` version. Single source
-  of truth shared by all packages built from this directory.
+  of truth shared by all packages built from this directory. The packages do not declare a hard dependency on a
+  specific ONNX Runtime package; instead, this version string is injected into each package's README at build/pack
+  time, and the native plugin EP code validates compatibility at registration time.
 - [`python/`](python/) — Sources and build script for the `onnxruntime-ep-webgpu` Python wheel. See
   [`python/README.md`](python/README.md) for build and test instructions.
 - [`csharp/`](csharp/) — Sources and packaging script for the `Microsoft.ML.OnnxRuntime.EP.WebGpu` NuGet package. See
