@@ -2296,5 +2296,175 @@ class TestONNXAttentionCPUSoftcapMaskOrdering(unittest.TestCase):
         )
 
 
+@unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionGQAOutputQK(unittest.TestCase):
+    """
+    Tests that GQA + qk_matmul_output_mode == 0 (raw QK output) works.
+
+    Issue #28351 sub-item 1c: the output_qk path was implemented in the unfused
+    kernel but lacked test coverage for the GQA + raw-QK combination. The
+    output_qk shape is [batch, q_num_heads, q_seq, total_seq]; the unfused
+    kernel indexes per Q-head, and attention_helper.h infers the shape from
+    q_num_heads, so this combination should already work — these tests pin it.
+
+    Note: GQA + MEA on CUDA requires fp16/bf16 because the MEA `LaunchUngroup`
+    helper has no fp32 instantiation; the GQA unfused fall-through DOES
+    support fp32 (exercised by `TestONNXAttentionGQASoftcapFloat32MaskOrdering`
+    below). These tests pin the fp16 + raw-QK + GQA combination on the
+    unfused path.
+    """
+
+    def test_gqa_output_qk_raw_prompt_fp16(self):
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=4,
+            kv_sequence_length=4,
+            q_num_heads=8,
+            kv_num_heads=2,
+            head_size=32,
+            is_causal=1,
+        )
+
+        torch.manual_seed(0)
+        device = "cuda"
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        std = 0.2
+
+        q = torch.randn(1, 4, 8, 32, device=device, dtype=torch_type) * std
+        k = torch.randn(1, 4, 2, 32, device=device, dtype=torch_type) * std
+        v = torch.randn(1, 4, 2, 32, device=device, dtype=torch_type) * std
+
+        # Reference output_qk: raw scaled QK (no mask, no softcap, no softmax).
+        # Mode kQK == 0 outputs raw Q*K^T / sqrt(d) as the spec defines.
+        q_f, k_f = q.float(), k.float()
+        # Repeat K heads for GQA (kv_num_heads=2, q_num_heads=8 -> repeat factor 4)
+        k_rep = k_f.repeat_interleave(q.shape[2] // k.shape[2], dim=2)
+        ref_qk = torch.einsum("bthd,bshd->bhts", q_f, k_rep) / math.sqrt(q.shape[-1])
+
+        # Run ORT with output_qk=0 (kQK in the post-#7913 enum: raw scaled QK).
+        _out_ort, _, _, qk_ort = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=None,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+            output_qk=0,  # kQK: raw scaled QK
+        )
+
+        qk_np = qk_ort.to(torch.float32).detach().cpu().numpy()
+        ref_qk_np = ref_qk.detach().cpu().numpy()
+        self.assertFalse(numpy.isnan(qk_np).any(), "NaN in output_qk")
+        self.assertEqual(
+            qk_np.shape,
+            (1, 8, 4, 4),
+            "output_qk shape must be [batch, q_num_heads, q_seq, total_seq]",
+        )
+        numpy.testing.assert_allclose(qk_np, ref_qk_np, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+@unittest.skipIf(not has_cuda_device(53), "CUDA EP is not available, skipping tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionGQASoftcapFloat32MaskOrdering(unittest.TestCase):
+    """
+    Pin softcap+mask ORDERING on the fp32 unfused GQA path (post-onnx#7867
+    spec semantics: scale -> softcap -> +mask -> softmax).
+
+    The unmasked fp32 GQA softcap baseline tests live in PR #28371 under
+    `TestONNXAttentionGQASoftcapFloat32` — those exercise softcap on the
+    unfused fp32 path but cannot detect a wrong ordering of softcap vs
+    additive mask, since without a mask the two orderings are arithmetically
+    identical. The tests below pin the masked ordering using the same
+    poison-V pattern as the fp16/bf16 P1 ordering guards
+    (test_gqa_large_head_unfused_softcap_additive_mask_poison_fp16).
+
+    These tests live alongside the CPU spec fix (PR #28379) because they
+    semantically depend on the same correct softcap/mask ordering and the
+    same post-#7913 enum numbering.
+    """
+
+    def _run_softcap_fp32_with_mask(self, head_size, v_head_size=None):
+        """
+        Pin softcap+mask ORDERING on the fp32 unfused path.
+
+          - Tiny softcap (2.0) so it would clamp very large logits.
+          - V values = 1000.0 in the masked KV slot, 0.2 elsewhere.
+          - attn_mask = -inf for the masked slot, 0 elsewhere.
+
+        Correct order (QK -> softcap -> +mask -> softmax) zeroes out the
+        masked logit via softmax, so output ~= 0.2. Wrong order (mask before
+        softcap) would feed -inf through softcap and either clamp it to a
+        finite value (allowing the poisoned V to leak) or produce NaN.
+        """
+        effective_v_head_size = v_head_size if v_head_size is not None else head_size
+        config = AttentionConfig(
+            batch_size=1,
+            q_sequence_length=1,
+            kv_sequence_length=3,
+            q_num_heads=4,
+            kv_num_heads=2,
+            head_size=head_size,
+            v_head_size=v_head_size if v_head_size is not None else 0,
+            is_causal=0,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        device = "cuda"
+        torch_type = torch.float32
+        ort_type = TensorProto.FLOAT
+
+        q = torch.zeros(1, 1, 4, head_size, device=device, dtype=torch_type)
+        k = torch.zeros(1, 3, 2, head_size, device=device, dtype=torch_type)
+        v = torch.full((1, 3, 2, effective_v_head_size), 0.2, device=device, dtype=torch_type)
+        v[:, 1, :, :] = 1000.0  # poison the masked slot
+
+        attn_mask = torch.zeros(1, 4, 1, 3, device=device, dtype=torch_type)
+        attn_mask[:, :, :, 1] = float("-inf")
+
+        out_ref, _ = attention_ref(q=q, k=k, v=v, attn_bias=attn_mask, softcap=2.0)
+        out_ort, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CUDAExecutionProvider",
+            device=device,
+            ort_type=ort_type,
+        )
+        out = out_ort.reshape(1, 1, 4, effective_v_head_size)
+
+        out_np = out.to(torch.float32).detach().cpu().numpy()
+        out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
+
+        self.assertFalse(
+            numpy.isnan(out_np).any(),
+            "NaN in fp32 GQA softcap+mask output — wrong softcap/mask ordering on the unfused fp32 path?",
+        )
+        max_abs = numpy.max(numpy.abs(out_np))
+        self.assertLess(
+            max_abs,
+            1.0,
+            f"fp32 GQA softcap+mask leakage: max |output| = {max_abs:.3f}. "
+            f"Expected ~0.2 (mask zeroes out the poisoned V=1000 slot via softmax). "
+            f"Wrong ordering (mask before softcap) would let the -inf get clamped "
+            f"by softcap and the poisoned V to leak through.",
+        )
+        numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol["fp32"], atol=atol["fp32"])
+
+    def test_gqa_softcap_fp32_with_mask_ordering_symmetric(self):
+        self._run_softcap_fp32_with_mask(head_size=16, v_head_size=None)
+
+    def test_gqa_softcap_fp32_with_mask_ordering_asymmetric_v_head(self):
+        self._run_softcap_fp32_with_mask(head_size=16, v_head_size=32)
+
+
 if __name__ == "__main__":
     unittest.main()
