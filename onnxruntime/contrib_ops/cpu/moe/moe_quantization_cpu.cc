@@ -237,11 +237,10 @@ bool TryRunLutGemm(const float* activations,
 
   const void* packed_lut_b = direct_lut_cache_ptr;
   if (packed_lut_b == nullptr) {
+    // Caller must have already called MlasInitLutGemmKernelConfig before invoking this function.
     ORT_ENFORCE(thread_lut_packed_buffer != nullptr, "Thread-local LUT packed buffer is required.");
     const size_t scale_count = static_cast<size_t>(rows * blocks_per_row);
     const float* scales_fp32 = GetFloatScaleData(scales_ptr, scale_count, thread_lut_scale_buffer);
-    MlasInitLutGemmKernelConfig(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
-                                static_cast<size_t>(block_size), zp_ptr != nullptr);
     MlasLutGemmPack(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
                     static_cast<size_t>(block_size), zp_ptr != nullptr,
                     reinterpret_cast<const std::byte*>(weights_data + expert_idx * rows * packed_cols),
