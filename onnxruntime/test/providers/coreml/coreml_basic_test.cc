@@ -1168,8 +1168,11 @@ namespace {
 // Build a single-node com.microsoft:FusedConv model for the tests below.
 // Input X is {1, 2, 4, 4}, weight W is {3, 2, 2, 2} (constant initializer, set
 // to a simple pattern), no bias. stride=1, pad=0. Output is {1, 3, 3, 3}.
+// When `add_z` is true, the optional 4th 'Z' (residual sum) input is added —
+// used by the negative test that exercises CoreML's rejection path.
 ONNX_NAMESPACE::ModelProto MakeFusedConvModel(const std::string& activation,
-                                              const std::vector<float>& activation_params) {
+                                              const std::vector<float>& activation_params,
+                                              bool add_z = false) {
   ONNX_NAMESPACE::ModelProto model_proto;
   model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
   auto* onnx_opset = model_proto.add_opset_import();
@@ -1189,6 +1192,9 @@ ONNX_NAMESPACE::ModelProto MakeFusedConvModel(const std::string& activation,
     for (int64_t d : shape) tt->mutable_shape()->add_dim()->set_dim_value(d);
   };
   add_tensor_value(graph_proto->add_input(), "X", {1, 2, 4, 4});
+  if (add_z) {
+    add_tensor_value(graph_proto->add_input(), "Z", {1, 3, 3, 3});
+  }
   add_tensor_value(graph_proto->add_output(), "Y", {1, 3, 3, 3});
 
   // Weight initializer: {3, 2, 2, 2} = 24 floats, deterministic pattern.
@@ -1205,6 +1211,12 @@ ONNX_NAMESPACE::ModelProto MakeFusedConvModel(const std::string& activation,
   node->set_domain("com.microsoft");
   node->add_input("X");
   node->add_input("W");
+  if (add_z) {
+    // FusedConv schema: X, W, B(optional), Z(optional). Skip B with "" so Z
+    // lands in input slot 3.
+    node->add_input("");
+    node->add_input("Z");
+  }
   node->add_output("Y");
 
   // Set pads explicitly since the CoreML conv builder's VALID-pad branch
@@ -1228,6 +1240,15 @@ ONNX_NAMESPACE::ModelProto MakeFusedConvModel(const std::string& activation,
   }
 
   return model_proto;
+}
+
+void RunFusedConvNegativeTest(const ONNX_NAMESPACE::ModelProto& model_proto, bool mlprogram) {
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  auto provider = mlprogram ? MakeCoreMLExecutionProvider("MLProgram")
+                            : MakeCoreMLExecutionProvider();
+  TestModelLoad(model_span, std::move(provider), ExpectedEPNodeAssignment::None);
 }
 
 void RunFusedConvTest(const std::string& activation,
@@ -1295,6 +1316,28 @@ TEST(CoreMLExecutionProviderTest, FusedConvTestTanh) {
   // Param-less Tanh activation; same rationale as the Sigmoid test for the
   // remaining elementwise activation.
   RunFusedConvTest("Tanh", {}, "FusedConvTestTanh_MLProgram");
+}
+
+// Negative tests below cover the two gating cases that have a working CPU
+// fallback (so TestModelLoad's Initialize() succeeds and the EP partition
+// assignment can be verified). The arity-mismatch and unsupported-activation
+// cases are also rejected by IsOpSupportedImpl, but the CPU FusedConv kernel
+// rejects them too, so there's no end-to-end fallback to observe.
+
+TEST(CoreMLExecutionProviderTest, FusedConvNeuralNetworkNotSupported) {
+  // FusedConv is only implemented on the MLProgram path. The NeuralNetwork
+  // builder must reject it so the node falls back to CPU rather than emit an
+  // unfused Conv and silently lose the activation.
+  RunFusedConvNegativeTest(MakeFusedConvModel("Relu", {}), /*mlprogram=*/false);
+}
+
+TEST(CoreMLExecutionProviderTest, FusedConvWithZInputNotSupported) {
+  // The optional Z residual sum input (Y = activation(Conv(X,W,B) + Z)) is
+  // not lowered by the MLProgram builder. Accepting such a node would
+  // silently drop the residual add and produce wrong results, so it must be
+  // rejected and fall back to CPU.
+  RunFusedConvNegativeTest(MakeFusedConvModel("Relu", {}, /*add_z=*/true),
+                           /*mlprogram=*/true);
 }
 
 TEST(CoreMLExecutionProviderTest, Split11UnevenAttribute) {
