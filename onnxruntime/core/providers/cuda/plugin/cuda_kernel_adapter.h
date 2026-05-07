@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/common/status.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
