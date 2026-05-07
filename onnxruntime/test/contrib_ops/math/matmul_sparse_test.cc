@@ -482,7 +482,6 @@ TEST(SparseToDenseMatMul, CooNegativeIndices) {
   const std::vector<float> A_values = {1.0f, 2.0f};
   // Row -1 is invalid
   const std::vector<int64_t> A_indices = {-1, 0, 1, 1};
-  const std::vector<int64_t> A_indices_shape = {2, 2};
 
   const std::vector<int64_t> B_shape = {3, 3};
   const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
@@ -499,7 +498,6 @@ TEST(SparseToDenseMatMul, CooOutOfBoundsIndices) {
   const std::vector<float> A_values = {1.0f, 2.0f};
   // Column index 50 is out of bounds for 3 cols
   const std::vector<int64_t> A_indices = {0, 50, 1, 1};
-  const std::vector<int64_t> A_indices_shape = {2, 2};
 
   const std::vector<int64_t> B_shape = {3, 3};
   const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
