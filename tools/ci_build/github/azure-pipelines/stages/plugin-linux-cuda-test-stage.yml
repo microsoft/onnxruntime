@@ -1,7 +1,7 @@
 parameters:
 - name: machine_pool
   type: string
-  default: 'onnxruntime-Ubuntu2404-AMD-GPU-A10'
+  default: 'Onnxruntime-Linux-GPU-A10'
 
 - name: cuda_version
   type: string
@@ -53,7 +53,7 @@ stages:
         docker run --rm --gpus all \
           --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
           --volume "$(Build.BinariesDirectory):/build" \
-          --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
+          --env PIP_INDEX_URL \
           --env "NVIDIA_VISIBLE_DEVICES=all" \
           --env "ORT_TEST_VERBOSE=$(System.Debug)" \
           onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}plugintestx64 \
