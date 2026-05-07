@@ -3,44 +3,114 @@
 
 #include "core/common/common.h"
 
-#if !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
-#include <execinfo.h>
-#endif
 #include <vector>
+
+#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#include <cstdio>
+#include <cstring>
+#include <dlfcn.h>
+#include <sstream>
+#include <unordered_map>
+#include "absl/debugging/stacktrace.h"
+#include "absl/debugging/symbolize.h"
+
+namespace {
+
+// Resolve file offsets to file:line using addr2line, grouped by binary.
+// Returns a map from original address to "file:line" string.
+std::unordered_map<void*, std::string> ResolveWithAddr2Line(
+    void** addresses, int depth) {
+  std::unordered_map<void*, std::string> result;
+
+  // Group addresses by their containing binary/shared-object.
+  // Key: binary path, Value: vector of (address, file_offset)
+  struct FrameInfo {
+    void* addr;
+    uintptr_t offset;
+  };
+  std::unordered_map<std::string, std::vector<FrameInfo>> groups;
+
+  for (int i = 0; i < depth; ++i) {
+    Dl_info info;
+    if (dladdr(addresses[i], &info) && info.dli_fname) {
+      uintptr_t offset = reinterpret_cast<uintptr_t>(addresses[i]) -
+                         reinterpret_cast<uintptr_t>(info.dli_fbase);
+      groups[info.dli_fname].push_back({addresses[i], offset});
+    }
+  }
+
+  // Call addr2line once per binary with all offsets in batch.
+  for (const auto& [binary, frames] : groups) {
+    // Use addr2line without -f/-C/-p to get just "file:line" per address.
+    std::string cmd = "addr2line -e " + binary;
+    for (const auto& frame : frames) {
+      char buf[32];
+      snprintf(buf, sizeof(buf), " 0x%lx", static_cast<unsigned long>(frame.offset));
+      cmd += buf;
+    }
+    cmd += " 2>/dev/null";
+
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) continue;
+
+    // Read one line per address from addr2line output.
+    char line_buf[1024];
+    size_t frame_idx = 0;
+    while (fgets(line_buf, sizeof(line_buf), pipe) && frame_idx < frames.size()) {
+      // Remove trailing newline
+      size_t len = strlen(line_buf);
+      if (len > 0 && line_buf[len - 1] == '\n') line_buf[len - 1] = '\0';
+
+      std::string resolved(line_buf);
+      // addr2line returns "?? ??:0" or similar for unknown frames — skip those
+      if (resolved.find("??") == std::string::npos) {
+        result[frames[frame_idx].addr] = resolved;
+      }
+      ++frame_idx;
+    }
+    pclose(pipe);
+  }
+
+  return result;
+}
+
+}  // namespace
+#endif
 
 namespace onnxruntime {
 
 std::vector<std::string> GetStackTrace() {
   std::vector<std::string> stack;
 
-#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_)
-  constexpr int kCallstackLimit = 64;  // Maximum depth of callstack
+#if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+  constexpr int kCallstackLimit = 64;
+  void* addresses[kCallstackLimit];
 
-  void* array[kCallstackLimit];
-  char** strings = nullptr;
+  // skip_count=2 hides GetStackTrace and its caller (ORT_ENFORCE macro internals)
+  int depth = absl::GetStackTrace(addresses, kCallstackLimit, /*skip_count=*/2);
+  stack.reserve(depth);
 
-  int size = backtrace(array, kCallstackLimit);
-  stack.reserve(size);
-  strings = backtrace_symbols(array, size);
+  // Attempt to resolve file:line via addr2line (best-effort, debug builds only).
+  auto resolved = ResolveWithAddr2Line(addresses, depth);
 
-  // NOTE: To get meaningful info from the output, addr2line (or atos on osx) would need to be used.
-  // See https://gist.github.com/jvranish/4441299 for an example.
-  //
-  // To manually translate the output, use the value in the '()' after the executable name with addr2line
-  // e.g.
-  //   Stacktrace:
-  //    /home/me/src/github/onnxruntime/build/Linux/Debug/onnxruntime_test_all(+0x3f46cc) [0x559543faf6cc]
-  //
-  // >addr2line -f -C -e /home/me/src/github/onnxruntime/build/Linux/Debug/onnxruntime_test_all  +0x3f46cc
+  for (int i = 0; i < depth; ++i) {
+    std::ostringstream oss;
+    char symbol[1024];
+    if (absl::Symbolize(addresses[i], symbol, sizeof(symbol))) {
+      oss << symbol;
+    } else {
+      oss << "[unknown]";
+    }
 
-  // hide GetStackTrace so the output starts with the 'real' location
-  constexpr int start_frame = 1;
-  for (int i = start_frame; i < size; i++) {
-    stack.push_back(strings[i]);
+    // Append file:line if resolved, otherwise the raw address as fallback.
+    auto it = resolved.find(addresses[i]);
+    if (it != resolved.end()) {
+      oss << " at " << it->second;
+    } else {
+      oss << " [" << addresses[i] << "]";
+    }
+    stack.push_back(oss.str());
   }
-
-  free(strings);
-
 #endif
 
   return stack;

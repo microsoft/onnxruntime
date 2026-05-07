@@ -60,6 +60,10 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
+#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+#include "absl/debugging/symbolize.h"
+#endif
+
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -69,6 +73,7 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+std::once_flag symbolizerInitOnceFlag;
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -267,6 +272,14 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
   if (create_global_thread_pools) {
     ORT_RETURN_IF_ERROR(SetGlobalThreadingOptions(*tp_options));
   }
+
+  // Initialize abseil symbolizer for readable stack traces in debug builds.
+  // Windows uses C++23 <stacktrace> instead, so skip abseil symbolizer there.
+#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+  std::call_once(symbolizerInitOnceFlag, []() {
+    absl::InitializeSymbolizer(nullptr);
+  });
+#endif
 
   ORT_TRY {
 #if !defined(ORT_MINIMAL_BUILD)
