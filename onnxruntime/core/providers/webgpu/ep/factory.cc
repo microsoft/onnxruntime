@@ -141,7 +141,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),                                                                                              // CPU allocator
       device_alloc,                                                                                                                 // default device allocator
-      std::make_shared<webgpu::GpuBufferAllocator>(WebGpuContextFactory::GetContext(context_id).InitializerBufferManager(), true),   // initializer device allocator
+      std::make_shared<webgpu::GpuBufferAllocator>(WebGpuContextFactory::GetContext(context_id).InitializerBufferManager(), true),  // initializer device allocator
   };
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
   return nullptr;
