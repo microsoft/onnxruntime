@@ -916,6 +916,9 @@ Status ResizeImpl(
   // to the user.
   ORT_RETURN_IF_NOT(is_2D || is_3D, "Only bilinear/trilinear and bicubic modes are supported in Resize");
 
+  ORT_RETURN_IF_NOT(N <= static_cast<size_t>(std::numeric_limits<int>::max()),
+                    "ResizeImpl: output element count exceeds int range.");
+
   int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   fast_divmod div_output_image;
   if (is_2D) {

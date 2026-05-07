@@ -190,7 +190,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                 height_scale = scales[1];
                 width_scale = scales[2];
               } else {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Resize",
+                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Resize",
                                        ": 4-D 'Linear' antialias mode requires batch and channel "
                                        "scales to be 1.0 (NCHW or NHWC layout).");
               }
@@ -309,7 +309,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
               height_scale = scales[1];
               width_scale = scales[2];
             } else {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Resize",
+              return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Resize",
                                      ": 4-D 'Cubic' antialias mode requires batch and channel "
                                      "scales to be 1.0 (NCHW or NHWC layout).");
             }
