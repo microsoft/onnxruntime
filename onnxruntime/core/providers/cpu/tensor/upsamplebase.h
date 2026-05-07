@@ -16,6 +16,7 @@
 #include "core/common/status.h"
 #include <core/common/safeint.h>
 #include <core/common/narrow.h>
+#include "core/providers/common.h"
 #include <type_traits>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
@@ -555,14 +556,22 @@ class UpsampleBase {
     // in which case the other axes is ignored and use default scale of 1
     // scales_size == axes_.size() should be guaranteed if axes is not empty
     if (rank > 0 && (scales_size != rank || axes_.size())) {
-      InlinedVector<float> new_scales(size_t(rank), 1.0f);
-      ORT_RETURN_IF_NOT(*std::max_element(axes_.begin(), axes_.end()) < rank && (int64_t(axes_.size()) == scales_size),
-                        "all values in axes should be less than rank of the data");
+      if (axes_.empty()) {
+        ORT_RETURN_IF_NOT(scales_size == rank,
+                          "Number of elements in scales should be equal to rank of the data when axes is not provided.");
+      } else {
+        ORT_RETURN_IF_NOT(int64_t(axes_.size()) == scales_size,
+                          "Number of elements in scales should be equal to number of axes.");
 
-      for (size_t i = 0; i < axes_.size(); i++) {
-        new_scales[static_cast<size_t>(axes_[i])] = scales[i];
+        InlinedVector<float> new_scales(size_t(rank), 1.0f);
+        for (size_t i = 0; i < axes_.size(); i++) {
+          ORT_RETURN_IF_NOT(IsAxisInRange(axes_[i], rank),
+                            "all values in axes should be in the range [-rank, rank - 1]");
+          const int64_t axis = HandleNegativeAxis(axes_[i], rank);
+          new_scales[static_cast<size_t>(axis)] = scales[i];
+        }
+        scales.swap(new_scales);
       }
-      scales.swap(new_scales);
     }
     return ScalesValidation(scales, mode_);
   }
@@ -585,11 +594,12 @@ class UpsampleBase {
 
     if (axes_.size()) {
       output_dims.assign(input_dims.begin(), input_dims.end());
-      ORT_RETURN_IF_NOT(*std::max_element(axes_.begin(), axes_.end()) < int64_t(output_dims.size()),
-                        "axes should be less than output_dims.size()");
-
+      const int64_t rank = static_cast<int64_t>(output_dims.size());
       for (size_t i = 0; i < axes_.size(); i++) {
-        output_dims[static_cast<size_t>(axes_[i])] = size_span[i];
+        ORT_RETURN_IF_NOT(IsAxisInRange(axes_[i], rank),
+                          "all values in axes should be in the range [-rank, rank - 1]");
+        const int64_t axis = HandleNegativeAxis(axes_[i], rank);
+        output_dims[static_cast<size_t>(axis)] = size_span[i];
       }
     } else {
       std::copy(size_span.begin(), size_span.end(), output_dims.begin());
@@ -640,8 +650,11 @@ class UpsampleBase {
       for (size_t i = rank; i < rank * 2; ++i) {
         roi_tmp[i] = 1;
       }
+      const int64_t rank_i64 = static_cast<int64_t>(rank);
       for (size_t i = 0; i < axes_.size(); i++) {
-        auto v_in_axes = static_cast<size_t>(axes_[i]);
+        ORT_ENFORCE(IsAxisInRange(axes_[i], rank_i64), "all values in axes should be in the range [-rank, rank - 1]");
+        const int64_t axis = HandleNegativeAxis(axes_[i], rank_i64);
+        auto v_in_axes = static_cast<size_t>(axis);
         roi_tmp[v_in_axes] = (roi_array[i]);
         roi_tmp[rank + v_in_axes] = (roi_array[axes_.size() + i]);
       }
