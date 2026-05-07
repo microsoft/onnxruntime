@@ -15,12 +15,13 @@ limitations under the License.
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cpu/tensor/onehot.h"
+
+#include <limits>
+
 #include "core/common/eigen_common_wrapper.h"
 #include "core/common/safeint.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
-
-#include <limits>
 
 #ifndef EIGEN_USE_THREADS
 #define EIGEN_USE_THREADS
