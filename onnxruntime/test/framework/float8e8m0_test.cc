@@ -4,6 +4,7 @@
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -47,21 +48,37 @@ TEST(Float8E8M0_Tests, NaN) {
   EXPECT_TRUE(nan_val.IsNaN());
   EXPECT_TRUE(std::isnan(nan_val.ToFloat()));
 
-  // Converting NaN float to Float8E8M0
+  // Converting positive NaN float to Float8E8M0
   Float8E8M0 from_nan(std::numeric_limits<float>::quiet_NaN());
   EXPECT_TRUE(from_nan.IsNaN());
   EXPECT_EQ(from_nan.val, 0xFF);
+
+  // Converting negative NaN float to Float8E8M0 (NaN has no sign semantics)
+  float neg_nan;
+  uint32_t neg_nan_bits = 0xFFC00000;  // negative quiet NaN
+  std::memcpy(&neg_nan, &neg_nan_bits, sizeof(float));
+  Float8E8M0 from_neg_nan(neg_nan);
+  EXPECT_TRUE(from_neg_nan.IsNaN());
+  EXPECT_EQ(from_neg_nan.val, 0xFF);
 }
 
 TEST(Float8E8M0_Tests, Infinity) {
-  // Infinity saturates to largest value (0xFE) when saturate=true
+  // Positive infinity saturates to largest value (0xFE) when saturate=true
   Float8E8M0 from_inf(std::numeric_limits<float>::infinity(), true);
   EXPECT_EQ(from_inf.val, 0xFE);
   EXPECT_FALSE(from_inf.IsNaN());
 
-  // Infinity becomes NaN when saturate=false
+  // Positive infinity becomes NaN when saturate=false
   Float8E8M0 from_inf_nosat(std::numeric_limits<float>::infinity(), false);
   EXPECT_TRUE(from_inf_nosat.IsNaN());
+
+  // Negative infinity saturates to smallest value (0x00) when saturate=true
+  Float8E8M0 from_neg_inf(-std::numeric_limits<float>::infinity(), true);
+  EXPECT_EQ(from_neg_inf.val, 0x00);
+
+  // Negative infinity becomes NaN when saturate=false
+  Float8E8M0 from_neg_inf_nosat(-std::numeric_limits<float>::infinity(), false);
+  EXPECT_TRUE(from_neg_inf_nosat.IsNaN());
 }
 
 TEST(Float8E8M0_Tests, NegativeValues) {

@@ -709,6 +709,32 @@ struct Float8E8M0 {
     uint32_t exponent = (b & 0x7F800000) >> 23;
     uint32_t mantissa = b & 0x007FFFFF;
 
+    // NaN (check before sign since NaN has no sign semantics)
+    if (exponent == 0xFF && mantissa != 0) {
+      val = 0xFF;
+      return;
+    }
+
+    // Infinity (check before sign to handle -Inf consistently)
+    if (exponent == 0xFF && mantissa == 0) {
+      if (sign) {
+        // Negative infinity
+        if (saturate) {
+          val = 0x00;
+        } else {
+          val = 0xFF;  // NaN
+        }
+      } else {
+        // Positive infinity
+        if (saturate) {
+          val = 0xFE;  // Largest finite value: 2^127
+        } else {
+          val = 0xFF;  // NaN (no infinity in this format)
+        }
+      }
+      return;
+    }
+
     // Negative values (except -0) cannot be represented
     if (sign && (exponent != 0 || mantissa != 0)) {
       if (saturate) {
@@ -716,22 +742,6 @@ struct Float8E8M0 {
         val = 0x00;
       } else {
         val = 0xFF;  // NaN
-      }
-      return;
-    }
-
-    // NaN
-    if (exponent == 0xFF && mantissa != 0) {
-      val = 0xFF;
-      return;
-    }
-
-    // Infinity
-    if (exponent == 0xFF && mantissa == 0) {
-      if (saturate) {
-        val = 0xFE;  // Largest finite value: 2^127
-      } else {
-        val = 0xFF;  // NaN (no infinity in this format)
       }
       return;
     }
