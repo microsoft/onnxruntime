@@ -140,13 +140,20 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
     const size_t scale_buffer_size = static_cast<size_t>(SafeInt<size_t>(window_size) * output_size);
 
     param_base.weight_coefficients = IAllocator::MakeUniquePtr<T>(alloc, scale_buffer_size);
-    // Get pointers to appropriate memory locations in the scratch buffer
-    auto* scale_data = reinterpret_cast<float*>(param_base.weight_coefficients.get());
+    auto* output_weights = param_base.weight_coefficients.get();
     int64_t xmin = 0, xmax = 0;
     float inv_scale = (scale >= 1.0f) ? 1.0f / scale : 1.0f;
 
     const auto roi_start = roi.size() / 2 - (rindex + 1);
     const auto roi_end = roi.size() - (rindex + 1);
+
+    // Per-pixel scratch buffer for float weight computation, reused across all output pixels.
+    // window_size = ceil(support) * 2 + 1, where support = support_size * 0.5 * max(scale, 1).
+    //   Downsampling (scale < 1): bilinear=3, bicubic=5 (always).
+    //   Upsampling:  2x bilinear=5, 4x bilinear=9, 8x bilinear=17,
+    //                2x bicubic=9,  4x bicubic=17, 8x bicubic=33.
+    // Inline capacity of 33 covers up to 8x bicubic upsample without heap allocation.
+    InlinedVector<float, 33> scale_buffer(window_size);
 
     for (int32_t i = 0; i < output_size; i++) {
       float center = 0.5f + (scale == 1.0f ? static_cast<float>(i)
@@ -170,41 +177,44 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       xmax = exclude_outside ? xmax_cut : xmax_real;
       param_base.bounds.push_back({xmin_cut, xmax_cut});
 
-      auto* scale_buffer = &scale_data[i * window_size];
+      std::fill(scale_buffer.begin(), scale_buffer.end(), 0.0f);
       int64_t x = 0;
       xmax -= xmin;
       for (; x < xmax; x++) {
         float w = p.Filter((x + xmin - center + 0.5f) * inv_scale);
-        scale_buffer[x] = w;
+        scale_buffer[narrow<size_t>(x)] = w;
         total_weight += w;
       }
 
       if (!exclude_outside) {
         int64_t neg_xsize = xmin < 0 ? -xmin : 0;
         for (x = 0; x < neg_xsize; x++) {
-          scale_buffer[neg_xsize] += scale_buffer[x];
+          scale_buffer[narrow<size_t>(neg_xsize)] += scale_buffer[narrow<size_t>(x)];
         }
 
         int64_t bound_xsize =
             xmax + xmin > input_size ? xmax + xmin - input_size : 0;
         for (x = xmax - bound_xsize; x < xmax; x++) {
-          scale_buffer[xmax - bound_xsize - 1] +=
-              scale_buffer[x];
+          scale_buffer[narrow<size_t>(xmax - bound_xsize - 1)] +=
+              scale_buffer[narrow<size_t>(x)];
         }
 
         for (x = 0; (neg_xsize | bound_xsize) > 0 && x < xmax_cut - xmin_cut; x++) {
-          scale_buffer[x] = scale_buffer[x + neg_xsize];
+          scale_buffer[narrow<size_t>(x)] = scale_buffer[narrow<size_t>(x + neg_xsize)];
         }
       }
 
-      float total_weight_inv = total_weight == 0.0f ? 1.f : 1.0f / total_weight;
-      auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
-      for (x = 0; x < xmax_cut - xmin_cut; x++) {
-        scale_buffer[x] *= total_weight_inv;
-
-        // normalize the scale to 1 << 22 for int8/uint8
-        if constexpr (std::is_same<T, int32_t>::value) {
-          scale_buffer_int[x] = static_cast<int32_t>(std::round(scale_buffer[x] * ConstValue::mag_factor_x_2));
+      // Normalize weights and write to the output buffer as T.
+      float total_weight_inv = total_weight == 0.0f ? 1.0f : 1.0f / total_weight;
+      auto* dest = &output_weights[i * window_size];
+      const int64_t num_weights = xmax_cut - xmin_cut;
+      for (x = 0; x < num_weights; x++) {
+        float normalized = scale_buffer[narrow<size_t>(x)] * total_weight_inv;
+        if constexpr (std::is_same_v<T, int32_t>) {
+          // Quantized path: normalize the scale to 1 << 22 for int8/uint8
+          dest[x] = static_cast<int32_t>(std::round(normalized * ConstValue::mag_factor_x_2));
+        } else {
+          dest[x] = normalized;
         }
       }
     }
