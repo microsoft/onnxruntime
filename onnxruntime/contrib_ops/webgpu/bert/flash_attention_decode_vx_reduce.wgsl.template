@@ -3,7 +3,7 @@
 
 #param seq_tile_size
 #param tile_size
-#param use_indirect_dispatch
+#param use_seqlen_k
 
 // Inputs are splits of the GQA output, split into num_total_seq_length_tiles
 // rows. This shader needs to add these splits across the row dimension to
@@ -19,16 +19,18 @@
 var<workgroup> tile_input: array<array<output_value_t, tile_size>, tile_size>;
 
 $MAIN {
+  // Workgroup layout: [batch_heads, new_sequence_length, num_head_size_tile]
   let head_size_offset = (workgroup_idx % uniforms.num_head_size_tile) * tile_size;
-  let batch_head_idx = u32(workgroup_idx / uniforms.num_head_size_tile);
+  let q_idx = (workgroup_idx / uniforms.num_head_size_tile) % uniforms.new_sequence_length;
+  let batch_head_idx = u32(workgroup_idx / (uniforms.num_head_size_tile * uniforms.new_sequence_length));
   if (batch_head_idx >= uniforms.batch_heads) {
     return;
   }
-  let in_offset = batch_head_idx * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec;
+  let in_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec;
   var value = output_value_t(0);
   let local_row = u32(local_idx / tile_size);
   let local_col = local_idx % tile_size;
-  #if use_indirect_dispatch
+  #if use_seqlen_k
   let total_sequence_length = u32(seqlens_k[0]) + 1u;
   let num_total_seq_length_tile = (total_sequence_length + seq_tile_size - 1) / seq_tile_size;
   #else
@@ -51,7 +53,13 @@ $MAIN {
     for (var i = 0u; i < tile_size; i++) {
       value += tile_input[i][local_idx];
     }
-    let output_id = batch_head_idx * uniforms.head_size_vec + head_size_offset + local_idx;
+    // Output in BSNH layout: [batch_size, new_sequence_length, num_heads, head_size]
+    let head_idx = batch_head_idx % uniforms.num_heads;
+    let batch_idx = batch_head_idx / uniforms.num_heads;
+    let output_id = batch_idx * uniforms.new_sequence_length * uniforms.num_heads * uniforms.head_size_vec +
+                    q_idx * uniforms.num_heads * uniforms.head_size_vec +
+                    head_idx * uniforms.head_size_vec +
+                    head_size_offset + local_idx;
     output[output_id] = value;
   }
 }

@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 #param has_head_sink
-#param tile_size
 #param head_size_vec
-#param tile_size_k_vec
 #param sub_tile_count
-#param use_indirect_dispatch
+#param tile_size
+#param tile_size_k_vec
+#param use_seqlen_k
 
 // Note that this shader adopts similar algorithm with dp4a generation shader.
 //
@@ -42,14 +42,16 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
-  #if use_indirect_dispatch
+  #if use_seqlen_k
   let total_sequence_length = u32(seqlens_k[0]) + 1u;
   #else
   let total_sequence_length = uniforms.total_sequence_length;
   #endif
   let num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
+  // Workgroup layout: [batch_heads, new_sequence_length, num_total_seq_length_tile]
   let total_seq_offset = (workgroup_idx % num_total_seq_length_tile) * tile_size;
-  let batch_head_idx = u32(workgroup_idx / num_total_seq_length_tile);
+  let q_idx = (workgroup_idx / num_total_seq_length_tile) % uniforms.new_sequence_length;
+  let batch_head_idx = u32(workgroup_idx / (num_total_seq_length_tile * uniforms.new_sequence_length));
   if (batch_head_idx >= uniforms.batch_heads) {
     return;
   }
@@ -63,23 +65,23 @@ $MAIN {
   g_max = max(g_max, sink_value);
 #endif
   var g_sum = f32(0);
+  let meta_base = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile;
   for (var i = 0u; i < num_total_seq_length_tile; i++)
   {
-    let meta_offset = batch_head_idx * uniforms.num_present_sequence_length_tile + i;
-    g_max = max(g_max, metadata[meta_offset].x);
+    g_max = max(g_max, metadata[meta_base + i].x);
   }
   for (var i = 0u; i < num_total_seq_length_tile; i++)
   {
-    let meta_offset = batch_head_idx * uniforms.num_present_sequence_length_tile + i;
-    let m_value = metadata[meta_offset];
+    let m_value = metadata[meta_base + i];
     g_sum += exp(m_value.x - g_max) * m_value.y;
   }
 #if has_head_sink
   g_sum += exp(sink_value - g_max);
 #endif
 
+  let qk_base = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.present_sequence_length;
     if (total_seq_offset + local_idx < total_sequence_length) {
-      tile_qk[local_idx] = present_value_element_t(exp(f32(qk[batch_head_idx * uniforms.present_sequence_length + total_seq_offset + local_idx]) - g_max) / g_sum);
+      tile_qk[local_idx] = present_value_element_t(exp(f32(qk[qk_base + total_seq_offset + local_idx]) - g_max) / g_sum);
     }
 
   for (var k: u32 = 0u; k < head_size_vec; k += tile_size_k_vec) {
@@ -106,8 +108,9 @@ $MAIN {
     workgroupBarrier();
   }
 
+  let out_base = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile * head_size_vec;
+  let tile_idx = workgroup_idx % num_total_seq_length_tile;
   for (var i = local_idx; i < head_size_vec; i += workgroup_size_x) {
-    let out_offset = batch_head_idx * uniforms.num_present_sequence_length_tile * head_size_vec + (workgroup_idx % num_total_seq_length_tile) * head_size_vec + i;
-    out_split_vx[out_offset] = tile_output[i];
+    out_split_vx[out_base + tile_idx * head_size_vec + i] = tile_output[i];
   }
 }

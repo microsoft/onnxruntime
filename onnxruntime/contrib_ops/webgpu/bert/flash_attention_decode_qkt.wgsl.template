@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #param has_attention_bias
+#param is_unidirectional
+#param q_BNSH
+#param sub_tile_count
 #param tile_size
 #param tile_size_k_vec
-#param sub_tile_count
-#param use_indirect_dispatch
+#param use_seqlen_k
 
 // Note that this shader adopts similar algorithm with dp4a generation shader.
 //
@@ -43,9 +45,9 @@ var<workgroup> tile_qk: array<q_element_t, tile_size>;
 
     // Calculate flat offset with broadcasting applied
     // attention_bias shape: [attn_bias_dim0, attn_bias_dim1, new_seq_length, total_seq_length]
-    // For decode, new_seq_length is 1, so we can simplify:
-    let offset = bias_batch_idx * uniforms.attn_bias_dim1 * total_seq_length +
-                 bias_head_idx * total_seq_length +
+    let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * total_seq_length +
+                 bias_head_idx * uniforms.new_sequence_length * total_seq_length +
+                 q_idx * total_seq_length +
                  k_idx;
     return attention_bias[offset];
   }
@@ -59,20 +61,32 @@ var<workgroup> tile_qk: array<q_element_t, tile_size>;
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
-#if use_indirect_dispatch
+#if use_seqlen_k
   let total_sequence_length = u32(seqlens_k[0]) + 1u;
 #else
   let total_sequence_length = uniforms.total_sequence_length;
 #endif
   let num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
+  // Workgroup layout: [batch_heads, new_sequence_length, num_total_seq_length_tile]
   let total_seq_offset = (workgroup_idx % num_total_seq_length_tile) * tile_size;
-  let batch_head_idx = u32(workgroup_idx / num_total_seq_length_tile);
+  let q_idx = (workgroup_idx / num_total_seq_length_tile) % uniforms.new_sequence_length;
+  let batch_head_idx = u32(workgroup_idx / (num_total_seq_length_tile * uniforms.new_sequence_length));
   let head_idx = batch_head_idx % uniforms.num_heads;
   let batch_idx = batch_head_idx / uniforms.num_heads;
   if (batch_idx >= uniforms.batch_size) {
     return;
   }
-  let q_offset = batch_idx * uniforms.num_heads * uniforms.head_size_vec + head_idx * uniforms.head_size_vec;
+#if q_BNSH
+  // Q stored as BNSH: [batch_size, num_heads, new_sequence_length, head_size]
+  let q_offset = batch_idx * uniforms.num_heads * uniforms.new_sequence_length * uniforms.head_size_vec +
+                 head_idx * uniforms.new_sequence_length * uniforms.head_size_vec +
+                 q_idx * uniforms.head_size_vec;
+#else
+  // Q stored as BSNH: [batch_size, new_sequence_length, num_heads, head_size]
+  let q_offset = batch_idx * uniforms.new_sequence_length * uniforms.num_heads * uniforms.head_size_vec +
+                 q_idx * uniforms.num_heads * uniforms.head_size_vec +
+                 head_idx * uniforms.head_size_vec;
+#endif
   let present_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * uniforms.head_size_vec;
   for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
     if (local_idx < tile_size_k_vec && k + local_idx < uniforms.head_size_vec) {
@@ -90,15 +104,22 @@ $MAIN {
     workgroupBarrier();
   }
 
+  let qk_base = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.present_sequence_length;
   if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
     var sum = q_element_t(0);
     for (var i = 0u; i < tile_size_k_vec; i++) {
       sum += inner_qk_values[local_idx][i];
     }
 
-    sum = sum + loadAttentionBias(batch_idx, head_idx, 0u, total_seq_offset + local_idx, total_sequence_length);
+    sum = sum + loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx, total_sequence_length);
+#if is_unidirectional
+    // Causal mask: query at position q_idx can only attend to KV positions <= past_sequence_length + q_idx
+    if (total_seq_offset + local_idx > uniforms.past_sequence_length + q_idx) {
+      sum = q_element_t(-65504.0f);
+    }
+#endif
     tile_qk[local_idx] = sum;
-    output[batch_head_idx * uniforms.present_sequence_length + total_seq_offset + local_idx] = sum;
+    output[qk_base + total_seq_offset + local_idx] = sum;
   }
   workgroupBarrier();
 
@@ -112,7 +133,7 @@ $MAIN {
     for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
       l_sum += exp(f32(tile_qk[i]) - l_max);
     }
-    let meta_offset = batch_head_idx * uniforms.num_present_sequence_length_tile + workgroup_idx % num_total_seq_length_tile;
+    let meta_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile + workgroup_idx % num_total_seq_length_tile;
     metadata[meta_offset] = metadata_value_t(l_max, l_sum);
   }
 }
