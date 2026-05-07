@@ -43,24 +43,6 @@ quick_build = ", quick-build=" in get_build_info()
 
 enable_debug_print = quick_build
 
-# enable_deterministic_check: when True, every parity_check_* helper runs the
-# ORT inference TWICE with bit-identical inputs and asserts the two outputs are
-# bit-equal (rtol=0/atol=0 originally). This was a meaningful check on the legacy
-# MHA Unfused dispatch (separate cublas + cub::BlockReduce kernels) which was
-# incidentally bit-deterministic. Post-PR #27992, MHA workloads route through
-# CUTLASS FMHA whose online-softmax compounds 1-ULP MM0 GEMM differences via
-# exp2f rescales tile-by-tile; tile arrival order at the warp combiner depends
-# on SM scheduler under contention. Bit-determinism is architecturally
-# unachievable on this dispatch under load. ORT does not guarantee bit-exact
-# run-to-run output for ONNX Attention on any EP -- the legacy property was an
-# implementation incident, not a contract.
-#
-# Disabled in PR #28379. Oracle parity (assert_allclose vs attention_ref) still
-# runs unconditionally and provides correctness coverage. A future opt-in
-# `ORT_ATTENTION_DETERMINISTIC=1` env var that routes around CUTLASS FMHA could
-# re-enable strict checks on that path.
-enable_deterministic_check = False
-
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################

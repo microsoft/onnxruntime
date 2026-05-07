@@ -40,7 +40,6 @@ from test_onnx_attention.common import (
     attention_ref,
     create_additive_mask_from_seqlens,
     create_boolean_mask_from_seqlens,
-    enable_deterministic_check,
     has_cuda_device,
     pipeline_mode,
     print_diff_statistics,
@@ -137,27 +136,16 @@ def parity_check_mha_prompt(
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
-    num_runs = 2 if enable_deterministic_check else 1
-    for i in range(num_runs):
-        out, present_k, present_v = attention_prompt_func(
-            q=q,
-            k=k,
-            v=v,
-            config=config,
-            attn_mask=attn_mask,
-            ep=ep,
-            device=device,
-            ort_type=ort_type,
-        )
-        if i == 0:
-            first_out = out.clone()
-        else:
-            # FP16/BF16 GPU kernels may produce bit-level non-determinism across runs.
-            det_atol = 0 if torch_type == torch.float32 else 1e-3
-            det_rtol = 0 if torch_type == torch.float32 else 1e-3
-            torch.testing.assert_close(
-                out, first_out, rtol=det_rtol, atol=det_atol, msg="Output mismatch between two runs"
-            )
+    out, present_k, present_v = attention_prompt_func(
+        q=q,
+        k=k,
+        v=v,
+        config=config,
+        attn_mask=attn_mask,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+    )
 
     effective_v_head_size = config.v_head_size or config.head_size
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, effective_v_head_size))
@@ -314,29 +302,18 @@ def parity_check_mha_past(
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
-    num_runs = 2 if enable_deterministic_check else 1
-    for i in range(num_runs):
-        out, present_k, present_v = attention_past_func(
-            q=q,
-            past_k=past_k,
-            past_v=past_v,
-            new_k=new_k,
-            new_v=new_v,
-            config=config,
-            attn_mask=attn_mask,
-            ep=ep,
-            device=device,
-            ort_type=ort_type,
-        )
-        if i == 0:
-            first_out = out.clone()
-        else:
-            # FP16/BF16 GPU kernels may produce bit-level non-determinism across runs.
-            det_atol = 0 if torch_type == torch.float32 else 1e-3
-            det_rtol = 0 if torch_type == torch.float32 else 1e-3
-            torch.testing.assert_close(
-                out, first_out, rtol=det_rtol, atol=det_atol, msg="Output mismatch between two runs"
-            )
+    out, present_k, present_v = attention_past_func(
+        q=q,
+        past_k=past_k,
+        past_v=past_v,
+        new_k=new_k,
+        new_v=new_v,
+        config=config,
+        attn_mask=attn_mask,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+    )
 
     effective_v_head_size = config.v_head_size or config.head_size
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, effective_v_head_size))
