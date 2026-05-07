@@ -62,7 +62,7 @@ stages:
         swiftshader_icd=/opt/swiftshader/vk_swiftshader_icd.json
 
         min_ort_version_file="$(Build.SourcesDirectory)/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION"
-        min_ort_version=$(tr -d '[:space:]' < "$min_ort_version_file")
+        min_ort_version=$(tr -d '\r\n' < "$min_ort_version_file")
         echo "using minimum onnxruntime version ${min_ort_version} from ${min_ort_version_file}"
 
         docker run --rm \

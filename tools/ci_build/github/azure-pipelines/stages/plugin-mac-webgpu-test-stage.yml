@@ -33,7 +33,7 @@ stages:
         source "$(Build.BinariesDirectory)/test_venv/bin/activate"
 
         min_ort_version_file="$(Build.SourcesDirectory)/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION"
-        min_ort_version=$(tr -d '[:space:]' < "$min_ort_version_file")
+        min_ort_version=$(tr -d '\r\n' < "$min_ort_version_file")
         echo "using minimum onnxruntime version ${min_ort_version} from ${min_ort_version_file}"
 
         python3 -m pip install onnx "onnxruntime==${min_ort_version}" numpy
