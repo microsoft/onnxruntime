@@ -149,7 +149,6 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
     const auto roi_end = roi.size() - (rindex + 1);
 
     for (int32_t i = 0; i < output_size; i++) {
-      // double center = (i + 0.5) * scale;
       float center = 0.5f + (scale == 1.0f ? static_cast<float>(i)
                                            : get_original_coordinate(static_cast<float>(i), rscale,
                                                                      static_cast<float>(output_size),
@@ -158,13 +157,13 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       if (center - 0.5f < 0 || center - 0.5f > narrow<float>(input_size - 1)) {
         param_base.out_of_bound_idx.emplace_back(i);
       }
-      float total_weight = 0.0;
+      float total_weight = 0.0f;
 
       auto fmin = std::floor(center - support + 0.5f);
       auto fmax = std::floor(center + support + 0.5f);
       int64_t xmin_real = static_cast<int64_t>(fmin);
       int64_t xmax_real = static_cast<int64_t>(fmax);
-      int64_t xmin_cut = std::max<int64_t>(xmin_real, (0));
+      int64_t xmin_cut = std::max<int64_t>(xmin_real, 0);
       int64_t xmax_cut = std::min<int64_t>(xmax_real, input_size);
 
       xmin = exclude_outside ? xmin_cut : xmin_real;
@@ -208,9 +207,6 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
           scale_buffer_int[x] = static_cast<int32_t>(std::round(scale_buffer[x] * ConstValue::mag_factor_x_2));
         }
       }
-      /*for (; x < window_size; x++) {
-        scale_buffer[x] = 0;
-      }*/
     }
 
     return window_size;
@@ -427,21 +423,25 @@ void HandleExtrapolation(int64_t num_channels,
         InputType* Ydata_base_nc =
             Ydata_span.data() + static_cast<size_t>(SafeInt<size_t>(nc) * output_depth * output_height * output_width);
 
-        for (int64_t z = 0; z < output_depth && p.dim_x.out_of_bound_idx.size() > 0; ++z) {
-          for (int64_t y = 0; y < output_height; ++y) {
-            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
-            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
-            for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
-              Ydata_offset[narrow<size_t>(idx_x)] = static_cast<InputType>(extrapolation_value);
+        if (!p.dim_x.out_of_bound_idx.empty()) {
+          for (int64_t z = 0; z < output_depth; ++z) {
+            for (int64_t y = 0; y < output_height; ++y) {
+              const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+              InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
+              for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
+                Ydata_offset[narrow<size_t>(idx_x)] = static_cast<InputType>(extrapolation_value);
+              }
             }
           }
         }
 
-        for (int64_t z = 0; z < output_depth && p.dim_y.out_of_bound_idx.size() > 0; ++z) {
-          for (int64_t y : p.dim_y.out_of_bound_idx) {
-            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
-            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
-            std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));
+        if (!p.dim_y.out_of_bound_idx.empty()) {
+          for (int64_t z = 0; z < output_depth; ++z) {
+            for (int64_t y : p.dim_y.out_of_bound_idx) {
+              const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+              InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
+              std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));
+            }
           }
         }
 
@@ -627,7 +627,6 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
 
     // vertical interpolate
     {
-      // vertical interpolate
       auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get(), temp_span_size);
       auto ydata_span = gsl::make_span<T>(Ydata_base + static_cast<size_t>(SafeInt<size_t>(n) * output_span_size),
                                           output_span_size);
@@ -638,6 +637,9 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
   }
 
   if (use_extrapolation) {
+    // NOTE: HandleExtrapolation assumes NCHW layout (it fills per-channel slices).
+    // For NHWC, we pass batch_size * num_channels as the channel count since the
+    // vertical interpolation output is laid out as [batch * channels, output_height, output_width].
     auto ydata_span = gsl::make_span<T>(Ydata_base,
                                         static_cast<size_t>(SafeInt<size_t>(batch_size) * output_span_size));
     HandleExtrapolation(batch_size * num_channels, output_height, output_width, 1,
