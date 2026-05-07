@@ -377,7 +377,7 @@ __global__ void _ResizeBilinearCoordinateMapping(
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;
-    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.5f : input_y - y_int;
+    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.0f : input_y - y_int;
   } else {  // x = id - output_height
     float input_x = scale_width == 1 ? static_cast<float>(id - output_height)
                                      : transform_coordinate(static_cast<float>(id - output_height),
@@ -390,7 +390,7 @@ __global__ void _ResizeBilinearCoordinateMapping(
     input_x = max(0.0f, min(input_x, static_cast<float>(input_width - 1)));
     int x_int = static_cast<int>(input_x);
     dims_mapping[id].origin_ = x_int;
-    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.5f : input_x - x_int;
+    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.0f : input_x - x_int;
   }
 }
 
@@ -461,7 +461,7 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     input_z = max(0.0f, min(input_z, static_cast<float>(input_depth - 1)));
     int z_int = static_cast<int>(input_z);
     dims_mapping[id].origin_ = z_int;
-    dims_mapping[id].weight_ = (z_int >= input_depth - 1) ? 0.5f : input_z - z_int;
+    dims_mapping[id].weight_ = (z_int >= input_depth - 1) ? 0.0f : input_z - z_int;
   } else if (id >= output_depth && id < (output_depth + output_height)) {  //  y = id - output_depth
     float input_y = scale_height == 1 ? static_cast<float>(id - output_depth)
                                       : transform_coordinate(static_cast<float>(id - output_depth),
@@ -475,7 +475,7 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;
-    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.5f : input_y - y_int;
+    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.0f : input_y - y_int;
   } else {  // x = id - output_depth - output_height
     float input_x = scale_width == 1 ? static_cast<float>(id - output_depth - output_height)
                                      : transform_coordinate(static_cast<float>(id - output_depth - output_height),
@@ -487,7 +487,7 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     input_x = max(0.0f, min(input_x, static_cast<float>(input_width - 1)));
     int x_int = static_cast<int>(input_x);
     dims_mapping[id].origin_ = x_int;
-    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.5f : input_x - x_int;
+    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.0f : input_x - x_int;
   }
 }
 

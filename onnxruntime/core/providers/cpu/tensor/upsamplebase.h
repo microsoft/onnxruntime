@@ -152,7 +152,7 @@ inline void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<c
       }
     }
   } else if (keep_aspect_ratio_policy == AspectRatioPolicy::NOT_SMALLER) {
-    scale_in_policy = std::numeric_limits<float>::min();
+    scale_in_policy = std::numeric_limits<float>::lowest();
 
     for (size_t i = 0; i < scales.size(); ++i) {
       if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
@@ -264,9 +264,12 @@ class UpsampleBase {
     exclude_outside_ = info.template GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == false || mode_ != LINEAR)) {
+      // ONNX spec allows exclude_outside for CUBIC mode.
+      // Opset 18 extended the antialias filter behavior which requires renormalization
+      // of weights for LINEAR mode as well when antialias is enabled.
       ORT_THROW(
-          "exclude_outside can be set to 1 when (1 mode is CUBIC. "
-          "\n(2 mode is CUBIC or LINEAR when anti-aliasing is on"
+          "exclude_outside can be set to 1 when (1) mode is CUBIC, or "
+          "(2) mode is LINEAR when anti-aliasing is enabled"
           ". Current mode is set to " +
           mode + " and anti-aliasing is set to " + std::to_string(antialias_));
     }
@@ -638,11 +641,15 @@ class UpsampleBase {
     return ScalesValidation(scales, mode_);
   }
 
+  // Compute output dimensions from scales and input dimensions.
+  // Per the ONNX spec: output_dimension = floor(input_dimension * scale).
+  // We use std::floor (not truncation via static_cast) to correctly handle the case
+  // where the float product is slightly below an integer boundary.
   void ComputeOutputShape(gsl::span<const float> scales,
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
-      output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
+      output_dims[i] = static_cast<int64_t>(std::floor(scales[i] * input_dims[i]));
     }
   }
 
