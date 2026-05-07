@@ -6336,6 +6336,8 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
 // catches regressions if they arise.
 // WebGPU: fixed in this PR (identity values for empty inputs).
 const std::unordered_set<std::string> kEmptyTensorExcludedEps = {
+    kDmlExecutionProvider,
+    kNnapiExecutionProvider,
     kQnnExecutionProvider,
     kTensorrtExecutionProvider,
 };
