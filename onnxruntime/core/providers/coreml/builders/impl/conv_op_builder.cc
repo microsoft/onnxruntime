@@ -331,6 +331,13 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     // Z (optional). Z is a residual sum input — Y = activation(Conv(X,W,B) + Z).
     // The MLProgram lowering below does not read input 3, so accepting a node
     // with Z would silently drop the residual and produce wrong results.
+    //
+    // TODO: support Z by inserting an `add` MIL op between the conv output
+    // and the activation input — `act_in = add(conv_out, Z)` — preserving the
+    // `act(conv + Z)` ordering. This would unlock CoreML coverage for graphs
+    // optimized at TransformerLevel::Level3 (ORT_ENABLE_ALL) where
+    // ConvAddActivationFusion (core/optimizer/conv_add_act_fusion.cc) produces
+    // FusedConv(B, Z, act) for residual blocks (ResNet/EfficientNet etc).
     if (input_defs.size() > 3) {
       LOGS(logger, VERBOSE) << "FusedConv with the optional 'Z' (residual sum) input "
                                "is not supported by the CoreML EP";
