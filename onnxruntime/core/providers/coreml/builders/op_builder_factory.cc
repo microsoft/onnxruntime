@@ -28,8 +28,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   // Microsoft-domain ops produced by ORT's own optimizer passes.
   CreateQuickGeluOpBuilder("QuickGelu", op_registrations);
-  // FusedConv (from ConvActivationFusion) reuses the existing ConvOpBuilder
-  // which branches on op_type internally.
+  // FusedConv (from ConvActivationFusion) is handled by the same ConvOpBuilder
+  // class, which branches on op_type internally.
   CreateConvOpBuilder("FusedConv", op_registrations);
 
   // Unary ops
