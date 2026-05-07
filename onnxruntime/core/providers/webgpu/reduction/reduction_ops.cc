@@ -169,6 +169,26 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
     {ReduceOpType::LogSum, "log(f32(bestValue))"},
 };
 
+// WGSL expressions for the ONNX empty-set identity value of each reduction op.
+// Per ONNX spec: Sum→0, Prod→1, Max→-inf, Min→+inf, Mean→0 (undefined, ORT uses 0).
+// ArgMax/ArgMin on empty input is undefined; output 0.
+std::unordered_map<ReduceOpType, std::string> reduce_op_empty_identity_map = {
+    {ReduceOpType::Max, "output_value_t(bitcast<f32>(0xff800000u))"},   // -inf
+    {ReduceOpType::Min, "output_value_t(bitcast<f32>(0x7f800000u))"},   // +inf
+    {ReduceOpType::Mean, "output_value_t(0)"},
+    {ReduceOpType::Sum, "output_value_t(0)"},
+    {ReduceOpType::Prod, "output_value_t(1)"},
+    {ReduceOpType::SumSquare, "output_value_t(0)"},
+    {ReduceOpType::LogSumExp, "output_value_t(bitcast<f32>(0xff800000u))"},  // log(0) = -inf
+    {ReduceOpType::L1, "output_value_t(0)"},
+    {ReduceOpType::L2, "output_value_t(0)"},
+    {ReduceOpType::LogSum, "output_value_t(bitcast<f32>(0xff800000u))"},  // log(0) = -inf
+    {ReduceOpType::ArgMax, "output_value_t(0)"},
+    {ReduceOpType::ArgMin, "output_value_t(0)"},
+    {ReduceOpType::ArgMax_select_last_index, "output_value_t(0)"},
+    {ReduceOpType::ArgMin_select_last_index, "output_value_t(0)"},
+};
+
 std::unordered_map<ReduceOpType, ReduceOpSpecificCode> reduce_op_naive_code_map = {
     {ReduceOpType::Max, {"var max_element = first_element;", "max_element = max(max_element, current_element);", "let output_value = output_value_t(max_element);"}},
     {ReduceOpType::Min, {"var min_element = first_element;", "min_element = min(min_element, current_element);", "let output_value = output_value_t(min_element);"}},
@@ -195,9 +215,12 @@ Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& code = reduce_op_naive_code_map.at(reduce_op_type_);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   if (is_input_empty_) {
+    // Empty input: output the ONNX identity value for this reduction op.
+    // Don't use loop_header_/loop_footer_ — they may reference undefined
+    // variables (e.g., first_element) or divide by zero (ReduceMean).
+    const auto& identity = reduce_op_empty_identity_map.at(reduce_op_type_);
     shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                              << code.loop_header_
-                              << code.loop_footer_
+                              << "let output_value = " << identity << ";\n"
                               << output.SetByOffset("global_idx", "output_value");
     return Status::OK();
   }

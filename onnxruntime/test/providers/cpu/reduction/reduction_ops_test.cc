@@ -6050,7 +6050,6 @@ void test_empty_set(const std::string& op, int opset, bool axes_as_input, float 
           kOpenVINOExecutionProvider,
           kQnnExecutionProvider,
           kTensorrtExecutionProvider,
-          kWebGpuExecutionProvider,
       });
 }
 
@@ -6335,10 +6334,10 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
 // EPs that failed CI on empty tensor reductions.
 // Only exclude EPs with confirmed failures; leave others enabled so CI
 // catches regressions if they arise.
+// WebGPU: fixed in this PR (identity values for empty inputs).
 const std::unordered_set<std::string> kEmptyTensorExcludedEps = {
     kQnnExecutionProvider,
     kTensorrtExecutionProvider,
-    kWebGpuExecutionProvider,
 };
 
 // --- ReduceSum empty tensor tests ---

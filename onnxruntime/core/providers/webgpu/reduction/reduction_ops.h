@@ -107,12 +107,12 @@ class ReduceMean final : public ReduceKernel<true> {
 
 class ReduceMax final : public ReduceKernel<true> {
  public:
-  ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMax") {}
+  ReduceMax(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMax", true) {}
 };
 
 class ReduceMin final : public ReduceKernel<true> {
  public:
-  ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMin") {}
+  ReduceMin(const OpKernelInfo& info) : ReduceKernel<true>(info, "ReduceMin", true) {}
 };
 
 class ReduceSum final : public ReduceKernel<true> {
