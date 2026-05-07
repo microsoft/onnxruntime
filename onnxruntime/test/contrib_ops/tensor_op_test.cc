@@ -130,7 +130,7 @@ TEST(ImageScalerContribOpTest, ImageScalerNoBiasTest) {
   test.Run();
 }
 
-
+void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normalize_variance) {
   constexpr int64_t N = 2, C = 2, H = 2, W = 3;
   constexpr int64_t one = 1;
   constexpr int64_t zero = 0;
