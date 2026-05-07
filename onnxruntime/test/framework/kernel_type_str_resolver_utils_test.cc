@@ -117,4 +117,6 @@ TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationR
 #endif  // defined(DISABLE_CONTRIB_OPS)
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
 }  // namespace onnxruntime::test
