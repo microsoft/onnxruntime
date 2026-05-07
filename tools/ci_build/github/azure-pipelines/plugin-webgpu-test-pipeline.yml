@@ -81,7 +81,7 @@ extends:
           enabled: false
           justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
 
-    stages:
+      stages:
       # Windows x64
       - ${{ if eq(parameters.test_windows_x64, true) }}:
         - template: stages/plugin-win-webgpu-test-stage.yml
