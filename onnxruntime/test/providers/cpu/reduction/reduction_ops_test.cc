@@ -6327,7 +6327,24 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
 //
 // These tests verify both CPU and CUDA providers handle empty tensors
 // correctly for various shapes, keepdims settings, and axis configurations.
+//
+// Most other EPs (WebGPU, QNN, TensorRT, CoreML, DML, etc.) do not support
+// empty tensor reductions, so they are excluded.
 // =============================================================================
+
+// EPs that do NOT support empty tensor reductions.
+// CPU and CUDA handle them (CUDA support added in this PR).
+const std::unordered_set<std::string> kEmptyTensorExcludedEps = {
+    kCoreMLExecutionProvider,
+    kCudaNHWCExecutionProvider,
+    kDmlExecutionProvider,
+    kDnnlExecutionProvider,
+    kMIGraphXExecutionProvider,
+    kOpenVINOExecutionProvider,
+    kQnnExecutionProvider,
+    kTensorrtExecutionProvider,
+    kWebGpuExecutionProvider,
+};
 
 // --- ReduceSum empty tensor tests ---
 
@@ -6338,7 +6355,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_ExplicitAxis) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1}, {0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceSum_EmptyTensor_ExplicitAxis_KeepDims) {
@@ -6348,7 +6365,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_ExplicitAxis_KeepDims) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1, 1}, {0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceSum_EmptyTensor_MultiDim) {
@@ -6358,7 +6375,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_MultiDim) {
   test.AddInput<float>("data", {2, 0, 3}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {2, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceSum_EmptyTensor_MultiDim_KeepDims) {
@@ -6368,7 +6385,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_MultiDim_KeepDims) {
   test.AddInput<float>("data", {2, 0, 3}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {2, 1, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceSum_EmptyTensor_DefaultAxes) {
@@ -6378,7 +6395,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_DefaultAxes) {
   test.AddAttribute("noop_with_empty_axes", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {}, {0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceSum_EmptyTensor_Shape_0_5) {
@@ -6388,7 +6405,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_Shape_0_5) {
   test.AddInput<float>("data", {0, 5}, {});
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<float>("reduced", {5}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- ReduceMax empty tensor tests ---
@@ -6400,7 +6417,7 @@ TEST(ReductionOpTest, ReduceMax_EmptyTensor_ExplicitAxis) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1}, {-std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMax_EmptyTensor_ExplicitAxis_KeepDims) {
@@ -6410,7 +6427,7 @@ TEST(ReductionOpTest, ReduceMax_EmptyTensor_ExplicitAxis_KeepDims) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1, 1}, {-std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMax_EmptyTensor_MultiDim) {
@@ -6421,7 +6438,7 @@ TEST(ReductionOpTest, ReduceMax_EmptyTensor_MultiDim) {
   test.AddInput<int64_t>("axes", {1}, {1});
   float neg_inf = -std::numeric_limits<float>::infinity();
   test.AddOutput<float>("reduced", {2, 3}, {neg_inf, neg_inf, neg_inf, neg_inf, neg_inf, neg_inf});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMax_EmptyTensor_DefaultAxes) {
@@ -6430,7 +6447,7 @@ TEST(ReductionOpTest, ReduceMax_EmptyTensor_DefaultAxes) {
   test.AddAttribute("keepdims", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {}, {-std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- ReduceMin empty tensor tests ---
@@ -6442,7 +6459,7 @@ TEST(ReductionOpTest, ReduceMin_EmptyTensor_ExplicitAxis) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1}, {std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMin_EmptyTensor_ExplicitAxis_KeepDims) {
@@ -6452,7 +6469,7 @@ TEST(ReductionOpTest, ReduceMin_EmptyTensor_ExplicitAxis_KeepDims) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1, 1}, {std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMin_EmptyTensor_MultiDim) {
@@ -6463,7 +6480,7 @@ TEST(ReductionOpTest, ReduceMin_EmptyTensor_MultiDim) {
   test.AddInput<int64_t>("axes", {1}, {1});
   float pos_inf = std::numeric_limits<float>::infinity();
   test.AddOutput<float>("reduced", {2, 3}, {pos_inf, pos_inf, pos_inf, pos_inf, pos_inf, pos_inf});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMin_EmptyTensor_DefaultAxes) {
@@ -6472,7 +6489,7 @@ TEST(ReductionOpTest, ReduceMin_EmptyTensor_DefaultAxes) {
   test.AddAttribute("keepdims", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {}, {std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- ReduceProd empty tensor tests ---
@@ -6484,7 +6501,7 @@ TEST(ReductionOpTest, ReduceProd_EmptyTensor_ExplicitAxis) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1}, {1.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceProd_EmptyTensor_ExplicitAxis_KeepDims) {
@@ -6494,7 +6511,7 @@ TEST(ReductionOpTest, ReduceProd_EmptyTensor_ExplicitAxis_KeepDims) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1, 1}, {1.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceProd_EmptyTensor_MultiDim) {
@@ -6504,7 +6521,7 @@ TEST(ReductionOpTest, ReduceProd_EmptyTensor_MultiDim) {
   test.AddInput<float>("data", {2, 0, 3}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {2, 3}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceProd_EmptyTensor_DefaultAxes) {
@@ -6513,7 +6530,7 @@ TEST(ReductionOpTest, ReduceProd_EmptyTensor_DefaultAxes) {
   test.AddAttribute("keepdims", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {}, {1.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- ReduceMean empty tensor tests ---
@@ -6526,7 +6543,7 @@ TEST(ReductionOpTest, ReduceMean_EmptyTensor_ExplicitAxis) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {1}, {0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMean_EmptyTensor_MultiDim) {
@@ -6536,7 +6553,7 @@ TEST(ReductionOpTest, ReduceMean_EmptyTensor_MultiDim) {
   test.AddInput<float>("data", {2, 0, 3}, {});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {2, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMean_EmptyTensor_DefaultAxes) {
@@ -6545,7 +6562,7 @@ TEST(ReductionOpTest, ReduceMean_EmptyTensor_DefaultAxes) {
   test.AddAttribute("keepdims", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {}, {0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- Negative axes + empty tensor ---
@@ -6557,7 +6574,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_NegativeAxis) {
   test.AddInput<float>("data", {1, 0}, {});
   test.AddInput<int64_t>("axes", {1}, {-1});
   test.AddOutput<float>("reduced", {1}, {0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMax_EmptyTensor_NegativeAxis) {
@@ -6568,7 +6585,7 @@ TEST(ReductionOpTest, ReduceMax_EmptyTensor_NegativeAxis) {
   test.AddInput<int64_t>("axes", {1}, {-2});
   float neg_inf = -std::numeric_limits<float>::infinity();
   test.AddOutput<float>("reduced", {2, 3}, {neg_inf, neg_inf, neg_inf, neg_inf, neg_inf, neg_inf});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- noop_with_empty_axes + empty tensor ---
@@ -6581,7 +6598,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_NoopWithEmptyAxes) {
   test.AddInput<float>("data", {1, 0}, {});
   // No axes input → noop: output = input (same shape {1, 0}, empty)
   test.AddOutput<float>("reduced", {1, 0}, {});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- Default axes + keepdims + empty tensor ---
@@ -6593,7 +6610,7 @@ TEST(ReductionOpTest, ReduceSum_EmptyTensor_DefaultAxes_KeepDims) {
   test.AddAttribute("noop_with_empty_axes", int64_t(0));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {1, 1}, {0.0f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMax_EmptyTensor_DefaultAxes_KeepDims) {
@@ -6602,7 +6619,7 @@ TEST(ReductionOpTest, ReduceMax_EmptyTensor_DefaultAxes_KeepDims) {
   test.AddAttribute("keepdims", int64_t(1));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {1, 1}, {-std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 TEST(ReductionOpTest, ReduceMin_EmptyTensor_DefaultAxes_KeepDims) {
@@ -6611,7 +6628,7 @@ TEST(ReductionOpTest, ReduceMin_EmptyTensor_DefaultAxes_KeepDims) {
   test.AddAttribute("keepdims", int64_t(1));
   test.AddInput<float>("data", {1, 0}, {});
   test.AddOutput<float>("reduced", {1, 1}, {std::numeric_limits<float>::infinity()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kEmptyTensorExcludedEps);
 }
 
 // --- Bool reduction + empty tensor ---
