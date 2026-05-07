@@ -32,7 +32,7 @@ template <typename T>
 struct FilterParamsBaseAntiAlias {
   std::vector<InterpolationBound> bounds;
   std::vector<int64_t> out_of_bound_idx;
-  int64_t window_size = 2;
+  size_t window_size = 2;
   IAllocatorUniquePtr<T> weight_coefficients;
 };
 
@@ -129,15 +129,16 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
                                          const int64_t output_size,
                                          size_t rindex,
                                          FilterParamsBaseAntiAlias<T>& param_base,
-                                         const float rscale) -> int64_t {
+                                         const float rscale) -> size_t {
     param_base.bounds.reserve(static_cast<size_t>(output_size));
     param_base.out_of_bound_idx.reserve(static_cast<size_t>(output_size));
 
     float scale = 1.0f / rscale;
     float support = (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
 
-    int32_t window_size = narrow<int32_t>(ceilf(support)) * 2 + 1;
-    const size_t scale_buffer_size = static_cast<size_t>(SafeInt<size_t>(window_size) * output_size);
+    const size_t window_size = SafeInt<size_t>(narrow<size_t>(ceilf(support))) * 2 + 1;
+    const size_t output_count = narrow<size_t>(output_size);
+    const size_t scale_buffer_size = SafeInt<size_t>(window_size) * output_count;
 
     param_base.weight_coefficients = IAllocator::MakeUniquePtr<T>(alloc, scale_buffer_size);
     auto* output_weights = param_base.weight_coefficients.get();
@@ -155,7 +156,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
     // Inline capacity of 33 covers up to 8x bicubic upsample without heap allocation.
     InlinedVector<float, 33> scale_buffer(window_size);
 
-    for (int32_t i = 0; i < output_size; i++) {
+    for (size_t i = 0; i < output_count; i++) {
       float center = 0.5f + (scale == 1.0f ? static_cast<float>(i)
                                            : get_original_coordinate(static_cast<float>(i), rscale,
                                                                      static_cast<float>(output_size),
