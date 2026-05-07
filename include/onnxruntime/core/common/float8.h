@@ -754,7 +754,9 @@ struct Float8E8M0 {
 
     // Normal float32: value is 2^(exponent - 127) * (1 + mantissa/2^23)
     // We need to round to the nearest power of 2.
-    // If mantissa >= 0.5 (i.e., mantissa >= 2^22), round up the exponent.
+    // Round half up: round to next power of 2 when mantissa >= 0.5
+    // (i.e., when the float value is >= 1.5 * nearest lower power of 2)
+    // This aligns with the OCP Microscaling Formats (OE-MX) spec for E8M0 scaling factors.
     if (mantissa >= 0x00400000) {  // >= 0.5
       exponent += 1;
     }

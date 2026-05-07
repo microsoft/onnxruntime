@@ -97,6 +97,20 @@ TEST(Float8E8M0_Tests, Zero) {
   EXPECT_EQ(from_zero.val, 0x00);
 }
 
+TEST(Float8E8M0_Tests, NegativeZero) {
+  // -0.0f should map to 0x00 (same as +0.0f), not trigger negative path
+  Float8E8M0 from_neg_zero(-0.0f);
+  EXPECT_EQ(from_neg_zero.val, 0x00);
+}
+
+TEST(Float8E8M0_Tests, ZeroRoundTrip) {
+  // E8M0 cannot represent zero; val=0 maps to 2^(-127)
+  Float8E8M0 from_zero(0.0f);
+  float round_trip = from_zero.ToFloat();
+  EXPECT_NE(round_trip, 0.0f);  // documents non-obvious behavior
+  EXPECT_FLOAT_EQ(round_trip, std::ldexp(1.0f, -127));
+}
+
 TEST(Float8E8M0_Tests, Rounding) {
   // 1.5 should round up to 2.0 (exponent 128)
   Float8E8M0 val_1_5(1.5f);
