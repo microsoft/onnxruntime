@@ -2,7 +2,7 @@
 
 This directory contains the infrastructure, scripts, and documentation for the WGSL template system used by the ONNX Runtime WebGPU Execution Provider (EP). The template system enables the generation of optimized WGSL shaders at build time or runtime, with parameterization and reusability across different operators.
 
-The template engine for the static build path is implemented in Python and lives at [`tools/python/wgsl_gen.py`](../../../../../tools/python/wgsl_gen.py) (with the supporting package at [`tools/python/wgsl_template/`](../../../../../tools/python/wgsl_template/)). See [`tools/python/DESIGN_wgsl_python_port.md`](../../../../../tools/python/DESIGN_wgsl_python_port.md) for the design.
+The template engine for the static build path is implemented in Python and lives at [`tools/python/wgsl_gen.py`](../../../../../tools/python/wgsl_gen.py) (with the supporting package at [`tools/python/wgsl_template/`](../../../../../tools/python/wgsl_template/)).
 The original Node.js [`@fs-eire/wgsl-template`](https://github.com/fs-eire/wgsl-template) tool is still used for the `dynamic` generator mode.
 
 ## Overview
