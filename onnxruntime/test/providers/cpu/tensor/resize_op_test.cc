@@ -1504,6 +1504,40 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferCeil_HalfPixel_2x2to7x8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
+// Regression coverage for GitHub issue #28291.
+// Keep this as a dedicated alias test so issue-driven coverage is explicit.
+TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferCeil_HalfPixel_GH28291_Regression) {
+  OpTester test("Resize", 13);
+
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 64.0f / 26.0f};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel");
+  test.AddAttribute("nearest_mode", "round_prefer_ceil");
+
+  constexpr int64_t N = 1, C = 1, H = 1, W = 26;
+  std::vector<float> X(26);
+  for (int i = 0; i < 26; i++) X[i] = static_cast<float>(i);
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {
+      0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 3.0f,
+      3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f, 5.0f, 6.0f,
+      6.0f, 7.0f, 7.0f, 7.0f, 8.0f, 8.0f, 9.0f, 9.0f,
+      9.0f, 10.0f, 10.0f, 11.0f, 11.0f, 11.0f, 12.0f, 12.0f,
+      13.0f, 13.0f, 14.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f,
+      16.0f, 16.0f, 17.0f, 17.0f, 18.0f, 18.0f, 18.0f, 19.0f,
+      19.0f, 20.0f, 20.0f, 20.0f, 21.0f, 21.0f, 22.0f, 22.0f,
+      22.0f, 23.0f, 23.0f, 24.0f, 24.0f, 24.0f, 25.0f, 25.0f};
+
+  test.AddOutput<float>("Y", {N, C, H, 64}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
@@ -3043,6 +3077,72 @@ TEST(ResizeOpTest, Axes_and_Size_18) {
 
   test.AddOutput<float>("Y", output_shape, Y);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Axes_and_Scales_CountMismatch_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, 4};
+
+  OpTester test("Resize", 18);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Number of elements in scales should be equal to number of axes.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Axes_OutOfRange_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, 5};
+
+  OpTester test("Resize", 18);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "all values in axes should be in the range [-rank, rank - 1]",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ResizeOpTest, Sizes_RankMismatch_13) {
+  OpTester test("Resize", 13);
+
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 1, 8, 8, 8};
+
+  test.AddAttribute("mode", "nearest");
+
+  constexpr int64_t N = 1, C = 1, H = 4, W = 4;
+  std::vector<float> X = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+      13.0f, 14.0f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {int64_t(sizes.size())}, sizes);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Resize: input tensor's rank does not match the output tensor's rank.",
+           {kTensorrtExecutionProvider});
 }
 
 }  // namespace test
