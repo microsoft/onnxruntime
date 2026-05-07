@@ -56,6 +56,12 @@ stages:
         Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
       displayName: 'Add CUDA to PATH'
 
+    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+      - powershell: |
+          Write-Host "Adding cuDNN to PATH"
+          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\9.14.0.64_cuda13\bin"
+        displayName: 'Add cuDNN to PATH'
+
     - task: PowerShell@2
       displayName: 'Install and test Python package'
       env:
@@ -127,6 +133,12 @@ stages:
         Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin\x64"
         Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
       displayName: 'Add CUDA to PATH'
+
+    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+      - powershell: |
+          Write-Host "Adding cuDNN to PATH"
+          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\9.14.0.64_cuda13\bin"
+        displayName: 'Add cuDNN to PATH'
 
     # Download the NuGet package produced by the packaging pipeline run that
     # triggered this pipeline (or that was selected at queue time).
