@@ -1165,7 +1165,6 @@ TEST(CoreMLExecutionProviderTest, QuickGeluTestFp16) {
 #endif
 }
 
-
 // Build a model: input -> Conv -> <op_chain...> -> output. The Conv anchors
 // the partition so the trivial-partition heuristic keeps it; the chained ops
 // land inside a single CoreML partition rather than fragmenting it.
