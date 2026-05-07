@@ -835,8 +835,18 @@ Status ResizeNearestImpl(
       });
     });
 
-    int64_t input_stride_depth = input_shape[rank - 2] * input_shape[rank - 1];
-    int64_t input_stride_image = input_shape[rank - 3] * input_stride_depth;
+    SafeInt<int64_t> input_stride_depth_safe = 0;
+    SafeInt<int64_t> input_stride_image_safe = 0;
+    try {
+      input_stride_depth_safe = SafeInt<int64_t>(input_shape[rank - 2]) * input_shape[rank - 1];
+      input_stride_image_safe = SafeInt<int64_t>(input_shape[rank - 3]) * input_stride_depth_safe;
+    } catch (const SafeIntException&) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "ResizeNearestImpl: input strides exceed int range.");
+    }
+
+    const int64_t input_stride_depth = static_cast<int64_t>(input_stride_depth_safe);
+    const int64_t input_stride_image = static_cast<int64_t>(input_stride_image_safe);
     ORT_RETURN_IF_NOT(input_stride_depth <= kIntMax && input_stride_image <= kIntMax,
                       "ResizeNearestImpl: input strides exceed int range.");
 
@@ -929,9 +939,9 @@ Status ResizeImpl(
   int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   fast_divmod div_output_image;
   if (is_2D) {
-    div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(gsl::narrow_cast<int>(N));
+    div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(onnxruntime::narrow<int>(N));
   } else if (is_3D) {
-    div_output_image = (rank > 3) ? output_div_pitches[rank - 4] : fast_divmod(gsl::narrow_cast<int>(N));
+    div_output_image = (rank > 3) ? output_div_pitches[rank - 4] : fast_divmod(onnxruntime::narrow<int>(N));
   }
 
   int64_t output_depth = is_3D ? output_shape[rank - 3] : 0;
@@ -980,7 +990,8 @@ Status ResizeImpl(
             reinterpret_cast<LinearMappingInfo*>(dims_mapping));
         return Status::OK();
       }
-      ORT_THROW("Resize support 2-D and 3-D dimensions in LINEAR mode.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Resize supports 2-D and 3-D dimensions in LINEAR mode.");
       break;
     case UpsampleMode::CUBIC:
       if (is_2D) {
@@ -1003,9 +1014,11 @@ Status ResizeImpl(
             reinterpret_cast<CubicMappingInfo*>(dims_mapping));
         return Status::OK();
       }
-      ORT_THROW("Resize supports only 2-D in CUBIC mode.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Resize supports only 2-D in CUBIC mode.");
     case UpsampleMode::NN:
-      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Only bilinear/trilinear and bicubic modes are supported in Resize");
   }
 
   return Status::OK();
