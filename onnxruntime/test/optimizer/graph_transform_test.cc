@@ -9922,21 +9922,6 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 // Zero-element constant initializers (shape [0], 0 bytes of data) are valid ONNX.
 // Optimizer passes must check initializer size() before accessing data<T>().
 
-// Helper: load a minimal ONNX model from an in-memory ModelProto, apply graph transformers,
-// and verify correct handling of zero-element initializers.
-static void TestZeroElementInitializerHandling(const ONNX_NAMESPACE::ModelProto& model_proto,
-                                               const logging::Logger& logger,
-                                               const std::function<void(onnxruntime::GraphTransformerManager&)>& register_transformers) {
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, logger));
-  Graph& graph = model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  register_transformers(graph_transformation_mgr);
-  // Apply transformers - must handle zero-element initializers gracefully.
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
-}
-
 TEST_F(GraphTransformationTests, DivMulFusion_ZeroElementInitializer) {
   // Div(zero_element_const, X) -> Mul(_, Y) with a shape [0] initializer.
   // Verifies the optimizer correctly handles zero-element initializers.
@@ -9987,11 +9972,21 @@ TEST_F(GraphTransformationTests, DivMulFusion_ZeroElementInitializer) {
   mul_node->add_input("Y");
   mul_node->add_output("output");
 
-  TestZeroElementInitializerHandling(model_proto, *logger_, [](onnxruntime::GraphTransformerManager& mgr) {
-    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
-    ASSERT_STATUS_OK(mgr.Register(std::move(rule_transformer), TransformerLevel::Level1));
-  });
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_proto, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Fusion must be skipped: a zero-element initializer is not a scalar, so
+  // both Div and Mul must remain in the graph.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Div"], 1);
+  EXPECT_EQ(op_to_count["Mul"], 1);
 }
 
 TEST_F(GraphTransformationTests, NoopElimination_ZeroElementInitializer) {

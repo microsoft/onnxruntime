@@ -1679,6 +1679,27 @@ TEST_F(GraphTransformationTests, LayerNormFusion_ZeroElementEpsilon) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level1));
   // Must handle zero-element epsilon gracefully.
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Verify the fusion fired and produced a LayerNormalization with the
+  // default epsilon (1e-5f), per the zero-element fallback in
+  // layer_norm_fusion.cc.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["LayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["ReduceMean"], 0);
+  EXPECT_EQ(op_to_count["Sub"], 0);
+  EXPECT_EQ(op_to_count["Pow"], 0);
+  EXPECT_EQ(op_to_count["Sqrt"], 0);
+  EXPECT_EQ(op_to_count["Div"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "LayerNormalization") {
+      const auto& attrs = node.GetAttributes();
+      auto it = attrs.find("epsilon");
+      ASSERT_NE(it, attrs.end());
+      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
+    }
+  }
 }
 
 // Test: SimplifiedLayerNormFusion gracefully handles a zero-element epsilon initializer.
@@ -1767,6 +1788,26 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Verify the fusion fired and produced a SimplifiedLayerNormalization with
+  // the default epsilon (1e-5f), per the zero-element fallback in
+  // layer_norm_fusion.cc.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["SimplifiedLayerNormalization"], 1);
+  EXPECT_EQ(op_to_count["Pow"], 0);
+  EXPECT_EQ(op_to_count["ReduceMean"], 0);
+  EXPECT_EQ(op_to_count["Sqrt"], 0);
+  EXPECT_EQ(op_to_count["Div"], 0);
+  EXPECT_EQ(op_to_count["Mul"], 0);
+
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "SimplifiedLayerNormalization") {
+      const auto& attrs = node.GetAttributes();
+      auto it = attrs.find("epsilon");
+      ASSERT_NE(it, attrs.end());
+      EXPECT_FLOAT_EQ(it->second.f(), 1e-5f);
+    }
+  }
 }
 
 #endif
