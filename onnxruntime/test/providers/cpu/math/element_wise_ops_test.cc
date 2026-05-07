@@ -3674,6 +3674,127 @@ TEST(MathOpTest, Equal_string) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+// Opset 19 tests for numeric types (CUDA EP)
+TEST(MathOpTest, Equal_19_bool) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<bool>("A", dims, {false, true, false, true});
+  test.AddInput<bool>("B", dims, {false, false, true, true});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_int32) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("A", dims, {1, 0, -1, -1});
+  test.AddInput<int32_t>("B", dims, {1, 1, 2, -1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_int64) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int64_t>("A", dims, {1, 0, -1, -1});
+  test.AddInput<int64_t>("B", dims, {1, 1, 2, -1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_float) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
+  test.AddInput<float>("B", dims, {1.0f, 1.0f, 2.0f, -1.0f});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_double) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<double>("A", dims, {1.0, 0.0, -1.0, -1.0});
+  test.AddInput<double>("B", dims, {1.0, 1.0, 2.0, -1.0});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_float16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<MLFloat16>("A", dims, {MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(-1.0f), MLFloat16(-1.0f)});
+  test.AddInput<MLFloat16>("B", dims, {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(-1.0f)});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_broadcastAB) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  test.AddInput<int32_t>("A", {4, 2}, {1, 0, -1, -1, 1, 1, -1, 0});
+  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, false, false, true, true, false, false});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 #if defined(USE_DNNL)
 TEST(MathOpTest, Equal_bfloat16) {
 #ifdef USE_DNNL
