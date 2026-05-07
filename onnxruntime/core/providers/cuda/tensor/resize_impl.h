@@ -120,6 +120,7 @@ void ResizeAntiAliasImpl(
     gsl::span<const float> roi_vals,  // CPU
     const std::optional<float>& extrapolation_value,
     bool exclude_outside,
+    bool is_nhwc,
     TempSpaceAllocateFunc allocate_temp_space,
     const uint8_t* clip8_lookups,
     const T* input_data,

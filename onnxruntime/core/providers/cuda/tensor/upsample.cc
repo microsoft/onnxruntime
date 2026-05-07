@@ -152,6 +152,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
             float height_scale;
             float width_scale;
 
+            bool is_nhwc = false;
+
             if (is_2D) {
               input_height = X_dims[0];
               input_width = X_dims[1];
@@ -163,6 +165,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
               width_scale = scales[1];
             } else {
               if (scales[0] == 1.0f && scales[1] == 1.0f) {
+                // NCHW: batch and channel scales are 1
                 batch_size = X_dims[Channels<LAYOUT_NCHW>::N];
                 num_channels = X_dims[Channels<LAYOUT_NCHW>::C];
                 input_height = X_dims[Channels<LAYOUT_NCHW>::H];
@@ -173,8 +176,23 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
                 height_scale = scales[2];
                 width_scale = scales[3];
+              } else if (scales[0] == 1.0f && scales[3] == 1.0f) {
+                // NHWC: batch and channel scales are 1
+                is_nhwc = true;
+                batch_size = X_dims[Channels<LAYOUT_NHWC>::N];
+                num_channels = X_dims[Channels<LAYOUT_NHWC>::C];
+                input_height = X_dims[Channels<LAYOUT_NHWC>::H];
+                input_width = X_dims[Channels<LAYOUT_NHWC>::W];
+
+                output_height = output_dims[Channels<LAYOUT_NHWC>::H];
+                output_width = output_dims[Channels<LAYOUT_NHWC>::W];
+
+                height_scale = scales[1];
+                width_scale = scales[2];
               } else {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Resize", ": NHWC is not supported yet");
+                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Resize",
+                                       ": 4-D 'Linear' antialias mode requires batch and channel "
+                                       "scales to be 1.0 (NCHW or NHWC layout).");
               }
             }
 
@@ -192,6 +210,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 roi,
                                 extrapolation_value,
                                 exclude_outside_,
+                                is_nhwc,
                                 allocate_temp_space,
                                 shared_lookup_table_ondevice,
                                 reinterpret_cast<const CudaT*>(X->Data<T>()),
@@ -235,6 +254,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 roi,
                                 extrapolation_value,
                                 exclude_outside_,
+                                /*is_nhwc=*/false,
                                 allocate_temp_space,
                                 shared_lookup_table_ondevice,
                                 reinterpret_cast<const CudaT*>(X->Data<T>()),
@@ -255,21 +275,45 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           }
 
           const bool is_2D = X_dims.size() == 2;
-          const bool is_nchw = is_2D ? true : (scales[0] == 1.0f && scales[1] == 1.0f);
 
-          ORT_RETURN_IF_NOT(is_nchw,
-                            "Resize 'Cubic' mode only supports NCWH layout "
-                            " with 2-D or 4-D with leading dims equal to 1");
+          int64_t batch_size = is_2D ? 1 : 0;
+          int64_t num_channels = is_2D ? 1 : 0;
+          int64_t input_height = is_2D ? X_dims[0] : 0;
+          int64_t input_width = is_2D ? X_dims[1] : 0;
+          int64_t output_height = is_2D ? output_dims[0] : 0;
+          int64_t output_width = is_2D ? output_dims[1] : 0;
+          float height_scale = is_2D ? scales[0] : 0.f;
+          float width_scale = is_2D ? scales[1] : 0.f;
+          bool is_nhwc = false;
 
-          const int64_t batch_size = is_2D ? 1 : X_dims[Channels<LAYOUT_NCHW>::N];
-          const int64_t num_channels = is_2D ? 1 : X_dims[Channels<LAYOUT_NCHW>::C];
-          const int64_t input_height = is_2D ? X_dims[0] : X_dims[Channels<LAYOUT_NCHW>::H];
-          const int64_t input_width = is_2D ? X_dims[1] : X_dims[Channels<LAYOUT_NCHW>::W];
-
-          const int64_t output_height = is_2D ? output_dims[0] : output_dims[Channels<LAYOUT_NCHW>::H];
-          const int64_t output_width = is_2D ? output_dims[1] : output_dims[Channels<LAYOUT_NCHW>::W];
-          const float height_scale = is_2D ? scales[0] : scales[2];
-          const float width_scale = is_2D ? scales[1] : scales[3];
+          if (!is_2D) {
+            if (scales[0] == 1.0f && scales[1] == 1.0f) {
+              // NCHW
+              batch_size = X_dims[Channels<LAYOUT_NCHW>::N];
+              num_channels = X_dims[Channels<LAYOUT_NCHW>::C];
+              input_height = X_dims[Channels<LAYOUT_NCHW>::H];
+              input_width = X_dims[Channels<LAYOUT_NCHW>::W];
+              output_height = output_dims[Channels<LAYOUT_NCHW>::H];
+              output_width = output_dims[Channels<LAYOUT_NCHW>::W];
+              height_scale = scales[2];
+              width_scale = scales[3];
+            } else if (scales[0] == 1.0f && scales[3] == 1.0f) {
+              // NHWC
+              is_nhwc = true;
+              batch_size = X_dims[Channels<LAYOUT_NHWC>::N];
+              num_channels = X_dims[Channels<LAYOUT_NHWC>::C];
+              input_height = X_dims[Channels<LAYOUT_NHWC>::H];
+              input_width = X_dims[Channels<LAYOUT_NHWC>::W];
+              output_height = output_dims[Channels<LAYOUT_NHWC>::H];
+              output_width = output_dims[Channels<LAYOUT_NHWC>::W];
+              height_scale = scales[1];
+              width_scale = scales[2];
+            } else {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Resize",
+                                     ": 4-D 'Cubic' antialias mode requires batch and channel "
+                                     "scales to be 1.0 (NCHW or NHWC layout).");
+            }
+          }
 
           ResizeAntiAliasImpl(Stream(context), rank, mode_, coordinate_transform_mode_, cubic_coeff_a_,
                               X_dims, output_dims,
@@ -281,6 +325,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                               roi,
                               extrapolation_value,
                               exclude_outside_,
+                              is_nhwc,
                               allocate_temp_space,
                               shared_lookup_table_ondevice,
                               reinterpret_cast<const CudaT*>(X->Data<T>()),

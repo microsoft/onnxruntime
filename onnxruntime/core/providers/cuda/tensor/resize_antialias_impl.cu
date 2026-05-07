@@ -339,6 +339,88 @@ __global__ void _ComputeFusedInterpolation2D(
   }
 }
 
+/// Fused 2D antialias interpolation kernel for NHWC layout.
+/// Each thread computes one output element (one channel of one spatial position).
+/// Data layout: [batch, height, width, channels]
+/// Flat index decomposition: id → (batch, y, x, channel)
+///
+/// The filter weights are shared across channels (same spatial interpolation),
+/// so the H/W weight lookup is identical to the NCHW kernel — only the
+/// input/output addressing changes.
+template <typename T, typename AccumType>
+__global__ void _ComputeFusedInterpolation2D_NHWC(
+    int64_t num_channels,
+    int64_t input_height, int64_t input_width,
+    int64_t output_height, int64_t output_width,
+    const fast_divmod div_output_wc,       // output_width * num_channels
+    const fast_divmod div_output_channel,  // num_channels
+    const fast_divmod div_output_image,    // output_height * output_width * num_channels
+    int32_t h_window_size, int32_t w_window_size,
+    bool use_extrapolation, float extrapolation_value,
+    const int64_t* h_bound_data,
+    const int64_t* w_bound_data,
+    const int64_t* h_outof_bounds,
+    const int64_t* w_outof_bounds,
+    const AccumType* h_weight_coefficients,
+    const AccumType* w_weight_coefficients,
+    const T* Xdata, T* Ydata,
+    const int N) {
+  static_assert(!std::is_same<AccumType, int32_t>::value,
+                "Fused 2D NHWC kernel does not support int32_t accumulation");
+
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+
+  // Decompose flat index → (batch, y, x, channel) for NHWC layout
+  int batch_idx, image_index;
+  div_output_image.divmod(id, batch_idx, image_index);
+
+  int output_y, wc_index;
+  div_output_wc.divmod(image_index, output_y, wc_index);
+
+  int output_x, channel_idx;
+  div_output_channel.divmod(wc_index, output_x, channel_idx);
+
+  auto* Ydata_out = Ydata + id;
+
+  // Extrapolation: check if this output pixel maps outside the input
+  if (use_extrapolation) {
+    if (w_outof_bounds[output_x] != -1 || h_outof_bounds[output_y] != -1) {
+      *Ydata_out = static_cast<T>(extrapolation_value);
+      return;
+    }
+  }
+
+  // Look up clamped input bounds for this output pixel
+  const int64_t xmin = w_bound_data[static_cast<ptrdiff_t>(output_x) * 2];
+  const int64_t xmax = w_bound_data[static_cast<ptrdiff_t>(output_x) * 2 + 1];
+  const int64_t ymin = h_bound_data[static_cast<ptrdiff_t>(output_y) * 2];
+  const int64_t ymax = h_bound_data[static_cast<ptrdiff_t>(output_y) * 2 + 1];
+
+  const auto* w_weights = w_weight_coefficients + w_window_size * output_x;
+  const auto* h_weights = h_weight_coefficients + h_window_size * output_y;
+
+  // NHWC input base: batch * H_in * W_in * C
+  const CUDA_LONG input_batch_base = static_cast<CUDA_LONG>(batch_idx) * input_height * input_width * num_channels;
+
+  // Fused separable 2D filter over the spatial window, reading one channel
+  // NHWC addressing: input[batch][yi][xi][channel] = input_batch_base + yi * W_in * C + xi * C + channel_idx
+  AccumType result = static_cast<AccumType>(0);
+  for (int64_t yi = ymin; yi < ymax; ++yi) {
+    const AccumType h_w = h_weights[yi - ymin];
+    const CUDA_LONG row_base = input_batch_base + static_cast<CUDA_LONG>(yi) * input_width * num_channels;
+    for (int64_t xi = xmin; xi < xmax; ++xi) {
+      const CUDA_LONG input_idx = row_base + static_cast<CUDA_LONG>(xi) * num_channels + channel_idx;
+      result += static_cast<AccumType>(Xdata[input_idx]) * h_w * w_weights[xi - xmin];
+    }
+  }
+
+  if constexpr (std::is_same<T, int32_t>::value) {
+    *Ydata_out = static_cast<int32_t>(roundf(result));
+  } else {
+    *Ydata_out = static_cast<T>(result);
+  }
+}
+
 template <typename T, typename AccumType>
 __global__ void _ComputeInterpolationAtLevel3(
     int64_t input_depth,
@@ -1212,6 +1294,108 @@ void ResizeBicubicUpsample(cudaStream_t stream,
   }
 }
 
+/// NHWC 2D antialias bilinear/bicubic launcher (fused kernel only).
+/// Handles both bilinear and bicubic — the filter type is encoded in the precomputed weights.
+/// For 8-bit types (int32_t accumulation), falls back to the NCHW separable path
+/// after transposing, which is not implemented here — the caller should reject those types.
+template <class T, typename FilterType>
+void ResizeNhwcBilinearBicubicUpsample(cudaStream_t stream,
+                                       ResizeCoordinateTransformationMode coordinate_transform_mode,
+                                       float cubic_coeff_a,
+                                       int64_t batch_size, int64_t num_channels,
+                                       int64_t input_height, int64_t input_width,
+                                       int64_t output_height, int64_t output_width,
+                                       float height_scale, float width_scale,
+                                       float support_value,
+                                       gsl::span<const float> roi_vals,
+                                       const std::optional<float>& extrapolation,
+                                       bool exclude_outside,
+                                       const TempSpaceAllocateFunc& allocate_temp_space,
+                                       const T* input_data,
+                                       T* output_data,
+                                       const size_t N) {
+  using AccumType = typename onnxruntime::AccumulateType<T>::type;
+
+  const bool use_extrapolation = extrapolation.has_value();
+  const float extrapolation_value = use_extrapolation ? *extrapolation : 0.f;
+
+  int blocksPerDimsMappingGrid =
+      narrow<int>(CeilDiv((output_height + output_width), 32));
+
+  int blocksPerGrid = narrow<int>(CeilDiv(N, GridDim::maxThreadsPerBlock));
+
+  // NHWC divmods: flat index = batch * (H_out * W_out * C) + y * (W_out * C) + x * C + c
+  const fast_divmod div_output_image{narrow<int>(output_height * output_width * num_channels)};
+  const fast_divmod div_output_wc{narrow<int>(output_width * num_channels)};
+  const fast_divmod div_output_channel{narrow<int>(num_channels)};
+
+  float h_scaled_support, w_scaled_support;
+  int32_t h_window_size, w_window_size;
+  const auto [weighted_y_size, weighted_w_size] =
+      ComputeBilinearScaleBufferSize(output_height, output_width,
+                                     height_scale, width_scale, support_value,
+                                     h_scaled_support, w_scaled_support, h_window_size, w_window_size);
+
+  SafeInt<int64_t> bounds_buffer_size = (SafeInt<int64_t>(output_height) + output_width) * 2;
+  SafeInt<int64_t> out_of_bounds_buffer_size = (SafeInt<int64_t>(output_height) + output_width);
+
+  auto bounds_buffer_ptr = AllocateTyped<int64_t>(allocate_temp_space, bounds_buffer_size);
+  auto out_of_bounds_buffer_ptr = AllocateTyped<int64_t>(allocate_temp_space, out_of_bounds_buffer_size);
+
+  int64_t* y_bounds_buffer = GetTyped<int64_t>(bounds_buffer_ptr);
+  int64_t* w_bounds_buffer = y_bounds_buffer + output_height * 2;
+
+  int64_t* y_outof_bounds_buffer = GetTyped<int64_t>(out_of_bounds_buffer_ptr);
+  int64_t* w_outof_bounds_buffer = y_outof_bounds_buffer + output_height;
+
+  const int64_t weighted_buffer_size = SafeInt<int64_t>(weighted_y_size) + weighted_w_size;
+  auto weighted_buffer_ptr = AllocateTyped<AccumType>(allocate_temp_space, narrow<size_t>(weighted_buffer_size));
+
+  AccumType* y_weighted_buffer = GetTyped<AccumType>(weighted_buffer_ptr);
+  AccumType* w_weighted_buffer = y_weighted_buffer + weighted_y_size;
+
+  // roi_vals layout for NHWC 4D: [roi_start_h, roi_start_w, ..., roi_end_h, roi_end_w]
+  // The caller already extracted H/W roi values at positions matching the spatial dims.
+  // For the setup kernel, we pass roi_h and roi_w starts/ends.
+  // roi_vals is always arranged as [start_dims..., end_dims...] with rank entries each.
+  // For NHWC, spatial dims are at index 1 (H) and 2 (W) in the 4-element roi.
+
+  // clang-format off
+  DISPATCH_ANTIALIAS_FILTER_SETUP(coordinate_transform_mode, [&]() {
+    _SetupBilinearUpsampleFilterAntiAlias<AccumType,
+                                          FilterType,
+                                          coord_t><<<blocksPerDimsMappingGrid, 32, 0, stream>>>(
+        std::make_tuple(input_height, input_width),
+        std::make_tuple(output_height, output_width),
+        std::make_tuple(height_scale, width_scale),
+        std::make_tuple(roi_vals[1], roi_vals[2]),                    // roi starts h, w (NHWC indices)
+        std::make_tuple(roi_vals[1 + 4], roi_vals[2 + 4]),            // roi ends h, w
+        std::make_tuple(h_scaled_support, w_scaled_support),
+        std::make_tuple(h_window_size, w_window_size),
+        cubic_coeff_a, exclude_outside,
+        GetTyped<int64_t>(bounds_buffer_ptr),
+        GetTyped<int64_t>(out_of_bounds_buffer_ptr),
+        std::make_tuple(y_weighted_buffer, w_weighted_buffer));
+  });
+  // clang-format on
+
+  // clang-format off
+  _ComputeFusedInterpolation2D_NHWC<T, AccumType><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      num_channels,
+      input_height, input_width, output_height, output_width,
+      div_output_wc,
+      div_output_channel,
+      div_output_image,
+      h_window_size, w_window_size,
+      use_extrapolation, extrapolation_value,
+      y_bounds_buffer, w_bounds_buffer,
+      y_outof_bounds_buffer, w_outof_bounds_buffer,
+      y_weighted_buffer, w_weighted_buffer,
+      input_data, output_data,
+      narrow<int>(N));
+  // clang-format on
+}
+
 template <class T>
 void ResizeAntiAliasImpl(
     cudaStream_t stream,
@@ -1229,6 +1413,7 @@ void ResizeAntiAliasImpl(
     gsl::span<const float> roi_vals,
     const std::optional<float>& extrapolation,
     bool exclude_outside,
+    bool is_nhwc,
     TempSpaceAllocateFunc allocate_temp_space,
     const uint8_t* clip8_lookups,
     const T* input_data,
@@ -1245,6 +1430,52 @@ void ResizeAntiAliasImpl(
   // Should not hit this as we have already validated input rank/scales and we provide verbose error messages
   // to the user.
   ORT_ENFORCE(is_2D || is_3D, "Only bilinear/trilinear and bicubic modes are supported in Resize anti-alias mode");
+
+  if (is_nhwc && is_2D) {
+    using AccumType = typename onnxruntime::AccumulateType<T>::type;
+    if constexpr (std::is_same_v<AccumType, int32_t>) {
+      // 8-bit types (uint8_t, int8_t) use int32_t accumulation which is not supported
+      // by the fused NHWC kernel. Reject at runtime.
+      ORT_NOT_IMPLEMENTED("NHWC antialias resize is not supported for 8-bit integer types on CUDA");
+    } else {
+      // NHWC path: use the fused NHWC kernel for both bilinear and bicubic
+      int64_t input_height, input_width;
+      std::tie(std::ignore, input_height, input_width) = inferred_input_dims;
+
+      int64_t output_height, output_width;
+      std::tie(std::ignore, output_height, output_width) = inferred_output_dims;
+
+      float height_scale, width_scale;
+      std::tie(std::ignore, height_scale, width_scale) = inferred_dim_rscales;
+
+      switch (upsample_mode) {
+        case UpsampleMode::LINEAR: {
+          constexpr float support_value = antialias_constants::kSupportSize;
+          ResizeNhwcBilinearBicubicUpsample<T, BilinearFilter>(
+              stream, coordinate_transform_mode, cubic_coeff_a,
+              batch_size, num_channels,
+              input_height, input_width, output_height, output_width,
+              height_scale, width_scale, support_value,
+              roi_vals, extrapolation, exclude_outside,
+              allocate_temp_space, input_data, output_data, N);
+        } break;
+        case CUBIC: {
+          constexpr float support_value = antialias_constants::kBiCubicSupportSize;
+          ResizeNhwcBilinearBicubicUpsample<T, BiCubicFilter>(
+              stream, coordinate_transform_mode, cubic_coeff_a,
+              batch_size, num_channels,
+              input_height, input_width, output_height, output_width,
+              height_scale, width_scale, support_value,
+              roi_vals, extrapolation, exclude_outside,
+              allocate_temp_space, input_data, output_data, N);
+        } break;
+        default:
+          ORT_NOT_IMPLEMENTED("Only bilinear and bicubic modes are supported for NHWC Resize anti-alias mode");
+          break;
+      }
+    }
+    return;
+  }
 
   switch (upsample_mode) {
     case UpsampleMode::LINEAR: {
@@ -1298,6 +1529,7 @@ void ResizeAntiAliasImpl(
       gsl::span<const float> roi_vals,                              \
       const std::optional<float>& extrapolation_value,              \
       bool exclude_outside,                                         \
+      bool is_nhwc,                                                 \
       TempSpaceAllocateFunc allocate_temp_space,                    \
       const uint8_t* clip8_lookups,                                 \
       const T* input_data,                                          \
