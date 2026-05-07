@@ -796,21 +796,14 @@ def write_calibration_table(calibration_cache, dir="."):
 
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue  # noqa: PLC0415
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable  # noqa: PLC0415
-    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData  # noqa: PLC0415
+
+    # Use the shared encoder from calibrate.py so write_calibration_table and
+    # save_tensors_data produce identical JSON for numpy scalar/array values.
+    from onnxruntime.quantization.calibrate import CalibrationCacheEncoder  # noqa: PLC0415
 
     logging.info(f"calibration cache: {calibration_cache}")
 
-    class MyEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, (TensorData, TensorsData)):
-                return obj.to_dict()
-            if isinstance(obj, np.ndarray):
-                return {"data": obj.tolist(), "dtype": str(obj.dtype), "CLS": "numpy.array"}
-            if isinstance(obj, CalibrationMethod):
-                return {"CLS": obj.__class__.__name__, "value": str(obj)}
-            return json.JSONEncoder.default(self, obj)
-
-    json_data = json.dumps(calibration_cache, cls=MyEncoder)
+    json_data = json.dumps(calibration_cache, cls=CalibrationCacheEncoder)
 
     with open(os.path.join(dir, "calibration.json"), "w") as file:
         file.write(json_data)  # use `json.loads` to do the reverse
