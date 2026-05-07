@@ -2,13 +2,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Set plugin package version variables for Azure Pipelines.
+"""Set plugin EP package version variables for Azure Pipelines.
 
 Usage:
-    python set_plugin_build_variables.py <package_version> <version_file_rel>
+    python set_plugin_ep_build_variables.py <package_version> <version_file_rel>
 
 Where:
-    package_version: 'release', 'RC', or 'dev'
+    package_version: 'release', 'rc', or 'dev'
     version_file_rel: path relative to BUILD_SOURCESDIRECTORY of the VERSION_NUMBER file
 """
 
@@ -51,7 +51,7 @@ def main():
         universal_version = original_ver
         python_version = original_ver
 
-    elif package_version == "RC":
+    elif package_version == "rc":
         # RC versioning is not yet implemented. Fail the build to prevent publishing
         # an ambiguous version without an RC number.
         print("##vso[task.logissue type=error]RC versioning is not yet implemented. Use 'dev' or 'release' instead.")
@@ -87,7 +87,7 @@ def main():
 
     else:
         print(
-            f"##vso[task.logissue type=error]Unknown package_version '{package_version}'. Must be 'release', 'RC', or 'dev'."
+            f"##vso[task.logissue type=error]Unknown package_version '{package_version}'. Must be 'release', 'rc', or 'dev'."
         )
         sys.exit(1)
 
