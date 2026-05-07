@@ -17,7 +17,8 @@ class ImageScaler final : public OpKernel {
  public:
   ImageScaler(const OpKernelInfo& info) : OpKernel(info) {
     ORT_THROW_IF_ERROR(info.GetAttr<float>("scale", &scale_));
-    ORT_THROW_IF_ERROR(info.GetAttrs<float>("bias", bias_));
+    // bias is optional; ignore the error if it is absent
+    info.GetAttrs<float>("bias", bias_);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -45,7 +46,8 @@ class ImageScaler final : public OpKernel {
     EigenArrayMap<T> Y_arr(Y->MutableData<T>(), SafeInt<size_t>(H) * W, SafeInt<size_t>(N) * C);
 
     for (int64_t nc = 0; nc < N * C; ++nc) {
-      Y_arr.col(narrow<size_t>(nc)) = scale_ * X_arr.col(narrow<size_t>(nc)) + bias_[narrow<size_t>(nc % C)];
+      const float bias = bias_.empty() ? 0.0f : bias_[narrow<size_t>(nc % C)];
+      Y_arr.col(narrow<size_t>(nc)) = scale_ * X_arr.col(narrow<size_t>(nc)) + bias;
     }
     return Status::OK();
   }

@@ -98,7 +98,39 @@ TEST(ImageScalerContribOpTest, ImageScalerTest) {
   test.Run();
 }
 
-void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normalize_variance) {
+TEST(ImageScalerContribOpTest, ImageScalerNoBiasTest) {
+  // Won't fix for DML which only accepts 1 or 3 channels, as the op was only experimental and since removed.
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
+  std::vector<float> X = {
+      1.0f, 3.0f,
+      3.0f, 5.0f,
+
+      3.0f, 5.0f,
+      7.0f, 9.0f};
+
+  float scale = 2.0f;
+
+  // Result is scale * X with no bias
+  std::vector<float> result = {
+      2.0f, 6.0f,
+      6.0f, 10.0f,
+
+      6.0f, 10.0f,
+      14.0f, 18.0f};
+
+  OpTester test("ImageScaler");
+  test.AddAttribute("scale", scale);
+  // bias attribute intentionally omitted
+  test.AddInput<float>("input", {N, C, H, W}, X);
+  test.AddOutput<float>("output", {N, C, H, W}, result);
+  test.Run();
+}
+
+
   constexpr int64_t N = 2, C = 2, H = 2, W = 3;
   constexpr int64_t one = 1;
   constexpr int64_t zero = 0;

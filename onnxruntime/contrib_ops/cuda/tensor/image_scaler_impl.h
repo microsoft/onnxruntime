@@ -14,6 +14,7 @@ void ImageScalerImpl(
     const T* input_data,
     const float scale,
     const float* bias_data,
+    const bool has_bias,
     const int64_t dims[4],
     T* output_data,
     const size_t N);

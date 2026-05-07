@@ -15,6 +15,7 @@ __global__ void _ImageScalerKernel(
     const T* input_data,
     const float scale,
     const float* bias_data,
+    const bool has_bias,
     const fast_divmod fdm_C,
     const fast_divmod fdm_HW,
     T* output_data,
@@ -25,7 +26,8 @@ __global__ void _ImageScalerKernel(
     c = fdm_HW.div(id);
   else
     fdm_C.divmod(fdm_HW.div(id), n, c);
-  output_data[id] = input_data[id] * (T)scale + (T)bias_data[c];
+  const float bias = has_bias ? bias_data[c] : 0.0f;
+  output_data[id] = input_data[id] * (T)scale + (T)bias;
 }
 
 template <typename T>
@@ -34,6 +36,7 @@ void ImageScalerImpl(
     const T* input_data,
     const float scale,
     const float* bias_data,
+    const bool has_bias,
     const int64_t dims[4],  // NCHW
     T* output_data,
     const size_t N) {
@@ -42,11 +45,11 @@ void ImageScalerImpl(
   fast_divmod fdm_C;
   if (dims[0] == 1) {
     _ImageScalerKernel<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-        input_data, scale, bias_data, fdm_C, fdm_HW, output_data, N);
+        input_data, scale, bias_data, has_bias, fdm_C, fdm_HW, output_data, N);
   } else {
     fdm_C = fast_divmod((int)dims[1]);
     _ImageScalerKernel<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-        input_data, scale, bias_data, fdm_C, fdm_HW, output_data, N);
+        input_data, scale, bias_data, has_bias, fdm_C, fdm_HW, output_data, N);
   }
 }
 
