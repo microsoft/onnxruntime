@@ -102,6 +102,8 @@ class MatMul<float> final : public OpKernel {
   bool use_fastmath_mode_;
   // sbgemm kernel is implemented as 8x8 blocks with weights pre-packed to 4 blocks of 4x2
   // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
+  // The NEON SBGemm kernel consumes A in 4-float groups. Keep K tails on SGEMM
+  const size_t kFastMathModeKAlignment = 4;
   const size_t kFastMathModeKernelsizeThreshold = 32;
 #endif
 };
