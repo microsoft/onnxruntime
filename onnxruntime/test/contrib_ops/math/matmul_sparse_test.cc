@@ -378,6 +378,138 @@ TEST(SparseToDenseMatMul, TestCoo) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
+
+// Regression tests for CSR/COO index bounds validation
+TEST(SparseToDenseMatMul, CsrInnerIndexOutOfBounds) {
+  // Inner index (column index) >= cols should fail
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> A_inner = {0, 99, 2};  // 99 is out of bounds for 3 cols
+  const std::vector<int64_t> A_outer = {0, 1, 2, 3};
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCsrInput("A", A_shape, A_values, A_inner, A_outer);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "CSR inner index");
+}
+
+TEST(SparseToDenseMatMul, CsrNegativeInnerIndex) {
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> A_inner = {0, -1, 2};  // negative index
+  const std::vector<int64_t> A_outer = {0, 1, 2, 3};
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCsrInput("A", A_shape, A_values, A_inner, A_outer);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "CSR inner index");
+}
+
+TEST(SparseToDenseMatMul, CsrOuterIndexOutOfBounds) {
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> A_inner = {0, 1, 2};
+  std::vector<int64_t> A_outer = {0, 1, 2, 100};  // 100 > nnz (3)
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCsrInput("A", A_shape, A_values, A_inner, A_outer);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "CSR outer index");
+}
+
+TEST(SparseToDenseMatMul, CsrOuterIndexNonDecreasing) {
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> A_inner = {0, 1, 2};
+  std::vector<int64_t> A_outer = {0, 2, 1, 3};  // non-monotonic: 2 > 1
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCsrInput("A", A_shape, A_values, A_inner, A_outer);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "CSR outer indices must be non-decreasing");
+}
+
+TEST(SparseToDenseMatMul, CsrOuterFirstEntryNonZero) {
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> A_inner = {0, 1, 2};
+  std::vector<int64_t> A_outer = {1, 1, 2, 3};  // first entry != 0
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCsrInput("A", A_shape, A_values, A_inner, A_outer);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "CSR outer index must start at 0");
+}
+
+TEST(SparseToDenseMatMul, CsrOuterLastEntryNotNnz) {
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f, 3.0f};
+  const std::vector<int64_t> A_inner = {0, 1, 2};
+  std::vector<int64_t> A_outer = {0, 1, 2, 2};  // last entry (2) != nnz (3)
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCsrInput("A", A_shape, A_values, A_inner, A_outer);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "CSR outer index must end at nnz");
+}
+
+TEST(SparseToDenseMatMul, CooNegativeIndices) {
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f};
+  // Row -1 is invalid
+  const std::vector<int64_t> A_indices = {-1, 0, 1, 1};
+  const std::vector<int64_t> A_indices_shape = {2, 2};
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCooInput("A", A_shape, A_values, A_indices);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "COO");
+}
+
+TEST(SparseToDenseMatMul, CooOutOfBoundsIndices) {
+  const std::vector<int64_t> A_shape = {3, 3};
+  const std::vector<float> A_values = {1.0f, 2.0f};
+  // Column index 50 is out of bounds for 3 cols
+  const std::vector<int64_t> A_indices = {0, 50, 1, 1};
+  const std::vector<int64_t> A_indices_shape = {2, 2};
+
+  const std::vector<int64_t> B_shape = {3, 3};
+  const std::vector<float> B_data = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+  OpTester tester("SparseToDenseMatMul", 1, onnxruntime::kMSDomain);
+  tester.AddSparseCooInput("A", A_shape, A_values, A_indices);
+  tester.AddInput("B", B_shape, B_data);
+  tester.AddOutput("X", {3, 3}, std::vector<float>(9, 0.0f));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "COO");
+}
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test

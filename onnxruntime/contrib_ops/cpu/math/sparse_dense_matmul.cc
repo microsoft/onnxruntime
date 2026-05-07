@@ -79,11 +79,43 @@ inline void SparseDenseMatMulImpl<float>(const ComputeCtx& ctx, const ConstSpars
 // Handle CSR sparse format using Eigen
 template <class T>
 struct SparseToDenseCsr {
-  void operator()(const ComputeCtx& ctx, const SparseTensor& A, const Tensor& B, Tensor& output) const {
+  Status operator()(const ComputeCtx& ctx, const SparseTensor& A, const Tensor& B, Tensor& output) const {
     const auto& a_dims = A.DenseShape().GetDims();
     const auto& b_dims = B.Shape().GetDims();
     const auto& out_dims = output.Shape().GetDims();
+    const auto cols = a_dims[1];
+    const auto nnz = static_cast<int64_t>(A.NumValues());
+
     auto csr_view = A.AsCsr();
+
+    // Validate CSR index values before passing to Eigen
+    gsl::span<const int64_t> inner_raw = csr_view.Inner().DataAsSpan<int64_t>();
+    gsl::span<const int64_t> outer_raw = csr_view.Outer().DataAsSpan<int64_t>();
+
+    for (size_t i = 0; i < inner_raw.size(); ++i) {
+      ORT_RETURN_IF_NOT(inner_raw[i] >= 0 && inner_raw[i] < cols,
+                        "CSR inner index ", inner_raw[i], " at position ", i,
+                        " is out of bounds [0, ", cols, ")");
+    }
+
+    if (!outer_raw.empty()) {
+      ORT_RETURN_IF_NOT(outer_raw[0] == 0,
+                        "CSR outer index must start at 0, got ", outer_raw[0]);
+      ORT_RETURN_IF_NOT(outer_raw[outer_raw.size() - 1] == nnz,
+                        "CSR outer index must end at nnz (", nnz, "), got ",
+                        outer_raw[outer_raw.size() - 1]);
+    }
+
+    for (size_t i = 0; i < outer_raw.size(); ++i) {
+      ORT_RETURN_IF_NOT(outer_raw[i] >= 0 && outer_raw[i] <= nnz,
+                        "CSR outer index ", outer_raw[i], " at position ", i,
+                        " is out of bounds [0, ", nnz, "]");
+      if (i > 0) {
+        ORT_RETURN_IF_NOT(outer_raw[i] >= outer_raw[i - 1],
+                          "CSR outer indices must be non-decreasing at position ", i);
+      }
+    }
+
     const Eigen::Index* inner_index_pointer = nullptr;
     const Eigen::Index* outer_index_pointer = nullptr;
     // For auto-release the above two pointers when they are not NULL.
@@ -122,6 +154,7 @@ struct SparseToDenseCsr {
     // XXX: Consider re-writing it as a parallel loop as Eigen requires it to use OpenMP
     // XXX: Consider vectorization
     SparseDenseMatMulImpl(ctx, map_A, map_B, output_map);
+    return Status::OK();
   }
 };
 
@@ -164,8 +197,8 @@ struct SparseToDenseCoo {
     for (size_t i = 0; i < nnz; ++i) {
       const auto m = a_indicies_map(i, lhs_index_a);
       const auto k = a_indicies_map(i, rhs_index_a);
-      ORT_RETURN_IF_NOT(k < lhs_right, "COO k index: ", k, " is out of bounds of lhs_right: ", lhs_right);
-      ORT_RETURN_IF_NOT(m < out_left, "COO m index: ", m, " is out of bounds of out_left: ", out_left);
+      ORT_RETURN_IF_NOT(k >= 0 && k < lhs_right, "COO k index: ", k, " is out of bounds [0, ", lhs_right, ")");
+      ORT_RETURN_IF_NOT(m >= 0 && m < out_left, "COO m index: ", m, " is out of bounds [0, ", out_left, ")");
       const T a_value = a_values[i];
       for (int64_t n = 0; n < rhs_right; ++n) {
         const T b_value =
@@ -223,7 +256,8 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
     ORT_RETURN_IF_NOT(A->Values().Shape().Size() == csr_view.Inner().Shape().Size(),
                       "Expecting the same number NNZ == size of Inner indices");
     ORT_RETURN_IF_NOT((A_shape.GetDims()[0] + 1) == csr_view.Outer().Shape().Size(), "Outer size must be M + 1");
-    t_disp.Invoke<SparseToDenseCsr>(compute_ctx, *A, *B, *output);
+    auto status = t_disp.InvokeRet<Status, SparseToDenseCsr>(compute_ctx, *A, *B, *output);
+    ORT_RETURN_IF_ERROR(status);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently support only COO and CSR(x64) formats");
   }
