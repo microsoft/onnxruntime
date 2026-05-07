@@ -126,6 +126,8 @@ Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const 
   }
 
   // Use SafeInt for prefix_dim_size computation to guard against overflow.
+  // SafeInt is defensive here -- the total-element overflow check above already covers this case,
+  // so a SafeIntException should never fire in practice.
   SafeInt<int64_t> safe_prefix = 1;
   for (int64_t i = 0; i < true_axis; ++i) {
     safe_prefix *= indices_dims[onnxruntime::narrow<size_t>(i)];
