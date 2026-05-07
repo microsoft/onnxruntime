@@ -44,12 +44,14 @@ struct LhsCacheKey {
     size_t padding, sh, sw;
     size_t kh, kw;
     size_t dilationh, dilationw;
+    size_t data_hash;
 
     bool operator==(const LhsCacheKey& other) const {
         return ci == other.ci && ih == other.ih && iw == other.iw &&
                padding == other.padding && sh == other.sh && sw == other.sw &&
                kh == other.kh && kw == other.kw &&
-               dilationh == other.dilationh && dilationw == other.dilationw;
+               dilationh == other.dilationh && dilationw == other.dilationw &&
+               data_hash == other.data_hash;
     }
 };
 
@@ -86,7 +88,7 @@ namespace std {
     template<>
     struct hash<LhsCacheKey> {
         size_t operator()(const LhsCacheKey& k) const {
-            return 
+            return k.data_hash ^
                 (std::hash<size_t>()(k.ci) << 1) ^
                 (std::hash<size_t>()(k.ih) << 2) ^
                 (std::hash<size_t>()(k.iw) << 3) ^
@@ -504,7 +506,8 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
         ci, ih, iw,
         padding, sh, sw,
         kh, kw,
-        1, 1
+        1, 1,
+        HashWeights(in)
     };
 
     auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];

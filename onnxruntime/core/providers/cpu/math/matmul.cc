@@ -253,11 +253,14 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
       dim2 = static_cast<size_t>(b_shape[1]);
     }
 
+    const size_t k_dim = b_shape.NumDimensions() >= 2
+                             ? static_cast<size_t>(b_shape[b_shape.NumDimensions() - 2])
+                             : dim1;
     if (use_fastmath_mode_ &&
         (trans_a_attr_ == 0) &&
         (trans_b_attr_ == 0) &&
-        ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold) &&
-        ((dim1 % kFastMathModeKAlignment) == 0)) {
+        ((k_dim * dim2) >= kFastMathModeKernelsizeThreshold) &&
+        ((k_dim % kFastMathModeKAlignment) == 0)) {
       is_packed = GemmPackBBfloat16(alloc, tensor, trans_a_attr_ != 0, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
     } else
 #endif
