@@ -207,6 +207,23 @@ class PluginEpOpKernel final : public controlflow::IControlFlowKernel {
 Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo& info,
                                 OrtKernelCreateFunc kernel_create_func, void* kernel_create_func_state,
                                 /*out*/ std::unique_ptr<PluginEpOpKernel>& op_kernel) {
+  const auto* ep = info.GetExecutionProvider();
+  ORT_ENFORCE(ep != nullptr, "IExecutionProvider* retrieved from OpKernelInfo should never be nullptr");
+  const auto* ort_ep = ep->GetOrtEp();
+  ORT_ENFORCE(ort_ep != nullptr, "GetOrtEp() returned nullptr for EP '", ep->Type(), "'");
+
+  // Sanity-check the OrtEp to detect corruption early (e.g., garbage pointer from vtable mismatch).
+  ORT_ENFORCE(ort_ep->ort_version_supported > 0 && ort_ep->ort_version_supported <= ORT_API_VERSION,
+              "OrtEp for '", ep->Type(), "' has invalid ort_version_supported=", ort_ep->ort_version_supported,
+              " (expected 1..", ORT_API_VERSION, "). Possible pointer corruption or stale plugin DLL.");
+  ORT_ENFORCE(ort_ep->GetName != nullptr,
+              "OrtEp for '", ep->Type(), "' has null GetName function pointer. Possible pointer corruption.");
+  const char* ort_ep_name = ort_ep->GetName(ort_ep);
+  ORT_ENFORCE(ort_ep_name != nullptr && ep->Type() == ort_ep_name,
+              "OrtEp::GetName() returned '", (ort_ep_name ? ort_ep_name : "<null>"),
+              "' but IExecutionProvider::Type() is '", ep->Type(),
+              "'. Possible pointer corruption or EP mismatch.");
+
   // OpKernel's constructor *copies* the OpKernelInfo.
   // Therefore, must create the OpKernel instance immediately so that we can pass the actual OpKernelInfo
   // to the plugin EP's kernel creation function.
@@ -218,8 +235,6 @@ Status PluginEpOpKernel::Create(FuncManager& /*fn_manager*/, const OpKernelInfo&
 
   const auto& op_type = info.node().OpType();
   const auto& node_name = info.node().Name();
-  const auto* ep = info.GetExecutionProvider();
-  ORT_ENFORCE(ep != nullptr, "IExecutionProvider* retrieved from OpKernelInfo should never be nullptr");
   const auto& ep_name = ep->Type();
 
   // Do some basic checks for the OrtKernelImpl provided by the EP. Other checks for missing function implementations

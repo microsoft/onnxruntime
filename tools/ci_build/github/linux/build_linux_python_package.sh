@@ -80,8 +80,20 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     fi
 
     SHORT_CUDA_VERSION=$(echo "$CUDA_VERSION" | sed   's/\([[:digit:]]\+\.[[:digit:]]\+\)\.[[:digit:]]\+/\1/')
-    #Enable CUDA and TRT EPs.
-    BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$SHORT_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    CUDA_HOME=/usr/local/cuda-$SHORT_CUDA_VERSION
+    if [ ! -d "$CUDA_HOME" ] && [ -d /usr/local/cuda ]; then
+        # Allow the cu13 packaging flow to run on images that expose a newer CUDA minor version via /usr/local/cuda.
+        CUDA_HOME=/usr/local/cuda
+    fi
+    #Enable CUDA EP.
+    BUILD_ARGS+=("--use_cuda" "--cuda_version=$SHORT_CUDA_VERSION" "--cuda_home=$CUDA_HOME" "--cudnn_home=$CUDA_HOME" "--nvcc_threads=1" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}" "onnxruntime_USE_FPA_INTB_GEMM=OFF")
+    # Enable TRT EP only if TensorRT is installed.
+    if [ -f /usr/include/NvInfer.h ]; then
+        BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/usr")
+    elif [ "$ARCH" != "aarch64" ] && [ -f /opt/tensorrt/include/NvInfer.h ]; then
+        # The aarch64 TensorRT tarball is not compatible with the packaging image's glibc baseline.
+        BUILD_ARGS+=("--use_tensorrt" "--tensorrt_home=/opt/tensorrt")
+    fi
 fi
 if [ "$BUILD_DEVICE" == "WEBGPU" ]; then
     BUILD_ARGS+=("--use_webgpu")

@@ -46,6 +46,8 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   feature_count_ = 0;
   class_count_ = 0;
   for (size_t i = 0; i < vectors_per_class_.size(); i++) {
+    ORT_ENFORCE(vectors_per_class_[i] >= 0,
+                "vectors_per_class[", i, "] must be non-negative. Got ", vectors_per_class_[i]);
     starting_vector_.push_back(vector_count_);
     vector_count_ += onnxruntime::narrow<size_t>(vectors_per_class_[i]);
   }
@@ -77,6 +79,11 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
   // Validate attribute array sizes against the declared dimensions to prevent
   // out-of-bounds reads from crafted models.
   if (mode_ == SVM_TYPE::SVM_SVC) {
+    ORT_ENFORCE(vectors_per_class_.size() == static_cast<size_t>(class_count_),
+                "vectors_per_class attribute size (", vectors_per_class_.size(),
+                ") must match class_count (", class_count_, ").");
+    ORT_ENFORCE(vector_count_ > 0, "vector_count must be greater than 0 in SVC mode.");
+
     // SVC mode: coefficients layout is [class_count - 1, vector_count]
     size_t expected_coefficients = 0;
     if (!SafeMultiply(static_cast<size_t>(class_count_ - 1), static_cast<size_t>(vector_count_),
@@ -88,6 +95,9 @@ SVMClassifier::SVMClassifier(const OpKernelInfo& info)
                 "coefficients attribute size (", coefficients_.size(),
                 ") is smaller than expected (", expected_coefficients,
                 ") for the given class_count and vector_count.");
+    ORT_ENFORCE(support_vectors_.size() % static_cast<size_t>(vector_count_) == 0,
+                "support_vectors attribute size (", support_vectors_.size(),
+                ") must be divisible by vector_count (", vector_count_, ").");
 
     // rho needs one entry per classifier pair: class_count * (class_count - 1) / 2
     size_t num_classifiers = 0;

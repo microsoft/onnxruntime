@@ -31,6 +31,12 @@ struct NearestPixel_ROUND_PREFER_FLOOR {
 
 struct NearestPixel_ROUND_PREFER_CEIL {
   __device__ __forceinline__ int operator()(float x_original, bool) const {
+    // for half way cases prefer ceil
+    // roundf rounds away from zero which is correct for positive .5 values
+    // but for negative .5 values (e.g., -0.5) it rounds to -1 instead of 0 (ceil)
+    if (x_original == static_cast<int>(x_original) - 0.5f) {
+      return static_cast<int>(_Ceil(x_original));
+    }
     return static_cast<int>(roundf(x_original));
   }
 };
