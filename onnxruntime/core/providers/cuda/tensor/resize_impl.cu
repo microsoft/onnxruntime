@@ -743,15 +743,9 @@ Status ResizeNearestImpl(
   if (could2d) {
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
-    bool output_hw_fits_int = false;
-    try {
-      const SafeInt<int64_t> output_hw = SafeInt<int64_t>(output_height) * output_width;
-      output_hw_fits_int = output_hw <= kIntMax;
-    } catch (const SafeIntException&) {
-      output_hw_fits_int = false;
-    }
+    const SafeInt<int64_t> output_hw = SafeInt<int64_t>(output_height) * output_width;
 
-    ORT_RETURN_IF_NOT(output_hw_fits_int,
+    ORT_RETURN_IF_NOT(output_hw <= kIntMax,
                       "ResizeNearestImpl: output height*width exceeds int range.");
 
     fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3]
@@ -799,21 +793,12 @@ Status ResizeNearestImpl(
     int64_t output_depth = output_shape[rank - 3];
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
-    bool output_dh_fits_int = false;
-    bool output_dhw_fits_int = false;
-    try {
-      const SafeInt<int64_t> output_dh = SafeInt<int64_t>(output_depth) * output_height;
-      output_dh_fits_int = output_dh <= kIntMax;
-      const SafeInt<int64_t> output_dhw = output_dh * output_width;
-      output_dhw_fits_int = output_dhw <= kIntMax;
-    } catch (const SafeIntException&) {
-      output_dh_fits_int = false;
-      output_dhw_fits_int = false;
-    }
+    const SafeInt<int64_t> output_dh = SafeInt<int64_t>(output_depth) * output_height;
+    const SafeInt<int64_t> output_dhw = output_dh * output_width;
 
-    ORT_RETURN_IF_NOT(output_dh_fits_int,
+    ORT_RETURN_IF_NOT(output_dh <= kIntMax,
                       "ResizeNearestImpl: output depth*height exceeds int range.");
-    ORT_RETURN_IF_NOT(output_dhw_fits_int,
+    ORT_RETURN_IF_NOT(output_dhw <= kIntMax,
                       "ResizeNearestImpl: output depth*height*width exceeds int range.");
 
     fast_divmod div_output_image = (rank > 3) ? output_div_pitches[rank - 4]
@@ -837,13 +822,8 @@ Status ResizeNearestImpl(
 
     SafeInt<int64_t> input_stride_depth_safe = 0;
     SafeInt<int64_t> input_stride_image_safe = 0;
-    try {
-      input_stride_depth_safe = SafeInt<int64_t>(input_shape[rank - 2]) * input_shape[rank - 1];
-      input_stride_image_safe = SafeInt<int64_t>(input_shape[rank - 3]) * input_stride_depth_safe;
-    } catch (const SafeIntException&) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "ResizeNearestImpl: input strides exceed int range.");
-    }
+    input_stride_depth_safe = SafeInt<int64_t>(input_shape[rank - 2]) * input_shape[rank - 1];
+    input_stride_image_safe = SafeInt<int64_t>(input_shape[rank - 3]) * input_stride_depth_safe;
 
     const int64_t input_stride_depth = static_cast<int64_t>(input_stride_depth_safe);
     const int64_t input_stride_image = static_cast<int64_t>(input_stride_image_safe);

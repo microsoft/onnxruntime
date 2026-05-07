@@ -3085,14 +3085,17 @@ TEST(ResizeOpTest, Axes_and_Scales_CountMismatch_18) {
   std::vector<float> roi{};
   std::vector<float> scales{0.75f, 0.75f};
   std::vector<int64_t> axes{2, 3, 4};
+  std::vector<float> Y(16 * 4, 0.0f);
 
   OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
   test.AddAttribute("mode", "linear");
   test.AddAttribute<std::vector<int64_t>>("axes", axes);
 
   test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
   test.AddInput<float>("roi", {0}, roi);
   test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Number of elements in scales should be equal to number of axes.",
@@ -3105,14 +3108,17 @@ TEST(ResizeOpTest, Axes_OutOfRange_18) {
   std::vector<float> roi{};
   std::vector<float> scales{0.75f, 0.75f, 0.75f};
   std::vector<int64_t> axes{2, 3, 5};
+  std::vector<float> Y(16 * 4, 0.0f);
 
   OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
   test.AddAttribute("mode", "linear");
   test.AddAttribute<std::vector<int64_t>>("axes", axes);
 
   test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
   test.AddInput<float>("roi", {0}, roi);
   test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "all values in axes should be in the range [-rank, rank - 1]",
@@ -3121,6 +3127,7 @@ TEST(ResizeOpTest, Axes_OutOfRange_18) {
 
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {
   OpTester test("Resize", 13);
+  test.AddShapeToTensorData(false);
 
   std::vector<float> roi{};
   std::vector<float> scales{};
@@ -3134,11 +3141,13 @@ TEST(ResizeOpTest, Sizes_RankMismatch_13) {
       5.0f, 6.0f, 7.0f, 8.0f,
       9.0f, 10.0f, 11.0f, 12.0f,
       13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<float> Y = X;
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
   test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {int64_t(sizes.size())}, sizes);
+  test.AddOutput<float>("Y", {N, C, H, W}, Y);
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Resize: input tensor's rank does not match the output tensor's rank.",
