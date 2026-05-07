@@ -453,8 +453,8 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
 // on_partition_assignment_fn is never called at that stage.
 //
 // InsertCastTransformer (step 6) then converts the FP16 Relu: it inserts Cast(FP16->FP32) before
-// the node, reassigns the Relu to the CPU EP, and inserts Cast(FP32->FP16) after.
-// InsertCastTransformer now invokes on_partition_assignment_fn when it reassigns the Relu to CPU,
+// the node, assigns the Relu to the CPU EP, and inserts Cast(FP32->FP16) after.
+// InsertCastTransformer now invokes on_partition_assignment_fn when it assigns the Relu to CPU,
 // so the node must appear in GetEpGraphAssignmentInfo().
 TEST(OrtEpLibrary, PluginEp_AppendV2_Fp16Relu_EpGraphAssignmentInfo) {
   RegisteredEpDeviceUniquePtr example_ep;
@@ -471,7 +471,7 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_Fp16Relu_EpGraphAssignmentInfo) {
   const std::string model_bytes = BuildFp16ReluModelBytes();
   Ort::Session session(*ort_env, model_bytes.data(), model_bytes.size(), session_options);
 
-  // InsertCastTransformer reassigns the Relu to CPU EP and fires the callback, so there must be
+  // InsertCastTransformer assigns the Relu to CPU EP and fires the callback, so there must be
   // exactly one subgraph entry: the Relu node on the CPU EP.
   std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
   ASSERT_EQ(ep_subgraphs.size(), 1u)

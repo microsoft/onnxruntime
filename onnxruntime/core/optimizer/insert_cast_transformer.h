@@ -43,7 +43,7 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
   // Here for simplify, we only force the single-node-float16 sub-graph to float32
   const bool force_cpu_fp32_;
 
-  // Optional callback to record when nodes are reassigned to CPU EP by this transformer.
+  // Optional callback to record when nodes are assigned to CPU EP by this transformer.
   // Reuses the same callback type as GraphPartitioner to maintain consistent EP assignment tracking.
   OnPartitionAssignmentFunction on_partition_assignment_fn_;
 };
