@@ -6332,15 +6332,10 @@ TEST(ReductionOpTest, ReduceSumSquare_NoopWithAxesNotProvided_ElementwiseSquare)
 // empty tensor reductions, so they are excluded.
 // =============================================================================
 
-// EPs that do NOT support empty tensor reductions.
-// CPU and CUDA handle them (CUDA support added in this PR).
+// EPs that failed CI on empty tensor reductions.
+// Only exclude EPs with confirmed failures; leave others enabled so CI
+// catches regressions if they arise.
 const std::unordered_set<std::string> kEmptyTensorExcludedEps = {
-    kCoreMLExecutionProvider,
-    kCudaNHWCExecutionProvider,
-    kDmlExecutionProvider,
-    kDnnlExecutionProvider,
-    kMIGraphXExecutionProvider,
-    kOpenVINOExecutionProvider,
     kQnnExecutionProvider,
     kTensorrtExecutionProvider,
     kWebGpuExecutionProvider,
