@@ -783,6 +783,13 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
 }
 
+Status PluginExecutionProvider::OnSessionInitializationEnd() {
+  if (ort_ep_->ort_version_supported < 27 || ort_ep_->OnSessionInitializationEnd == nullptr) {
+    return Base::OnSessionInitializationEnd();
+  }
+  return ToStatusAndRelease(ort_ep_->OnSessionInitializationEnd(ort_ep_.get()));
+}
+
 Status PluginExecutionProvider::Sync() const {
   if (ort_ep_->ort_version_supported < 25 || ort_ep_->Sync == nullptr) {
     return Base::Sync();

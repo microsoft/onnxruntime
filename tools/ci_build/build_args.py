@@ -673,6 +673,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cpu_group.add_argument(
         "--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels."
     )
+    cpu_group.add_argument(
+        "--enable_rvv",
+        action="store_true",
+        help="Enable riscv64 MLAS kernels that use the RISC-V Vector extension.",
+    )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")

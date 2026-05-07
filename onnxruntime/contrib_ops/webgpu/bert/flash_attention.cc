@@ -574,11 +574,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   return Status::OK();
 }
 
-bool CanApplyFlashAttention(const Tensor* bias,
-                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   return !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
-         bias == nullptr &&
          context.HasFeature(wgpu::FeatureName::Subgroups) &&
          ((context.AdapterInfo().vendor == std::string_view{"qualcomm"} && parameters.head_size_ % 8 == 0) || parameters.head_size_ % 4 == 0);
 }

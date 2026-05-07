@@ -818,5 +818,108 @@ TEST(FunctionTest, InlinedNodesInheritDistinctAnnotationsPerCallSite) {
   EXPECT_TRUE(found_b) << "No node found with AnnotationB";
 }
 
+// Test that overloaded functions (IR version 10+) are resolved correctly.
+// Two functions with the same domain and name but different overload identifiers.
+TEST(FunctionTest, OverloadedFunctions) {
+  const char* code = R"(
+        <
+        ir_version: 10,
+        opset_import: [ "" : 17, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y, float[N] z)
+        {
+            y = local.myfun:double_it (x)
+            z = local.myfun:triple_it (x)
+        }
+
+        <
+        opset_import: [ "" : 17 ],
+        domain: "local",
+        overload: "double_it"
+        >
+        myfun (lx) => (ly) {
+            two = Constant <value = float[1] {2.0}> ()
+            ly = Mul (lx, two)
+        }
+
+        <
+        opset_import: [ "" : 17 ],
+        domain: "local",
+        overload: "triple_it"
+        >
+        myfun (lx) => (ly) {
+            three = Constant <value = float[1] {3.0}> ()
+            ly = Mul (lx, three)
+        }
+        )";
+
+  // Serialize and then load model:
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  auto status = session_object.Load(sstr);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  RunOptions run_options;
+  run_options.run_tag = session_options.session_logid;
+
+  NameMLValMap feeds;
+  std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  std::vector<float> input_values = {1.0f, 2.0f, 3.0f};
+  OrtValue ort_value;
+  CreateMLValue<float>(provider->CreatePreferredAllocators()[0], {int64_t(input_values.size())}, input_values, &ort_value);
+  feeds.insert(std::make_pair(std::string("x"), ort_value));
+
+  std::vector<OrtValue> fetches;
+  status = session_object.Run(run_options, feeds, AsSpan({std::string("y"), std::string("z")}), &fetches);
+  ASSERT_TRUE(status.IsOK()) << "Session Run failed: " << status.ErrorMessage() << std::endl;
+
+  // Check "y" output (doubled)
+  auto& tensor_y = fetches[0].Get<Tensor>();
+  auto* data_y = tensor_y.Data<float>();
+  EXPECT_NEAR(data_y[0], 2.0f, 0.001f);
+  EXPECT_NEAR(data_y[1], 4.0f, 0.001f);
+  EXPECT_NEAR(data_y[2], 6.0f, 0.001f);
+
+  // Check "z" output (tripled)
+  auto& tensor_z = fetches[1].Get<Tensor>();
+  auto* data_z = tensor_z.Data<float>();
+  EXPECT_NEAR(data_z[0], 3.0f, 0.001f);
+  EXPECT_NEAR(data_z[1], 6.0f, 0.001f);
+  EXPECT_NEAR(data_z[2], 9.0f, 0.001f);
+}
+
+// Test that non-overloaded functions (empty overload) still work as before.
+TEST(FunctionTest, OverloadedFunctionBackwardCompat) {
+  // Same as basic_code but with ir_version: 10 to verify backward compatibility
+  const char* code = R"(
+        <
+        ir_version: 10,
+        opset_import: [ "" : 17, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.myfun (x)
+        }
+
+        <
+        opset_import: [ "" : 17 ],
+        domain: "local"
+        >
+        myfun (lx) => (ly) {
+            two = Constant <value = float[1] {2.0}> ()
+            ly = Mul (lx, two)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

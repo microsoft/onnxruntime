@@ -888,6 +888,9 @@ def generate_build_tree(
     if args.enable_arm_neon_nchwc:
         cmake_args += ["-Donnxruntime_USE_ARM_NEON_NCHWC=ON"]
 
+    if args.enable_rvv:
+        cmake_args += ["-Donnxruntime_USE_RVV=ON"]
+
     if not args.no_sve:
         cmake_args += ["-Donnxruntime_USE_SVE=ON"]
 
