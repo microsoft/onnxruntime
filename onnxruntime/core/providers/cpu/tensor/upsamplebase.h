@@ -59,6 +59,12 @@ enum ResizeNearestMode {
   CEIL = 4,
 };
 
+// Tolerance for detecting .5 ties in nearest-mode rounding (ROUND_PREFER_CEIL / ROUND_PREFER_FLOOR).
+// Coordinate transforms such as half_pixel use float division which introduces rounding error,
+// e.g. (4.5f / 0.3f - 0.5f) yields ~14.4999 instead of the exact 14.5.
+// This epsilon is used in both CPU (upsamplebase.h) and CUDA (resize_impl.cu) nearest-pixel functions.
+constexpr float kNearestModeEps = 1e-6f;
+
 enum class AspectRatioPolicy {
   STRETCH,
   NOT_LARGER,
@@ -463,10 +469,8 @@ class UpsampleBase {
         };
       case ROUND_PREFER_CEIL:
         return [](float x_original, bool) {
-          // for half way cases prefer ceil
-          // std::round rounds away from zero which is correct for positive .5 values
-          // but for negative .5 values (e.g., -0.5) it rounds to -1 instead of 0 (ceil)
-          if (x_original == static_cast<int64_t>(x_original) - 0.5f) {
+          float fraction = x_original - std::floor(x_original);
+          if (std::abs(fraction - 0.5f) <= kNearestModeEps) {
             return static_cast<int64_t>(std::ceil(x_original));
           }
           return static_cast<int64_t>(std::round(x_original));
@@ -481,8 +485,8 @@ class UpsampleBase {
         };
       default:  // default is round_prefer_floor
         return [](float x_original, bool) {
-          // for half way cases prefer floor
-          if (x_original == static_cast<int64_t>(x_original) + 0.5f) {
+          float fraction = x_original - std::floor(x_original);
+          if (std::abs(fraction - 0.5f) <= kNearestModeEps) {
             return static_cast<int64_t>(std::floor(x_original));
           }
           return static_cast<int64_t>(std::round(x_original));
