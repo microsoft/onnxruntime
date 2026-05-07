@@ -327,6 +327,24 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
       LOGS(logger, VERBOSE) << "FusedConv is only supported in MLProgram format";
       return false;
     }
+    // FusedConv schema (contrib_defs.cc) has 4 inputs: X, W, B (optional),
+    // Z (optional). Z is a residual sum input — Y = activation(Conv(X,W,B) + Z).
+    // The MLProgram lowering below does not read input 3, so accepting a node
+    // with Z would silently drop the residual and produce wrong results.
+    if (input_defs.size() > 3) {
+      LOGS(logger, VERBOSE) << "FusedConv with the optional 'Z' (residual sum) input "
+                               "is not supported by the CoreML EP";
+      return false;
+    }
+    // Only float/float16 are wired through add_scalar in AddToModelBuilderImpl.
+    // FusedConv schema also allows double, which CoreML does not support.
+    const auto x_elem_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+    if (x_elem_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+        x_elem_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      LOGS(logger, VERBOSE) << "FusedConv element type [" << x_elem_type
+                            << "] is not supported by the CoreML EP (expected FLOAT or FLOAT16)";
+      return false;
+    }
     NodeAttrHelper fused_helper(node);
     const std::string activation = fused_helper.Get("activation", std::string(""));
     const auto* spec = FindFusedConvActivationSpec(activation);
