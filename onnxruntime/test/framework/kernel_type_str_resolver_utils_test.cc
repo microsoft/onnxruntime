@@ -86,6 +86,8 @@ TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformatio
   ASSERT_FALSE(resolved_args.empty());
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
 // run this test manually to output a hard-coded byte array.
 // update AddLayoutTransformationRequiredOpsToKernelTypeStrResolver in
 // onnxruntime/core/framework/kernel_type_str_resolver_utils.cc
@@ -117,6 +119,5 @@ TEST(KernelTypeStrResolverUtilsTest, DISABLED_PrintExpectedLayoutTransformationR
 #endif  // defined(DISABLE_CONTRIB_OPS)
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace onnxruntime::test
