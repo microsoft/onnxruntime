@@ -22,9 +22,15 @@
 
 namespace onnxruntime {
 
+// Clamped input coordinate range [min, max) for a single output pixel.
+struct InterpolationBound {
+  int64_t min;
+  int64_t max;
+};
+
 template <typename T>
 struct FilterParamsBaseAntiAlias {
-  std::vector<int64_t> bound;
+  std::vector<InterpolationBound> bounds;
   std::vector<int64_t> out_of_bound_idx;
   int64_t window_size = 2;
   IAllocatorUniquePtr<T> weight_coefficients;
@@ -124,7 +130,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
                                          size_t rindex,
                                          FilterParamsBaseAntiAlias<T>& param_base,
                                          const float rscale) -> int64_t {
-    param_base.bound.reserve(static_cast<size_t>(output_size) * 2);
+    param_base.bounds.reserve(static_cast<size_t>(output_size));
     param_base.out_of_bound_idx.reserve(static_cast<size_t>(output_size));
 
     float scale = 1.0f / rscale;
@@ -163,8 +169,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
 
       xmin = exclude_outside ? xmin_cut : xmin_real;
       xmax = exclude_outside ? xmax_cut : xmax_real;
-      param_base.bound.push_back(xmin_cut);
-      param_base.bound.push_back(xmax_cut);
+      param_base.bounds.push_back({xmin_cut, xmax_cut});
 
       auto* scale_buffer = &scale_data[i * window_size];
       int64_t x = 0;
@@ -269,15 +274,13 @@ void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, in
 
         for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
           auto* Ydata_offset = Ydata + output_width * y;
-          auto* bound = p_dim.bound.data();
           for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
             AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
 
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * x;
-            int64_t xmin = *bound++;
-            int64_t xmax = *bound++;
+            const auto& [xmin, xmax] = p_dim.bounds[x];
             const auto* Xdata_offset = Xdata + y * input_width + xmin;
-            for (; xmin < xmax; ++xmin) {
+            for (auto xi = xmin; xi < xmax; ++xi) {
               output += (*Xdata_offset++) * (*weight_coeff++);
             }
 
@@ -338,11 +341,9 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
             return;
           }
 
-          const auto* y_bound = p_dim.bound.data();
           for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * y;
-            int64_t ymin = *y_bound++;
-            int64_t ymax = *y_bound++;
+            const auto& [ymin, ymax] = p_dim.bounds[y];
             auto* Ydata_offset = Ydata + output_width * y;
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
               AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
@@ -388,10 +389,8 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
             const InputType* Xdata = Xdata_span.data() + x_start;
             InputType* Ydata = Ydata_span.data() + y_start;
 
-            const auto* y_bound = p_dim.bound.data();
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * y;
-            int64_t ymin = y_bound[2 * narrow<size_t>(y)];
-            int64_t ymax = y_bound[2 * narrow<size_t>(y) + 1];
+            const auto& [ymin, ymax] = p_dim.bounds[narrow<size_t>(y)];
             auto* Ydata_offset = Ydata + output_width * y;
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
               AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
