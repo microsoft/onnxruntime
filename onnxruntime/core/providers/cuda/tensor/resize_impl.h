@@ -80,7 +80,7 @@ size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
                             const gsl::span<const int64_t>& output_dims);
 
 template <typename T>
-void ResizeImpl(
+Status ResizeImpl(
     cudaStream_t stream,
     const onnxruntime::UpsampleMode upsample_mode,
     const int rank,

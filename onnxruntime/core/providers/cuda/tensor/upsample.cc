@@ -3,8 +3,10 @@
 
 #include "upsample.h"
 
+#include <limits>
 #include <utility>
 
+#include "core/common/safeint.h"
 #include "upsample_impl.h"
 #include "core/providers/cuda/tensor/resize_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -63,7 +65,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   auto X_dims = X->Shape().GetDims();
   int32_t rank = static_cast<int32_t>(X_dims.size());
 
-  ORT_ENFORCE(static_cast<int32_t>(output_dims.size()) == rank, "Rank of input and output tensor should be same.");
+  ORT_RETURN_IF_NOT(static_cast<int32_t>(output_dims.size()) == rank,
+                    "Rank of input and output tensor should be same.");
   if (rank == 0)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
@@ -83,6 +86,24 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
+  constexpr int64_t kIntMax = static_cast<int64_t>(std::numeric_limits<int>::max());
+
+  auto is_valid_non_negative_int = [kIntMax](int64_t v) {
+    return v >= 0 && v <= kIntMax;
+  };
+
+  auto checked_mul_fits_int = [kIntMax](int64_t a, int64_t b) {
+    if (a < 0 || b < 0) {
+      return false;
+    }
+
+    try {
+      const SafeInt<int64_t> product = SafeInt<int64_t>(a) * b;
+      return product <= kIntMax;
+    } catch (const SafeIntException&) {
+      return false;
+    }
+  };
 
   // kernel
   TensorPitches input_pitches(X_dims);
@@ -92,7 +113,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   TArray<fast_divmod> output_div_pitches(rank);
 
   for (int32_t i = 0; i < rank; ++i) {
-    output_div_pitches[i] = fast_divmod(gsl::narrow_cast<int>(output_pitches[i]));
+    ORT_RETURN_IF_NOT(output_pitches[i] <= static_cast<size_t>(kIntMax),
+                      "Resize: output pitch exceeds supported int range for CUDA kernel indexing.");
+    output_div_pitches[i] = fast_divmod(onnxruntime::narrow<int>(output_pitches[i]));
   }
   size_t output_count = Y->Shape().Size();
 
@@ -272,6 +295,35 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Resize: unexpected mode");
       }
     } else {
+      for (int32_t i = 0; i < rank; ++i) {
+        ORT_RETURN_IF_NOT(is_valid_non_negative_int(X_dims[i]) && is_valid_non_negative_int(output_dims[i]),
+                          "Resize: dimension exceeds supported int range for CUDA nearest indexing.");
+      }
+
+      if (mode_ == UpsampleMode::NN && rank >= 2) {
+        ORT_RETURN_IF_NOT(checked_mul_fits_int(output_dims[rank - 2], output_dims[rank - 1]),
+                          "Resize: output height*width exceeds supported int range for CUDA nearest indexing.");
+      }
+
+      if (mode_ == UpsampleMode::NN && rank >= 3) {
+        const int64_t output_depth = output_dims[rank - 3];
+        const int64_t output_height = output_dims[rank - 2];
+        const int64_t output_width = output_dims[rank - 1];
+        bool dhw_fits_int = false;
+        if (output_depth >= 0 && output_height >= 0 && output_width >= 0) {
+          try {
+            const SafeInt<int64_t> output_dh = SafeInt<int64_t>(output_depth) * output_height;
+            const SafeInt<int64_t> output_dhw = output_dh * output_width;
+            dhw_fits_int = output_dhw <= kIntMax;
+          } catch (const SafeIntException&) {
+            dhw_fits_int = false;
+          }
+        }
+
+        ORT_RETURN_IF_NOT(dhw_fits_int,
+                          "Resize: output depth*height*width exceeds supported int range for CUDA nearest indexing.");
+      }
+
       TArray<int64_t> input_shape(X_dims);
       TArray<int64_t> output_shape(output_dims);
       TArray<float, 10> roi_vals(roi);
@@ -280,20 +332,22 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
       auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size, GetComputeStream(context));
       void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
-      ResizeImpl(Stream(context), mode_, rank, input_shape, output_shape,
-                 input_strides, output_div_pitches, scales_vals, roi_vals,
-                 reinterpret_cast<const CudaT*>(X->Data<T>()),
-                 reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                 output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_),
-                 cubic_coeff_a_, exclude_outside_,
-                 coordinate_transform_mode_, nearest_mode_,
-                 dims_mapping);
+      ORT_RETURN_IF_ERROR(ResizeImpl(Stream(context), mode_, rank, input_shape, output_shape,
+                                     input_strides, output_div_pitches, scales_vals, roi_vals,
+                                     reinterpret_cast<const CudaT*>(X->Data<T>()),
+                                     reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                                     output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_),
+                                     cubic_coeff_a_, exclude_outside_,
+                                     coordinate_transform_mode_, nearest_mode_,
+                                     dims_mapping));
     }
   } else {
     TArray<fast_divmod> scales_div(rank);
 
     for (int32_t i = 0; i < rank; ++i) {
-      scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
+      ORT_RETURN_IF_NOT(ceil(scales[i]) <= static_cast<double>(std::numeric_limits<int>::max()),
+                        "Upsample: scale factor exceeds supported int range for CUDA indexing.");
+      scales_div[i] = fast_divmod(onnxruntime::narrow<int>(ceil(scales[i])));
     }
 
     UpsampleImpl(Stream(context),
@@ -314,7 +368,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 template <typename T>
 Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
-  ORT_ENFORCE(X != nullptr);
+  ORT_RETURN_IF_NOT(X != nullptr, "Input tensor is null.");
   auto input_dims = X->Shape().GetDims();
 
   TensorShapeVector output_dims(input_dims.size());
@@ -322,7 +376,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   if (!roi_cached_) {
     bool use_default_roi = true;
     if (need_roi_input_) {
-      ORT_ENFORCE(roi_input_idx_ > 0, "Invalid roi input index.");
+      ORT_RETURN_IF_NOT(roi_input_idx_ > 0, "Invalid roi input index.");
       const auto* roi = context->Input<Tensor>(roi_input_idx_);
       if (roi != nullptr) {
         ParseRoiData(roi, roi_array);
@@ -368,15 +422,15 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   // Scales and sizes are input to the node
   if (scales != nullptr && scales->Shape().Size() != 0) {
     // use scales input data
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+    ORT_RETURN_IF_NOT(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, input_dims.size()));
 
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, input_dims, output_dims);
   } else {
     // When sizes input is available directly populate it into the output_dims array.
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0,
-                "Either scales or sizes MUST be provided as input.");
+    ORT_RETURN_IF_NOT(sizes != nullptr && sizes->Shape().Size() != 0,
+                      "Either scales or sizes MUST be provided as input.");
     ORT_RETURN_IF_ERROR(ParseSizesData(sizes, output_dims, input_dims));
     ORT_RETURN_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array));
   }
