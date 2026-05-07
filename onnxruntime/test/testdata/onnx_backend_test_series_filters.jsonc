@@ -360,7 +360,11 @@
         "^test_dft_rfft_opset19",
         "^test_dft_irfft_opset19",
         // ORT BitCast kernel does not support bool type.
-        "^test_bitcast_bool_to_uint8"
+        "^test_bitcast_bool_to_uint8",
+        // ReduceMax/ReduceMin on empty sets (dim=0) not supported by CUDA provider.
+        // CPU provider returns identity values (-inf/+inf) but CUDA errors out.
+        "^test_reduce_max_empty_set_cuda",
+        "^test_reduce_min_empty_set_cuda"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
