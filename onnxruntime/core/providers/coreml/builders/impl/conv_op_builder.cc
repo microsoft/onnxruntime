@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <string_view>
+
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
@@ -17,9 +20,34 @@ namespace coreml {
 
 namespace {
 
-bool IsSupportedFusedConvActivation(const std::string& name) {
-  return name == "Relu" || name == "Sigmoid" || name == "Tanh" ||
-         name == "LeakyRelu" || name == "Clip" || name == "HardSigmoid";
+// Single source of truth for FusedConv activation handling. Drives both the
+// support check in IsOpSupportedImpl and the MIL op dispatch in
+// AddToModelBuilderImpl. `param_ports` lists the MIL op input ports that map
+// positionally to `activation_params`. ConvActivationFusion packs the params
+// in the same order: LeakyRelu=[alpha], Clip=[min,max], HardSigmoid=[alpha,
+// beta] (see conv_activation_fusion.cc:165-184). For MIL's `clip`, alpha/beta
+// are the min/max bounds.
+struct FusedConvActivationSpec {
+  std::string_view onnx_name;
+  std::string_view mil_op;
+  uint8_t param_count;
+  std::array<std::string_view, 2> param_ports;
+};
+
+constexpr FusedConvActivationSpec kFusedConvActivations[] = {
+    {"Relu", "relu", 0, {}},
+    {"Sigmoid", "sigmoid", 0, {}},
+    {"Tanh", "tanh", 0, {}},
+    {"LeakyRelu", "leaky_relu", 1, {{"alpha"}}},
+    {"Clip", "clip", 2, {{"alpha", "beta"}}},
+    {"HardSigmoid", "sigmoid_hard", 2, {{"alpha", "beta"}}},
+};
+
+const FusedConvActivationSpec* FindFusedConvActivationSpec(std::string_view name) {
+  for (const auto& spec : kFusedConvActivations) {
+    if (spec.onnx_name == name) return &spec;
+  }
+  return nullptr;
 }
 
 }  // namespace
@@ -122,25 +150,17 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       const std::string activation = helper.Get("activation", std::string(""));
       const auto activation_params = helper.Get("activation_params", std::vector<float>{});
 
-      std::string_view mil_op;
-      if (activation == "Relu") {
-        mil_op = "relu";
-      } else if (activation == "Sigmoid") {
-        mil_op = "sigmoid";
-      } else if (activation == "Tanh") {
-        mil_op = "tanh";
-      } else if (activation == "LeakyRelu") {
-        mil_op = "leaky_relu";
-      } else if (activation == "Clip") {
-        mil_op = "clip";
-      } else if (activation == "HardSigmoid") {
-        mil_op = "sigmoid_hard";
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "FusedConv has unsupported activation: ", activation);
-      }
+      // IsOpSupportedImpl gates both of these, so the lookup and arity check
+      // serve as a defensive backstop rather than primary validation.
+      const auto* spec = FindFusedConvActivationSpec(activation);
+      ORT_RETURN_IF_NOT(spec != nullptr,
+                        "FusedConv has unsupported activation: ", activation);
+      ORT_RETURN_IF_NOT(activation_params.size() == spec->param_count,
+                        "FusedConv activation '", activation, "' expects ",
+                        static_cast<unsigned>(spec->param_count),
+                        " activation_params, got ", activation_params.size());
 
-      auto act_op = model_builder.CreateOperation(node, mil_op, "activation");
+      auto act_op = model_builder.CreateOperation(node, std::string(spec->mil_op), "activation");
       AddOperationInput(*act_op, "x", conv_out_name);
 
       auto add_scalar = [&](std::string_view port_name, float value) {
@@ -153,26 +173,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         }
       };
 
-      // Activation-specific params. ConvActivationFusion packs them into
-      // `activation_params` in this order (see conv_activation_fusion.cc:165-184):
-      //   LeakyRelu: [alpha]
-      //   Clip:      [min, max]
-      //   HardSigmoid: [alpha, beta]
-      if (activation == "LeakyRelu") {
-        const float alpha = activation_params.empty() ? 0.01f : activation_params[0];
-        add_scalar("alpha", alpha);
-      } else if (activation == "Clip") {
-        const float min_v = activation_params.size() > 0 ? activation_params[0]
-                                                         : std::numeric_limits<float>::lowest();
-        const float max_v = activation_params.size() > 1 ? activation_params[1]
-                                                         : std::numeric_limits<float>::max();
-        add_scalar("alpha", min_v);
-        add_scalar("beta", max_v);
-      } else if (activation == "HardSigmoid") {
-        const float alpha = activation_params.size() > 0 ? activation_params[0] : 0.2f;
-        const float beta = activation_params.size() > 1 ? activation_params[1] : 0.5f;
-        add_scalar("alpha", alpha);
-        add_scalar("beta", beta);
+      for (uint8_t i = 0; i < spec->param_count; ++i) {
+        add_scalar(spec->param_ports[i], activation_params[i]);
       }
 
       AddOperationOutput(*act_op, *node.OutputDefs()[0]);
@@ -327,9 +329,17 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     }
     NodeAttrHelper fused_helper(node);
     const std::string activation = fused_helper.Get("activation", std::string(""));
-    if (!IsSupportedFusedConvActivation(activation)) {
+    const auto* spec = FindFusedConvActivationSpec(activation);
+    if (!spec) {
       LOGS(logger, VERBOSE) << "FusedConv activation [" << activation
                             << "] is not supported by the CoreML EP";
+      return false;
+    }
+    const auto activation_params = fused_helper.Get("activation_params", std::vector<float>{});
+    if (activation_params.size() != spec->param_count) {
+      LOGS(logger, VERBOSE) << "FusedConv activation [" << activation << "] expects "
+                            << static_cast<unsigned>(spec->param_count)
+                            << " activation_params, got " << activation_params.size();
       return false;
     }
   }
