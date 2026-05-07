@@ -10193,9 +10193,10 @@ TEST_F(GraphTransformationTests, DivMulFusion_MultiElementInitializer) {
 // `ratio.size() != 1` guard in `EliminateDropout`. ONNX Dropout requires
 // `ratio` to be a scalar, so a malformed (zero-element or multi-element)
 // initializer is rejected by ORT shape inference during `Model::Load` before
-// the optimizer ever runs. The guard in `dropout_elimination.cc` remains as
-// pure defense-in-depth against future internal callers that may bypass
-// shape inference.
+// the optimizer ever runs (verified locally: `Model::Load` returns
+// `[ShapeInferenceError] Ratio of Dropout must be a scalar`). The guard in
+// `dropout_elimination.cc` remains as pure defense-in-depth against future
+// internal callers that may bypass shape inference.
 
 }  // namespace test
 }  // namespace onnxruntime
