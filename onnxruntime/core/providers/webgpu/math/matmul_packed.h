@@ -27,7 +27,8 @@ class MatMulProgram final : public Program<MatMulProgram> {
                                           {"dim_inner", ProgramUniformVariableDataType::Uint32},
                                           {"logical_dispatch_x", ProgramUniformVariableDataType::Uint32},
                                           {"logical_dispatch_y", ProgramUniformVariableDataType::Uint32},
-                                          {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32});
+                                          {"logical_dispatch_z", ProgramUniformVariableDataType::Uint32},
+                                          {"splits_per_batch", ProgramUniformVariableDataType::Uint32});
 
   bool NeedSplitK() const;
 
@@ -58,7 +59,8 @@ class MatMulFillBiasOrZeroBeforeSplitKProgram final : public Program<MatMulFillB
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
-                                          {"beta", ProgramUniformVariableDataType::Float32});
+                                          {"beta", ProgramUniformVariableDataType::Float32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool is_gemm_ = false;
