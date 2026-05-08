@@ -172,19 +172,19 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
 // WGSL expressions for the ONNX empty-set identity value of each reduction op.
 // Per ONNX spec: Sum→0, Prod→1, Max→-inf, Min→+inf, Mean→0 (undefined, ORT uses 0).
 // ArgMax/ArgMin on empty input is undefined; output 0.
-// Use large magnitude constants instead of bitcast<f32>(inf) because the output type
-// may be f16 (output_value_t) and bitcast from u32→f32 would be a type mismatch.
+// For ±infinity, use division by zero (1.0/0.0) which is well-defined in WGSL/IEEE 754.
+// Cannot use bitcast<f32>(0xff800000u) because output_value_t may be f16.
 std::unordered_map<ReduceOpType, std::string> reduce_op_empty_identity_map = {
-    {ReduceOpType::Max, "output_value_t(-3.4028234663852886e+38f)"},           // -FLT_MAX ≈ -inf
-    {ReduceOpType::Min, "output_value_t(3.4028234663852886e+38f)"},            // FLT_MAX ≈ +inf
+    {ReduceOpType::Max, "(output_value_t(-1.0) / output_value_t(0.0))"},       // -inf
+    {ReduceOpType::Min, "(output_value_t(1.0) / output_value_t(0.0))"},        // +inf
     {ReduceOpType::Mean, "output_value_t(0)"},
     {ReduceOpType::Sum, "output_value_t(0)"},
     {ReduceOpType::Prod, "output_value_t(1)"},
     {ReduceOpType::SumSquare, "output_value_t(0)"},
-    {ReduceOpType::LogSumExp, "output_value_t(-3.4028234663852886e+38f)"},     // log(0) ≈ -inf
+    {ReduceOpType::LogSumExp, "(output_value_t(-1.0) / output_value_t(0.0))"},  // log(0) = -inf
     {ReduceOpType::L1, "output_value_t(0)"},
     {ReduceOpType::L2, "output_value_t(0)"},
-    {ReduceOpType::LogSum, "output_value_t(-3.4028234663852886e+38f)"},        // log(0) ≈ -inf
+    {ReduceOpType::LogSum, "(output_value_t(-1.0) / output_value_t(0.0))"},     // log(0) = -inf
     {ReduceOpType::ArgMax, "output_value_t(0)"},
     {ReduceOpType::ArgMin, "output_value_t(0)"},
     {ReduceOpType::ArgMax_select_last_index, "output_value_t(0)"},
