@@ -50,17 +50,9 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (model_builder.CreateMLProgram()) {
     using CoreML::Specification::MILSpec::Operation;
-    // The proto enum is `enum TensorProto_DataType : int`. `int` and `int32_t`
-    // are distinct C++ types (even when layout-compatible) so the cast bridges
-    // to int32_t — the codebase's convention for ONNX dtype codes and the
-    // type of `indices_dtype` / the GetType() out-parameter below. Values are
-    // small dtype tags (INT32=6, INT64=7), not int64 data being narrowed.
-    constexpr int32_t kInt32 = static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    constexpr int32_t kInt64 = static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-
-    // IsOpSupportedImpl gates indices to INT32 or INT64, so this returns one
-    // of those two values when reached via the partition pipeline.
-    int32_t indices_dtype = kInt32;
+    // IsOpSupportedImpl gates indices to INT32 or INT64, so we can pass the
+    // dtype straight through to the reshape's intermediate output.
+    int32_t indices_dtype{};
     ORT_RETURN_IF_NOT(GetType(indices_def, indices_dtype, logger),
                       "Failed to get 'indices' dtype");
     const int32_t output_dtype = static_cast<int32_t>(output_def.TypeAsProto()->tensor_type().elem_type());
@@ -78,9 +70,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
                         model_builder.AddConstant(reshape->type(), "shape", indices_1d_shape));
 
       indices_name = model_builder.GetUniqueName(node, "indices_1d");
-      AddIntermediateOperationOutput(*reshape, indices_name,
-                                     indices_dtype == kInt64 ? kInt64 : kInt32,
-                                     indices_1d_shape);
+      AddIntermediateOperationOutput(*reshape, indices_name, indices_dtype, indices_1d_shape);
       model_builder.AddOperation(std::move(reshape));
     }
 
