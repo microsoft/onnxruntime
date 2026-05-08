@@ -2057,7 +2057,9 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
-// Validates that a TensorProto's external data path does not escape the model directory and that the file exists.
+// Validates that a TensorProto's external data path does not escape the model directory.
+// Also validates that the file exists when filesystem access is available (skipped on WASM without a virtual FS).
+// Returns Status::OK() (no-op) for tensors that do not use external data files.
 static Status ValidateExternalDataPathForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                 const std::filesystem::path& model_path) {
   if (!utils::HasExternalDataInFile(tensor_proto)) {

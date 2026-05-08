@@ -721,14 +721,18 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
 TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Values) {
   // Create model directory and a "secret" file outside it.
   auto model_dir = base_dir_ / "model_dir";
-  std::filesystem::create_directories(model_dir);
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
 
   // Write known float data to a file outside the model directory.
-  auto secret_file = base_dir_ / "secret.txt";
+  auto secret_file = base_dir_ / "secret.bin";
   {
     std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
     float secret_data[] = {42.0f, 99.0f};
     ofs.write(reinterpret_cast<const char*>(secret_data), sizeof(secret_data));
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
   }
 
   // Construct a SparseTensorProto whose values use external data with a path-traversal location.
@@ -744,7 +748,7 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Values) 
 
   auto* loc = values->add_external_data();
   loc->set_key("location");
-  loc->set_value("../secret.txt");  // path traversal!
+  loc->set_value("../secret.bin");  // path traversal!
 
   auto* len_entry = values->add_external_data();
   len_entry->set_key("length");
@@ -775,22 +779,28 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Values) 
 // before that check runs (once the fix is in place).
 TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Indices) {
   auto model_dir = base_dir_ / "model_dir";
-  std::filesystem::create_directories(model_dir);
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
 
   // Write indices data (2 x int64) to a file outside the model directory.
   auto secret_file = base_dir_ / "indices_secret.bin";
   {
     std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
     int64_t idx_data[] = {0, 1};
     ofs.write(reinterpret_cast<const char*>(idx_data), sizeof(idx_data));
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
   }
 
   // Also need a valid values file inside the model directory.
   auto values_file = model_dir / "values.bin";
   {
     std::ofstream ofs(values_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << values_file;
     float val_data[] = {1.0f, 2.0f};
     ofs.write(reinterpret_cast<const char*>(val_data), sizeof(val_data));
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << values_file;
   }
 
   ONNX_NAMESPACE::SparseTensorProto sparse;
