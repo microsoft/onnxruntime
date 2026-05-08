@@ -305,9 +305,11 @@ Status CheckInputs(const T* query,
                            "total_sequence_length must be positive, got ", total_sequence_length, ".");
   }
 
-  // When there is no past KV (KV-shared / first-prompt), total_sequence_length
-  // must not exceed kv_sequence_length — the attention kernel reads up to
+  // When there is no past KV (first prompt), total_sequence_length must not
+  // exceed kv_sequence_length — the attention kernel reads up to
   // total_sequence_length from the K/V buffer which has kv_sequence_length entries.
+  // Note: KV-shared layers pass shared KV via past_key (past_key != nullptr),
+  // so this guard only applies to the first-prompt case.
   if (is_total_seqlen_on_cpu && past_key == nullptr && total_sequence_length > kv_sequence_length) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "total_sequence_length (", total_sequence_length,

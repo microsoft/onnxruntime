@@ -103,13 +103,7 @@ Status PrepareQKV(
   U* v = reinterpret_cast<U*>(data.present_value);
   int max_cache_length = parameters.seqlen_present_kv_cache;
 
-  if (!parameters.past_present_share_buffer && kv_sequence_length != sequence_length && kv_sequence_length > 0) {
-    // KV-shared decode (kv_seq != q_seq, kv_seq > 0): Transpose_BSNH_to_BNSH
-    // will write every element of the present buffer, so skip the memset.
-    // Note: kv_sequence_length == 0 (shared KV with past) does NOT run the
-    // transpose path — it copies past→present instead, so memset is still needed
-    // for the region beyond the copied data.
-  } else if (!parameters.past_present_share_buffer) {
+  if (!parameters.past_present_share_buffer) {
     size_t kv_buffer_size = (size_t)batch_size * kv_num_heads * max_cache_length * head_size * sizeof(U);
     CUDA_CALL_THROW(cudaMemsetAsync(data.present_key, 0, kv_buffer_size, stream));
     CUDA_CALL_THROW(cudaMemsetAsync(data.present_value, 0, kv_buffer_size, stream));
@@ -156,60 +150,6 @@ Status PrepareQKV(
     }
     // If do_rotary is false, Q is used directly from data.query (q_out == nullptr).
     // K/V present buffers already point to the shared past — no work needed.
-  } else if (kv_sequence_length != sequence_length) {
-    // When kv_sequence_length differs from sequence_length (KV-shared decode),
-    // K/V are borrowed from a source layer with the full context length and already
-    // have RoPE applied. We transpose Q and K/V separately via Transpose_BSNH_to_BNSH
-    // since they have different sequence lengths.
-    // KV-shared decode does not support do_rotary or packed QKV — RoPE is applied
-    // externally before the GQA op, and Q/K/V are separate inputs.
-    if (parameters.do_rotary) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "do_rotary is not supported when query and key have different sequence lengths. "
-                             "Apply RoPE externally before the GQA op for KV-shared layers.");
-    }
-    if (parameters.is_packed_qkv) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Packed QKV is not supported when query and key have different sequence lengths.");
-    }
-
-    // Q: use directly from input (already BSNH, no rotary needed)
-    // q_out is nullptr (no rotary, no packed), so q will point to data.query (set below)
-
-    // K/V: transpose BSNH → BNSH directly into present buffer at offset 0.
-    // No RoPE needed (already applied by source layer), no append offset (no past).
-    // Transpose_BSNH_to_BNSH accepts half/BFloat16/float, not CUDA native types.
-    if constexpr (std::is_same<T, U>::value) {
-      static_assert(std::is_same<T, __half>::value || std::is_same<T, __nv_bfloat16>::value,
-                    "KV-shared decode transpose only supports __half and __nv_bfloat16.");
-      if constexpr (std::is_same<T, __half>::value) {
-        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
-            batch_size, kv_sequence_length, kv_num_heads, head_size,
-            reinterpret_cast<const half*>(data.key),
-            reinterpret_cast<half*>(data.present_key),
-            stream, max_threads_per_block)));
-        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
-            batch_size, kv_sequence_length, kv_num_heads, head_size,
-            reinterpret_cast<const half*>(data.value),
-            reinterpret_cast<half*>(data.present_value),
-            stream, max_threads_per_block)));
-      } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
-        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
-            batch_size, kv_sequence_length, kv_num_heads, head_size,
-            reinterpret_cast<const onnxruntime::BFloat16*>(data.key),
-            reinterpret_cast<onnxruntime::BFloat16*>(data.present_key),
-            stream, max_threads_per_block)));
-        ORT_RETURN_IF_ERROR((Transpose_BSNH_to_BNSH(
-            batch_size, kv_sequence_length, kv_num_heads, head_size,
-            reinterpret_cast<const onnxruntime::BFloat16*>(data.value),
-            reinterpret_cast<onnxruntime::BFloat16*>(data.present_value),
-            stream, max_threads_per_block)));
-      }
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "KV-shared decode (query_seq_len != kv_seq_len) with quantized KV cache "
-                             "is not supported. Use non-quantized cache for KV-shared layers.");
-    }
   } else {
     ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
         parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,

@@ -113,21 +113,6 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
-  // present_key and present_value must be both present or both absent.
-  if ((present_k == nullptr) != (present_v == nullptr)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value must be both provided or both omitted.");
-  }
-
-  // Omitting present outputs is only safe when past_key is not provided.
-  // When past_key exists, ConcatStateChunkGQA must build a concatenated
-  // past+current KV buffer in present_key/present_value for the attention GEMMs.
-  if ((present_k == nullptr || present_v == nullptr) && past_key != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value outputs are required when past_key is provided. "
-                           "Omitting present outputs is only supported when there is no past KV cache.");
-  }
-
   std::vector<int64_t> output_qk_shape{static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(parameters.sequence_length), static_cast<int64_t>(parameters.total_sequence_length)};
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
@@ -159,12 +144,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
-    // KV-shared decode with empty K/V: only apply RoPE to Q, skip K.
-    if (kv_sequence_length != sequence_length && kv_sequence_length != 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "do_rotary is not supported when query and key have different sequence lengths. "
-                             "Apply RoPE externally before the GQA op for KV-shared layers.");
-    }
+    // When kv_sequence_length == 0 (shared KV), only Q needs RoPE — K is skipped below.
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};

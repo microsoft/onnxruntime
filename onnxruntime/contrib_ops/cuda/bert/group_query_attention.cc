@@ -267,30 +267,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   Tensor* present_key_output = context->Output(1, present_shape);    // present_key
   Tensor* present_value_output = context->Output(2, present_shape);  // present_value
 
-  // present_key and present_value must be both present or both absent.
-  if ((present_key_output == nullptr) != (present_value_output == nullptr)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value must be both provided or both omitted.");
-  }
-
-  // Omitting present outputs is only safe when past_key is not provided.
-  // When past_key exists, the kernel must concatenate past+current KV into present.
-  if ((present_key_output == nullptr || present_value_output == nullptr) && past_key != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "present_key and present_value outputs are required when past_key is provided. "
-                           "Omitting present outputs is only supported when there is no past KV cache.");
-  }
-
-  // When present outputs are omitted, allocate internal scratch buffers so the
-  // CUDA kernels (flash attention, MEA, unfused) have a valid KV workspace.
-  IAllocatorUniquePtr<void> present_key_scratch;
-  IAllocatorUniquePtr<void> present_value_scratch;
-  if (present_key_output == nullptr || present_value_output == nullptr) {
-    size_t present_kv_bytes = present_shape.Size() * sizeof(U);
-    present_key_scratch = GetScratchBuffer<void>(present_kv_bytes, GetComputeStream(context));
-    present_value_scratch = GetScratchBuffer<void>(present_kv_bytes, GetComputeStream(context));
-  }
-
   IAllocatorUniquePtr<void> k_buffer;
   IAllocatorUniquePtr<void> v_buffer;
   IAllocatorUniquePtr<void> rotary_buffer;
@@ -316,12 +292,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
-  data.present_key = (present_key_output != nullptr)
-                         ? reinterpret_cast<CudaU*>(present_key_output->MutableData<U>())
-                         : reinterpret_cast<CudaU*>(present_key_scratch.get());
-  data.present_value = (present_value_output != nullptr)
-                           ? reinterpret_cast<CudaU*>(present_value_output->MutableData<U>())
-                           : reinterpret_cast<CudaU*>(present_value_scratch.get());
+  data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
+  data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   parameters.past_present_share_buffer = (data.past_key != nullptr && data.past_key == data.present_key);
 
@@ -477,16 +449,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.past_seq_lens = seq_lens_buffer.get();
     data.total_seq_lens = seq_lens_buffer.get() + parameters.batch_size;
     data.padded_seq_lens = data.total_seq_lens + parameters.batch_size;
-    // For KV-shared decode (no past_key but not first_prompt), treat as first_prompt
-    // for sequence length computation so past_seq_lens = 0 (no past to offset from).
-    bool effective_is_first_prompt = parameters.is_first_prompt || (past_key == nullptr);
     ORT_RETURN_IF_ERROR(LaunchGetSequenceLengths(total_seq_lens_minus_one->Data<int>(),
                                                  data.past_seq_lens,
                                                  data.total_seq_lens,
                                                  data.padded_seq_lens,
                                                  parameters.batch_size,
                                                  parameters.sequence_length,
-                                                 effective_is_first_prompt,
+                                                 parameters.is_first_prompt,
                                                  cuda_stream,
                                                  device_prop.maxThreadsPerBlock));
     DUMP_TENSOR_INIT();
