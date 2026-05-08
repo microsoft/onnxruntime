@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-
 #include <vector>
 
 #if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <dlfcn.h>
@@ -15,6 +15,20 @@
 #include "absl/debugging/symbolize.h"
 
 namespace {
+
+inline int GetAddr2LineEnv() {
+  const char* val = std::getenv("ORT_ADDR2LINE");
+  if (val == nullptr) {
+    return 0;
+  }
+  return atoi(val);
+}
+
+// Check once whether ORT_ENABLE_ADDR2LINE is set.
+int GetAddr2LineCount() {
+  static const int count = GetAddr2LineEnv();
+  return count;
+}
 
 // Resolve file offsets to file:line using addr2line, grouped by binary.
 // Returns a map from original address to "file:line" string.
@@ -90,8 +104,14 @@ std::vector<std::string> GetStackTrace() {
   int depth = absl::GetStackTrace(addresses, kCallstackLimit, /*skip_count=*/2);
   stack.reserve(depth);
 
-  // Attempt to resolve file:line via addr2line (best-effort, debug builds only).
-  auto resolved = ResolveWithAddr2Line(addresses, depth);
+  // Resolve file:line via addr2line only when explicitly opted in via
+  // ORT_ENABLE_ADDR2LINE=1, since it spawns external processes and can be
+  // very slow on large debug binaries.
+  std::unordered_map<void*, std::string> resolved;
+  int count = GetAddr2LineCount();
+  if (count > 0) {
+    resolved = ResolveWithAddr2Line(addresses, std::min(depth, count));
+  }
 
   for (int i = 0; i < depth; ++i) {
     std::ostringstream oss;
@@ -102,7 +122,6 @@ std::vector<std::string> GetStackTrace() {
       oss << "[unknown]";
     }
 
-    // Append file:line if resolved, otherwise the raw address as fallback.
     auto it = resolved.find(addresses[i]);
     if (it != resolved.end()) {
       oss << " at " << it->second;
