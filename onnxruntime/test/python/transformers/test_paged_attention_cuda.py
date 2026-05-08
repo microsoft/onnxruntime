@@ -538,6 +538,7 @@ def parity_check_paged_attention(
     if new_seqlens_override is not None:
         new_seqlens = new_seqlens_override.to(dtype=torch.int32, device="cuda")
         assert new_seqlens.shape == (config.batch_size,)
+        assert int(new_seqlens.min().item()) >= 0
         assert int(new_seqlens.max().item()) <= config.sequence_length
     else:
         new_seqlens = torch.randint(
