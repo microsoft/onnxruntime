@@ -123,6 +123,8 @@ class MatMulNBits final : public OpKernel {
       has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     }
 
+    has_zp_arg_ = zero_point_arg != nullptr;
+
     ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
                 "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
@@ -151,6 +153,7 @@ class MatMulNBits final : public OpKernel {
   const bool prefer_lut_gemm_{false};
   const MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type_;
   bool has_unquantized_zero_point_{false};
+  bool has_zp_arg_{false};  // true if the node has a zero_point input (constant or dynamic)
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_{};
   size_t packed_b_size_{0};
@@ -224,6 +227,13 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     return Status::OK();
   }
   if (has_unquantized_zero_point_ && !prefer_lut_gemm_) {
+    return Status::OK();
+  }
+
+  // LUT GEMM requires ZP to be a constant initializer for prepacking. If the node
+  // has a ZP input but it's dynamic, skip LUT packing and fall through to the
+  // unpacked dequant path at compute time (similar to KleidiAI's dynamic ZP fallback).
+  if (prefer_lut_gemm_ && has_zp_arg_ && !has_zp_input_) {
     return Status::OK();
   }
 
@@ -922,25 +932,26 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
                 "non-MLAS de-quantization for now");
 
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
+    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
+    // MatMulNBits<float> only float (not MLFloat16) ZP can reach this branch.
     if (zero_points && zero_points->IsDataType<float>()) {
       if (nbits_ == 2) {
         ORT_ENFORCE(reorder_idx_data == nullptr,
                     "g_idx (reorder index) is not supported for 2-bit quantization with float zero points");
         // Simple 2-bit dequantization with float zero points
         const float* float_zp = static_cast<const float*>(zero_points_data);
-        int32_t k_blocks = (static_cast<int32_t>(K_) + static_cast<int32_t>(block_size_) - 1) /
-                           static_cast<int32_t>(block_size_);
-        int32_t packed_k = k_blocks * static_cast<int32_t>(block_size_);
-        int32_t bytes_per_col = packed_k / 4;
-        for (int32_t n = 0; n < static_cast<int32_t>(N_); n++) {
-          for (int32_t k = 0; k < static_cast<int32_t>(K_); k++) {
-            int32_t block_idx = k / static_cast<int32_t>(block_size_);
+        size_t k_blocks = (K_ + block_size_ - 1) / block_size_;
+        size_t packed_k = k_blocks * block_size_;
+        size_t bytes_per_col = packed_k / 4;
+        for (size_t n = 0; n < N_; n++) {
+          for (size_t k = 0; k < K_; k++) {
+            size_t block_idx = k / block_size_;
             float scale = scales_data[n * k_blocks + block_idx];
             float zp = float_zp[n * k_blocks + block_idx];
-            int32_t packed_idx = n * bytes_per_col + k / 4;
-            int32_t bit_offset = (k % 4) * 2;
+            size_t packed_idx = n * bytes_per_col + k / 4;
+            int bit_offset = static_cast<int>((k % 4) * 2);
             uint8_t q = (b_data[packed_idx] >> bit_offset) & 0x3;
-            tmp_b_data_ptr.get()[n * static_cast<int32_t>(K_) + k] =
+            tmp_b_data_ptr.get()[n * K_ + k] =
                 (static_cast<float>(q) - zp) * scale;
           }
         }
@@ -1082,25 +1093,26 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                 "non-MLAS de-quantization for now");
 
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
+    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
+    // MatMulNBits<MLFloat16> only MLFloat16 (not float) ZP can reach this branch.
     if (zero_points && zero_points->IsDataType<MLFloat16>()) {
       if (nbits_ == 2) {
         ORT_ENFORCE(reorder_idx_data == nullptr,
                     "g_idx (reorder index) is not supported for 2-bit quantization with float zero points");
         // Simple 2-bit dequantization with MLFloat16 zero points
         const MLFloat16* fp16_zp = static_cast<const MLFloat16*>(zero_points_data);
-        int32_t k_blocks = (static_cast<int32_t>(K_) + static_cast<int32_t>(block_size_) - 1) /
-                           static_cast<int32_t>(block_size_);
-        int32_t packed_k = k_blocks * static_cast<int32_t>(block_size_);
-        int32_t bytes_per_col = packed_k / 4;
-        for (int32_t n = 0; n < static_cast<int32_t>(N_); n++) {
-          for (int32_t k = 0; k < static_cast<int32_t>(K_); k++) {
-            int32_t block_idx = k / static_cast<int32_t>(block_size_);
+        size_t k_blocks = (K_ + block_size_ - 1) / block_size_;
+        size_t packed_k = k_blocks * block_size_;
+        size_t bytes_per_col = packed_k / 4;
+        for (size_t n = 0; n < N_; n++) {
+          for (size_t k = 0; k < K_; k++) {
+            size_t block_idx = k / block_size_;
             float scale = scales_ptr[n * k_blocks + block_idx];
             float zp = fp16_zp[n * k_blocks + block_idx].ToFloat();
-            int32_t packed_idx = n * bytes_per_col + k / 4;
-            int32_t bit_offset = (k % 4) * 2;
+            size_t packed_idx = n * bytes_per_col + k / 4;
+            int bit_offset = static_cast<int>((k % 4) * 2);
             uint8_t q = (b_data[packed_idx] >> bit_offset) & 0x3;
-            tmp_b_data_ptr.get()[n * static_cast<int32_t>(K_) + k] =
+            tmp_b_data_ptr.get()[n * K_ + k] =
                 (static_cast<float>(q) - zp) * scale;
           }
         }

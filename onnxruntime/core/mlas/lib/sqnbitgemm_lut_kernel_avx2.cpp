@@ -933,7 +933,7 @@ PackQuantBData_avx2(
 // AVX2 optimized scales and zero points packing for T-MAC LUT GEMM
 // This performs the same transformation as the scalar version but uses SIMD operations
 //
-template <bool HasZeroPoint>
+template <bool HasZeroPoint, bool IsFloatZeroPoint>
 static void
 PackScalesAndZeroPoints_avx2_impl(
     size_t N,
@@ -945,7 +945,6 @@ PackScalesAndZeroPoints_avx2_impl(
     float* PackedScalesBegin,
     const float* QuantBScale,
     const void* QuantBZeroPoint,
-    bool IsFloatZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -963,22 +962,28 @@ PackScalesAndZeroPoints_avx2_impl(
     const int midpoint = 1 << (bits - 1);  // 2 for 2-bit
     const uint8_t bits_mask = static_cast<uint8_t>((1 << bits) - 1);
 
-    // Cast ZP pointers based on type
-    const uint8_t* uint8_zp = IsFloatZeroPoint ? nullptr : static_cast<const uint8_t*>(QuantBZeroPoint);
-    const float* float_zp = IsFloatZeroPoint ? static_cast<const float*>(QuantBZeroPoint) : nullptr;
+    // Cast ZP pointers based on type (compile-time selection)
+    [[maybe_unused]] const uint8_t* uint8_zp = nullptr;
+    [[maybe_unused]] const float* float_zp = nullptr;
+    if constexpr (IsFloatZeroPoint) {
+        float_zp = static_cast<const float*>(QuantBZeroPoint);
+    } else {
+        uint8_zp = static_cast<const uint8_t*>(QuantBZeroPoint);
+    }
 
     const size_t TotalBlocks = N * row_blks;
     ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
 
     // Lambda to compute ZP correction for a given (row, block) pair
     auto compute_zp_correction = [&](size_t im, size_t blk_in_col, float scale) -> float {
-        if (IsFloatZeroPoint) {
+        if constexpr (IsFloatZeroPoint) {
             return (float_zp[im * nb1 + blk_in_col] - static_cast<float>(midpoint)) * scale;
+        } else {
+            size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
+            size_t elem_idx = blk_in_col % num_elem_per_byte;
+            uint8_t v = (uint8_zp[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
+            return static_cast<float>(static_cast<int>(v) - midpoint) * scale;
         }
-        size_t zp_byte_idx = im * zp_bytes_per_col + blk_in_col / num_elem_per_byte;
-        size_t elem_idx = blk_in_col % num_elem_per_byte;
-        uint8_t v = (uint8_zp[zp_byte_idx] >> (elem_idx * bits)) & bits_mask;
-        return static_cast<float>(static_cast<int>(v) - midpoint) * scale;
     };
 
     if (N >= static_cast<size_t>(MaxThreads) || row_blks <= 1) {
@@ -1078,14 +1083,21 @@ PackScalesAndZeroPoints_avx2(
     assert(bits == 2);
 
     if (HasZeroPoint) {
-        PackScalesAndZeroPoints_avx2_impl<true>(
-            N, K, bits, BlkLen, simd_n_out, bm,
-            PackedScalesBegin, QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool
-        );
+        if (IsFloatZeroPoint) {
+            PackScalesAndZeroPoints_avx2_impl<true, true>(
+                N, K, bits, BlkLen, simd_n_out, bm,
+                PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+            );
+        } else {
+            PackScalesAndZeroPoints_avx2_impl<true, false>(
+                N, K, bits, BlkLen, simd_n_out, bm,
+                PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+            );
+        }
     } else {
-        PackScalesAndZeroPoints_avx2_impl<false>(
+        PackScalesAndZeroPoints_avx2_impl<false, false>(
             N, K, bits, BlkLen, simd_n_out, bm,
-            PackedScalesBegin, QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool
+            PackedScalesBegin, QuantBScale, QuantBZeroPoint, ThreadPool
         );
     }
 }

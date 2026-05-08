@@ -364,6 +364,13 @@ MlasIsLutGemmAvailable(
         return false;
     }
 
+    // K must be divisible by BlkLen. The packing and compute kernels use
+    // floor division (K / BlkLen) for per-column block strides, which
+    // diverges from the caller's ceiling division when K % BlkLen != 0.
+    if (K % BlkLen != 0) {
+        return false;
+    }
+
     size_t n_div = 0;
     switch (BlkBitWidth) {
         case 1:
