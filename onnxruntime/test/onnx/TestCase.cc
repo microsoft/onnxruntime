@@ -958,6 +958,60 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"cast_UINT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
       {"cast_UINT4_to_UINT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      // Spec-leading: PR #28379 fixed CPU Attention to match the corrected
+      // scale -> softcap -> bias/mask -> softmax ordering established by
+      // onnx/onnx#7867 (softcap before mask) and onnx/onnx#7913
+      // (qk_matmul_output_mode values 1<->2 swap). The bundled
+      // cmake/external/onnx is v1.21.0, which predates both PRs. The fixtures
+      // below were regenerated upstream to match the new semantics; our impl
+      // now produces the new-spec output, which disagrees with the still-old
+      // fixtures shipped in v1.21.0. Skip until cmake/external/onnx is bumped
+      // to >= v1.22.
+      // TODO(onnx-v1.22): remove this block when cmake/external/onnx is bumped to v1.22+ which includes ONNX PRs #7867 + #7913.
+      {"attention_3d_with_past_and_present_qk_matmul_softcap",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_3d_with_past_and_present_qk_matmul_softcap_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_4d_with_qk_matmul_softcap",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_4d_with_qk_matmul_softcap_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_3d_with_past_and_present_qk_matmul_bias",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_3d_with_past_and_present_qk_matmul_bias_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_qk_matmul_bias",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_qk_matmul_bias_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      // Pre-#7867 fixture: the bundled v1.21.0 mask4d_padded_kv fixture was
+      // generated with the old softcap/mask ordering; our impl now produces
+      // the post-#7867 output. Will be re-enabled when cmake/external/onnx
+      // is bumped to >= v1.22.
+      {"attention_4d_diff_heads_mask4d_padded_kv",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_4d_diff_heads_mask4d_padded_kv_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},

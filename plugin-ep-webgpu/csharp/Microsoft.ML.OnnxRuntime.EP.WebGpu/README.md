@@ -2,6 +2,14 @@
 
 WebGPU plugin Execution Provider for [ONNX Runtime](https://github.com/microsoft/onnxruntime).
 
+### Prerequisites
+
+This package provides the WebGPU plugin EP only. Your project must separately reference an ONNX Runtime
+core package (e.g. `Microsoft.ML.OnnxRuntime`) of version `@min_onnxruntime_version@` or later.
+
+If the referenced ONNX Runtime is incompatible, the plugin EP will report an error when its library is
+registered.
+
 ### Usage
 
 ```csharp

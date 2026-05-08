@@ -73,7 +73,7 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
-      - template: ../templates/set-plugin-build-variables-step.yml
+      - template: ../templates/set-plugin-ep-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
@@ -98,9 +98,9 @@ stages:
       # Since CUDA 13.0, CUDA DLLs are in bin\x64 folder instead of bin folder for Windows.
       - powershell: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
-          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin\x64"
-          Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
+          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin"
+          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin\x64"
+          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
         displayName: 'Add CUDA to PATH'
 
       # Download cuDNN separately for CUDA 13.0
@@ -245,7 +245,7 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
-      - template: ../templates/set-plugin-build-variables-step.yml
+      - template: ../templates/set-plugin-ep-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
