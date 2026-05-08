@@ -175,8 +175,8 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
 // For ±infinity, use division by zero (1.0/0.0) which is well-defined in WGSL/IEEE 754.
 // Cannot use bitcast<f32>(0xff800000u) because output_value_t may be f16.
 std::unordered_map<ReduceOpType, std::string> reduce_op_empty_identity_map = {
-    {ReduceOpType::Max, "(output_value_t(-1.0) / output_value_t(0.0))"},       // -inf
-    {ReduceOpType::Min, "(output_value_t(1.0) / output_value_t(0.0))"},        // +inf
+    {ReduceOpType::Max, "(output_value_t(-1.0) / output_value_t(0.0))"},  // -inf
+    {ReduceOpType::Min, "(output_value_t(1.0) / output_value_t(0.0))"},   // +inf
     {ReduceOpType::Mean, "output_value_t(0)"},
     {ReduceOpType::Sum, "output_value_t(0)"},
     {ReduceOpType::Prod, "output_value_t(1)"},
@@ -184,7 +184,7 @@ std::unordered_map<ReduceOpType, std::string> reduce_op_empty_identity_map = {
     {ReduceOpType::LogSumExp, "(output_value_t(-1.0) / output_value_t(0.0))"},  // log(0) = -inf
     {ReduceOpType::L1, "output_value_t(0)"},
     {ReduceOpType::L2, "output_value_t(0)"},
-    {ReduceOpType::LogSum, "(output_value_t(-1.0) / output_value_t(0.0))"},     // log(0) = -inf
+    {ReduceOpType::LogSum, "(output_value_t(-1.0) / output_value_t(0.0))"},  // log(0) = -inf
     {ReduceOpType::ArgMax, "output_value_t(0)"},
     {ReduceOpType::ArgMin, "output_value_t(0)"},
     {ReduceOpType::ArgMax_select_last_index, "output_value_t(0)"},
