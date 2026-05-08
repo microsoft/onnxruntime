@@ -2034,6 +2034,44 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
   test_case({1, 8, 64, 64}, {4}, {1, 4, 128, 128}, 1, true /*use_contrib_qdq*/);
 }
 
+TEST(QDQTransformerTests, Resize_NonNearest_No_Fusion) {
+  // Resize with mode="linear" or mode="cubic" is not order-preserving on integers.
+  // The surrounding Q/DQ pair must NOT be dropped. See issue #21319.
+  auto test_case = [&](const std::vector<int64_t>& input1_shape,
+                       const std::vector<int64_t>& sizes_shape,
+                       const std::string& mode,
+                       bool use_contrib_qdq = false) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count["Resize"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+    };
+
+    TransformerTester(BuildQDQResizeTestCase(input1_shape,
+                                             sizes_shape,
+                                             mode,                  // mode (linear or cubic)
+                                             "half_pixel",          // coordinate_transformation_mode
+                                             "round_prefer_floor",  // nearest_mode (unused for linear/cubic)
+                                             false,                 // add_dq_output_float
+                                             use_contrib_qdq),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+
+  RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
+  // mode="linear"
+  test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), "linear");
+  test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), "linear",
+            true /*use_contrib_qdq*/);
+  // mode="cubic"
+  test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), "cubic");
+  test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), "cubic",
+            true /*use_contrib_qdq*/);
+}
+
 TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_shape,
