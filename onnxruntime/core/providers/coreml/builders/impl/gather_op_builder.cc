@@ -50,6 +50,10 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (model_builder.CreateMLProgram()) {
     using CoreML::Specification::MILSpec::Operation;
+    // Cast normalises the protobuf-generated enum (whose underlying type
+    // isn't guaranteed) to int32_t — the codebase's convention for ONNX
+    // dtype codes and the type of `indices_dtype` / GetType() below. Values
+    // are small dtype tags (INT32=6, INT64=7), not int64 data.
     constexpr int32_t kInt32 = static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32);
     constexpr int32_t kInt64 = static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_INT64);
 
