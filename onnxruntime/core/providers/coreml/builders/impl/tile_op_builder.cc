@@ -26,6 +26,8 @@ class TileOpBuilder : public BaseOpBuilder {
                          const logging::Logger& logger) const override;
 
   bool SupportsMLProgram() const override { return true; }
+
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 void TileOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {

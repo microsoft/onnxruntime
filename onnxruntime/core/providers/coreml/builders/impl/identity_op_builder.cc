@@ -15,6 +15,8 @@ class IdentityOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
 
   bool SupportsMLProgram() const override { return true; }
+
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,

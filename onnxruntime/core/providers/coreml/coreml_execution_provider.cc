@@ -6,12 +6,12 @@
 
 #include <algorithm>
 
-#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -94,26 +94,22 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   // (~50-100us marshalling) outweighs the saving when the partition has no compute-heavy
   // op to amortise it over. Per-op CoreML dispatch cost is ~10-14us on M3 Max even for
   // trivial ops (Identity/Ceil/Tile etc.), and CPU runs them in <1us each.
-  // A partition is kept iff it contains at least one node that is NOT in this trivial set.
-  static const InlinedHashSet<std::string_view> kTrivialOpTypes = {
-      "Identity",
-      "Cast",
-      "Reshape",
-      "Squeeze",
-      "Unsqueeze",
-      "Flatten",
-      "Transpose",
-      "Tile",
-      "Ceil",
+  //
+  // The "trivial" marker lives on each op builder's IOpBuilder::IsTrivial(node)
+  // override rather than as a hardcoded set here, so adding a new trivial op
+  // builder doesn't risk drifting from a list maintained at the EP level.
+  const auto& op_builders = coreml::GetOpBuilders();
+  const auto is_node_trivial = [&](const Node* node) -> bool {
+    auto it = op_builders.find(node->OpType());
+    return it != op_builders.end() && it->second->IsTrivial(*node);
   };
   const auto is_node_supported = [&](const Node& node) -> bool {
     return supported_nodes.find(&node) != supported_nodes.end();
   };
   const auto on_group_closed = [&](const std::vector<const Node*>& group) -> bool {
     // Keep the partition only if at least one node is non-trivial.
-    return std::any_of(group.begin(), group.end(), [](const Node* node) {
-      return kTrivialOpTypes.find(std::string_view{node->OpType()}) == kTrivialOpTypes.end();
-    });
+    return std::any_of(group.begin(), group.end(),
+                       [&](const Node* node) { return !is_node_trivial(node); });
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,

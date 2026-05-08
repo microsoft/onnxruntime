@@ -18,6 +18,11 @@ class UnaryOpBuilder : public BaseOpBuilder {
   bool SupportsMLProgram() const override { return true; }
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+
+  // Of the unary ops this builder handles, only Ceil is cheap enough to count
+  // as trivial. Erf/Round/Exp/Reciprocal/Sqrt are all transcendental or
+  // multi-cycle ops and earn their own marshalling cost.
+  bool IsTrivial(const Node& node) const override { return node.OpType() == "Ceil"; }
 };
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
