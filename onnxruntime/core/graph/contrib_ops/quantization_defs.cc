@@ -952,11 +952,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     DynamicQuantMatMulFp8, 1,
     OpSchema()
         .SetDoc("Symmetric quantized MatMul for fp8 weights (with optional prepack conversion from "
-                "float16/bfloat16/float) and runtime casting of activations to fp8 using tile-wise scales. "
+                "float16/bfloat16/float) and runtime casting of activations to fp8 using block-wise scales. "
                 "All zero-point inputs, when provided, must encode 0.0.")
         .Input(0, "A", "Input tensor A.", "TA")
         .Input(1, "a_scale",
-               "Scale of quantized input 'A'. Must be a tile-wise tensor with shape "
+               "Scale of quantized input 'A'. Must be a block-wise tensor with shape "
                "(ceil(M / block_size_m), K / block_size_k), or the same shape with output batch dimensions prefixed.",
                "TS")
         .Input(2, "a_zero_point",
@@ -967,7 +967,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "supported when B is a constant initializer that can be quantized during prepack.",
                "TB")
         .Input(4, "b_scale",
-               "Scale of input 'B'. Must be a tile-wise tensor with shape "
+               "Scale of input 'B'. Must be a block-wise tensor with shape "
                "(K / block_size_k, N / block_size_n).",
                "TS")
         .Input(5, "b_zero_point",
@@ -979,11 +979,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Zero point tensor for output 'Y'. Must be a scalar encoding 0.0 when provided.", "TZ",
                OpSchema::Optional)
         .Output(0, "Y", "Output tensor of shape (..., M, N).", "TY")
-        .Attr("block_size_m", "Block size along M for A tile-wise scales.", AttributeProto::INT,
+        .Attr("block_size_m", "Block size along M for A block-wise scales.", AttributeProto::INT,
               static_cast<int64_t>(128))
-        .Attr("block_size_k", "Block size along K for A and B tile-wise scales.", AttributeProto::INT,
+        .Attr("block_size_k", "Block size along K for A and B block-wise scales.", AttributeProto::INT,
               static_cast<int64_t>(128))
-        .Attr("block_size_n", "Block size along N for B tile-wise scales.", AttributeProto::INT,
+        .Attr("block_size_n", "Block size along N for B block-wise scales.", AttributeProto::INT,
               static_cast<int64_t>(128))
         .TypeConstraint("TA", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                         "Constrain input A type to float16, bfloat16, or float.")
