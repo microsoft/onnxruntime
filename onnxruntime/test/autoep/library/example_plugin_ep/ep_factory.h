@@ -106,12 +106,12 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const char* compatibility_info,
       OrtCompiledModelCompatibility* model_compatibility) noexcept;
 
-  static OrtStatus* ORT_API_CALL SelectBestCompiledModelCompatibilityInfoImpl(
+  static OrtStatus* ORT_API_CALL SelectBestCompiledModelCandidateImpl(
       OrtEpFactory* this_ptr,
       const OrtHardwareDevice* const* devices,
       size_t num_devices,
-      const char* const* compatibility_infos,
-      size_t num_compatibility_infos,
+      const OrtCompiledModelCandidateMetadata* candidates,
+      size_t num_candidates,
       size_t* selected_index) noexcept;
 
   const std::string ep_name_;              // EP name

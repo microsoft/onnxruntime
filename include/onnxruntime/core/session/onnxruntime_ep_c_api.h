@@ -2111,6 +2111,19 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
   OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES = 1,
 } OrtGraphCaptureNodeAssignmentPolicy;
 
+/** \brief Per-candidate metadata passed to SelectBestCompiledModelCandidate.
+ *
+ * Required key:
+ *   - "ep_compatibility_info"
+ *
+ * \since Version 1.27.
+ */
+typedef struct OrtCompiledModelCandidateMetadata {
+  _In_reads_(num_entries) const char* const* keys;
+  _In_reads_(num_entries) const char* const* values;
+  size_t num_entries;
+} OrtCompiledModelCandidateMetadata;
+
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
@@ -2966,9 +2979,12 @@ struct OrtEpFactory {
   ORT_API2_STATUS(DeinitGraphicsInterop, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device);
 
-  /** \brief Select the best compiled model compatibility info from candidate strings.
+  /** \brief Select the best compiled model candidate from metadata lists.
    *
-   * Evaluates each candidate compatibility string against the given hardware devices and returns the selected index.
+   * Evaluates each candidate metadata against the given hardware devices and returns the selected index.
+   *
+   * Each candidate metadata can have multiple entrys and the entry with "ep_compatibility_info" key is required,
+   * it's associated value is the compatibility information stored in onnx model metadata.
    *
    * Context about having this function:
    * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
@@ -2980,22 +2996,21 @@ struct OrtEpFactory {
    * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] devices Array of OrtHardwareDevice pointers that the EP would run on. All must map to this EP.
-   * \param[in] num_devices Number of entries in `devices`.
-   * \param[in] compatibility_infos Array of candidate compatibility strings.
-   * \param[in] num_compatibility_infos Number of entries in `compatibility_infos`.
-   * \param[out] selected_index Index of selected candidate, or SIZE_MAX if all candidates are unsupported.
+   * \param[in] devices Target hardware devices.
+   * \param[in] num_devices Number of devices.
+   * \param[in] candidates Array of candidate metadata entries (one per model variant).
+   * \param[in] num_candidates Number of candidates.
+   * \param[out] selected_index Selected candidate index, or SIZE_MAX if all unsupported.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.27.
    */
-  ORT_API2_STATUS(SelectBestCompiledModelCompatibilityInfo,
-                  _In_ OrtEpFactory* this_ptr,
+  ORT_API2_STATUS(SelectBestCompiledModelCandidate, _In_ OrtEpFactory* this_ptr,
                   _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                   _In_ size_t num_devices,
-                  _In_reads_(num_compatibility_infos) const char* const* compatibility_infos,
-                  _In_ size_t num_compatibility_infos,
+                  _In_reads_(num_candidates) const OrtCompiledModelCandidateMetadata* candidates,
+                  _In_ size_t num_candidates,
                   _Out_ size_t* selected_index);
 };
 

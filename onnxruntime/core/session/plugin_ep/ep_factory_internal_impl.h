@@ -122,17 +122,17 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
-  virtual OrtStatus* SelectBestCompiledModelCompatibilityInfo(
+  virtual OrtStatus* SelectBestCompiledModelCandidate(
       _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
       _In_ size_t num_devices,
-      _In_reads_(num_compatibility_infos) const char* const* compatibility_infos,
-      _In_ size_t num_compatibility_infos,
+      _In_reads_(num_candidates) const OrtCompiledModelCandidateMetadata* candidates,
+      _In_ size_t num_candidates,
       _Out_ size_t* selected_index) noexcept {
     ORT_UNUSED_PARAMETER(devices);
     ORT_UNUSED_PARAMETER(num_devices);
-    if (compatibility_infos == nullptr || num_compatibility_infos == 0 || selected_index == nullptr) {
+    if (candidates == nullptr || num_candidates == 0 || selected_index == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Invalid arguments to SelectBestCompiledModelCompatibilityInfo.");
+                                   "Invalid arguments to SelectBestCompiledModelCandidate.");
     }
 
     // Default implementation: all candidates are unsupported, sets `selected_index` to SIZE_MAX.

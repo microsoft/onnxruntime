@@ -13,7 +13,7 @@
 
 using namespace onnxruntime;
 
-TEST(EpCompatibilitySelectBestTest, SelectBestCompiledModelCompatibilityInfo_UsesHardwareDevices) {
+TEST(EpCompatibilitySelectBestTest, SelectBestCompiledModelCandidate_UsesHardwareDevices) {
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpCompatSelectBestExampleEp"};
 
   onnxruntime::test::RegisteredEpDeviceUniquePtr example_ep;
@@ -25,13 +25,10 @@ TEST(EpCompatibilitySelectBestTest, SelectBestCompiledModelCompatibilityInfo_Use
   const OrtEpDevice* ep_device = example_ep.get();
   OrtEpFactory* factory = ep_device->GetMutableFactory();
   ASSERT_NE(factory, nullptr);
-  ASSERT_NE(factory->SelectBestCompiledModelCompatibilityInfo, nullptr);
+  ASSERT_NE(factory->SelectBestCompiledModelCandidate, nullptr);
 
-  // API takes OrtHardwareDevice[].
   const OrtHardwareDevice* devices[] = {ep_device->device};
 
-  // Match ExampleEpFactory::ValidateCompiledModelCompatibilityInfoImpl format:
-  // "<ep_name>;version=X;ort_api_version=Y;hardware_architecture=Z"
   const std::string ep_name = factory->GetName(factory);
 
   const std::string optimal =
@@ -43,25 +40,24 @@ TEST(EpCompatibilitySelectBestTest, SelectBestCompiledModelCompatibilityInfo_Use
   const std::string unsupported =
       "SomeOtherEp;version=0.1.0;ort_api_version=" + std::to_string(ORT_API_VERSION) + ";hardware_architecture=arch1";
 
-  const char* compatibility_infos[] = {
-      unsupported.c_str(),
-      prefer_recompile.c_str(),
-      optimal.c_str(),
+  const char* keys[] = {"ep_compatibility_info"};
+  const char* values0[] = {unsupported.c_str()};
+  const char* values1[] = {prefer_recompile.c_str()};
+  const char* values2[] = {optimal.c_str()};
+
+  const OrtCompiledModelCandidateMetadata candidates[] = {
+      {keys, values0, 1},
+      {keys, values1, 1},
+      {keys, values2, 1},
   };
 
   size_t selected_index = std::numeric_limits<size_t>::max();
-  OrtStatus* st = factory->SelectBestCompiledModelCompatibilityInfo(
-      factory,
-      devices,
-      1,
-      compatibility_infos,
-      3,
-      &selected_index);
+  OrtStatus* st = factory->SelectBestCompiledModelCandidate(
+      factory, devices, 1, candidates, 3, &selected_index);
 
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
   ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
 
-  // Best candidate should be the fully optimal one.
   EXPECT_EQ(selected_index, 2u);
 }
