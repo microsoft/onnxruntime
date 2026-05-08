@@ -24,6 +24,7 @@ class GpuBufferAllocator : public IAllocator {
   GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter, bool is_read_only_allocator);
 
   // Re-reads the buffer manager from the getter and caches it.
+  // No-op if constructed with a direct BufferManager reference (no getter).
   void RefreshBufferManager();
 
   virtual void* Alloc(size_t size) override;
@@ -32,8 +33,8 @@ class GpuBufferAllocator : public IAllocator {
 
  private:
   AllocatorStats stats_;
-  std::function<const BufferManager&()> buffer_manager_getter_;
-  const BufferManager* buffer_manager_;  // cached from getter
+  std::function<const BufferManager&()> buffer_manager_getter_;  // may be empty
+  const BufferManager* buffer_manager_;                          // cached from getter, or direct pointer
   bool mapped_at_creation_;
 };
 
