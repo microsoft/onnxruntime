@@ -1523,6 +1523,74 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesInt64Data) {
 #endif
 }
 
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesInt32Indices) {
+  // INT32 'indices'. The other scalar-indices tests use INT64 indices (the
+  // PyTorch default); this one exercises the INT32 branch through both the
+  // dtype gating in IsOpSupportedImpl and the indices_dtype path-through to
+  // the reshape's intermediate output dtype in AddToModelBuilderImpl.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_int32_indices", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_value(3);
+  data_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  idx_init.add_int32_data(2);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_int32_idx", "Gather", "Gather scalar int32 idx",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(0));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {3, 4};
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesInt32Indices_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesInt32Indices_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank4Data) {
   // Rank-4 'data' input — the supported maximum for scalar Gather (the
   // pre-squeeze intermediate is rank 4; CoreML's compiler rejects scalar
