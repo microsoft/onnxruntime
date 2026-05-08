@@ -1541,7 +1541,9 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferCeil_HalfPixel_GH28291_Reg
       X[1], X[5], X[8], X[11], X[15], X[18]};
 
   test.AddOutput<float>("Y", {N, C, H, 6}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+  // OpenVINO EP does not implement the epsilon-based rounding fix for half_pixel ties.
+  std::unordered_set<std::string> excluded_eps = {kOpenVINOExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_eps));
 }
 
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
@@ -3161,7 +3163,7 @@ TEST(ResizeOpTest, Axes_and_Scales_CountMismatch_18) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Number of elements in scales should be equal to number of axes.",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, Axes_OutOfRange_18) {
@@ -3184,7 +3186,7 @@ TEST(ResizeOpTest, Axes_OutOfRange_18) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "axis 5 is not in valid range [-5,4]",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {
@@ -3213,7 +3215,7 @@ TEST(ResizeOpTest, Sizes_RankMismatch_13) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Resize: input tensor's rank does not match the output tensor's rank.",
-           {kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 }  // namespace test

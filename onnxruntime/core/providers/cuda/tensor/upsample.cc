@@ -109,7 +109,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   TArray<fast_divmod> output_div_pitches(rank);
 
   for (int32_t i = 0; i < rank; ++i) {
-    ORT_RETURN_IF_NOT(output_pitches[i] <= static_cast<size_t>(kIntMax),
+    ORT_RETURN_IF_NOT(output_pitches[i] >= 0 && output_pitches[i] <= kIntMax,
                       "Resize: output pitch exceeds supported int range for CUDA kernel indexing.");
     output_div_pitches[i] = fast_divmod(onnxruntime::narrow<int>(output_pitches[i]));
   }
