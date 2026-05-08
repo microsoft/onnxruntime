@@ -302,6 +302,48 @@ def cse_merge_constants():
     _onnx_export(graph_def, "cse_merge_constants.onnx")
 
 
+def cse_string_tensor_attr():
+    """Two Constant nodes with identical STRING tensor attributes.
+
+    CSE must not crash when hashing these nodes (regression test for issue #28413).
+    The two nodes should not be merged because AreScalarTensorAttributeEqual
+    returns false for STRING tensors.
+    """
+    graph_def = helper.make_graph(
+        nodes=[
+            helper.make_node(
+                op_type="Constant",
+                inputs=[],
+                outputs=["const_str_1"],
+                name="const_str_node_1",
+                value=helper.make_tensor("", TensorProto.STRING, [1], [b"hello"]),
+            ),
+            helper.make_node(
+                op_type="Constant",
+                inputs=[],
+                outputs=["const_str_2"],
+                name="const_str_node_2",
+                value=helper.make_tensor("", TensorProto.STRING, [1], [b"hello"]),
+            ),
+        ],
+        name="cse_string_tensor_attr",
+        inputs=[],
+        outputs=[
+            helper.make_tensor_value_info("const_str_1", TensorProto.STRING, [1]),
+            helper.make_tensor_value_info("const_str_2", TensorProto.STRING, [1]),
+        ],
+        initializer=[],
+    )
+    model = helper.make_model(
+        graph_def,
+        producer_name="makalini",
+        opset_imports=[helper.make_operatorsetid("", 12)],
+    )
+    onnx.checker.check_model(model)
+    model_path = os.path.join(_this_dir, "cse_string_tensor_attr.onnx")
+    onnx.save_model(model, model_path)
+
+
 def cse_only_one_graph_output():
     graph_def = helper.make_graph(
         nodes=[
@@ -356,6 +398,7 @@ def generate_all():
     cse_random()
     cse_merge_constants()
     cse_only_one_graph_output()
+    cse_string_tensor_attr()
 
 
 if __name__ == "__main__":

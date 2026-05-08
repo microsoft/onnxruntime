@@ -295,5 +295,18 @@ TEST(CseTests, MergeConstants) {
   ASSERT_EQ(op_count["Add"], 2);
 }
 
+TEST(CseTests, StringTensorAttr) {
+  // Regression test for https://github.com/microsoft/onnxruntime/issues/28413.
+  // CSE must not crash when it encounters a node with a STRING tensor attribute.
+  // Note: Constant nodes are converted to initializers during Model::Load, so we
+  // cannot count them as graph nodes. The key assertion is that CSE does not crash.
+  auto model_uri = ORT_TSTR("testdata/transform/cse/cse_string_tensor_attr.onnx");
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger()));
+
+  // Must not crash.
+  ASSERT_NO_FATAL_FAILURE(ApplyCse(*model));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
