@@ -578,15 +578,6 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), false)} {
-  // If graph capture is enabled, create a dedicated buffer manager for graph mode
-  if (enable_graph_capture_) {
-    // Create buffer manager for graph capture mode with appropriate cache modes
-    graph_default_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
-        context_,
-        webgpu::BufferCacheMode::Graph,
-        webgpu::BufferCacheMode::GraphSimple,
-        webgpu::BufferCacheMode::Disabled);
-  }
 
   if (config.enable_pix_capture) {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -599,13 +590,14 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
-  auto default_alloc = std::make_unique<webgpu::GpuBufferAllocator>(BufferManager(), false);
-  default_gpu_allocator_ = default_alloc.get();
+  auto device_allocator = std::make_unique<webgpu::GpuBufferAllocator>(
+      [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false);
+  default_gpu_allocator_ = device_allocator.get();
   return {
       // allocator for initializers
       std::make_unique<webgpu::GpuBufferAllocator>(context_.InitializerBufferManager(), true),
       // default allocator
-      std::move(default_alloc),
+      std::move(device_allocator),
   };
 }
 
@@ -789,9 +781,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
             webgpu::BufferCacheMode::GraphSimple,
             webgpu::BufferCacheMode::Disabled);
       }
-      // Route allocator to this graph's buffer manager
+      graph_buffer_mgr_active_ = true;
       if (default_gpu_allocator_) {
-        default_gpu_allocator_->SetBufferManager(*per_graph_buffer_mgrs_[graph_annotation_id]);
+        default_gpu_allocator_->RefreshBufferManager();
       }
     }
 
@@ -832,9 +824,10 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   }
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
-  // Reset allocator to default buffer manager after run completes
-  if (default_gpu_allocator_ && graph_default_buffer_mgr_) {
-    default_gpu_allocator_->SetBufferManager(*graph_default_buffer_mgr_);
+  // Reset buffer manager routing after run completes
+  graph_buffer_mgr_active_ = false;
+  if (default_gpu_allocator_) {
+    default_gpu_allocator_->RefreshBufferManager();
   }
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
@@ -889,25 +882,19 @@ Status WebGpuExecutionProvider::ReleaseGraph(int graph_annotation_id) {
 }
 
 webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
-  // Use per-graph buffer manager if one exists for the current annotation ID
-  if (m_current_graph_annotation_id != 0 && m_current_graph_annotation_id != -1) {
+  if (graph_buffer_mgr_active_) {
     auto it = per_graph_buffer_mgrs_.find(m_current_graph_annotation_id);
     if (it != per_graph_buffer_mgrs_.end()) {
       return *it->second;
     }
   }
-  // Fall back to default graph buffer manager (warmup runs) or context buffer manager
-  if (graph_default_buffer_mgr_) {
-    return *graph_default_buffer_mgr_;
-  } else {
-    return context_.BufferManager();
-  }
+  return context_.BufferManager();
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {
   auto it = graph_id_to_run_count_.find(m_current_graph_annotation_id);
   int run_count = (it != graph_id_to_run_count_.end()) ? it->second : 0;
-  return run_count >= min_num_runs_before_cuda_graph_capture_;
+  return run_count >= min_num_runs_before_graph_capture_;
 }
 
 void WebGpuExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {

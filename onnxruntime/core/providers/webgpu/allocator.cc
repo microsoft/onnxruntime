@@ -9,14 +9,25 @@ namespace onnxruntime {
 namespace webgpu {
 
 GpuBufferAllocator::GpuBufferAllocator(const BufferManager& buffer_manager, bool is_read_only_allocator)
+    : GpuBufferAllocator(
+          [&buffer_manager]() -> const BufferManager& { return buffer_manager; },
+          is_read_only_allocator) {
+}
+
+GpuBufferAllocator::GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter, bool is_read_only_allocator)
     : IAllocator(
           OrtMemoryInfo(WEBGPU_BUFFER,
                         is_read_only_allocator ? OrtAllocatorType::OrtReadOnlyAllocator
                                                : OrtAllocatorType::OrtDeviceAllocator,
                         WebGpuDevice,
                         OrtMemTypeDefault)),
-      buffer_manager_{&buffer_manager},
-      mapped_at_creation_{is_read_only_allocator && buffer_manager.SupportsUMA()} {
+      buffer_manager_getter_{std::move(buffer_manager_getter)},
+      buffer_manager_{&buffer_manager_getter_()},
+      mapped_at_creation_{is_read_only_allocator && buffer_manager_->SupportsUMA()} {
+}
+
+void GpuBufferAllocator::RefreshBufferManager() {
+  buffer_manager_ = &buffer_manager_getter_();
 }
 
 void* GpuBufferAllocator::Alloc(size_t size) {
@@ -41,10 +52,6 @@ void GpuBufferAllocator::Free(void* p) {
 
 void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
-}
-
-void GpuBufferAllocator::SetBufferManager(const BufferManager& buffer_manager) {
-  buffer_manager_ = &buffer_manager;
 }
 
 }  // namespace webgpu
