@@ -2588,10 +2588,14 @@ TEST_F(GraphTransformationTests, FuseConvActivationPreEpAssignmentLeavesEpEmpty)
         << "expected empty EP on freshly loaded node " << node.Name();
   }
 
+  // Register at Level1 so the transformer runs before EP assignment, mirroring
+  // the regression scenario this test guards against. Level2+ runs after
+  // GraphPartitioner::Partition in the real session pipeline, so it would not
+  // exercise the empty-EP code path.
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
-                                                     TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   ASSERT_EQ(graph.NumberOfNodes(), 1);
   const Node& fused = *graph.Nodes().begin();
