@@ -288,9 +288,9 @@ __global__ void _ResizeNearestKernel2D(
       return;
     }
   }
-  int input_index = input_stride_image * imageid +
-                    input_stride_row * dims_mapping[h].origin_ +
-                    dims_mapping[output_height + w].origin_;
+  int64_t input_index = input_stride_image * imageid +
+                        static_cast<int64_t>(input_stride_row) * dims_mapping[h].origin_ +
+                        dims_mapping[output_height + w].origin_;
   output_data[id] = input_data[input_index];
 }
 
@@ -315,10 +315,10 @@ __global__ void _ResizeNearestKernel3D(
       return;
     }
   }
-  int input_index = static_cast<int>(input_stride_image) * imageid +
-                    static_cast<int>(input_stride_depth) * dims_mapping[d].origin_ +
-                    input_stride_row * dims_mapping[output_depth + h].origin_ +
-                    dims_mapping[output_depth + output_height + w].origin_;
+  int64_t input_index = input_stride_image * imageid +
+                        input_stride_depth * dims_mapping[d].origin_ +
+                        static_cast<int64_t>(input_stride_row) * dims_mapping[output_depth + h].origin_ +
+                        dims_mapping[output_depth + output_height + w].origin_;
   output_data[id] = input_data[input_index];
 }
 
@@ -336,7 +336,7 @@ __global__ void _ResizeNearestKernel(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   int output_index = static_cast<int>(id);
-  int input_index = 0;
+  int64_t input_index = 0;
   int extrapolation_occurred = 0;
   for (int axis = 0; axis < rank; ++axis) {
     int dim = 0;
@@ -827,8 +827,6 @@ Status ResizeNearestImpl(
 
     const int64_t input_stride_depth = static_cast<int64_t>(input_stride_depth_safe);
     const int64_t input_stride_image = static_cast<int64_t>(input_stride_image_safe);
-    ORT_RETURN_IF_NOT(input_stride_depth <= kIntMax && input_stride_image <= kIntMax,
-                      "ResizeNearestImpl: input strides exceed int range.");
 
     if (extrapolation_enabled) {
       _ResizeNearestKernel3D<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
@@ -975,7 +973,6 @@ Status ResizeImpl(
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Resize supports 2-D and 3-D dimensions in LINEAR mode.");
-      break;
     case UpsampleMode::CUBIC:
       if (is_2D) {
         DISPATCH_RESIZE_COORDINATE_TRANSFORMATION_MODE(coordinate_transform_mode, [&]() {

@@ -136,7 +136,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
     float scale = 1.0f / rscale;
     float support = (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
 
-    const size_t window_size = SafeInt<size_t>(narrow<size_t>(ceilf(support))) * 2 + 1;
+    const size_t window_size = SafeInt<size_t>(ceilf(support)) * 2 + 1;
     const size_t output_count = narrow<size_t>(output_size);
     const size_t scale_buffer_size = SafeInt<size_t>(window_size) * output_count;
 

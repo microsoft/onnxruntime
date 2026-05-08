@@ -3183,7 +3183,7 @@ TEST(ResizeOpTest, Axes_OutOfRange_18) {
   test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "all values in axes should be in the range [-rank, rank - 1]",
+           "axis 5 is not in valid range [-5,4]",
            {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 

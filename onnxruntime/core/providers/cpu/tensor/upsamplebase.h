@@ -567,13 +567,11 @@ class UpsampleBase {
         ORT_RETURN_IF_NOT(scales_size == rank,
                           "Number of elements in scales should be equal to rank of the data when axes is not provided.");
       } else {
-        ORT_RETURN_IF_NOT(int64_t(axes_.size()) == scales_size,
+        ORT_RETURN_IF_NOT(static_cast<int64_t>(axes_.size()) == scales_size,
                           "Number of elements in scales should be equal to number of axes.");
 
         InlinedVector<float> new_scales(size_t(rank), 1.0f);
         for (size_t i = 0; i < axes_.size(); i++) {
-          ORT_RETURN_IF_NOT(IsAxisInRange(axes_[i], rank),
-                            "all values in axes should be in the range [-rank, rank - 1]");
           const int64_t axis = HandleNegativeAxis(axes_[i], rank);
           new_scales[static_cast<size_t>(axis)] = scales[i];
         }
@@ -603,8 +601,6 @@ class UpsampleBase {
       output_dims.assign(input_dims.begin(), input_dims.end());
       const int64_t rank = static_cast<int64_t>(output_dims.size());
       for (size_t i = 0; i < axes_.size(); i++) {
-        ORT_RETURN_IF_NOT(IsAxisInRange(axes_[i], rank),
-                          "all values in axes should be in the range [-rank, rank - 1]");
         const int64_t axis = HandleNegativeAxis(axes_[i], rank);
         output_dims[static_cast<size_t>(axis)] = size_span[i];
       }
@@ -643,8 +639,8 @@ class UpsampleBase {
 
   // Compute output dimensions from scales and input dimensions.
   // Per the ONNX spec: output_dimension = floor(input_dimension * scale).
-  // We use std::floor (not truncation via static_cast) to correctly handle the case
-  // where the float product is slightly below an integer boundary.
+  // Use std::floor explicitly so the implementation matches the spec-defined
+  // flooring behavior instead of relying on conversion-time truncation semantics.
   void ComputeOutputShape(gsl::span<const float> scales,
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
@@ -663,7 +659,6 @@ class UpsampleBase {
       }
       const int64_t rank_i64 = static_cast<int64_t>(rank);
       for (size_t i = 0; i < axes_.size(); i++) {
-        ORT_ENFORCE(IsAxisInRange(axes_[i], rank_i64), "all values in axes should be in the range [-rank, rank - 1]");
         const int64_t axis = HandleNegativeAxis(axes_[i], rank_i64);
         auto v_in_axes = static_cast<size_t>(axis);
         roi_tmp[v_in_axes] = (roi_array[i]);

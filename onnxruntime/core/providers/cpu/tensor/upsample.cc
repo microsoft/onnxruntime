@@ -1103,18 +1103,6 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   }
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-  auto checked_mul_int64 = [](int64_t a, int64_t b, int64_t& out) {
-    if (a < 0 || b < 0) {
-      return false;
-    }
-
-    if (a != 0 && b > std::numeric_limits<int64_t>::max() / a) {
-      return false;
-    }
-
-    out = a * b;
-    return true;
-  };
 
   switch (mode_) {
     case UpsampleMode::NN:
@@ -1197,19 +1185,19 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                               is_valid_non_negative_int32(output_width_i64),
                           "Resize: dimensions exceed supported int32 range for CPU linear mode.");
 
-        batch_size = narrow<int32_t>(batch_size_i64);
-        num_channels = narrow<int32_t>(num_channels_i64);
-        input_height = narrow<int32_t>(input_height_i64);
-        input_width = narrow<int32_t>(input_width_i64);
-        output_height = narrow<int32_t>(output_height_i64);
-        output_width = narrow<int32_t>(output_width_i64);
+        batch_size = static_cast<int32_t>(batch_size_i64);
+        num_channels = static_cast<int32_t>(num_channels_i64);
+        input_height = static_cast<int32_t>(input_height_i64);
+        input_width = static_cast<int32_t>(input_width_i64);
+        output_height = static_cast<int32_t>(output_height_i64);
+        output_width = static_cast<int32_t>(output_width_i64);
 
         int64_t output_hw = 0;
-        ORT_RETURN_IF_NOT(checked_mul_int64(output_height_i64, output_width_i64, output_hw),
+        ORT_RETURN_IF_NOT(SafeMultiply(output_height_i64, output_width_i64, output_hw),
                           "Resize: output height*width overflows int64.");
 
         int64_t output_hwc = 0;
-        ORT_RETURN_IF_NOT(checked_mul_int64(output_hw, num_channels_i64, output_hwc),
+        ORT_RETURN_IF_NOT(SafeMultiply(output_hw, num_channels_i64, output_hwc),
                           "Resize: output height*width*channels overflows int64.");
 
         if (is_nchw) {
@@ -1290,7 +1278,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         const int64_t output_width = is_3D ? output_dims[2] : output_dims[4];
 
         int64_t output_hw = 0;
-        ORT_RETURN_IF_NOT(checked_mul_int64(output_height, output_width, output_hw),
+        ORT_RETURN_IF_NOT(SafeMultiply(output_height, output_width, output_hw),
                           "Resize: output height*width overflows int64.");
 
         if (antialias_) {
