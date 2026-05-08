@@ -1592,6 +1592,94 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank4Data) {
 #endif
 }
 
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesDynamicDataNotSupported) {
+  // The scalar-indices path emits a reshape-+squeeze chain whose intermediate
+  // shape we have to claim statically. IsOpSupportedImpl rejects the node
+  // when 'data' has any unknown dim so it falls back to CPU rather than
+  // produce an ill-formed CoreML program.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_dynamic_data", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_param("N");  // dynamic leading dim
+  data_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(0);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_dyn", "Gather", "Gather scalar idx, dynamic data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
+  // Scalar-indices Gather caps data rank at 4 (CoreML compiler reports
+  // "Invalid rank: 6" on the rank-5 reshape+gather intermediate). Rank-5
+  // 'data' must fall back to CPU.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_rank5", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  for (int64_t d : {2, 3, 4, 5, 6}) data_shape->add_dim()->set_dim_value(d);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  // axis=2 with scalar idx removes that axis: {2,3,5,6}
+  for (int64_t d : {2, 3, 5, 6}) output_shape->add_dim()->set_dim_value(d);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(2);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_rank5", "Gather", "Gather scalar idx rank-5 data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(2));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
 TEST(CoreMLExecutionProviderTest, Split11UnevenAttribute) {
   // ai.onnx:Split-11 with `split` attribute carrying non-uniform sizes.
   // This is the form used by DWPose (`dw-ll_ucoco_384.onnx`); without

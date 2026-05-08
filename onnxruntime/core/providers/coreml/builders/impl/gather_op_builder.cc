@@ -53,8 +53,11 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     constexpr int32_t kInt32 = static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32);
     constexpr int32_t kInt64 = static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_INT64);
 
+    // IsOpSupportedImpl gates indices to INT32 or INT64, so this returns one
+    // of those two values when reached via the partition pipeline.
     int32_t indices_dtype = kInt32;
-    GetType(indices_def, indices_dtype, logger);
+    ORT_RETURN_IF_NOT(GetType(indices_def, indices_dtype, logger),
+                      "Failed to get 'indices' dtype");
     const int32_t output_dtype = static_cast<int32_t>(output_def.TypeAsProto()->tensor_type().elem_type());
 
     std::string indices_name = indices_def.Name();
@@ -112,7 +115,10 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       *layer->mutable_output()->Add() = output_def.Name();
       model_builder.AddLayer(std::move(layer));
     } else {
-      // expand_dims indices: [] -> [1]
+      // expand_dims indices: [] -> [1]. Unlike the MLProgram reshape path
+      // above, NN's expand_dims doesn't internally pad rank, so we don't run
+      // into the apparent-rank inflation that forced reshape+gather there;
+      // expand_dims is the natural choice on this path.
       const std::string& indices_1d_name = model_builder.GetUniqueName(node, "indices_1d");
       {
         auto expand_layer = model_builder.CreateNNLayer(node, "_indices_expand");
@@ -179,6 +185,20 @@ bool GatherOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     return false;
   }
 
+  // ONNX Gather schema constrains indices to int32 or int64. Validate here so
+  // AddToModelBuilderImpl can trust the dtype rather than silently defaulting
+  // on an unexpected value.
+  int32_t indices_dtype{};
+  if (!GetType(*node.InputDefs()[1], indices_dtype, logger)) {
+    return false;
+  }
+  if (indices_dtype != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+      indices_dtype != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    LOGS(logger, VERBOSE) << "Gather 'indices' dtype [" << indices_dtype
+                          << "] is not supported (expected INT32 or INT64)";
+    return false;
+  }
+
   // For scalar indices we internally emit gather with promoted [1] indices
   // then squeeze. That requires us to claim a static intermediate shape, so
   // we only handle scalar indices when the data shape itself is fully
@@ -189,9 +209,14 @@ bool GatherOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
       return false;
     }
     // The pre-squeeze intermediate has the same rank as `data`. CoreML's
-    // compiler treats rank-5 intermediates as exceeding its internal
-    // rank-5 limit when produced via reshape+gather (compiler reports
-    // "Invalid rank: 6"), so cap scalar-indices Gather at data rank 4.
+    // compiler reports "Invalid rank: 6" when a rank-5 intermediate is
+    // produced via reshape+gather, even though rank-5 intermediates are
+    // accepted in other op chains. Cap scalar-indices Gather at data rank 4
+    // until that compiler limit is lifted.
+    //
+    // TODO: re-test on newer macOS / CoreML versions; if Apple lifts the
+    // intermediate rank limit, this cap can be raised to 5 (matching the
+    // general Gather output-rank check below).
     if (data_shape.size() > 4) {
       LOGS(logger, VERBOSE) << "Gather with scalar 'indices' supports 'data' rank up to 4";
       return false;
