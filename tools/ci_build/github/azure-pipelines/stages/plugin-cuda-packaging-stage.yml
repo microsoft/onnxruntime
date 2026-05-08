@@ -155,3 +155,14 @@ stages:
               inputs:
                 artifact: cuda_plugin_linux_aarch64
                 targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin/aarch64
+
+    # NuGet packaging (runs after all platform builds)
+    - template: plugin-cuda-nuget-packaging-stage.yml
+      parameters:
+        package_version: ${{ parameters.package_type }}
+        version_file: ${{ parameters.version_file }}
+        DoEsrp: true
+        platforms:
+          win_x64: ${{ parameters.build_windows_x64 }}
+          linux_x64: ${{ parameters.build_linux_x64 }}
+          linux_aarch64: ${{ parameters.build_linux_aarch64 }}

@@ -35,13 +35,25 @@ stages:
         scriptLocation: 'inlineScript'
         inlineScript: |
           set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "$(Agent.TempDirectory)"
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "%AGENT_TEMPDIRECTORY%"
+
+    # Download cuDNN separately for CUDA 13.0
+    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+      - task: AzureCLI@2
+        displayName: 'Download cuDNN for CUDA 13.0'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 "%AGENT_TEMPDIRECTORY%"
 
     - powershell: |
         Write-Host "Adding CUDA to PATH"
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin"
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\bin\x64"
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin\x64"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
       displayName: 'Add CUDA to PATH'
 
     - task: PowerShell@2
@@ -55,18 +67,123 @@ stages:
           $ErrorActionPreference = 'Stop'
 
           echo "creating test_venv"
-          python -m venv "$(Build.BinariesDirectory)\test_venv"
+          python -m venv "$env:BUILD_BINARIESDIRECTORY\test_venv"
 
           echo "activating test_venv"
-          & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
+          & "$env:BUILD_BINARIESDIRECTORY\test_venv\Scripts\Activate.ps1"
 
           echo "installing onnxruntime onnx numpy"
           python -m pip install onnxruntime onnx numpy
 
-          $wheelDir = "$(Pipeline.Workspace)\build\cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}"
+          $wheelDir = "$env:PIPELINE_WORKSPACE\build\cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}"
           $wheel = (Get-ChildItem "$wheelDir\onnxruntime*ep*cuda*.whl")[0]
-          echo "installing ${wheel}"
+          echo "installing $($wheel.Name)"
           python -m pip install $wheel.FullName
 
           echo "running test_cuda_plugin_ep.py"
-          python -u "$(Build.SourcesDirectory)\plugin-ep-cuda\python\test\test_cuda_plugin_ep.py"
+          python -u "$env:BUILD_SOURCESDIRECTORY\plugin-ep-cuda\python\test\test_cuda_plugin_ep.py"
+
+  # NuGet package test
+  - job: Win_plugin_cuda_nuget_Test
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      name: onnxruntime-Win2022-GPU-A10
+      os: windows
+    variables:
+      CudaTestProject: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\test\CudaEpNuGetTest\CudaEpNuGetTest.csproj'
+    steps:
+    - checkout: self
+      submodules: none
+
+    - template: ../templates/setup-feeds-and-python-steps.yml
+
+    - task: AzureCLI@2
+      displayName: 'Download CUDA SDK v${{ parameters.cuda_version }}'
+      inputs:
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        scriptType: 'batch'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+          azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "%AGENT_TEMPDIRECTORY%"
+
+    # Download cuDNN separately for CUDA 13.0
+    - ${{ if eq(parameters.cuda_version, '13.0') }}:
+      - task: AzureCLI@2
+        displayName: 'Download cuDNN for CUDA 13.0'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: 'batch'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 "%AGENT_TEMPDIRECTORY%"
+
+    - powershell: |
+        Write-Host "Adding CUDA to PATH"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin\x64"
+        Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
+      displayName: 'Add CUDA to PATH'
+
+    # Download the NuGet package produced by the packaging pipeline run that
+    # triggered this pipeline (or that was selected at queue time).
+    - download: build
+      artifact: cuda_plugin_nuget
+      displayName: 'Download NuGet package'
+
+    # Set up local NuGet feed and extract the package version from the .nupkg filename
+    # so the test project can pin to it (instead of resolving via a floating version).
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+        $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
+        New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
+
+        # Locate the .nupkg.
+        $nupkg = Get-ChildItem "$(Pipeline.Workspace)\build\cuda_plugin_nuget\Microsoft.ML.OnnxRuntime.EP.Cuda.*.nupkg" |
+                 Select-Object -First 1
+        if (-not $nupkg) {
+            throw "No matching .nupkg found under $(Pipeline.Workspace)\build\cuda_plugin_nuget"
+        }
+        Copy-Item $nupkg.FullName $localFeedDir -Force
+
+        # Extract version from filename: Microsoft.ML.OnnxRuntime.EP.Cuda.<version>.nupkg
+        # The version starts with a digit, which disambiguates from any future filename suffixes.
+        if ($nupkg.BaseName -notmatch '^Microsoft\.ML\.OnnxRuntime\.EP\.Cuda\.(\d.*)$') {
+            throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
+        }
+        $packageVersion = $Matches[1]
+        Write-Host "Detected package version: $packageVersion"
+        Write-Host "##vso[task.setvariable variable=OrtCudaPackageVersion]$packageVersion"
+
+        # Write a project-level nuget.config that adds ONLY the local feed.
+        # NuGet merges this with the repo-root NuGet.config.
+        $nugetConfig = "$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\test\CudaEpNuGetTest\nuget.config"
+        Set-Content -Path $nugetConfig -Encoding UTF8 -Value @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <add key="local" value="$localFeedDir" />
+          </packageSources>
+        </configuration>
+        "@
+        Write-Host "Wrote project-level nuget.config with local feed: $localFeedDir"
+        Write-Host "Local feed contents:"
+        Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
+      displayName: 'Set up local NuGet feed'
+
+    - pwsh: |
+        dotnet build `
+          "$(CudaTestProject)" `
+          --configuration Release `
+          -p:OrtCudaPackageVersion=$(OrtCudaPackageVersion)
+      displayName: 'Build test project'
+
+    - pwsh: |
+        dotnet run `
+          --project "$(CudaTestProject)" `
+          --configuration Release `
+          --no-build
+      displayName: 'Run NuGet package test'

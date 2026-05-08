@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-"""Build the Microsoft.ML.OnnxRuntime.EP.WebGpu NuGet package.
+"""Build the Microsoft.ML.OnnxRuntime.EP.Cuda NuGet package.
 
 Stages native binaries from build artifacts into the runtimes/ layout expected
 by the .csproj and runs `dotnet pack` to produce the .nupkg / .snupkg files.
@@ -14,7 +14,7 @@ Examples
 Local: pack win-x64 only from a local build:
 
     python pack_nuget.py --version 0.1.0-dev \\
-        --binary-dir-win-x64 ../../build/webgpu.plugin/Release/Release
+        --binary-dir-win-x64 ../../build/cuda.plugin/Release/Release
 
 CI: pack all platforms from downloaded artifacts:
 
@@ -34,20 +34,15 @@ from pathlib import Path
 
 # Platform name -> (RID, list of native binary filenames expected in the source dir).
 PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", ("onnxruntime_providers_webgpu.dll", "dxil.dll", "dxcompiler.dll")),
-    "win_arm64": ("win-arm64", ("onnxruntime_providers_webgpu.dll", "dxil.dll", "dxcompiler.dll")),
-    "linux_x64": ("linux-x64", ("libonnxruntime_providers_webgpu.so",)),
-    "macos_arm64": ("osx-arm64", ("libonnxruntime_providers_webgpu.dylib",)),
+    "win_x64": ("win-x64", ("onnxruntime_providers_cuda_plugin.dll",)),
+    "linux_x64": ("linux-x64", ("libonnxruntime_providers_cuda_plugin.so",)),
+    "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_cuda_plugin.so",)),
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = SCRIPT_DIR / "Microsoft.ML.OnnxRuntime.EP.WebGpu"
-CSPROJ = PROJECT_DIR / "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
+PROJECT_DIR = SCRIPT_DIR / "Microsoft.ML.OnnxRuntime.EP.Cuda"
+CSPROJ = PROJECT_DIR / "Microsoft.ML.OnnxRuntime.EP.Cuda.csproj"
 MIN_ORT_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
-
-# Import the shared template helper from _packaging_utils.py in the parent directory.
-sys.path.insert(0, str(SCRIPT_DIR.parent))
-from _packaging_utils import gen_file_from_template  # noqa: E402  (path setup must precede import)
 
 
 class PackError(RuntimeError):
@@ -60,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         return Path(value).resolve()
 
     p = argparse.ArgumentParser(
-        description="Build the Microsoft.ML.OnnxRuntime.EP.WebGpu NuGet package.",
+        description="Build the Microsoft.ML.OnnxRuntime.EP.Cuda NuGet package.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--version", required=True, help="Package version (e.g. 0.1.0-dev).")
@@ -212,12 +207,14 @@ def stage_binaries(
 def dotnet_common_args(
     staged_csproj: Path,
     args: argparse.Namespace,
+    min_ort_version_file: Path,
 ) -> list[str]:
     common = [
         str(staged_csproj),
         "--configuration",
         args.configuration,
         f"-p:Version={args.version}",
+        f"-p:OnnxRuntimeMinVersionFile={min_ort_version_file}",
     ]
     if args.nuget_config:
         common.extend(["--configfile", str(args.nuget_config)])
@@ -225,15 +222,15 @@ def dotnet_common_args(
     return common
 
 
-def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace) -> None:
+def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace, min_ort_version_file: Path) -> None:
     print()
     print(f"Running dotnet build (Version={args.version}, Configuration={args.configuration})...")
-    cmd = ["dotnet", "build", *dotnet_common_args(staged_csproj, args)]
+    cmd = ["dotnet", "build", *dotnet_common_args(staged_csproj, args, min_ort_version_file)]
     print("+ " + " ".join(cmd))
     subprocess.run(cmd, check=True)
 
-    # Note: "netstandard2.0" must match <TargetFramework> in Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj.
-    managed_dll = staging_dir / "bin" / args.configuration / "netstandard2.0" / "Microsoft.ML.OnnxRuntime.EP.WebGpu.dll"
+    # Note: "netstandard2.0" must match <TargetFramework> in Microsoft.ML.OnnxRuntime.EP.Cuda.csproj.
+    managed_dll = staging_dir / "bin" / args.configuration / "netstandard2.0" / "Microsoft.ML.OnnxRuntime.EP.Cuda.dll"
     if not managed_dll.is_file():
         raise PackError(f"managed DLL not found after build: {managed_dll}")
     print()
@@ -245,13 +242,14 @@ def do_pack(
     staged_csproj: Path,
     output_dir: Path,
     args: argparse.Namespace,
+    min_ort_version_file: Path,
 ) -> None:
     print()
     print(f"Running dotnet pack (Version={args.version}, Configuration={args.configuration})...")
     pack_args = [
         "dotnet",
         "pack",
-        *dotnet_common_args(staged_csproj, args),
+        *dotnet_common_args(staged_csproj, args, min_ort_version_file),
         "--output",
         str(output_dir),
     ]
@@ -270,23 +268,8 @@ def do_pack(
         print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
 
 
-def render_readme(staging_dir: Path, min_ort_version: str) -> None:
-    """Substitute the minimum ORT version into the staged README in place."""
-    readme = staging_dir / "README.md"
-    if not readme.is_file():
-        raise PackError(f"staged README not found: {readme}")
-    try:
-        gen_file_from_template(
-            readme,
-            readme,
-            {"min_onnxruntime_version": min_ort_version},
-        )
-    except ValueError as e:
-        raise PackError(str(e)) from e
-
-
 def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_file: Path) -> None:
-    staged_csproj = staging_dir / "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
+    staged_csproj = staging_dir / "Microsoft.ML.OnnxRuntime.EP.Cuda.csproj"
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     required_platforms = parse_required_platforms(args.required_platforms)
@@ -298,16 +281,12 @@ def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_
     else:
         stage_sources(staging_dir)
         stage_binaries(staging_dir, args, required_platforms)
-        min_ort_version = min_ort_version_file.read_text(encoding="utf-8").strip()
-        if not min_ort_version:
-            raise PackError(f"{min_ort_version_file} is empty")
-        render_readme(staging_dir, min_ort_version)
 
     if args.build_only:
-        do_build(staged_csproj, staging_dir, args)
+        do_build(staged_csproj, staging_dir, args, min_ort_version_file)
         return
 
-    do_pack(staged_csproj, output_dir, args)
+    do_pack(staged_csproj, output_dir, args, min_ort_version_file)
 
     print()
     print(f"Done. Output: {output_dir}")
@@ -334,23 +313,13 @@ def run(args: argparse.Namespace) -> None:
 
     # Full build+pack flow with no caller-managed staging dir: use a temp dir that
     # is cleaned up automatically (including on exception).
-    with tempfile.TemporaryDirectory(prefix="webgpu_pack_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="cuda_pack_") as tmp:
         run_in_staging(args, Path(tmp), min_ort_version_file)
 
 
-def main() -> int:
-    args = parse_args()
-    try:
-        run(args)
-    except PackError as e:
-        print(f"error: {e}", file=sys.stderr)
-        return 1
-    except subprocess.CalledProcessError as e:
-        cmd_name = e.cmd[0] if e.cmd else "subprocess"
-        print(f"error: {cmd_name} failed with exit code {e.returncode}", file=sys.stderr)
-        return e.returncode or 1
-    return 0
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        run(parse_args())
+    except PackError as e:
+        print(f"\nERROR: {e}", file=sys.stderr)
+        sys.exit(1)
