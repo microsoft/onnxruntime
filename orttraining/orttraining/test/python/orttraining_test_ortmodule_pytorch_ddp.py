@@ -1,6 +1,7 @@
 # This test script is a modified version of Pytorch's tutorial.
 # For details, see https://pytorch.org/tutorials/intermediate/ddp_tutorial.html.
 import argparse
+import inspect
 import logging
 import os
 import sys  # noqa: F401
@@ -18,17 +19,19 @@ from onnxruntime.training.ortmodule import ORTModule
 
 logger = logging.getLogger(__name__)
 
+_TORCH_LOAD_HAS_WEIGHTS_ONLY = "weights_only" in inspect.signature(torch.load).parameters
+
 
 def _torch_load_weights_only(path: str, **kwargs):
-    try:
+    if _TORCH_LOAD_HAS_WEIGHTS_ONLY:
         return torch.load(path, weights_only=True, **kwargs)
-    except TypeError:
-        logger.warning(
-            "Current PyTorch version does not support torch.load(..., weights_only=True); "
-            "falling back to default torch.load behavior for %s.",
-            path,
-        )
-        return torch.load(path, **kwargs)
+
+    logger.warning(
+        "Current PyTorch version does not support torch.load(..., weights_only=True); "
+        "falling back to default torch.load behavior for %s.",
+        path,
+    )
+    return torch.load(path, **kwargs)
 
 
 def setup(rank, world_size):

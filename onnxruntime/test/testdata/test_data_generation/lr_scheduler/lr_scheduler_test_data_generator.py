@@ -4,6 +4,7 @@
 """This file is used to generate test data for LR scheduler optimizer tests in
 orttraining/orttraining/test/training_api/core/training_api_tests.cc."""
 
+import inspect
 import logging
 
 import torch
@@ -11,17 +12,19 @@ from torch.optim.lr_scheduler import LambdaLR
 
 logger = logging.getLogger(__name__)
 
+_TORCH_LOAD_HAS_WEIGHTS_ONLY = "weights_only" in inspect.signature(torch.load).parameters
+
 
 def _torch_load_weights_only(path: str, **kwargs):
-    try:
+    if _TORCH_LOAD_HAS_WEIGHTS_ONLY:
         return torch.load(path, weights_only=True, **kwargs)
-    except TypeError:
-        logger.warning(
-            "Current PyTorch version does not support torch.load(..., weights_only=True); "
-            "falling back to default torch.load behavior for %s.",
-            path,
-        )
-        return torch.load(path, **kwargs)
+
+    logger.warning(
+        "Current PyTorch version does not support torch.load(..., weights_only=True); "
+        "falling back to default torch.load behavior for %s.",
+        path,
+    )
+    return torch.load(path, **kwargs)
 
 
 class SingleParameterModule(torch.nn.Module):
