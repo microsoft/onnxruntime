@@ -48,7 +48,6 @@ def main():
 
     if package_version == "release":
         version_string = original_ver
-        universal_version = original_ver
         python_version = original_ver
 
     elif package_version == "rc":
@@ -79,10 +78,6 @@ def main():
             print(f"##vso[task.logissue type=error]Failed to get git info: {e}")
             sys.exit(1)
         version_string = f"{original_ver}-dev.{date_str}+{commit_sha}"
-        # Prefix the SHA with "commit-" so the pre-release identifier always contains a
-        # non-digit. Otherwise, an all-numeric short SHA with a leading zero (e.g. "01234567")
-        # would violate SemVer 2.0.0's rule against leading zeros in numeric identifiers.
-        universal_version = f"{original_ver}-dev.{date_str}.commit-{commit_sha}"
         python_version = f"{original_ver}.dev{date_str}"
 
     else:
@@ -92,21 +87,12 @@ def main():
         sys.exit(1)
 
     print(f"Plugin package version string: {version_string}")
-    print(f"Plugin universal package version string: {universal_version}")
     print(f"Plugin Python package version string: {python_version}")
 
     # Validate semver 2.0.0 format
     semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
     if not re.match(semver_pattern, version_string):
         print(f"##vso[task.logissue type=error]Version string '{version_string}' is not valid semver 2.0.0.")
-        sys.exit(1)
-
-    # Validate universal version (SemVer 2.0.0, without build metadata)
-    universal_semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
-    if not re.match(universal_semver_pattern, universal_version):
-        print(
-            f"##vso[task.logissue type=error]Universal version string '{universal_version}' is not valid semver 2.0.0 (without build metadata)."
-        )
         sys.exit(1)
 
     # Validate Python version (PEP 440)
@@ -116,7 +102,6 @@ def main():
         sys.exit(1)
 
     print(f"##vso[task.setvariable variable=PluginPackageVersion]{version_string}")
-    print(f"##vso[task.setvariable variable=PluginUniversalPackageVersion]{universal_version}")
     print(f"##vso[task.setvariable variable=PluginPythonPackageVersion]{python_version}")
     print(f"##vso[task.setvariable variable=PluginEpVersionDefine]onnxruntime_PLUGIN_EP_VERSION={version_string}")
 
