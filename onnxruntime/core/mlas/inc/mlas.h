@@ -726,6 +726,81 @@ bool
 MLASCALL
 MlasIsDynamicQGemmAvailable(const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
+/**
+ * @brief Parameters that define the shape of an FP8 GEMM operation.
+ */
+struct MLAS_FP8_GEMM_SHAPE_PARAMS {
+    size_t M = 0; /**< Row size of matrix A */
+    size_t N = 0; /**< Column size of matrix B */
+    size_t K = 0; /**< Column size of matrix A and row size of matrix B */
+};
+
+// FP8 mode is aligned with Arm KleidiAI format/overflow modes.
+// Defined here to keep MLAS FP8 APIs platform-agnostic.
+#ifndef MLAS_FP8_MODE_DEFINED
+#define MLAS_FP8_MODE_DEFINED
+enum mlas_fp8_mode : uint8_t {
+    MLAS_FP8_MODE_E4M3_INF = 0,  ///< E4M3 with NaN/Inf on overflow.
+    MLAS_FP8_MODE_E4M3_SAT = 1,  ///< E4M3 with saturation on overflow.
+    MLAS_FP8_MODE_E5M2_INF = 2,  ///< E5M2 with NaN/Inf on overflow.
+    MLAS_FP8_MODE_E5M2_SAT = 3,  ///< E5M2 with saturation on overflow.
+    MLAS_FP8_MODE_END = 4,       ///< End marker. Do not use.
+};
+#endif  // MLAS_FP8_MODE_DEFINED
+
+/**
+ * @brief Parameters that define the data buffers and layout for an FP8 GEMM.
+ */
+struct MLAS_FP8_GEMM_DATA_PARAMS {
+    const void* A = nullptr;
+    size_t lda = 0;
+    const void* B = nullptr;
+    size_t ldb = 0;
+    void* C = nullptr;
+    size_t ldc = 0;
+    const float* ScaleA = nullptr;      // Tile scales for A: [BlocksM, BlocksK].
+    const float* ScaleB = nullptr;      // Tile scales for B: [BlocksK, BlocksN].
+    const float* ScaleY = nullptr;      // Scalar scale for Y.
+    const void* ZeroPointA = nullptr;   // Tile zero-points for A: [BlocksM, BlocksK], fp8.
+    const void* ZeroPointB = nullptr;   // Tile zero-points for B: [BlocksK, BlocksN], fp8.
+    const float* ZeroPointY = nullptr;  // Scalar zero-point for Y, in dequantized float units.
+    mlas_fp8_mode Fp8Type = static_cast<mlas_fp8_mode>(0);
+    size_t BlockSizeM = 128;  // Block size along M for A quantization.
+    size_t BlockSizeK = 128;  // Block size along K for A/B quantization.
+    size_t BlockSizeN = 128;  // Block size along N for B quantization.
+    size_t BlocksM = 0;       // Number of blocks along M (ceil(M / BlockSizeM)).
+    size_t BlocksK = 0;       // Number of blocks along K (ceil(K / BlockSizeK)).
+    size_t BlocksN = 0;       // Number of blocks along N (ceil(N / BlockSizeN)).
+    size_t ScaleAStrideK = 0;     // ScaleA stride between K blocks (elements).
+    size_t ScaleAStrideM = 0;     // ScaleA stride between M blocks (elements).
+    size_t ScaleBStrideN = 0;     // ScaleB stride between N blocks (elements).
+    size_t ScaleBStrideK = 0;     // ScaleB stride between K blocks (elements).
+    size_t ZeroPointAStrideK = 0; // ZeroPointA stride between K blocks (elements).
+    size_t ZeroPointAStrideM = 0; // ZeroPointA stride between M blocks (elements).
+    size_t ZeroPointBStrideN = 0; // ZeroPointB stride between N blocks (elements).
+    size_t ZeroPointBStrideK = 0; // ZeroPointB stride between K blocks (elements).
+};
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+void
+MLASCALL
+MlasFp8GemmBatch(
+    const MLAS_FP8_GEMM_SHAPE_PARAMS& Shape,
+    const MLAS_FP8_GEMM_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+inline void
+MlasFp8Gemm(
+    const MLAS_FP8_GEMM_SHAPE_PARAMS& Shape,
+    const MLAS_FP8_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    MlasFp8GemmBatch(Shape, DataParams, 1, ThreadPool);
+}
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
 //
 // Symmetric QGEMM has limited buffer overrun.
 // Currently only supported in ARM64

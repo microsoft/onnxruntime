@@ -279,7 +279,7 @@ Return Value:
     LhsPackedStride = kai_get_lhs_packed_size_lhs_pack_bf16p2vlx2_f32_sme(M, K, mr, kr, sr);
 
     size_t lhs_resize = 0;
-    if (mul_overflow_size_t_builtin(LhsPackedStride, BatchSize, &lhs_resize))
+    if (MlasMultiplyOverflowsSizeT(LhsPackedStride, BatchSize, &lhs_resize))
     {
         // size_t wraparound detected for LhsPackedStride, fallback to MLAS
         return false;
@@ -304,7 +304,7 @@ Return Value:
         // Multithread pack lhs and rhs
         RhsPackedStride = ArmKleidiAI::MlasSBGemmPackBSize(TransA, TransB, N, K);
         size_t rhs_resize = 0;
-        if (mul_overflow_size_t_builtin(RhsPackedStride, BatchSize, &rhs_resize))
+        if (MlasMultiplyOverflowsSizeT(RhsPackedStride, BatchSize, &rhs_resize))
         {
             // size_t wraparound detected for RhsPackedStride, fallback to MLAS
             return false;
@@ -354,7 +354,7 @@ Return Value:
     // Pre-check maximum tile size to avoid per-iteration overflow inside the parallel loop.
     // Any TileSizeM/TileSizeN used below will be <= m_step/n_step respectively.
     size_t max_tile_elems = 0;
-    if (mul_overflow_size_t_builtin(m_step, n_step, &max_tile_elems)) {
+    if (MlasMultiplyOverflowsSizeT(m_step, n_step, &max_tile_elems)) {
         // size_t wraparound detected for tile size, fallback to MLAS
         return false;
     }
