@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <limits>
 #include <optional>
 
@@ -419,8 +420,6 @@ static std::vector<float> RunGQASharedKV(
   return std::vector<float>(out_data, out_data + output_size);
 }
 
-// CPU: kv_sequence_length=0 with past_key/past_value (shared KV decode).
-// Validates output matches the equivalent non-empty K/V path.
 // CPU: kv_sequence_length=0 with past_key/past_value (shared KV decode).
 // Validates output is non-zero (attention over past KV produces valid output).
 // Note: cannot compare against RunGQAAndGetOutput because the two paths have

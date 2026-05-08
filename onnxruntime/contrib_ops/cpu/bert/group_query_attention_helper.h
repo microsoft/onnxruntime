@@ -270,6 +270,13 @@ Status CheckInputs(const T* query,
   } else if (past_key != nullptr || past_value != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
+  } else if (kv_sequence_length != sequence_length) {
+    // Without past KV, Q and K/V must have the same sequence length.
+    // Cross-attention (different Q/KV lengths) is not supported by GQA.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "query and key must have the same sequence length when past_key is not provided. "
+                           "Got sequence_length=",
+                           sequence_length, ", kv_sequence_length=", kv_sequence_length);
   }
 
   // Spec requires 1D shape (batch_size), but older model builders may add unit
