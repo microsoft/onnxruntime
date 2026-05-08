@@ -75,7 +75,8 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
 
     std::unique_ptr<Operation> gather = model_builder.CreateOperation(node, "gather");
-    constexpr bool validate_indices = false;
+    // coreml docs claims validate_indices is optional but in practice it is required
+    const auto validate_indices = false;
     AddOperationInput(*gather, "x", data_def.Name());
     AddOperationInput(*gather, "indices", indices_name);
     AddOperationInput(*gather, "axis", model_builder.AddScalarConstant(gather->type(), "axis", axis));
