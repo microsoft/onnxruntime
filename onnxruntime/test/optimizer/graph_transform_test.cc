@@ -2592,6 +2592,10 @@ TEST_F(GraphTransformationTests, FuseConvActivationPreEpAssignmentLeavesEpEmpty)
   // the regression scenario this test guards against. Level2+ runs after
   // GraphPartitioner::Partition in the real session pipeline, so it would not
   // exercise the empty-EP code path.
+  //
+  // Note: ConvActivationFusion is currently registered at Level2 in production;
+  // this test validates the fix for any SelectorActionTransformer-based fusion
+  // that may be registered pre-partitioning in the future (e.g., for CoreML EP).
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(),
                                                      TransformerLevel::Level1));
