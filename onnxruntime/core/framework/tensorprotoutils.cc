@@ -2056,6 +2056,18 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
+
+// Validates that a TensorProto's external data path does not escape the model directory.
+static Status ValidateExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                            const std::filesystem::path& model_path) {
+  if (!utils::HasExternalDataInFile(tensor_proto)) {
+    return Status::OK();
+  }
+  std::unique_ptr<ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+  return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
+}
+
 static Status CopySparseData(const std::string& name,
                              int64_t nnz_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
@@ -2071,6 +2083,7 @@ static Status CopySparseData(const std::string& name,
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
   const bool needs_unpack = utils::HasRawData(indices) || utils::HasExternalData(indices);
+  ORT_RETURN_IF_ERROR(ValidateExternalDataForTensor(indices, model_path));
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
@@ -2291,6 +2304,7 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
+      ORT_RETURN_IF_ERROR(ValidateExternalDataForTensor(sparse_values, model_path));
       std::vector<uint8_t> values_data;
       ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
       ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,

@@ -715,6 +715,131 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+// Regression test: SparseTensorProtoToDenseTensorProto must reject external_data paths
+// that escape the model directory (path traversal via "../" in location).
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Values) {
+  // Create model directory and a "secret" file outside it.
+  auto model_dir = base_dir_ / "model_dir";
+  std::filesystem::create_directories(model_dir);
+
+  // Write known float data to a file outside the model directory.
+  auto secret_file = base_dir_ / "secret.txt";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    float secret_data[] = {42.0f, 99.0f};
+    ofs.write(reinterpret_cast<const char*>(secret_data), sizeof(secret_data));
+  }
+
+  // Construct a SparseTensorProto whose values use external data with a path-traversal location.
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);  // dense shape: [4]
+
+  // Values tensor: 2 non-zero float values stored in external file.
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);  // 2 non-zero elements
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value("../secret.txt");  // path traversal!
+
+  auto* len_entry = values->add_external_data();
+  len_entry->set_key("length");
+  len_entry->set_value(std::to_string(2 * sizeof(float)));
+
+  // Indices: positions 0 and 1 in the dense tensor.
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->add_int64_data(0);
+  indices->add_int64_data(1);
+
+  // Attempt to convert — this should fail with a path validation error.
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = model_dir / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject path-traversal "
+                                 "in values external_data location, but it succeeded (reading "
+                                 "arbitrary file outside model directory).";
+  EXPECT_THAT(status.ErrorMessage(),
+              ::testing::AnyOf(::testing::HasSubstr("escapes"),
+                               ::testing::HasSubstr("External data path")));
+}
+
+// Same as above but for path traversal in the indices external data.
+// Note: The indices path also has a pre-existing issue where it checks raw_data().size()
+// even when data_location is EXTERNAL. This test verifies the path traversal is blocked
+// before that check runs (once the fix is in place).
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Indices) {
+  auto model_dir = base_dir_ / "model_dir";
+  std::filesystem::create_directories(model_dir);
+
+  // Write indices data (2 x int64) to a file outside the model directory.
+  auto secret_file = base_dir_ / "indices_secret.bin";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    int64_t idx_data[] = {0, 1};
+    ofs.write(reinterpret_cast<const char*>(idx_data), sizeof(idx_data));
+  }
+
+  // Also need a valid values file inside the model directory.
+  auto values_file = model_dir / "values.bin";
+  {
+    std::ofstream ofs(values_file, std::ios::binary);
+    float val_data[] = {1.0f, 2.0f};
+    ofs.write(reinterpret_cast<const char*>(val_data), sizeof(val_data));
+  }
+
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  // Values: legitimate external data within model directory.
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_idx_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* val_loc = values->add_external_data();
+  val_loc->set_key("location");
+  val_loc->set_value("values.bin");
+
+  auto* val_len = values->add_external_data();
+  val_len->set_key("length");
+  val_len->set_value(std::to_string(2 * sizeof(float)));
+
+  // Indices: external data with path traversal.
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* idx_loc = indices->add_external_data();
+  idx_loc->set_key("location");
+  idx_loc->set_value("../indices_secret.bin");  // path traversal!
+
+  auto* idx_len = indices->add_external_data();
+  idx_len->set_key("length");
+  idx_len->set_value(std::to_string(2 * sizeof(int64_t)));
+
+  // Set raw_data to expected size so the pre-existing size check passes.
+  // This simulates a malicious model that also sets raw_data size to match.
+  indices->mutable_raw_data()->resize(2 * sizeof(int64_t), '\0');
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = model_dir / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject path-traversal "
+                                 "in indices external_data location, but it succeeded.";
+  EXPECT_THAT(status.ErrorMessage(),
+              ::testing::AnyOf(::testing::HasSubstr("escapes"),
+                               ::testing::HasSubstr("External data path")));
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
 TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
   // Case 1: Annotation exists
   {
