@@ -338,6 +338,15 @@ Return Value:
         this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+
+        this->NchwcBlockSize = 16;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelRvv;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelRvv;
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelRvv;
     }
 #endif
 #endif
