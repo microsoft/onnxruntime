@@ -701,7 +701,16 @@ struct Float8E8M0 {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E8M0(unsigned char bits, FromBitsT) : val(bits) {}
 
-  inline explicit ORT_HOST_DEVICE Float8E8M0(float v, bool saturate = true) {
+  /// Rounding modes for Float8E8M0 conversion from float.
+  /// These correspond to the ONNX Cast op's round_mode attribute for float8e8m0.
+  enum class RoundMode : uint8_t {
+    Up,       // Round to nearest, ties away from zero (default)
+    Down,     // Round to nearest, ties towards zero
+    Nearest,  // Round to nearest, ties round up (same as Up for positive-only E8M0)
+  };
+
+  inline explicit ORT_HOST_DEVICE Float8E8M0(float v, bool saturate = true,
+                                             RoundMode round_mode = RoundMode::Up) {
     uint32_t b;
     std::memcpy(&b, &v, sizeof(b));
 
@@ -756,6 +765,11 @@ struct Float8E8M0 {
       return;
     }
 
+    // For ties (exactly at midpoint), "Down" mode rounds towards zero (lower power of 2),
+    // while "Up" and "Nearest" modes round away from zero (higher power of 2).
+    // E8M0 is positive-only, so "Up" and "Nearest" are equivalent.
+    const bool round_ties_up = (round_mode != RoundMode::Down);
+
     // Denormalized float32: value = 2^(-126) * (mantissa / 2^23)
     // The largest subnormal is ~2^(-126) * (1 - 2^-23), which should round to 2^(-126) = val 1.
     // The midpoint between 2^(-127) and 2^(-126) is 1.5 * 2^(-127).
@@ -763,7 +777,8 @@ struct Float8E8M0 {
     // Midpoint in subnormal mantissa: 0x00600000 (mantissa >= 0.75 * 2^23 means value >= 1.5 * 2^-127).
     if (exponent == 0) {
       if (saturate) {
-        if (mantissa >= 0x00600000) {
+        bool round_up = round_ties_up ? (mantissa >= 0x00600000) : (mantissa > 0x00600000);
+        if (round_up) {
           val = 0x01;  // Round up to 2^(-126)
         } else {
           val = 0x00;  // Round down to 2^(-127)
@@ -776,10 +791,11 @@ struct Float8E8M0 {
 
     // Normal float32: value is 2^(exponent - 127) * (1 + mantissa/2^23)
     // We need to round to the nearest power of 2.
-    // Round half up: round to next power of 2 when mantissa >= 0.5
-    // (i.e., when the float value is >= 1.5 * nearest lower power of 2)
+    // The midpoint is at mantissa = 0x00400000 (= 0.5), where the float value is
+    // exactly 1.5 * the lower power of 2.
     // This aligns with the OCP Microscaling Formats (MX) spec for E8M0 scaling factors.
-    if (mantissa >= 0x00400000) {  // >= 0.5
+    bool round_up = round_ties_up ? (mantissa >= 0x00400000) : (mantissa > 0x00400000);
+    if (round_up) {
       exponent += 1;
     }
 
