@@ -97,8 +97,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       return false;
     }
 
-    const SafeInt<int64_t> product = SafeInt<int64_t>(a) * b;
-    return product <= kIntMax;
+    int64_t product = 0;
+    return SafeMultiply(a, b, product) && product <= kIntMax;
   };
 
   // kernel
@@ -352,9 +352,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         const int64_t output_width = output_dims[rank - 1];
         bool dhw_fits_int = false;
         if (output_depth >= 0 && output_height >= 0 && output_width >= 0) {
-          const SafeInt<int64_t> output_dh = SafeInt<int64_t>(output_depth) * output_height;
-          const SafeInt<int64_t> output_dhw = output_dh * output_width;
-          dhw_fits_int = output_dhw <= kIntMax;
+          int64_t output_dh = 0;
+          int64_t output_dhw = 0;
+          dhw_fits_int = SafeMultiply(output_depth, output_height, output_dh) &&
+                         SafeMultiply(output_dh, output_width, output_dhw) &&
+                         output_dhw <= kIntMax;
         }
 
         ORT_RETURN_IF_NOT(dhw_fits_int,

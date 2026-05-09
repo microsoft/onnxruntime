@@ -735,7 +735,7 @@ Status ResizeNearestImpl(
                       "ResizeNearestImpl: output dimension exceeds int range.");
   }
 
-  unsigned int blocksPerGrid = static_cast<unsigned int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  unsigned int blocksPerGrid = static_cast<unsigned int>((N + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
   bool could2d = rank >= 2 &&
                  transform_coordinate != ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE &&
@@ -743,9 +743,9 @@ Status ResizeNearestImpl(
   if (could2d) {
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
-    const SafeInt<int64_t> output_hw = SafeInt<int64_t>(output_height) * output_width;
+    int64_t output_hw = 0;
 
-    ORT_RETURN_IF_NOT(output_hw <= kIntMax,
+    ORT_RETURN_IF_NOT(SafeMultiply(output_height, output_width, output_hw) && output_hw <= kIntMax,
                       "ResizeNearestImpl: output height*width exceeds int range.");
 
     fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3]
@@ -793,12 +793,11 @@ Status ResizeNearestImpl(
     int64_t output_depth = output_shape[rank - 3];
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
-    const SafeInt<int64_t> output_dh = SafeInt<int64_t>(output_depth) * output_height;
-    const SafeInt<int64_t> output_dhw = output_dh * output_width;
-
-    ORT_RETURN_IF_NOT(output_dh <= kIntMax,
+    int64_t output_dh = 0;
+    int64_t output_dhw = 0;
+    ORT_RETURN_IF_NOT(SafeMultiply(output_depth, output_height, output_dh) && output_dh <= kIntMax,
                       "ResizeNearestImpl: output depth*height exceeds int range.");
-    ORT_RETURN_IF_NOT(output_dhw <= kIntMax,
+    ORT_RETURN_IF_NOT(SafeMultiply(output_dh, output_width, output_dhw) && output_dhw <= kIntMax,
                       "ResizeNearestImpl: output depth*height*width exceeds int range.");
 
     fast_divmod div_output_image = (rank > 3) ? output_div_pitches[rank - 4]
@@ -917,7 +916,7 @@ Status ResizeImpl(
   ORT_RETURN_IF_NOT(N <= static_cast<size_t>(std::numeric_limits<int>::max()),
                     "ResizeImpl: output element count exceeds int range.");
 
-  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  int blocksPerGrid = static_cast<int>((N + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
   fast_divmod div_output_image;
   if (is_2D) {
     div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(onnxruntime::narrow<int>(N));
