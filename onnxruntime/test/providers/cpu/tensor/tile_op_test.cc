@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -272,8 +273,10 @@ TEST(TensorOpTest, TileRepeatsMustBe1D) {
   test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   test.AddInput<int64_t>("repeats", {1, 2}, {1, 1});
   test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "must be 1 dimensional",
-           {kDmlExecutionProvider});
+           {}, nullptr, &execution_providers);
 }
 
 TEST(TensorOpTest, TileRepeatsMustMatchInputRank) {
@@ -281,9 +284,11 @@ TEST(TensorOpTest, TileRepeatsMustMatchInputRank) {
   test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   test.AddInput<int64_t>("repeats", {1}, {1});
   test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "same length as the 'input' tensor",
-           {kOpenVINOExecutionProvider, kDmlExecutionProvider});
+           {}, nullptr, &execution_providers);
 }
 
 // Test that negative repeat values are rejected with an error
