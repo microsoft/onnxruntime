@@ -1963,9 +1963,9 @@ constexpr const char* Tokenizer_ver1_doc = R"DOC(
  ["I", "love", "computer", "science", "!"]]
  whose shape is [2, 5] because you can find at most 5 tokens per input string.
  Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
- If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
+ If "separators" contains a single empty string, the Tokenizer will enter into character tokenization mode. This means all strings
  will be broken apart into individual characters.
- Similarly, if "tokenexp" is set to "." (match any single character), character tokenezation mode is used.
+ Similarly, if "tokenexp" is set to "." (match any single character), character tokenization mode is used.
  For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
  The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
  This operator searches for the first match starting from the beginning of the considered string,
@@ -2004,7 +2004,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Tokenizer, 1,
                                     " (https://github.com/google/re2/wiki/Syntax)."
                                     " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only one of"
                                     " 'tokenexp' and 'separators' should be set."
-                                    " If tokenexp is \".\", the tokenizer enters character tokenezation mode.",
+                                    " If tokenexp is \".\", the tokenizer enters character tokenization mode.",
                                     AttributeProto::STRING,
                                     OPTIONAL_VALUE)
                                 .Attr(

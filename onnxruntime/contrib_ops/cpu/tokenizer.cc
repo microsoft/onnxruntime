@@ -12,10 +12,13 @@
 
 // Use PMR (polymorphic memory resource) when the standard library supports it.
 // This reduces per-token allocation overhead by using a monotonic buffer.
+#ifdef __has_include
 #if __has_include(<memory_resource>) && defined(__cpp_lib_memory_resource) && __cpp_lib_memory_resource >= 201603L
 #include <memory_resource>
 #define ORT_PMR_ALLOCATOR_SUPPORTED
-#elif defined(_MSC_VER)
+#endif
+#endif
+#if !defined(ORT_PMR_ALLOCATOR_SUPPORTED) && defined(_MSC_VER)
 // MSVC supports PMR but may not define the feature-test macro in older modes
 #include <memory_resource>
 #define ORT_PMR_ALLOCATOR_SUPPORTED
@@ -156,6 +159,7 @@ Status Tokenizer::EstimateNumberOfTokens(gsl::span<const std::string> input_span
                                          InlinedVector<size_t>& utf8_lengths) const {
   total_tokens_estimate = 0;
   max_tokens_per_row = 0;
+  utf8_lengths.clear();
   utf8_lengths.reserve(input_span.size());
   for (const auto& s : input_span) {
     size_t utf8_chars = 0;  // length in utf8 chars
@@ -566,10 +570,13 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
             row.push_back(submatch);
             start_pos = match_pos + token_len;
           } else {
-            size_t bytes = 0;
             // Advance by one UTF-8 character, or at least 1 byte to guarantee progress
-            if (!utf8_bytes(*submatch.data(), bytes) || bytes == 0) {
-              bytes = 1;
+            size_t bytes = 1;
+            if (match_pos < end_pos) {
+              size_t char_bytes = 0;
+              if (utf8_bytes(static_cast<unsigned char>(text[match_pos]), char_bytes) && char_bytes > 0) {
+                bytes = char_bytes;
+              }
             }
             start_pos = match_pos + bytes;
           }
