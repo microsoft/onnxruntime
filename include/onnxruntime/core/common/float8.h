@@ -746,9 +746,31 @@ struct Float8E8M0 {
       return;
     }
 
-    // Zero or denormalized float32 maps to smallest value
+    // Zero: E8M0 cannot represent zero.
+    if (exponent == 0 && mantissa == 0) {
+      if (saturate) {
+        val = 0x00;  // Saturate to smallest representable: 2^(-127)
+      } else {
+        val = 0xFF;  // NaN (zero is out of range)
+      }
+      return;
+    }
+
+    // Denormalized float32: value = 2^(-126) * (mantissa / 2^23)
+    // The largest subnormal is ~2^(-126) * (1 - 2^-23), which should round to 2^(-126) = val 1.
+    // The midpoint between 2^(-127) and 2^(-126) is 1.5 * 2^(-127).
+    // Subnormals with value >= midpoint round up to 2^(-126) (val=1), others to 2^(-127) (val=0).
+    // Midpoint in subnormal mantissa: 0x00600000 (mantissa >= 0.75 * 2^23 means value >= 1.5 * 2^-127).
     if (exponent == 0) {
-      val = 0x00;  // 2^(-127)
+      if (saturate) {
+        if (mantissa >= 0x00600000) {
+          val = 0x01;  // Round up to 2^(-126)
+        } else {
+          val = 0x00;  // Round down to 2^(-127)
+        }
+      } else {
+        val = 0xFF;  // NaN (subnormals are below E8M0 min for saturate=false)
+      }
       return;
     }
 
@@ -756,7 +778,7 @@ struct Float8E8M0 {
     // We need to round to the nearest power of 2.
     // Round half up: round to next power of 2 when mantissa >= 0.5
     // (i.e., when the float value is >= 1.5 * nearest lower power of 2)
-    // This aligns with the OCP Microscaling Formats (OE-MX) spec for E8M0 scaling factors.
+    // This aligns with the OCP Microscaling Formats (MX) spec for E8M0 scaling factors.
     if (mantissa >= 0x00400000) {  // >= 0.5
       exponent += 1;
     }
@@ -819,7 +841,7 @@ inline Float8E8M0 operator""_f8e8m0(unsigned long long int v) {
   return Float8E8M0(narrow<uint8_t>(v), Float8E8M0::FromBits());
 }
 
-inline Float8E8M0 operator""_f8e8m0p8(long double v) {
+inline Float8E8M0 operator""_f8e8m0f(long double v) {
   return Float8E8M0(static_cast<float>(v), true);
 }
 
@@ -1105,11 +1127,14 @@ class numeric_limits<onnxruntime::Float8E8M0> {
   }
 
   static constexpr onnxruntime::Float8E8M0 denorm_min() {
-    return onnxruntime::Float8E8M0(0x00, onnxruntime::Float8E8M0::FromBits());  // No denormals
+    // E8M0 has no denormalized values; return min() as required by the standard when has_denorm == false
+    return onnxruntime::Float8E8M0(0x00, onnxruntime::Float8E8M0::FromBits());
   }
 
   static constexpr onnxruntime::Float8E8M0 epsilon() {
-    return onnxruntime::Float8E8M0(0x7F, onnxruntime::Float8E8M0::FromBits());  // 2^0 = 1.0 (next representable after 1.0 is 2.0, so eps = 1.0)
+    // epsilon = (next representable value above 1.0) - 1.0 = 2.0 - 1.0 = 1.0
+    // because E8M0 values are powers of 2, so 1.0 (val=127) is followed by 2.0 (val=128)
+    return onnxruntime::Float8E8M0(0x7F, onnxruntime::Float8E8M0::FromBits());
   }
 
   static constexpr onnxruntime::Float8E8M0 round_error() {

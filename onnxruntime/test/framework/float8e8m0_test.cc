@@ -92,9 +92,14 @@ TEST(Float8E8M0_Tests, NegativeValues) {
 }
 
 TEST(Float8E8M0_Tests, Zero) {
-  // Zero maps to smallest value (2^-127) since there's no zero representation
-  Float8E8M0 from_zero(0.0f);
+  // Zero maps to smallest value (2^-127) when saturate=true since there's no zero representation
+  Float8E8M0 from_zero(0.0f, true);
   EXPECT_EQ(from_zero.val, 0x00);
+
+  // Zero produces NaN when saturate=false
+  Float8E8M0 from_zero_nosat(0.0f, false);
+  EXPECT_TRUE(from_zero_nosat.IsNaN());
+  EXPECT_EQ(from_zero_nosat.val, 0xFF);
 }
 
 TEST(Float8E8M0_Tests, NegativeZero) {
@@ -169,6 +174,109 @@ TEST(Float8E8M0_Tests, BatchConversion) {
   for (size_t i = 0; i < floats.size(); i++) {
     EXPECT_FLOAT_EQ(result[i], floats[i]);
   }
+}
+
+TEST(Float8E8M0_Tests, FullBitPatternRoundTrip) {
+  // All bit patterns 0x00..0xFE should produce finite positive floats
+  // that round-trip back to the same bit pattern
+  for (int i = 0; i <= 0xFE; i++) {
+    Float8E8M0 original(static_cast<uint8_t>(i), Float8E8M0::FromBits());
+    float f = original.ToFloat();
+    EXPECT_FALSE(std::isnan(f)) << "val=" << i << " produced NaN";
+    EXPECT_GT(f, 0.0f) << "val=" << i << " produced non-positive value";
+
+    // Round-trip: convert back to Float8E8M0
+    Float8E8M0 round_tripped(f);
+    EXPECT_EQ(round_tripped.val, original.val)
+        << "Round-trip failed for val=" << i << " (float=" << f << ")";
+  }
+}
+
+TEST(Float8E8M0_Tests, NaNIdentity) {
+  // NaN != NaN (IEEE semantics)
+  Float8E8M0 nan_a(0xFF, Float8E8M0::FromBits());
+  float fa = nan_a.ToFloat();
+  EXPECT_TRUE(std::isnan(fa));
+  EXPECT_FALSE(fa == fa);  // NaN is not equal to itself
+}
+
+TEST(Float8E8M0_Tests, SignalingNaN) {
+  // Signaling NaN should also map to 0xFF
+  uint32_t snan_bits = 0x7F800001;  // positive signaling NaN
+  float snan;
+  std::memcpy(&snan, &snan_bits, sizeof(float));
+  Float8E8M0 from_snan(snan);
+  EXPECT_TRUE(from_snan.IsNaN());
+  EXPECT_EQ(from_snan.val, 0xFF);
+
+  // Negative signaling NaN
+  uint32_t neg_snan_bits = 0xFF800001;
+  float neg_snan;
+  std::memcpy(&neg_snan, &neg_snan_bits, sizeof(float));
+  Float8E8M0 from_neg_snan(neg_snan);
+  EXPECT_TRUE(from_neg_snan.IsNaN());
+  EXPECT_EQ(from_neg_snan.val, 0xFF);
+}
+
+TEST(Float8E8M0_Tests, ExactBoundaries) {
+  // 2^(-127) = val 0
+  Float8E8M0 min_val(0x00, Float8E8M0::FromBits());
+  EXPECT_FLOAT_EQ(min_val.ToFloat(), std::ldexp(1.0f, -127));
+
+  // 2^127 = val 254
+  Float8E8M0 max_val(0xFE, Float8E8M0::FromBits());
+  EXPECT_FLOAT_EQ(max_val.ToFloat(), std::ldexp(1.0f, 127));
+}
+
+TEST(Float8E8M0_Tests, SaturateFalseOverflow) {
+  // Value above max with mantissa below rounding threshold
+  // still produces NaN with saturate=false when exponent overflows
+  float large = std::ldexp(1.0f, 127);  // exactly 2^127 = val 254
+  Float8E8M0 exact_max(large, false);
+  EXPECT_EQ(exact_max.val, 0xFE);  // exact match, no overflow
+
+  // 1.5 * 2^127 rounds up to 2^128, which overflows
+  float above_max = 1.5f * std::ldexp(1.0f, 127);
+  Float8E8M0 overflow_nosat(above_max, false);
+  EXPECT_TRUE(overflow_nosat.IsNaN());
+}
+
+TEST(Float8E8M0_Tests, SubnormalRounding) {
+  // Float32 subnormals near the top of the range should round up to 2^-126 (val=1)
+  // The largest subnormal is just below 2^-126
+  uint32_t largest_subnorm_bits = 0x007FFFFF;
+  float largest_subnorm;
+  std::memcpy(&largest_subnorm, &largest_subnorm_bits, sizeof(float));
+  Float8E8M0 from_largest_subnorm(largest_subnorm, true);
+  EXPECT_EQ(from_largest_subnorm.val, 0x01);  // Rounds up to 2^(-126)
+
+  // Small subnormals should round down to 2^-127 (val=0)
+  uint32_t small_subnorm_bits = 0x00200000;  // well below midpoint
+  float small_subnorm;
+  std::memcpy(&small_subnorm, &small_subnorm_bits, sizeof(float));
+  Float8E8M0 from_small_subnorm(small_subnorm, true);
+  EXPECT_EQ(from_small_subnorm.val, 0x00);  // Rounds down to 2^(-127)
+
+  // With saturate=false, all subnormals produce NaN
+  Float8E8M0 subnorm_nosat(largest_subnorm, false);
+  EXPECT_TRUE(subnorm_nosat.IsNaN());
+}
+
+TEST(Float8E8M0_Tests, BatchConversionSpecialValues) {
+  // Test batch conversion with special values
+  std::vector<float> floats = {
+      std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::infinity(),
+      0.0f,
+      1.0f,
+  };
+  std::vector<Float8E8M0> fp8(floats.size());
+  FloatToFloat8E8M0(floats.data(), fp8.data(), floats.size(), true);
+
+  EXPECT_EQ(fp8[0].val, 0xFF);  // NaN
+  EXPECT_EQ(fp8[1].val, 0xFE);  // Inf saturates to max
+  EXPECT_EQ(fp8[2].val, 0x00);  // Zero saturates to min
+  EXPECT_EQ(fp8[3].val, 127);   // 1.0
 }
 
 }  // namespace test
