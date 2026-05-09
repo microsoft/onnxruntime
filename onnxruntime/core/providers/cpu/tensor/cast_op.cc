@@ -977,7 +977,7 @@ class Cast final : public OpKernel {
 #endif
     saturate_ = saturate == 1;
 
-    // round_mode only applies for casting to float8e8m0 (introduced in opset 25)
+    // round_mode only applies for casting to float8e8m0 (introduced in opset 24)
     std::string round_mode_str = info.GetAttrOrDefault("round_mode", std::string("up"));
 #if !defined(DISABLE_FLOAT8_TYPES)
     if (round_mode_str == "up") {

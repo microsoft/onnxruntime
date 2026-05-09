@@ -28,11 +28,12 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<uint64_t>(),
       DataTypeImpl::GetTensorType<bool>()
 #if !defined(DISABLE_FLOAT8_TYPES)
-          ,
-      DataTypeImpl::GetTensorType<Float8E4M3FN>(), DataTypeImpl::GetTensorType<Float8E5M2>()
+      ,
+      DataTypeImpl::GetTensorType<Float8E4M3FN>(), DataTypeImpl::GetTensorType<Float8E5M2>(),
+      DataTypeImpl::GetTensorType<Float8E8M0>()
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
-                                                       ,
+      ,
       DataTypeImpl::GetTensorType<Float4E2M1x2>()
 #endif
   };
@@ -148,6 +149,19 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
     }                                                                                       \
     break;
 
+#define CASE_TO_E8M0(TP_TYPE)                                \
+  case TP_TYPE:                                              \
+    if (count > 0) {                                         \
+      return cast_helper_impl::CudaCastToE8M0<CudaSrcT>(    \
+          Stream(context),                                   \
+          x_data,                                            \
+          Y->MutableData<Float8E8M0>(),                      \
+          count,                                             \
+          saturate_,                                         \
+          round_mode_);                                      \
+    }                                                        \
+    break;
+
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -228,6 +242,7 @@ Status Cast<float>::ComputeInternal(OpKernelContext* context) const {
 #if !defined(DISABLE_FLOAT8_TYPES)
     CASE_SAT(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
     CASE_SAT(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
+    CASE_TO_E8M0(TensorProto_DataType_FLOAT8E8M0)
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_BYTE_PACKED(TensorProto_DataType_FLOAT4E2M1, float, Float4E2M1x2)
@@ -267,6 +282,7 @@ Status Cast<MLFloat16>::ComputeInternal(OpKernelContext* context) const {
 #if !defined(DISABLE_FLOAT8_TYPES)
     CASE_SAT(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
     CASE_SAT(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
+    CASE_TO_E8M0(TensorProto_DataType_FLOAT8E8M0)
 #endif
     case TensorProto_DataType_STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
@@ -333,6 +349,39 @@ COMPUTE_INTERNAL_FL16_32(BFloat16)
 
 COMPUTE_INTERNAL_FL8(Float8E4M3FN)
 COMPUTE_INTERNAL_FL8(Float8E5M2)
+
+template <>
+Status Cast<Float8E8M0>::ComputeInternal(OpKernelContext* context) const {
+  const Tensor* X = context->Input<Tensor>(0);
+  const TensorShape& shape = X->Shape();
+  Tensor* Y = context->Output(0, shape);
+  const auto* x_data = X->Data<Float8E8M0>();
+  size_t count = shape.Size();
+  switch (to_) {
+    case TensorProto_DataType_FLOAT16:
+      if (count > 0) {
+        ORT_RETURN_IF_ERROR(cast_helper_impl::CudaCastStd<half, Float8E8M0>(
+            Stream(context),
+            x_data,
+            reinterpret_cast<half*>(Y->MutableData<MLFloat16>()),
+            count));
+      }
+      break;
+    case TensorProto_DataType_FLOAT:
+      if (count > 0) {
+        ORT_RETURN_IF_ERROR(cast_helper_impl::CudaCastStd<float, Float8E8M0>(
+            Stream(context),
+            x_data,
+            Y->MutableData<float>(),
+            count));
+      }
+      break;
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Unimplemented 'to' argument value: ", to_);
+  }
+  return Status::OK();
+}
 
 #endif
 
@@ -411,6 +460,18 @@ SPECIALIZE_IMPL(BFloat16)
           .TypeConstraint("T2", OutputTypeConstraints),           \
       Cast<T>);
 
+#define REGISTER_KERNEL_TYPED_24(T, OutputTypeConstraints)        \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Cast,                                                       \
+      kOnnxDomain,                                                \
+      24, 24,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", OutputTypeConstraints),           \
+      Cast<T>);
+
 #define REGISTER_KERNEL_TYPED_25(T, OutputTypeConstraints)        \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
@@ -433,6 +494,11 @@ SPECIALIZE_IMPL(BFloat16)
 
 SPECIALIZE_IMPL_19_TO_25(Float8E4M3FN)
 SPECIALIZE_IMPL_19_TO_25(Float8E5M2)
+
+// Float8E8M0 was introduced in opset 24.
+REGISTER_KERNEL_TYPED_24(Float8E8M0, CastOpTypeConstraints())
+REGISTER_KERNEL_TYPED_25(Float8E8M0, CastOpTypeConstraints())
+template Status Cast<Float8E8M0>::ComputeInternal(OpKernelContext* context) const;
 
 #endif
 

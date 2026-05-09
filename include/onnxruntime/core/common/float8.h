@@ -791,6 +791,19 @@ struct Float8E8M0 {
 
     // Normal float32: value is 2^(exponent - 127) * (1 + mantissa/2^23)
     // We need to round to the nearest power of 2.
+
+    // Values strictly above E8M0_MAX (2^127): exponent=254 with non-zero mantissa
+    // means value is in (2^127, 2^128). Since 2^128 is not representable in E8M0
+    // (val 255 = NaN), there is no upper bound for rounding. Out of representable range.
+    if (exponent == 0xFE && mantissa != 0) {
+      if (saturate) {
+        val = 0xFE;  // Clamp to E8M0_MAX = 2^127
+      } else {
+        val = 0xFF;  // NaN
+      }
+      return;
+    }
+
     // The midpoint is at mantissa = 0x00400000 (= 0.5), where the float value is
     // exactly 1.5 * the lower power of 2.
     // This aligns with the OCP Microscaling Formats (MX) spec for E8M0 scaling factors.
@@ -799,7 +812,9 @@ struct Float8E8M0 {
       exponent += 1;
     }
 
-    // After rounding, exponent may overflow
+    // After rounding, exponent may overflow (e.g., rounding up from exponent 253
+    // can reach 254 which is valid, but further overflow beyond 254 is impossible
+    // since the exponent==254 case with mantissa!=0 is handled above).
     if (exponent > 0xFE) {
       if (saturate) {
         val = 0xFE;  // Largest finite: 2^127

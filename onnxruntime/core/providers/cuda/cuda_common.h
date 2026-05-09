@@ -122,6 +122,15 @@ class ToCudaType<Float8E5M2FNUZ> {
   }
 };
 
+template <>
+class ToCudaType<Float8E8M0> {
+ public:
+  typedef Float8E8M0 MappedType;
+  static MappedType FromFloat(float f) {
+    return MappedType(f);
+  }
+};
+
 #endif
 
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)

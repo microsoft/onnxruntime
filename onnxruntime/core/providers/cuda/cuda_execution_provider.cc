@@ -1730,6 +1730,7 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kO
 #if !defined(DISABLE_FLOAT8_TYPES)
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 23, 24, Float8E4M3FN, Cast);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 23, 24, Float8E5M2, Cast);
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 24, 24, Float8E8M0, Cast);
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 23, 24, Float4E2M1x2, Cast);
@@ -1818,6 +1819,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 #if !defined(DISABLE_FLOAT8_TYPES)
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float8E4M3FN, Cast);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float8E5M2, Cast);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float8E8M0, Cast);
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float4E2M1x2, Cast);
@@ -2988,6 +2990,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 #if !defined(DISABLE_FLOAT8_TYPES)
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 23, 24, Float8E4M3FN, Cast)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 23, 24, Float8E5M2, Cast)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 24, 24, Float8E8M0, Cast)>,
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 23, 24, Float4E2M1x2, Cast)>,
@@ -3076,6 +3079,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 #if !defined(DISABLE_FLOAT8_TYPES)
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float8E4M3FN, Cast)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float8E5M2, Cast)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float8E8M0, Cast)>,
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 25, Float4E2M1x2, Cast)>,

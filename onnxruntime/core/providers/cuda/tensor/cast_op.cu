@@ -145,6 +145,38 @@ struct CastSat<Float8E5M2, half> {
 
 #endif
 
+// Float8E8M0 conversions (software only, no CUDA hardware intrinsics)
+
+template <>
+struct CastStd<float, Float8E8M0> {
+  __device__ __forceinline__ float operator()(Float8E8M0 v) const {
+    return v.ToFloat();
+  }
+};
+
+template <>
+struct CastStd<half, Float8E8M0> {
+  __device__ __forceinline__ half operator()(Float8E8M0 v) const {
+    return __float2half(v.ToFloat());
+  }
+};
+
+// Functor for casting to Float8E8M0 with saturate and round_mode
+template <typename InT>
+struct CastToE8M0Op {
+  bool saturate;
+  Float8E8M0::RoundMode round_mode;
+  __device__ __forceinline__ Float8E8M0 operator()(InT v) const {
+    float fv;
+    if constexpr (std::is_same_v<InT, half>) {
+      fv = __half2float(v);
+    } else {
+      fv = static_cast<float>(v);
+    }
+    return Float8E8M0(fv, saturate, round_mode);
+  }
+};
+
 #endif  // DISABLE_FLOAT8_TYPES
 
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -391,6 +423,44 @@ template Status CudaCastStd<half, Float8E5M2>(cudaStream_t stream, const Float8E
 
 template Status CudaCastSat<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, size_t num_of_element, bool saturate);
 template Status CudaCastSat<Float8E5M2, half>(cudaStream_t stream, const half* input, Float8E5M2* output, size_t num_of_element, bool saturate);
+
+// Float8E8M0: from E8M0 to float/half
+template Status CudaCastStd<float, Float8E8M0>(cudaStream_t stream, const Float8E8M0* input, float* output, size_t num_of_element);
+template Status CudaCastStd<half, Float8E8M0>(cudaStream_t stream, const Float8E8M0* input, half* output, size_t num_of_element);
+
+// Float8E8M0: kernel for casting TO E8M0 with saturate and round_mode
+template <int NumThreadsPerBlock, int NumElementsPerThread, typename InT>
+__global__ void CastToE8M0Kernel(const InT* input, Float8E8M0* output, CUDA_LONG N,
+                                 CastToE8M0Op<InT> cast_op) {
+  CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
+
+#pragma unroll
+  for (int i = 0; i < NumElementsPerThread; i++) {
+    if (id < N) {
+      output[id] = cast_op(input[id]);
+      id += NumThreadsPerBlock;
+    }
+  }
+}
+
+template <class InT>
+Status CudaCastToE8M0(cudaStream_t stream, const InT* input, Float8E8M0* output,
+                      size_t num_of_elements, bool saturate, Float8E8M0::RoundMode round_mode) {
+  if (num_of_elements <= 0)
+    return Status::OK();
+
+  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_elements, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  CastToE8M0Op<InT> cast_op{saturate, round_mode};
+  CastToE8M0Kernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, InT>
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          input, output, static_cast<int>(num_of_elements), cast_op);
+  return Status::OK();
+}
+
+template Status CudaCastToE8M0<float>(cudaStream_t stream, const float* input, Float8E8M0* output,
+                                      size_t num_of_elements, bool saturate, Float8E8M0::RoundMode round_mode);
+template Status CudaCastToE8M0<half>(cudaStream_t stream, const half* input, Float8E8M0* output,
+                                     size_t num_of_elements, bool saturate, Float8E8M0::RoundMode round_mode);
 
 #endif
 
