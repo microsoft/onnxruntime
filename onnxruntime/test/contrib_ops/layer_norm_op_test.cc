@@ -442,6 +442,7 @@ TEST(LayerNormTest, LayerNorm_LargeConstantInput_NoNaN) {
   test.AddOutput<float>("Y", dims, std::vector<float>(2 * hidden_size, scale_bias_value));
   test.SetOutputAbsErr("Y", 1e-6f);
 
+  // Keep the regression pinned to CPU since the reported NaNs were in the CPU fast path.
   auto cpu = DefaultCpuExecutionProvider();
   if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
   test.ConfigEp(std::move(cpu)).RunWithConfig();
