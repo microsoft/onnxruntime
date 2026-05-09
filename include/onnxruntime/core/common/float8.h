@@ -703,10 +703,11 @@ struct Float8E8M0 {
 
   /// Rounding modes for Float8E8M0 conversion from float.
   /// These correspond to the ONNX Cast op's round_mode attribute for float8e8m0.
+  /// See: https://github.com/onnx/onnx/blob/main/onnx/numpy_helper.py (to_float8e8m0)
   enum class RoundMode : uint8_t {
-    Up,       // Round to nearest, ties away from zero (default)
-    Down,     // Round to nearest, ties towards zero
-    Nearest,  // Round to nearest, ties round up (same as Up for positive-only E8M0)
+    Up,       // Ceiling: always round up to next power of 2 when not exact (default).
+    Down,     // Floor: always truncate to lower power of 2.
+    Nearest,  // Round to nearest power of 2; ties round to higher power (round-half-up).
   };
 
   inline explicit ORT_HOST_DEVICE Float8E8M0(float v, bool saturate = true,
@@ -765,36 +766,57 @@ struct Float8E8M0 {
       return;
     }
 
-    // For ties (exactly at midpoint), "Down" mode rounds towards zero (lower power of 2),
-    // while "Up" and "Nearest" modes round away from zero (higher power of 2).
-    // E8M0 is positive-only, so "Up" and "Nearest" are equivalent.
-    const bool round_ties_up = (round_mode != RoundMode::Down);
-
-    // Denormalized float32: value = 2^(-126) * (mantissa / 2^23)
-    // The largest subnormal is ~2^(-126) * (1 - 2^-23), which should round to 2^(-126) = val 1.
-    // The midpoint between 2^(-127) and 2^(-126) is 1.5 * 2^(-127).
-    // Subnormals with value >= midpoint round up to 2^(-126) (val=1), others to 2^(-127) (val=0).
-    // Midpoint in subnormal mantissa: 0x00600000 (mantissa >= 0.75 * 2^23 means value >= 1.5 * 2^-127).
+    // Denormalized float32: value = 2^(-126) * (mantissa / 2^23), range (0, 2^(-126)).
+    // E8M0 can represent 2^(-127) (val=0) and 2^(-126) (val=1). Round using the same
+    // G/R/S scheme as the ONNX reference (to_float8e8m0 in onnx/numpy_helper.py):
+    //   G (guard) = bit 22 of mantissa; R (round) = bit 21; S (sticky) = bits 20:0.
+    //   For subnormals, lsb of result exponent = 0, so "nearest" rounds up only when
+    //   G=1 AND (R=1 OR S!=0), i.e. mantissa > 0x400000.
     if (exponent == 0) {
-      if (saturate) {
-        bool round_up = round_ties_up ? (mantissa >= 0x00600000) : (mantissa > 0x00600000);
-        if (round_up) {
-          val = 0x01;  // Round up to 2^(-126)
-        } else {
-          val = 0x00;  // Round down to 2^(-127)
-        }
+      bool round_up;
+      switch (round_mode) {
+        case RoundMode::Up:
+          // Ceiling: any subnormal with nonzero mantissa rounds up to 2^(-126).
+          round_up = (mantissa > 0);
+          break;
+        case RoundMode::Down:
+          // Floor: always keep val=0 (2^(-127)), never increment.
+          round_up = false;
+          break;
+        case RoundMode::Nearest:
+        default:
+          // Round to nearest: G=1 and (R=1 or S!=0) means value > midpoint-equivalent.
+          round_up = (mantissa > 0x00400000);
+          break;
+      }
+      if (round_up) {
+        val = 0x01;  // 2^(-126)
       } else {
-        val = 0xFF;  // NaN (subnormals are below E8M0 min for saturate=false)
+        val = 0x00;  // 2^(-127)
       }
       return;
     }
 
-    // Normal float32: value is 2^(exponent - 127) * (1 + mantissa/2^23)
-    // We need to round to the nearest power of 2.
-    // The midpoint is at mantissa = 0x00400000 (= 0.5), where the float value is
-    // exactly 1.5 * the lower power of 2.
-    // This aligns with the OCP Microscaling Formats (MX) spec for E8M0 scaling factors.
-    bool round_up = round_ties_up ? (mantissa >= 0x00400000) : (mantissa > 0x00400000);
+    // Normal float32: value is 2^(exponent - 127) * (1 + mantissa/2^23).
+    // Round to the nearest power of 2 using the ONNX semantics:
+    //   Up (ceiling):  round up when the float is not exactly a power of 2 (mantissa > 0).
+    //   Down (floor):  never round up; always keep the lower exponent.
+    //   Nearest:       G bit (bit 22) determines direction — round up when mantissa >= 0x400000.
+    //                  For normal floats lsb of exponent is always considered 1, so ties
+    //                  round to the higher power of 2 (round-half-up).
+    bool round_up;
+    switch (round_mode) {
+      case RoundMode::Up:
+        round_up = (mantissa > 0);
+        break;
+      case RoundMode::Down:
+        round_up = false;
+        break;
+      case RoundMode::Nearest:
+      default:
+        round_up = (mantissa >= 0x00400000);
+        break;
+    }
     if (round_up) {
       exponent += 1;
     }

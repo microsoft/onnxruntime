@@ -3204,46 +3204,56 @@ TEST(CastOpTest, FloatToFloat8E8M0_NoSaturate) {
 
 TEST(CastOpTest, FloatToFloat8E8M0_RoundModeUp) {
   const std::vector<int64_t> shape{4};
-  // 1.5 is the midpoint between 2^0=1.0 and 2^1=2.0
-  // 3.0 is the midpoint between 2^1=2.0 and 2^2=4.0
-  // With "up" mode, ties round away from zero (to higher power of 2)
+  // "up" mode is ceiling: always round up to the next power of 2 when not exact.
+  // Exact powers of 2 (mantissa == 0) are unchanged; all others round up.
+  //   1.5 (mantissa != 0) → 2^1 = 2.0 (val=128)
+  //   3.0 (mantissa != 0) → 2^2 = 4.0 (val=129)
+  //   1.3 (mantissa != 0) → 2^1 = 2.0 (val=128)  [ceiling, not round-half-up]
+  //   2.5 (mantissa != 0) → 2^2 = 4.0 (val=129)  [ceiling, not round-half-up]
   const std::vector<float> input = {1.5f, 3.0f, 1.3f, 2.5f};
-
-  std::vector<Float8E8M0> expected;
-  expected.reserve(input.size());
-  for (float v : input) {
-    expected.emplace_back(Float8E8M0(v, true, Float8E8M0::RoundMode::Up));
-  }
-
+  const std::vector<Float8E8M0> expected = {
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.5  → 2.0
+      Float8E8M0(129, Float8E8M0::FromBits()),  // 3.0  → 4.0
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.3  → 2.0
+      Float8E8M0(129, Float8E8M0::FromBits()),  // 2.5  → 4.0
+  };
   TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "up");
 }
 
 TEST(CastOpTest, FloatToFloat8E8M0_RoundModeDown) {
   const std::vector<int64_t> shape{4};
-  // With "down" mode, ties round towards zero (to lower power of 2)
-  // 1.5 → 1.0 (val=127), 3.0 → 2.0 (val=128), but 1.7 → 2.0, 2.5 → 2.0
+  // "down" mode is floor: always truncate to the lower power of 2, never increment.
+  // All non-power-of-2 values keep the lower exponent regardless of their fractional part.
+  //   1.5 → 2^0 = 1.0 (val=127)  [floor, not round-half-down]
+  //   3.0 → 2^1 = 2.0 (val=128)  [floor]
+  //   1.7 → 2^0 = 1.0 (val=127)  [floor, not round-half-down — 1.7 > midpoint but still floors]
+  //   2.5 → 2^1 = 2.0 (val=128)  [floor]
   const std::vector<float> input = {1.5f, 3.0f, 1.7f, 2.5f};
-
-  std::vector<Float8E8M0> expected;
-  expected.reserve(input.size());
-  for (float v : input) {
-    expected.emplace_back(Float8E8M0(v, true, Float8E8M0::RoundMode::Down));
-  }
-
+  const std::vector<Float8E8M0> expected = {
+      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.5  → 1.0
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 3.0  → 2.0
+      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.7  → 1.0
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 2.5  → 2.0
+  };
   TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "down");
 }
 
 TEST(CastOpTest, FloatToFloat8E8M0_RoundModeNearest) {
   const std::vector<int64_t> shape{4};
-  // "nearest" should behave the same as "up" for positive-only E8M0
+  // "nearest" mode: round to nearest power of 2; ties (exactly halfway) round up.
+  // Decision threshold: guard bit (bit 22 of mantissa, representing 0.5 of fractional part).
+  //   1.5 → midpoint (mantissa=0x400000) → round up → 2^1 = 2.0 (val=128)
+  //   3.0 → midpoint (mantissa=0x400000) → round up → 2^2 = 4.0 (val=129)
+  //   1.3 → closer to 1.0 (mantissa=0x266666 < 0x400000) → 2^0 = 1.0 (val=127)
+  //   2.5 → closer to 2.0 (mantissa=0x200000 < 0x400000) → 2^1 = 2.0 (val=128)
+  // Note: "nearest" differs from "up" for 1.3 and 2.5 (ceiling would give val=128/129).
   const std::vector<float> input = {1.5f, 3.0f, 1.3f, 2.5f};
-
-  std::vector<Float8E8M0> expected;
-  expected.reserve(input.size());
-  for (float v : input) {
-    expected.emplace_back(Float8E8M0(v, true, Float8E8M0::RoundMode::Nearest));
-  }
-
+  const std::vector<Float8E8M0> expected = {
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.5  → 2.0 (tie, rounds up)
+      Float8E8M0(129, Float8E8M0::FromBits()),  // 3.0  → 4.0 (tie, rounds up)
+      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.3  → 1.0 (nearer to 1.0)
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 2.5  → 2.0 (nearer to 2.0)
+  };
   TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "nearest");
 }
 
