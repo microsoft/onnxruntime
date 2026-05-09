@@ -20,6 +20,7 @@ class SkipLayerNorm final : public CudaKernel {
  private:
   float epsilon_;
   bool strict_;
+  bool use_float_accumulation_;  // stash_type == 1
 };
 
 }  // namespace cuda
