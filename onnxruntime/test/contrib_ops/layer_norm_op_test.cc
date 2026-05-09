@@ -426,7 +426,7 @@ TEST(LayerNormTest, LayerNorm17_double) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
 }
 
-TEST(LayerNormTest, LayerNorm_LargeConstantInput_NoNaN) {
+TEST(LayerNormTest, LayerNorm_LargeConstantInput_Valid) {
   constexpr int64_t hidden_size = 768;
   constexpr float input_value = 2396.814f;
   constexpr float scale_bias_value = 0.1f;

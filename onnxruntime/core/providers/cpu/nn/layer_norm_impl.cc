@@ -27,7 +27,8 @@ ORT_FORCEINLINE double ComputeStdDevDenominator(double sum_square,
   }
 
   const double variance = sum_square * inverse_norm_size - mean * mean;
-  // Clamp tiny negative variances caused by floating-point cancellation on near-constant inputs.
+  // Variance cannot be negative mathematically, so clamp tiny negative values caused by
+  // floating-point cancellation on near-constant inputs back to zero.
   return std::sqrt((variance > 0.0 ? variance : 0.0) + static_cast<double>(epsilon));
 }
 
