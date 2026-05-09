@@ -3150,9 +3150,9 @@ void TestCastToFloat8E8M0(gsl::span<const SrcType> input,
   }
 
   // Float8E8M0 is CPU only for now
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
-  excluded_provider_types.insert(kCudaExecutionProvider);
-  test.Run(expect_result, expected_failure_string, excluded_provider_types);
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(expect_result, expected_failure_string)
+      .RunWithConfig();
 }
 
 template <typename DstType>
@@ -3165,9 +3165,9 @@ void TestCastFromFloat8E8M0(gsl::span<const Float8E8M0> input,
   test.AddInput<Float8E8M0>("input", shape, input.data(), input.size());
   test.AddOutput<DstType>("output", shape, output.data(), output.size());
 
-  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
-  excluded_provider_types.insert(kCudaExecutionProvider);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+  // Float8E8M0 is CPU only for now
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
 }
 
 TEST(CastOpTest, FloatToFloat8E8M0_Saturate) {
