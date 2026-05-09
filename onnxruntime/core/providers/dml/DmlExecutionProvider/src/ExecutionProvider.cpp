@@ -55,7 +55,7 @@ namespace Dml
         _Out_ std::shared_ptr<onnxruntime::KernelRegistry>* registry,
         _Out_ std::shared_ptr<const InternalRegistrationInfoMap>* internalRegInfoMap)
     {
-        ComPtr<AbiCustomRegistry> abiRegistry = wil::MakeOrThrow<AbiCustomRegistry>();
+        ComPtr<AbiCustomRegistry> abiRegistry = Dml::SafeMakeOrThrow<AbiCustomRegistry>();
         Dml::RegisterDmlOperators(abiRegistry.Get());
 
         assert(abiRegistry->GetRegistries().size() == 1);
@@ -88,7 +88,7 @@ namespace Dml
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
-        m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands,
+        m_impl = Dml::SafeMakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), executionContext, enableMetacommands,
                                                          enableGraphCapture, enableSyncSpinning, disableMemoryArena);
     }
 
@@ -1298,9 +1298,9 @@ namespace Dml
         uint64_t pooledResourceId = 0; // Not a pooled resource
 
         ComPtr<DmlResourceWrapper> resourceWrapper;
-        wil::MakeOrThrow<DmlCommittedResourceWrapper>(pResource).As(&resourceWrapper);
+        Dml::SafeMakeOrThrow<DmlCommittedResourceWrapper>(pResource).As(&resourceWrapper);
 
-        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
+        ComPtr<AllocationInfo> allocInfo = Dml::SafeMakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
         return allocInfo.Detach();
     }
     void FreeGPUAllocation(void* ptr)

@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <limits>
 #include "gtest/gtest.h"
+#include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -935,10 +937,11 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_OOB_CUDA_Passthroug
   test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
   // position_id = 2048 exceeds max_sequence_length = 8 — CUDA should pass through input unchanged.
   test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {2048});
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
   test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 1.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
   test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
-                       std::vector<float>(max_sequence_length * head_size / 2, 0.0f));
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
 
   // Output should equal input when position_id is OOB (pass-through).
   test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size}, input_data);
@@ -948,6 +951,225 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_OOB_CUDA_Passthroug
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 #endif
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsTotalElementsOverflow) {
+  constexpr int kMaxInt = std::numeric_limits<int>::max();
+
+  contrib::rotary_embedding_helper::RotaryParameters parameters{};
+  if (std::numeric_limits<std::ptrdiff_t>::max() <= std::numeric_limits<int>::max()) {
+    // On narrow ptrdiff_t platforms, kMaxInt * kMaxInt would overflow earlier when validating
+    // the position_ids element count. Use floor(sqrt(INT_MAX)) for batch and sequence so that
+    // batch_size * sequence_length still fits, then rely on num_heads to trigger the later
+    // total_elements overflow path this regression is targeting.
+    parameters.batch_size = 46340;
+    parameters.sequence_length = 46340;
+    parameters.num_heads = 2;
+    parameters.max_sequence_length = 46340;
+  } else {
+    // On wide ptrdiff_t platforms, batch_size * sequence_length still fits in ptrdiff_t, so use
+    // the largest int dimensions directly and let the extra num_heads factor overflow total_elements.
+    parameters.batch_size = kMaxInt;
+    parameters.sequence_length = kMaxInt;
+    parameters.num_heads = 3;
+    parameters.max_sequence_length = kMaxInt;
+  }
+  parameters.head_size = 4;
+  parameters.head_stride = 4;
+  parameters.seq_stride = 8;
+  parameters.batch_stride = 8;
+  parameters.position_ids_format = 0;
+  parameters.rotary_embedding_dim = 4;
+
+  const int64_t position_ids[] = {0};
+  Status status = contrib::RunRotaryEmbedding<float>(nullptr, parameters, nullptr, position_ids, nullptr, nullptr, nullptr, false);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_NE(status.ErrorMessage().find("total_elements overflows ptrdiff_t"), std::string::npos);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsHiddenSizeOverflow) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {0, 32768, 1, 65536}, {});
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 32768}, std::vector<float>(32768, 1.0f));
+  test.AddInput<float>("sin_cache", {1, 32768}, std::vector<float>(32768, 0.0f));
+  test.AddOutput<float>("output", {0, 32768, 1, 65536}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "overflows int32", {}, nullptr, &execution_providers);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank3HiddenSizeNotDivisibleByNumHeads) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("rotary_embedding_dim", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {1, 1, 5}, {0.f, 0.f, 0.f, 0.f, 0.f});
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 1}, {1.0f});
+  test.AddInput<float>("sin_cache", {1, 1}, {0.0f});
+  test.AddOutput<float>("output", {1, 1, 5}, {0.f, 0.f, 0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "hidden_size=5 must be divisible by num_heads=2 for rank-3 input", {}, nullptr, &execution_providers);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank3MalformedCacheWidthWithNumHeads) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(2));
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {1, 1, 8}, std::vector<float>(8, 1.0f));
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 8}, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("sin_cache", {1, 8}, std::vector<float>(8, 0.0f));
+  test.AddOutput<float>("output", {1, 1, 8}, std::vector<float>(8, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2, got 8",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank4MalformedCacheWidth) {
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  test.AddInput<float>("input", {1, 2, 1, 4}, std::vector<float>(8, 1.0f));
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {1, 8}, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("sin_cache", {1, 8}, std::vector<float>(8, 0.0f));
+  test.AddOutput<float>("output", {1, 2, 1, 4}, std::vector<float>(8, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2, got 8",
+           {}, nullptr, &execution_providers);
+}
+
+// Test that OOB position_ids on WebGPU (format 1) pass through input unchanged (shader-side defense).
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_OOB_WebGPU_Passthrough) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  std::vector<float> input_data(batch_size * sequence_length * hidden_size);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = static_cast<float>(i + 1);
+  }
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  // Both position_ids exceed max_sequence_length = 8 — shader passes through input unchanged.
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {999, 999});
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
+
+  // Output should equal input when position_id is OOB (pass-through).
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size}, input_data);
+  test.SetOutputAbsErr("output", 0.0f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test that format-0 OOB position_ids base offset passes through on WebGPU (shader-side defense).
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_Format0_OOB_WebGPU_Passthrough) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  std::vector<float> input_data(batch_size * sequence_length * hidden_size);
+  for (size_t i = 0; i < input_data.size(); ++i) {
+    input_data[i] = static_cast<float>(i + 1);
+  }
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  // Format 0: base offset 8, effective positions = [8, 9] — both OOB for max_sequence_length = 8.
+  test.AddInput<int64_t>("position_ids", {1}, {8});
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
+
+  // Output should equal input when all positions are OOB (pass-through).
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size}, input_data);
+  test.SetOutputAbsErr("output", 0.0f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test that negative position_ids pass through on WebGPU (shader-side defense catches raw_pos < 0).
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_Negative_WebGPU_Passthrough) {
+  if (nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  int batch_size = 1;
+  int sequence_length = 1;
+  int num_heads = 2;
+  int head_size = 4;
+  int max_sequence_length = 8;
+  int hidden_size = num_heads * head_size;
+
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+
+  std::vector<float> input_data(hidden_size);
+  for (int i = 0; i < hidden_size; ++i) {
+    input_data[i] = static_cast<float>(i + 1);
+  }
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size}, input_data);
+  // Negative position_id — shader checks raw_pos < 0 and passes through.
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {-5});
+  // Non-trivial cache values ensure pass-through (output=input) differs from valid rotary output.
+  test.AddInput<float>("cos_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.5f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, head_size / 2},
+                       std::vector<float>(max_sequence_length * head_size / 2, 0.866f));
+
+  // Output should equal input when position_id is negative (pass-through).
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size}, input_data);
+  test.SetOutputAbsErr("output", 0.0f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!--
+      Version of the EP package to test. CI overrides this with the exact version produced by
+      pack_nuget.py via -p:OrtCudaPackageVersion=<version> so the test consumes the freshly
+      built package deterministically. The floating fallback is for local development against
+      a single-package local feed.
+    -->
+    <OrtCudaPackageVersion Condition="'$(OrtCudaPackageVersion)' == ''">*-*</OrtCudaPackageVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.ML.OnnxRuntime is pulled in transitively via the EP package. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.Cuda" Version="$(OrtCudaPackageVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="mul.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

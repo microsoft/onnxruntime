@@ -30,8 +30,6 @@ stages:
     variables:
       DoEsrp: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
 
     steps:
     - task: DownloadPipelineArtifact@0
@@ -58,15 +56,7 @@ stages:
         artifactName: 'onnxruntime-osx'
         targetPath: '$(Build.BinariesDirectory)/osx'
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
-
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'Lotus'
+    - template: setup-feeds-and-python-steps.yml
 
     - task: PowerShell@2
       displayName: 'Create osx directories'

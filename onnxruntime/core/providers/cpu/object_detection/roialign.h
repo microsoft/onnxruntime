@@ -129,6 +129,10 @@ class RoiAlignBase {
     std::string coordinate_transformation_mode;
     if (info.template GetAttr<std::string>("coordinate_transformation_mode", &coordinate_transformation_mode).IsOK()) {
       half_pixel_ = coordinate_transformation_mode == "half_pixel";
+    } else {
+      // For opset 16+, the default is "half_pixel" per ONNX spec.
+      // For opset 10 (which has no coordinate_transformation_mode attribute), false is correct.
+      half_pixel_ = info.node().SinceVersion() >= 16;
     }
 
     if (mode_ == RoiAlignMode::max && sampling_ratio_ != 1) {

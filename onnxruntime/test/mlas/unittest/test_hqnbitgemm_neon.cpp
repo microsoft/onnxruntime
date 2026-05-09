@@ -586,9 +586,11 @@ class MlasNeonFp16DequantB8BitTest : public MlasTestBase {
 
   // Reference dequantization for 8-bit packed data.
   // Uses explicit position-based indexing to match the packed layout exactly.
+  // Emulates the kernel's fp16 computation order:
+  //   1. neg_scaled_zp = fp16_round(-(scale * zp))  [once per block per column]
+  //   2. result = fp16_round(neg_scaled_zp + value * scale)  [emulates fp16 fma]
   //
   // Packed layout for N>=8 group (8N-interleaved):
-  //   For each K position, 8 consecutive bytes hold one value per column.
   //   byte[groupStart + k * 8 + col] = value for K=k, column=col
   //
   // Packed layout for remainder N<8 (sequential):
@@ -610,12 +612,14 @@ class MlasNeonFp16DequantB8BitTest : public MlasTestBase {
         for (size_t col = 0; col < 8; ++col) {
           const size_t absCol = n + col;
           const size_t srcIdx = groupStart + k * 8 + col;
-          const size_t dstIdx = srcIdx;  // output has the same interleaved layout
+          const size_t dstIdx = srcIdx;
           const float value = static_cast<float>(src[srcIdx]);
           const float scale = scales[absCol * BlkNum + block].ToFloat();
           const float zp = static_cast<float>(
               UseZeroPoints ? zero_points[absCol * BlkNum + block] : 128);
-          dst[dstIdx] = MLAS_FP16(value * scale - zp * scale);
+          // Emulate kernel: neg_scaled_zp rounded to fp16, then fma
+          const float neg_szp = MLAS_FP16(-(scale * zp)).ToFloat();
+          dst[dstIdx] = MLAS_FP16(neg_szp + value * scale);
         }
       }
     }
@@ -631,7 +635,8 @@ class MlasNeonFp16DequantB8BitTest : public MlasTestBase {
         const float scale = scales[n * BlkNum + block].ToFloat();
         const float zp = static_cast<float>(
             UseZeroPoints ? zero_points[n * BlkNum + block] : 128);
-        dst[dstIdx] = MLAS_FP16(value * scale - zp * scale);
+        const float neg_szp = MLAS_FP16(-(scale * zp)).ToFloat();
+        dst[dstIdx] = MLAS_FP16(neg_szp + value * scale);
       }
     }
   }

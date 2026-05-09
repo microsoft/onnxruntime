@@ -65,6 +65,55 @@ struct DispatchGroupNorm {
         broadcast_skip,
         channels_per_block);
   }
+
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // Plugin overload: accepts PluginTuningContextStub* (unused) and raw void*
+  // stream handle instead of IKernelExplorer*/Stream* which are not available
+  // in the plugin build. Uses OrtStreamAdapter to bridge to the _impl kernel.
+  Status operator()(CudaKernel::PluginTuningContextStub* tuning_ctx,
+                    void* ort_stream,
+                    Tensor* output,
+                    Tensor* add_out,
+                    const Tensor* input,
+                    const Tensor* skip,
+                    const Tensor* bias,
+                    const Tensor* gamma,
+                    const Tensor* beta,
+                    void* workspace,
+                    float epsilon,
+                    int batch_size,
+                    int num_channels,
+                    int height,
+                    int width,
+                    int num_groups,
+                    bool use_swish_activation,
+                    bool broadcast_skip,
+                    int channels_per_block) {
+    ORT_UNUSED_PARAMETER(tuning_ctx);
+    typedef typename ToCudaType<T>::MappedType CudaT;
+    onnxruntime::OrtStreamAdapter ort_stream_adapter(ort_stream);
+    return LaunchGroupNormKernel<CudaT>(
+        nullptr,
+        ort_stream_adapter.get(),
+        reinterpret_cast<CudaT*>(output->MutableData<T>()),
+        add_out == nullptr ? nullptr : reinterpret_cast<CudaT*>(add_out->MutableData<T>()),
+        reinterpret_cast<const CudaT*>(input->Data<T>()),
+        skip == nullptr ? nullptr : reinterpret_cast<const CudaT*>(skip->Data<T>()),
+        bias == nullptr ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>()),
+        gamma->Data<float>(),
+        beta->Data<float>(),
+        workspace,
+        epsilon,
+        batch_size,
+        num_channels,
+        height,
+        width,
+        num_groups,
+        use_swish_activation,
+        broadcast_skip,
+        channels_per_block);
+  }
+#endif
 };
 
 }  // namespace
@@ -208,11 +257,11 @@ Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
   }
 
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(batch_size, num_groups_),
-                                          context->GetComputeStream());
+                                          GetComputeStream(context));
 
   utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());
   return dispatcher.InvokeRet<Status, DispatchGroupNorm>(GetTuningContext(),
-                                                         context->GetComputeStream(), output, add_out, input, skip, bias,
+                                                         GetComputeStream(context), output, add_out, input, skip, bias,
                                                          gamma, beta, workspace.get(),
                                                          epsilon_,
                                                          batch_size,

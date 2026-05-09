@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/trt_op_test_utils.h"
@@ -906,5 +907,138 @@ TEST(RoiAlignTest, BatchIndicesNegative_CUDA) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 #endif
 }
+
+TEST(RoiAlignTest, Float16_Opset16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 1);
+  test.AddAttribute<int64_t>("output_width", 1);
+  test.AddAttribute<int64_t>("sampling_ratio", 1);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "output_half_pixel");
+
+  test.AddInput<MLFloat16>("X", {1, 1, 2, 2}, ToFloat16({1., 2., 1., 1.}));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 1., 1.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, ToFloat16({1.25f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, Float16_Opset22) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 22);
+  test.AddAttribute<int64_t>("output_height", 1);
+  test.AddAttribute<int64_t>("output_width", 1);
+  test.AddAttribute<int64_t>("sampling_ratio", 1);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "output_half_pixel");
+
+  test.AddInput<MLFloat16>("X", {1, 1, 2, 2}, ToFloat16({1., 2., 1., 1.}));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 1., 1.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 1, 1}, ToFloat16({1.25f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(RoiAlignTest, BFloat16_Opset22) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 22);
+  test.AddAttribute<int64_t>("output_height", 1);
+  test.AddAttribute<int64_t>("output_width", 1);
+  test.AddAttribute<int64_t>("sampling_ratio", 1);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "output_half_pixel");
+
+  test.AddInput<BFloat16>("X", {1, 1, 2, 2}, ToBFloat16({1., 2., 1., 1.}));
+  test.AddInput<BFloat16>("rois", {1, 4}, ToBFloat16({0., 0., 1., 1.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<BFloat16>("Y", {1, 1, 1, 1}, ToBFloat16({1.25f}));
+
+  test.SetOutputTolerance(0.05f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test half_pixel mode (default for Opset 16+) with Float16 on larger spatial dimensions.
+// Uses 8x8 input (0..63), ROI [0,0,7,7], output 2x2, sampling_ratio=2.
+// Expected values from ONNX reference implementation: {11.25, 14.75, 39.25, 42.75}
+TEST(RoiAlignTest, Float16_HalfPixel_Opset16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 2);
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "half_pixel");
+
+  std::vector<float> X_val(64);
+  for (int i = 0; i < 64; ++i) X_val[i] = static_cast<float>(i);
+  test.AddInput<MLFloat16>("X", {1, 1, 8, 8}, ToFloat16(X_val));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 7., 7.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 2, 2}, ToFloat16({11.25f, 14.75f, 39.25f, 42.75f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Test adaptive sampling (sampling_ratio=0) with Float16 on larger spatial dimensions.
+// Uses 8x8 input (0..63), ROI [0,0,7,7], output 2x2, half_pixel mode.
+// Adaptive: ceil(3.0/2)=2 samples per dim.
+// Expected values from ONNX reference implementation: {11.39062, 14.875, 39.26562, 42.75}
+TEST(RoiAlignTest, Float16_AdaptiveSampling_Opset16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep.get() == nullptr) {
+    GTEST_SKIP() << "Skipping because there is no CUDA execution provider available.";
+  }
+
+  OpTester test("RoiAlign", 16);
+  test.AddAttribute<int64_t>("output_height", 2);
+  test.AddAttribute<int64_t>("output_width", 2);
+  test.AddAttribute<int64_t>("sampling_ratio", 0);  // adaptive
+  test.AddAttribute<float>("spatial_scale", 1.0f);
+  test.AddAttribute<std::string>("coordinate_transformation_mode", "half_pixel");
+
+  std::vector<float> X_val(64);
+  for (int i = 0; i < 64; ++i) X_val[i] = static_cast<float>(i);
+  test.AddInput<MLFloat16>("X", {1, 1, 8, 8}, ToFloat16(X_val));
+  test.AddInput<MLFloat16>("rois", {1, 4}, ToFloat16({0., 0., 7., 7.}));
+  test.AddInput<int64_t>("batch_indices", {1}, {0});
+  test.AddOutput<MLFloat16>("Y", {1, 1, 2, 2},
+                            ToFloat16({11.39062f, 14.875f, 39.26562f, 42.75f}));
+
+  test.SetOutputTolerance(0.01f);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

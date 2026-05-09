@@ -28,6 +28,8 @@ struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
       *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
       return nullptr;
     };
+    OrtAllocator::AllocOnStream = nullptr;
+    OrtAllocator::Shrink = nullptr;
     Ort::ThrowOnError(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
   }
 

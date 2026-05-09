@@ -98,6 +98,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
                                               allocator, input, reduce_axes,  // TODO(leca): is this allocator the same as the 1st parameter?
                                               keep_dims, false, false, false,
                                               true, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_,
+                                              static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cudnn_handle_,
                                               input_shape_override);
 }
 

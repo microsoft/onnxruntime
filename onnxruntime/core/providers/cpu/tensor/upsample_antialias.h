@@ -17,6 +17,7 @@
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
+#include "core/common/safeint.h"
 #include "core/providers/cpu/tensor/upsamplebase.h"
 
 namespace onnxruntime {
@@ -130,7 +131,7 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
     float support = (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
 
     int32_t window_size = narrow<int32_t>(ceilf(support)) * 2 + 1;
-    const size_t scale_buffer_size = narrow<size_t>(window_size * output_size);
+    const size_t scale_buffer_size = static_cast<size_t>(SafeInt<size_t>(window_size) * output_size);
 
     param_base.weight_coefficients = IAllocator::MakeUniquePtr<T>(alloc, scale_buffer_size);
     // Get pointers to appropriate memory locations in the scratch buffer
@@ -253,15 +254,16 @@ void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, in
   concurrency::ThreadPool::TrySimpleParallelFor(
       tp, narrow<std::ptrdiff_t>(num_channels),
       [&](std::ptrdiff_t c) {
-        auto x_start = c * (input_height * input_width);
-        auto y_start = c * (output_height * output_width);
+        const size_t x_start = SafeInt<size_t>(c) * input_height * input_width;
+        const size_t y_start = SafeInt<size_t>(c) * output_height * output_width;
 
         const InputType* Xdata = Xdata_span.data() + x_start;
         InputType* Ydata = Ydata_span.data() + y_start;
         // no need to do scale
         if (output_width == input_width) {
-          std::copy_n(Xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_height * output_width),
-                      Ydata_span.begin() + narrow<size_t>(y_start));
+          std::copy_n(Xdata_span.begin() + x_start,
+                      static_cast<size_t>(SafeInt<size_t>(output_height) * output_width),
+                      Ydata_span.begin() + y_start);
           return;
         }
 
@@ -323,15 +325,16 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, narrow<std::ptrdiff_t>(num_channels),
         [&](std::ptrdiff_t c) {
-          auto x_start = c * (input_height * input_width);
-          auto y_start = c * (output_height * output_width);
+          const size_t x_start = SafeInt<size_t>(c) * input_height * input_width;
+          const size_t y_start = SafeInt<size_t>(c) * output_height * output_width;
 
           const InputType* Xdata = Xdata_span.data() + x_start;
           InputType* Ydata = Ydata_span.data() + y_start;
 
           if (output_height == input_height) {
-            std::copy_n(Xdata_span.begin() + narrow<size_t>(x_start), narrow<size_t>(output_height * output_width),
-                        Ydata_span.begin() + narrow<size_t>(y_start));
+            std::copy_n(Xdata_span.begin() + x_start,
+                        static_cast<size_t>(SafeInt<size_t>(output_height) * output_width),
+                        Ydata_span.begin() + y_start);
             return;
           }
 
@@ -368,8 +371,10 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
         [&](std::ptrdiff_t first, std::ptrdiff_t last) {
           if (output_height == input_height) {
             auto workload_in_thread = narrow<size_t>(last) - narrow<size_t>(first);
-            std::copy_n(Xdata_span.begin() + narrow<size_t>(first * input_width), narrow<size_t>(workload_in_thread * output_width),
-                        Ydata_span.begin() + narrow<size_t>(first * output_width));
+            const auto input_offset = static_cast<size_t>(SafeInt<size_t>(first) * input_width);
+            const auto output_offset = static_cast<size_t>(SafeInt<size_t>(first) * output_width);
+            const auto copy_count = static_cast<size_t>(SafeInt<size_t>(workload_in_thread) * output_width);
+            std::copy_n(Xdata_span.begin() + input_offset, copy_count, Ydata_span.begin() + output_offset);
             return;
           }
 
@@ -377,8 +382,8 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
             auto c = start / output_height;
             auto y = start % output_height;
 
-            auto x_start = c * (input_height * input_width);
-            auto y_start = c * (output_height * output_width);
+            const size_t x_start = SafeInt<size_t>(c) * input_height * input_width;
+            const size_t y_start = SafeInt<size_t>(c) * output_height * output_width;
 
             const InputType* Xdata = Xdata_span.data() + x_start;
             InputType* Ydata = Ydata_span.data() + y_start;
@@ -420,11 +425,13 @@ void HandleExtrapolation(int64_t num_channels,
   concurrency::ThreadPool::TrySimpleParallelFor(
       tp, static_cast<std::ptrdiff_t>(num_channels),
       [&](std::ptrdiff_t nc) {
-        InputType* Ydata_base_nc = Ydata_span.data() + (nc) * (output_depth * output_height * output_width);
+        InputType* Ydata_base_nc =
+            Ydata_span.data() + static_cast<size_t>(SafeInt<size_t>(nc) * output_depth * output_height * output_width);
 
         for (int64_t z = 0; z < output_depth && p.dim_x.out_of_bound_idx.size() > 0; ++z) {
           for (int64_t y = 0; y < output_height; ++y) {
-            InputType* Ydata_offset = Ydata_base_nc + (z * output_height + y) * output_width;
+            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
             for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
               Ydata_offset[narrow<size_t>(idx_x)] = static_cast<InputType>(extrapolation_value);
             }
@@ -433,14 +440,17 @@ void HandleExtrapolation(int64_t num_channels,
 
         for (int64_t z = 0; z < output_depth && p.dim_y.out_of_bound_idx.size() > 0; ++z) {
           for (int64_t y : p.dim_y.out_of_bound_idx) {
-            InputType* Ydata_offset = Ydata_base_nc + (z * output_height + y) * output_width;
+            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
             std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));
           }
         }
 
         for (int64_t z : p.dim_z.out_of_bound_idx) {
-          InputType* Ydata_offset = Ydata_base_nc + z * output_height * output_width;
-          std::fill_n(Ydata_offset, narrow<size_t>(output_height * output_width), static_cast<InputType>(extrapolation_value));
+          InputType* Ydata_offset =
+              Ydata_base_nc + static_cast<size_t>(SafeInt<size_t>(z) * output_height * output_width);
+          std::fill_n(Ydata_offset, static_cast<size_t>(SafeInt<size_t>(output_height) * output_width),
+                      static_cast<InputType>(extrapolation_value));
         }
       });
 }
@@ -459,15 +469,19 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias<T1>& p,
                            T* Ydata_base,
                            AllocatorPtr& alloc,
                            concurrency::ThreadPool* tp) {
+  const auto input_span_size = static_cast<size_t>(SafeInt<size_t>(input_height) * num_channels * input_width);
+  const auto temp_span_size = static_cast<size_t>(SafeInt<size_t>(input_height) * num_channels * output_width);
+  const auto output_span_size = static_cast<size_t>(SafeInt<size_t>(output_height) * num_channels * output_width);
+
   IAllocatorUniquePtr<T> image_temp_buffer = IAllocator::MakeUniquePtr<T>(
-      alloc, static_cast<size_t>(input_height * output_width * num_channels));
+      alloc, temp_span_size);
 
   for (int64_t n = 0; n < batch_size; ++n) {
     {
       // horizon interpolate
-      auto xdata_span = gsl::make_span(Xdata_base + n * (input_height * num_channels * input_width),
-                                       narrow<size_t>(input_height * num_channels * input_width));
-      auto ydata_span = gsl::make_span(image_temp_buffer.get(), narrow<size_t>(input_height * num_channels * output_width));
+      auto xdata_span = gsl::make_span(Xdata_base + static_cast<size_t>(SafeInt<size_t>(n) * input_span_size),
+                                       input_span_size);
+      auto ydata_span = gsl::make_span(image_temp_buffer.get(), temp_span_size);
 
       // This computes only the width direction.Thus height keeps unchanged.
       ComputeInterpolationAtLevel1(num_channels, input_height, input_width, input_height, output_width,
@@ -475,10 +489,9 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias<T1>& p,
     }
     {
       // vertical interpolate
-      auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get(),
-                                                narrow<size_t>(input_height * num_channels * output_width));
-      auto ydata_span = gsl::make_span<T>(Ydata_base + n * (output_height * num_channels * output_width),
-                                          narrow<size_t>(output_height * num_channels * output_width));
+      auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get(), temp_span_size);
+      auto ydata_span = gsl::make_span<T>(Ydata_base + static_cast<size_t>(SafeInt<size_t>(n) * output_span_size),
+                                          output_span_size);
 
       ComputeInterpolationAtLevel2(num_channels, input_height, output_width, output_height, output_width,
                                    xdata_span, ydata_span, p, p.dim_y, tp);
@@ -486,7 +499,7 @@ void UpsampleBaseAntiAlias(FilterParamsAntiAlias<T1>& p,
   }
   if (use_extrapolation) {
     auto ydata_span = gsl::make_span<T>(Ydata_base,
-                                        narrow<size_t>(batch_size * output_height * num_channels * output_width));
+                                        static_cast<size_t>(SafeInt<size_t>(batch_size) * output_span_size));
     HandleExtrapolation(batch_size * num_channels, output_height, output_width, 1,
                         extrapolation_value, ydata_span, p, tp);
   }
@@ -595,15 +608,19 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
                                 T* Ydata_base,
                                 AllocatorPtr& alloc,
                                 concurrency::ThreadPool* tp) {
+  const auto input_span_size = static_cast<size_t>(SafeInt<size_t>(input_height) * num_channels * input_width);
+  const auto temp_span_size = static_cast<size_t>(SafeInt<size_t>(input_height) * num_channels * output_width);
+  const auto output_span_size = static_cast<size_t>(SafeInt<size_t>(output_height) * num_channels * output_width);
+
   IAllocatorUniquePtr<T> image_temp_buffer = IAllocator::MakeUniquePtr<T>(
-      alloc, static_cast<size_t>(input_height * output_width * num_channels));
+      alloc, temp_span_size);
 
   for (int64_t n = 0; n < batch_size; ++n) {
     // horizon interpolate
     {
-      auto xdata_span = gsl::make_span(Xdata_base + n * (input_height * num_channels * input_width),
-                                       narrow<size_t>(input_height * num_channels * input_width));
-      auto ydata_span = gsl::make_span(image_temp_buffer.get(), narrow<size_t>(input_height * num_channels * output_width));
+      auto xdata_span = gsl::make_span(Xdata_base + static_cast<size_t>(SafeInt<size_t>(n) * input_span_size),
+                                       input_span_size);
+      auto ydata_span = gsl::make_span(image_temp_buffer.get(), temp_span_size);
 
       ComputeInterpolationAtLevel2(input_height, input_width, num_channels, output_width, num_channels,
                                    xdata_span, ydata_span, p, p.dim_x, tp);
@@ -612,10 +629,9 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
     // vertical interpolate
     {
       // vertical interpolate
-      auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get(),
-                                                narrow<size_t>(input_height * num_channels * output_width));
-      auto ydata_span = gsl::make_span<T>(Ydata_base + n * (output_height * num_channels * output_width),
-                                          narrow<size_t>(output_height * num_channels * output_width));
+      auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get(), temp_span_size);
+      auto ydata_span = gsl::make_span<T>(Ydata_base + static_cast<size_t>(SafeInt<size_t>(n) * output_span_size),
+                                          output_span_size);
 
       ComputeInterpolationAtLevel2(1, input_height, output_width * num_channels, output_height, output_width * num_channels,
                                    xdata_span, ydata_span, p, p.dim_y, tp);
@@ -624,7 +640,7 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
 
   if (use_extrapolation) {
     auto ydata_span = gsl::make_span<T>(Ydata_base,
-                                        narrow<size_t>(batch_size * output_height * num_channels * output_width));
+                                        static_cast<size_t>(SafeInt<size_t>(batch_size) * output_span_size));
     HandleExtrapolation(batch_size * num_channels, output_height, output_width, 1,
                         extrapolation_value, ydata_span, p, tp);
   }
@@ -692,7 +708,7 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
                                alloc, get_original_coordinate, exclude_outside, true);
 
   IAllocatorUniquePtr<T> image_temp_buffer = IAllocator::MakeUniquePtr<T>(
-      alloc, static_cast<size_t>(batch_size * output_height * output_width *
+      alloc, static_cast<size_t>(SafeInt<size_t>(batch_size) * output_height * output_width *
                                  input_depth * num_channels));
 
   UpsampleBaseAntiAlias<T>(p, batch_size, num_channels * input_depth, input_height, input_width, output_height, output_width,
@@ -701,14 +717,20 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
 
   auto m_batch_size = batch_size * num_channels < tp->DegreeOfParallelism(tp) ? 1 : batch_size;
   auto m_channel_size = batch_size * num_channels < tp->DegreeOfParallelism(tp) ? num_channels * batch_size : num_channels;
+  const auto depth_input_span_size =
+      static_cast<size_t>(SafeInt<size_t>(output_height) * num_channels * output_width * input_depth);
+  const auto depth_output_span_size =
+      static_cast<size_t>(SafeInt<size_t>(output_height) * num_channels * output_width * output_depth);
   for (int64_t n = 0; n < m_batch_size; ++n) {
     // depth interpolate
     {
       // depth interpolate
-      auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get() + n * (output_height * num_channels * output_width * input_depth),
-                                                narrow<size_t>(output_height * num_channels * output_width * input_depth));
-      auto ydata_span = gsl::make_span<T>(Ydata_base + n * (output_height * num_channels * output_width * output_depth),
-                                          narrow<size_t>(output_height * num_channels * output_width * output_depth));
+      auto xdata_span = gsl::make_span<const T>(
+          image_temp_buffer.get() + static_cast<size_t>(SafeInt<size_t>(n) * depth_input_span_size),
+          depth_input_span_size);
+      auto ydata_span = gsl::make_span<T>(
+          Ydata_base + static_cast<size_t>(SafeInt<size_t>(n) * depth_output_span_size),
+          depth_output_span_size);
 
       ComputeInterpolationAtLevel2(m_channel_size, input_depth, output_height * output_width, output_depth, output_height * output_width,
                                    xdata_span, ydata_span, p, p.dim_z, tp);
@@ -717,7 +739,7 @@ void UpsampleTrilinearAntiAlias(int64_t batch_size,
 
   if (use_extrapolation) {
     auto ydata_span = gsl::make_span<T>(Ydata_base,
-                                        narrow<size_t>(batch_size * output_height * num_channels * output_width * output_depth));
+                                        static_cast<size_t>(SafeInt<size_t>(batch_size) * depth_output_span_size));
     HandleExtrapolation(batch_size * num_channels, output_height, output_width, output_depth,
                         extrapolation_value, ydata_span, p, tp);
   }
