@@ -776,8 +776,9 @@ struct Float8E8M0 {
       bool round_up;
       switch (round_mode) {
         case RoundMode::Up:
-          // Ceiling: any subnormal with nonzero mantissa rounds up to 2^(-126).
-          round_up = (mantissa > 0);
+          // Ceiling: round up only when value > 2^(-127). Denorm mantissa == 0x400000
+          // is exactly 2^(-127) (val=0), so it must NOT round up.
+          round_up = (mantissa > 0x00400000);
           break;
         case RoundMode::Down:
           // Floor: always keep val=0 (2^(-127)), never increment.
