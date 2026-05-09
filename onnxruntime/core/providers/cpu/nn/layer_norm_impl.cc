@@ -16,6 +16,20 @@ namespace onnxruntime {
 
 namespace {
 
+ORT_FORCEINLINE double ComputeStdDevDenominator(double sum_square,
+                                                double mean,
+                                                int64_t norm_size,
+                                                float epsilon,
+                                                bool simplified) {
+  const double inverse_norm_size = 1.0 / static_cast<double>(norm_size);
+  if (simplified) {
+    return std::sqrt(sum_square * inverse_norm_size + static_cast<double>(epsilon));
+  }
+
+  const double variance = sum_square * inverse_norm_size - mean * mean;
+  return std::sqrt((variance > 0.0 ? variance : 0.0) + static_cast<double>(epsilon));
+}
+
 template <typename T,
           typename U,
           typename = std::enable_if_t<std::is_same_v<T, float> || std::is_same_v<T, double>, void>>
@@ -41,8 +55,8 @@ void ComputeJob(
   const T* p_input = X_data + task_idx * norm_size;
   T* p_output = Y_data + task_idx * norm_size;
 
-  T mean(0.0f);
-  T mean_square(0.0f);
+  double mean = 0.0;
+  double mean_square = 0.0;
 
   for (int64_t h = 0; h < norm_size; h++) {
     p_output[h] = p_input[h];
@@ -50,23 +64,21 @@ void ComputeJob(
     mean_square += p_input[h] * p_input[h];
   }
 
-  mean = mean / norm_size;
-  if (simplified) {
-    mean_square = sqrt(mean_square / norm_size + epsilon);
-  } else {
-    mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
-  }
+  mean /= static_cast<double>(norm_size);
+  const double mean_square_root =
+      ComputeStdDevDenominator(mean_square, mean, norm_size, epsilon, simplified);
 
   // Compute the offset of gamma and beta to support broadcasting.
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (int64_t h = 0; h < norm_size; h++, i++) {
     if (simplified) {
-      p_output[h] = p_output[h] / mean_square * scale_data[i];
+      p_output[h] = static_cast<T>(static_cast<double>(p_output[h]) / mean_square_root * scale_data[i]);
     } else if (nullptr == bias_data) {
-      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[i];
+      p_output[h] = static_cast<T>((static_cast<double>(p_output[h]) - mean) / mean_square_root * scale_data[i]);
     } else {
-      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[i] + bias_data[i];
+      p_output[h] = static_cast<T>((static_cast<double>(p_output[h]) - mean) / mean_square_root * scale_data[i] +
+                                   bias_data[i]);
     }
   }
 
@@ -76,7 +88,7 @@ void ComputeJob(
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / mean_square);
+    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1.0 / mean_square_root);
   }
 }
 
@@ -115,9 +127,9 @@ void ComputeJob(
   Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> output_vec(
       p_output, ToEigenIndex(norm_size));
 
-  // Compute mean and mean_square in float for precision
-  float mean = 0.0f;
-  float mean_square = 0.0f;
+  // Compute mean and mean_square in double for precision
+  double mean = 0.0;
+  double mean_square = 0.0;
 
   for (int64_t i = 0; i < norm_size; ++i) {
     float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
@@ -125,12 +137,9 @@ void ComputeJob(
     mean_square += val * val;
   }
 
-  mean /= gsl::narrow_cast<float>(norm_size);
-  if (simplified) {
-    mean_square = std::sqrt(mean_square / norm_size + epsilon);
-  } else {
-    mean_square = std::sqrt(mean_square / norm_size - mean * mean + epsilon);
-  }
+  mean /= static_cast<double>(norm_size);
+  const double mean_square_root =
+      ComputeStdDevDenominator(mean_square, mean, norm_size, epsilon, simplified);
 
   // Offset calculation for broadcasting
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
@@ -138,13 +147,13 @@ void ComputeJob(
   for (int64_t h = 0; h < norm_size; ++h, ++i) {
     float x = static_cast<float>(input_vec[ToEigenIndex(h)]);
 
-    float y = 0.0f;
+    double y = 0.0;
     if (simplified) {
-      y = x / mean_square * scale_float_ptr[i];
+      y = x / mean_square_root * scale_float_ptr[i];
     } else if (bias_float_ptr == nullptr) {
-      y = (x - mean) / mean_square * scale_float_ptr[i];
+      y = (x - mean) / mean_square_root * scale_float_ptr[i];
     } else {
-      y = (x - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
+      y = (x - mean) / mean_square_root * scale_float_ptr[i] + bias_float_ptr[i];
     }
 
     output_vec[ToEigenIndex(h)] = gsl::narrow_cast<Eigen::half>(y);
@@ -152,11 +161,11 @@ void ComputeJob(
 
   if (mean_data != nullptr) {
     // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
-    mean_data[task_idx] = MLFloat16(mean);
+    mean_data[task_idx] = MLFloat16(static_cast<float>(mean));
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = MLFloat16(1.0f / mean_square);
+    inv_std_dev_data[task_idx] = MLFloat16(static_cast<float>(1.0 / mean_square_root));
   }
 }
 // Write a statistic value (mean or 1/denom) into the output buffer,
@@ -261,9 +270,7 @@ void ComputeJobGenericShared(
   }
 
   mean /= static_cast<double>(norm_size);
-  const double denom = simplified
-                           ? std::sqrt(mean_sq / norm_size + epsilon)
-                           : std::sqrt(mean_sq / norm_size - mean * mean + epsilon);
+  const double denom = ComputeStdDevDenominator(mean_sq, mean, norm_size, epsilon, simplified);
 
   // Compute outer offsets for this logical row (same as before).
   int64_t off_sc_row = 0;
