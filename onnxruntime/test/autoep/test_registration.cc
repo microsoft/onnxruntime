@@ -13,6 +13,10 @@
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 
+#if defined(_WIN32)
+#include <windows.h>  // For GetModuleHandleW
+#endif
+
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" void ortenv_setup();
 extern "C" void ortenv_teardown();
@@ -216,5 +220,45 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
 }
+
+#if defined(_WIN32)
+// Verify that registering and unregistering a plugin EP library does not leak the DLL handle.
+// ProviderLibrary::Load() loads the DLL then probes for the "GetProvider" symbol. Plugin EP libraries
+// do not export "GetProvider", so the probe fails. Without the fix, Load() returned the error without
+// calling Unload(), leaving a leaked refcount on the DLL. After UnregisterExecutionProviderLibrary
+// released only the EpLibraryPlugin's reference, the DLL remained mapped in the process.
+TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
+  const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
+  const std::string& registration_name = Utils::example_ep_info.registration_name;
+
+  // Use the library filename for GetModuleHandleW. It searches all loaded modules by name.
+  const std::wstring library_filename = library_path.filename().wstring();
+
+  // Verify the library is not already loaded by a prior test in this process.
+  HMODULE pre_handle = GetModuleHandleW(library_filename.c_str());
+  if (pre_handle != nullptr) {
+    GTEST_SKIP() << "Library already loaded by another test; cannot verify refcount leak.";
+  }
+
+  // Register the plugin EP library. Internally this calls ProviderLibrary::Load() (which
+  // loads the DLL and fails to find "GetProvider") and then EpLibraryPlugin::Load().
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  // The library should be loaded now.
+  HMODULE mid_handle = GetModuleHandleW(library_filename.c_str());
+  ASSERT_NE(mid_handle, nullptr) << "Library should be loaded after registration.";
+
+  // Unregister releases the EpLibraryPlugin's reference.
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+
+  // If the fix is applied, the library should be fully unloaded (refcount == 0).
+  // Without the fix, ProviderLibrary::Load() leaks a refcount so the DLL remains mapped.
+  HMODULE post_handle = GetModuleHandleW(library_filename.c_str());
+  EXPECT_EQ(post_handle, nullptr)
+      << "Library handle leaked: EP library is still loaded after UnregisterExecutionProviderLibrary. "
+         "This indicates ProviderLibrary::Load() did not call Unload() on GetProvider symbol miss.";
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
