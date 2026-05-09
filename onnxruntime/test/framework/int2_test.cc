@@ -297,7 +297,7 @@ TEST(Int2_Tests, TensorProtoRoundTrip_Int2) {
   std::array<int8_t, 8> values = {1, -1, -2, 0, 1, -1, -2, 0};
   std::vector<Int2x4> packed(Int2x4::CalcNumInt2Quads(values.size()));
   ASSERT_TRUE(Int2x4::Pack(gsl::make_span(packed), gsl::make_span(values)));
-  proto.set_raw_data(packed.data(), packed.size() * sizeof(Int2x4));
+  onnxruntime::utils::SetRawDataInTensorProto(proto, packed.data(), packed.size() * sizeof(Int2x4));
 
   Tensor result;
   // Use CreateTensorFromTensorProto which pre-allocates the tensor with proper shape

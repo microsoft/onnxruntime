@@ -133,6 +133,38 @@ public class EpCompatibilityTests
     }
 
     [Fact]
+    public void GetNumHardwareDevices_ReturnsPositive()
+    {
+        var numDevices = ortEnvInstance.GetNumHardwareDevices();
+        // Should return at least one device (CPU)
+        Assert.True(numDevices > 0, "Expected at least one hardware device");
+    }
+
+    [Fact]
+    public void GetHardwareDevices_ReturnsDevices()
+    {
+        var devices = ortEnvInstance.GetHardwareDevices();
+        Assert.NotNull(devices);
+        Assert.NotEmpty(devices);
+
+        // Each device should have valid properties
+        foreach (var device in devices)
+        {
+            Assert.NotNull(device);
+            // Device type should be valid (CPU, GPU, or NPU)
+            var deviceType = device.Type;
+            Assert.True(
+                deviceType == OrtHardwareDeviceType.CPU ||
+                deviceType == OrtHardwareDeviceType.GPU ||
+                deviceType == OrtHardwareDeviceType.NPU,
+                $"Unexpected device type: {deviceType}");
+
+            // Vendor should not be null
+            Assert.NotNull(device.Vendor);
+        }
+    }
+
+    [Fact]
     public void GetCompatibilityInfoFromModelBytes_InvalidModelData()
     {
         byte[] invalidData = System.Text.Encoding.UTF8.GetBytes("this is not a valid ONNX model");
@@ -173,6 +205,43 @@ public class EpCompatibilityTests
 
         string result = ortEnvInstance.GetCompatibilityInfoFromModelBytes(modelData, "AnyEP");
         Assert.Null(result);
+    }
+
+    [Fact]
+    public void GetHardwareDeviceEpIncompatibilityDetails_CpuEp()
+    {
+        var devices = ortEnvInstance.GetHardwareDevices();
+        Assert.NotNull(devices);
+        Assert.NotEmpty(devices);
+
+        // Find CPU device
+        var cpuDevice = devices.FirstOrDefault(d => d.Type == OrtHardwareDeviceType.CPU);
+        Assert.NotNull(cpuDevice);
+
+        // Get incompatibility details for CPU EP with CPU device
+        using (var details = ortEnvInstance.GetHardwareDeviceEpIncompatibilityDetails("CPUExecutionProvider", cpuDevice))
+        {
+            // CPU EP should be compatible with CPU device (no incompatibility reasons)
+            Assert.Equal(OrtDeviceEpIncompatibilityReason.None, details.ReasonsBitmask);
+            Assert.Equal(0, details.ErrorCode);
+        }
+    }
+
+    [Fact]
+    public void GetHardwareDeviceEpIncompatibilityDetails_InvalidEpName()
+    {
+        var devices = ortEnvInstance.GetHardwareDevices();
+        Assert.NotNull(devices);
+        Assert.NotEmpty(devices);
+
+        var firstDevice = devices[0];
+        Assert.NotNull(firstDevice);
+
+        // Invalid EP name should throw
+        Assert.Throws<ArgumentException>(() =>
+            ortEnvInstance.GetHardwareDeviceEpIncompatibilityDetails("", firstDevice));
+        Assert.Throws<ArgumentNullException>(() =>
+            ortEnvInstance.GetHardwareDeviceEpIncompatibilityDetails(null, firstDevice));
     }
 }
 #endif

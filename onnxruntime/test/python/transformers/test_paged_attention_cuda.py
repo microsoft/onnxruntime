@@ -262,6 +262,7 @@ def paged_attention_func(
     cos=None,
     sin=None,
     window_size=-1,
+    sdpa_kernel=0,
 ):
     num_tokens = cumulative_sequence_length[-1].item()
     num_blocks = key_cache.shape[0]
@@ -282,7 +283,11 @@ def paged_attention_func(
         "block_table": block_table.detach().cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
+    if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
+        providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
+    else:
+        providers = [config.ep]
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=providers)
     io_binding = ort_session.io_binding()
     if key is not None and value is not None:
         ort_inputs["key"] = key.detach().cpu().numpy()
@@ -490,6 +495,7 @@ def parity_check_paged_attention(
     config: Config,
     rtol=1e-3,
     atol=1e-3,
+    sdpa_kernel=0,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -620,6 +626,7 @@ def parity_check_paged_attention(
         cos,
         sin,
         left_window_size,
+        sdpa_kernel=sdpa_kernel,
     )
     num_tokens = q_unpad.shape[0]
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
@@ -670,6 +677,25 @@ def has_flash_attention():
         platform.system() == "Linux"
         or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse("12.0"))
     )
+
+
+def has_memory_efficient_attention():
+    # CUTLASS fMHA (MemoryEfficientAttention) gate — these tests are fp16-only,
+    # so sm>=53 is sufficient. bf16 MEA would require sm>=80 but is not covered here.
+    if not torch.cuda.is_available():
+        return False
+    if "CUDAExecutionProvider" not in get_available_providers():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    return (major * 10 + minor) >= 53
+
+
+# Bit value matching AttentionBackend::EFFICIENT_ATTENTION in
+# onnxruntime/contrib_ops/cpu/bert/attention_common.h. Passing this as the
+# CUDA provider option `sdpa_kernel` forces the PagedAttention kernel to
+# select the MemoryEfficientAttention (CUTLASS fMHA) fallback even on SM>=80
+# where FlashAttention would otherwise be preferred.
+SDPA_KERNEL_EFFICIENT_ATTENTION = 2
 
 
 def paged_attention_test_cases():
@@ -730,6 +756,26 @@ class TestPagedAttention(unittest.TestCase):
     @parameterized.expand(paged_attention_test_cases())
     def test_paged_attention(self, _, config):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
+@unittest.skipIf(
+    not has_memory_efficient_attention(),
+    reason="MemoryEfficientAttention (fp16) requires sm>=53; skipping.",
+)
+class TestPagedAttentionMEA(unittest.TestCase):
+    """Runs the same parity matrix as TestPagedAttention but forces the CUTLASS
+    memory-efficient attention fallback via the `sdpa_kernel` CUDA provider option.
+    This is the only coverage for the SM<80 fallback path introduced for PagedAttention;
+    on SM>=80 the class still runs to exercise the MEA dispatch end-to-end."""
+
+    @parameterized.expand(paged_attention_test_cases())
+    def test_paged_attention_mea(self, _, config):
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+        )
 
 
 if __name__ == "__main__":

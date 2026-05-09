@@ -88,6 +88,8 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
 template <typename T, typename QK>
 Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) const {
+  auto ort_stream = GetOrtStream(context);
+
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -290,7 +292,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     kernel_type = AttentionKernelType::AttentionKernel_LeanAttention;
   }
 
-  auto lean_sync_flag_buffer = GetScratchBuffer<void>(sync_flag_bytes, context->GetComputeStream());
+  auto lean_sync_flag_buffer = GetScratchBuffer<void>(sync_flag_bytes, GetComputeStream(context));
   data.lean_sync_flag = reinterpret_cast<int*>(lean_sync_flag_buffer.get());
 #else
   constexpr bool use_lean_attention = false;
@@ -336,9 +338,9 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
 #endif
 
 #if USE_LEAN_ATTENTION || USE_FLASH_ATTENTION
-  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
-  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
   if (use_flash_attention || use_lean_attention) {
     data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
@@ -485,7 +487,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   data.use_decoder_masked_multihead_attention = use_decoder_masked_multihead_attention;
   data.kernel_type = kernel_type;
-  data.allocator = Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
 
   // Cache of cumulated sequence length that could help when sequence length does not change (for example, image model).
   // The cache will be initialized only once, and become readonly after that.
@@ -515,7 +517,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                                                      use_memory_efficient_attention,
                                                      use_cudnn_sdpa,
                                                      no_qkv_workspace);
-  auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
+  auto work_space = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
 
   data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
@@ -528,7 +530,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     std::vector<int64_t> seqlens_k(parameters.batch_size, parameters.total_sequence_length - 1);
     size_t seqlens_k_bytes = 0;
     seqlens_k_bytes = sizeof(int) * parameters.batch_size;
-    auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
+    auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, GetComputeStream(context));
     if (seqlens_k_buffer != nullptr) {
       data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
       CUDA_RETURN_IF_ERROR(cudaMemcpy(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice));
@@ -557,7 +559,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   cudnnHandle_t cudnn = GetCudnnHandle(context);
   DUMP_STRING("Run QkvToContext from MHA CUDA");
   return QkvToContext<CudaT, CudaQK>(
-      device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
+      device_prop, cublas, cudnn, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

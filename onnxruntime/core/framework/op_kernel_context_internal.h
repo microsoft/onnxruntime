@@ -22,10 +22,12 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const OpKernel& kernel,
                                    const logging::Logger& logger,
                                    const bool& terminate_flag,
-                                   Stream* stream)
+                                   Stream* stream,
+                                   profiling::Profiler* run_profiler = nullptr)
       : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
         session_state_(session_state),
-        terminate_flag_(terminate_flag) {
+        terminate_flag_(terminate_flag),
+        run_profiler_(run_profiler) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
     int num_implicit_inputs = static_cast<int>(implicit_inputs.size());
     implicit_input_values_.reserve(num_implicit_inputs);
@@ -104,6 +106,8 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const bool& GetTerminateFlag() const noexcept { return terminate_flag_; }
 
+  profiling::Profiler* GetRunProfiler() const noexcept { return run_profiler_; }
+
  private:
 #if !defined(ORT_MINIMAL_BUILD)
   class AccountingAllocator : public IAllocator {
@@ -137,6 +141,7 @@ class OpKernelContextInternal : public OpKernelContext {
 
   const SessionState& session_state_;
   const bool& terminate_flag_;
+  profiling::Profiler* run_profiler_;
   std::vector<const OrtValue*> implicit_input_values_;
 };
 

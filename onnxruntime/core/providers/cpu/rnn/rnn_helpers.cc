@@ -78,13 +78,13 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                              batch_size, "}. Actual:", sequence_lens_shape);
     }
 
-    auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
+    auto sequence_len_entries = sequence_lens->DataAsSpan<int32_t>();
     if (std::any_of(sequence_len_entries.begin(),
                     sequence_len_entries.end(),
-                    [seq_length](int len) { return len < 0 || len > seq_length; })) {
+                    [seq_length](int32_t len) { return len < 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
+          "Invalid value/s in sequence_lens. All values must be >= 0 and <= seq_length. seq_length=", seq_length);
     }
   }
 

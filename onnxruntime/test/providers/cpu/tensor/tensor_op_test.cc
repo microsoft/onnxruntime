@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
+#include "core/providers/cpu/tensor/reshape_helper.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -190,6 +193,26 @@ TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
   test.AddAttribute<int64_t>("allowzero", 1);
   test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
   test.Run();
+}
+
+TEST(TensorOpTest, ReshapeHelper_RejectsRequestedShapeOverflow) {
+  TensorShape input_shape({1});
+  TensorShapeVector requested_shape{std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()};
+
+  try {
+    ReshapeHelper(input_shape, requested_shape);
+    FAIL() << "Expected ReshapeHelper to throw";
+  } catch (const OnnxRuntimeException& exception) {
+    const std::string message = exception.what();
+    const std::string max_dim = std::to_string(std::numeric_limits<int64_t>::max());
+    EXPECT_NE(message.find("The requested shape has too many elements."), std::string::npos);
+    EXPECT_NE(message.find("Input shape:"), std::string::npos);
+    EXPECT_NE(message.find("1"), std::string::npos);
+    EXPECT_NE(message.find("requested shape:"), std::string::npos);
+    EXPECT_NE(message.find(max_dim), std::string::npos);
+    EXPECT_NE(message.rfind(max_dim), std::string::npos);
+    EXPECT_NE(message.find(max_dim), message.rfind(max_dim));
+  }
 }
 
 TEST(TensorOpTest, ReshapeSixDimNewShape) {

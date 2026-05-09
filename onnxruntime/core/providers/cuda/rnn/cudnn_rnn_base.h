@@ -138,7 +138,8 @@ class CudnnRnnBase : public CudaKernel {
                            IAllocatorUniquePtr<void>& target_w_data,
                            CudnnFilterDescriptor& target_w_desc,
                            CudnnRNN& rnn_desc,
-                           onnxruntime::Stream* ort_stream) const;
+                           void* alloc_stream, cudaStream_t cuda_stream,
+                           cudnnHandle_t cudnn_handle) const;
 
   Status SetWeightBias(const cudnnHandle_t handle,
                        const cudnnRNNDescriptor_t rnn_desc,
@@ -156,7 +157,7 @@ class CudnnRnnBase : public CudaKernel {
                         T* y_data,
                         T* y_h_data,
                         T* y_c_data,
-                        onnxruntime::Stream* cuda_stream) const;
+                        void* alloc_stream, cudaStream_t cuda_stream) const;
 
  protected:
   // W_lin_layer_id_ & R_lin_layer_id_ are set in Constructor

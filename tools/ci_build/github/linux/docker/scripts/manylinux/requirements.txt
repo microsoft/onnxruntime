@@ -9,4 +9,4 @@ sympy==1.14
 flatbuffers
 neural-compressor>=2.2.1
 triton==3.5.0
-onnx==1.20.1
+onnx==1.21.0

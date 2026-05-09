@@ -176,7 +176,14 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.num_keys = params.kv_sequence_length;
 
     if (params.causal) {
-      p.custom_mask_type = Attention::CausalFromBottomRight;
+      // ONNX spec: is_causal means upper-left alignment (q_i attends to kv[0..i]).
+      // When past_sequence_length > 0 (decode with KV cache), positions shift → lower-right.
+      // causal_from_top_left=true: past_seq==0, use CausalFromTopLeft (offset=0).
+      // causal_from_top_left=false: past_seq>0 or S_q==S_kv, use CausalFromBottomRight
+      //   (offset = num_keys - num_queries, which is 0 when square).
+      p.custom_mask_type = params.causal_from_top_left
+                               ? Attention::CausalFromTopLeft
+                               : Attention::CausalFromBottomRight;
     }
 
     // We use max_sequence_length to calculate KV stride
