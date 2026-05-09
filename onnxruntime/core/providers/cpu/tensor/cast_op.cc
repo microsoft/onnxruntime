@@ -29,14 +29,22 @@
 namespace onnxruntime {
 
 namespace {
-// Define a type list that extends AllIRv10 with INT2 types, but without Float4
+// Define a type list that extends AllIRv10 with INT2 types, but without Float4.
 // Float4E2M1x2 doesn't support all the casting operations that other types do,
 // so we don't include it here for the Cast operator.
-using AllIRv10WithInt2 =
+using AllIRv10WithInt2Base =
     boost::mp11::mp_push_back<
         element_type_lists::AllIRv10,
         UInt2x4,
         Int2x4>;
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+// Also include Float8E8M0 which was added in IR v12 but is not in AllIRv10.
+using AllIRv10WithInt2 =
+    boost::mp11::mp_push_back<AllIRv10WithInt2Base, Float8E8M0>;
+#else
+using AllIRv10WithInt2 = AllIRv10WithInt2Base;
+#endif
 }  // namespace
 
 namespace op_kernel_type_control {
@@ -958,7 +966,8 @@ class Cast final : public OpKernel {
     if (saturate == 0 && (to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
-                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ)) {
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E8M0)) {
       ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
     }
 #else
@@ -967,6 +976,27 @@ class Cast final : public OpKernel {
     }
 #endif
     saturate_ = saturate == 1;
+
+    // round_mode only applies for casting to float8e8m0 (introduced in opset 25)
+    std::string round_mode_str = info.GetAttrOrDefault("round_mode", std::string("up"));
+#if !defined(DISABLE_FLOAT8_TYPES)
+    if (round_mode_str == "up") {
+      round_mode_ = Float8E8M0::RoundMode::Up;
+    } else if (round_mode_str == "down") {
+      round_mode_ = Float8E8M0::RoundMode::Down;
+    } else if (round_mode_str == "nearest") {
+      round_mode_ = Float8E8M0::RoundMode::Nearest;
+    } else {
+      ORT_THROW("Attribute round_mode must be 'up', 'down', or 'nearest'.");
+    }
+    if (round_mode_ != Float8E8M0::RoundMode::Up && to != ONNX_NAMESPACE::TensorProto::FLOAT8E8M0) {
+      ORT_THROW("Attribute round_mode is only used for cast to float8e8m0.");
+    }
+#else
+    if (round_mode_str != "up") {
+      ORT_THROW("Attribute round_mode is only used for cast to float8e8m0.");
+    }
+#endif
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -974,6 +1004,9 @@ class Cast final : public OpKernel {
  private:
   ONNX_NAMESPACE::TensorProto_DataType to_;
   bool saturate_;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  Float8E8M0::RoundMode round_mode_{Float8E8M0::RoundMode::Up};
+#endif
 };
 
 template <typename TSrc, typename TDst>
@@ -1020,6 +1053,43 @@ struct SrcDispatcherNoSat {
   }
 };
 
+// Dispatcher for casting any source type to Float8E8M0 with round_mode and saturate support.
+// This bypasses the generic TensorCaster/TensorCasterNoSat templates to thread round_mode through.
+template <typename TSrc>
+struct CastToE8M0Dispatcher {
+  void operator()(const OpKernelContext&, const TensorShape& shape, const Tensor& src, Tensor& dst,
+                  bool saturate, Float8E8M0::RoundMode round_mode) {
+    const auto shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    auto* out_data = dst.MutableData<Float8E8M0>();
+
+    if constexpr (IsOrtInt4Type<TSrc>::value) {
+      const auto* in_data = src.Data<TSrc>();
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+        auto val = in_data[i >> 1].GetElem(i & 0x1);
+        out_data[i] = Float8E8M0(static_cast<float>(val), saturate, round_mode);
+      }
+    } else if constexpr (IsOrtInt2Type<TSrc>::value) {
+      const auto* in_data = src.Data<TSrc>();
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+        auto val = in_data[i >> 2].GetElem(i & 0x3);
+        out_data[i] = Float8E8M0(static_cast<float>(val), saturate, round_mode);
+      }
+    } else if constexpr (std::is_same_v<TSrc, std::string>) {
+      const auto* in_data = src.Data<std::string>();
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+        float float_val;
+        CastFromString(in_data[i], float_val);
+        out_data[i] = Float8E8M0(float_val, saturate, round_mode);
+      }
+    } else {
+      const auto* in_data = src.Data<TSrc>();
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+        out_data[i] = Float8E8M0(static_cast<float>(in_data[i]), saturate, round_mode);
+      }
+    }
+  }
+};
+
 #endif
 
 Status Cast::Compute(OpKernelContext* context) const {
@@ -1040,6 +1110,14 @@ Status Cast::Compute(OpKernelContext* context) const {
   }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
+  // Float8E8M0 destination needs special handling for round_mode support.
+  // Dispatch directly to avoid threading round_mode through the TensorCaster templates.
+  if (to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E8M0) {
+    utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
+    dispatcher.Invoke<CastToE8M0Dispatcher>(*context, shape, *X, *Y, saturate_, round_mode_);
+    return Status::OK();
+  }
+
   if (saturate_) {
 #endif
     utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
