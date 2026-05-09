@@ -1440,6 +1440,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   for (auto& initializer : graph_proto_->initializer()) {
     auto& initializer_name = initializer.name();
     auto initializer_arg = GetNodeArg(initializer_name);
+    ORT_ENFORCE(initializer_arg, "Graph ctor should have created NodeArg for initializer. Missing:", initializer_name);
     graph_initializers.insert({initializer_name, initializer_arg});
   }
 

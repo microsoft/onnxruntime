@@ -3101,5 +3101,111 @@ TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
   ASSERT_EQ(it->raw_data().size(), 32 * sizeof(int64_t));
 }
 
+// Test that a malformed model with an initializer that has no corresponding NodeArg
+// is properly rejected during graph loading.
+TEST_F(GraphTest, MalformedModelInitializerWithoutNodeArg) {
+  // Construct a model proto manually with ir_version < 4 where an initializer
+  // has no matching graph input (and therefore no NodeArg is created for it).
+  // The graph output references the orphaned initializer, but the output proto
+  // entry lacks type info so no NodeArg is created via the output loop either.
+  ModelProto model_proto;
+  model_proto.set_ir_version(3);  // ir_version < 4 requires initializers to be graph inputs
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Add a valid graph input with type
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Add a node
+  auto* node = graph_proto->add_node();
+  node->add_input("X");
+  node->add_output("Y");
+  node->set_op_type("Identity");
+
+  // Add a normal graph output with type
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Add an orphaned initializer (no matching graph input for ir_version < 4).
+  // This means no NodeArg is created for "orphan_init" in the constructor.
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("orphan_init");
+  initializer->set_data_type(TensorProto_DataType_FLOAT);
+  initializer->add_dims(2);
+  initializer->add_float_data(1.0f);
+  initializer->add_float_data(2.0f);
+
+  // Add a second output referencing the orphaned initializer.
+  // Intentionally omit type so that no NodeArg is created for it via the output loop.
+  auto* output2 = graph_proto->add_output();
+  output2->set_name("orphan_init");
+  // No type set - this means GetOrCreateNodeArg won't be called for this output
+
+  // Loading this model should fail with a proper error (not a crash)
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
+  EXPECT_FALSE(status.IsOK());
+}
+
+// Test that a model with a node containing a subgraph attribute where the subgraph
+// is completely empty is properly rejected.
+TEST_F(GraphTest, MalformedModelEmptySubgraph) {
+  // Construct a minimal model with an Identity node that has a spurious graph attribute
+  // with an empty body (no inputs, no outputs, no nodes in the body).
+  // This simulates a structurally malformed model.
+  ModelProto model_proto;
+  model_proto.set_ir_version(9);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Add a graph input
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Add a node with an identity op that has a spurious graph attribute
+  auto* node = graph_proto->add_node();
+  node->add_input("X");
+  node->add_output("Y");
+  node->set_op_type("Identity");
+
+  // Add an attribute with type GRAPH and an empty graph body
+  auto* attr = node->add_attribute();
+  attr->set_name("body");
+  attr->set_type(AttributeProto_AttributeType_GRAPH);
+  // Leave attr->mutable_g() as an empty GraphProto
+
+  // Add graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Loading and resolving the model should fail because Identity does not have
+  // a "body" graph attribute in its schema. The model should be rejected gracefully.
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
+  // The model should be rejected at some point — either load or resolve — not crash.
+  EXPECT_FALSE(status.IsOK());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
