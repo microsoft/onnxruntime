@@ -428,6 +428,7 @@ TEST(LayerNormTest, LayerNorm17_double) {
 
 TEST(LayerNormTest, LayerNorm_LargeConstantInput_Valid) {
   constexpr int64_t hidden_size = 768;
+  // Matches the constant-value pattern reported in the original repro.
   constexpr float input_value = 2396.814f;
   constexpr float scale_bias_value = 0.1f;
 

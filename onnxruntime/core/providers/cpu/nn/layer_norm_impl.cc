@@ -16,6 +16,10 @@ namespace onnxruntime {
 
 namespace {
 
+// Returns the standard-deviation denominator for LayerNormalization using the accumulated
+// sum of squares, mean, normalization size, and epsilon for one logical row. Variance is
+// mathematically non-negative, so any negative value here can only come from floating-point
+// cancellation and is safely clamped back to zero before the square root.
 ORT_FORCEINLINE double ComputeStdDevDenominator(double sum_square,
                                                 double mean,
                                                 int64_t norm_size,
