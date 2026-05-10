@@ -33,7 +33,12 @@ stages:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--network host --build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION= --build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: >-
+          --network=host
+          --secret id=PIP_INDEX_URL
+          --build-arg BASEIMAGE=${{ parameters.docker_base_image }}
+          --build-arg TRT_VERSION=
+          --build-arg BUILD_UID=$( id -u )
         Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}plugintestx64
 
     # Download the Python wheel produced by the packaging pipeline run that

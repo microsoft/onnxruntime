@@ -26,7 +26,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
     OrtEpFactory** factories,
     size_t max_factories,
     size_t* num_factories) {
-  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+  const OrtApi* ort_api = ort_api_base->GetApi(kCudaPluginEpMinOrtApiVersion);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
 
   // Initialize the C++ API FIRST before any C++ wrapper usage
