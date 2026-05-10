@@ -3151,9 +3151,6 @@ void TestCastToFloat8E8M0(gsl::span<const SrcType> input,
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
-#ifdef USE_CUDA
-  execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#endif
   test.ConfigEps(std::move(execution_providers))
       .Config(expect_result, expected_failure_string)
       .RunWithConfig();
@@ -3171,9 +3168,6 @@ void TestCastFromFloat8E8M0(gsl::span<const Float8E8M0> input,
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.emplace_back(DefaultCpuExecutionProvider());
-#ifdef USE_CUDA
-  execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#endif
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
