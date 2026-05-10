@@ -773,6 +773,14 @@ struct Float8E8M0 {
     //   For subnormals, lsb of result exponent = 0, so "nearest" rounds up only when
     //   G=1 AND (R=1 OR S!=0), i.e. mantissa > 0x400000.
     if (exponent == 0) {
+      // Subnormals with mantissa < 0x400000 have value < E8M0_MIN (2^-127) and
+      // cannot be represented. Without saturation they map to NaN.
+      // Subnormals with mantissa >= 0x400000 have value >= E8M0_MIN, so they
+      // round to val=0 or val=1, both valid E8M0 values.
+      if (!saturate && mantissa < 0x00400000) {
+        val = 0xFF;  // NaN: x < E8M0_MIN is not representable without saturation
+        return;
+      }
       bool round_up;
       switch (round_mode) {
         case RoundMode::Up:
@@ -799,10 +807,17 @@ struct Float8E8M0 {
     }
 
     // Normal float32: value is 2^(exponent - 127) * (1 + mantissa/2^23).
+    // Values with exponent=254 and mantissa>0 are in (2^127, 2^128). Since 2^128
+    // is not representable in E8M0 (val 255 = NaN), without saturation these
+    // values cannot be rounded to any valid E8M0 value and must become NaN.
+    if (!saturate && exponent == 0xFE && mantissa != 0) {
+      val = 0xFF;  // NaN: x > E8M0_MAX is not representable without saturation
+      return;
+    }
     // Round to the nearest power of 2 using the ONNX semantics:
     //   Up (ceiling):  round up when the float is not exactly a power of 2 (mantissa > 0).
     //   Down (floor):  never round up; always keep the lower exponent.
-    //   Nearest:       G bit (bit 22) determines direction — round up when mantissa >= 0x400000.
+    //   Nearest:       G bit (bit 22) determines direction -- round up when mantissa >= 0x400000.
     //                  For normal floats lsb of exponent is always considered 1, so ties
     //                  round to the higher power of 2 (round-half-up).
     bool round_up;
@@ -822,7 +837,7 @@ struct Float8E8M0 {
       exponent += 1;
     }
 
-    // After rounding, exponent may overflow
+    // After rounding, exponent may overflow.
     if (exponent > 0xFE) {
       if (saturate) {
         val = 0xFE;  // Largest finite: 2^127

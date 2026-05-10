@@ -3135,7 +3135,7 @@ void TestCastToFloat8E8M0(gsl::span<const SrcType> input,
                           const std::vector<int64_t>& shape,
                           Saturate saturate = Saturate::None,
                           const std::string& round_mode = "",
-                          int opset = 25,
+                          int opset = 24,
                           OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                           const std::string& expected_failure_string = "") {
   OpTester test("Cast", opset);
@@ -3149,8 +3149,12 @@ void TestCastToFloat8E8M0(gsl::span<const SrcType> input,
     test.AddAttribute<std::string>("round_mode", round_mode);
   }
 
-  // Float8E8M0 is CPU only for now
-  test.ConfigEp(DefaultCpuExecutionProvider())
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#endif
+  test.ConfigEps(std::move(execution_providers))
       .Config(expect_result, expected_failure_string)
       .RunWithConfig();
 }
@@ -3159,14 +3163,18 @@ template <typename DstType>
 void TestCastFromFloat8E8M0(gsl::span<const Float8E8M0> input,
                             gsl::span<const DstType> output,
                             const std::vector<int64_t>& shape,
-                            int opset = 25) {
+                            int opset = 24) {
   OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<Float8E8M0>("input", shape, input.data(), input.size());
   test.AddOutput<DstType>("output", shape, output.data(), output.size());
 
-  // Float8E8M0 is CPU only for now
-  test.ConfigEp(DefaultCpuExecutionProvider())
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#endif
+  test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
 
@@ -3206,16 +3214,16 @@ TEST(CastOpTest, FloatToFloat8E8M0_RoundModeUp) {
   const std::vector<int64_t> shape{4};
   // "up" mode is ceiling: always round up to the next power of 2 when not exact.
   // Exact powers of 2 (mantissa == 0) are unchanged; all others round up.
-  //   1.5 (mantissa != 0) → 2^1 = 2.0 (val=128)
-  //   3.0 (mantissa != 0) → 2^2 = 4.0 (val=129)
-  //   1.3 (mantissa != 0) → 2^1 = 2.0 (val=128)  [ceiling, not round-half-up]
-  //   2.5 (mantissa != 0) → 2^2 = 4.0 (val=129)  [ceiling, not round-half-up]
+  //   1.5 (mantissa != 0) -> 2^1 = 2.0 (val=128)
+  //   3.0 (mantissa != 0) -> 2^2 = 4.0 (val=129)
+  //   1.3 (mantissa != 0) -> 2^1 = 2.0 (val=128)  [ceiling, not round-half-up]
+  //   2.5 (mantissa != 0) -> 2^2 = 4.0 (val=129)  [ceiling, not round-half-up]
   const std::vector<float> input = {1.5f, 3.0f, 1.3f, 2.5f};
   const std::vector<Float8E8M0> expected = {
-      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.5  → 2.0
-      Float8E8M0(129, Float8E8M0::FromBits()),  // 3.0  → 4.0
-      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.3  → 2.0
-      Float8E8M0(129, Float8E8M0::FromBits()),  // 2.5  → 4.0
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.5  -> 2.0
+      Float8E8M0(129, Float8E8M0::FromBits()),  // 3.0  -> 4.0
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.3  -> 2.0
+      Float8E8M0(129, Float8E8M0::FromBits()),  // 2.5  -> 4.0
   };
   TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "up");
 }
@@ -3224,16 +3232,16 @@ TEST(CastOpTest, FloatToFloat8E8M0_RoundModeDown) {
   const std::vector<int64_t> shape{4};
   // "down" mode is floor: always truncate to the lower power of 2, never increment.
   // All non-power-of-2 values keep the lower exponent regardless of their fractional part.
-  //   1.5 → 2^0 = 1.0 (val=127)  [floor, not round-half-down]
-  //   3.0 → 2^1 = 2.0 (val=128)  [floor]
-  //   1.7 → 2^0 = 1.0 (val=127)  [floor, not round-half-down — 1.7 > midpoint but still floors]
-  //   2.5 → 2^1 = 2.0 (val=128)  [floor]
+  //   1.5 -> 2^0 = 1.0 (val=127)  [floor, not round-half-down]
+  //   3.0 -> 2^1 = 2.0 (val=128)  [floor]
+  //   1.7 -> 2^0 = 1.0 (val=127)  [floor, not round-half-down -- 1.7 > midpoint but still floors]
+  //   2.5 -> 2^1 = 2.0 (val=128)  [floor]
   const std::vector<float> input = {1.5f, 3.0f, 1.7f, 2.5f};
   const std::vector<Float8E8M0> expected = {
-      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.5  → 1.0
-      Float8E8M0(128, Float8E8M0::FromBits()),  // 3.0  → 2.0
-      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.7  → 1.0
-      Float8E8M0(128, Float8E8M0::FromBits()),  // 2.5  → 2.0
+      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.5  -> 1.0
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 3.0  -> 2.0
+      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.7  -> 1.0
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 2.5  -> 2.0
   };
   TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "down");
 }
@@ -3242,17 +3250,17 @@ TEST(CastOpTest, FloatToFloat8E8M0_RoundModeNearest) {
   const std::vector<int64_t> shape{4};
   // "nearest" mode: round to nearest power of 2; ties (exactly halfway) round up.
   // Decision threshold: guard bit (bit 22 of mantissa, representing 0.5 of fractional part).
-  //   1.5 → midpoint (mantissa=0x400000) → round up → 2^1 = 2.0 (val=128)
-  //   3.0 → midpoint (mantissa=0x400000) → round up → 2^2 = 4.0 (val=129)
-  //   1.3 → closer to 1.0 (mantissa=0x266666 < 0x400000) → 2^0 = 1.0 (val=127)
-  //   2.5 → closer to 2.0 (mantissa=0x200000 < 0x400000) → 2^1 = 2.0 (val=128)
+  //   1.5 -> midpoint (mantissa=0x400000) -> round up -> 2^1 = 2.0 (val=128)
+  //   3.0 -> midpoint (mantissa=0x400000) -> round up -> 2^2 = 4.0 (val=129)
+  //   1.3 -> closer to 1.0 (mantissa=0x266666 < 0x400000) -> 2^0 = 1.0 (val=127)
+  //   2.5 -> closer to 2.0 (mantissa=0x200000 < 0x400000) -> 2^1 = 2.0 (val=128)
   // Note: "nearest" differs from "up" for 1.3 and 2.5 (ceiling would give val=128/129).
   const std::vector<float> input = {1.5f, 3.0f, 1.3f, 2.5f};
   const std::vector<Float8E8M0> expected = {
-      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.5  → 2.0 (tie, rounds up)
-      Float8E8M0(129, Float8E8M0::FromBits()),  // 3.0  → 4.0 (tie, rounds up)
-      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.3  → 1.0 (nearer to 1.0)
-      Float8E8M0(128, Float8E8M0::FromBits()),  // 2.5  → 2.0 (nearer to 2.0)
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 1.5  -> 2.0 (tie, rounds up)
+      Float8E8M0(129, Float8E8M0::FromBits()),  // 3.0  -> 4.0 (tie, rounds up)
+      Float8E8M0(127, Float8E8M0::FromBits()),  // 1.3  -> 1.0 (nearer to 1.0)
+      Float8E8M0(128, Float8E8M0::FromBits()),  // 2.5  -> 2.0 (nearer to 2.0)
   };
   TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "nearest");
 }
@@ -3334,6 +3342,83 @@ TEST(CastOpTest, Float8E8M0ToDouble) {
   }
 
   TestCastFromFloat8E8M0<double>(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+// Edge-case tests verifying E8M0 conversion table.
+// E8M0 format: val 0 = 2^(-127) (E8M0_MIN), val 254 = 2^127 (E8M0_MAX), val 255 = NaN.
+// E8M0 cannot represent zero, negative values, or infinity.
+
+TEST(CastOpTest, FloatToFloat8E8M0_SaturateUp_EdgeCases) {
+  // With saturate=true and round_mode="up", out-of-range values clamp to the nearest boundary.
+  const std::vector<int64_t> shape{8};
+  const std::vector<float> input = {
+      0.0f,                                     // x = 0 (below E8M0 range)
+      -0.0f,                                    // x = -0 (behavior unspecified per spec)
+      NAN,                                      // x = NaN
+      std::numeric_limits<float>::infinity(),   // x = +Inf
+      -std::numeric_limits<float>::infinity(),  // x = -Inf
+      3e38f,                                    // x > E8M0_MAX (~1.76 * 2^127)
+      1e-39f,                                   // x < E8M0_MIN (positive subnormal)
+      -1.0f,                                    // x < 0
+  };
+  const std::vector<Float8E8M0> expected = {
+      Float8E8M0(0, Float8E8M0::FromBits()),    // 0 → E8M0_MIN (val 0)
+      Float8E8M0(0, Float8E8M0::FromBits()),    // -0 → E8M0_MIN (val 0, treated same as +0)
+      Float8E8M0(255, Float8E8M0::FromBits()),  // NaN → NaN (val 255)
+      Float8E8M0(254, Float8E8M0::FromBits()),  // +Inf → E8M0_MAX (val 254)
+      Float8E8M0(0, Float8E8M0::FromBits()),    // -Inf → E8M0_MIN (val 0, negative saturated)
+      Float8E8M0(254, Float8E8M0::FromBits()),  // 3e38 → E8M0_MAX (val 254, overflow saturated)
+      Float8E8M0(0, Float8E8M0::FromBits()),    // 1e-39 -> E8M0_MIN (val 0): ceiling of x < E8M0_MIN is E8M0_MIN
+      Float8E8M0(0, Float8E8M0::FromBits()),    // -1 → E8M0_MIN (val 0, negative saturated)
+  };
+  TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "up");
+}
+
+TEST(CastOpTest, FloatToFloat8E8M0_NonSaturateNearest_EdgeCases) {
+  // With saturate=false and round_mode="nearest", all values outside [E8M0_MIN, E8M0_MAX] become NaN.
+  const std::vector<int64_t> shape{8};
+  const std::vector<float> input = {
+      0.0f,                                     // x = 0 (not representable)
+      -0.0f,                                    // x = -0 (not representable)
+      NAN,                                      // x = NaN
+      std::numeric_limits<float>::infinity(),   // x = +Inf (not representable)
+      -std::numeric_limits<float>::infinity(),  // x = -Inf (not representable)
+      3e38f,                                    // x > E8M0_MAX (not representable)
+      1e-39f,                                   // x < E8M0_MIN: subnormal below 2^(-127) -> NaN
+      -1.0f,                                    // x < 0 (not representable)
+  };
+  const std::vector<Float8E8M0> expected(8, Float8E8M0(255, Float8E8M0::FromBits()));  // all -> NaN
+  TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::False, "nearest");
+}
+
+TEST(CastOpTest, FloatToFloat8E8M0_NonSaturate_AboveMax) {
+  // With saturate=false, any value strictly above E8M0_MAX (2^127) gives NaN,
+  // since 2^128 is not representable in E8M0 (val 255 = NaN).
+  const std::vector<int64_t> shape{2};
+  const std::vector<float> input = {
+      2e38f,  // ~1.18 * 2^127, strictly above E8M0_MAX -> NaN
+      3e38f,  // ~1.76 * 2^127, strictly above E8M0_MAX -> NaN
+  };
+  const std::vector<Float8E8M0> expected(2, Float8E8M0(255, Float8E8M0::FromBits()));  // all -> NaN
+  TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::False, "nearest");
+}
+
+TEST(CastOpTest, FloatToFloat8E8M0_Saturate_AboveMax) {
+  // With saturate=true, values above E8M0_MAX clamp to E8M0_MAX.
+  const std::vector<int64_t> shape{2};
+  const std::vector<float> input = {2e38f, 3e38f};
+  const std::vector<Float8E8M0> expected(2, Float8E8M0(254, Float8E8M0::FromBits()));  // E8M0_MAX
+  TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "up");
+}
+
+TEST(CastOpTest, FloatToFloat8E8M0_ExactMax) {
+  // Exactly E8M0_MAX (2^127) is representable in all modes.
+  const std::vector<int64_t> shape{1};
+  // 2^127 = 1.7014118e+38
+  const float e8m0_max = Float8E8M0(254, Float8E8M0::FromBits()).ToFloat();
+  const std::vector<float> input = {e8m0_max};
+  const std::vector<Float8E8M0> expected = {Float8E8M0(254, Float8E8M0::FromBits())};
+  TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::False, "nearest");
 }
 
 #endif  // !defined(DISABLE_FLOAT8_TYPES)
