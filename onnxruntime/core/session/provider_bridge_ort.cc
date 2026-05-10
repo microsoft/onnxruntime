@@ -1943,7 +1943,11 @@ Status ProviderLibrary::Load() {
       }
 
       Provider* (*PGetProvider)();
-      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+      auto status = Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider);
+      if (!status.IsOK()) {
+        Unload();
+        return status;
+      }
 
       provider_ = PGetProvider();
     }
