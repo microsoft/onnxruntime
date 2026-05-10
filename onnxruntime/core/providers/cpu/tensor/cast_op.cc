@@ -75,8 +75,14 @@ using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecu
 
 // Pre-opset-24 type lists (without Float8E8M0) for kernel registration TypeConstraints.
 // Float8E8M0 was introduced in opset 24.
+#if !defined(DISABLE_FLOAT8_TYPES)
 using EnabledSrcTypesPreOpset24 = boost::mp11::mp_remove<EnabledSrcTypes, Float8E8M0>;
 using EnabledDstTypesPreOpset24 = boost::mp11::mp_remove<EnabledDstTypes, Float8E8M0>;
+#else
+// When float8 types are disabled, Float8E8M0 is not in the type lists, so no removal needed.
+using EnabledSrcTypesPreOpset24 = EnabledSrcTypes;
+using EnabledDstTypesPreOpset24 = EnabledDstTypes;
+#endif
 
 template <typename T>
 using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
