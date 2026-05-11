@@ -3154,16 +3154,16 @@ TEST_F(GraphTest, MalformedModelInitializerWithoutNodeArg) {
 
   // Loading this model should fail with a proper error (not a crash)
   std::shared_ptr<Model> model;
-  auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
-  EXPECT_FALSE(status.IsOK());
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      Model::Load(std::move(model_proto), model, nullptr, *logger_),
+      "orphan_init");
 }
 
-// Test that a model with a node containing a subgraph attribute where the subgraph
-// is completely empty is properly rejected.
+// Test that a model with an If node containing empty subgraphs
+// (present but empty GraphProto) is properly rejected.
 TEST_F(GraphTest, MalformedModelEmptySubgraph) {
-  // Construct a minimal model with an Identity node that has a spurious graph attribute
-  // with an empty body (no inputs, no outputs, no nodes in the body).
-  // This simulates a structurally malformed model.
+  // Construct a model with an If node whose then_branch and else_branch
+  // subgraphs are present but completely empty (no inputs, no outputs, no nodes).
   ModelProto model_proto;
   model_proto.set_ir_version(9);
   auto* opset = model_proto.add_opset_import();
@@ -3173,24 +3173,30 @@ TEST_F(GraphTest, MalformedModelEmptySubgraph) {
   auto* graph_proto = model_proto.mutable_graph();
   graph_proto->set_name("test_graph");
 
-  // Add a graph input
-  auto* input = graph_proto->add_input();
-  input->set_name("X");
-  auto* input_type = input->mutable_type()->mutable_tensor_type();
-  input_type->set_elem_type(TensorProto_DataType_FLOAT);
-  input_type->mutable_shape()->add_dim()->set_dim_value(2);
+  // Add a boolean condition input for the If node
+  auto* cond_input = graph_proto->add_input();
+  cond_input->set_name("cond");
+  auto* cond_type = cond_input->mutable_type()->mutable_tensor_type();
+  cond_type->set_elem_type(TensorProto_DataType_BOOL);
+  cond_type->mutable_shape();  // scalar
 
-  // Add a node with an identity op that has a spurious graph attribute
+  // Add an If node with empty then_branch and else_branch subgraphs
   auto* node = graph_proto->add_node();
-  node->add_input("X");
+  node->add_input("cond");
   node->add_output("Y");
-  node->set_op_type("Identity");
+  node->set_op_type("If");
 
-  // Add an attribute with type GRAPH and an empty graph body
-  auto* attr = node->add_attribute();
-  attr->set_name("body");
-  attr->set_type(AttributeProto_AttributeType_GRAPH);
-  // Leave attr->mutable_g() as an empty GraphProto
+  // Add then_branch attribute with an empty GraphProto
+  auto* then_attr = node->add_attribute();
+  then_attr->set_name("then_branch");
+  then_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  then_attr->mutable_g();  // allocate empty GraphProto
+
+  // Add else_branch attribute with an empty GraphProto
+  auto* else_attr = node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  else_attr->mutable_g();  // allocate empty GraphProto
 
   // Add graph output
   auto* output = graph_proto->add_output();
@@ -3199,11 +3205,10 @@ TEST_F(GraphTest, MalformedModelEmptySubgraph) {
   output_type->set_elem_type(TensorProto_DataType_FLOAT);
   output_type->mutable_shape()->add_dim()->set_dim_value(2);
 
-  // Loading and resolving the model should fail because Identity does not have
-  // a "body" graph attribute in its schema. The model should be rejected gracefully.
+  // Loading the model should fail gracefully — not crash.
+  // The empty subgraphs have no outputs, which violates the If op spec.
   std::shared_ptr<Model> model;
   auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
-  // The model should be rejected at some point — either load or resolve — not crash.
   EXPECT_FALSE(status.IsOK());
 }
 
