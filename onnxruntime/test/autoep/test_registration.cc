@@ -13,12 +13,6 @@
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
-
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" void ortenv_setup();
 extern "C" void ortenv_teardown();
@@ -221,62 +215,6 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
 
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
-}
-
-namespace {
-
-// Returns true if the library is currently mapped in the process.
-// On Windows, GetModuleHandleW queries by filename without incrementing the refcount.
-// On Linux/macOS, dlopen with RTLD_NOLOAD probes without loading; if it succeeds it adds a
-// refcount that we immediately release with dlclose.
-bool IsLibraryLoaded(const std::filesystem::path& library_path) {
-#if defined(_WIN32)
-  return GetModuleHandleW(library_path.filename().wstring().c_str()) != nullptr;
-#else
-  void* handle = dlopen(library_path.c_str(), RTLD_NOLOAD | RTLD_NOW);
-  if (handle) {
-    dlclose(handle);  // Undo the refcount added by the RTLD_NOLOAD probe.
-    return true;
-  }
-  return false;
-#endif
-}
-
-}  // namespace
-
-// Verify that registering and unregistering a plugin EP library does not leak the library handle.
-// ProviderLibrary::Load() loads the library then probes for the "GetProvider" symbol. Plugin EP
-// libraries do not export "GetProvider", so the probe fails. Without the fix, Load() returned the
-// error without calling Unload(), leaving a leaked refcount. After UnregisterExecutionProviderLibrary
-// released only the EpLibraryPlugin's reference, the library remained mapped in the process.
-TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
-  const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
-  const std::string& registration_name = Utils::example_ep_info.registration_name;
-
-  // Capture whether the library is already loaded (e.g., by a prior test in the same process).
-  // If it is, we cannot verify the leak because IsLibraryLoaded returns a boolean, not a refcount —
-  // it can't distinguish "loaded at refcount N" from "loaded at refcount N+1". A subprocess-based
-  // approach could guarantee a clean starting state, but GTEST_SKIP is simpler and still catches
-  // the regression when this test runs before other tests that load the same library.
-  if (IsLibraryLoaded(library_path)) {
-    GTEST_SKIP() << "Library already loaded by a prior test; cannot verify refcount leak.";
-  }
-
-  // Register the plugin EP library. Internally this calls ProviderLibrary::Load() (which
-  // loads the library and fails to find "GetProvider") and then EpLibraryPlugin::Load().
-  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
-
-  // The library should be loaded now.
-  ASSERT_TRUE(IsLibraryLoaded(library_path)) << "Library should be loaded after registration.";
-
-  // Unregister releases the EpLibraryPlugin's reference.
-  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
-
-  // If the fix is applied, the library should be fully unloaded (refcount == 0).
-  // Without the fix, ProviderLibrary::Load() leaks a refcount so the library remains mapped.
-  EXPECT_FALSE(IsLibraryLoaded(library_path))
-      << "Library handle leaked: EP library is still loaded after UnregisterExecutionProviderLibrary. "
-         "This indicates ProviderLibrary::Load() did not call Unload() on GetProvider symbol miss.";
 }
 
 }  // namespace test

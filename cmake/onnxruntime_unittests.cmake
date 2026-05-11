@@ -2259,6 +2259,21 @@ if (onnxruntime_BUILD_SHARED_LIB AND
           LIBS ${onnxruntime_autoep_test_LIBS}
           DEPENDS ${all_dependencies} example_plugin_ep example_plugin_ep_virt_gpu example_plugin_ep_kernel_registry
   )
+
+  # Isolated test for library handle leak detection.
+  # Separate binary ensures the plugin EP library starts unloaded (refcount 0).
+  set(onnxruntime_autoep_handle_leak_test_SRC
+      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_handle_leak.cc"
+      "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_autoep_utils.cc")
+
+  set(onnxruntime_autoep_handle_leak_test_LIBS ${onnxruntime_autoep_test_LIBS})
+
+  AddTest(DYN
+          TARGET onnxruntime_autoep_handle_leak_test
+          SOURCES ${onnxruntime_autoep_handle_leak_test_SRC} ${onnxruntime_unittest_main_src}
+          LIBS ${onnxruntime_autoep_handle_leak_test_LIBS}
+          DEPENDS ${all_dependencies} example_plugin_ep
+  )
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
