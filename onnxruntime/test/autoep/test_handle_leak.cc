@@ -72,7 +72,7 @@ TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
 
   std::optional<bool> loaded_before = IsLibraryLoaded(library_path);
   if (!loaded_before.has_value()) {
-    GTEST_SKIP() << "Platform does not support querying loaded-library state (RTLD_NOLOAD unavailable).";
+    GTEST_SKIP() << "Platform does not support querying loaded-library state.";
   }
 
   if (*loaded_before) {
