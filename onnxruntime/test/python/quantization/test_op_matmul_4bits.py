@@ -521,6 +521,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
             "ConstantOfShape": 0,
             "Slice": 0,
             "Concat": 0,
+            "Reshape": 0,
         }
         self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=no_reshape_helpers)
 

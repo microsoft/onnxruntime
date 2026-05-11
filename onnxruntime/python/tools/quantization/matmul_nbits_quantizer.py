@@ -1160,7 +1160,7 @@ class DefaultWeightOnlyQuantizer:
                 node.input[0],
                 tp_output_names[0] if qdq_opt_for_intel_npu_enabled else dq_output_names[0],
             ]
-            # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMulNBits
+            # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMul
             # already produces the correct output shape.
             a_static_rank = _get_static_rank(node.input[0], graph_stack)
             rank_b_orig = len(b_original_shape) if b_original_shape is not None else 0
