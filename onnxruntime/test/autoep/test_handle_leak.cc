@@ -48,16 +48,23 @@ bool IsLibraryLoaded(const std::filesystem::path& library_path) {
 // UnregisterExecutionProviderLibrary released only the EpLibraryPlugin's reference, the library
 // remained mapped in the process.
 //
-// This test lives in a separate binary to guarantee the plugin EP library starts fully unloaded
-// (refcount 0). In the main autoep test binary, other tests may have already loaded the same
-// library, making it impossible to detect refcount leaks with a boolean loaded/unloaded check.
+// Limitation: This test can only detect the leak when the library starts fully unloaded (refcount 0).
+// If another test in this binary already loaded the library, IsLibraryLoaded returns true both before
+// and after, masking any refcount leak. In that case, we skip. GoogleTest does not guarantee test
+// order, so this may or may not run before other tests that load the library.
+//
+// TODO: Build this test as a separate binary (e.g., onnxruntime_autoep_handle_leak_test) to guarantee
+// a clean starting state. This was attempted but reverted because adding an extra link target caused
+// the ARM64 Linux Debug CI to run out of memory during linking (the runner is at its limit).
 TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
   const std::string& registration_name = Utils::example_ep_info.registration_name;
 
-  // This binary contains only this test, so the library must not be loaded yet.
-  ASSERT_FALSE(IsLibraryLoaded(library_path))
-      << "Library unexpectedly loaded before test. This test must run in an isolated binary.";
+  if (IsLibraryLoaded(library_path)) {
+    GTEST_SKIP() << "Library is already loaded by another test in this binary. "
+                    "Cannot detect refcount leaks with a boolean loaded/unloaded check. "
+                    "See TODO above for the ideal separate-binary approach.";
+  }
 
   // Register the plugin EP library. Internally this calls ProviderLibrary::Load() (which
   // loads the library and fails to find "GetProvider") and then EpLibraryPlugin::Load().
