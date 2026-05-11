@@ -438,5 +438,60 @@ TEST(TensorOpTest, TileOutputSizeExceedsLimitString) {
            {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
+#if defined(USE_WEBGPU)
+// The WebGPU Tile kernel stores per-axis repeat values in a uint32_t shader
+// uniform. Repeat values that would truncate when cast to uint32_t must be
+// rejected before reaching the shader. A zero-element input is used so that
+// the earlier output-byte-size check (which requires dim > 0) does not fire
+// first, exercising the explicit uint32_t-range guard.
+TEST(TensorOpTest, TileRepeatExceedsUint32MaxWebGpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {0}, {});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{4294967296}});  // 2^32
+  test.AddOutput<float>("output", {0}, {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "exceeds the WebGPU supported maximum",
+           {}, nullptr, &execution_providers);
+}
+
+// The WebGPU Tile kernel validates that the 'repeats' input is 1-D, mirroring
+// the CPU kernel's pre-existing check.
+TEST(TensorOpTest, TileRepeatsMustBe1DWebGpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("repeats", {1, 2}, {1, 1});
+  test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be 1 dimensional",
+           {}, nullptr, &execution_providers);
+}
+
+// The WebGPU Tile kernel validates that the 'repeats' length matches the
+// input rank, mirroring the CPU kernel's pre-existing check.
+TEST(TensorOpTest, TileRepeatsMustMatchInputRankWebGpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("repeats", {1}, {1});
+  test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "same length as the 'input' tensor",
+           {}, nullptr, &execution_providers);
+}
+#endif  // defined(USE_WEBGPU)
+
 }  // namespace test
 }  // namespace onnxruntime
