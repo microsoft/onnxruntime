@@ -1001,7 +1001,9 @@ def update_opset_version(
                 if needs_opset21_for_16bit:
                     break
         except (AttributeError, TypeError):
-            pass
+            # Malformed overrides; structural validation is deferred to
+            # TensorQuantOverridesHelper.is_valid(). Skip bump heuristic.
+            logging.debug("Skipping 16-bit opset bump heuristic for TensorQuantOverrides: structure not as expected.")
 
     if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
         logging.warning(
