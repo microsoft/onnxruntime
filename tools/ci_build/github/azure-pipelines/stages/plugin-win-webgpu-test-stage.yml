@@ -40,8 +40,12 @@ stages:
         echo "activating test_venv"
         & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
 
+        $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-webgpu\MIN_ONNXRUNTIME_VERSION"
+        $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+        echo "using minimum onnxruntime version $minOrtVersion from $minOrtVersionFile"
+
         echo "installing test dependencies"
-        python -m pip install onnx numpy
+        python -m pip install onnx "onnxruntime==$minOrtVersion" numpy
 
         $wheelDir = "$(Pipeline.Workspace)\build\webgpu_plugin_python_win_${{ parameters.arch }}"
         $wheel = (Get-ChildItem "$wheelDir\onnxruntime_ep_webgpu-*.whl")[0]
@@ -102,6 +106,11 @@ stages:
           Write-Host "Detected package version: $packageVersion"
           Write-Host "##vso[task.setvariable variable=OrtWebGpuPackageVersion]$packageVersion"
 
+          $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-webgpu\MIN_ONNXRUNTIME_VERSION"
+          $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+          Write-Host "Using minimum core ORT version: $minOrtVersion from $minOrtVersionFile"
+          Write-Host "##vso[task.setvariable variable=OrtCoreTestVersion]$minOrtVersion"
+
           # Write a project-level nuget.config that adds ONLY the local feed.
           # NuGet merges this with the repo-root NuGet.config.
           $nugetConfig = "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\nuget.config"
@@ -122,7 +131,8 @@ stages:
           dotnet build `
             "$(WebGpuTestProject)" `
             --configuration Release `
-            -p:OrtWebGpuPackageVersion=$(OrtWebGpuPackageVersion)
+            -p:OrtWebGpuPackageVersion=$(OrtWebGpuPackageVersion) `
+            -p:OrtCoreTestVersion=$(OrtCoreTestVersion)
         displayName: 'Build test project'
 
       - pwsh: |
