@@ -1979,6 +1979,40 @@ TEST(QDQTransformerTests, Resize) {
   test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), true /*use_contrib_qdq*/);
 }
 
+// Resize with linear (or cubic) mode interpolates values, so QDQ nodes cannot be dropped.
+// The DQ and Q nodes must be preserved to ensure the interpolation is performed in float space.
+TEST(QDQTransformerTests, Resize_Linear_No_QDQ_Drop) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape,
+                       const std::vector<int64_t>& sizes_data,
+                       const std::string& mode,
+                       bool use_contrib_qdq = false) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count["Resize"], 1);
+      // QDQ nodes must NOT be dropped for non-nearest resize modes
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+    };
+
+    TransformerTester(BuildQDQResizeTestCase(input1_shape,
+                                             sizes_data,
+                                             mode,
+                                             "half_pixel",  // coordinate_transformation_mode
+                                             "",            // nearest_mode (not used for linear/cubic)
+                                             false,         // add_dq_output_float
+                                             use_contrib_qdq),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+
+  test_case({1, 1, 1, 3}, {1, 1, 1, 6}, "linear");
+  test_case({1, 1, 1, 3}, {1, 1, 1, 6}, "linear", true /*use_contrib_qdq*/);
+  test_case({1, 1, 3, 3}, {1, 1, 6, 6}, "cubic");
+  test_case({1, 1, 3, 3}, {1, 1, 6, 6}, "cubic", true /*use_contrib_qdq*/);
+}
+
 TEST(QDQTransformerTests, Resize_No_Fusion) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_shape,

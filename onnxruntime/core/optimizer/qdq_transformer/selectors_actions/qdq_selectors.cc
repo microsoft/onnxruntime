@@ -181,6 +181,18 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
     return false;
   }
 
+  // Resize with non-nearest interpolation mode (e.g., linear, cubic) computes interpolated values
+  // using float arithmetic. The QDQ drop optimization is only valid for nearest-neighbor resize,
+  // which copies existing values and can operate correctly on quantized integers.
+  if (node.OpType() == "Resize") {
+    const auto& attrs = node.GetAttributes();
+    const auto mode_it = attrs.find("mode");
+    // Default mode is "nearest" when not specified; only allow drop for nearest mode.
+    if (mode_it != attrs.end() && mode_it->second.s() != "nearest") {
+      return false;
+    }
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
