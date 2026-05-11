@@ -295,7 +295,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
   data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
-  parameters.past_present_share_buffer = (data.past_key != nullptr && data.past_key == data.present_key);
+  bool past_key_shared = (data.past_key != nullptr && data.past_key == data.present_key);
+  bool past_value_shared = (data.past_value != nullptr && data.past_value == data.present_value);
+  ORT_ENFORCE(past_key_shared == past_value_shared,
+              "past_key/present_key and past_value/present_value must be both shared or both separate.");
+  parameters.past_present_share_buffer = past_key_shared;
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
@@ -317,6 +321,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
+      parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
       !parameters.use_smooth_softmax &&
@@ -394,7 +399,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                  parameters.kv_num_heads);
 
   data.use_flash_attention = use_flash_attention;
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.past_present_share_buffer && !is_inputs_quantized;
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)
