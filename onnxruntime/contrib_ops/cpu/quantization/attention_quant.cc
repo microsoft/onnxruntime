@@ -7,6 +7,7 @@
 #include "core/util/math.h"
 #include "core/util/qmath.h"
 #include "core/util/math_cpuonly.h"
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas.h"
@@ -171,12 +172,6 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   T input_scale = *(input_scale_tensor->Data<T>());
 
   bool is_weight_scale_per_column = !IsScalarOr1ElementVector(weight_scale_tensor);
-  const T* weight_scale_data = weight_scale_tensor->Data<T>();
-
-  std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
-  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
-    return dequant_scale *= input_scale;
-  });
 
   uint8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
@@ -194,13 +189,42 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   const auto& shape = input->Shape();
-  const int batch_size = static_cast<int>(shape[0]);
-  const int sequence_length = static_cast<int>(shape[1]);
-  const int input_hidden_size = static_cast<int>(shape[2]);
+  const int batch_size = narrow<int>(shape[0]);
+  const int sequence_length = narrow<int>(shape[1]);
+  const int input_hidden_size = narrow<int>(shape[2]);
 
   const auto hidden_size_x3 = weights_shape.GetDims()[1];
-  const int hidden_size = static_cast<int>(hidden_size_x3) / 3;
+  ORT_RETURN_IF_NOT(hidden_size_x3 > 0 && hidden_size_x3 % 3 == 0,
+                    "Input 'weights' dimension 1 (", hidden_size_x3,
+                    ") must be a positive multiple of 3.");
+  const int hidden_size = narrow<int>(hidden_size_x3) / 3;
   const int head_size = hidden_size / num_heads_;
+
+  // Validate per-column 'weight_scale' / 'weight_zero_point' shapes against the expected
+  // 3 * hidden_size. Without this check, a malicious or malformed model can supply a
+  // smaller per-column tensor and cause an out-of-bounds read in the GEMM loop below
+  // (which indexes scales/zero-points using offsets up to ~3 * hidden_size - head_size).
+  if (is_weight_scale_per_column) {
+    ORT_RETURN_IF_NOT(weight_scale_tensor->Shape().NumDimensions() == 1 &&
+                          weight_scale_tensor->Shape().Size() == 3 * hidden_size,
+                      "Input 'weight_scale' must be a scalar or a 1D tensor of size 3 * hidden_size (= ",
+                      3 * hidden_size, "), got shape ", weight_scale_tensor->Shape().ToString());
+  }
+
+  if (is_weight_zp_per_column) {
+    ORT_RETURN_IF_NOT(w_zp_tensor->Shape().NumDimensions() == 1 &&
+                          w_zp_tensor->Shape().Size() == 3 * hidden_size,
+                      "Input 'weight_zero_point' must be a scalar or a 1D tensor of size 3 * hidden_size (= ",
+                      3 * hidden_size, "), got shape ", w_zp_tensor->Shape().ToString());
+  }
+
+  // Build the dequantization scales after shape validation so that malformed
+  // inputs are rejected before any allocation/copy work.
+  const T* weight_scale_data = weight_scale_tensor->Data<T>();
+  std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
+  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
+    return dequant_scale *= input_scale;
+  });
 
   std::vector<int64_t> output_shape(3);
   output_shape[0] = shape[0];
@@ -225,7 +249,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   T* QKV[3] = {Q, K, V};
 
   {
-    const int loop_len = 3 * batch_size * num_heads_;
+    const int loop_len = SafeInt<int>(3) * batch_size * num_heads_;
     const auto* input_data = input->Data<uint8_t>();
     const auto* bias_data = bias->Data<T>();
 
@@ -247,7 +271,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
       const int head_index = static_cast<int>((i / 3) % num_heads_);
       const int qkv_index = static_cast<int>(i % 3);
 
-      int input_offset = batch_index * sequence_length * input_hidden_size;
+      int input_offset = SafeInt<int>(batch_index) * sequence_length * input_hidden_size;
       int weights_offset = qkv_index * hidden_size + head_index * head_size;
       int weights_scale_offset = is_weight_scale_per_column ? weights_offset : 0;
       int weights_zp_offset = is_weight_zp_per_column ? weights_offset : 0;

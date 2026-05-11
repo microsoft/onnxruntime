@@ -1162,5 +1162,94 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
 }
 #endif
 
+namespace {
+
+// Build a small valid QAttention OpTester and let the caller mutate the
+// per-column weight_scale / weight_zero_point shapes to invalid sizes to
+// exercise the input-validation path that protects against OOB reads in
+// QAttention<T>::Compute.
+void RunQAttentionInvalidPerColumnShapes(const std::vector<int64_t>& weight_scale_dims,
+                                         const std::vector<float>& weight_scale_data,
+                                         const std::vector<int64_t>& weight_zp_dims,
+                                         const std::vector<uint8_t>& weight_zp_data,
+                                         const std::string& expected_error_substring) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int hidden_size = 4;
+  constexpr int number_of_heads = 2;
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+
+  std::vector<uint8_t> input_data(static_cast<size_t>(batch_size * sequence_length * hidden_size), 128);
+  std::vector<uint8_t> weight_data(static_cast<size_t>(hidden_size * 3 * hidden_size), 128);
+  std::vector<float> bias_data(static_cast<size_t>(3 * hidden_size), 0.0f);
+
+  OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+  tester.AddInput<uint8_t>("input", input_dims, input_data);
+  tester.AddInput<uint8_t>("weight", weights_dims, weight_data);
+  tester.AddInput<float>("bias", bias_dims, bias_data);
+  tester.AddInput<float>("input_scale", {1}, {0.1f});
+  tester.AddInput<float>("weight_scale", weight_scale_dims, weight_scale_data);
+  tester.AddOptionalInputEdge<int32_t>();  // mask_index
+  tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
+  tester.AddInput<uint8_t>("weight_zero_point", weight_zp_dims, weight_zp_data);
+
+  // Output shape is required by OpTester even though we expect failure before
+  // the kernel writes anything meaningful.
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<float> dummy_output(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.0f);
+  tester.AddOutput<float>("output", output_dims, dummy_output);
+
+  // CPU EP only — CUDA QAttention does not support per-column scale/zp.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure, expected_error_substring,
+             {}, nullptr, &execution_providers);
+}
+
+}  // namespace
+
+// Regression tests: a malformed model that supplies a "per-column"
+// weight_scale or weight_zero_point of the wrong size used to trigger
+// an out-of-bounds read in QAttention<T>::Compute. The kernel must
+// reject such inputs with a descriptive error.
+TEST(QAttentionTest, InvalidWeightScalePerColumnShape) {
+  // hidden_size=4, expected per-column size = 3 * hidden_size = 12.
+  // Supply 2 elements (smaller than expected) to trigger the validation.
+  RunQAttentionInvalidPerColumnShapes(
+      /*weight_scale_dims=*/{2}, /*weight_scale_data=*/{0.1f, 0.1f},
+      /*weight_zp_dims=*/{1}, /*weight_zp_data=*/{128},
+      /*expected_error_substring=*/"'weight_scale' must be a scalar or a 1D tensor of size 3 * hidden_size");
+}
+
+TEST(QAttentionTest, InvalidWeightScalePerColumnRank) {
+  // 2-D weight_scale with size 12 should still be rejected (rank must be 1).
+  RunQAttentionInvalidPerColumnShapes(
+      /*weight_scale_dims=*/{3, 4},
+      /*weight_scale_data=*/std::vector<float>(12, 0.1f),
+      /*weight_zp_dims=*/{1}, /*weight_zp_data=*/{128},
+      /*expected_error_substring=*/"'weight_scale' must be a scalar or a 1D tensor of size 3 * hidden_size");
+}
+
+TEST(QAttentionTest, InvalidWeightZeroPointPerColumnShape) {
+  // hidden_size=4, expected per-column size = 12. Supply 2 elements.
+  RunQAttentionInvalidPerColumnShapes(
+      /*weight_scale_dims=*/{1}, /*weight_scale_data=*/{0.1f},
+      /*weight_zp_dims=*/{2}, /*weight_zp_data=*/{128, 128},
+      /*expected_error_substring=*/"'weight_zero_point' must be a scalar or a 1D tensor of size 3 * hidden_size");
+}
+
+TEST(QAttentionTest, InvalidWeightZeroPointPerColumnRank) {
+  // 2-D weight_zero_point with size 12 should still be rejected (rank must be 1).
+  RunQAttentionInvalidPerColumnShapes(
+      /*weight_scale_dims=*/{1}, /*weight_scale_data=*/{0.1f},
+      /*weight_zp_dims=*/{3, 4},
+      /*weight_zp_data=*/std::vector<uint8_t>(12, 128),
+      /*expected_error_substring=*/"'weight_zero_point' must be a scalar or a 1D tensor of size 3 * hidden_size");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
