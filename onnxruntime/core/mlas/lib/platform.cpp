@@ -27,6 +27,10 @@ Abstract:
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
+#if defined(MLAS_USE_RVV)
+#include <riscv_vector.h>
+#endif
+
 #include <cctype>
 #include <cstdlib>
 #include <mutex>
@@ -325,6 +329,15 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
 
 #if defined(MLAS_USE_RVV)
+    this->NchwcBlockSize = 1;
+    this->ConvNchwFloatKernel = nullptr;
+    this->ConvNchwcFloatKernel = nullptr;
+    this->ConvDepthwiseFloatKernel = nullptr;
+    this->ConvPointwiseFloatKernel = nullptr;
+    this->PoolFloatKernel[MlasMaximumPooling] = nullptr;
+    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = nullptr;
+    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = nullptr;
+
     bool has_rvv = true;
 #if defined(__linux__)
     has_rvv = (getauxval(AT_HWCAP) & COMPAT_HWCAP_ISA_V) != 0;
@@ -339,14 +352,17 @@ Return Value:
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
 
-        this->NchwcBlockSize = 16;
-        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
-        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
-        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelRvv;
-        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelRvv;
-        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelRvv;
-        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelRvv;
-        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelRvv;
+        // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.
+        if (__riscv_vlenb() >= 16) {
+            this->NchwcBlockSize = 16;
+            this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
+            this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
+            this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelRvv;
+            this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelRvv;
+            this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelRvv;
+            this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelRvv;
+            this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelRvv;
+        }
     }
 #endif
 #endif
