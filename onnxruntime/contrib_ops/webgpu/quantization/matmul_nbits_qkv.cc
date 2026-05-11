@@ -23,105 +23,6 @@ namespace webgpu {
 
 namespace {
 
-TensorShape GetOverrideShape(const TensorShape& shape, int components) {
-  return TensorShape{shape.Size() / components};
-}
-
-Status ApplySimplifiedLayerNorm(const Tensor* x,
-                                const Tensor* scale,
-                                float epsilon,
-                                onnxruntime::webgpu::ComputeContext& context,
-                                Tensor* y) {
-  const auto& x_shape = x->Shape();
-  if (x_shape.Size() == 0) {
-    return Status::OK();
-  }
-
-  const int64_t norm_size = x_shape[x_shape.NumDimensions() - 1];
-  const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.Size() / norm_size);
-  const int components = GetMaxComponents(norm_size);
-  const uint32_t norm_size_vectorized = onnxruntime::narrow<uint32_t>((norm_size + components - 1) / components);
-  const bool split_norm_dim = norm_size % 512 == 0 && norm_count == 1;
-
-  onnxruntime::webgpu::LayerNormProgram program{/*has_bias=*/false,
-                                                /*simplified=*/true,
-                                                /*has_mean_output=*/false,
-                                                /*has_inv_std_dev_output=*/false,
-                                                split_norm_dim};
-
-  program.CacheHint(components, true, split_norm_dim)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x_shape, components), components},
-                  {scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
-      .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
-      .AddUniformVariables({{static_cast<uint32_t>(components)},
-                            {norm_count},
-                            {static_cast<uint32_t>(norm_size)},
-                            {norm_size_vectorized},
-                            {epsilon}});
-
-  if (split_norm_dim) {
-    const uint32_t workgroup_size_x = 128;
-    const uint32_t dispatch_size_x = onnxruntime::narrow<uint32_t>(norm_size / (workgroup_size_x * components));
-    program.SetDispatchGroupSize(dispatch_size_x, 1, 1)
-        .SetWorkgroupSize(workgroup_size_x);
-  } else {
-    program.SetDispatchGroupSize(norm_count);
-  }
-
-  return context.RunProgram(program);
-}
-
-Status ApplySkipSimplifiedLayerNorm(const Tensor* x,
-                                    const Tensor* skip,
-                                    const Tensor* scale,
-                                    float epsilon,
-                                    onnxruntime::webgpu::ComputeContext& context,
-                                    Tensor* y,
-                                    Tensor* input_skip_bias_sum) {
-  const auto& x_shape = x->Shape();
-  if (x_shape.Size() == 0) {
-    return Status::OK();
-  }
-
-  const uint32_t hidden_size = onnxruntime::narrow<uint32_t>(x_shape[x_shape.NumDimensions() - 1]);
-  const int components = GetMaxComponents(hidden_size);
-  const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.SizeToDimension(x_shape.NumDimensions() - 1));
-  const bool split_hidden_dim = hidden_size % 512 == 0 && norm_count == 1;
-  const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip->Shape().Size());
-
-  SkipLayerNormProgram program{/*hasBeta=*/false,
-                               /*hasBias=*/false,
-                               epsilon,
-                               hidden_size,
-                               input_skip_bias_sum != nullptr,
-                               /*simplified=*/true,
-                               split_hidden_dim};
-  program
-      .CacheHint(/*simplified=*/true, input_skip_bias_sum != nullptr, split_hidden_dim)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{scale, ProgramTensorMetadataDependency::Type, components}})
-      .AddOutputs({{y, ProgramTensorMetadataDependency::None, components}})
-      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(ceil(1.0 * x_shape.Size() / hidden_size)))
-      .AddUniformVariables({{static_cast<uint32_t>(components)}})
-      .AddUniformVariables({{hidden_size}})
-      .AddUniformVariables({{epsilon}})
-      .AddUniformVariables({{skip_size}});
-
-  if (split_hidden_dim) {
-    const uint32_t workgroup_size_x = 128;
-    const uint32_t dispatch_size_x = (input_skip_bias_sum != nullptr ? 2u : 1u) * hidden_size / (workgroup_size_x * components);
-    program.SetDispatchGroupSize(dispatch_size_x, 1, 1)
-        .SetWorkgroupSize(workgroup_size_x);
-  }
-
-  if (input_skip_bias_sum != nullptr) {
-    program.AddOutputs({{input_skip_bias_sum, ProgramTensorMetadataDependency::None, components}});
-  }
-
-  return context.RunProgram(program);
-}
-
 Status ApplyUnfusedQKVSimplifiedLayerNorm(const Tensor* a,
                                           const Tensor* norm_scale,
                                           const Tensor* q_b,
@@ -142,7 +43,12 @@ Status ApplyUnfusedQKVSimplifiedLayerNorm(const Tensor* a,
                                           Tensor* k_output,
                                           Tensor* v_output) {
   Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
-  ORT_RETURN_IF_ERROR(ApplySimplifiedLayerNorm(a, norm_scale, epsilon, context, &normalized_a));
+  const auto& a_shape = a->Shape();
+  const int64_t norm_size = a_shape[a_shape.NumDimensions() - 1];
+  const uint32_t norm_count = onnxruntime::narrow<uint32_t>(a_shape.Size() / norm_size);
+  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+      context, a, norm_scale, /*bias=*/nullptr, epsilon, norm_count, norm_size,
+      /*simplified=*/true, &normalized_a, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
   ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, q_b, q_scales, nullptr, nullptr,
                                        K, Nq, block_size, accuracy_level, bits, context, q_output));
   ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, k_b, k_scales, nullptr, nullptr,
@@ -174,7 +80,10 @@ Status ApplyUnfusedQKVSkipSimplifiedLayerNorm(const Tensor* a,
                                               Tensor* v_output,
                                               Tensor* input_skip_bias_sum) {
   Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
-  ORT_RETURN_IF_ERROR(ApplySkipSimplifiedLayerNorm(a, skip, norm_scale, epsilon, context, &normalized_a, input_skip_bias_sum));
+  ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
+                                              /*beta=*/nullptr, /*bias=*/nullptr,
+                                              epsilon, /*simplified=*/true,
+                                              &normalized_a, input_skip_bias_sum));
   ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, q_b, q_scales, nullptr, nullptr,
                                        K, Nq, block_size, accuracy_level, bits, context, q_output));
   ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, k_b, k_scales, nullptr, nullptr,
@@ -446,19 +355,19 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   if (exceeds_storage_buffer_limit) {
     normalized_a_storage.emplace(context.CreateGPUTensor(a->DataType(), a->Shape()));
     if (skip != nullptr) {
-      ORT_RETURN_IF_ERROR(ApplySkipSimplifiedLayerNorm(a,
-                                                       skip,
-                                                       norm_scale,
-                                                       epsilon_,
-                                                       context,
-                                                       &*normalized_a_storage,
-                                                       input_skip_bias_sum));
+      ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
+                                                  /*beta=*/nullptr, /*bias=*/nullptr,
+                                                  epsilon_, /*simplified=*/true,
+                                                  &*normalized_a_storage,
+                                                  input_skip_bias_sum));
     } else {
-      ORT_RETURN_IF_ERROR(ApplySimplifiedLayerNorm(a,
-                                                   norm_scale,
-                                                   epsilon_,
-                                                   context,
-                                                   &*normalized_a_storage));
+      const auto& a_shape = a->Shape();
+      const int64_t norm_size = a_shape[a_shape.NumDimensions() - 1];
+      const uint32_t norm_count = onnxruntime::narrow<uint32_t>(a_shape.Size() / norm_size);
+      ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+          context, a, norm_scale, /*bias=*/nullptr, epsilon_, norm_count, norm_size,
+          /*simplified=*/true, &*normalized_a_storage, /*mean=*/nullptr,
+          /*inv_std_dev=*/nullptr));
     }
     decode_a = &*normalized_a_storage;
   }
