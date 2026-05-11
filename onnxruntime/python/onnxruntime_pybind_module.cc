@@ -63,7 +63,11 @@ static Status CreateOrtEnv() {
     auto etw_severity = OverrideLevelWithEtw(kDefaultSeverity);
     auto combined_sink = EnhanceSinkWithEtw(std::move(python_sink), kDefaultSeverity, etw_severity);
     std::string logger_id{"Default"};
-    ort_env->SetLoggingManager(nullptr);  // destroys old manager, clears singleton guard
+    ort_env->SetLoggingManager(nullptr);  // Destroys the old Default-type LoggingManager.
+    // The LoggingManager destructor explicitly resets the internal singleton guard
+    // (DefaultLoggerManagerInstance atomic pointer in logging.cc) to nullptr, which allows
+    // a new Default-type LoggingManager to be constructed below.  If that implementation
+    // detail ever changes, this sequence will need to be revisited.
     ort_env->SetLoggingManager(std::make_unique<LoggingManager>(
         std::move(combined_sink),
         std::min(kDefaultSeverity, etw_severity),
