@@ -43,8 +43,9 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
     const OrtApi* fallback_api = ort_api_base->GetApi(kFallbackOrtApiVersion);
     if (fallback_api == nullptr) {
       // Critical failure path: no compatible API available to even construct an OrtStatus.
-      fprintf(stderr, "CUDA Plugin EP requires ONNX Runtime API version 26+ but could not obtain any compatible "
-                      "API from OrtApiBase (fallback API v1 unavailable).\n");
+      fprintf(stderr,
+              "CUDA Plugin EP requires ONNX Runtime API version 26+ but could not obtain any compatible "
+              "API from OrtApiBase (fallback API v1 unavailable).\n");
       std::abort();
     }
 
