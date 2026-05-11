@@ -9,6 +9,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/optimizer/utils.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
 #include <numbers>
@@ -210,6 +211,14 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       dft_size = window_length_dim.dim_value();
     }
 
+    // Validate model-provided scalar values before using them in size calculations.
+    // These come from untrusted model initializers/shapes and must be positive.
+    if (dft_size <= 0 || frame_step_value <= 0) {
+      LOGS(logger, WARNING) << "STFT decomposition skipped: invalid dft_size (" << dft_size
+                            << ") or frame_step_value (" << frame_step_value << ")";
+      continue;
+    }
+
     bool is_onesided = true;
     auto& attrs = stft.GetAttributes();
     if (attrs.find("onesided") != attrs.end()) {
@@ -227,14 +236,14 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     if (is_real) {
       auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
       auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
-      auto weight_size = static_cast<size_t>(dft_unique_bins * dft_size);
+      auto weight_size = SafeInt<size_t>(dft_unique_bins) * dft_size;
       auto real_weights_data = std::vector<float>(weight_size);
       auto imag_weights_data = std::vector<float>(weight_size);
 
       // Populate weights
       for (size_t k = 0; k < static_cast<size_t>(dft_unique_bins); k++) {
         for (size_t n = 0; n < static_cast<size_t>(dft_size); n++) {
-          auto index = static_cast<size_t>(k * dft_size + n);
+          auto index = k * static_cast<size_t>(dft_size) + n;
           auto theta = -2 * std::numbers::pi_v<float> * k * n / static_cast<float>(dft_size);
           real_weights_data[index] = static_cast<float>(cos(theta));
           imag_weights_data[index] = static_cast<float>(sin(theta));
@@ -356,7 +365,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     // Copy inputs
     auto signal_target_idx = signal_recipient->Index();
-    auto window_target_idx = window_recipient->Index();
+    auto window_target_idx = window_recipient ? window_recipient->Index() : NodeIndex(0);
     for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
       const graph_utils::GraphEdge& edge = *cur;
       NodeIndex target_idx = 0;
