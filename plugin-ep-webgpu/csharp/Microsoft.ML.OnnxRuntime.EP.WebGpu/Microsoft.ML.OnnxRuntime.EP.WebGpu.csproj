@@ -26,28 +26,6 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
-  <!--
-    Minimum required Microsoft.ML.OnnxRuntime version is read from a file (single source
-    of truth, shared with the other plugin EP packages). The path is overridable via
-    -p:OnnxRuntimeMinVersionFile=<absolute path> so callers (e.g. pack_nuget.py, which
-    builds out of a staged copy) can point at the original file in the source tree.
-  -->
-  <PropertyGroup>
-    <OnnxRuntimeMinVersionFile Condition="'$(OnnxRuntimeMinVersionFile)' == ''">$(MSBuildThisFileDirectory)..\..\MIN_ONNXRUNTIME_VERSION</OnnxRuntimeMinVersionFile>
-    <OnnxRuntimeMinVersion Condition="Exists('$(OnnxRuntimeMinVersionFile)')">$([System.IO.File]::ReadAllText('$(OnnxRuntimeMinVersionFile)').Trim())</OnnxRuntimeMinVersion>
-  </PropertyGroup>
-
-  <Target Name="_ValidateOnnxRuntimeMinVersion" BeforeTargets="CollectPackageReferences">
-    <Error Condition="!Exists('$(OnnxRuntimeMinVersionFile)')"
-           Text="OnnxRuntimeMinVersionFile not found: '$(OnnxRuntimeMinVersionFile)'. Set -p:OnnxRuntimeMinVersionFile=&lt;absolute path&gt; or restore the file at the default location." />
-    <Error Condition="'$(OnnxRuntimeMinVersion)' == ''"
-           Text="OnnxRuntimeMinVersion resolved to an empty value from '$(OnnxRuntimeMinVersionFile)'." />
-  </Target>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(OnnxRuntimeMinVersion)" />
-  </ItemGroup>
-
   <ItemGroup>
     <!-- Ensure README is included in the package -->
     <None Include="README.md" Pack="true" PackagePath="" />

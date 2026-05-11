@@ -138,9 +138,9 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
 
-// SubGraph_t and SubGraphCollection_t were defined in NvOnnxParser.h up to TRT-RTX 1.5.x
-// but removed in 1.6.0. Define them here for 1.6+ so the provider owns these ORT-internal types.
-#if TRT_MINOR_RTX >= 6
+// SubGraph_t and SubGraphCollection_t were removed from NvOnnxParser.h starting in TRT-RTX 1.5.0.99.
+// Define them here so the provider owns these ORT-internal types for any SDK that no longer ships them.
+#if TRT_MAJOR_RTX >= 2 || (TRT_MAJOR_RTX == 1 && ((TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 99) || TRT_MINOR_RTX >= 6))
 using SubGraph_t = std::pair<std::vector<size_t>, bool>;
 using SubGraphCollection_t = std::vector<SubGraph_t>;
 #endif

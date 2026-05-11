@@ -13,10 +13,18 @@
       a single-package local feed.
     -->
     <OrtWebGpuPackageVersion Condition="'$(OrtWebGpuPackageVersion)' == ''">*-*</OrtWebGpuPackageVersion>
+    <!--
+      Version of the ONNX Runtime core package to test against. CI overrides this with
+      -p:OrtCoreTestVersion=<exact version> to pin the test to a specific version; the floating
+      fallback is for local development.
+    -->
+    <OrtCoreTestVersion Condition="'$(OrtCoreTestVersion)' == ''">*-*</OrtCoreTestVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Microsoft.ML.OnnxRuntime is pulled in transitively via the EP package. -->
+    <!-- The plugin EP package does not declare a hard dependency on a core ORT package, so reference
+         one explicitly here. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(OrtCoreTestVersion)" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.WebGpu" Version="$(OrtWebGpuPackageVersion)" />
   </ItemGroup>
 

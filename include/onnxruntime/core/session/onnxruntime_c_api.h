@@ -212,6 +212,8 @@ typedef enum ONNXTensorElementDataType {
   // Int2 types were introduced in ONNX 1.20. See https://onnx.ai/onnx/technical/int2.html
   ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,  // maps to 4 packed uint2 values (size == 1 byte)
   ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,   // maps to 4 packed int2 values (size == 1 byte)
+  // Float8E8M0 type introduced in ONNX 1.21. 8-bit float with 8 exponent bits, 0 mantissa bits, no sign bit.
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,  // Non-IEEE floating-point format, all values are powers of two
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -7436,6 +7438,32 @@ struct OrtApi {
                   _In_ const OrtThreadPoolCallbacksConfig* config);
 
   /// @}
+
+  /** \brief Check if the memory pattern optimization is enabled in the session options.
+   *
+   * \param[in] options
+   * \param[out] out Set to 1 if the memory pattern optimization is enabled, 0 otherwise.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   *
+   * \see OrtApi::EnableMemPattern, OrtApi::DisableMemPattern
+   */
+  ORT_API2_STATUS(GetMemPatternEnabled, _In_ const OrtSessionOptions* options, _Out_ int* out);
+
+  /** \brief Get the current execution mode setting.
+   *
+   * \param[in] options
+   * \param[out] out Set to the current execution mode (ORT_SEQUENTIAL or ORT_PARALLEL).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   *
+   * \see OrtApi::SetSessionExecutionMode
+   */
+  ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
 };
 
 /*
