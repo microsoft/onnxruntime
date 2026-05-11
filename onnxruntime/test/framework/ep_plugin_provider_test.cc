@@ -4,8 +4,10 @@
 #include "core/session/plugin_ep/ep_plugin_provider_interfaces.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include "gsl/gsl"
 #include "gtest/gtest.h"
@@ -73,6 +75,24 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
     constexpr const char* ep_name = "TestOrtEp";
     return ep_name;
   }
+
+  // OrtMemoryDevice returned by GetDefaultMemoryDeviceImpl. nullptr means "defer to ORT".
+  const OrtMemoryDevice* test_default_memory_device = nullptr;
+  // If set, the impl returns this status without writing to *device. Used to verify the
+  // ThrowOnError path in PluginExecutionProvider construction.
+  OrtStatus* test_default_memory_device_status = nullptr;
+  mutable std::atomic<int> get_default_memory_device_call_count{0};
+
+  static OrtStatus* ORT_API_CALL GetDefaultMemoryDeviceImpl(const OrtEp* this_ptr,
+                                                            const OrtMemoryDevice** device) noexcept {
+    const auto* test_ep = static_cast<const TestOrtEp*>(this_ptr);
+    test_ep->get_default_memory_device_call_count.fetch_add(1, std::memory_order_relaxed);
+    if (test_ep->test_default_memory_device_status != nullptr) {
+      return test_ep->test_default_memory_device_status;
+    }
+    *device = test_ep->test_default_memory_device;
+    return nullptr;
+  }
 };
 
 // This factory doesn't do anything other than implement ReleaseEp().
@@ -123,13 +143,20 @@ struct MakeTestOrtEpResult {
 
 // Creates an IExecutionProvider that wraps a TestOrtEp.
 // The TestOrtEp is also exposed so that tests can manipulate its function pointers directly.
-MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {}) {
+// `setup` runs on the raw TestOrtEp before PluginExecutionProvider is constructed --
+// callbacks consulted at construction time (e.g., GetDefaultMemoryDevice seeding
+// default_device_) must be configured here.
+MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {},
+                                  std::function<void(TestOrtEp&)> setup = nullptr) {
   // Default OrtHardwareDevice and OrtEpDevice used if the caller does not explicitly provide ep_devices.
   static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
   static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
 
   auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
+  if (setup) {
+    setup(*ort_ep_raw);
+  }
   auto ort_session_options = Ort::SessionOptions{};
 
   if (ep_devices.empty()) {
@@ -364,6 +391,99 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
   }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
+
+// When the EP implements GetDefaultMemoryDevice, the result seeds default_device_ at
+// construction and is returned by GetOrtDeviceByMemType(OrtMemTypeDefault) at runtime.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_SeedsDefaultDevice) {
+  auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE);
+
+  // ep_device intentionally has no device_memory_info -- the legacy path would yield
+  // OrtDevice() (plain CPU). The callback must override that.
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices, [&](test_plugin_ep::TestOrtEp& test_ep) {
+    test_ep.GetDefaultMemoryDevice = test_plugin_ep::TestOrtEp::GetDefaultMemoryDeviceImpl;
+    test_ep.test_default_memory_device = static_cast<const OrtMemoryDevice*>(&ort_device);
+  });
+
+  ASSERT_EQ(ep->GetDevice(), ort_device);
+  ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device);
+  ASSERT_GE(ort_ep->get_default_memory_device_call_count.load(), 1);
+}
+
+// Version gate: ort_version_supported < 27 must bypass the callback. Without this guard
+// ORT would call into a function pointer the EP didn't claim to support.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_VersionGateBypassesCallback) {
+  auto callback_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+
+  auto fallback_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT);
+  auto fallback_mem_info = std::make_unique<OrtMemoryInfo>("TestOrtEp NPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                           fallback_device, OrtMemTypeDefault);
+
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_NPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get(), fallback_mem_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices, [&](test_plugin_ep::TestOrtEp& test_ep) {
+    test_ep.ort_version_supported = 26;  // older than the GetDefaultMemoryDevice API version
+    test_ep.GetDefaultMemoryDevice = test_plugin_ep::TestOrtEp::GetDefaultMemoryDeviceImpl;
+    test_ep.test_default_memory_device = static_cast<const OrtMemoryDevice*>(&callback_device);
+  });
+
+  ASSERT_EQ(ep->GetDevice(), fallback_device);
+  ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), fallback_device);
+  ASSERT_EQ(ort_ep->get_default_memory_device_call_count.load(), 0);
+}
+
+// Heterogeneous ep_devices: GetOrtDeviceForPluginEp throws when ep_devices have
+// inconsistent device_memory_info. The callback unblocks that case by letting the EP
+// name a representative device directly.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_HeterogeneousEpDevicesUnblocked) {
+  auto gpu_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
+  auto gpu_mem_info = std::make_unique<OrtMemoryInfo>("TestOrtEp GPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                      gpu_device, OrtMemTypeDefault);
+  auto npu_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT);
+  auto npu_mem_info = std::make_unique<OrtMemoryInfo>("TestOrtEp NPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                      npu_device, OrtMemTypeDefault);
+
+  auto representative_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU,
+                                                                 OrtDevice::MemType::HOST_ACCESSIBLE);
+
+  auto ort_hw_device_gpu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_hw_device_npu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_NPU);
+  auto ort_ep_device_gpu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_gpu.get(), gpu_mem_info.get());
+  auto ort_ep_device_npu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_npu.get(), npu_mem_info.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device_gpu.get(), ort_ep_device_npu.get()};
+
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices, [&](test_plugin_ep::TestOrtEp& test_ep) {
+    test_ep.GetDefaultMemoryDevice = test_plugin_ep::TestOrtEp::GetDefaultMemoryDeviceImpl;
+    test_ep.test_default_memory_device = static_cast<const OrtMemoryDevice*>(&representative_device);
+  });
+
+  ASSERT_EQ(ep->GetDevice(), representative_device);
+}
+
+#if !defined(ORT_NO_EXCEPTIONS)
+// A non-OK status from the callback must propagate out of PluginExecutionProvider
+// construction via Ort::ThrowOnError.
+TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_StatusErrorThrows) {
+  auto ort_hw_device = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+  auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get());
+  std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
+
+  const auto& ort_api = *::OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  OrtStatus* injected_status = ort_api.CreateStatus(ORT_FAIL, "injected failure");
+
+  ASSERT_THROW(test_plugin_ep::MakeTestOrtEp(ep_devices, [&](test_plugin_ep::TestOrtEp& test_ep) {
+    test_ep.GetDefaultMemoryDevice = test_plugin_ep::TestOrtEp::GetDefaultMemoryDeviceImpl;
+    test_ep.test_default_memory_device_status = injected_status;
+  }),
+                                              Ort::Exception);
+  // Ort::ThrowOnError releases the status it threw on, so we don't release it here.
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 static void LoadModelAndAssignNodesToEp(const ORTCHAR_T* model_path,
                                         const char* ep_name,

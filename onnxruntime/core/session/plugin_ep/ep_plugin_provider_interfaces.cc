@@ -121,11 +121,20 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
-  // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
-  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
+static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ep, gsl::span<const OrtEpDevice* const> ep_devices) {
+  // Resolve the EP's default device. If the EP implements GetDefaultMemoryDevice, use its
+  // answer directly. Otherwise infer from OrtEpDevice.device_memory_info (and enforce that
+  // all OrtEpDevice instances agree).
 
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
+
+  if (ep.ort_version_supported >= 27 && ep.GetDefaultMemoryDevice != nullptr) {
+    const OrtMemoryDevice* memory_device = nullptr;
+    Ort::ThrowOnError(ep.GetDefaultMemoryDevice(&ep, &memory_device));
+    if (memory_device != nullptr) {
+      return *static_cast<const OrtDevice*>(memory_device);
+    }
+  }
 
   const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
 
@@ -169,7 +178,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices),
                          std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
