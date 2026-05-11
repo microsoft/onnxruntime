@@ -239,7 +239,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
         // Should not happen since we validated UTF-8 above, but guarantee progress
         tlen = 1;
       }
-      assert(token_idx + tlen <= str_len);
+      ORT_RETURN_IF_NOT(token_idx + tlen <= str_len, "UTF-8 character overruns string boundary");
       output_data[output_index] = s.substr(token_idx, tlen);
       ++output_index;
       token_idx += tlen;
@@ -441,7 +441,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
                                   token_len, utf8_chars);
             if (!valid) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                     "Match contains invalid utf8 chars at position: ", match_pos);
+                                     "Match contains invalid utf8 chars at byte offset: ", match_pos);
             }
             if (utf8_chars >= mincharnum_) {
               tokens.emplace_back(text.data() + start_pos, token_len);
@@ -578,7 +578,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
           utf8_chars = 0;
           if (!utf8_len(reinterpret_cast<const unsigned char*>(submatch.data()), token_len, utf8_chars)) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                   "Match contains invalid utf8 chars at position: ", match_pos);
+                                   "Match contains invalid utf8 chars at byte offset: ", match_pos);
           }
           if (utf8_chars >= mincharnum_) {
             row.push_back(submatch);
