@@ -86,7 +86,7 @@ stages:
         templateContext:
           outputs:
           - output: pipelineArtifact
-            targetPath: '$(Build.ArtifactStagingDirectory)\metadata'
+            targetPath: '$(Build.ArtifactStagingDirectory)/metadata'
             artifactName: cuda_plugin_metadata
         steps:
         - checkout: none
@@ -94,7 +94,8 @@ stages:
         - pwsh: |
             $ErrorActionPreference = 'Stop'
 
-            $metadataDir = '$(Build.ArtifactStagingDirectory)\metadata'
+            $metadataDir = Join-Path '$(Build.ArtifactStagingDirectory)' 'metadata'
+            $metadataPath = Join-Path $metadataDir 'metadata.json'
             New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
 
             $metadata = [ordered]@{
@@ -106,8 +107,8 @@ stages:
               nuget_artifact = 'cuda_plugin_nuget'
             }
 
-            $metadata | ConvertTo-Json | Set-Content -Path "$metadataDir\metadata.json" -Encoding UTF8
-            Get-Content "$metadataDir\metadata.json"
+            $metadata | ConvertTo-Json | Set-Content -Path $metadataPath -Encoding UTF8
+            Get-Content $metadataPath
           displayName: 'Create metadata.json'
 
     # Windows x64

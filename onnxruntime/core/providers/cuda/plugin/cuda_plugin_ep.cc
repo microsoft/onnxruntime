@@ -26,7 +26,22 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
     OrtEpFactory** factories,
     size_t max_factories,
     size_t* num_factories) {
+  if (ort_api_base == nullptr) {
+    return nullptr;
+  }
+
   const OrtApi* ort_api = ort_api_base->GetApi(kCudaPluginEpMinOrtApiVersion);
+  if (ort_api == nullptr) {
+    const OrtApi* fallback_api = ort_api_base->GetApi(1);
+    if (fallback_api == nullptr) {
+      return nullptr;
+    }
+
+    return fallback_api->CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CUDA Plugin EP requires ONNX Runtime API version 26 or newer (ORT 1.26+).");
+  }
+
   const OrtEpApi* ep_api = ort_api->GetEpApi();
 
   // Initialize the C++ API FIRST before any C++ wrapper usage
