@@ -16,6 +16,12 @@
 #param has_gate_bias
 #param has_up_bias
 #param k_unroll_tiles
+// Gate activation applied between gate and up projections.
+// Mirrors MlpActivationKind in matmul_nbits_mlp.h:
+//   0 = SiLU (only value currently supported)
+// New activations are added by extending the enum, the EmitGateActivationExpr
+// helper, the fusion matcher, and the activation block below.
+#param activation_kind
 
 #use .getByOffset .setByOffset
 
@@ -252,8 +258,12 @@ $MAIN {
       up_output_value += up_bias[b_global];
 #endif
       let one = output_element_t(1.0);
-      let silu_value = gate_output_value * (one / (one + exp(-gate_output_value)));
-      output.setByOffset(output_idx, silu_value * up_output_value);
+#if activation_kind == 0
+      // SiLU(x) = x * sigmoid(x). New activations are added with additional
+      // `#elif activation_kind == N` blocks (must match MlpActivationKind).
+      let activated_value = gate_output_value * (one / (one + exp(-gate_output_value)));
+#endif
+      output.setByOffset(output_idx, activated_value * up_output_value);
     }
   }
 }  // MAIN
