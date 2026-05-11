@@ -155,16 +155,16 @@ class GQAAttentionBase {
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   // If T is float32, U is float32. If T is float16, U could be float16 or float32.
   template <typename T, typename U>
-  void ComputeAttentionProbs(U* attention_probs,
-                             const T* Q,
-                             const T* K,
-                             const T* head_sink,
-                             const int32_t* seqlens_k,
-                             const T* attention_bias,
-                             const size_t batch_size,
-                             const size_t sequence_length,
-                             const size_t kv_sequence_length,
-                             const size_t total_sequence_length,
+  void ComputeAttentionProbs(U* attention_probs,                                   // output probs [B, N, S, T]
+                             const T* Q,                                           // query [B, N, S, H] (BNSH)
+                             const T* K,                                           // key input [B, N_kv, L, H] (BNSH); L=0 for shared KV
+                             const T* head_sink,                                   // smooth softmax sink per head, or nullptr
+                             const int32_t* seqlens_k,                             // total_sequence_length - 1 per batch
+                             const T* attention_bias,                              // additive bias [B|1, N|1, S, T], or nullptr
+                             const size_t batch_size,                              // batch size
+                             const size_t sequence_length,                         // Q sequence length (new tokens)
+                             const size_t kv_sequence_length,                      // K/V input sequence length; 0 for shared KV
+                             const size_t total_sequence_length,                   // total tokens (past + new)
                              const gsl::span<const int64_t> attention_bias_shape,  // shape of the attention bias
                              const size_t past_buffer_sequence_length,             // sequence length of past state
                              const size_t present_buffer_sequence_length,          // sequence length of present state
@@ -181,10 +181,10 @@ class GQAAttentionBase {
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
     const size_t kv_num_heads_factor = num_heads_ / kv_num_heads_;
-    const size_t q_input_chunk_length = sequence_length * head_size;                      // S x H
-    const size_t kv_input_chunk_length = kv_sequence_length * head_size;                  // L x H
-    const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;        // L x H
-    const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
+    const size_t q_input_chunk_length = sequence_length * head_size;
+    const size_t kv_input_chunk_length = kv_sequence_length * head_size;
+    const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;
+    const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;
 
     if (present_key && !past_present_share_buffer) {
       memset((void*)present_key,
@@ -427,9 +427,9 @@ class GQAAttentionBase {
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
     const size_t kv_num_heads_factor = num_heads_ / kv_num_heads_;
-    const size_t kv_input_chunk_length = kv_sequence_length * head_size;                  // L x H
-    const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;        // L x H
-    const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;  // T x H
+    const size_t kv_input_chunk_length = kv_sequence_length * head_size;
+    const size_t past_buff_chunk_length = past_buffer_sequence_length * head_size;
+    const size_t present_buff_chunk_length = present_buffer_sequence_length * head_size;
 
     if (present_value && !past_present_share_buffer) {
       memset((void*)present_value,
