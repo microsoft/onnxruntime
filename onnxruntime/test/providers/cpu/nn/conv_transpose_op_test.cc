@@ -6,6 +6,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -475,33 +476,37 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
-    return;
+    GTEST_SKIP() << "CUDA execution provider is not available.";
   }
 
   OpTester test("ConvTranspose", 22);
-  test.AddAttribute("kernel_shape", vector<int64_t>{1, 5});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 5});
   test.AddAttribute("group", int64_t{1});
-  test.AddAttribute("pads", vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("output_shape", vector<int64_t>{1, 1, 1, 14});
-  test.AddAttribute("strides", vector<int64_t>{1, 1});
-  test.AddAttribute("dilations", vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("output_shape", std::vector<int64_t>{1, 1, 1, 14});
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
 
-  vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
-  vector<int64_t> X_shape = {1, 1, 1, 10};
-  vector<float> W = {1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
-  vector<int64_t> W_shape = {1, 1, 1, 5};
-  vector<float> B = {1.0f};
-  vector<int64_t> B_shape = {1};
-  vector<float> expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
+  std::vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> X_shape = {1, 1, 1, 10};
+  std::vector<float> W = {1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
+  std::vector<int64_t> W_shape = {1, 1, 1, 5};
+  std::vector<float> B = {1.0f};
+  std::vector<int64_t> B_shape = {1};
+  std::vector<float> expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
 
   test.AddInput<float>("X", X_shape, X);
   test.AddInput<float>("W", W_shape, W, true);
   test.AddInput<float>("B", B_shape, B, true);
   test.AddOutput<float>("Y", {1, 1, 1, 14}, expected_vals);
 
+  SessionOptions so;
+  auto status = so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
