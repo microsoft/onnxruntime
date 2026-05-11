@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <memory>
+#include <string>
 #include <gtest/gtest.h>
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -29,12 +31,18 @@ bool IsLibraryLoaded(const std::filesystem::path& library_path) {
 #if defined(_WIN32)
   return GetModuleHandleW(library_path.filename().wstring().c_str()) != nullptr;
 #else
+#ifdef RTLD_NOLOAD
   void* handle = dlopen(library_path.c_str(), RTLD_NOLOAD | RTLD_NOW);
   if (handle) {
     dlclose(handle);  // Undo the refcount added by the RTLD_NOLOAD probe.
     return true;
   }
   return false;
+#else
+  // RTLD_NOLOAD is not available on this platform; cannot probe without loading.
+  // Return true so the caller skips the test rather than producing a false pass.
+  return true;
+#endif
 #endif
 }
 
