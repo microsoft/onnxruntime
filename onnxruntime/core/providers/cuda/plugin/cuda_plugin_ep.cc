@@ -19,7 +19,7 @@
 #endif
 
 namespace {
-constexpr uint32_t kMinCreateStatusOrtApiVersion = 1;
+constexpr uint32_t kMinOrtApiVersionForCreateStatus = 1;
 }
 
 extern "C" {
@@ -39,10 +39,11 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
 
   const OrtApi* ort_api = ort_api_base->GetApi(kCudaPluginEpMinOrtApiVersion);
   if (ort_api == nullptr) {
-    const OrtApi* fallback_api = ort_api_base->GetApi(kMinCreateStatusOrtApiVersion);
+    // Use API v1 only to construct an OrtStatus that explains the API v26 requirement.
+    const OrtApi* fallback_api = ort_api_base->GetApi(kMinOrtApiVersionForCreateStatus);
     if (fallback_api == nullptr) {
       // Critical failure path: no compatible API available to even construct an OrtStatus.
-      fprintf(stderr, "CUDA Plugin EP requires ONNX Runtime API version 26 or newer (ORT 1.26+).\n");
+      fprintf(stderr, "CUDA Plugin EP failed to obtain any compatible ONNX Runtime API from OrtApiBase.\n");
       std::abort();
     }
 
