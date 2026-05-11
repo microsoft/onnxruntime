@@ -24,6 +24,7 @@ The CUDA extension import inside fused_adam.__init__ is guarded by
 
 import importlib.util
 import sys
+import unittest
 import warnings
 from pathlib import Path
 from unittest.mock import patch
@@ -62,9 +63,7 @@ _fa_spec = importlib.util.spec_from_file_location(
 )
 _fa_mod = importlib.util.module_from_spec(_fa_spec)
 _fa_mod.__package__ = _PKG
-# Patch cuda before executing the module body so the CUDA block is skipped.
-with patch("torch.cuda.is_available", return_value=False):
-    _fa_spec.loader.exec_module(_fa_mod)
+_fa_spec.loader.exec_module(_fa_mod)
 
 AdamWMode = _fa_mod.AdamWMode
 FusedAdam = _fa_mod.FusedAdam
@@ -78,7 +77,7 @@ def _make_param(shape=(3, 3)):
 
 
 @patch("torch.cuda.is_available", return_value=False)
-class TestFusedAdamCpuFallback:
+class TestFusedAdamCpuFallback(unittest.TestCase):
     """All tests run with CUDA disabled to exercise the CPU fallback path."""
 
     def test_instantiation_warns_and_succeeds(self, _mock_cuda):
@@ -88,10 +87,14 @@ class TestFusedAdamCpuFallback:
             warnings.simplefilter("always")
             opt = FusedAdam([param], lr=1e-3)
 
-        assert opt is not None, "FusedAdam should instantiate on CPU"
+        self.assertIsNotNone(opt, "FusedAdam should instantiate on CPU")
         user_warnings = [w for w in caught if issubclass(w.category, UserWarning)]
-        assert len(user_warnings) >= 1, "Expected at least one UserWarning about CPU fallback"
-        assert any("CPU" in str(w.message) or "fallback" in str(w.message).lower() for w in user_warnings)
+        self.assertGreaterEqual(len(user_warnings), 1, "Expected at least one UserWarning about CPU fallback")
+        messages = [str(w.message).lower() for w in user_warnings]
+        self.assertTrue(
+            any("cuda" in m and ("fallback" in m or "falling back" in m) for m in messages),
+            f"Expected a warning mentioning 'cuda' and 'fallback'/'falling back', got: {messages}",
+        )
 
     def test_step_updates_params_like_adamw(self, _mock_cuda):
         """After one step, params must change in the same direction as torch.optim.AdamW."""
@@ -113,10 +116,14 @@ class TestFusedAdamCpuFallback:
         opt_ref = torch.optim.AdamW([p_ref], lr=1e-3, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0)
         opt_ref.step()
 
-        assert not torch.allclose(p_fused.data, weight_init), "Parameters should have changed after step"
-        assert torch.allclose(p_fused.data, p_ref.data, atol=1e-5), (
+        self.assertFalse(
+            torch.allclose(p_fused.data, weight_init),
+            "Parameters should have changed after step",
+        )
+        self.assertTrue(
+            torch.allclose(p_fused.data, p_ref.data, atol=1e-5),
             f"FusedAdam CPU fallback should match torch.optim.AdamW.\n"
-            f"Max diff: {(p_fused.data - p_ref.data).abs().max().item()}"
+            f"Max diff: {(p_fused.data - p_ref.data).abs().max().item()}",
         )
 
     def test_adam_l2_mode_instantiates_and_steps(self, _mock_cuda):
@@ -128,4 +135,77 @@ class TestFusedAdamCpuFallback:
 
         before = param.data.clone()
         opt.step()
-        assert not torch.allclose(param.data, before), "Parameters should change after step"
+        self.assertFalse(torch.allclose(param.data, before), "Parameters should change after step")
+
+    def test_bias_correction_false_adamw_torch_raises(self, _mock_cuda):
+        """FusedAdam with ADAMW_TORCH and bias_correction=False must raise RuntimeError on CPU."""
+        param = nn.Parameter(torch.randn(3, 3))
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with self.assertRaises(RuntimeError) as ctx:
+                FusedAdam([param], lr=1e-3, adam_w_mode=AdamWMode.ADAMW_TORCH, bias_correction=False)
+        self.assertIn("bias_correction", str(ctx.exception))
+
+    def test_bias_correction_false_adam_l2_raises(self, _mock_cuda):
+        """FusedAdam with ADAM_L2_REGULARIZATION and bias_correction=False must raise RuntimeError on CPU."""
+        param = nn.Parameter(torch.randn(3, 3))
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with self.assertRaises(RuntimeError) as ctx:
+                FusedAdam([param], lr=1e-3, adam_w_mode=AdamWMode.ADAM_L2_REGULARIZATION, bias_correction=False)
+        self.assertIn("bias_correction", str(ctx.exception))
+
+    def test_bias_correction_false_adamw_transformers_raises(self, _mock_cuda):
+        """FusedAdam with ADAMW_TRANSFORMERS and bias_correction=False must raise RuntimeError on CPU.
+
+        The unified guard fires before the try/except transformers import, so this
+        works regardless of whether the transformers package is installed.
+        """
+        param = nn.Parameter(torch.randn(3, 3))
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with self.assertRaises(RuntimeError) as ctx:
+                FusedAdam([param], lr=1e-3, adam_w_mode=AdamWMode.ADAMW_TRANSFORMERS, bias_correction=False)
+        self.assertIn("bias_correction", str(ctx.exception))
+
+    def test_per_group_lr_dicts(self, _mock_cuda):
+        """Per-group lr specified via param dicts must be preserved in the fallback optimizer."""
+        p1 = nn.Parameter(torch.randn(2, 2))
+        p2 = nn.Parameter(torch.randn(2, 2))
+        param_groups = [
+            {"params": [p1], "lr": 0.5},
+            {"params": [p2], "lr": 0.1},
+        ]
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            opt = FusedAdam(param_groups, lr=1e-3)
+
+        lrs = [g["lr"] for g in opt.param_groups]
+        self.assertEqual(lrs[0], 0.5, f"Expected first group lr=0.5, got {lrs[0]}")
+        self.assertEqual(lrs[1], 0.1, f"Expected second group lr=0.1, got {lrs[1]}")
+
+    def test_state_dict_round_trip(self, _mock_cuda):
+        """state_dict / load_state_dict must survive a round trip on the CPU fallback path."""
+        param = _make_param()
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            opt = FusedAdam([param], lr=1e-3)
+
+        # Run one step to populate optimizer state.
+        opt.step()
+        sd = opt.state_dict()
+
+        # Fresh optimizer, load the saved state.
+        param2 = _make_param()
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            opt2 = FusedAdam([param2], lr=1e-3)
+        opt2.load_state_dict(sd)
+
+        sd2 = opt2.state_dict()
+        # The 'state' entries (exp_avg, exp_avg_sq) must be present after load.
+        self.assertEqual(len(sd["state"]), len(sd2["state"]), "State dict round trip should preserve all state entries")
+
+
+if __name__ == "__main__":
+    unittest.main()

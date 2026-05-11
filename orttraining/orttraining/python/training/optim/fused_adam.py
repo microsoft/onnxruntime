@@ -104,6 +104,22 @@ class FusedAdam(torch.optim.Optimizer):
                 UserWarning,
                 stacklevel=2,
             )
+            self._dummy_overflow_buf = None
+            self._multi_tensor_adam = None
+            self._multi_tensor_applier = None
+            self._TorchTensorVector = None
+
+            # torch.optim.Adam and torch.optim.AdamW always apply bias correction
+            # and expose no knob to disable it.  Raise early rather than silently
+            # producing wrong mathematics.
+            if not bias_correction:
+                raise RuntimeError(
+                    f"FusedAdam CPU fallback for AdamWMode.{AdamWMode(adam_w_mode).name} does not support "
+                    "bias_correction=False: the underlying torch.optim.Adam / torch.optim.AdamW "
+                    "optimizers always apply bias correction. Use bias_correction=True or run on a "
+                    "CUDA-capable device."
+                )
+
             # Build an equivalent standard PyTorch optimizer for the CPU path.
             # Pass self.param_groups directly so per-group lr/betas/eps/weight_decay
             # (and any other group-level options the caller set) are preserved
@@ -131,15 +147,6 @@ class FusedAdam(torch.optim.Optimizer):
                         correct_bias=bias_correction,
                     )
                 except ImportError:
-                    if not bias_correction:
-                        # torch.optim.AdamW always applies bias correction; with
-                        # bias_correction=False the math diverges silently.
-                        raise RuntimeError(
-                            "FusedAdam CPU fallback for AdamWMode.ADAMW_TRANSFORMERS with "
-                            "bias_correction=False requires the 'transformers' package "
-                            "(install with: pip install transformers). torch.optim.AdamW "
-                            "cannot represent the bias-correction-disabled variant."
-                        ) from None
                     warnings.warn(
                         "transformers package not available; using torch.optim.AdamW as CPU fallback "
                         "for AdamWMode.ADAMW_TRANSFORMERS. Math is equivalent because bias_correction=True.",
