@@ -254,8 +254,13 @@ TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
   const std::string& registration_name = Utils::example_ep_info.registration_name;
 
   // Capture whether the library is already loaded (e.g., by a prior test in the same process).
-  // We compare against this baseline after unregister rather than assuming it starts unloaded.
-  const bool was_loaded_before = IsLibraryLoaded(library_path);
+  // If it is, we cannot verify the leak because IsLibraryLoaded returns a boolean, not a refcount —
+  // it can't distinguish "loaded at refcount N" from "loaded at refcount N+1". A subprocess-based
+  // approach could guarantee a clean starting state, but GTEST_SKIP is simpler and still catches
+  // the regression when this test runs before other tests that load the same library.
+  if (IsLibraryLoaded(library_path)) {
+    GTEST_SKIP() << "Library already loaded by a prior test; cannot verify refcount leak.";
+  }
 
   // Register the plugin EP library. Internally this calls ProviderLibrary::Load() (which
   // loads the library and fails to find "GetProvider") and then EpLibraryPlugin::Load().
@@ -267,13 +272,10 @@ TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
   // Unregister releases the EpLibraryPlugin's reference.
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 
-  // The loaded state after unregister should match the baseline captured before register.
-  // If the library was not loaded before, it should be fully unloaded now.
-  // If it was already loaded (by a prior test), it should remain in that same state — register
-  // and unregister should be refcount-neutral and not add a leaked reference.
-  EXPECT_EQ(IsLibraryLoaded(library_path), was_loaded_before)
-      << "Library handle leaked: the loaded state after UnregisterExecutionProviderLibrary differs "
-         "from the state before RegisterExecutionProviderLibrary. "
+  // If the fix is applied, the library should be fully unloaded (refcount == 0).
+  // Without the fix, ProviderLibrary::Load() leaks a refcount so the library remains mapped.
+  EXPECT_FALSE(IsLibraryLoaded(library_path))
+      << "Library handle leaked: EP library is still loaded after UnregisterExecutionProviderLibrary. "
          "This indicates ProviderLibrary::Load() did not call Unload() on GetProvider symbol miss.";
 }
 
