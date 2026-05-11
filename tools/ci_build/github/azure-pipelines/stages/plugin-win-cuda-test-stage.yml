@@ -14,6 +14,8 @@ stages:
     pool:
       name: onnxruntime-Win2022-GPU-A10
       os: windows
+    variables:
+    - template: ../templates/common-variables.yml
     steps:
     - checkout: self
       clean: true
@@ -47,7 +49,7 @@ stages:
           scriptLocation: 'inlineScript'
           inlineScript: |
             set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 "%AGENT_TEMPDIRECTORY%"
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$(cuda13_cudnn_folder) "%AGENT_TEMPDIRECTORY%"
 
     - powershell: |
         Write-Host "Adding CUDA to PATH"
@@ -59,7 +61,7 @@ stages:
     - ${{ if eq(parameters.cuda_version, '13.0') }}:
       - powershell: |
           Write-Host "Adding cuDNN to PATH"
-          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\9.14.0.64_cuda13\bin"
+          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\$(cuda13_cudnn_folder)\bin"
         displayName: 'Add cuDNN to PATH'
 
     - task: PowerShell@2
@@ -98,7 +100,9 @@ stages:
       name: onnxruntime-Win2022-GPU-A10
       os: windows
     variables:
-      CudaTestProject: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\test\CudaEpNuGetTest\CudaEpNuGetTest.csproj'
+    - template: ../templates/common-variables.yml
+    - name: CudaTestProject
+      value: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\test\CudaEpNuGetTest\CudaEpNuGetTest.csproj'
     steps:
     - checkout: self
       submodules: none
@@ -125,7 +129,7 @@ stages:
           scriptLocation: 'inlineScript'
           inlineScript: |
             set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 "%AGENT_TEMPDIRECTORY%"
+            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$(cuda13_cudnn_folder) "%AGENT_TEMPDIRECTORY%"
 
     - powershell: |
         Write-Host "Adding CUDA to PATH"
@@ -137,7 +141,7 @@ stages:
     - ${{ if eq(parameters.cuda_version, '13.0') }}:
       - powershell: |
           Write-Host "Adding cuDNN to PATH"
-          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\9.14.0.64_cuda13\bin"
+          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\$(cuda13_cudnn_folder)\bin"
         displayName: 'Add cuDNN to PATH'
 
     # Download the NuGet package produced by the packaging pipeline run that
