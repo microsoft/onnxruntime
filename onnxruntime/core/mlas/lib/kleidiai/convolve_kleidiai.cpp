@@ -24,8 +24,9 @@
 
 const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
 
-// Maximum temporary buffer size (in bytes) for KleidiAI LHS packing.
-constexpr size_t MAX_LHS_CHUNK_BYTES = 2097152;
+// Hard cap of 2 MiB on temporary LHS packing chunks, intended to keep tiles
+// reasonably cache-friendly and to avoid oversized temporary buffers
+constexpr size_t MAX_LHS_CHUNK_BYTES = 2 * 1024 * 1024;
 
 // Left-hand-side (input indirection) cache key
 struct LhsCacheKey {
@@ -142,7 +143,18 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
-    return true;
+    const auto route = ArmKleidiAI::SelectConvRoute(Parameters);
+
+    if (route == ArmKleidiAI::ConvRoute::Igemm) {
+        return true;
+    }
+
+    if (route == ArmKleidiAI::ConvRoute::GemmFallback) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false to prefer SGEMM-backed conv path.");
+    } else {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on functional or optimization checks.");
+    }
+    return false;
 }
 
 //General purpose axis swapping

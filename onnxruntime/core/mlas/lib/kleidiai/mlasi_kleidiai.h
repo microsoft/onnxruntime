@@ -56,6 +56,65 @@ inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
 inline const bool UseSME = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
 inline const std::string_view vendor_name = MLAS_CPUIDINFO::GetCPUIDInfo().GetCPUVendor();
 
+enum class ConvRoute {
+    None,
+    Igemm,
+    GemmFallback,
+};
+
+inline constexpr size_t ConvIgemmMaxWork = 1000000ULL;
+
+inline constexpr size_t ComputeDilatedKernelSize(size_t dilation, size_t kernel) {
+    return (dilation * kernel) - (dilation - 1);
+}
+
+inline constexpr size_t ComputeConvOutputSize(size_t input, size_t kernel, size_t padding, size_t stride) {
+    if (stride > 0 && (input + 2 * padding) >= kernel) {
+        return (((input - kernel) + (2 * padding)) / stride) + 1;
+    }
+
+    return 0;
+}
+
+inline ConvRoute SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters) {
+    if ((Parameters->Dimensions != 2) ||
+        (Parameters->BatchCount != 1) ||
+        (Parameters->Beta != 0.f) ||
+        (Parameters->Padding[0] != Parameters->Padding[1]) ||
+        (Parameters->Padding[0] != Parameters->Padding[2]) ||
+        (Parameters->Padding[0] != Parameters->Padding[3])) {
+        return ConvRoute::None;
+    }
+
+    const auto effective_kernel_h =
+        ComputeDilatedKernelSize(Parameters->DilationShape[0], Parameters->KernelShape[0]);
+    const auto effective_kernel_w =
+        ComputeDilatedKernelSize(Parameters->DilationShape[1], Parameters->KernelShape[1]);
+    const auto output_m =
+        ComputeConvOutputSize(Parameters->InputShape[0], effective_kernel_h, Parameters->Padding[0], Parameters->StrideShape[0]) *
+        ComputeConvOutputSize(Parameters->InputShape[1], effective_kernel_w, Parameters->Padding[1], Parameters->StrideShape[1]);
+
+    if (output_m == 0) {
+        return ConvRoute::None;
+    }
+
+    const auto filter_count = Parameters->FilterCount;
+    if (filter_count == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
+        return ConvRoute::None;
+    }
+
+    const auto effective_k = Parameters->InputChannels * effective_kernel_h * effective_kernel_w;
+    if(effective_k == 0 || filter_count == 0) {
+        return ConvRoute::None;
+    }
+
+    const auto igemm_max_output_m = (ConvIgemmMaxWork / effective_k / filter_count);
+    if (output_m > igemm_max_output_m) {
+        return ConvRoute::GemmFallback;
+    }
+    return ConvRoute::Igemm;
+}
+
 // Buffer packing routines.
 //
 size_t

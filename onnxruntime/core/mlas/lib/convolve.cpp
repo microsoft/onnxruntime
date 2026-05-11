@@ -15,6 +15,9 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#if defined(USE_KLEIDIAI)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 
 //
 // Define the number of working buffer elements required per thread.
@@ -574,6 +577,11 @@ Return Value:
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
+    bool use_gemm_batch_override = false;
+#if defined(USE_KLEIDIAI)
+    use_gemm_batch_override =
+        ArmKleidiAI::SelectConvRoute(Parameters) == ArmKleidiAI::ConvRoute::GemmFallback;
+#endif
 
     //
     // Compute the strides to step through slices of the local segment.
@@ -637,9 +645,15 @@ Return Value:
                     SegmentStartN + n, CountN);
             }
 
-            MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
-                CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
-                SegmentOutput, OutputSize);
+            if (use_gemm_batch_override) {
+                MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
+                    CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
+                    SegmentOutput, OutputSize, nullptr, Parameters->BackendKernelSelectorConfig);
+            } else {
+                MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
+                    CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
+                    SegmentOutput, OutputSize);
+            }
 
             beta = 1.0f;
         }
