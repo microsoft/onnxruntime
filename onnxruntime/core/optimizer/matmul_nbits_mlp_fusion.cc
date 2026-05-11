@@ -15,7 +15,12 @@ namespace {
 
 constexpr const char* kActivationAttrName = "activation";
 // The transformer name is generic for future expansion, but the current fused
-// pattern and emitted op only support gate activation = "silu".
+// pattern and emitted op only support gate activation = "silu". To add another
+// gate activation (e.g. GELU for Gemma-style MLPs), extend the pattern matcher
+// below to recognize the new activation subgraph (or a unary node like `Gelu`),
+// add the new value to `MlpActivationKind` in matmul_nbits_mlp.h, and update
+// `EmitGateActivationExpr` plus the `#if activation_kind` block in the WGSL
+// template.
 constexpr const char* kSupportedActivation = "silu";
 
 bool HasInput(const Node& node, size_t index) {
@@ -99,6 +104,16 @@ float GetFloatAttr(const Node& node, const char* name, float default_value) {
   return attr == nullptr ? default_value : attr->f();
 }
 
+bool IsSupportedQuickGelu(const Node& node) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "QuickGelu", {1}, kMSDomain)) {
+    return false;
+  }
+  // SiLU is equivalent to QuickGelu(x, alpha=1.0). Any other alpha is a valid
+  // QuickGelu activation but is not the SiLU function that the fused kernel
+  // implements, so we conservatively reject it here.
+  return GetFloatAttr(node, "alpha", 1.0f) == 1.0f;
+}
+
 bool HasSingleNonGraphConsumer(const Graph& graph, const Node& node) {
   return !graph.NodeProducesGraphOutput(node) && optimizer_utils::CheckOutputEdges(graph, node, 1);
 }
@@ -137,46 +152,24 @@ const Node* GetNormProducer(const Graph& graph,
   return gate_input;
 }
 
-bool IsFuseCandidate(const Graph& graph,
-                     const Node& gate_matmul,
-                     const Node& up_matmul,
-                     const Node& sigmoid,
-                     const Node& silu_mul,
-                     const Node& final_mul) {
-  if (!IsMatMulNBitsWithoutZeroPointOrGroupIdx(gate_matmul) || !IsMatMulNBitsWithoutZeroPointOrGroupIdx(up_matmul) ||
-      !IsSupportedSigmoid(sigmoid) || !IsSupportedMul(silu_mul) || !IsSupportedMul(final_mul)) {
+bool ValidateMatMulNBitsPair(const Graph& graph,
+                             const Node& gate_matmul,
+                             const Node& up_matmul,
+                             size_t expected_gate_fanout) {
+  if (!IsMatMulNBitsWithoutZeroPointOrGroupIdx(gate_matmul) || !IsMatMulNBitsWithoutZeroPointOrGroupIdx(up_matmul)) {
     return false;
   }
 
-  if (!HasSingleNonGraphConsumer(graph, up_matmul) || !HasSingleNonGraphConsumer(graph, sigmoid) ||
-      !HasSingleNonGraphConsumer(graph, silu_mul)) {
+  if (!HasSingleNonGraphConsumer(graph, up_matmul)) {
     return false;
   }
 
-  if (graph.NodeProducesGraphOutput(gate_matmul) || gate_matmul.GetOutputEdgesCount() != 2) {
+  if (graph.NodeProducesGraphOutput(gate_matmul) || gate_matmul.GetOutputEdgesCount() != expected_gate_fanout) {
     return false;
   }
 
   if (gate_matmul.InputDefs().empty() || up_matmul.InputDefs().empty() ||
       gate_matmul.InputDefs()[0] != up_matmul.InputDefs()[0]) {
-    return false;
-  }
-
-  if (sigmoid.InputDefs()[0] != gate_matmul.OutputDefs()[0]) {
-    return false;
-  }
-
-  const bool silu_mul_matches =
-      (silu_mul.InputDefs()[0] == gate_matmul.OutputDefs()[0] && silu_mul.InputDefs()[1] == sigmoid.OutputDefs()[0]) ||
-      (silu_mul.InputDefs()[1] == gate_matmul.OutputDefs()[0] && silu_mul.InputDefs()[0] == sigmoid.OutputDefs()[0]);
-  if (!silu_mul_matches) {
-    return false;
-  }
-
-  const bool final_mul_matches =
-      (final_mul.InputDefs()[0] == silu_mul.OutputDefs()[0] && final_mul.InputDefs()[1] == up_matmul.OutputDefs()[0]) ||
-      (final_mul.InputDefs()[1] == silu_mul.OutputDefs()[0] && final_mul.InputDefs()[0] == up_matmul.OutputDefs()[0]);
-  if (!final_mul_matches) {
     return false;
   }
 
@@ -195,6 +188,73 @@ bool IsFuseCandidate(const Graph& graph,
          gate_bits == up_bits && gate_bits == 4 &&
          gate_block_size == up_block_size && gate_block_size == 32 &&
          gate_accuracy_level == up_accuracy_level;
+}
+
+// Validates the SiLU-decomposed activation shape:
+//   gate_matmul -> Sigmoid -+
+//   gate_matmul ------------+-> silu_mul -> final_mul <- up_matmul
+bool IsFuseCandidateSilu(const Graph& graph,
+                         const Node& gate_matmul,
+                         const Node& up_matmul,
+                         const Node& sigmoid,
+                         const Node& silu_mul,
+                         const Node& final_mul) {
+  if (!IsSupportedSigmoid(sigmoid) || !IsSupportedMul(silu_mul) || !IsSupportedMul(final_mul)) {
+    return false;
+  }
+
+  if (!HasSingleNonGraphConsumer(graph, sigmoid) || !HasSingleNonGraphConsumer(graph, silu_mul)) {
+    return false;
+  }
+
+  if (!ValidateMatMulNBitsPair(graph, gate_matmul, up_matmul, /*expected_gate_fanout=*/2)) {
+    return false;
+  }
+
+  if (sigmoid.InputDefs()[0] != gate_matmul.OutputDefs()[0]) {
+    return false;
+  }
+
+  const bool silu_mul_matches =
+      (silu_mul.InputDefs()[0] == gate_matmul.OutputDefs()[0] && silu_mul.InputDefs()[1] == sigmoid.OutputDefs()[0]) ||
+      (silu_mul.InputDefs()[1] == gate_matmul.OutputDefs()[0] && silu_mul.InputDefs()[0] == sigmoid.OutputDefs()[0]);
+  if (!silu_mul_matches) {
+    return false;
+  }
+
+  const bool final_mul_matches =
+      (final_mul.InputDefs()[0] == silu_mul.OutputDefs()[0] && final_mul.InputDefs()[1] == up_matmul.OutputDefs()[0]) ||
+      (final_mul.InputDefs()[1] == silu_mul.OutputDefs()[0] && final_mul.InputDefs()[0] == up_matmul.OutputDefs()[0]);
+  return final_mul_matches;
+}
+
+// Validates the fused-QuickGelu activation shape produced by QuickGeluFusion:
+//   gate_matmul -> QuickGelu(alpha=1.0) -> final_mul <- up_matmul
+bool IsFuseCandidateQuickGelu(const Graph& graph,
+                              const Node& gate_matmul,
+                              const Node& up_matmul,
+                              const Node& quick_gelu,
+                              const Node& final_mul) {
+  if (!IsSupportedQuickGelu(quick_gelu) || !IsSupportedMul(final_mul)) {
+    return false;
+  }
+
+  if (!HasSingleNonGraphConsumer(graph, quick_gelu)) {
+    return false;
+  }
+
+  if (!ValidateMatMulNBitsPair(graph, gate_matmul, up_matmul, /*expected_gate_fanout=*/1)) {
+    return false;
+  }
+
+  if (quick_gelu.InputDefs()[0] != gate_matmul.OutputDefs()[0]) {
+    return false;
+  }
+
+  const bool final_mul_matches =
+      (final_mul.InputDefs()[0] == quick_gelu.OutputDefs()[0] && final_mul.InputDefs()[1] == up_matmul.OutputDefs()[0]) ||
+      (final_mul.InputDefs()[1] == quick_gelu.OutputDefs()[0] && final_mul.InputDefs()[0] == up_matmul.OutputDefs()[0]);
+  return final_mul_matches;
 }
 
 }  // namespace
@@ -228,43 +288,71 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    const Node* silu_mul = nullptr;
+    const Node* activation_root = nullptr;
     const Node* up_matmul = nullptr;
-    if (IsSupportedMul(*input0) && IsMatMulNBitsWithoutZeroPointOrGroupIdx(*input1)) {
-      silu_mul = input0;
+    if (IsMatMulNBitsWithoutZeroPointOrGroupIdx(*input1) &&
+        (IsSupportedMul(*input0) || IsSupportedQuickGelu(*input0))) {
+      activation_root = input0;
       up_matmul = input1;
-    } else if (IsSupportedMul(*input1) && IsMatMulNBitsWithoutZeroPointOrGroupIdx(*input0)) {
-      silu_mul = input1;
+    } else if (IsMatMulNBitsWithoutZeroPointOrGroupIdx(*input0) &&
+               (IsSupportedMul(*input1) || IsSupportedQuickGelu(*input1))) {
+      activation_root = input1;
       up_matmul = input0;
     } else {
       continue;
     }
 
-    const Node* silu_input0 = GetInputNode(graph, *silu_mul, 0);
-    const Node* silu_input1 = GetInputNode(graph, *silu_mul, 1);
-    if (silu_input0 == nullptr || silu_input1 == nullptr) {
-      continue;
-    }
-
+    // The gate-side subgraph between `gate_matmul` and the outer Mul `node`
+    // takes one of two shapes:
+    //   1) SiLU decomposed: gate -> Sigmoid -+
+    //                       gate ------------+-> silu_mul -> node
+    //      `activation_root` is the inner Mul (silu_mul); 2 intermediates.
+    //   2) Fused QuickGelu (post QuickGeluFusion): gate -> QuickGelu -> node
+    //      `activation_root` is the QuickGelu node; 1 intermediate.
     const Node* gate_matmul = nullptr;
-    const Node* sigmoid = nullptr;
-    if (IsMatMulNBitsWithoutZeroPointOrGroupIdx(*silu_input0) && IsSupportedSigmoid(*silu_input1)) {
-      gate_matmul = silu_input0;
-      sigmoid = silu_input1;
-    } else if (IsMatMulNBitsWithoutZeroPointOrGroupIdx(*silu_input1) && IsSupportedSigmoid(*silu_input0)) {
-      gate_matmul = silu_input1;
-      sigmoid = silu_input0;
+    InlinedVector<const Node*> activation_intermediates;
+    const char* matched_shape = nullptr;
+
+    if (IsSupportedQuickGelu(*activation_root)) {
+      const Node* qg_input = GetInputNode(graph, *activation_root, 0);
+      if (qg_input == nullptr || !IsMatMulNBitsWithoutZeroPointOrGroupIdx(*qg_input)) {
+        continue;
+      }
+      gate_matmul = qg_input;
+      if (!IsFuseCandidateQuickGelu(graph, *gate_matmul, *up_matmul, *activation_root, node)) {
+        continue;
+      }
+      activation_intermediates.push_back(activation_root);
+      matched_shape = "quick_gelu";
     } else {
-      continue;
+      const Node* silu_input0 = GetInputNode(graph, *activation_root, 0);
+      const Node* silu_input1 = GetInputNode(graph, *activation_root, 1);
+      if (silu_input0 == nullptr || silu_input1 == nullptr) {
+        continue;
+      }
+
+      const Node* sigmoid = nullptr;
+      if (IsMatMulNBitsWithoutZeroPointOrGroupIdx(*silu_input0) && IsSupportedSigmoid(*silu_input1)) {
+        gate_matmul = silu_input0;
+        sigmoid = silu_input1;
+      } else if (IsMatMulNBitsWithoutZeroPointOrGroupIdx(*silu_input1) && IsSupportedSigmoid(*silu_input0)) {
+        gate_matmul = silu_input1;
+        sigmoid = silu_input0;
+      } else {
+        continue;
+      }
+
+      if (!IsFuseCandidateSilu(graph, *gate_matmul, *up_matmul, *sigmoid, *activation_root, node)) {
+        continue;
+      }
+      activation_intermediates.push_back(sigmoid);
+      activation_intermediates.push_back(activation_root);
+      matched_shape = "silu";
     }
 
-    if (!IsFuseCandidate(graph, *gate_matmul, *up_matmul, *sigmoid, *silu_mul, node)) {
-      continue;
-    }
-
-    LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: matched candidate output_mul='" << node.Name()
+    LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: matched candidate shape='" << matched_shape
+                          << "' output_mul='" << node.Name()
                           << "' gate='" << gate_matmul->Name() << "' up='" << up_matmul->Name()
-                          << "' sigmoid='" << sigmoid->Name() << "' activation_mul='" << silu_mul->Name()
                           << "' attrs={K=" << GetIntAttr(*gate_matmul, "K", -1, true)
                           << ", N=" << GetIntAttr(*gate_matmul, "N", -1, true)
                           << ", bits=" << GetIntAttr(*gate_matmul, "bits", 4)
@@ -272,10 +360,17 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
                           << ", accuracy_level=" << GetIntAttr(*gate_matmul, "accuracy_level", 0)
                           << "}";
 
+    bool intermediates_on_supported_ep = true;
+    for (const Node* intermediate : activation_intermediates) {
+      const auto& ep = intermediate->GetExecutionProviderType();
+      if (!ep.empty() && ep != kWebGpuExecutionProvider) {
+        intermediates_on_supported_ep = false;
+        break;
+      }
+    }
     if ((!gate_matmul->GetExecutionProviderType().empty() && gate_matmul->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
         (!up_matmul->GetExecutionProviderType().empty() && up_matmul->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
-        (!sigmoid->GetExecutionProviderType().empty() && sigmoid->GetExecutionProviderType() != kWebGpuExecutionProvider) ||
-        (!silu_mul->GetExecutionProviderType().empty() && silu_mul->GetExecutionProviderType() != kWebGpuExecutionProvider)) {
+        !intermediates_on_supported_ep) {
       LOGS(logger, VERBOSE) << "MatMulNBitsMlpFusion: skipping candidate due to non-WebGPU EP assignment.";
       continue;
     }
@@ -334,10 +429,10 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     graph.RemoveNode(gate_matmul->Index());
     graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*up_matmul));
     graph.RemoveNode(up_matmul->Index());
-    graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*sigmoid));
-    graph.RemoveNode(sigmoid->Index());
-    graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*silu_mul));
-    graph.RemoveNode(silu_mul->Index());
+    for (const Node* intermediate : activation_intermediates) {
+      graph_utils::RemoveNodeOutputEdges(graph, const_cast<Node&>(*intermediate));
+      graph.RemoveNode(intermediate->Index());
+    }
     graph_utils::RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
 
