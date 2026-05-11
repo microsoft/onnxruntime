@@ -108,6 +108,11 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
     total_elements *= dim;
   }
   for (size_t axis = 0; axis < input_rank; axis++) {
+    if (repeats_data[axis] > std::numeric_limits<uint32_t>::max()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile repeat value exceeds the WebGPU supported maximum of ",
+                             std::numeric_limits<uint32_t>::max(), ": ", repeats_data[axis]);
+    }
     repeats.push_back(static_cast<uint32_t>(repeats_data[axis]));
   }
 
