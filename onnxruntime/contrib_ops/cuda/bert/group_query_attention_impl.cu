@@ -127,8 +127,10 @@ Status PrepareQKV(
   // Shared KV path: K/V inputs are empty (kv_sequence_length == 0) and the
   // past buffer already contains the full shared KV cache.  This requires
   // past_key/past_value to be provided (with RoPE already applied to K).
-  // past_present_share_buffer must be true so the present buffer aliases past
-  // — no copy needed, attention reads directly from the shared KV data.
+  // When past_present_share_buffer is true, present aliases past and no copy
+  // is needed.  When false (e.g., first prompt), the past→present memcpy
+  // above has already populated the present buffer with the shared KV data.
+  // In both cases, only Q processing (RoPE if configured) is needed here.
   if (kv_sequence_length == 0) {
     if (parameters.do_rotary && data.cos_cache != nullptr && data.sin_cache != nullptr) {
       // Apply RoPE to Q only using the standalone rotary embedding kernel.
