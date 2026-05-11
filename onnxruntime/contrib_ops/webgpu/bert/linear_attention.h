@@ -33,7 +33,7 @@ class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
  public:
   LinearAttentionProgram(LinearAttentionUpdateRule update_rule, bool has_initial_state,
                          bool has_decay, bool has_beta, bool decay_broadcast_dk, int tile_v, int components,
-                         bool prefer_subgroup)
+                         int subgroup_min_size)
       : Program{"LinearAttention"},
         update_rule_(update_rule),
         has_initial_state_(has_initial_state),
@@ -42,7 +42,7 @@ class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
         decay_broadcast_dk_(decay_broadcast_dk),
         tile_v_(tile_v),
         components_(components),
-        prefer_subgroup_(prefer_subgroup) {}
+        subgroup_min_size_(subgroup_min_size) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -67,7 +67,7 @@ class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
   bool decay_broadcast_dk_;
   int tile_v_;
   int components_;
-  bool prefer_subgroup_;
+  int subgroup_min_size_;
 };
 
 // Kernel for LinearAttention

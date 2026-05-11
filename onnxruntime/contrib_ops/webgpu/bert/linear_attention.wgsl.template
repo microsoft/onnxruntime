@@ -19,7 +19,7 @@
 #param has_initial_state
 #param decay_broadcast_dk
 #param tile_v
-#param prefer_subgroup
+#param subgroup_min_size // 0 = disable subgroup reduction
 
 // Update rule constants
 #define UPDATE_LINEAR 0
@@ -42,9 +42,8 @@ const TILE_V: u32 = tile_v;
 
 // Shared memory for parallel reduction across dk threads.
 #if update_rule == UPDATE_DELTA || update_rule == UPDATE_GATED_DELTA
-#if prefer_subgroup
-// Subgroup-based reduction: MAX_SG covers worst-case sg_size=4.
-const MAX_SG: u32 = (workgroup_size_x + 3u) / 4u;
+#if subgroup_min_size
+const MAX_SG: u32 = (workgroup_size_x + subgroup_min_size - 1u) / subgroup_min_size;
 var<workgroup> sg_retrieved: array<vtype, MAX_SG * TILE_V>;
 var<workgroup> sg_preout: array<vtype, MAX_SG * TILE_V>;
 var<workgroup> sg_kq: array<f32, MAX_SG>;
@@ -58,8 +57,8 @@ var<workgroup> red_kq: array<f32, workgroup_size_x>;
 var<workgroup> broadcast_buf: array<vtype, TILE_V>;
 #endif
 #else
-#if prefer_subgroup
-const MAX_SG: u32 = (workgroup_size_x + 3u) / 4u;
+#if subgroup_min_size
+const MAX_SG: u32 = (workgroup_size_x + subgroup_min_size - 1u) / subgroup_min_size;
 var<workgroup> sg_buf: array<vtype, MAX_SG * TILE_V>;
 #else
 // Output-only reduction for linear/gated.
@@ -76,7 +75,7 @@ $MAIN {
   let dk_idx = local_idx;  // thread index = row in state matrix
   let dv_start = dv_tile_idx * TILE_V;
 
-#if prefer_subgroup
+#if subgroup_min_size
   let sg_idx = local_idx / sg_size;
   let num_sgs = (workgroup_size_x + sg_size - 1u) / sg_size;
 #endif
@@ -155,8 +154,7 @@ $MAIN {
     // Fused reduction: compute retrieved = S^T@k, pre_output = S^T@q_0,
     // and kq_dot = k^T@q_0.
     // Then: output_0 = scale * (pre_output + delta * kq_dot)
-#if prefer_subgroup
-    // Phase 1: Subgroup reduction — no barriers needed.
+#if subgroup_min_size
     for (var j = 0u; j < TILE_V; j++) {
       let ret_j = subgroupAdd(state[j] * k_val);
       let pre_j = subgroupAdd(state[j] * q0_val);
@@ -171,7 +169,6 @@ $MAIN {
     }
     workgroupBarrier();
 
-    // Phase 2: Cross-subgroup reduction + parallel output write.
     // Threads 0..TILE_V-1 each handle one dv position independently.
     let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
     let beta_base = bt_offset * uniforms.num_heads + head_idx;
@@ -250,7 +247,7 @@ $MAIN {
       if (dk_idx < uniforms.head_dim_k) {
         qg_val = f32(query[bt_offset * packed_dk_q + q_head_g * uniforms.head_dim_k + dk_idx]);
       }
-#if prefer_subgroup
+#if subgroup_min_size
       // Subgroup reduction of state*qg
       for (var j = 0u; j < TILE_V; j++) {
         let pre_j = subgroupAdd(state[j] * qg_val);
@@ -312,7 +309,7 @@ $MAIN {
         if (dk_idx < uniforms.head_dim_k) {
           q_val_g = f32(query[bt_offset * packed_dk_q + q_head_idx * uniforms.head_dim_k + dk_idx]);
         }
-#if prefer_subgroup
+#if subgroup_min_size
         for (var j = 0u; j < TILE_V; j++) {
           let pre_j = subgroupAdd(state[j] * q_val_g);
           if (sg_id == 0u) {
@@ -362,7 +359,7 @@ $MAIN {
       if (dk_idx < uniforms.head_dim_k) {
         q_val_inv = f32(query[bt_offset * packed_dk_q + q_head_inv * uniforms.head_dim_k + dk_idx]);
       }
-#if prefer_subgroup
+#if subgroup_min_size
       for (var j = 0u; j < TILE_V; j++) {
         let pre_j = subgroupAdd(state[j] * q_val_inv);
         if (sg_id == 0u) {
