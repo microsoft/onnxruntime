@@ -36,7 +36,7 @@ Unified Unfused      → RunUnfusedAttention()
 
 **Flash eligibility**: fp16/bf16 only, SM≥8.0 (Ampere+), `head_size == v_head_size`, `head_size <= 256`, no `output_qk`, `attn_mask == nullptr`. Uses `mha_fwd` / `mha_fwd_kvcache`.
 
-**MEA eligibility**: SM50+/53+/80+ by dtype, `head_size <= 1024` and divisible by 8, no `output_qk`. Decode requires `head_size == v_head_size` (for `LaunchConcatNewToPastKV`). Bias stride must satisfy `total_sequence_length % 4 == 0`. GQA with FP32 is excluded (LaunchUngroup only has fp16/bf16 instantiations). Supports `softcap + attn_mask` — CUTLASS applies softcap before bias in kernel tiles, matching ONNX spec ordering (onnx/onnx#7865).
+**MEA eligibility**: SM50+/53+/80+ by dtype, `head_size <= 1024` and divisible by 8 (enforced by `has_memory_efficient_attention`), no `output_qk`. GQA additionally requires `head_size == v_head_size` (for `LaunchUngroup`); decode also requires it (for `LaunchConcatNewToPastKV`). Bias stride must satisfy `total_sequence_length % 4 == 0`. GQA with FP32 is excluded (LaunchUngroup only has fp16/bf16 instantiations). Supports `softcap + attn_mask` — CUTLASS applies softcap before bias in kernel tiles, matching ONNX spec ordering (onnx/onnx#7867, supersedes the now-closed onnx/onnx#7865 issue).
 
 **Unified Unfused Attention**: Always available as the final fallback. Handles both MHA (`num_heads == kv_num_heads`, group=1) and GQA (`num_heads != kv_num_heads`, group>1) via a reshape-Q trick with stride-based cuBLAS batched GEMM (no K/V head replication). Uses FP32 QK scratch for precision. Supports all features:
 - softcap + attn_mask (spec-correct ordering)
@@ -78,15 +78,45 @@ if (parameters.total_sequence_length % min_bias_align != 0) {
 
 ## 4. Softcap Ordering
 
-ONNX spec ordering (onnx/onnx#7865): `QK → scale → softcap → add mask/bias → softmax`
+ONNX Attention opset 23/24 spec ordering (per onnx/onnx#7867, which superseded
+the now-closed onnx/onnx#7865 issue, and onnx/onnx#7913 which swapped
+`qk_matmul_output_mode` values 1 and 2 to align with the corrected pipeline):
 
-- **MEA (CUTLASS)**: Fuses softcap before bias in kernel tile loop (`kernel_forward.h`). Matches spec ordering.
-- **Flash**: Handles softcap natively in `mha_fwd`/`mha_fwd_kvcache` but rejects `attn_mask`, so ordering with mask is moot.
-- **Unfused**: Handles spec-correct ordering in the fused softmax kernel: `QK → scale → softcap → add bias → softmax`.
+```
+scale * (Q @ K^T)        # stage 0: raw scaled QK
+    |
+softcap (if > 0)         # stage 1: tanh(qk / softcap) * softcap
+    |
++ attn_bias / + attn_mask # stage 2: additive (mask -inf survives to stage 3)
+    |
+softmax                  # stage 3
+    |
+@ V
+```
 
-All three paths apply softcap BEFORE mask/bias. If softcap were applied after masking, `tanh(-inf/sc) = -sc` (finite), leaking probability to masked positions.
+`qk_matmul_output_mode` integer values follow pipeline stage order:
+0 = raw scale*QK, 1 = post-softcap (pre-mask), 2 = post-mask/bias (pre-softmax),
+3 = post-softmax.
 
-The unfused path does: `QK → scale → softcap → add bias → softmax` (all fused in `UnfusedSoftmaxKernel`).
+CUDA implementation status (all spec-correct):
+- **MEA (CUTLASS)**: `kernel_forward.h` applies softcap inside the score-compute
+  tile loop BEFORE `attn_bias` is added.
+- **Flash**: `mha_fwd` / `mha_fwd_kvcache` handle softcap natively; reject
+  explicit `attn_mask`, so ordering with float mask is moot for this path.
+- **Unfused**: `UnfusedSoftmaxKernel` does `QK -> scale -> softcap -> add bias -> softmax`
+  (all fused).
+
+CPU implementation status: `core/providers/cpu/llm/attention.cc::ComputeAttentionProbs<T>`
+applies softcap BEFORE the mask add (post-fix; pre-fix it inverted the order
+and leaked probability through masked positions).
+
+Why this ordering matters: a -inf in `attn_mask` must survive to softmax. If
+softcap were applied AFTER the mask-add, then `tanh(-inf/softcap) * softcap = -softcap`
+(a finite value), and softmax would assign non-zero weight to the masked
+position — leaking poison V values into the output. The CUDA-side guard tests
+at `test_onnx_attention/test_gqa.py:1501` and `:1761`, and the CPU-side guards
+at `TestONNXAttentionCPUSoftcapMaskOrdering` in the same file, exercise this
+property by combining small softcap, a -inf mask entry, and a poison V value.
 
 ## 5. Grid-Stride Loops for CUDA Kernels
 
