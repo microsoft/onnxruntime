@@ -4,6 +4,7 @@ set -e
 os_major_version=$(tr -dc '0-9.' </etc/redhat-release | cut -d \. -f1)
 
 echo "installing for os major version : $os_major_version"
+PACKAGE_MANAGER="yum"
 if [ "$os_major_version" -gt 7 ]; then
     PACKAGE_MANAGER="dnf"
     if [ "$os_major_version" -ge 9 ]; then

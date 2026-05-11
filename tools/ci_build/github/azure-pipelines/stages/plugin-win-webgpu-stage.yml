@@ -218,23 +218,6 @@ stages:
           type nul > "$(Build.ArtifactStagingDirectory)\version\$(PluginPackageVersion)"
         displayName: 'Create version marker file'
 
-      - task: CopyFiles@2
-        displayName: 'Stage binaries for universal package'
-        inputs:
-          SourceFolder: '$(Build.ArtifactStagingDirectory)\bin'
-          Contents: '**'
-          TargetFolder: '$(Build.BinariesDirectory)\universal_package'
-
-      - task: UniversalPackages@0
-        displayName: 'Publish universal package'
-        inputs:
-          command: publish
-          publishDirectory: '$(Build.BinariesDirectory)\universal_package'
-          vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-win-${{ parameters.arch }}'
-          versionOption: custom
-          versionPublish: '$(PluginUniversalPackageVersion)'
-
     # Python package jobs (x64 only — arm64 cross-compiled binaries can't be
     # packaged or tested on x64 agents)
     - ${{ if eq(parameters.arch, 'x64') }}:

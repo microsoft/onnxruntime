@@ -143,22 +143,6 @@ stages:
           touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
         displayName: 'Create version marker file'
 
-      - script: |
-          set -e -x
-          mkdir -p "$(Build.BinariesDirectory)/universal_package"
-          cp -R "$(Build.ArtifactStagingDirectory)/bin/"* "$(Build.BinariesDirectory)/universal_package/"
-        displayName: 'Stage binaries for universal package'
-
-      - task: UniversalPackages@0
-        displayName: 'Publish universal package'
-        inputs:
-          command: publish
-          publishDirectory: '$(Build.BinariesDirectory)/universal_package'
-          vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-          vstsFeedPackagePublish: "onnxruntime-plugin-ep-cuda${{ replace(parameters.cuda_version, '.', '') }}-linux-${{ parameters.arch }}"
-          versionOption: custom
-          versionPublish: '$(PluginUniversalPackageVersion)'
-
   - ${{ if eq(parameters.arch, 'x64') }}:
     - job: ${{ parameters.stage_name }}_Python_Package
       dependsOn: ${{ parameters.stage_name }}
