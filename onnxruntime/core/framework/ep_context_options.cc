@@ -23,9 +23,8 @@ ModelGenOptions::ModelGenOptions(const ConfigOptions& config_options) {
   enable = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
 
   // Note: the older compilation approach only supports compiling to an output file.
-  // Use ToPathString() so that the UTF-8 session config value is decoded correctly
-  // on Windows (via MultiByteToWideChar(CP_UTF8)) rather than the ANSI code page,
-  // which would garble non-ASCII Unicode characters.
+  // Use ToPathString() so that the UTF-8 session config value is converted to the
+  // platform-native path string on Windows, preserving non-ASCII Unicode characters.
   output_model_location = std::filesystem::path(
       ToPathString(config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "")));
 
