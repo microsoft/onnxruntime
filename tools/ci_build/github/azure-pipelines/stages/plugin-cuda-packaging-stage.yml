@@ -119,43 +119,6 @@ stages:
           docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
           artifact_name: cuda_plugin_linux_aarch64
 
-    # Merge Linux x64 and aarch64 artifacts into a single combined artifact
-    - ${{ if or(eq(parameters.build_linux_x64, true), eq(parameters.build_linux_aarch64, true)) }}:
-      - stage: Linux_plugin_cuda_Merge_Artifacts
-        dependsOn:
-        - ${{ if eq(parameters.build_linux_x64, true) }}:
-          - Linux_plugin_cuda_x64
-        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-          - Linux_plugin_cuda_aarch64
-        jobs:
-        - job: Linux_plugin_cuda_Merge_Artifacts
-          workspace:
-            clean: all
-          pool:
-            name: 'onnxruntime-Ubuntu2204-AMD-CPU'
-            os: linux
-          templateContext:
-            outputs:
-            - output: pipelineArtifact
-              targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
-              artifactName: cuda_plugin_linux
-          steps:
-          - checkout: none
-
-          - ${{ if eq(parameters.build_linux_x64, true) }}:
-            - task: DownloadPipelineArtifact@2
-              displayName: 'Download - x64'
-              inputs:
-                artifact: cuda_plugin_linux_x64
-                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin/x64
-
-          - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-            - task: DownloadPipelineArtifact@2
-              displayName: 'Download - aarch64'
-              inputs:
-                artifact: cuda_plugin_linux_aarch64
-                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin/aarch64
-
     # NuGet packaging (runs after all platform builds)
     - template: plugin-cuda-nuget-packaging-stage.yml
       parameters:
