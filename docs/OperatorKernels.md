@@ -708,7 +708,8 @@ The **OpSet Version** column uses the following notation:
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
 |ConvTranspose|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *out* Y:**T**|11+|**T** = tensor(double), tensor(float), tensor(float16)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16)|
-|Cos|*in* input:**T**<br> *out* output:**T**|7+|**T** = tensor(double), tensor(float), tensor(float16)|
+|Cos|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
+|||[7, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Crop|*in* input:**T**<br> *out* output:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
 |CumSum|*in* x:**T**<br> *in* axis:**T2**<br> *out* y:**T**|14+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T2** = tensor(int32), tensor(int64)|
 |||[11, 13]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T2** = tensor(int32), tensor(int64)|
@@ -976,7 +977,8 @@ The **OpSet Version** column uses the following notation:
 |||[6, 12]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Sign|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)|
 |SimplifiedLayerNormalization|*in* X:**T**<br> *in* scale:**V**<br> *out* Y:**V**<br> *out* inv_std_var:**U**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)<br/> **U** = tensor(double), tensor(float)<br/> **V** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
-|Sin|*in* input:**T**<br> *out* output:**T**|7+|**T** = tensor(double), tensor(float), tensor(float16)|
+|Sin|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
+|||[7, 21]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Size|*in* data:**T**<br> *out* size:**T1**|25+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)|
 |||[23, 24]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)|
 |||[21, 22]|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **T1** = tensor(int64)|
