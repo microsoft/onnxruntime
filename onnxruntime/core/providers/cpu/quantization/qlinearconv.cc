@@ -61,29 +61,17 @@ class QLinearConv : public OpKernel {
   static void ComputeOffset(OpKernelContext* context,
                             int64_t M,
                             ActType& X_zero_point_value,
-                            ActType& Y_zero_point_value,
-                            uint8_t& W_zero_point_value) {
+                            ActType& Y_zero_point_value) {
     const Tensor* X_zero_point = context->Input<Tensor>(InputTensors::IN_X_ZERO_POINT);
-    const Tensor* W_zero_point = context->Input<Tensor>(InputTensors::IN_W_ZERO_POINT);
     const Tensor* Y_zero_point = context->Input<Tensor>(InputTensors::IN_Y_ZERO_POINT);
     ORT_ENFORCE(IsScalarOr1ElementVector(X_zero_point),
                 "QLinearConv : input zero point must be a scalar or 1D tensor of size 1");
     ORT_ENFORCE(IsScalarOr1ElementVector(Y_zero_point),
                 "QLinearConv : result zero point must be a scalar or 1D tensor of size 1");
-    ORT_ENFORCE(IsValidQuantParam(W_zero_point, M),
-                "QLinearConv : filter zero point shape invalid");
 
     X_zero_point_value = *(X_zero_point->Data<ActType>());
     Y_zero_point_value = *(Y_zero_point->Data<ActType>());
-
-    const int64_t W_zero_point_size = W_zero_point->Shape().Size();
-    const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
-    W_zero_point_value = W_zero_point_data[0];
-    for (int64_t i = 1; i < W_zero_point_size; i++) {
-      ORT_ENFORCE(W_zero_point_data[i] == W_zero_point_value,
-                  "QLinearConv : zero point of per-channel filter must be same. "
-                  "This happens by design if the quantization is symmetric.");
-    }
+    ORT_UNUSED_PARAMETER(M);
   }
 
   static std::vector<float> ComputeOutputScale(OpKernelContext* context,
@@ -531,9 +519,22 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   ActType X_zero_point_value;
   ActType Y_zero_point_value;
-  uint8_t W_zero_point_value;
-  ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value, W_zero_point_value);
+  ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value);
   std::vector<float> output_scales = ComputeOutputScale(context, M);
+
+  // Read weight zero points (may be scalar or per-channel).
+  const Tensor* W_zero_point = context->Input<Tensor>(InputTensors::IN_W_ZERO_POINT);
+  ORT_ENFORCE(IsValidQuantParam(W_zero_point, M), "QLinearConv : filter zero point shape invalid");
+  const int64_t W_zero_point_size = W_zero_point->Shape().Size();
+  const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
+  // Per-channel zero points are uniform when size == 1 or all values match.
+  const bool W_zero_point_is_per_channel = (W_zero_point_size > 1);
+  const bool W_zero_point_is_uniform =
+      !W_zero_point_is_per_channel ||
+      std::all_of(W_zero_point_data + 1, W_zero_point_data + W_zero_point_size,
+                  [W_zero_point_data](uint8_t v) { return v == W_zero_point_data[0]; });
+  // Single representative value used for paths that require a scalar zero point.
+  const uint8_t W_zero_point_value = W_zero_point_data[0];
 
   const Tensor* B = context->Input<Tensor>(InputTensors::IN_BIAS);
 
@@ -610,7 +611,11 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   int64_t group_output_channels = M / group_count;
 
   // Test for depthwise convolution.
-  const bool is_depthwise_conv = ((is_symmetric_conv_ || reordered_W != nullptr) && group_input_channels == 1 && group_output_channels == 1);
+  // Depthwise path requires a single (uniform) filter zero point because
+  // MlasConvDepthwise accepts only a scalar FilterZeroPoint.
+  const bool is_depthwise_conv = (W_zero_point_is_uniform &&
+                                  (is_symmetric_conv_ || reordered_W != nullptr) &&
+                                  group_input_channels == 1 && group_output_channels == 1);
   if (is_depthwise_conv) {
     // Update the input and output channels to the number of groups in order to
     // reuse as much of the below standard convolution path.
@@ -974,7 +979,9 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
               gemm_params.B = reordered_W + group_id * group_output_channels,
               gemm_params.ldb = static_cast<size_t>(M);
             }
-            gemm_params.ZeroPointB = &W_zero_point_value;
+            gemm_params.ZeroPointB = W_zero_point_data +
+                                      (W_zero_point_is_per_channel ? group_id * group_output_channels : 0);
+            gemm_params.PerColumnZeroPoints = W_zero_point_is_per_channel;
             gemm_params.C = worker_gemm_output + group_id * group_output_channels;
             gemm_params.ldc = static_cast<size_t>(M);
 

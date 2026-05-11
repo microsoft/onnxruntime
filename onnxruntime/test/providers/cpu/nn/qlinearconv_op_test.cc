@@ -276,6 +276,7 @@ class QLinearConvOpTester {
     std::vector<int64_t> shape_;
     std::vector<float> scale_;
     T zero_point_{0};
+    std::vector<T> zero_points_;  // per-channel zero points (empty = use zero_point_)
   };
 
   std::default_random_engine generator_{1234};
@@ -406,7 +407,6 @@ class QLinearConvOpTester {
     const int64_t kernel_size = std::accumulate(
         kernel_shape, kernel_shape + kernel_rank, 1LL, std::multiplies<int64_t>());
     const int32_t X_zero_point = X_.zero_point_;
-    const int32_t W_zero_point = W_.zero_point_;
 
     const ActType* Xdata = X_.data_.data();
     ActType* Ydata = Y_data.data();
@@ -423,6 +423,10 @@ class QLinearConvOpTester {
           int32_t bias = B_.empty() ? 0 : B_[channel_index];
           float weight_scale = W_.scale_[(W_.scale_.size() == 1) ? 0 : channel_index];
           float requantize_scale = (X_.scale_[0] * weight_scale) / output_scale_;
+          // Use per-channel zero point if available, otherwise use the single zero_point_.
+          const int32_t W_zero_point = W_.zero_points_.empty()
+                                           ? static_cast<int32_t>(W_.zero_point_)
+                                           : static_cast<int32_t>(W_.zero_points_[channel_index]);
 
           std::vector<int64_t> d_output(kernel_rank, 0);
           std::vector<int64_t> d_kernel(kernel_rank, 0);
@@ -476,7 +480,12 @@ class QLinearConvOpTester {
     const std::vector<int64_t> W_scale_shape{static_cast<int64_t>(W_.scale_.size())};
     test.AddInput<FilterType>("w", W_.shape_, W_.data_, all_input_initializer_except_x);
     test.AddInput<float>("w_scale", W_scale_shape, W_.scale_, all_input_initializer_except_x);
-    test.AddInput<FilterType>("w_zero_point", {}, {W_.zero_point_}, all_input_initializer_except_x);
+    if (!W_.zero_points_.empty()) {
+      const std::vector<int64_t> W_zp_shape{static_cast<int64_t>(W_.zero_points_.size())};
+      test.AddInput<FilterType>("w_zero_point", W_zp_shape, W_.zero_points_, all_input_initializer_except_x);
+    } else {
+      test.AddInput<FilterType>("w_zero_point", {}, {W_.zero_point_}, all_input_initializer_except_x);
+    }
 
     test.AddInput<float>("y_scale", {}, {output_scale_}, all_input_initializer_except_x);
     test.AddInput<ActType>("y_zero_point", {}, {output_zero_point_}, all_input_initializer_except_x);
@@ -541,6 +550,10 @@ class QLinearConvOpTester {
 
   void SetWeightScales(const std::vector<float>& scales) {
     W_.scale_ = scales;
+  }
+
+  void SetWeightZeroPoints(const std::vector<FilterType>& zero_points) {
+    W_.zero_points_ = zero_points;
   }
 
   void GenerateRandomBias() {
@@ -1503,6 +1516,87 @@ TEST(QLinearConvTest, Conv2D_S8S8_Requantize_Bias_PerChannel) {
     test.GenerateRandomBias();
     test.SetPads({1, 1, 1, 1});
     test.SetOutputScaleAndZeroPoint(.55f, -64);
+    test.Run();
+  }
+}
+
+// Tests per-channel weight zero points with different values (the fix for the reported bug).
+TEST(QLinearConvTest, Conv2D_U8U8_PerChannelZeroPoints) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  for (int64_t channels : std::initializer_list<int64_t>{2, 4, 8, 16, 32}) {
+    QLinearConvOpTester<uint8_t, uint8_t> test;
+    test.GenerateRandomInput({1, 3, 9, 9}, .05f, 128);
+    test.GenerateRandomWeights({channels, 3, 3, 3}, .10f, 128);
+    std::vector<float> weight_scales;
+    std::vector<uint8_t> weight_zero_points;
+    for (int64_t i = 0; i < channels; i++) {
+      weight_scales.push_back(.10f + static_cast<float>(i) * .002f);
+      // Use different zero points per channel to exercise the per-channel path.
+      weight_zero_points.push_back(static_cast<uint8_t>(100 + i * 5));
+    }
+    test.SetWeightScales(weight_scales);
+    test.SetWeightZeroPoints(weight_zero_points);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 128);
+    test.Run();
+  }
+}
+
+// Tests per-channel weight zero points with different values for int8 activations.
+TEST(QLinearConvTest, Conv2D_S8S8_PerChannelZeroPoints) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  for (int64_t channels : std::initializer_list<int64_t>{2, 4, 8, 16, 32}) {
+    QLinearConvOpTester<int8_t, int8_t> test;
+    test.GenerateRandomInput({1, 4, 7, 7}, .05f, 4);
+    test.GenerateRandomWeights({channels, 4, 3, 3}, .10f, 0);
+    std::vector<float> weight_scales;
+    std::vector<int8_t> weight_zero_points;
+    for (int64_t i = 0; i < channels; i++) {
+      weight_scales.push_back(.10f + static_cast<float>(i) * .003f);
+      // Use different (non-zero) zero points per channel.
+      weight_zero_points.push_back(static_cast<int8_t>(-10 + static_cast<int8_t>(i * 3)));
+    }
+    test.SetWeightScales(weight_scales);
+    test.SetWeightZeroPoints(weight_zero_points);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, -8);
+    test.Run();
+  }
+}
+
+// Tests per-channel weight zero points for grouped convolution.
+TEST(QLinearConvTest, Conv2D_U8U8_Groups_PerChannelZeroPoints) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  for (int64_t channels : std::initializer_list<int64_t>{4, 8, 16}) {
+    QLinearConvOpTester<uint8_t, uint8_t> test;
+    test.GenerateRandomInput({1, 8, 9, 9}, .05f, 128);
+    test.GenerateRandomWeights({channels, 4, 3, 3}, .10f, 128);
+    std::vector<float> weight_scales;
+    std::vector<uint8_t> weight_zero_points;
+    for (int64_t i = 0; i < channels; i++) {
+      weight_scales.push_back(.10f + static_cast<float>(i) * .002f);
+      weight_zero_points.push_back(static_cast<uint8_t>(80 + i * 7));
+    }
+    test.SetWeightScales(weight_scales);
+    test.SetWeightZeroPoints(weight_zero_points);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetGroups(2);
+    test.SetOutputScaleAndZeroPoint(.55f, 128);
     test.Run();
   }
 }
