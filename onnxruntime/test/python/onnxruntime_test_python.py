@@ -268,6 +268,45 @@ class TestInferenceSession(unittest.TestCase):
         # may be no-op on certain Windows builds based on build configuration
         onnxrt.enable_telemetry_events()
 
+    def test_set_default_logger_callback(self):
+        # Verify that set_default_logger_callback is exposed in the onnxruntime namespace.
+        self.assertTrue(callable(onnxrt.set_default_logger_callback))
+
+        # Setting a Python callable should succeed.
+        messages = []
+
+        def my_callback(severity, category, logid, code_location, message):
+            messages.append((severity, category, logid, code_location, message))
+
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+
+        # Running inference while the callback is active should not crash.
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        (res,) = sess.run(["Z"], {"X": x, "Y": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Resetting to None restores the default platform logger and should not raise.
+        onnxrt.set_default_logger_callback(None)
+
+        # After reset, further inference still works.
+        (res,) = sess.run(["Z"], {"X": x, "Y": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Lambda callables are accepted.
+        onnxrt.set_default_logger_callback(lambda sev, cat, lid, loc, msg: None)
+
+        # Invalid severity should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=5)
+
+        # Non-callable should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback("not a callable")
+
+        # Clean up: restore platform default logger.
+        onnxrt.set_default_logger_callback(None)
+
     def test_deserialization_from_path_object(self):
         # path object is allowed
         onnxrt.InferenceSession(pathlib.Path(get_name("mul_1.onnx")), providers=available_providers)

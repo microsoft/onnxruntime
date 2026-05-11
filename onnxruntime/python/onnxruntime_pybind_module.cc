@@ -7,12 +7,14 @@
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/session/environment.h"
 #include "core/session/ort_env.h"
 #include "core/session/inference_session.h"
 #include "core/session/provider_bridge_ort.h"
 #include "core/framework/provider_options.h"
 #include "core/platform/env.h"
+#include "core/platform/logging/make_platform_default_log_sink.h"
 #include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
@@ -38,6 +40,30 @@ static Status CreateOrtEnv() {
   Status status;
   ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr).release();
   if (!status.IsOK()) return status;
+
+  // Immediately replace the default logging manager with one backed by a PythonCallbackSink.
+  // The PythonCallbackSink wraps the platform default sink and can be updated later via
+  // set_default_logger_callback() without needing to recreate the LoggingManager (which is
+  // a singleton and cannot be re-created while still alive).
+  //
+  // We destroy the freshly created manager first (clearing the singleton guard), then install
+  // a new one.  This is safe here because no ORT sessions or background threads exist yet.
+  {
+    using namespace onnxruntime::logging;
+    auto python_sink = CreateAndRegisterPythonCallbackSink(MakePlatformDefaultLogSink());
+    constexpr auto kDefaultSeverity = Severity::kWARNING;
+    auto etw_severity = OverrideLevelWithEtw(kDefaultSeverity);
+    auto combined_sink = EnhanceSinkWithEtw(std::move(python_sink), kDefaultSeverity, etw_severity);
+    std::string logger_id{"Default"};
+    ort_env->SetLoggingManager(nullptr);  // destroys old manager, clears singleton guard
+    ort_env->SetLoggingManager(std::make_unique<LoggingManager>(
+        std::move(combined_sink),
+        std::min(kDefaultSeverity, etw_severity),
+        false,
+        LoggingManager::InstanceType::Default,
+        &logger_id));
+  }
+
   // Keep the ort_env alive, don't free it. It's ok to leak the memory.
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
