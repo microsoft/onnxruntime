@@ -34,6 +34,22 @@ if(onnxruntime_QUICK_BUILD)
   list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "flash_fwd.*hdim(32|64|96|192|256)")
 endif()
 
+# The SM90 mixed FP4 launcher is enabled for the native MXFP4 W4A16 path. Keep the
+# fallback stub out of the build so it does not provide duplicate instantiations.
+list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_mixed_fp4_stub\\.cu")
+if(NOT onnxruntime_ENABLE_CUDA_FP4_QMOE)
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_.*\\.generated\\.cu")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_.*\\.generated\\.cu")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_(fp16|bf16)_fp4\\.cu")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_fp4_fp4\\.cu")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
+else()
+  # CUDA 13 PTXAS does not complete the FP4 M=128/N=64 pingpong specializations in
+  # this build configuration. The dispatcher routes that tile through cooperative
+  # mainloop variants instead, so exclude only those unused generated units.
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_cm[12]_cn[12]_pp\\.generated\\.cu")
+endif()
+
 file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.cc"

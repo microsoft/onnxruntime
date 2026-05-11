@@ -1,7 +1,7 @@
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#if USE_FPA_INTB_GEMM
+#if defined(USE_CUDA)
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/common/safeint.h"

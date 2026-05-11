@@ -230,6 +230,17 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${pybind11_lib}
     Python::NumPy
 )
+
+if (onnxruntime_USE_CUDA)
+  target_sources(onnxruntime_pybind11_state PRIVATE
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_call.cc"
+  )
+  include(cutlass)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${cutlass_SOURCE_DIR}/include)
+endif()
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
