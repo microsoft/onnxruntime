@@ -92,15 +92,6 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     return v >= 0 && v <= kIntMax;
   };
 
-  auto checked_mul_fits_int = [kIntMax](int64_t a, int64_t b) {
-    if (a < 0 || b < 0) {
-      return false;
-    }
-
-    int64_t product = 0;
-    return SafeMultiply(a, b, product) && product <= kIntMax;
-  };
-
   // kernel
   TensorPitches input_pitches(X_dims);
   TArray<int64_t> input_strides(input_pitches);
@@ -342,7 +333,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       }
 
       if (mode_ == UpsampleMode::NN && rank >= 2) {
-        ORT_RETURN_IF_NOT(checked_mul_fits_int(output_dims[rank - 2], output_dims[rank - 1]),
+        int64_t output_hw = 0;
+        ORT_RETURN_IF_NOT(SafeMultiply(output_dims[rank - 2], output_dims[rank - 1], output_hw) && output_hw <= kIntMax,
                           "Resize: output height*width exceeds supported int range for CUDA nearest indexing.");
       }
 

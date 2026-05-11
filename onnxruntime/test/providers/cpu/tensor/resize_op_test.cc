@@ -2577,7 +2577,6 @@ TEST(ResizeOpTest, Antialias_NhwcBilinear) {
                           35.074074f, 75.07407f, 115.07407f,
                           36.590908f, 76.59091f, 116.59091f};
 
-  // NHWC bilinear antialias is now supported on CUDA
   TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 5, 8, 3}, X, {1, 4, 5, 3}, Y);
 }
 
