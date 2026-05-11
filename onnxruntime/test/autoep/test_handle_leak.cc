@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <gtest/gtest.h>
 
@@ -23,11 +24,12 @@ namespace test {
 
 namespace {
 
-// Returns true if the library is currently mapped in the process.
+// Returns whether the library is currently mapped in the process, or std::nullopt if the platform
+// does not support querying loaded-library state without side effects.
 // On Windows, GetModuleHandleW queries by filename without incrementing the refcount.
 // On Linux/macOS, dlopen with RTLD_NOLOAD probes without loading; if it succeeds it adds a
 // refcount that we immediately release with dlclose.
-bool IsLibraryLoaded(const std::filesystem::path& library_path) {
+std::optional<bool> IsLibraryLoaded(const std::filesystem::path& library_path) {
 #if defined(_WIN32)
   return GetModuleHandleW(library_path.filename().wstring().c_str()) != nullptr;
 #else
@@ -40,8 +42,8 @@ bool IsLibraryLoaded(const std::filesystem::path& library_path) {
   return false;
 #else
   // RTLD_NOLOAD is not available on this platform; cannot probe without loading.
-  // Return true so the caller skips the test rather than producing a false pass.
-  return true;
+  (void)library_path;
+  return std::nullopt;
 #endif
 #endif
 }
@@ -68,7 +70,12 @@ TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
   const std::string& registration_name = Utils::example_ep_info.registration_name;
 
-  if (IsLibraryLoaded(library_path)) {
+  std::optional<bool> loaded_before = IsLibraryLoaded(library_path);
+  if (!loaded_before.has_value()) {
+    GTEST_SKIP() << "Platform does not support querying loaded-library state (RTLD_NOLOAD unavailable).";
+  }
+
+  if (*loaded_before) {
     GTEST_SKIP() << "Library is already loaded by another test in this binary. "
                     "Cannot detect refcount leaks with a boolean loaded/unloaded check. "
                     "See TODO above for the ideal separate-binary approach.";
@@ -79,14 +86,15 @@ TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
   ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
 
   // The library should be loaded now.
-  ASSERT_TRUE(IsLibraryLoaded(library_path)) << "Library should be loaded after registration.";
+  ASSERT_TRUE(IsLibraryLoaded(library_path).value_or(false))
+      << "Library should be loaded after registration.";
 
   // Unregister releases the EpLibraryPlugin's reference.
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 
   // If the fix is applied, the library should be fully unloaded (refcount == 0).
   // Without the fix, ProviderLibrary::Load() leaks a refcount so the library remains mapped.
-  EXPECT_FALSE(IsLibraryLoaded(library_path))
+  EXPECT_FALSE(IsLibraryLoaded(library_path).value_or(true))
       << "Library handle leaked: EP library is still loaded after UnregisterExecutionProviderLibrary. "
          "This indicates ProviderLibrary::Load() did not call Unload() on GetProvider symbol miss.";
 }
