@@ -275,11 +275,12 @@ Status BuildDirectLutPackedBCache(const uint8_t* quantized_data,
                                                               static_cast<size_t>(block_size), has_zero_points);
   ORT_RETURN_IF(packed_size_per_expert == 0, "Failed to compute LUT GEMM packed size.");
 
-  const int64_t packed_cols = cols / 4;
+  constexpr int64_t kPackSize2Bit = 4;
+  const int64_t packed_cols = cols / kPackSize2Bit;
   const size_t quantized_stride = static_cast<size_t>(rows * packed_cols);
   const size_t scales_stride = static_cast<size_t>(rows * blocks_per_row);
-  const size_t zp_stride = has_zero_points ? static_cast<size_t>(rows * ((blocks_per_row + 3) / 4)) : 0;
-  const size_t total_packed_size = packed_size_per_expert * static_cast<size_t>(num_experts);
+  const size_t zp_stride = has_zero_points ? static_cast<size_t>(rows * ((blocks_per_row + kPackSize2Bit - 1) / kPackSize2Bit)) : 0;
+  const size_t total_packed_size = SafeInt<size_t>(packed_size_per_expert) * static_cast<size_t>(num_experts);
 
   packed_b = IAllocator::MakeUniquePtr<void>(allocator, total_packed_size, true);
   auto* packed_b_ptr = static_cast<std::byte*>(packed_b.get());
@@ -781,29 +782,43 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
 
 template <typename T>
 Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                             gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                             gsl::span<const size_t> prepacked_buffer_sizes,
                                              int input_idx,
                                              /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
+  auto parse_shape = [&](TensorShape& shape) -> Status {
+    if (prepacked_buffers.size() <= 1) {
+      return Status::OK();
+    }
+
+    ORT_RETURN_IF_NOT(prepacked_buffer_sizes.size() > 1,
+                      "Missing QMoE prepacked shape buffer size metadata.");
+    ORT_RETURN_IF_NOT(prepacked_buffer_sizes[1] >= sizeof(int64_t),
+                      "QMoE prepacked shape buffer is too small to contain a rank.");
+
+    const int64_t* buffer_data = static_cast<const int64_t*>(prepacked_buffers[1].get());
+    const int64_t rank = buffer_data[0];
+    ORT_RETURN_IF_NOT(rank == 3, "Expected rank 3 for QMoE weight shape, got ", rank, ".");
+
+    const size_t shape_buffer_size = SafeInt<size_t>(static_cast<size_t>(rank) + 1) * sizeof(int64_t);
+    ORT_RETURN_IF_NOT(prepacked_buffer_sizes[1] >= shape_buffer_size,
+                      "QMoE prepacked shape buffer is too small for rank ", rank, ".");
+
+    std::vector<int64_t> dims(static_cast<size_t>(rank));
+    memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
+    shape = TensorShape(dims);
+    return Status::OK();
+  };
+
   if (expert_weight_bits_ == 2) {
     if ((input_idx == 2 || input_idx == 5) && !prepacked_buffers.empty()) {
-      auto parse_shape = [&](TensorShape& shape) {
-        if (prepacked_buffers.size() > 1) {
-          int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
-          int64_t rank = buffer_data[0];
-          std::vector<int64_t> dims(static_cast<size_t>(rank));
-          memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
-          shape = TensorShape(dims);
-        }
-      };
-
       if (input_idx == 2) {
         packed_fc1_lut_cache_ = std::move(prepacked_buffers[0]);
-        parse_shape(fc1_shape_);
+        ORT_RETURN_IF_ERROR(parse_shape(fc1_shape_));
       } else {
         packed_fc2_lut_cache_ = std::move(prepacked_buffers[0]);
-        parse_shape(fc2_shape_);
+        ORT_RETURN_IF_ERROR(parse_shape(fc2_shape_));
       }
 
       // Re-initialize MLAS LUT kernel config for the restored shape.
@@ -830,25 +845,15 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
   }
 
   if ((input_idx == 2 || input_idx == 5) && !prepacked_buffers.empty()) {
-    auto parse_shape = [&](TensorShape& shape) {
-      if (prepacked_buffers.size() > 1) {
-        int64_t* buffer_data = static_cast<int64_t*>(prepacked_buffers[1].get());
-        int64_t rank = buffer_data[0];
-        std::vector<int64_t> dims(static_cast<size_t>(rank));
-        memcpy(dims.data(), buffer_data + 1, static_cast<size_t>(rank) * sizeof(int64_t));
-        shape = TensorShape(dims);
-      }
-    };
-
     if (input_idx == 2) {
       packed_fc1_ = std::move(prepacked_buffers[0]);
-      parse_shape(fc1_shape_);
+      ORT_RETURN_IF_ERROR(parse_shape(fc1_shape_));
       if (prepacked_buffers.size() > 2) {
         packed_fc1_mlas_cache_ = std::move(prepacked_buffers[2]);
       }
     } else if (input_idx == 5) {
       packed_fc2_ = std::move(prepacked_buffers[0]);
-      parse_shape(fc2_shape_);
+      ORT_RETURN_IF_ERROR(parse_shape(fc2_shape_));
       if (prepacked_buffers.size() > 2) {
         packed_fc2_mlas_cache_ = std::move(prepacked_buffers[2]);
       }
@@ -1215,6 +1220,15 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                                     is_fc2_block_wise &&
                                     CanUseMlasLutGemm(expert_weight_bits_, block_size_, hidden_size, inter_size);
 
+  if (can_use_fc1_lut_gemm) {
+    MlasInitLutGemmKernelConfig(static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size), 2,
+                                static_cast<size_t>(block_size_), fc1_zp_data != nullptr);
+  }
+  if (can_use_fc2_lut_gemm) {
+    MlasInitLutGemmKernelConfig(static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size), 2,
+                                static_cast<size_t>(block_size_), fc2_zp_data != nullptr);
+  }
+
   // Use pre-packed MLAS cache if available
   const void* fc1_direct_q4_cache_ptr = nullptr;
   if (use_mlas_q4_gemm_effective && packed_fc1_mlas_cache_ && fc1_zp_data == nullptr &&
@@ -1296,17 +1310,6 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   for (const auto& work : expert_workload) {
     expert_batches[thread_idx].push_back(work.first);
     thread_idx = (thread_idx + 1) % static_cast<size_t>(num_expert_threads);
-  }
-
-  // Pre-initialize MLAS LUT kernel config before the parallel loop to avoid
-  // mutex contention from redundant per-thread calls in TryRunLutGemm.
-  if (can_use_fc1_lut_gemm && fc1_direct_lut_cache_ptr == nullptr) {
-    MlasInitLutGemmKernelConfig(static_cast<size_t>(fc1_out_features), static_cast<size_t>(hidden_size), 2,
-                                static_cast<size_t>(block_size_), fc1_zp_data != nullptr);
-  }
-  if (can_use_fc2_lut_gemm && fc2_direct_lut_cache_ptr == nullptr) {
-    MlasInitLutGemmKernelConfig(static_cast<size_t>(hidden_size), static_cast<size_t>(inter_size), 2,
-                                static_cast<size_t>(block_size_), fc2_zp_data != nullptr);
   }
 
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {

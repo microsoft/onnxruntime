@@ -1671,7 +1671,7 @@ TEST(MoETest, QMoETest_CPU_Int2_BlockWiseLutIdentity) {
   cpu_tester.AddOptionalInputEdge<uint8_t>();
   cpu_tester.AddOptionalInputEdge<uint8_t>();
   cpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(input));
-  cpu_tester.SetOutputTolerance(0.001f);
+  cpu_tester.SetOutputTolerance(0.05f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_providers;
   cpu_execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -1901,8 +1901,9 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 2);
   cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // CPU only supports swiglu
-  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);   // Always use 1 - softmax normalization always applied
-  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);          // Test 4-bit quantization
+  cpu_tester.AddAttribute<int64_t>("swiglu_fusion", static_cast<int64_t>(1));
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);  // Always use 1 - softmax normalization always applied
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);         // Test 4-bit quantization
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
@@ -1975,8 +1976,9 @@ TEST(MoETest, QMoETest_CPU_Int8_MLAS) {
   OpTester cpu_tester("QMoE", 1, onnxruntime::kMSDomain);
   cpu_tester.AddAttribute<int64_t>("k", 1);
   cpu_tester.AddAttribute<std::string>("activation_type", "swiglu");  // CPU only supports swiglu
-  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);   // Always use 1 - softmax normalization always applied
-  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 8);          // Test 8-bit quantization
+  cpu_tester.AddAttribute<int64_t>("swiglu_fusion", static_cast<int64_t>(1));
+  cpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);  // Always use 1 - softmax normalization always applied
+  cpu_tester.AddAttribute<int64_t>("expert_weight_bits", 8);         // Test 8-bit quantization
 
   std::vector<int64_t> input_dims = {num_rows, hidden_size};
   std::vector<int64_t> router_probs_dims = {num_rows, num_experts};

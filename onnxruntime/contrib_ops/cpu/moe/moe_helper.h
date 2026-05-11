@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/framework/tensor_shape.h"
 #include "core/util/shape_checker.h"
@@ -111,7 +112,7 @@ Status CheckInputs(MoEParameters& parameters,
 
   int64_t local_num_experts = fc1_experts_weights_shape->GetDims()[0];
 
-  const int64_t inter_size_numerator = fc2_experts_weights_shape->GetDims()[1] *
+  const int64_t inter_size_numerator = SafeInt<int64_t>(fc2_experts_weights_shape->GetDims()[1]) *
                                        fc2_experts_weights_shape->GetDims()[2] * pack_size;
   ORT_RETURN_IF(inter_size_numerator % hidden_size != 0,
                 "Unable to infer inter_size from fc2_experts_weights shape ",
