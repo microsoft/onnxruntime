@@ -336,8 +336,9 @@ TEST(Random, MultinomialInvalidDtype) {
 #if defined(USE_CUDA)
 // We cannot call CUDA lib from UT, so just do some simple verification on output tensor.
 void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, const float scale, const float seed,
-                            TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {
-  OpTester test(is_random_like ? "RandomNormalLike" : "RandomNormal");
+                            TensorProto_DataType dtype, bool is_random_like, bool infer_dtype,
+                            int opset_version = 7) {
+  OpTester test(is_random_like ? "RandomNormalLike" : "RandomNormal", opset_version);
   test.AddAttribute("mean", mean);
   test.AddAttribute("scale", scale);
   test.AddAttribute("seed", seed);
@@ -429,23 +430,24 @@ TEST(Random, RandomNormalGpu) {
   RunRandomNormalGpuTest(dims1, 1.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomNormalGpuTest(dims1, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, false, false);
   RunRandomNormalGpuTest(dims1, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, false, false);
-  RunRandomNormalGpuTest(dims1, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
+  RunRandomNormalGpuTest(dims1, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false, 22);
   RunRandomNormalGpuTest(dims1, 1.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, true, true);
   RunRandomNormalGpuTest(dims1, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomNormalGpuTest(dims1, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, true);
-  RunRandomNormalGpuTest(dims1, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, true, true);
+  RunRandomNormalGpuTest(dims1, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, true, true, 22);
   RunRandomNormalGpuTest(dims1, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, false);
   RunRandomNormalGpuTest(dims1, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
   std::vector<int64_t> dims2{255, 255};
   RunRandomNormalGpuTest(dims2, 1.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomNormalGpuTest(dims2, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomNormalGpuTest(dims2, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
-  RunRandomNormalGpuTest(dims2, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
+  RunRandomNormalGpuTest(dims2, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false, 22);
 }
 
 void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, const float high, const float seed,
-                             TensorProto_DataType dtype, bool is_random_like, bool infer_dtype) {
-  OpTester test(is_random_like ? "RandomUniformLike" : "RandomUniform");
+                             TensorProto_DataType dtype, bool is_random_like, bool infer_dtype,
+                             int opset_version = 7) {
+  OpTester test(is_random_like ? "RandomUniformLike" : "RandomUniform", opset_version);
   test.AddAttribute("low", low);
   test.AddAttribute("high", high);
   test.AddAttribute("seed", seed);
@@ -552,18 +554,18 @@ TEST(Random, RandomUniformGpu) {
   RunRandomUniformGpuTest(dims1, 0.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomUniformGpuTest(dims1, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, false, false);
   RunRandomUniformGpuTest(dims1, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, false, false);
-  RunRandomUniformGpuTest(dims1, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
+  RunRandomUniformGpuTest(dims1, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false, 22);
   RunRandomUniformGpuTest(dims1, 0.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, true, true);
   RunRandomUniformGpuTest(dims1, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomUniformGpuTest(dims1, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, true);
-  RunRandomUniformGpuTest(dims1, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, true, true);
+  RunRandomUniformGpuTest(dims1, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, true, true, 22);
   RunRandomUniformGpuTest(dims1, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, false);
   RunRandomUniformGpuTest(dims1, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
   std::vector<int64_t> dims2{255, 255};
   RunRandomUniformGpuTest(dims2, 0.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomUniformGpuTest(dims2, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomUniformGpuTest(dims2, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
-  RunRandomUniformGpuTest(dims2, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
+  RunRandomUniformGpuTest(dims2, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false, 22);
 }
 #endif
 
