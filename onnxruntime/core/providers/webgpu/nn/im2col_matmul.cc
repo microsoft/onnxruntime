@@ -63,12 +63,14 @@ Status Im2ColMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   ORT_ENFORCE(tile_m_ == 16 || tile_m_ == 32, "tile_m must be 16 or 32.");
   ORT_ENFORCE(tile_n_ == 64, "tile_n must be 64.");
+  ORT_ENFORCE(vec_size_ == 1 || vec_size_ == 2 || vec_size_ == 4, "vec_size must be 1, 2 or 4.");
 
   return WGSL_TEMPLATE_APPLY(shader, "nn/im2col_matmul.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(tile_m, tile_m_),
                              WGSL_TEMPLATE_PARAMETER(tile_n, tile_n_),
                              WGSL_TEMPLATE_PARAMETER(use_subgroup, use_subgroup_),
+                             WGSL_TEMPLATE_PARAMETER(vec_size, vec_size_),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(src, src),
                              WGSL_TEMPLATE_VARIABLE(weight, weight));
@@ -119,7 +121,8 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   // Ensure the subgroup size must be greater than or equal to `tile_m` to safely enable `use_subgroup`.
   // If the status of this condition is uncertain, the feature must be disabled.
   const bool use_subgroup = false;
-  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, use_subgroup};
+  const uint32_t vec_size = channel_input % 4 == 0 ? 4 : (channel_input % 2 == 0 ? 2 : 1);
+  Im2ColMatMulProgram im2col_mm_program{has_bias, tile_m, tile_n, vec_size, use_subgroup};
   im2col_mm_program.SetWorkgroupSize(workgroup_size);
 
   const uint32_t M_tiles = CeilDiv(im2col_m, tile_m);
@@ -128,10 +131,10 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
 
   im2col_mm_program.AddInput({src,
                               ProgramTensorMetadataDependency::TypeAndRank,
-                              4});
+                              static_cast<int>(vec_size)});
   im2col_mm_program.AddInput({&ohwi_weight,
                               ProgramTensorMetadataDependency::TypeAndRank,
-                              4});
+                              static_cast<int>(vec_size)});
   if (has_bias) {
     im2col_mm_program.AddInput({bias,
                                 ProgramTensorMetadataDependency::TypeAndRank});
@@ -155,7 +158,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                          {dilations},
                                          {pads},
                                          {strides}});
-  im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, use_subgroup);
+  im2col_mm_program.CacheHint(has_bias, tile_m, tile_n, vec_size, use_subgroup);
 
   return context.RunProgram(im2col_mm_program);
 }
@@ -181,12 +184,6 @@ bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
   const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(weight_shape[2]);
   const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(weight_shape[3]);
   if (kernel_height == 1 || kernel_width == 1) {
-    return false;
-  }
-
-  // TODO: Support channel input vec1
-  const uint32_t channel_input = onnxruntime::narrow<uint32_t>(weight_shape[1]);
-  if (channel_input % 4 != 0) {
     return false;
   }
 

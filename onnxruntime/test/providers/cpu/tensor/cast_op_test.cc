@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstring>
 #include <type_traits>
 
 #include "boost/mp11.hpp"
@@ -10,6 +11,9 @@
 #include "gtest/gtest.h"
 
 #include "core/framework/data_types_internal.h"
+#include "core/framework/int2.h"
+#include "core/framework/tensor.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -2632,7 +2636,8 @@ TEST(CastOpTest, Float8E4M3FNToInt2x4_OddShape) {
 template <typename F4>
 void CastOpTestFloatFloat4(std::vector<int64_t> shape,
                            std::vector<float> float_data,
-                           bool is_fp4_input = false) {
+                           bool is_fp4_input = false,
+                           int opset = 23) {
   int num_pairs = static_cast<int>(float_data.size()) / 2;
   int num_fp4_elements = static_cast<int>((float_data.size() + 1) / 2);
   bool is_odd_count = (float_data.size() % 2 != 0);
@@ -2650,7 +2655,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
 
   if (!is_fp4_input) {
     TestCastOp<float, F4>(gsl::make_span(float_data), gsl::make_span(fp4_data), shape,
-                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
+                          OpTester::ExpectResult::kExpectSuccess, "", opset, Saturate::None, true);
 
   } else {
     std::vector<float> casted_back_float;
@@ -2665,7 +2670,7 @@ void CastOpTestFloatFloat4(std::vector<int64_t> shape,
     }
 
     TestCastOp<F4, float>(gsl::make_span(fp4_data), gsl::make_span(casted_back_float), shape,
-                          OpTester::ExpectResult::kExpectSuccess, "", 23, Saturate::None, true);
+                          OpTester::ExpectResult::kExpectSuccess, "", opset, Saturate::None, true);
   }
 }
 
@@ -2729,7 +2734,398 @@ TEST(CastOpTest, Float4E2M1x2ToFloat) {
   }
 }
 
+// Opset 25 tests for Float4 types on CUDA
+TEST(CastOpTest, FloatToFloat4E2M1x2_Opset25) {
+  CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
+                                      {std::numeric_limits<float>::infinity(),
+                                       -std::numeric_limits<float>::infinity(),
+                                       7.f, -7.f,
+                                       0.5f, -0.5f,
+                                       std::numeric_limits<float>::quiet_NaN(),
+                                       -std::numeric_limits<float>::quiet_NaN()},
+                                      false, 25);
+
+  CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+                                      {0.256f, 0.987f, 43.8f},
+                                      false, 25);
+}
+
+TEST(CastOpTest, Float4E2M1x2ToFloat_Opset25) {
+  CastOpTestFloatFloat4<Float4E2M1x2>({2, 2, 2},
+                                      {0.5f, 7.34f,
+                                       1.f, 1.5f,
+                                       2.f, 3.f,
+                                       4.f, 6.f},
+                                      true, 25);
+
+  CastOpTestFloatFloat4<Float4E2M1x2>({1, 3, 1},
+                                      {0.256f, 0.987f, 43.8f},
+                                      true, 25);
+}
+
 #endif
+
+// Opset 25 tests for standard types on CUDA.
+// Verifies CUDA Cast kernel registration at opset 25 works for common type conversions.
+#if defined(USE_CUDA)
+
+TEST(CastOpTest, StandardTypes_Opset25_Cuda) {
+  const std::vector<int64_t> shape{2, 3};
+
+  // float -> double
+  {
+    const std::vector<float> input = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    const std::vector<double> expected = {1.0, 2.5, -3.0, 0.0, 100.0, -0.5};
+    TestCastOp<float, double>(gsl::make_span(input), gsl::make_span(expected), shape,
+                              OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // double -> float
+  {
+    const std::vector<double> input = {1.0, 2.5, -3.0, 0.0, 100.0, -0.5};
+    const std::vector<float> expected = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    TestCastOp<double, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                              OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // float -> int32_t
+  {
+    const std::vector<float> input = {1.0f, 2.9f, -3.0f, 0.0f, 100.0f, -0.5f};
+    const std::vector<int32_t> expected = {1, 2, -3, 0, 100, 0};
+    TestCastOp<float, int32_t>(gsl::make_span(input), gsl::make_span(expected), shape,
+                               OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // int32_t -> float
+  {
+    const std::vector<int32_t> input = {1, 2, -3, 0, 100, -7};
+    const std::vector<float> expected = {1.0f, 2.0f, -3.0f, 0.0f, 100.0f, -7.0f};
+    TestCastOp<int32_t, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                               OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // float -> MLFloat16
+  if (HasCudaEnvironment(530)) {
+    const std::vector<float> input = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    const std::vector<MLFloat16> expected = CastedValues<float, MLFloat16>(gsl::make_span(input));
+    TestCastOp<float, MLFloat16>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // MLFloat16 -> float
+  if (HasCudaEnvironment(530)) {
+    const std::vector<MLFloat16> input = CastedValues<float, MLFloat16>(
+        gsl::make_span(std::vector<float>{1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f}));
+    const std::vector<float> expected = {1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f};
+    TestCastOp<MLFloat16, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                 OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // BFloat16 -> float
+  if (HasCudaEnvironment(800)) {
+    const std::vector<BFloat16> input = CastedValues<float, BFloat16>(
+        gsl::make_span(std::vector<float>{1.0f, 2.5f, -3.0f, 0.0f, 100.0f, -0.5f}));
+    const std::vector<float> expected = CastedValues<BFloat16, float>(gsl::make_span(input));
+    TestCastOp<BFloat16, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // bool -> float
+  {
+    const bool input[] = {true, false, true, true, false, false};
+    const gsl::span<const bool> input_span(input);
+    const std::vector<float> expected = {1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f};
+    TestCastOp<bool, float>(input_span, gsl::make_span(expected), shape,
+                            OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+}
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+TEST(CastOpTest, Float8_Opset25_Cuda) {
+  constexpr int min_cuda_architecture = 11080;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    return;
+  }
+
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<float> float_input = {NAN, -1.f, 0.0391877927f, 0.296140194f,
+                                          -0.120196559f, 5.0f,
+                                          -std::numeric_limits<float>::infinity(),
+                                          std::numeric_limits<float>::infinity()};
+
+  // Float8E4M3FN: float -> Float8E4M3FN at opset 25
+  {
+    std::vector<Float8E4M3FN> output;
+    output.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      output.emplace_back(Float8E4M3FN(float_input[i], true));
+    }
+    TestCastOp<float, Float8E4M3FN>(gsl::make_span(float_input), gsl::make_span(output), shape,
+                                    OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::True, /*cuda_only=*/true);
+  }
+
+  // Float8E5M2: float -> Float8E5M2 at opset 25
+  {
+    std::vector<Float8E5M2> output;
+    output.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      output.emplace_back(Float8E5M2(float_input[i], true));
+    }
+    TestCastOp<float, Float8E5M2>(gsl::make_span(float_input), gsl::make_span(output), shape,
+                                  OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::True, /*cuda_only=*/true);
+  }
+
+  // Float8E4M3FN -> float at opset 25
+  {
+    std::vector<Float8E4M3FN> input;
+    input.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      input.emplace_back(Float8E4M3FN(float_input[i], true));
+    }
+    std::vector<float> expected;
+    expected.reserve(input.size());
+    for (const auto& v : input) {
+      expected.push_back(v.ToFloat());
+    }
+    TestCastOp<Float8E4M3FN, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                    OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+
+  // Float8E5M2 -> float at opset 25
+  {
+    std::vector<Float8E5M2> input;
+    input.reserve(float_input.size());
+    for (size_t i = 0; i < float_input.size(); ++i) {
+      input.emplace_back(Float8E5M2(float_input[i], true));
+    }
+    std::vector<float> expected;
+    expected.reserve(input.size());
+    for (const auto& v : input) {
+      expected.push_back(v.ToFloat());
+    }
+    TestCastOp<Float8E5M2, float>(gsl::make_span(input), gsl::make_span(expected), shape,
+                                  OpTester::ExpectResult::kExpectSuccess, "", 25, Saturate::None, /*cuda_only=*/true);
+  }
+}
+
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+#endif  // defined(USE_CUDA)
+
+// Regression tests for sub-byte same-type cast (CopyCpuTensor heap overflow fix).
+// When src and dst types are the same, Cast::Compute calls CopyCpuTensor which must
+// use SizeInBytes() (not shape.Size() * DataType()->Size()) for the memcpy byte count.
+
+TEST(CastOpTest, Int4x2ToInt4x2_SameType) {
+  const std::vector<int64_t> shape{3, 3};  // 9 elements (odd, tests ceil-division)
+  const std::vector<Int4x2> input = {
+      Int4x2(-8, 7),
+      Int4x2(0, -1),
+      Int4x2(3, -5),
+      Int4x2(6, 2),
+      Int4x2(1, 0)  // 9th element in low nibble of 5th byte (padding in high nibble)
+  };
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, UInt4x2ToUInt4x2_SameType) {
+  const std::vector<int64_t> shape{2, 5};  // 10 elements (even)
+  const std::vector<UInt4x2> input = {
+      UInt4x2(0, 15),
+      UInt4x2(1, 14),
+      UInt4x2(7, 8),
+      UInt4x2(3, 6),
+      UInt4x2(9, 11)};
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, Int4x2ToInt4x2_LargeShape) {
+  // Large shape (16464 elements)
+  const std::vector<int64_t> shape{28, 6, 14, 7};
+  const int64_t num_elements = 28 * 6 * 14 * 7;  // 16464
+  const size_t num_storage = static_cast<size_t>((num_elements + 1) / 2);
+
+  std::vector<Int4x2> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = Int4x2(static_cast<int8_t>(i % 8), static_cast<int8_t>(-(static_cast<int8_t>(i % 7))));
+  }
+  const auto& input = input_vec;
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, Int2x4ToInt2x4_SameType) {
+  const std::vector<int64_t> shape{5};  // 5 elements (not multiple of 4, tests ceil-division)
+  const std::vector<Int2x4> input = {
+      Int2x4(-2, 1, 0, -1),
+      Int2x4(1, 0, 0, 0)  // 5th element in first position (padding in positions 2-4)
+  };
+
+  TestCastOpInt2(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, UInt4x2ToUInt4x2_LargeShape) {
+  const std::vector<int64_t> shape{28, 6, 14, 7};
+  const int64_t num_elements = 28 * 6 * 14 * 7;  // 16464
+  const size_t num_storage = static_cast<size_t>((num_elements + 1) / 2);
+
+  std::vector<UInt4x2> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = UInt4x2(static_cast<uint8_t>(i % 16), static_cast<uint8_t>((i + 3) % 16));
+  }
+  const auto& input = input_vec;
+
+  TestCastOp(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, Int2x4ToInt2x4_LargeShape) {
+  const std::vector<int64_t> shape{100, 100};  // 10000 elements (not multiple of 4)
+  const int64_t num_elements = 100 * 100;
+  const size_t num_storage = static_cast<size_t>((num_elements + 3) / 4);
+
+  std::vector<Int2x4> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = Int2x4(static_cast<int8_t>(i % 2), static_cast<int8_t>(-(static_cast<int8_t>(i % 2))),
+                          static_cast<int8_t>((i + 1) % 2), static_cast<int8_t>(0));
+  }
+  const auto& input = input_vec;
+
+  TestCastOpInt2(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+TEST(CastOpTest, UInt2x4ToUInt2x4_LargeShape) {
+  const std::vector<int64_t> shape{100, 101};  // 10100 elements (not multiple of 4)
+  const int64_t num_elements = 100 * 101;
+  const size_t num_storage = static_cast<size_t>((num_elements + 3) / 4);
+
+  std::vector<UInt2x4> input_vec(num_storage);
+  for (size_t i = 0; i < num_storage; ++i) {
+    input_vec[i] = UInt2x4(static_cast<uint8_t>(i % 4), static_cast<uint8_t>((i + 1) % 4),
+                           static_cast<uint8_t>((i + 2) % 4), static_cast<uint8_t>((i + 3) % 4));
+  }
+  const auto& input = input_vec;
+
+  TestCastOpInt2(gsl::make_span(input), gsl::make_span(input), shape);
+}
+
+// Direct CopyCpuTensor test with guaranteed distinct buffers to exercise the memcpy path.
+// This bypasses the MayInplace optimization that can alias input/output in OpTester.
+// Uses guard bytes after the valid buffer region to detect overflow deterministically
+// without relying on ASan; the pre-fix code would overwrite these sentinel bytes.
+TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
+  constexpr uint8_t kGuardByte = 0xCD;
+  constexpr size_t kGuardSize = 64;
+
+  // Helper: allocate a buffer of `valid_bytes` + guard region, fill guard with sentinel,
+  // then construct a non-owning Tensor over the valid portion.
+  auto make_guarded_tensor = [&](MLDataType dtype, const TensorShape& shape,
+                                 size_t valid_bytes, std::vector<uint8_t>& backing) {
+    backing.resize(valid_bytes + kGuardSize);
+    std::memset(backing.data() + valid_bytes, kGuardByte, kGuardSize);
+    return Tensor(dtype, shape, backing.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  };
+
+  auto check_guard = [&](const std::vector<uint8_t>& backing, size_t valid_bytes,
+                         const char* label) {
+    for (size_t i = 0; i < kGuardSize; ++i) {
+      EXPECT_EQ(backing[valid_bytes + i], kGuardByte)
+          << label << ": guard byte at offset " << i << " was overwritten (heap overflow detected)";
+    }
+  };
+
+  // Test Int4x2 with odd element count (ceil-division edge case)
+  {
+    const int64_t num_logical_elements = 17;  // odd: requires ceil(17/2) = 9 storage bytes
+    TensorShape shape({num_logical_elements});
+    auto int4_type = DataTypeImpl::GetType<Int4x2>();
+    constexpr size_t expected_bytes = 9;
+
+    std::vector<uint8_t> src_backing, dst_backing;
+    Tensor src = make_guarded_tensor(int4_type, shape, expected_bytes, src_backing);
+    Tensor dst = make_guarded_tensor(int4_type, shape, expected_bytes, dst_backing);
+
+    ASSERT_EQ(src.SizeInBytes(), expected_bytes);
+
+    // Fill source with known pattern
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      src_backing[i] = static_cast<uint8_t>(0xA0 + i);
+    }
+    // Fill destination valid region with different pattern
+    std::memset(dst_backing.data(), 0xFF, expected_bytes);
+
+    ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
+
+    CopyCpuTensor(&src, &dst);
+
+    // Verify copy correctness
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      EXPECT_EQ(dst_backing[i], src_backing[i]) << "Int4x2: mismatch at byte " << i;
+    }
+    // Verify no overflow past the valid region
+    check_guard(src_backing, expected_bytes, "Int4x2 src");
+    check_guard(dst_backing, expected_bytes, "Int4x2 dst");
+  }
+
+  // Test UInt4x2 with large even element count (matches PoC shape)
+  {
+    const int64_t num_logical_elements = 16464;  // from PoC: ceil(16464/2) = 8232 bytes
+    TensorShape shape({num_logical_elements});
+    auto uint4_type = DataTypeImpl::GetType<UInt4x2>();
+    constexpr size_t expected_bytes = 8232;
+
+    std::vector<uint8_t> src_backing, dst_backing;
+    Tensor src = make_guarded_tensor(uint4_type, shape, expected_bytes, src_backing);
+    Tensor dst = make_guarded_tensor(uint4_type, shape, expected_bytes, dst_backing);
+
+    ASSERT_EQ(src.SizeInBytes(), expected_bytes);
+
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      src_backing[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+    std::memset(dst_backing.data(), 0xFF, expected_bytes);
+
+    ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
+
+    CopyCpuTensor(&src, &dst);
+
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      EXPECT_EQ(dst_backing[i], src_backing[i]) << "UInt4x2: mismatch at byte " << i;
+    }
+    check_guard(src_backing, expected_bytes, "UInt4x2 src");
+    check_guard(dst_backing, expected_bytes, "UInt4x2 dst");
+  }
+
+  // Test Int2x4 (4 elements per byte — would be 4x overflow with old code)
+  {
+    const int64_t num_logical_elements = 7;  // ceil(7/4) = 2 storage bytes
+    TensorShape shape({num_logical_elements});
+    auto int2_type = DataTypeImpl::GetType<Int2x4>();
+    constexpr size_t expected_bytes = 2;
+
+    std::vector<uint8_t> src_backing, dst_backing;
+    Tensor src = make_guarded_tensor(int2_type, shape, expected_bytes, src_backing);
+    Tensor dst = make_guarded_tensor(int2_type, shape, expected_bytes, dst_backing);
+
+    ASSERT_EQ(src.SizeInBytes(), expected_bytes);
+
+    src_backing[0] = 0xAB;
+    src_backing[1] = 0xCD;
+    std::memset(dst_backing.data(), 0xFF, expected_bytes);
+
+    ASSERT_NE(src.DataRaw(), dst.MutableDataRaw());
+
+    CopyCpuTensor(&src, &dst);
+
+    for (size_t i = 0; i < expected_bytes; ++i) {
+      EXPECT_EQ(dst_backing[i], src_backing[i]) << "Int2x4: mismatch at byte " << i;
+    }
+    check_guard(src_backing, expected_bytes, "Int2x4 src");
+    check_guard(dst_backing, expected_bytes, "Int2x4 dst");
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime

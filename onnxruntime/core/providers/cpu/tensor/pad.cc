@@ -495,9 +495,8 @@ static Status PadImpl(OpKernelContext* ctx,
   }
 
   // Special case for Reflect mode: ensure all extents >= 2 after slicing
-  // otherwise reflection is not possible. Matches numpy behavior as ONNX only
-  // implies that this would be wrong as the start and end positions should be distinct
-  // values and with 0 there is not one, and with 1 reflection degenerates into ambiguity.
+  // otherwise reflection is not possible. Also validate that pads do not
+  // exceed extent - 1 on each side, as required by the ONNX spec.
   if (mode == Mode::Reflect) {
     for (size_t i = 0; i < new_dims_count; ++i) {
       const int64_t extent = effective_input_extents[i];  // length after slicing
@@ -507,6 +506,19 @@ static Status PadImpl(OpKernelContext* ctx,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Pad reflect requires axis length >= 2 after slicing. Input shape:",
                                orig_input_shape);
+      }
+      // ONNX spec: reflect pads must not exceed extent - 1 on each side
+      if (reshaped_pad[i] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: pre-pad (", reshaped_pad[i],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", orig_input_shape);
+      }
+      if (reshaped_pad[i + new_dims_count] > extent - 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pad reflect: post-pad (", reshaped_pad[i + new_dims_count],
+                               ") exceeds maximum allowed (", extent - 1,
+                               ") for axis ", i, ". Input shape:", orig_input_shape);
       }
     }
   }

@@ -20,7 +20,7 @@ parameters:
   IsReleaseBuild: false
 stages:
 - stage: ${{ parameters.StageName }}
-  dependsOn: Setup
+  dependsOn: []
   jobs:
   - job: ${{ parameters.StageName }}
     timeoutInMinutes: 200
@@ -39,8 +39,6 @@ stages:
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
-      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
-      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
       ${{ if eq(parameters.EnableLto, true) }}:
         build_py_lto_flag: --enable_lto
 

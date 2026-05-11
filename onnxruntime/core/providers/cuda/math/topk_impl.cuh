@@ -16,6 +16,18 @@ namespace cuda {
 
 using namespace cub;
 
+// CUB's radix sort requires types it natively recognizes (float, double, __half, __nv_bfloat16).
+// ORT's BFloat16 wrapper is bitwise compatible with __nv_bfloat16, so map it for CUB sort operations.
+template <typename T>
+struct CubSortType {
+  using type = T;
+};
+
+template <>
+struct CubSortType<BFloat16> {
+  using type = __nv_bfloat16;
+};
+
 template <typename T>
 struct KV {
   T key;
@@ -170,6 +182,16 @@ __device__ __forceinline__ bool SamePrefix(const half* f0, const half* f1, int64
   return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
 }
 
+__device__ __forceinline__ bool SamePrefix(const BFloat16* f0, const BFloat16* f1, int64_t skip) {
+  return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
+}
+
+#ifdef __CUDACC__
+__device__ __forceinline__ bool SamePrefix(const nv_bfloat16* f0, const nv_bfloat16* f1, int64_t skip) {
+  return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
+}
+#endif
+
 __device__ __forceinline__ bool SamePrefix(const float* f0, const float* f1, int64_t skip) {
   return SamePrefix((const int32_t*)f0, (const int32_t*)f1, skip);
 }
@@ -187,6 +209,16 @@ __device__ __forceinline__ int32_t Radix(const half* f, int64_t skip) {
   return Radix((const int16_t*)f, skip);
 }
 
+__device__ __forceinline__ int32_t Radix(const BFloat16* f, int64_t skip) {
+  return Radix((const int16_t*)f, skip);
+}
+
+#ifdef __CUDACC__
+__device__ __forceinline__ int32_t Radix(const nv_bfloat16* f, int64_t skip) {
+  return Radix((const int16_t*)f, skip);
+}
+#endif
+
 __device__ __forceinline__ int32_t Radix(const float* f, int64_t skip) {
   return Radix((const int32_t*)f, skip);
 }
@@ -203,6 +235,16 @@ __device__ void SetByte(T* t, int64_t byte) {
 __device__ __forceinline__ void SetByte(half* f, int64_t byte) {
   SetByte((int16_t*)f, byte);
 }
+
+__device__ __forceinline__ void SetByte(BFloat16* f, int64_t byte) {
+  SetByte((int16_t*)f, byte);
+}
+
+#ifdef __CUDACC__
+__device__ __forceinline__ void SetByte(nv_bfloat16* f, int64_t byte) {
+  SetByte((int16_t*)f, byte);
+}
+#endif
 
 __device__ __forceinline__ void SetByte(float* f, int64_t byte) {
   SetByte((int32_t*)f, byte);
@@ -224,11 +266,12 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
   T Kth = (T)0, sign = (T)1;
   typedef BlockScan<uint32_t, THREADS> BlockScan;
   typedef BlockReduce<uint32_t, THREADS> BlockReduce;
-  typedef BlockRadixSort<T, THREADS, KPT, int64_t> BlockRadixSort;
+  using CubT = typename CubSortType<T>::type;
+  typedef cub::BlockRadixSort<CubT, THREADS, KPT, int64_t> CubBlockRadixSort;
   __shared__ union {
     typename BlockScan::TempStorage scan;
     typename BlockReduce::TempStorage reduce;
-    typename BlockRadixSort::TempStorage sort;
+    typename CubBlockRadixSort::TempStorage sort;
   } temp_storage;
   uint32_t positive = 0, negative = 0;
   for (int64_t x_i = tid; x_i < dimension; x_i += blockDim.x) {
@@ -330,26 +373,26 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
   }
   __syncthreads();
   if (1 == sorted) {
-    T keys[KPT];
+    CubT keys[KPT];
     int64_t vals[KPT];
     for (int64_t k_i = tid, k_c = 0; k_c < KPT; k_i += blockDim.x, ++k_c) {
       if (k_i < K) {
         auto to_i = TO(k_i);
-        keys[k_c] = V[to_i];
+        memcpy(&keys[k_c], &V[to_i], sizeof(CubT));
         vals[k_c] = I[to_i];
       } else {
         if (1 == largest) {
-          keys[k_c] = type_min;
+          memcpy(&keys[k_c], &type_min, sizeof(CubT));
         } else {
-          keys[k_c] = type_max;
+          memcpy(&keys[k_c], &type_max, sizeof(CubT));
         }
       }
     }
     __syncthreads();
     if (1 == largest) {
-      BlockRadixSort(temp_storage.sort).SortDescending(keys, vals);
+      CubBlockRadixSort(temp_storage.sort).SortDescending(keys, vals);
     } else {
-      BlockRadixSort(temp_storage.sort).Sort(keys, vals);
+      CubBlockRadixSort(temp_storage.sort).Sort(keys, vals);
     }
     __syncthreads();
 #pragma unroll
@@ -357,7 +400,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
       auto k_i = tid * KPT + k_c;
       if (k_i < K) {
         auto to_i = TO(k_i);
-        V[to_i] = keys[k_c];
+        memcpy(&V[to_i], &keys[k_c], sizeof(CubT));
         I[to_i] = vals[k_c];
       }
     }
@@ -395,13 +438,13 @@ __global__ void ExcludeOutput(T* output_i, T K, T dimension) {
 
 template <typename T>
 Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
-                Stream* ort_stream, const T* input_x, T* output_v, int64_t* output_i,
+                cudaStream_t stream, void* alloc_stream, const T* input_x, T* output_v, int64_t* output_i,
                 const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest,
                 int64_t sorted, int64_t N, int64_t dimension) {
   typedef typename ToCudaType<T>::MappedType CudaT;
+  using CubT = typename CubSortType<CudaT>::type;
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
-  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
@@ -436,29 +479,32 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
           NumericLimits<CudaT>::Lowest(), NumericLimits<CudaT>::Max());
     }
   } else {
-    auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, ort_stream);
-    auto output_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, ort_stream);
-    auto input_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension, ort_stream);
-    auto output_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension, ort_stream);
+    auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, alloc_stream);
+    auto output_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, alloc_stream);
+    auto input_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension, alloc_stream);
+    auto output_value_buffer = kernel->GetScratchBuffer<int64_t>(dimension, alloc_stream);
     auto* input_key = input_key_buffer.get();
     auto* output_key = output_key_buffer.get();
     auto* input_value = input_value_buffer.get();
     auto* output_value = output_value_buffer.get();
+    // CUB sort requires native CUDA types; cast through CubSortType for BFloat16 → __nv_bfloat16 mapping.
+    auto* input_key_cub = reinterpret_cast<CubT*>(input_key);
+    auto* output_key_cub = reinterpret_cast<CubT*>(output_key);
     size_t temp_bytes = 0;
-    CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(nullptr, temp_bytes, input_key, output_key, input_value, output_value, dimension, 0, sizeof(T) * 8, stream));
-    auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes, ort_stream);
+    CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(nullptr, temp_bytes, input_key_cub, output_key_cub, input_value, output_value, dimension, 0, sizeof(CubT) * 8, stream));
+    auto temp_storage_buffer = kernel->GetScratchBuffer<char>(temp_bytes, alloc_stream);
     auto* temp_storage = temp_storage_buffer.get();
     auto blocks_per_grid_D = (int)(ceil(static_cast<float>(dimension) / BT));
     auto blocks_per_grid_K = (int)(ceil(static_cast<float>(K) / BT));
     for (int64_t i = 0; i < N; i++) {
       FillInput<CudaT><<<blocks_per_grid_D, BT, 0, stream>>>(input_x_ptr, input_key, input_value, elem_nums, size, axis, K, i, dimension);
-      CUDA_RETURN_IF_ERROR(1 == largest ? cub::DeviceRadixSort::SortPairsDescending(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension, 0, sizeof(T) * 8, stream)
-                                        : cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension, 0, sizeof(T) * 8, stream));
+      CUDA_RETURN_IF_ERROR(1 == largest ? cub::DeviceRadixSort::SortPairsDescending(temp_storage, temp_bytes, input_key_cub, output_key_cub, input_value, output_value, dimension, 0, sizeof(CubT) * 8, stream)
+                                        : cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, input_key_cub, output_key_cub, input_value, output_value, dimension, 0, sizeof(CubT) * 8, stream));
       if (1 == sorted) {
         FillOutput<CudaT><<<blocks_per_grid_K, BT, 0, stream>>>(output_key, output_value, output_v_ptr, output_i, elem_nums, size, axis, K, i, dimension);
       } else {  // reorder by ascending index
         ExcludeOutput<int64_t><<<blocks_per_grid_D, BT, 0, stream>>>(output_value, K, dimension);
-        CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, output_value, input_value, output_key, input_key, dimension, 0, sizeof(T) * 8, stream));
+        CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, output_value, input_value, output_key_cub, input_key_cub, dimension, 0, sizeof(CubT) * 8, stream));
         FillOutput<CudaT><<<blocks_per_grid_K, BT, 0, stream>>>(input_key, input_value, output_v_ptr, output_i, elem_nums, size, axis, K, i, dimension);
       }
     }
@@ -468,7 +514,8 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const CudaKernel* kernel,         \
                                                  bool use_deterministic_compute,   \
-                                                 Stream* ort_stream,               \
+                                                 cudaStream_t stream,              \
+                                                 void* alloc_stream,               \
                                                  const T* input_x,                 \
                                                  T* output_v,                      \
                                                  int64_t* output_i,                \

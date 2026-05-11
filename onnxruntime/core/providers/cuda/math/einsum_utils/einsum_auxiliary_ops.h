@@ -23,10 +23,12 @@ struct EinsumCudaAssets {
   explicit EinsumCudaAssets(Stream* ort_stream,
                             const cudaDeviceProp& device_prop,
                             cublasHandle_t cublas_handle,
+                            cudnnHandle_t cudnn_handle,
                             AllocatorPtr gpu_allocator,
                             bool use_tf32) : ort_stream_(ort_stream),
                                              device_prop_(&device_prop),
                                              cublas_handle_(cublas_handle),
+                                             cudnn_handle_(cudnn_handle),
                                              gpu_allocator_(gpu_allocator),
                                              use_tf32_(use_tf32) {}
 
@@ -37,6 +39,7 @@ struct EinsumCudaAssets {
   Stream* ort_stream_;
   const cudaDeviceProp* device_prop_;
   cublasHandle_t cublas_handle_;
+  cudnnHandle_t cudnn_handle_;
   AllocatorPtr gpu_allocator_;
   bool use_tf32_;
 };

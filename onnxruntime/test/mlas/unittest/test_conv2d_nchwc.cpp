@@ -29,15 +29,15 @@ static size_t Conv2dNchwcRegistShortExecute() {
   size_t count = 0;
 
   if (MlasNchwcGetBlockSize() > 1) {
-    count += Conv2dShortExecuteTest<MlasNchwcConv2DTest<false>>::RegisterShortExecuteTests();
+    count += Conv2dShortExecuteTest<MlasNchwcConv2DTest<false>>::RegisterShortExecuteTests(false);
     if (GetMlasThreadPool() != nullptr) {
-      count += Conv2dShortExecuteTest<MlasNchwcConv2DTest<true>>::RegisterShortExecuteTests();
+      count += Conv2dShortExecuteTest<MlasNchwcConv2DTest<true>>::RegisterShortExecuteTests(false);
     }
 #if defined(__aarch64__) && defined(__linux__)
     if (MlasBf16AccelerationSupported()) {
-      count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<false>>::RegisterShortExecuteTests();
+      count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<false>>::RegisterShortExecuteTests(false);
       if (GetMlasThreadPool() != nullptr) {
-        count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<true>>::RegisterShortExecuteTests();
+        count += Conv2dShortExecuteTest<MlasNchwcConv2DBf16Test<true>>::RegisterShortExecuteTests(false);
       }
     }
 #endif

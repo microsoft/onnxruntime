@@ -47,8 +47,12 @@ Status FuncReshape(
   void* dst_data = Y->MutableDataRaw();
   // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
   if (src_data != dst_data) {
-    ORT_ENFORCE(ctx->GetComputeStream());
-    ORT_RETURN_IF_ERROR(cuda_kernel->CopyTensor(*X, *Y, *ctx->GetComputeStream()));
+    ORT_ENFORCE(cuda_kernel->GetComputeStream(ctx));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data,
+                                         src_data,
+                                         X->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice,
+                                         cuda_kernel->Stream(ctx)));
   }
 
   return Status::OK();
@@ -85,7 +89,19 @@ std::unique_ptr<Tensor> FuncReshape(
 ONNX_OPERATOR_KERNEL_EX(
     Reshape,
     kOnnxDomain,
-    23,
+    25,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesIRv9())
+        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
+        .Alias(0, 0)
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
+    Reshape);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Reshape,
+    kOnnxDomain,
+    23, 24,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypesIRv9())

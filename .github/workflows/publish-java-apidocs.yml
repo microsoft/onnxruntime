@@ -1,10 +1,15 @@
 name: Update Java API Docs
 
-# Run when the Java API changes or every month so that the artifact does not expire
+# Run when the Java API changes or every week so that the artifact does not expire.
+# Also runs on pull requests that touch relevant files so doc generation errors
+# are caught early. The artifact is only published on the main branch.
 on:
   push:
     branches:
       - main
+    paths:
+      - java/**
+  pull_request:
     paths:
       - java/**
   schedule:
@@ -12,8 +17,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: "apidocs-java"
-  cancel-in-progress: false
+  group: "apidocs-java-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
@@ -47,6 +52,7 @@ jobs:
           mkdir -p _site/docs/api
           mv java/build/docs/javadoc _site/docs/api/java
       - name: Upload new site
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v6
         with:
           name: onnxruntime-java-apidocs
