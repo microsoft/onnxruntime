@@ -216,6 +216,5 @@ TEST(OrtEpLibrary, LoadUnloadPluginVirtGpuLibraryCxxApi) {
   EXPECT_NO_FATAL_FAILURE(run_test());
   ortenv_setup();  // Restore OrtEnv
 }
-
 }  // namespace test
 }  // namespace onnxruntime

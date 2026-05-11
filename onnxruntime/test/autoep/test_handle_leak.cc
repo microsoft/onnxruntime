@@ -42,7 +42,7 @@ bool IsLibraryLoaded(const std::filesystem::path& library_path) {
 
 // Verify that registering and unregistering a plugin EP library does not leak the library handle.
 //
-// ProviderLibrary::Load() loads the library then probes for the "GetProvider" symbol. Plugin EP
+// ProviderLibrary::Load() loads the library then probes for the "GetProvider" symbol. Most plugin EP
 // libraries do not export "GetProvider", so the probe fails. Without the fix (PR #28396),
 // Load() returned the error without calling Unload(), leaving a leaked refcount. After
 // UnregisterExecutionProviderLibrary released only the EpLibraryPlugin's reference, the library
