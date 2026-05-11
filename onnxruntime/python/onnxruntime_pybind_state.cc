@@ -232,6 +232,10 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
 // pointer so that set_default_logger_callback can reach it.
 static PythonCallbackSink* g_python_callback_sink = nullptr;
 
+// Creates a PythonCallbackSink wrapping the given platform_sink and stores a non-owning
+// pointer to it in g_python_callback_sink so that set_default_logger_callback() can update
+// the Python callable later.  ("Register" here refers to storing that pointer for future
+// updates, not to any logging-system registration.)
 std::unique_ptr<onnxruntime::logging::ISink> CreateAndRegisterPythonCallbackSink(
     std::unique_ptr<onnxruntime::logging::ISink> platform_sink) {
   auto sink = std::make_unique<PythonCallbackSink>(std::move(platform_sink));
