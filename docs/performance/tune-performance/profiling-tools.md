@@ -48,7 +48,6 @@ Ort::Session inference_session(env, model_path, session_options);
 // It takes a pointer to an allocator and uses the allocator to allocate the memory for the copy of the string returned.
 auto profile_file_location = inference_session.EndProfilingAllocated(allocator);
 printf("Profiling data saved to %s\n", profile_file_location.get());
-
 ```
 
 If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
