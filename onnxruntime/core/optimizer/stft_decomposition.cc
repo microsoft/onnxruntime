@@ -11,6 +11,7 @@
 #include "core/optimizer/utils.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
+#include <numbers>
 
 using namespace onnxruntime::common;
 
@@ -234,7 +235,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       for (size_t k = 0; k < static_cast<size_t>(dft_unique_bins); k++) {
         for (size_t n = 0; n < static_cast<size_t>(dft_size); n++) {
           auto index = static_cast<size_t>(k * dft_size + n);
-          auto theta = -2 * M_PI * k * n / static_cast<float>(dft_size);
+          auto theta = -2 * std::numbers::pi_v<float> * k * n / static_cast<float>(dft_size);
           real_weights_data[index] = static_cast<float>(cos(theta));
           imag_weights_data[index] = static_cast<float>(sin(theta));
         }

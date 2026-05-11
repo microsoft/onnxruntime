@@ -7,6 +7,7 @@
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
+#include <numbers>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -82,7 +83,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     // Some Bert model uses this approximation of SQRT2 in the Gelu function
     float approximated_sqrt_two = 1.4142099618911743f;
     if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), approximated_sqrt_two, true) &&
-        !optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), static_cast<float>(M_SQRT2), true)) {
+        !optimizer_utils::IsInitializerWithExpectedValue(graph, *(div.InputDefs()[1]), std::numbers::sqrt2_v<float>, true)) {
       continue;
     }
 
