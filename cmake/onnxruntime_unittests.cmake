@@ -2227,6 +2227,9 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   #
   file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
                                         "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
+  # test_handle_leak.cc is built in a separate binary (onnxruntime_autoep_handle_leak_test) to
+  # guarantee the plugin EP library starts fully unloaded. Exclude it from the main test binary.
+  list(REMOVE_ITEM onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/test_handle_leak.cc")
 
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
                                    onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
