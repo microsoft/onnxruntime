@@ -249,7 +249,7 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   Tensor* Y = context.Output(0, output_shape);
 
   std::vector<uint32_t> kernel_strides(kernel_shape.size());
-  ORT_ENFORCE(kernel_shape.size() > 0, "kernel_shape must have at least one element.");
+  ORT_ENFORCE(!kernel_shape.empty(), "kernel_shape must have at least one element.");
   // Calculate the kernel element strides for each dimension in reverse order. For example:
   //   kernel_shape = [3, 2], kernel_strides = [2, 1]
   //   kernel_shape = [2, 3, 2], kernel_strides = [6, 2, 1]

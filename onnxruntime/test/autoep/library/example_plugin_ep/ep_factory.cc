@@ -484,10 +484,27 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
   // Check ORT API version if present
   if (ort_version_pos != std::string::npos) {
     size_t ort_version_start = ort_version_pos + 16;  // length of "ort_api_version="
-    std::string ort_version = info.substr(ort_version_start);
+    size_t ort_version_end = info.find(';', ort_version_start);
+    std::string ort_version = (ort_version_end != std::string::npos)
+                                  ? info.substr(ort_version_start, ort_version_end - ort_version_start)
+                                  : info.substr(ort_version_start);
     std::string current_ort_version = std::to_string(ORT_API_VERSION);
     if (ort_version != current_ort_version) {
       // Different ORT version - might still work but prefer recompilation
+      *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+      return nullptr;
+    }
+  }
+
+  // Check hardware architecture compatibility if that information is included in the compatibility_info string.
+  size_t hardware_arch_pos = info.find("hardware_architecture=");
+  if (hardware_arch_pos != std::string::npos) {
+    size_t hardware_arch_start = hardware_arch_pos + 22;  // length of "hardware_architecture="
+    std::string hardware_arch = info.substr(hardware_arch_start);
+    std::string current_hardware_arch = "arch1";  // "arch1" is for test purpose.
+                                                  // Replace with actual hardware architecture detection if needed
+    if (hardware_arch != current_hardware_arch) {
+      // Different hardware architecture - might still work but prefer recompilation
       *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
       return nullptr;
     }

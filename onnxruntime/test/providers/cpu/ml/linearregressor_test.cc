@@ -72,6 +72,19 @@ TEST_P(LinearRegressorTest, LinearRegressorUniTarget) {
   test.Run();
 }
 
+TEST(MLOpTest, LinearRegressorInvalidCoefficientsSize) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f, 0.f});
+  test.AddAttribute("targets", static_cast<int64_t>(2));
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("Y", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients length");
+}
+
 // For PROBIT, all the output values are NaN.
 INSTANTIATE_TEST_SUITE_P(
     LinearRegressorTest, LinearRegressorTest,
@@ -85,5 +98,45 @@ INSTANTIATE_TEST_SUITE_P(
                     LinearRegressorParam("SOFTMAX_ZERO", {3.442477e-14f, 1.f, 1.670142e-05f, 1.f, 1.0f, 0.f}, 2)
 
                         ));
+
+TEST(MLOpTest, LinearRegressorUndersizedCoefficients) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f});  // needs 2
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "LinearRegressor: coefficients length (1) must be at least targets (1) * features (2)");
+}
+
+TEST(MLOpTest, LinearRegressorExtraCoefficientsAreIgnored) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f, 99.f, 100.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 2}, {3.f, 4.f});
+  test.AddOutput<float>("Y", {1, 1}, {11.f});
+
+  test.Run();
+}
+
+TEST(MLOpTest, LinearRegressorInvalidTargets) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(0));
+  test.AddAttribute("coefficients", std::vector<float>{1.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 1}, {1.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "targets must be in range [1,");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

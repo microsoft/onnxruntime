@@ -3,11 +3,85 @@
 
 #pragma once
 
+#include <cstring>
+
 #include "test_util.h"
+
+#if defined(MLAS_TARGET_AMD64)
+#include "core/mlas/lib/mlasi.h"
+#endif
 
 template <bool Threaded>
 class MlasConv2DTest : public MlasTestBase {
  protected:
+  void MlasConv2DWithOptions(size_t BatchCount,
+                             size_t GroupCount,
+                             size_t InputChannels,
+                             size_t InputHeight,
+                             size_t InputWidth,
+                             size_t FilterCount,
+                             size_t KernelHeight,
+                             size_t KernelWidth,
+                             size_t PaddingLeftHeight,
+                             size_t PaddingLeftWidth,
+                             size_t PaddingRightHeight,
+                             size_t PaddingRightWidth,
+                             size_t DilationHeight,
+                             size_t DilationWidth,
+                             size_t StrideHeight,
+                             size_t StrideWidth,
+                             size_t OutputHeight,
+                             size_t OutputWidth,
+                             const float* Input,
+                             const float* Filter,
+                             const float* Bias,
+                             const MLAS_ACTIVATION& Activation,
+                             float Beta,
+                             const float* InitialOutput,
+                             float* Output) {
+    int64_t InputShape[] = {int64_t(InputHeight), int64_t(InputWidth)};
+    int64_t KernelShape[] = {int64_t(KernelHeight), int64_t(KernelWidth)};
+    int64_t DilationShape[] = {int64_t(DilationHeight), int64_t(DilationWidth)};
+    int64_t Padding[] = {int64_t(PaddingLeftHeight), int64_t(PaddingLeftWidth), int64_t(PaddingRightHeight), int64_t(PaddingRightWidth)};
+    int64_t StrideShape[] = {int64_t(StrideHeight), int64_t(StrideWidth)};
+    int64_t OutputShape[] = {int64_t(OutputHeight), int64_t(OutputWidth)};
+
+    const size_t OutputElements = BatchCount * GroupCount * FilterCount * OutputHeight * OutputWidth;
+    if (InitialOutput != nullptr) {
+      std::memcpy(Output, InitialOutput, OutputElements * sizeof(float));
+    } else {
+      std::fill_n(Output, OutputElements, 0.0f);
+    }
+
+    MLAS_CONV_PARAMETERS Parameters;
+    size_t WorkingBufferSize;
+
+    MlasConvPrepare(&Parameters,
+                    2,
+                    BatchCount,
+                    GroupCount,
+                    InputChannels,
+                    InputShape,
+                    KernelShape,
+                    DilationShape,
+                    Padding,
+                    StrideShape,
+                    OutputShape,
+                    FilterCount,
+                    &Activation,
+                    &WorkingBufferSize,
+                    Beta,
+                    threadpool_);
+
+    MlasConv(&Parameters,
+             Input,
+             Filter,
+             Bias,
+             BufferWorking.GetBuffer(WorkingBufferSize),
+             Output,
+             threadpool_);
+  }
+
   virtual void MlasConv2D(size_t BatchCount,
                           size_t GroupCount,
                           size_t InputChannels,
@@ -30,46 +104,50 @@ class MlasConv2DTest : public MlasTestBase {
                           const float* Filter,
                           const float* Bias,
                           float* Output) {
-    int64_t InputShape[] = {int64_t(InputHeight), int64_t(InputWidth)};
-    int64_t KernelShape[] = {int64_t(KernelHeight), int64_t(KernelWidth)};
-    int64_t DilationShape[] = {int64_t(DilationHeight), int64_t(DilationWidth)};
-    int64_t Padding[] = {int64_t(PaddingLeftHeight), int64_t(PaddingLeftWidth), int64_t(PaddingRightHeight), int64_t(PaddingRightWidth)};
-    int64_t StrideShape[] = {int64_t(StrideHeight), int64_t(StrideWidth)};
-    int64_t OutputShape[] = {int64_t(OutputHeight), int64_t(OutputWidth)};
-
     MLAS_ACTIVATION Activation;
     Activation.ActivationKind = MlasIdentityActivation;
 
-    MLAS_CONV_PARAMETERS Parameters;
-    size_t WorkingBufferSize;
-
-    MlasConvPrepare(&Parameters,
-                    2,
-                    BatchCount,
-                    GroupCount,
-                    InputChannels,
-                    InputShape,
-                    KernelShape,
-                    DilationShape,
-                    Padding,
-                    StrideShape,
-                    OutputShape,
-                    FilterCount,
-                    &Activation,
-                    &WorkingBufferSize,
-                    0.0f,
-                    threadpool_);
-
-    MlasConv(&Parameters,
-             Input,
-             Filter,
-             Bias,
-             BufferWorking.GetBuffer(WorkingBufferSize),
-             Output,
-             threadpool_);
+    MlasConv2DWithOptions(BatchCount,
+                          GroupCount,
+                          InputChannels,
+                          InputHeight,
+                          InputWidth,
+                          FilterCount,
+                          KernelHeight,
+                          KernelWidth,
+                          PaddingLeftHeight,
+                          PaddingLeftWidth,
+                          PaddingRightHeight,
+                          PaddingRightWidth,
+                          DilationHeight,
+                          DilationWidth,
+                          StrideHeight,
+                          StrideWidth,
+                          OutputHeight,
+                          OutputWidth,
+                          Input,
+                          Filter,
+                          Bias,
+                          Activation,
+                          0.0f,
+                          nullptr,
+                          Output);
   }
 
-  void ReferenceConv2D(
+  static float ApplyReferenceActivation(float value, const MLAS_ACTIVATION& Activation) {
+    switch (Activation.ActivationKind) {
+      case MlasIdentityActivation:
+        return value;
+      case MlasReluActivation:
+        return std::max(value, 0.0f);
+      default:
+        ADD_FAILURE() << "Unsupported activation kind in Conv2D test reference path: "
+                      << static_cast<int>(Activation.ActivationKind);
+        return value;
+    }
+  }
+
+  void ReferenceConv2DWithOptions(
       size_t BatchCount,
       size_t GroupCount,
       size_t InputChannels,
@@ -89,13 +167,23 @@ class MlasConv2DTest : public MlasTestBase {
       const float* Input,
       const float* Filter,
       const float* Bias,
+      const MLAS_ACTIVATION& Activation,
+      float Beta,
+      const float* InitialOutput,
       float* Output) {
     size_t InputSize = InputHeight * InputWidth;
     size_t OutputSize = OutputHeight * OutputWidth;
     size_t KernelSize = KernelHeight * KernelWidth;
+    size_t OutputElements = BatchCount * GroupCount * FilterCount * OutputSize;
 
     size_t K = InputChannels * KernelSize;
     size_t Im2ColElements = OutputSize * K;
+
+    if (InitialOutput != nullptr) {
+      std::memcpy(Output, InitialOutput, OutputElements * sizeof(float));
+    } else {
+      std::fill_n(Output, OutputElements, 0.0f);
+    }
 
     for (size_t b = 0; b < BatchCount; b++) {
       const float* filter = Filter;
@@ -127,24 +215,73 @@ class MlasConv2DTest : public MlasTestBase {
           Input += InputSize;
         }
 
-        MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
-                 filter, K, Im2Col, OutputSize, 0.0f, Output, OutputSize, threadpool_, nullptr);
+        float* output_group = Output;
 
-        //
-        // Apply the bias.
-        //
+        MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f,
+                 filter, K, Im2Col, OutputSize, Beta, output_group, OutputSize, threadpool_, nullptr);
 
         for (size_t f = 0; f < FilterCount; f++) {
           float biasValue = *bias++;
+          float* output_row = output_group + f * OutputSize;
 
           for (size_t o = 0; o < OutputSize; o++) {
-            *Output++ += biasValue;
+            output_row[o] = ApplyReferenceActivation(output_row[o] + biasValue, Activation);
           }
         }
 
         filter += FilterCount * InputChannels * KernelSize;
+        Output += FilterCount * OutputSize;
       }
     }
+  }
+
+  void ReferenceConv2D(
+      size_t BatchCount,
+      size_t GroupCount,
+      size_t InputChannels,
+      size_t InputHeight,
+      size_t InputWidth,
+      size_t FilterCount,
+      size_t KernelHeight,
+      size_t KernelWidth,
+      size_t PaddingLeftHeight,
+      size_t PaddingLeftWidth,
+      size_t DilationHeight,
+      size_t DilationWidth,
+      size_t StrideHeight,
+      size_t StrideWidth,
+      size_t OutputHeight,
+      size_t OutputWidth,
+      const float* Input,
+      const float* Filter,
+      const float* Bias,
+      float* Output) {
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasIdentityActivation;
+
+    ReferenceConv2DWithOptions(BatchCount,
+                               GroupCount,
+                               InputChannels,
+                               InputHeight,
+                               InputWidth,
+                               FilterCount,
+                               KernelHeight,
+                               KernelWidth,
+                               PaddingLeftHeight,
+                               PaddingLeftWidth,
+                               DilationHeight,
+                               DilationWidth,
+                               StrideHeight,
+                               StrideWidth,
+                               OutputHeight,
+                               OutputWidth,
+                               Input,
+                               Filter,
+                               Bias,
+                               Activation,
+                               0.0f,
+                               nullptr,
+                               Output);
   }
 
   MatrixGuardBuffer<float> BufferInput;
@@ -152,6 +289,7 @@ class MlasConv2DTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferBias;
   MatrixGuardBuffer<float> BufferOutput;
   MatrixGuardBuffer<float> BufferOutputReference;
+  MatrixGuardBuffer<float> BufferInitialOutput;
   MatrixGuardBuffer<float> BufferWorking;
   MatrixGuardBuffer<float> BufferIm2Col;
 
@@ -164,6 +302,193 @@ class MlasConv2DTest : public MlasTestBase {
   }
 
   MlasConv2DTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
+
+#if defined(MLAS_TARGET_AMD64)
+  void TestMobileClipAvx512DispatchSelection(size_t GroupCount,
+                                             size_t InputHeight,
+                                             size_t InputWidth) {
+    if (GetMlasPlatform().ConvNchwFloatKernel != MlasConvNchwFloatKernelAvx512F) {
+      return;
+    }
+
+    constexpr size_t BatchCount = 1;
+    constexpr size_t InputChannels = 1;
+    constexpr size_t FilterCount = 2;
+    constexpr size_t KernelHeight = 7;
+    constexpr size_t KernelWidth = 7;
+    constexpr size_t PaddingLeftHeight = 3;
+    constexpr size_t PaddingLeftWidth = 3;
+    constexpr size_t PaddingRightHeight = 3;
+    constexpr size_t PaddingRightWidth = 3;
+    constexpr size_t DilationHeight = 1;
+    constexpr size_t DilationWidth = 1;
+    constexpr size_t StrideHeight = 2;
+    constexpr size_t StrideWidth = 2;
+
+    const int64_t OutputHeight64 =
+        ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -
+         (int64_t(DilationHeight) * (int64_t(KernelHeight) - 1) + 1)) /
+            int64_t(StrideHeight) +
+        1;
+    const int64_t OutputWidth64 =
+        ((int64_t(InputWidth) + int64_t(PaddingLeftWidth) + int64_t(PaddingRightWidth)) -
+         (int64_t(DilationWidth) * (int64_t(KernelWidth) - 1) + 1)) /
+            int64_t(StrideWidth) +
+        1;
+
+    ASSERT_GT(OutputHeight64, 0);
+    ASSERT_GT(OutputWidth64, 0);
+
+    int64_t InputShape[] = {int64_t(InputHeight), int64_t(InputWidth)};
+    int64_t KernelShape[] = {int64_t(KernelHeight), int64_t(KernelWidth)};
+    int64_t DilationShape[] = {int64_t(DilationHeight), int64_t(DilationWidth)};
+    int64_t Padding[] = {int64_t(PaddingLeftHeight), int64_t(PaddingLeftWidth), int64_t(PaddingRightHeight), int64_t(PaddingRightWidth)};
+    int64_t StrideShape[] = {int64_t(StrideHeight), int64_t(StrideWidth)};
+    int64_t OutputShape[] = {OutputHeight64, OutputWidth64};
+
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasIdentityActivation;
+
+    MLAS_CONV_PARAMETERS Parameters;
+    size_t WorkingBufferSize = 0;
+
+    MlasConvPrepare(&Parameters,
+                    2,
+                    BatchCount,
+                    GroupCount,
+                    InputChannels,
+                    InputShape,
+                    KernelShape,
+                    DilationShape,
+                    Padding,
+                    StrideShape,
+                    OutputShape,
+                    FilterCount,
+                    &Activation,
+                    &WorkingBufferSize,
+                    0.0f,
+                    threadpool_);
+
+    ASSERT_EQ(Parameters.Algorithm, MlasConvAlgorithmDepthwiseMultiplierGreaterThan1)
+        << "Expected AVX512 MobileClip dispatch for G" << GroupCount
+        << "/H" << InputHeight
+        << "/W" << InputWidth;
+  }
+#endif
+
+  void TestMobileClipBetaActivationRegression(size_t GroupCount,
+                                              size_t InputHeight,
+                                              size_t InputWidth) {
+    constexpr size_t BatchCount = 1;
+    constexpr size_t InputChannels = 1;
+    constexpr size_t FilterCount = 2;
+    constexpr size_t KernelHeight = 7;
+    constexpr size_t KernelWidth = 7;
+    constexpr size_t PaddingLeftHeight = 3;
+    constexpr size_t PaddingLeftWidth = 3;
+    constexpr size_t PaddingRightHeight = 3;
+    constexpr size_t PaddingRightWidth = 3;
+    constexpr size_t DilationHeight = 1;
+    constexpr size_t DilationWidth = 1;
+    constexpr size_t StrideHeight = 2;
+    constexpr size_t StrideWidth = 2;
+    constexpr float Beta = 1.0f;
+
+    const int64_t OutputHeight64 =
+        ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -
+         (int64_t(DilationHeight) * (int64_t(KernelHeight) - 1) + 1)) /
+            int64_t(StrideHeight) +
+        1;
+    const int64_t OutputWidth64 =
+        ((int64_t(InputWidth) + int64_t(PaddingLeftWidth) + int64_t(PaddingRightWidth)) -
+         (int64_t(DilationWidth) * (int64_t(KernelWidth) - 1) + 1)) /
+            int64_t(StrideWidth) +
+        1;
+
+    ASSERT_GT(OutputHeight64, 0);
+    ASSERT_GT(OutputWidth64, 0);
+
+    const size_t OutputHeight = static_cast<size_t>(OutputHeight64);
+    const size_t OutputWidth = static_cast<size_t>(OutputWidth64);
+    const size_t InputSize = InputHeight * InputWidth;
+    const size_t KernelSize = KernelHeight * KernelWidth;
+    const size_t OutputSize = OutputHeight * OutputWidth;
+
+    const size_t InputElements = BatchCount * GroupCount * InputChannels * InputSize;
+    const size_t FilterElements = GroupCount * FilterCount * InputChannels * KernelSize;
+    const size_t BiasElements = GroupCount * FilterCount;
+    const size_t OutputElements = BatchCount * GroupCount * FilterCount * OutputSize;
+
+    const float* Input = BufferInput.GetBuffer(InputElements);
+    const float* Filter = BufferFilter.GetBuffer(FilterElements);
+    const float* Bias = BufferBias.GetBuffer(BiasElements);
+    const float* InitialOutput = BufferInitialOutput.GetBuffer(OutputElements);
+    float* Output = BufferOutput.GetBuffer(OutputElements);
+    float* OutputReference = BufferOutputReference.GetBuffer(OutputElements);
+
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasReluActivation;
+
+    MlasConv2DWithOptions(BatchCount,
+                          GroupCount,
+                          InputChannels,
+                          InputHeight,
+                          InputWidth,
+                          FilterCount,
+                          KernelHeight,
+                          KernelWidth,
+                          PaddingLeftHeight,
+                          PaddingLeftWidth,
+                          PaddingRightHeight,
+                          PaddingRightWidth,
+                          DilationHeight,
+                          DilationWidth,
+                          StrideHeight,
+                          StrideWidth,
+                          OutputHeight,
+                          OutputWidth,
+                          Input,
+                          Filter,
+                          Bias,
+                          Activation,
+                          Beta,
+                          InitialOutput,
+                          Output);
+
+    ReferenceConv2DWithOptions(BatchCount,
+                               GroupCount,
+                               InputChannels,
+                               InputHeight,
+                               InputWidth,
+                               FilterCount,
+                               KernelHeight,
+                               KernelWidth,
+                               PaddingLeftHeight,
+                               PaddingLeftWidth,
+                               DilationHeight,
+                               DilationWidth,
+                               StrideHeight,
+                               StrideWidth,
+                               OutputHeight,
+                               OutputWidth,
+                               Input,
+                               Filter,
+                               Bias,
+                               Activation,
+                               Beta,
+                               InitialOutput,
+                               OutputReference);
+
+    for (size_t i = 0; i < OutputElements; ++i) {
+      ASSERT_TRUE(CloseEnough(Output[i], OutputReference[i]))
+          << "Mismatch at output index " << i
+          << " for G" << GroupCount
+          << "/H" << InputHeight
+          << "/W" << InputWidth
+          << ": actual=" << Output[i]
+          << ", expected=" << OutputReference[i];
+    }
+  }
 
   void Test(
       size_t BatchCount,
@@ -350,5 +675,16 @@ class MlasConv2DTest : public MlasTestBase {
       Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);  // larger CI forces pad buffer growth
       Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // sanity: back to smaller CI after growth
     }
+  }
+
+  void ExecuteShort(void) override {
+#if defined(MLAS_TARGET_AMD64)
+    TestMobileClipAvx512DispatchSelection(64, 64, 64);
+    TestMobileClipAvx512DispatchSelection(128, 32, 32);
+    TestMobileClipAvx512DispatchSelection(256, 16, 16);
+#endif
+    TestMobileClipBetaActivationRegression(64, 64, 64);
+    TestMobileClipBetaActivationRegression(128, 32, 32);
+    TestMobileClipBetaActivationRegression(256, 16, 16);
   }
 };

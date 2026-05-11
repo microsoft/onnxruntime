@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -486,6 +488,16 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
     return false;
   }
 
+  // The fused shape is taken verbatim from the inferred output shape of the last reshape
+  // (we ensured tensor_shape.Size() != -1 above, so dims are concrete). If any dim is
+  // literally 0, fusing into a single Reshape is unsafe: ONNX Reshape with the default
+  // allowzero=0 would reinterpret the 0 as "copy from input", producing the wrong shape.
+  // Setting allowzero=1 would fix it but requires opset >= 14, which we cannot assume
+  // here (this transformer accepts Reshape opset 5+). Bail out conservatively.
+  if (std::any_of(shape_value.begin(), shape_value.end(), [](int64_t d) { return d == 0; })) {
+    return false;
+  }
+
   const std::string& name = contiguous_reshapes[0].get().Name();
   ONNX_NAMESPACE::TensorProto shape_initializer_proto;
   shape_initializer_proto.set_name(graph.GenerateNodeName(name + "_new_shape"));
@@ -495,7 +507,8 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
   NodeArg* shape_arg = &graph_utils::AddInitializerWithOrtValue(graph, shape_initializer_proto);
   Node& reshape_node = graph.AddNode(graph.GenerateNodeName(name + "_new_reshape"), "Reshape", "Reshape for " + name,
                                      {contiguous_reshapes[0].get().MutableInputDefs()[0], shape_arg},
-                                     {contiguous_reshapes.back().get().MutableOutputDefs()[0]});
+                                     {contiguous_reshapes.back().get().MutableOutputDefs()[0]},
+                                     reshape);
   reshape_node.SetExecutionProviderType(contiguous_reshapes[0].get().GetExecutionProviderType());
 
   graph_utils::FinalizeNodeFusion(graph, contiguous_reshapes, reshape_node);

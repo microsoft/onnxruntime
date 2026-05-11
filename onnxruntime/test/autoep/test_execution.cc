@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <fstream>
 #include <string_view>
 #include <vector>
 // #include <absl/base/config.h>
@@ -12,8 +13,10 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#include "nlohmann/json.hpp"
 
 #include "test/autoep/test_autoep_utils.h"
+#include "test/autoep/library/example_plugin_ep/ep_test_hooks.h"
 #include "test/shared_lib/utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -287,6 +290,36 @@ void RunAddMulAddModel(const Ort::SessionOptions& session_options,
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(7, 17, 31, 49, 71, 97));
+}
+
+void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  // Create input
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<Ort::Value> ort_inputs;
+
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+
+  Ort::IoBinding io_binding(session);
+  io_binding.BindInput("X", ort_inputs[0]);
+  io_binding.BindOutput("Y", memory_info);
+
+  Ort::RunOptions run_options;
+
+  // Run session and get outputs
+  session.Run(run_options, io_binding);
+  io_binding.SynchronizeOutputs();
+  std::vector<Ort::Value> ort_outputs = io_binding.GetOutputValues();
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
 }  // namespace
@@ -572,11 +605,11 @@ TEST(OrtEpLibrary, PluginEp_CompatibilityInfo_WrittenToMetadata) {
     std::string compatibility_value = value.get();
     ASSERT_GT(compatibility_value.length(), 0) << "Compatibility info should not be empty";
 
-    // Validate the exact compatibility string format and values
-    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>"
+    // Validate the compatibility string format and values
+    // Format: "example_ep;version=0.1.0;ort_api_version=<ORT_API_VERSION>;..."
     std::string expected_compatibility_info = "example_ep;version=0.1.0;ort_api_version=" +
                                               std::to_string(ORT_API_VERSION);
-    EXPECT_EQ(compatibility_value, expected_compatibility_info);
+    EXPECT_TRUE(compatibility_value.starts_with(expected_compatibility_info));
   }
 
   std::filesystem::remove(output_model_file);
@@ -935,6 +968,174 @@ TEST(OrtEpLibrary, KernelPluginEp_ControlFlow_Scan) {
   }
 }
 
+enum class ProfilingMode {
+  Session,
+  Run
+};
+
+// Runs a model with profiling enabled (at the session or run level) and verifies the example kernel
+// EP's profiling events appear in the output.
+void RunKernelPluginEpProfilingTest(ProfilingMode mode) {
+  RegisteredEpDeviceUniquePtr example_kernel_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_kernel_registry_info,
+                                                         example_kernel_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_kernel_ep.get());
+
+  std::unordered_map<std::string, std::string> ep_options;
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const ORTCHAR_T* profile_prefix = mode == ProfilingMode::Session ? ORT_TSTR("plugin_ep_session_profiling_test")
+                                                                   : ORT_TSTR("plugin_ep_run_profiling_test");
+
+  if (mode == ProfilingMode::Session) {
+    session_options.EnableProfiling(profile_prefix);
+  }
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/if_mul.onnx"), session_options);
+
+  // Create inputs.
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<int64_t, 1> a_shape = {1};
+  std::array<int64_t, 2> b_shape = {3, 2};
+
+  std::array<bool, 1> a_data = {true};
+  std::array<float, 6> b_data = {2.f, 3.f, 4.f, -5.f, 6.f, 7.f};
+
+  std::vector<Ort::Value> ort_inputs{};
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<bool>(memory_info, a_data.data(), a_data.size(), a_shape.data(), a_shape.size()));
+  ort_inputs.emplace_back(
+      Ort::Value::CreateTensor<float>(memory_info, b_data.data(), b_data.size(), b_shape.data(), b_shape.size()));
+
+  std::array ort_input_names{"A", "B"};
+  std::array output_names{"C"};
+
+  // Run the model.
+  Ort::RunOptions run_options;
+
+  if (mode == ProfilingMode::Run) {
+    run_options.EnableProfiling(profile_prefix);
+  }
+
+  session.Run(run_options, ort_input_names.data(), ort_inputs.data(),
+              ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Get the profile file path.
+  std::filesystem::path profile_file_path;
+
+  if (mode == ProfilingMode::Session) {
+    Ort::AllocatorWithDefaultOptions allocator;
+    Ort::AllocatedStringPtr profile_file = session.EndProfilingAllocated(allocator);
+    profile_file_path = profile_file.get();
+  } else {
+    // The APIs for run-profiling do not support retrieving the name of the actual profile file
+    // generated by ORT, so find it by prefix in the current directory.
+    std::filesystem::file_time_type newest_time{};
+    bool found_profile_file = false;
+
+    for (const auto& entry : std::filesystem::directory_iterator(ORT_TSTR("."))) {
+      auto filename = entry.path().filename().native();
+      if (filename.starts_with(profile_prefix) && filename.ends_with(ORT_TSTR(".json"))) {
+        auto current_time = std::filesystem::last_write_time(entry.path());
+
+        if (!found_profile_file || current_time > newest_time) {
+          newest_time = current_time;
+          profile_file_path = entry.path();
+          found_profile_file = true;
+        }
+      }
+    }
+
+    ASSERT_TRUE(found_profile_file) << "Could not find run profile with prefix '"
+                                    << profile_prefix << "' in current directory";
+  }
+
+  auto cleanup_profile_file = gsl::finally([&profile_file_path] {
+    std::error_code ec;
+    std::filesystem::remove(profile_file_path, ec);
+    if (ec) {
+      std::cerr << ec.message() << std::endl;
+    }
+  });
+
+  std::ifstream profile(profile_file_path);
+  ASSERT_TRUE(profile.is_open()) << "Could not open profile file: " << profile_file_path;
+
+  std::string content(std::istreambuf_iterator<char>{profile}, std::istreambuf_iterator<char>{});
+  profile.close();
+
+  const auto profile_json = nlohmann::json::parse(content);
+
+  // Find EP's event entry inside the profile
+  const char* ep_event_name = "ExampleKernelEp_Mul";
+  nlohmann::json ep_event_entry;
+
+  for (const auto& profile_entry : profile_json) {
+    if (profile_entry.is_object() && profile_entry.contains("name")) {
+      if (profile_entry["name"] == ep_event_name) {
+        ep_event_entry = profile_entry;
+        break;
+      }
+    }
+  }
+  ASSERT_TRUE(ep_event_entry.is_object() && ep_event_entry.size() > 0)
+      << "Did not find EP expected event entry '" << ep_event_name << "'. Profile contents: " << content;
+  ASSERT_EQ(ep_event_entry["cat"], "Kernel") << ep_event_entry;
+  ASSERT_TRUE(ep_event_entry.contains("ts")) << ep_event_entry;
+  ASSERT_TRUE(ep_event_entry.contains("dur")) << ep_event_entry;
+  ASSERT_TRUE(ep_event_entry.contains("args")) << ep_event_entry;
+  ASSERT_TRUE(ep_event_entry["args"].contains("parent_name")) << ep_event_entry;
+
+  // Check the expected ORT parent event's name.
+  std::string parent_event_name = ep_event_entry["args"]["parent_name"];
+
+  if (mode == ProfilingMode::Session) {
+    ASSERT_TRUE(parent_event_name.starts_with("mul_"));
+    ASSERT_TRUE(parent_event_name.ends_with("_kernel_time"));
+  } else /*if (mode == ProfilingMode::Run)*/ {
+    // TODO: Fix run profilers because they do not profile nested subgraphs (e.g., branches of If operator).
+    // Currently, this will incorrectly report that "if_kernel" is the parent, but it should be the Mul within the
+    // if branch.
+
+    // ASSERT_TRUE(parent_event_name.starts_with("mul_"));
+    // ASSERT_TRUE(parent_event_name.ends_with("_kernel_time"));
+  }
+
+  // Find the EP event's parent ORT entry
+  nlohmann::json parent_ort_entry;
+
+  for (const auto& profile_entry : profile_json) {
+    if (profile_entry.is_object() && profile_entry.contains("name")) {
+      if (profile_entry["name"] == parent_event_name) {
+        parent_ort_entry = profile_entry;
+        break;
+      }
+    }
+  }
+
+  ASSERT_TRUE(parent_ort_entry.is_object() && parent_ort_entry.size() > 0)
+      << "Did not find expected parent ORT event entry '" << parent_event_name << "'. Profile contents " << content;
+  ASSERT_TRUE(parent_ort_entry.contains("ts"));
+  ASSERT_TRUE(parent_ort_entry.contains("dur"));
+
+  // Check that the parent ORT event's interval completely encompasses the EP event's interval.
+  int64_t ep_start = ep_event_entry["ts"].get<int64_t>();
+  int64_t ep_end = ep_start + ep_event_entry["dur"].get<int64_t>();
+  int64_t parent_start = parent_ort_entry["ts"].get<int64_t>();
+  int64_t parent_end = parent_start + parent_ort_entry["dur"].get<int64_t>();
+  EXPECT_GE(ep_start, parent_start);
+  EXPECT_LE(ep_end, parent_end);
+}
+
+TEST(OrtEpLibrary, KernelPluginEp_SessionProfiling) {
+  RunKernelPluginEpProfilingTest(ProfilingMode::Session);
+}
+
+TEST(OrtEpLibrary, KernelPluginEp_RunProfiling) {
+  RunKernelPluginEpProfilingTest(ProfilingMode::Run);
+}
+
 // Creates a session with the example plugin EP and runs a model with a single Costom_Mul node.
 // Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_Custom_Op_Inference_With_Explicit_Ep) {
@@ -1091,5 +1292,26 @@ TEST(OrtEpLibrary, CompilingPluginEp_MultiSubgraphs_DuplicateMetaDefIdBug) {
   ASSERT_NO_FATAL_FAILURE(RunIfMulModel(session_options, /*if_condition*/ true));
 }
 
+TEST(OrtEpLibrary, PluginEp_Sync) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // Create session with example plugin EP
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks));
+  ASSERT_NE(example_ep_hooks->reset_sync_count, nullptr);
+  ASSERT_NE(example_ep_hooks->get_sync_count, nullptr);
+
+  example_ep_hooks->reset_sync_count();
+
+  RunMulModelWithPluginEpUsingIOBinding(session_options);
+
+  ASSERT_EQ(example_ep_hooks->get_sync_count(), 1) << "Expected Sync to be called once during inference";
+}
 }  // namespace test
 }  // namespace onnxruntime

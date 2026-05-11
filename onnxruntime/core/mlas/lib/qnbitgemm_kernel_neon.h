@@ -105,6 +105,30 @@ HQ4BitGemmKernel_CompFp16(
     size_t ldc
 );
 
+void
+HQ8BitGemmPackQuantBData_CompFp16(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const std::byte* QuantBDataBegin,
+    std::byte* PackedQuantBDataBegin,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+void
+HQ8BitBlkDequantBForHgemm_CompFp16(
+    size_t BlkLen,
+    MLAS_FP16* FpData,
+    const std::byte* QuantBData,
+    const MLAS_FP16* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    size_t CountN,
+    size_t K,
+    size_t BlockCountK
+);
+
 #endif  // !(defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64))
 
 // SQNBIT_CompInt8 declarations
@@ -196,10 +220,31 @@ SQ4BitGemmKernel_Packed_CompInt8(
     size_t ldc,
     const float *Bias
 );
+
+void
+ComputeAFloatBlkSum(
+    const float* A,
+    size_t CountM,
+    size_t CountK,
+    size_t BlkLen,
+    size_t lda,
+    float* AFloatBlkSum
+);
+
+void
+ApplyBZpCorrection(
+    const float* ABlkSum,
+    const float* BCorr,
+    float* C,
+    size_t RangeCountM,
+    size_t RangeCountN,
+    size_t BlockCountK,
+    size_t ldc
+);
 #endif
 
 bool
-UseKleidiAI(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+UseKleidiAI(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 //
 // General helpers.

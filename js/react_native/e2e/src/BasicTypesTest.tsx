@@ -40,6 +40,12 @@ const TEST_MODELS: TestModel[] = [
     description: 'Test float32 data type',
   },
   {
+    name: 'Float16',
+    asset: 'test_types_float16.ort',
+    dataType: 'float16',
+    description: 'Test float16 data type',
+  },
+  {
     name: 'Double',
     asset: 'test_types_double.onnx',
     dataType: 'float64',
@@ -208,6 +214,13 @@ export default class BasicTypesTest extends React.PureComponent<{}, State> {
         const data = new Float32Array(size);
         for (let i = 0; i < size; i++) {
           data[i] = i * 1.5;
+        }
+        return data;
+      }
+      case 'float16': {
+        const data = new Uint16Array(size);
+        for (let i = 0; i < size; i++) {
+          data[i] = i;
         }
         return data;
       }

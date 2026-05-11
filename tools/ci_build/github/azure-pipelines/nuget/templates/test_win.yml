@@ -37,15 +37,9 @@ stages:
       value: '-Dorg.gradle.daemon=false'
 
     steps:
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
-        architecture: x64
-    - task: PipAuthenticate@1
-      displayName: 'Pip Authenticate'
-      inputs:
-        artifactFeeds: 'Lotus'
+    - template: ../../templates/setup-feeds-and-python-steps.yml
+      parameters:
+        architecture: 'x64'
 
     - task: NuGetToolInstaller@0
       displayName: Use Nuget 6.10.x
@@ -69,7 +63,7 @@ stages:
     - download: build
       displayName: 'Download Nuget'
       artifact: 'drop-signed-nuget-${{ parameters.ArtifactSuffix }}'
-   
+
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:

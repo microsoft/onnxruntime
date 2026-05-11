@@ -94,6 +94,11 @@ class QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded> : public Ml
         test_registered += RegisterSingleTest(1, 32, b, 5, 0, 0);
       }
     }
+    // Conv-like qgemm shapes that exposed AMD64 dispatch bugs in the VNNI/AMX paths.
+    test_registered += RegisterSingleTest(6, 30, 207, 1, 183, 223);
+    test_registered += RegisterSingleTest(6, 30, 207, 1, 17);
+    test_registered += RegisterSingleTest(169, 30, 207, 1, 183, 223);
+    test_registered += RegisterSingleTest(169, 30, 207, 1, 17);
     test_registered += RegisterSingleTest(43, 500, 401, 1, 183, 223);
     test_registered += RegisterSingleTest(1023, 1023, 1023, 1, 5, 8);
     test_registered += RegisterSingleTest(1023, 1023, 1023, 1, 7);
@@ -169,6 +174,7 @@ class QgemmShortExecuteTest<AType, BType, float, Packed, Threaded> : public Mlas
     for (size_t b = 1; b < 96; b++) {
       test_registered += RegisterSingleTest(1, b, 32, 0, 0);
     }
+    test_registered += RegisterSingleTest(169, 30, 207, 183, 223);
     test_registered += RegisterSingleTest(43, 503, 401, 183, 223);
     test_registered += RegisterSingleTest(1024, 1024, 256, 13, 15);
 

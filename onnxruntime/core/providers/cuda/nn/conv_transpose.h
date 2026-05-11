@@ -24,6 +24,8 @@ class ConvTranspose : public CudaKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, [[maybe_unused]] PrePackedWeights* prepacked_weights) override;
   Status ComputeInternal(OpKernelContext* context) const override;
+  // `dynamic_padding` is used by the contrib op ConvTransposeWithDynamicPads,
+  // which adds a Pads input before the optional bias input.
   Status DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const;
 
  private:
@@ -37,7 +39,7 @@ class ConvTranspose : public CudaKernel {
   bool W_already_nhwc = false;  // In case NHWC == true and Conv is not in kMSInternalNHWCDomain
 
  protected:
-  inline IAllocatorUniquePtr<void> GetWorkSpace(onnxruntime::Stream* stream) const {
+  inline IAllocatorUniquePtr<void> GetWorkSpace(void* stream) const {
     return GetScratchBuffer<void>(s_.workspace_bytes, stream);
   }
 

@@ -13,6 +13,11 @@ constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
 }
 
+// WebGPU requires that the copy size in CopyBufferToBuffer must be a multiple of 4 bytes.
+constexpr size_t NormalizeCopySize(size_t size) {
+  return (size + 3) / 4 * 4;
+}
+
 void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
   if (context.ValidationMode() > ValidationMode::Basic) {
     ORT_ENFORCE(wgpuBufferGetMapState(buffer) == WGPUBufferMapState_Unmapped, "Buffer is still mapped.");
@@ -450,21 +455,26 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   }
 
   // Otherwise, we need to use a staging buffer to upload data.
-  auto buffer_size = NormalizeBufferSize(size);
+  auto copy_size = NormalizeCopySize(size);
 
   wgpu::BufferDescriptor desc{};
-  desc.size = buffer_size;
+  desc.size = copy_size;
   desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::MapWrite;
   desc.mappedAtCreation = true;
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
   mapped_data = staging_buffer.GetMappedRange();
   memcpy(mapped_data, src, size);
+  // NOTE: When copy_size != size (due to 4-byte alignment requirement of CopyBufferToBuffer),
+  // the trailing bytes [size, copy_size) in the staging buffer contain uninitialized data.
+  // This dirty data gets copied into the destination buffer and may cause problems.
+  // A possible solution is to use CopyBufferToBuffer for the aligned portion and a compute
+  // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
-  command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, buffer_size);
+  command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
   context_.Flush(*this);
 }
 
@@ -473,16 +483,16 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
   EnforceBufferUnmapped(context_, src);
   EnforceBufferUnmapped(context_, dst);
 
-  auto buffer_size = NormalizeBufferSize(size);
+  auto copy_size = NormalizeCopySize(size);
   auto src_size = static_cast<size_t>(wgpuBufferGetSize(src));
   auto dst_size = static_cast<size_t>(wgpuBufferGetSize(dst));
-  ORT_ENFORCE(buffer_size <= src_size && buffer_size <= dst_size,
+  ORT_ENFORCE(copy_size <= src_size && copy_size <= dst_size,
               "Source and destination buffers must have enough space for the copy operation. src_size=",
-              src_size, ", dst_size=", dst_size, ", copy_size=", buffer_size, ".");
+              src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
-  command_encoder.CopyBufferToBuffer(src, 0, dst, 0, buffer_size);
+  command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
 }
 
 WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) const {

@@ -24,6 +24,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [AveragePool](https://github.com/onnx/onnx/blob/main/docs/Operators.md#AveragePool) | [7-9](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#AveragePool-7), [10](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#AveragePool-10), [11-18](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#AveragePool-11), [19-21](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#AveragePool-19), [22+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#AveragePool-22) |
 | [BatchNormalization](https://github.com/onnx/onnx/blob/main/docs/Operators.md#BatchNormalization) | [7-8](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#BatchNormalization-7), [9-13](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#BatchNormalization-9), [14](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#BatchNormalization-14), [15+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#BatchNormalization-15) |
 | [Bernoulli](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Bernoulli) |  |
+| [BitCast](https://github.com/onnx/onnx/blob/main/docs/Operators.md#BitCast) |  |
 | [BitShift](https://github.com/onnx/onnx/blob/main/docs/Operators.md#BitShift) |  |
 | [BitwiseAnd](https://github.com/onnx/onnx/blob/main/docs/Operators.md#BitwiseAnd) |  |
 | [BitwiseNot](https://github.com/onnx/onnx/blob/main/docs/Operators.md#BitwiseNot) |  |
@@ -47,6 +48,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [ConvTranspose](https://github.com/onnx/onnx/blob/main/docs/Operators.md#ConvTranspose) | [1-10](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#ConvTranspose-1), [11-21](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#ConvTranspose-11), [22+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#ConvTranspose-22) |
 | [Cos](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Cos) | [7-21](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cos-7), [22+](https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Cos-22) |
 | [Cosh](https://github.com/onnx/onnx/blob/main/docs/Operators.md#Cosh) |  |
+| [CumProd](https://github.com/onnx/onnx/blob/main/docs/Operators.md#CumProd) |  |
 | [CumSum](https://github.com/onnx/onnx/blob/main/docs/Operators.md#CumSum) |  |
 | [DFT](https://github.com/onnx/onnx/blob/main/docs/Operators.md#DFT) |  |
 | [DeformConv](https://github.com/onnx/onnx/blob/main/docs/Operators.md#DeformConv) |  |

@@ -27,19 +27,25 @@ if [ "${BUILD_EXTR_PAR}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=("-x" "${BUILD_EXTR_PAR}")
 fi
 
+# HACK: `ADDITIONAL_DOCKER_PARAMETER` is passed in via env in some pipelines
 docker run -e SYSTEM_COLLECTIONURI --rm \
     --volume /data/onnx:/data/onnx:ro \
     --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume /data/models:/build/models:ro \
     --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
+    -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+    -e PIP_INDEX_URL \
+    --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+    --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
+    --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
     -e DEFAULT_TRAINING_PACKAGE_DEVICE \
     -e CUDA_VERSION \
-    $ADDITIONAL_DOCKER_PARAMETER \
+    ${ADDITIONAL_DOCKER_PARAMETER:+$ADDITIONAL_DOCKER_PARAMETER} \
     "$DOCKER_IMAGE" tools/ci_build/github/linux/build_linux_python_package.sh "${DOCKER_SCRIPT_OPTIONS[@]}"
 
 sudo rm -rf "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/onnxruntime" "${BUILD_BINARIESDIRECTORY}/${BUILD_CONFIG}/pybind11" \

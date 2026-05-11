@@ -65,7 +65,6 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
   }
 
   // Handle bias with `MatMulWriteFnSourceForGemm() or MatMulWriteFnSourceForMatMul()`.
-  // const uint32_t bias_components = output_components_;
   if (is_gemm_) {
     MatMulWriteFnSourceForGemm(shader, output, bias, bias_is_scalar_);
   } else {
@@ -77,15 +76,18 @@ Status MatMulFillBiasOrZeroBeforeSplitKProgram::GenerateShaderCode(ShaderHelper&
   shader.MainFunctionBody() << R"(
   let output_id = i32(global_idx);
 
+  let batch_size = i32(uniforms.batch_size);
   let dim_a_outer = i32(uniforms.dim_a_outer);
   let dim_b_outer = i32(uniforms.dim_b_outer) / output_components;
-  if (output_id >= dim_a_outer * dim_b_outer) {
+  let elements_per_batch = dim_a_outer * dim_b_outer;
+  if (output_id >= batch_size * elements_per_batch) {
     return;
   }
 
-  let output_row = output_id / dim_b_outer;
-  let output_col = output_id % dim_b_outer;
-  let output_batch = 0;
+  let output_batch = output_id / elements_per_batch;
+  let remaining = output_id % elements_per_batch;
+  let output_row = remaining / dim_b_outer;
+  let output_col = remaining % dim_b_outer;
   let output_value = output_value_t();
   mm_write(output_batch, output_row, output_col, output_value);
 )";
