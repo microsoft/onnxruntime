@@ -250,7 +250,8 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
       ++output_index;
     }
     // Padding strings
-    assert(tokens + (static_cast<size_t>(mark_) * 2) <= max_tokens);
+    ORT_RETURN_IF_NOT(tokens + (static_cast<size_t>(mark_) * 2) <= max_tokens,
+                      "CharTokenize: token count exceeds max tokens");
     const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - tokens;
     for (size_t p = 0; p < pads; ++p) {
       output_data[output_index] = pad_value_;
@@ -347,6 +348,8 @@ Status Tokenizer::OutputData(gsl::span<const SlicesVector> rows,
   for (const auto& row : rows) {
     const size_t markers = static_cast<size_t>(mark_) * 2;
     ORT_RETURN_IF_NOT(row.size() + markers <= max_tokens, "Tokenizer row size exceeds max tokens");
+    ORT_RETURN_IF_NOT(output_index + max_tokens <= max_output_index,
+                      "Tokenizer output would exceed buffer capacity");
     size_t c_idx = output_index;
     if (mark_) {
       output_data[output_index++].assign(&kStartMarker, 1);
@@ -429,9 +432,9 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
           match = sep->Match(text, start_pos, end_pos, anchor, &submatch, 1);
           if (match) {
             // Record  pos/len
-            assert(submatch.data() != nullptr);
+            ORT_RETURN_IF(submatch.data() == nullptr, "RE2 match returned null submatch");
             size_t match_pos = submatch.data() - text.data();
-            assert(match_pos >= start_pos);
+            ORT_RETURN_IF_NOT(match_pos >= start_pos, "RE2 match position before start");
             auto token_len = match_pos - start_pos;
             utf8_chars = 0;
             bool valid = utf8_len(reinterpret_cast<const unsigned char*>(text.data() + start_pos),
@@ -566,9 +569,9 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
         match = regex_->Match(text, start_pos, end_pos, anchor, &submatch, 1);
         if (match) {
           // Record  pos/len
-          assert(submatch.data() != nullptr);
+          ORT_RETURN_IF(submatch.data() == nullptr, "RE2 match returned null submatch");
           size_t match_pos = submatch.data() - s.data();
-          assert(match_pos >= start_pos);
+          ORT_RETURN_IF_NOT(match_pos >= start_pos, "RE2 match position before start");
           // Guard against empty match and make
           // sure we make progress either way
           auto token_len = submatch.length();
