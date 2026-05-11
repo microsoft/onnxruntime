@@ -90,6 +90,13 @@ class GQAAttentionBase {
                                       ? static_cast<int>(present_key->Shape().GetDims()[2])
                                       : parameters.total_sequence_length;
 
+    // Shared KV: total_sequence_length must fit within the past buffer.
+    if (kv_sequence_length == 0) {
+      ORT_ENFORCE(total_sequence_length <= seqlen_past_kv_cache,
+                  "total_seqlen (", total_sequence_length, ") exceeds past buffer size (",
+                  seqlen_past_kv_cache, ") in shared KV mode");
+    }
+
     // Compute the attention score.
     bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
                               MlasGQASupported<T>(CblasNoTrans, CblasNoTrans);

@@ -559,15 +559,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                      std::is_same<T, BFloat16>::value);
   }
 
-  // Validate past_value pointer consistency (past_present_share_buffer was computed early after pointer setup)
-  if (data.present_value != nullptr) {
-    if (parameters.past_present_share_buffer) {
-      ORT_ENFORCE(data.past_value == data.present_value, "past_value and present_value must be the same tensor when past_present_share_buffer is true");
-    } else {
-      ORT_ENFORCE(data.past_value != data.present_value, "past_value and present_value must be different tensors when past_present_share_buffer is false");
-    }
-  }
-
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
 
   if (parameters.do_rotary) {
