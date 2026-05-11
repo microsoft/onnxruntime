@@ -63,6 +63,7 @@ try:
         register_execution_provider_library,
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
+        set_default_logger_callback,  # noqa: F401
         set_global_thread_pool_sizes,  # noqa: F401
         set_seed,  # noqa: F401
         unregister_execution_provider_library,  # noqa: F401
