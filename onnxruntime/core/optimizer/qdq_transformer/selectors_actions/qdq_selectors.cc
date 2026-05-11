@@ -186,9 +186,9 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
   // which copies existing values and can operate correctly on quantized integers.
   if (node.OpType() == "Resize") {
     const auto& attrs = node.GetAttributes();
-    const auto mode_it = attrs.find("mode");
+    const auto mode_attr_it = attrs.find("mode");
     // Default mode is "nearest" when not specified; only allow drop for nearest mode.
-    if (mode_it != attrs.end() && mode_it->second.s() != "nearest") {
+    if (mode_attr_it != attrs.end() && mode_attr_it->second.s() != "nearest") {
       return false;
     }
   }

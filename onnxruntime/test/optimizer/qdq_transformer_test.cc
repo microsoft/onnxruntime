@@ -1982,7 +1982,7 @@ TEST(QDQTransformerTests, Resize) {
 // Resize with linear (or cubic) mode interpolates values, so QDQ nodes cannot be dropped.
 // The DQ and Q nodes must be preserved to ensure the interpolation is performed in float space.
 TEST(QDQTransformerTests, Resize_Linear_No_QDQ_Drop) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape,
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_data,
                        const std::string& mode,
                        bool use_contrib_qdq = false) {
@@ -1990,12 +1990,13 @@ TEST(QDQTransformerTests, Resize_Linear_No_QDQ_Drop) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
       EXPECT_EQ(op_to_count["Resize"], 1);
-      // QDQ nodes must NOT be dropped for non-nearest resize modes
+      // QDQ nodes must NOT be dropped for non-nearest resize modes (linear, cubic)
+      // because interpolation must be computed in float space for correct results.
       EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
       EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
     };
 
-    TransformerTester(BuildQDQResizeTestCase(input1_shape,
+    TransformerTester(BuildQDQResizeTestCase(input_shape,
                                              sizes_data,
                                              mode,
                                              "half_pixel",  // coordinate_transformation_mode
