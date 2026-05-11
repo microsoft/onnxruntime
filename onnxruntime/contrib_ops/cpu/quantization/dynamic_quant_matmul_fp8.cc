@@ -825,9 +825,6 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
     params.ScaleA = a_scales_batch;
     params.ScaleB = b_scales;
     params.ScaleY = y_scale_data;
-    params.ZeroPointA = nullptr;
-    params.ZeroPointB = nullptr;
-    params.ZeroPointY = nullptr;
     params.Fp8Type = a_type;
     params.BlockSizeM = block_size_m_;
     params.BlockSizeK = block_size_k_;
@@ -839,10 +836,6 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
     params.ScaleAStrideM = blocks_k;
     params.ScaleBStrideN = 1;
     params.ScaleBStrideK = blocks_n;
-    params.ZeroPointAStrideK = 1;
-    params.ZeroPointAStrideM = blocks_k;
-    params.ZeroPointBStrideN = 1;
-    params.ZeroPointBStrideK = blocks_n;
   }
 
   MlasFp8GemmBatch(gemm_shape, gemm_data.data(), num_gemms, context->GetOperatorThreadPool());

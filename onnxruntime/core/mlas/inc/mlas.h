@@ -761,9 +761,6 @@ struct MLAS_FP8_GEMM_DATA_PARAMS {
     const float* ScaleA = nullptr;      // Tile scales for A: [BlocksM, BlocksK].
     const float* ScaleB = nullptr;      // Tile scales for B: [BlocksK, BlocksN].
     const float* ScaleY = nullptr;      // Scalar scale for Y.
-    const void* ZeroPointA = nullptr;   // Tile zero-points for A: [BlocksM, BlocksK], fp8.
-    const void* ZeroPointB = nullptr;   // Tile zero-points for B: [BlocksK, BlocksN], fp8.
-    const float* ZeroPointY = nullptr;  // Scalar zero-point for Y, in dequantized float units.
     mlas_fp8_mode Fp8Type = static_cast<mlas_fp8_mode>(0);
     size_t BlockSizeM = 128;  // Block size along M for A quantization.
     size_t BlockSizeK = 128;  // Block size along K for A/B quantization.
@@ -775,10 +772,6 @@ struct MLAS_FP8_GEMM_DATA_PARAMS {
     size_t ScaleAStrideM = 0;     // ScaleA stride between M blocks (elements).
     size_t ScaleBStrideN = 0;     // ScaleB stride between N blocks (elements).
     size_t ScaleBStrideK = 0;     // ScaleB stride between K blocks (elements).
-    size_t ZeroPointAStrideK = 0; // ZeroPointA stride between K blocks (elements).
-    size_t ZeroPointAStrideM = 0; // ZeroPointA stride between M blocks (elements).
-    size_t ZeroPointBStrideN = 0; // ZeroPointB stride between N blocks (elements).
-    size_t ZeroPointBStrideK = 0; // ZeroPointB stride between K blocks (elements).
 };
 
 #if !defined(DISABLE_FLOAT8_TYPES)

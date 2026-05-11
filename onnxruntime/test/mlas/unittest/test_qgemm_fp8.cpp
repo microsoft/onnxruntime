@@ -79,8 +79,6 @@ void RunFp8GemmBatchThreaded(mlas_fp8_mode mode) {
 
   std::vector<uint8_t> a_fp8(a_values.size());
   std::vector<uint8_t> b_fp8(b_values.size());
-  std::vector<uint8_t> zp_a(BatchN * ScaleElements, EncodeFp8(0.0f, mode));
-  std::vector<uint8_t> zp_b(BatchN * BScaleElements, EncodeFp8(0.0f, mode));
   for (size_t i = 0; i < a_values.size(); ++i) {
     a_fp8[i] = EncodeFp8(a_values[i], mode);
   }
@@ -102,9 +100,6 @@ void RunFp8GemmBatchThreaded(mlas_fp8_mode mode) {
     params[batch].ScaleA = scale_a.data() + batch * ScaleElements;
     params[batch].ScaleB = scale_b.data() + batch * BScaleElements;
     params[batch].ScaleY = y_scale.data() + batch;
-    params[batch].ZeroPointA = zp_a.data() + batch * ScaleElements;
-    params[batch].ZeroPointB = zp_b.data() + batch * BScaleElements;
-    params[batch].ZeroPointY = nullptr;
     params[batch].Fp8Type = mode;
     params[batch].BlockSizeM = BlockSizeM;
     params[batch].BlockSizeK = BlockSizeK;
@@ -116,10 +111,6 @@ void RunFp8GemmBatchThreaded(mlas_fp8_mode mode) {
     params[batch].ScaleAStrideM = BlocksK;
     params[batch].ScaleBStrideN = 1;
     params[batch].ScaleBStrideK = BlocksN;
-    params[batch].ZeroPointAStrideK = 1;
-    params[batch].ZeroPointAStrideM = BlocksK;
-    params[batch].ZeroPointBStrideN = 1;
-    params[batch].ZeroPointBStrideK = BlocksN;
 
     for (size_t m = 0; m < M; ++m) {
       const size_t block_m = m / BlockSizeM;

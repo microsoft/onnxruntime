@@ -128,16 +128,6 @@ inline void CheckFp8GemmBatchParams(
         CheckBlockCount(blocks_n, params.BlocksN, "N");
         CheckBlockedMatrixOffset(blocks_k, params.ScaleBStrideK, blocks_n, params.ScaleBStrideN);
     }
-    if (reads_reduction_data && params.ZeroPointA != nullptr) {
-        CheckBlockCount(blocks_m, params.BlocksM, "M");
-        CheckBlockCount(blocks_k, params.BlocksK, "K");
-        CheckBlockedMatrixOffset(blocks_m, params.ZeroPointAStrideM, blocks_k, params.ZeroPointAStrideK);
-    }
-    if (reads_reduction_data && params.ZeroPointB != nullptr) {
-        CheckBlockCount(blocks_k, params.BlocksK, "K");
-        CheckBlockCount(blocks_n, params.BlocksN, "N");
-        CheckBlockedMatrixOffset(blocks_k, params.ZeroPointBStrideK, blocks_n, params.ZeroPointBStrideN);
-    }
 }
 
 }  // namespace
@@ -177,8 +167,6 @@ MlasFp8GemmBatch(
         auto* c = static_cast<float*>(params.C);
         const auto* scale_a = params.ScaleA;
         const auto* scale_b = params.ScaleB;
-        const auto* zp_a = static_cast<const uint8_t*>(params.ZeroPointA);
-        const auto* zp_b = static_cast<const uint8_t*>(params.ZeroPointB);
 
         const size_t block_m = m / params.BlockSizeM;
         for (size_t n = 0; n < N; ++n) {
@@ -192,24 +180,16 @@ MlasFp8GemmBatch(
                 const float scale_a_val = scale_a ? scale_a[a_scale_idx] : 1.0f;
                 const float scale_b_val = scale_b ? scale_b[b_scale_idx] : 1.0f;
 
-                const size_t a_zp_idx = block_m * params.ZeroPointAStrideM + block_k * params.ZeroPointAStrideK;
-                const size_t b_zp_idx = block_k * params.ZeroPointBStrideK + block_n * params.ZeroPointBStrideN;
-                const float zp_a_val = zp_a ? Fp8ByteToFloat(zp_a[a_zp_idx], params.Fp8Type) : 0.0f;
-                const float zp_b_val = zp_b ? Fp8ByteToFloat(zp_b[b_zp_idx], params.Fp8Type) : 0.0f;
-
                 const float a_val = Fp8ByteToFloat(a_fp8[m * params.lda + k], params.Fp8Type);
                 const float b_val = Fp8ByteToFloat(b_fp8[k * params.ldb + n], params.Fp8Type);
 
-                const float a_deq = (a_val - zp_a_val) * scale_a_val;
-                const float b_deq = (b_val - zp_b_val) * scale_b_val;
+                const float a_deq = a_val * scale_a_val;
+                const float b_deq = b_val * scale_b_val;
                 acc += a_deq * b_deq;
             }
 
             if (params.ScaleY != nullptr) {
                 acc *= params.ScaleY[0];
-            }
-            if (params.ZeroPointY != nullptr) {
-                acc += params.ZeroPointY[0];
             }
             c[m * params.ldc + n] = acc;
         }
