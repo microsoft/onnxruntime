@@ -13,9 +13,11 @@
 // Use PMR (polymorphic memory resource) when the standard library supports it.
 // This reduces per-token allocation overhead by using a monotonic buffer.
 #ifdef __has_include
-#if __has_include(<memory_resource>) && defined(__cpp_lib_memory_resource) && __cpp_lib_memory_resource >= 201603L
+#if __has_include(<memory_resource>)
 #include <memory_resource>
+#if defined(__cpp_lib_memory_resource) && __cpp_lib_memory_resource >= 201603L
 #define ORT_PMR_ALLOCATOR_SUPPORTED
+#endif
 #endif
 #endif
 #if !defined(ORT_PMR_ALLOCATOR_SUPPORTED) && defined(_MSC_VER)
@@ -62,8 +64,8 @@ class Tokenizer final : public OpKernel {
                          size_t N, size_t C,
                          gsl::span<const int64_t> input_dims) const;
 
-  void OutputData(gsl::span<const SlicesVector> rows,
-                  size_t max_tokens, size_t max_output_index, std::string* output_data) const;
+  Status OutputData(gsl::span<const SlicesVector> rows,
+                    size_t max_tokens, size_t max_output_index, std::string* output_data) const;
 
   bool mark_{false};
   std::string pad_value_;
@@ -166,7 +168,8 @@ Status Tokenizer::EstimateNumberOfTokens(gsl::span<const std::string> input_span
     if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
                        utf8_chars)) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                    "Input string contains invalid utf8 chars: " + s);
+                    "Input string contains invalid utf8 chars at input index: " +
+                        std::to_string(utf8_lengths.size()));
     }
     utf8_lengths.push_back(utf8_chars);
     auto tokens = std::max<size_t>(1, utf8_chars / mincharnum_);
@@ -193,9 +196,11 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
     size_t tokens = 0;  // length in utf8 chars
     if (!utf8_validate(reinterpret_cast<const unsigned char*>(s.data()), s.size(),
                        tokens)) {
-      // Please do not include the input text in the error message as it could
+      // Do not include the input text in the error message as it could
       // be deemed as a compliance violation by teams using this operator
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input string contains invalid utf8 chars:", s);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input string contains invalid utf8 chars at element: ",
+                             std::distance(input_data, curr_input));
     }
     max_tokens = std::max(max_tokens, tokens);
     ++curr_input;
@@ -336,10 +341,12 @@ class MemoryAllocator {
 #endif
 }  // namespace
 
-void Tokenizer::OutputData(gsl::span<const SlicesVector> rows,
-                           size_t max_tokens, size_t max_output_index, std::string* output_data) const {
+Status Tokenizer::OutputData(gsl::span<const SlicesVector> rows,
+                             size_t max_tokens, size_t max_output_index, std::string* output_data) const {
   size_t output_index = 0;
   for (const auto& row : rows) {
+    const size_t markers = static_cast<size_t>(mark_) * 2;
+    ORT_RETURN_IF_NOT(row.size() + markers <= max_tokens, "Tokenizer row size exceeds max tokens");
     size_t c_idx = output_index;
     if (mark_) {
       output_data[output_index++].assign(&kStartMarker, 1);
@@ -351,13 +358,14 @@ void Tokenizer::OutputData(gsl::span<const SlicesVector> rows,
     if (mark_) {
       output_data[output_index++].assign(&kEndMarker, 1);
     }
-    const size_t pads = max_tokens - (static_cast<size_t>(mark_) * 2) - row.size();
+    const size_t pads = max_tokens - markers - row.size();
     for (size_t p = 0; p < pads; ++p) {
       output_data[output_index++] = pad_value_;
     }
-    ORT_ENFORCE(output_index <= max_output_index, "Tokenizer output index out of bounds");
-    ORT_ENFORCE((output_index - c_idx) <= max_tokens, "Tokenizer output exceeded max tokens per row");
+    ORT_RETURN_IF(output_index > max_output_index, "Tokenizer output index out of bounds");
+    ORT_RETURN_IF((output_index - c_idx) > max_tokens, "Tokenizer output exceeded max tokens per row");
   }
+  return Status::OK();
 }
 
 Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
@@ -429,8 +437,8 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
             bool valid = utf8_len(reinterpret_cast<const unsigned char*>(text.data() + start_pos),
                                   token_len, utf8_chars);
             if (!valid) {
-              return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                            "Match contains invalid utf8 chars: " + std::string{submatch});
+              return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                     "Match contains invalid utf8 chars at position: ", match_pos);
             }
             if (utf8_chars >= mincharnum_) {
               tokens.emplace_back(text.data() + start_pos, token_len);
@@ -500,7 +508,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->MutableData<std::string>();
 
-  OutputData(rows, max_tokens, narrow<size_t>(output_shape.Size()), output_data);
+  ORT_RETURN_IF_ERROR(OutputData(rows, max_tokens, narrow<size_t>(output_shape.Size()), output_data));
 
   return Status::OK();
 }
@@ -552,6 +560,9 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
 
       bool match = true;
       do {
+        if (start_pos > end_pos) {
+          break;
+        }
         match = regex_->Match(text, start_pos, end_pos, anchor, &submatch, 1);
         if (match) {
           // Record  pos/len
@@ -563,8 +574,8 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
           auto token_len = submatch.length();
           utf8_chars = 0;
           if (!utf8_len(reinterpret_cast<const unsigned char*>(submatch.data()), token_len, utf8_chars)) {
-            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                          "Match contains invalid utf8 chars: " + std::string{submatch});
+            return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                   "Match contains invalid utf8 chars at position: ", match_pos);
           }
           if (utf8_chars >= mincharnum_) {
             row.push_back(submatch);
@@ -607,7 +618,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   auto output_tensor = ctx->Output(0, output_shape);
   auto const output_data = output_tensor->MutableData<std::string>();
 
-  OutputData(rows, max_tokens, narrow<size_t>(output_shape.Size()), output_data);
+  ORT_RETURN_IF_ERROR(OutputData(rows, max_tokens, narrow<size_t>(output_shape.Size()), output_data));
 
   return Status::OK();
 }
