@@ -5,6 +5,9 @@
 // Exports CreateEpFactories() and ReleaseEpFactory() as the
 // public interface for ORT to load and use the CUDA EP as a plugin.
 
+#include <cstdio>
+#include <cstdlib>
+
 #include "onnxruntime_cxx_api.h"
 
 #include "cuda_ep_factory.h"
@@ -34,11 +37,12 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
   if (ort_api == nullptr) {
     const OrtApi* fallback_api = ort_api_base->GetApi(1);
     if (fallback_api == nullptr) {
-      return nullptr;
+      fprintf(stderr, "CUDA Plugin EP requires ONNX Runtime API version 26 or newer (ORT 1.26+).\n");
+      std::abort();
     }
 
     return fallback_api->CreateStatus(
-        ORT_INVALID_ARGUMENT,
+        ORT_FAIL,
         "CUDA Plugin EP requires ONNX Runtime API version 26 or newer (ORT 1.26+).");
   }
 
