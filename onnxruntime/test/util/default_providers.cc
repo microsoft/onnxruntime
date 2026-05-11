@@ -288,7 +288,7 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
   auto strip_ep_prefix = [](const char* full_key) -> const char* {
 #if defined(ORT_USE_EP_API_ADAPTERS)
     std::string_view key{full_key};
-    std::string_view prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
+    std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
     ORT_ENFORCE(key.length() >= prefix.length() && key.substr(0, prefix.length()) == prefix,
                 "Config key \"", key, "\" does not start with expected prefix \"", prefix, "\"");
     return full_key + prefix.length();
