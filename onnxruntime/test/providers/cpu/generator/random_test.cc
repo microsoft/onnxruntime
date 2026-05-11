@@ -365,6 +365,9 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
       std::vector<MLFloat16> fp16_data(size);
       ConvertFloatToMLFloat16(float_data.data(), fp16_data.data(), static_cast<int>(size));
       test.AddInput("X", dims, fp16_data);
+    } else if (dtype == TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+      std::vector<BFloat16> bf16_data(size, BFloat16(0.f));
+      test.AddInput("X", dims, bf16_data);
     }
   }
 
@@ -382,6 +385,9 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
     std::vector<MLFloat16> fp16_data(size);
     ConvertFloatToMLFloat16(float_data.data(), fp16_data.data(), static_cast<int>(size));
     test.AddOutput("Y", dims, fp16_data);
+  } else if (output_dtype == TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+    std::vector<BFloat16> bf16_data(size, BFloat16(0.f));
+    test.AddOutput("Y", dims, bf16_data);
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
@@ -403,6 +409,13 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
         sum += value.ToFloat();
       }
       ASSERT_NEAR(sum / static_cast<float>(size), mean, 0.1f);
+    } else if (output_dtype == TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+      auto output_span = output_tensor.DataAsSpan<BFloat16>();
+      float sum = 0.f;
+      for (auto value : output_span) {
+        sum += value.ToFloat();
+      }
+      ASSERT_NEAR(sum / static_cast<float>(size), mean, 0.1f);
     }
   };
 
@@ -416,15 +429,18 @@ TEST(Random, RandomNormalGpu) {
   RunRandomNormalGpuTest(dims1, 1.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomNormalGpuTest(dims1, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, false, false);
   RunRandomNormalGpuTest(dims1, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, false, false);
+  RunRandomNormalGpuTest(dims1, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
   RunRandomNormalGpuTest(dims1, 1.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, true, true);
   RunRandomNormalGpuTest(dims1, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomNormalGpuTest(dims1, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, true);
+  RunRandomNormalGpuTest(dims1, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, true, true);
   RunRandomNormalGpuTest(dims1, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, false);
   RunRandomNormalGpuTest(dims1, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
   std::vector<int64_t> dims2{255, 255};
   RunRandomNormalGpuTest(dims2, 1.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomNormalGpuTest(dims2, -1.f, 8.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomNormalGpuTest(dims2, 0.f, 16.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
+  RunRandomNormalGpuTest(dims2, 0.5f, 12.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
 }
 
 void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, const float high, const float seed,
@@ -457,6 +473,9 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
       std::vector<MLFloat16> fp16_data(size);
       ConvertFloatToMLFloat16(float_data.data(), fp16_data.data(), static_cast<int>(size));
       test.AddInput("X", dims, fp16_data);
+    } else if (dtype == TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+      std::vector<BFloat16> bf16_data(size, BFloat16(0.f));
+      test.AddInput("X", dims, bf16_data);
     }
   }
 
@@ -474,6 +493,9 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
     std::vector<MLFloat16> fp16_data(size);
     ConvertFloatToMLFloat16(float_data.data(), fp16_data.data(), static_cast<int>(size));
     test.AddOutput("Y", dims, fp16_data);
+  } else if (output_dtype == TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+    std::vector<BFloat16> bf16_data(size, BFloat16(0.f));
+    test.AddOutput("Y", dims, bf16_data);
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
@@ -507,6 +529,16 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
         sum += f;
       }
       ASSERT_NEAR(sum / static_cast<float>(size), (high + low) / 2.f, 0.1f);
+    } else if (output_dtype == TensorProto_DataType::TensorProto_DataType_BFLOAT16) {
+      auto output_span = output_tensor.DataAsSpan<BFloat16>();
+      float sum = 0.f;
+      for (auto value : output_span) {
+        float f = value.ToFloat();
+        ASSERT_GE(f, low);
+        ASSERT_LE(f, high);
+        sum += f;
+      }
+      ASSERT_NEAR(sum / static_cast<float>(size), (high + low) / 2.f, 0.1f);
     }
   };
 
@@ -520,15 +552,18 @@ TEST(Random, RandomUniformGpu) {
   RunRandomUniformGpuTest(dims1, 0.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomUniformGpuTest(dims1, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, false, false);
   RunRandomUniformGpuTest(dims1, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, false, false);
+  RunRandomUniformGpuTest(dims1, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
   RunRandomUniformGpuTest(dims1, 0.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, true, true);
   RunRandomUniformGpuTest(dims1, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomUniformGpuTest(dims1, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, true);
+  RunRandomUniformGpuTest(dims1, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, true, true);
   RunRandomUniformGpuTest(dims1, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, false);
   RunRandomUniformGpuTest(dims1, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
   std::vector<int64_t> dims2{255, 255};
   RunRandomUniformGpuTest(dims2, 0.f, 10.f, 123.f, TensorProto_DataType::TensorProto_DataType_FLOAT, false, false);
   RunRandomUniformGpuTest(dims2, -10.f, 0.f, 231.f, TensorProto_DataType::TensorProto_DataType_DOUBLE, true, true);
   RunRandomUniformGpuTest(dims2, -5.f, 5.f, 312.f, TensorProto_DataType::TensorProto_DataType_FLOAT16, true, false);
+  RunRandomUniformGpuTest(dims2, 0.f, 8.f, 456.f, TensorProto_DataType::TensorProto_DataType_BFLOAT16, false, false);
 }
 #endif
 
