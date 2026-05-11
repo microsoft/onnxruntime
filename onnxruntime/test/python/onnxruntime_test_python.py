@@ -296,13 +296,29 @@ class TestInferenceSession(unittest.TestCase):
         # Lambda callables are accepted.
         onnxrt.set_default_logger_callback(lambda sev, cat, lid, loc, msg: None)
 
+        # Boundary severity values (0=Verbose and 4=Fatal) should be accepted.
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+        onnxrt.set_default_logger_callback(my_callback, severity=4)
+
         # Invalid severity should raise.
         with self.assertRaises(RuntimeError):
             onnxrt.set_default_logger_callback(my_callback, severity=5)
 
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=-1)
+
         # Non-callable should raise.
         with self.assertRaises(RuntimeError):
             onnxrt.set_default_logger_callback("not a callable")
+
+        # A callback that raises should not crash the process.
+        def raising_callback(severity, category, logid, code_location, message):
+            raise ValueError("intentional error from callback")
+
+        onnxrt.set_default_logger_callback(raising_callback, severity=0)
+        # Create a session to trigger some ORT log output; it should not crash even though
+        # the callback raises.
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
 
         # Clean up: restore platform default logger.
         onnxrt.set_default_logger_callback(None)

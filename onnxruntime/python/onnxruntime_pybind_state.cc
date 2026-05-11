@@ -179,11 +179,12 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
 
   void SendImpl(const onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id,
                 const onnxruntime::logging::Capture& message) override {
-    // Fast non-locking check: if the global callback is a Python None, delegate to platform.
-    // We use a lock for the actual call to avoid a race where the callback is swapped mid-flight.
+    // Acquire the mutex to safely read the callback reference.  We release early when
+    // delegating to the platform sink to avoid holding the lock during potentially
+    // blocking I/O operations.
     std::unique_lock<std::mutex> lock(g_logging_mutex);
     if (g_user_logging_callback.is_none()) {
-      // Release the lock before potentially blocking on the platform sink.
+      // No Python callback installed: delegate to the platform sink.
       lock.unlock();
       platform_sink_->Send(timestamp, logger_id, message);
       return;
@@ -200,7 +201,18 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
     lock.unlock();
 
     auto invoke = [&]() {
-      cb(severity, category, logger_id, code_location, msg);
+      try {
+        cb(severity, category, logger_id, code_location, msg);
+      } catch (const py::error_already_set& e) {
+        // If the Python callback raises, fall back to the platform sink so ORT log
+        // messages are not silently lost.  Avoid recursive calls to the logger here.
+        std::string err_msg = std::string("ORT logging callback raised a Python exception: ") + e.what();
+        platform_sink_->Send(timestamp, logger_id, message);
+        (void)err_msg;  // suppress unused-variable warning in release builds
+      } catch (...) {
+        // Any other C++ exception: best effort, ignore and delegate to platform sink.
+        platform_sink_->Send(timestamp, logger_id, message);
+      }
     };
 
     if (PyGILState_Check()) {

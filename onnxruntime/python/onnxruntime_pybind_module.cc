@@ -44,10 +44,18 @@ static Status CreateOrtEnv() {
   // Immediately replace the default logging manager with one backed by a PythonCallbackSink.
   // The PythonCallbackSink wraps the platform default sink and can be updated later via
   // set_default_logger_callback() without needing to recreate the LoggingManager (which is
-  // a singleton and cannot be re-created while still alive).
+  // a singleton guarded by a check in its constructor).
   //
-  // We destroy the freshly created manager first (clearing the singleton guard), then install
-  // a new one.  This is safe here because no ORT sessions or background threads exist yet.
+  // The sequence here is:
+  //   1. Create the PythonCallbackSink wrapping the platform default sink.
+  //   2. Call SetLoggingManager(nullptr) to destroy the just-created default manager.
+  //      The LoggingManager destructor explicitly resets the singleton guard (the
+  //      DefaultLoggerManagerInstance atomic pointer) to nullptr, allowing a new
+  //      Default-type manager to be constructed.
+  //   3. Construct a new LoggingManager with the PythonCallbackSink and install it.
+  //
+  // This is safe at this point because no ORT sessions or background threads have
+  // been created yet, so there is no concurrent logging activity.
   {
     using namespace onnxruntime::logging;
     auto python_sink = CreateAndRegisterPythonCallbackSink(MakePlatformDefaultLogSink());
