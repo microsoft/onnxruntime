@@ -43,7 +43,10 @@ bool IsGraphOutput(const Graph& graph, const NodeArg* arg) {
 }
 
 // Walks back from `consumer` via input slot `consumer_input_index` and matches:
-//     producer_proj -> Reshape(reshape_outer) -> SimplifiedLayerNormalization(sln) -> Reshape(reshape_inner) -> consumer
+//     producer_proj -> Reshape(reshape_inner) -> SimplifiedLayerNormalization(sln) -> Reshape(reshape_outer) -> consumer
+// (`reshape_inner` is the one closest to the projection: it reshapes the (batch, seq, hidden)
+// tensor to (batch, seq, num_heads, head_size). `reshape_outer` is the one closest to the
+// consumer: it folds back to (batch, seq, hidden).)
 // On success returns true and fills the out-pointers. Each intermediate node must have a single
 // consumer (the next op in the chain) and must not be a graph output.
 bool MatchPreNormReshapeChain(Graph& graph,
