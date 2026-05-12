@@ -374,6 +374,54 @@ TEST(FusedConvTest, Cpu_NhwcConv2D_AutoPadSameUpper) {
 }
 #endif
 
+TEST(FusedConvTest, Cpu_Conv3D_Batched_Relu) {
+  constexpr size_t batch_count = 4;
+  constexpr size_t input_channels = 1;
+  constexpr size_t input_depth = 8;
+  constexpr size_t input_height = 8;
+  constexpr size_t input_width = 8;
+  constexpr size_t filter_count = 6;
+  constexpr size_t kernel_depth = 7;
+  constexpr size_t kernel_height = 7;
+  constexpr size_t kernel_width = 7;
+
+  OpTester test("FusedConv", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("group", static_cast<int64_t>(1));
+  test.AddAttribute("kernel_shape", vector<int64_t>{7, 7, 7});
+  test.AddAttribute("pads", vector<int64_t>{3, 3, 3, 3, 3, 3});
+  test.AddAttribute("strides", vector<int64_t>{1, 1, 1});
+  test.AddAttribute("dilations", vector<int64_t>{1, 1, 1});
+  test.AddAttribute("activation", string("Relu"));
+
+  const vector<int64_t> X_shape = {static_cast<int64_t>(batch_count),
+                                   static_cast<int64_t>(input_channels),
+                                   static_cast<int64_t>(input_depth),
+                                   static_cast<int64_t>(input_height),
+                                   static_cast<int64_t>(input_width)};
+  const vector<int64_t> W_shape = {static_cast<int64_t>(filter_count),
+                                   static_cast<int64_t>(input_channels),
+                                   static_cast<int64_t>(kernel_depth),
+                                   static_cast<int64_t>(kernel_height),
+                                   static_cast<int64_t>(kernel_width)};
+  const vector<int64_t> Y_shape = {static_cast<int64_t>(batch_count),
+                                   static_cast<int64_t>(filter_count),
+                                   static_cast<int64_t>(input_depth),
+                                   static_cast<int64_t>(input_height),
+                                   static_cast<int64_t>(input_width)};
+
+  vector<float> X(batch_count * input_channels * input_depth * input_height * input_width, 0.0f);
+  vector<float> W(filter_count * input_channels * kernel_depth * kernel_height * kernel_width, 0.0f);
+  vector<float> Y(batch_count * filter_count * input_depth * input_height * input_width, 0.0f);
+
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W, true);
+  test.AddOutput<float>("Y", Y_shape, Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 #endif
 
 }  // namespace test
