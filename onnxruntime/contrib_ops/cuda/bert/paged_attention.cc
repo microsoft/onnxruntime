@@ -232,42 +232,44 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> gathered_value_buffer;
   IAllocatorUniquePtr<void> fmha_buffer;
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
-  if (use_memory_efficient_attention) {
-    // MEA needs two host-side quantities:
-    //   - total_kv_tokens (= cumulative_seqlens_kv[batch_size]) to size tight gather buffers.
-    //   - max_query_len (= max per-batch new-query length) to size the rotary and MEA grids
-    //     correctly. The heuristic `token_count - batch_size + 1` underestimates when any
-    //     batch has 0 new tokens (valid input), silently dropping query-tokens from those
-    //     larger-than-average batches.
-    // Both come from cumulative_seqlens_q / cumulative_seqlens_kv, which are tiny (batch+1
-    // ints each), so one D->H copy of the full arrays is cheaper than issuing an extra
-    // reduction kernel and avoids a second sync.
+  // Compute max_query_len on the host for both FA and MEA. The previous
+  // `token_count - batch_size + 1` heuristic underestimates (or goes
+  // non-positive) when batches have zero new tokens. MEA additionally needs
+  // total_kv_tokens to size gather buffers.
+  if (use_flash_attention || use_memory_efficient_attention) {
     const int kCumulativeCount = parameters.batch_size + 1;
     auto cum_q_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
-    auto cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
+    IAllocatorUniquePtr<int> cum_kv_pinned;
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_q_pinned.get(),
                                          reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
                                          sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
-                                         sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
+    if (use_memory_efficient_attention) {
+      cum_kv_pinned = this->AllocateBufferOnCPUPinned<int>(kCumulativeCount);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cum_kv_pinned.get(), cumulative_seqlens_kv_ptr,
+                                           sizeof(int) * kCumulativeCount, cudaMemcpyDeviceToHost, cuda_stream));
+    }
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
-    total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
     for (int i = 0; i < parameters.batch_size; ++i) {
       const int q_len_i = cum_q_pinned.get()[i + 1] - cum_q_pinned.get()[i];
       if (q_len_i > max_query_len) {
         max_query_len = q_len_i;
       }
     }
-    if (total_kv_tokens == 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "PagedAttention MEA fallback: total_kv_tokens is zero for non-empty input.");
+    if (use_memory_efficient_attention) {
+      total_kv_tokens = cum_kv_pinned.get()[parameters.batch_size];
+      if (total_kv_tokens == 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "PagedAttention MEA fallback: total_kv_tokens is zero for non-empty input.");
+      }
+      if (total_kv_tokens < 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "PagedAttention MEA fallback: total_kv_tokens is negative (", total_kv_tokens, ").");
+      }
     }
-    if (total_kv_tokens < 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "PagedAttention MEA fallback: total_kv_tokens is negative (", total_kv_tokens, ").");
-    }
+  }
 
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  if (use_memory_efficient_attention) {
     const size_t gather_elems = static_cast<size_t>(total_kv_tokens) *
                                 parameters.num_heads * parameters.head_size;
     gathered_key_buffer = GetScratchBuffer<void>(sizeof(T) * gather_elems, GetComputeStream(context));
@@ -318,6 +320,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.cos_cache = reinterpret_cast<const CudaT*>(cos_cache->Data<T>());
     data.sin_cache = reinterpret_cast<const CudaT*>(sin_cache->Data<T>());
   }
+  data.max_query_len = max_query_len;  // consumed by both FA and MEA
   if (use_memory_efficient_attention) {
     data.gathered_key = reinterpret_cast<CudaT*>(gathered_key_buffer.get());
     data.gathered_value = reinterpret_cast<CudaT*>(gathered_value_buffer.get());
@@ -325,7 +328,6 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
     }
     data.total_kv_tokens = total_kv_tokens;
-    data.max_query_len = max_query_len;
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
