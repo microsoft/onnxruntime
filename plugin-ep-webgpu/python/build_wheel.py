@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """Build a wheel for the onnxruntime-ep-webgpu package.
 
 Combines pre-built plugin EP binaries with the Python package source to produce
