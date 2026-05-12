@@ -559,9 +559,9 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
   }
 }
 
-// Test that when a caller passes back stale output OrtValues from a previous Run() as fetches
-// for a subsequent Run() with different-shaped inputs, ORT handles the shape mismatch gracefully
-// by re-allocating instead of crashing. This is the scenario described in GitHub issue #28359.
+// Test that when a caller provides pre-allocated output OrtValues whose shapes don't match
+// the computed output shapes, ORT returns a clear INVALID_ARGUMENT error with an actionable
+// message. This is the scenario described in GitHub issue #28359.
 //
 // The caller's copy of the old output remains valid (OrtValue uses shared_ptr internally).
 // Pre-run validation (ValidateInputsOutputs) catches structural mismatches (wrong type, rank,

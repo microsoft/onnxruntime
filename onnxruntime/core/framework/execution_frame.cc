@@ -199,7 +199,9 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                                                 : *shape;  // unreachable, but satisfies compiler
 #endif
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The output OrtValue provided for node '", node.Name(),
+                               "The output OrtValue provided for output '",
+                               node.OutputDefs()[output_index]->Name(),
+                               "' of node '", node.Name(),
                                "' (", node.OpType(), ") has shape ", existing_shape,
                                " but the computed output shape for this run is ", *shape,
                                ". When calling Run() with pre-allocated output OrtValues on a model "
