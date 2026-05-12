@@ -1621,6 +1621,9 @@ struct ConstSessionOptionsImpl : Base<T> {
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def) const;
+
+  bool GetMemPatternEnabled() const;       ///< Wraps OrtApi::GetMemPatternEnabled
+  ExecutionMode GetExecutionMode() const;  ///< Wraps OrtApi::GetSessionExecutionMode
 };
 
 template <typename T>
@@ -3531,7 +3534,7 @@ struct GraphImpl : ConstGraphImpl<T> {
   // <Wraps GetModelEditorApi().SetGraphOutputs()
   void SetOutputs(std::vector<ValueInfo>& outputs);
   // <Wraps GetModelEditorApi().AddInitializerToGraph()
-  void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
+  void AddInitializer(const std::string& name, const Value& initializer, bool data_is_external);  // Graph copies the OrtValue internally
   // <Wraps GetModelEditorApi().AddNodeToGraph()
   void AddNode(Node& node);  // Graph takes ownership of Node
 #endif                       // !defined(ORT_MINIMAL_BUILD)
