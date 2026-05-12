@@ -272,8 +272,8 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       return context.RunProgram(program);
     } else {
       if (is_channels_last) {
-        auto M = matmul_output_shape.SizeToDimension(matmul_output_shape.NumDimensions() - 1);
-        if (intel::CanApplyMatMulIntel(context, M, N, K)) {
+        auto M = matmul_output_shape[1];
+        if (intel::CanApplyMatMulIntel(context, batch, M, N, K)) {
           return intel::ApplyMatMulIntel(context, activation_, inputs, output, matmul_input_reshapes[0], matmul_input_reshapes[1]);
         }
       }

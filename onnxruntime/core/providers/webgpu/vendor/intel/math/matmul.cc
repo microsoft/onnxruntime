@@ -34,8 +34,8 @@ Status MatMulSubgroupProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K) {
-  return CanApplySubgroup(context, M, N, K);
+bool CanApplyMatMulIntel(const ComputeContext& context, int64_t batch, int64_t M, int64_t N, int64_t K) {
+  return CanApplySubgroup(context, batch, M, N, K);
 }
 
 Status ApplyMatMulIntel(ComputeContext& context,
