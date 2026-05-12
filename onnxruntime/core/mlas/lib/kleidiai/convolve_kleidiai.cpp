@@ -480,14 +480,12 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
         1, 1
     };
 
-    auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
-
     std::shared_ptr<const void*[]> lhs_ptrs;
-    if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {
+    if (auto found = lhs_ptrs_cache_by_pad[cur_pad_ptr].find(key); found != lhs_ptrs_cache_by_pad[cur_pad_ptr].end()) {
         lhs_ptrs = found->second;
     } else {
         lhs_ptrs = LhsPtrFill(ci, ih, iw, kh, kw, sh, sw, padding, &pad_ptr[0]);
-        lhs_ptrs_cache[key] = lhs_ptrs;
+        lhs_ptrs_cache_by_pad[cur_pad_ptr][key] = lhs_ptrs;
     }
 
     MultiThreadedLHSPackSme(ThreadPool, ci, m, kh, kw, &lhs_ptrs[0], &lhs[0], activation_src, &pad_ptr[0]);

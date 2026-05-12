@@ -4,25 +4,386 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/data_types.h"
 #include "core/graph/graph_utils.h"
+#include "core/mlas/inc/mlas.h"
+
+#include <algorithm>
+#include <limits>
+#include <optional>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
+template <typename T>
+static bool IsTensorOfType(const NodeArg& node_arg) {
+  const auto* type_proto = node_arg.TypeAsProto();
+  return node_arg.Exists() &&
+         type_proto != nullptr &&
+         DataTypeImpl::TypeFromProto(*type_proto) == DataTypeImpl::GetTensorType<T>();
+}
+
+template <typename T, typename NodeArgs>
+static bool HasTensorArgOfType(const NodeArgs& node_args) {
+  return std::any_of(node_args.cbegin(), node_args.cend(),
+                     [](const NodeArg* node_arg) {
+                       return node_arg != nullptr && IsTensorOfType<T>(*node_arg);
+                     });
+}
+
 static bool IsMLFloat16Tensor(const NodeArg& node_arg) {
-  // Type() will return nullptr if node_arg.Exists() is true so don't need an additional check for that
-  return node_arg.Type() != nullptr &&
-         DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>();
+  return IsTensorOfType<MLFloat16>(node_arg);
 }
 
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
-  // If the node's input is float16 and currently the node is not assigned to any EP
-  // we need to insert a cast to float, and put the node on CPU for default behavior.
-  // We don't cast a node with a subgraph as we'd need to do a lot more checking of the subgraph inputs
-  // (both explicit and implicit) and contents to determine if it was safe to do so.
-  // TODO: a better check is to check does the CPU kernel with float exist or not.
+  // Returns true when this input is an fp16 input to an unassigned node that is eligible
+  // for the cast-to-fp32 fallback path.
+  //
+  // Nodes with subgraphs are excluded because rewriting explicit and implicit subgraph
+  // inputs safely requires additional checks of the subgraph boundaries and contents.
   return node->GetExecutionProviderType().empty() &&
          !node->ContainsSubgraph() &&
          IsMLFloat16Tensor(*input);
+}
+
+static bool HasFp16IO(const onnxruntime::Node& node) {
+  return HasTensorArgOfType<MLFloat16>(node.InputDefs()) ||
+         HasTensorArgOfType<MLFloat16>(node.OutputDefs());
+}
+
+static bool HasFp16Input(const onnxruntime::Node& node) {
+  return HasTensorArgOfType<MLFloat16>(node.InputDefs());
+}
+
+static bool IsCpuFp16OptInPolicyOp(const onnxruntime::Node& node) {
+  // Standard-domain ops whose CPU fp16 kernels are governed by session.enable_cpu_fp16
+  // and the fp32 fallback heuristic. Existing CPU fp16 kernels are intentionally not
+  // included in this opt-in/fallback policy.
+  return node.Domain().empty() &&
+         (node.OpType() == "MatMul" || node.OpType() == "Gemm");
+}
+
+static std::optional<int64_t> DimValue(const ONNX_NAMESPACE::TensorShapeProto* shape, int dim_idx) {
+  if (!shape || dim_idx < 0 || dim_idx >= shape->dim_size()) {
+    return std::nullopt;
+  }
+
+  const auto& dim = shape->dim(dim_idx);
+  if (!dim.has_dim_value()) {
+    return std::nullopt;
+  }
+
+  return dim.dim_value();
+}
+
+static std::optional<int64_t> ProductOfDimsExceptLast(const ONNX_NAMESPACE::TensorShapeProto* shape) {
+  if (!shape || shape->dim_size() < 2) {
+    return std::nullopt;
+  }
+
+  int64_t product = 1;
+  for (int i = 0; i < shape->dim_size() - 1; ++i) {
+    const auto dim = DimValue(shape, i);
+    if (!dim || *dim < 0) {
+      return std::nullopt;
+    }
+
+    if (*dim != 0 && product > std::numeric_limits<int64_t>::max() / *dim) {
+      return std::nullopt;
+    }
+    product *= *dim;
+  }
+
+  return product;
+}
+
+static std::optional<int64_t> GetAttributeInt(const onnxruntime::Node& node,
+                                              const std::string& attr_name,
+                                              int64_t default_value) {
+  const auto& attrs = node.GetAttributes();
+  const auto attr = attrs.find(attr_name);
+  if (attr == attrs.end()) {
+    return default_value;
+  }
+
+  if (attr->second.type() != ONNX_NAMESPACE::AttributeProto_AttributeType_INT) {
+    return std::nullopt;
+  }
+
+  return attr->second.i();
+}
+
+struct CpuFp16GemmShape {
+  int64_t M;
+  int64_t N;
+  int64_t K;
+};
+
+static std::optional<CpuFp16GemmShape> GetMatMulShapeForCpuFp16Heuristic(const onnxruntime::Node& node) {
+  const auto& inputs = node.InputDefs();
+  if (inputs.size() < 2 || !inputs[0] || !inputs[1]) {
+    return std::nullopt;
+  }
+
+  const auto* a_shape = inputs[0]->Shape();
+  const auto* b_shape = inputs[1]->Shape();
+  if (!a_shape || !b_shape || a_shape->dim_size() < 2 || b_shape->dim_size() < 2) {
+    return std::nullopt;
+  }
+
+  const auto b_inner_dim = DimValue(b_shape, b_shape->dim_size() - 2);
+  const auto b_size_to_inner_dim = ProductOfDimsExceptLast(b_shape);
+  // Match MatMulComputeHelper: RHS shapes like [1, ..., 1, K, N] also flatten
+  // the left input because the leading RHS dims are only padding.
+  const bool flattens_left = a_shape->dim_size() >= b_shape->dim_size() &&
+                             b_inner_dim && b_size_to_inner_dim &&
+                             *b_size_to_inner_dim == *b_inner_dim;
+
+  // Match MatMulComputeHelper: effectively 2D RHS flattens the left input, while
+  // genuinely batched RHS uses the per-GEMM row count.
+  auto M = flattens_left ? ProductOfDimsExceptLast(a_shape)
+                         : DimValue(a_shape, a_shape->dim_size() - 2);
+  auto K = DimValue(a_shape, a_shape->dim_size() - 1);
+  auto N = DimValue(b_shape, b_shape->dim_size() - 1);
+  if (!M || !N || !K) {
+    return std::nullopt;
+  }
+
+  return CpuFp16GemmShape{*M, *N, *K};
+}
+
+struct CpuFp16MatMulRhsShape {
+  int64_t N;
+  int64_t K;
+};
+
+static std::optional<CpuFp16MatMulRhsShape> GetMatMulRhsShapeForCpuFp16Heuristic(const onnxruntime::Node& node) {
+  const auto& inputs = node.InputDefs();
+  if (inputs.size() < 2 || !inputs[1]) {
+    return std::nullopt;
+  }
+
+  const auto* b_shape = inputs[1]->Shape();
+  if (!b_shape || b_shape->dim_size() != 2) {
+    return std::nullopt;
+  }
+
+  auto K = DimValue(b_shape, b_shape->dim_size() - 2);
+  auto N = DimValue(b_shape, b_shape->dim_size() - 1);
+  if (!N || !K || *N < 0 || *K < 0) {
+    return std::nullopt;
+  }
+
+  if (*K != 0 && *N > std::numeric_limits<int64_t>::max() / *K) {
+    return std::nullopt;
+  }
+
+  return CpuFp16MatMulRhsShape{*N, *K};
+}
+
+static std::optional<CpuFp16GemmShape> GetGemmShapeForCpuFp16Heuristic(const onnxruntime::Node& node) {
+  const auto& inputs = node.InputDefs();
+  if (inputs.size() < 2 || !inputs[0] || !inputs[1]) {
+    return std::nullopt;
+  }
+
+  const auto* a_shape = inputs[0]->Shape();
+  const auto* b_shape = inputs[1]->Shape();
+  if (!a_shape || !b_shape || a_shape->dim_size() != 2 || b_shape->dim_size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto trans_a = GetAttributeInt(node, "transA", 0);
+  const auto trans_b = GetAttributeInt(node, "transB", 0);
+  if (!trans_a || !trans_b) {
+    return std::nullopt;
+  }
+
+  const auto M = DimValue(a_shape, *trans_a ? 1 : 0);
+  const auto K = DimValue(a_shape, *trans_a ? 0 : 1);
+  const auto N = DimValue(b_shape, *trans_b ? 0 : 1);
+  if (!M || !N || !K) {
+    return std::nullopt;
+  }
+
+  return CpuFp16GemmShape{*M, *N, *K};
+}
+
+static bool ShouldKeepNativeCpuFp16ForMatMulOrGemm(
+    const Graph& graph,
+    const onnxruntime::Node& node,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& mlas_backend_kernel_selector_config) {
+  constexpr int64_t kMaxNativeFp16GemvM = 4;
+  constexpr int64_t kMinNativeFp16ConstantMatMulNK = 512 * 1024;
+  constexpr int64_t kMinNativeFp16NK = 1024 * 1024;
+
+  std::optional<CpuFp16GemmShape> shape;
+  if (node.OpType() == "MatMul") {
+    const auto& inputs = node.InputDefs();
+    const bool has_constant_rhs =
+        inputs.size() > 1 && inputs[1] && graph_utils::IsInitializer(graph, inputs[1]->Name(), true);
+    if (has_constant_rhs) {
+      const auto rhs_shape = GetMatMulRhsShapeForCpuFp16Heuristic(node);
+      if (!rhs_shape) {
+        return false;
+      }
+
+      const auto nk = rhs_shape->N * rhs_shape->K;
+      if (nk < kMinNativeFp16ConstantMatMulNK) {
+        return false;
+      }
+
+      return MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans,
+                                         static_cast<size_t>(rhs_shape->N),
+                                         static_cast<size_t>(rhs_shape->K),
+                                         &mlas_backend_kernel_selector_config) != 0;
+    }
+
+    shape = GetMatMulShapeForCpuFp16Heuristic(node);
+  } else if (node.OpType() == "Gemm") {
+    shape = GetGemmShapeForCpuFp16Heuristic(node);
+  }
+
+  if (!shape || shape->M < 0 || shape->N < 0 || shape->K < 0) {
+    return false;
+  }
+
+  if (shape->K != 0 && shape->N > std::numeric_limits<int64_t>::max() / shape->K) {
+    return false;
+  }
+
+  const auto nk = shape->N * shape->K;
+
+  if (node.OpType() == "MatMul") {
+    return shape->M <= kMaxNativeFp16GemvM &&
+           nk >= kMinNativeFp16NK &&
+           MlasHGemmSupported(CblasNoTrans, CblasNoTrans);
+  }
+
+  if (shape->M > kMaxNativeFp16GemvM) {
+    return false;
+  }
+
+  return nk >= kMinNativeFp16NK;
+}
+
+static const IKernelTypeStrResolver& GetInsertCastKernelTypeStrResolver() {
+#if !defined(ORT_MINIMAL_BUILD)
+  static const OpSchemaKernelTypeStrResolver resolver;
+#else
+  static const KernelTypeStrResolver resolver;
+#endif
+  return resolver;
+}
+
+static bool BuildTypeConstraintMapForNode(const onnxruntime::Node& node,
+                                          bool replace_fp16_with_float,
+                                          InlinedHashMap<std::string, MLDataType>& type_constraint_map) {
+  // Build the type-constraint map that kernel lookup uses for this node.
+  //
+  // ONNX kernel lookup is based on the operator schema's type variables (e.g. T, T1, T2)
+  // rather than directly on individual NodeArg names. For example, a schema may say that
+  // both inputs and the output are of type "T". To ask "does CPU have a kernel for this
+  // node as currently typed?" or "does CPU have a float32 fallback for this fp16 node?",
+  // we first need to resolve those schema type variables to concrete MLDataType values.
+  //
+  // When replace_fp16_with_float is false we record the node's current types as-is.
+  // When it is true we rewrite any float16 tensors to float in the constructed map so
+  // we can ask whether a valid float32 fallback kernel exists for the same operator.
+  const auto* schema = node.Op();
+  if (!schema) {
+    return false;
+  }
+
+  const TypeConstraintMap& type_schema = schema->typeConstraintMap();
+  type_constraint_map.reserve(type_schema.size());
+
+  const auto SetTypeConstraint = [&](const std::string& type_str, const NodeArg* def) {
+    if (!def || !def->Exists()) {
+      return;
+    }
+
+    TypeConstraintMap::const_iterator it = type_schema.find(type_str);
+    if (it == type_schema.end()) {
+      return;
+    }
+
+    auto type = DataTypeImpl::TypeFromProto(*(def->TypeAsProto()));
+    if (replace_fp16_with_float && type == DataTypeImpl::GetTensorType<MLFloat16>()) {
+      type = DataTypeImpl::GetTensorType<float>();
+    }
+
+    type_constraint_map[type_str] = type;
+  };
+
+  const auto& input_arg_counts = node.InputArgCount();
+  const auto& input_defs = node.InputDefs();
+  const auto& formal_inputs = schema->inputs();
+  const size_t num_inputs = std::min(formal_inputs.size(), input_arg_counts.size());
+  int input_idx_start = 0;
+  for (size_t formal_idx = 0;
+       formal_idx < num_inputs;
+       input_idx_start += input_arg_counts[formal_idx], formal_idx++) {
+    const auto& type_str = formal_inputs[formal_idx].GetTypeStr();
+    // Variadic formal parameters can map to multiple actual inputs. For current CPU fp16
+    // preservation/fallback decisions we only need one concrete binding for the schema type
+    // variable, so we take the first existing actual input for that formal parameter.
+    for (int input_idx = 0; input_idx < input_arg_counts[formal_idx]; input_idx++) {
+      const size_t idx = static_cast<size_t>(input_idx_start) + static_cast<size_t>(input_idx);
+      ORT_ENFORCE(idx < input_defs.size());
+      const NodeArg* input_def = input_defs[idx];
+      if (!input_def || !input_def->Exists()) {
+        continue;
+      }
+
+      SetTypeConstraint(type_str, input_def);
+      break;
+    }
+  }
+
+  const auto& output_defs = node.OutputDefs();
+  const auto& formal_outputs = schema->outputs();
+  const size_t num_outputs = std::min(formal_outputs.size(), output_defs.size());
+  for (size_t idx = 0; idx < num_outputs; idx++) {
+    const auto& type_str = formal_outputs[idx].GetTypeStr();
+    SetTypeConstraint(type_str, output_defs[idx]);
+  }
+
+  return true;
+}
+
+static bool HasCpuKernelForCurrentTypes(
+    const onnxruntime::Node& node,
+    const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
+    const logging::Logger& logger) {
+  const auto& resolver = GetInsertCastKernelTypeStrResolver();
+  for (const KernelRegistry* cpu_kernel_registry : cpu_kernel_registries) {
+    if (KernelRegistry::HasImplementationOf(*cpu_kernel_registry, node, kCpuExecutionProvider, resolver, logger)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool HasCpuFloat32FallbackKernel(
+    const onnxruntime::Node& node,
+    const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
+    const logging::Logger& logger) {
+  InlinedHashMap<std::string, MLDataType> type_constraint_map;
+  if (!BuildTypeConstraintMapForNode(node, true, type_constraint_map)) {
+    return false;
+  }
+
+  for (const KernelRegistry* cpu_kernel_registry : cpu_kernel_registries) {
+    const KernelCreateInfo* kernel_create_info{};
+    const auto lookup_status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, node.OpType(), node.Domain(),
+        node.SinceVersion(), type_constraint_map, logger, &kernel_create_info);
+    if (lookup_status.IsOK() && kernel_create_info != nullptr) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
@@ -48,16 +409,13 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
 
 // check if the node has an fp16 input but was not able to be assigned an execution provider.
 // we will need to add casts to/from fp32 around the node for it to be executed using the CPU EP.
-static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
+static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node,
+                                     const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
+                                     const logging::Logger& logger) {
   bool not_assigned = node.GetExecutionProviderType().empty();
 
   if (not_assigned) {
-    const auto& input_defs = node.InputDefs();
-    bool has_fp16_input = std::any_of(input_defs.cbegin(), input_defs.cend(),
-                                      [](const NodeArg* input_def) {
-                                        return IsMLFloat16Tensor(*input_def);
-                                      });
-    return has_fp16_input;
+    return HasFp16Input(node) && HasCpuFloat32FallbackKernel(node, cpu_kernel_registries, logger);
   }
 
   return false;
@@ -85,7 +443,7 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
 //
 // Return true if all the fp16 inputs and outputs are connected to nodes that will be cast to fp32.
 static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::Graph& graph,
-                                    const KernelRegistry& cpu_kernel_registry,
+                                    const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
                                     const logging::Logger& logger) {
   // we can check if it's an isolated fp16 node
   // if node has input coming from other nodes (only consuming graph inputs or initializers if it doesn't),
@@ -162,7 +520,7 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
       const int arg_idx = input_edge->GetDstArgIndex();
       if (fp16_args.find(arg_idx) != fp16_args.end()) {
         // if the node producing our fp16 input does not need its input cast to fp32 we should run in fp16
-        if (!NodeNeedsInputCastToFp32(input_edge->GetNode())) {
+        if (!NodeNeedsInputCastToFp32(input_edge->GetNode(), cpu_kernel_registries, logger)) {
           return false;
         }
       }
@@ -202,7 +560,7 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
       const int arg_idx = output_edge->GetSrcArgIndex();
       if (fp16_args.find(arg_idx) != fp16_args.end()) {
         // if the node producing our fp16 input does not need its input cast to fp32 we should run in fp16
-        if (!NodeNeedsInputCastToFp32(output_edge->GetNode())) {
+        if (!NodeNeedsInputCastToFp32(output_edge->GetNode(), cpu_kernel_registries, logger)) {
           return false;
         }
       }
@@ -210,24 +568,32 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
 
     // now all fp16 inputs and outputs would have a cast
     // make sure fp32 version of the kernel is available.
-    const KernelCreateInfo* kernel_create_info{};
-    const auto lookup_status = cpu_kernel_registry.TryFindKernel(
-        kCpuExecutionProvider, node.OpType(), node.Domain(),
-        node.SinceVersion(), type_constraint_map, logger, &kernel_create_info);
-    if (lookup_status.IsOK() && kernel_create_info != nullptr) {
-      return true;
+    for (const KernelRegistry* cpu_kernel_registry : cpu_kernel_registries) {
+      const KernelCreateInfo* kernel_create_info{};
+      const auto lookup_status = cpu_kernel_registry->TryFindKernel(
+          kCpuExecutionProvider, node.OpType(), node.Domain(),
+          node.SinceVersion(), type_constraint_map, logger, &kernel_create_info);
+      if (lookup_status.IsOK() && kernel_create_info != nullptr) {
+        return true;
+      }
     }
   }
 
   return false;
 }
 
-static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry,
-                                                 const logging::Logger& logger) {
+static Status ForceSingleNodeCPUFloat16ToFloat32(
+    onnxruntime::Graph& graph,
+    const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
+    const logging::Logger& logger,
+    InlinedHashSet<NodeIndex>& forced_fp32_nodes) {
   for (auto& node : graph.Nodes()) {
-    if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry, logger)) {
-      // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32
+    if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registries, logger)) {
+      // Unassign the node so that NeedInsertCast will return true for it, forcing it to fp32.
+      // Track the node index as well so the later broad fp16-preservation logic does not
+      // immediately assign it back to CPU and undo the heuristic.
       node.SetExecutionProviderType("");
+      forced_fp32_nodes.insert(node.Index());
     }
   }
 
@@ -504,8 +870,11 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
 Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const {
-  if (force_cpu_fp32_)
-    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_, logger));
+  InlinedHashSet<NodeIndex> forced_fp32_nodes;
+  if (force_cpu_fp32_ && !cpu_kernel_registries_.empty()) {
+    ORT_RETURN_IF_ERROR(
+        ForceSingleNodeCPUFloat16ToFloat32(graph, cpu_kernel_registries_, logger, forced_fp32_nodes));
+  }
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
@@ -519,6 +888,43 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     auto node = graph.GetNode(i);
     if (!node)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+
+    if (!enable_cpu_fp16_ &&
+        node->GetExecutionProviderType() == kCpuExecutionProvider &&
+        IsCpuFp16OptInPolicyOp(*node) &&
+        HasFp16Input(*node) &&
+        !node->ContainsSubgraph()) {
+      node->SetExecutionProviderType("");
+    }
+
+    if (enable_cpu_fp16_ &&
+        force_cpu_fp32_ &&
+        IsCpuFp16OptInPolicyOp(*node) &&
+        HasFp16Input(*node) &&
+        !node->ContainsSubgraph() &&
+        (node->GetExecutionProviderType().empty() ||
+         node->GetExecutionProviderType() == kCpuExecutionProvider) &&
+        !ShouldKeepNativeCpuFp16ForMatMulOrGemm(graph, *node, mlas_backend_kernel_selector_config_) &&
+        HasCpuFloat32FallbackKernel(*node, cpu_kernel_registries_, logger)) {
+      // Current Arm fp16 paths are profitable for constant-RHS MatMul once native
+      // packed-B is available, and for large GEMV-like shapes. Keep Gemm conservative
+      // until MLAS native fp16 is consistently faster across its common shapes.
+      node->SetExecutionProviderType("");
+      forced_fp32_nodes.insert(node->Index());
+    }
+
+    const bool has_fp16_io = !node->ContainsSubgraph() && HasFp16IO(*node);
+    const bool has_cpu_fp16_kernel =
+        has_fp16_io && HasCpuKernelForCurrentTypes(*node, cpu_kernel_registries_, logger);
+
+    if (enable_cpu_fp16_ &&
+        node->GetExecutionProviderType().empty() &&
+        has_cpu_fp16_kernel &&
+        forced_fp32_nodes.find(node->Index()) == forced_fp32_nodes.end()) {
+      // When CPU fp16 is enabled, assign any currently-unassigned fp16-capable node to CPU
+      // so it is preserved in fp16 instead of being routed through the fp32 cast fallback.
+      node->SetExecutionProviderType(kCpuExecutionProvider);
+    }
 
     auto& inputs = node->MutableInputDefs();
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
@@ -546,7 +952,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
 
     if (casted) {
       // Set current node to run on the CPU execution provider
-      // Keep in mind that the EP will be empty because NeedInsertCast() already insures that
+      // Keep in mind that the EP will be empty because NeedInsertCast() already ensures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
 
       // Some ONNX operators have an attribute `dtype` which define the output type for these operators

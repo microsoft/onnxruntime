@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/mlas/inc/mlas.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -685,6 +686,68 @@ TEST(MathOpTest, MatMulBatchedSplitK) {
   test.ConfigExcludeEps({kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
+}
+
+TEST(MathOpTest, MatMulFloat16NativePrepackedWeightsAreNotShared) {
+  if (MlasHalfGemmNativePackBSize(CblasNoTrans, CblasNoTrans, 3, 4) == 0) {
+    GTEST_SKIP() << "Native fp16 MatMul prepack unavailable";
+  }
+
+  std::vector<float> a_values{1.0f, 2.0f, 3.0f, 4.0f,
+                              -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<float> b_values(12, 1.0f);
+  std::vector<float> y_values{10.0f, 10.0f, 10.0f,
+                              -10.0f, -10.0f, -10.0f};
+
+  std::vector<MLFloat16> a_fp16(8);
+  std::vector<MLFloat16> b_fp16(12);
+  std::vector<MLFloat16> y_fp16(6);
+  ConvertFloatToMLFloat16(a_values.data(), a_fp16.data(), a_fp16.size());
+  ConvertFloatToMLFloat16(b_values.data(), b_fp16.data(), b_fp16.size());
+  ConvertFloatToMLFloat16(y_values.data(), y_fp16.data(), y_fp16.size());
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {2, 4}, a_fp16);
+  test.AddInput<MLFloat16>("B", {4, 3}, b_fp16, true);
+  test.AddOutput<MLFloat16>("Y", {2, 3}, y_fp16);
+
+  OrtValue b;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({4, 3}),
+                       b_fp16.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
+
+  SessionOptions so;
+  ASSERT_EQ(so.AddInitializer("B", &b), Status::OK());
+  ASSERT_EQ(so.config_options.AddConfigEntry("session.enable_cpu_fp16", "1"), Status::OK());
+  ASSERT_EQ(so.config_options.AddConfigEntry("session.cpu_fp16_use_fp32_fallback_heuristic", "0"), Status::OK());
+
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t first_session_prepacked_weights = 0;
+  size_t shared_prepacked_weights = 0;
+
+  test.Config(so)
+      .Config(run_with_tunable_op)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&first_session_prepacked_weights, &shared_prepacked_weights);
+
+  ASSERT_EQ(shared_prepacked_weights, static_cast<size_t>(0));
+  ASSERT_GT(first_session_prepacked_weights, static_cast<size_t>(0));
+  ASSERT_EQ(test.GetNumPrePackedWeightsShared(), static_cast<size_t>(0));
+
+  size_t second_session_prepacked_weights = 0;
+  test.Config(so)
+      .Config(run_with_tunable_op)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&second_session_prepacked_weights, &shared_prepacked_weights);
+
+  ASSERT_EQ(second_session_prepacked_weights, first_session_prepacked_weights);
+  ASSERT_EQ(shared_prepacked_weights, static_cast<size_t>(0));
 }
 
 #endif
