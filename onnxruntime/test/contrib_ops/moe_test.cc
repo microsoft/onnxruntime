@@ -94,6 +94,8 @@ static void RunQMoETest(const std::vector<float>& input, const std::vector<float
                         const std::vector<float>& fc2_scales, const std::vector<float>& fc3_scales,
                         const std::vector<float>& output_data, int num_rows, int num_experts, int hidden_size,
                         int inter_size, std::string activation_type, int normalize_routing_weights = 1, int top_k = 1, int expert_weight_bits = 4) {
+  ORT_ENFORCE(expert_weight_bits == 2 || expert_weight_bits == 4 || expert_weight_bits == 8,
+              "Unsupported expert_weight_bits: ", expert_weight_bits);
   constexpr int min_cuda_arch = 700;
   const int64_t pack_size = 8 / expert_weight_bits;
 

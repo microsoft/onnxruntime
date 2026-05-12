@@ -12,10 +12,11 @@
 #
 # QMoE quantization implementation notes:
 #
-# Both CPU and CUDA implementations use symmetric quantization centered around 0:
-# - 2-bit: range [-2, 1] with no zero-point (symmetric around 0)
-# - 4-bit: range [-8, 7] with no zero-point (symmetric around 0)
-# - 8-bit: range [-128, 127] with no zero-point (symmetric around 0)
+# Both CPU and CUDA implementations use symmetric quantization with an implicit
+# storage offset (2^(bits-1)) and no explicit zero_point tensor:
+# - 2-bit: representable signed range [-2, 1], implicit storage offset 2
+# - 4-bit: representable signed range [-8, 7], implicit storage offset 8
+# - 8-bit: representable signed range [-128, 127], implicit storage offset 128
 #
 # This follows the _symmetric_quantize_last_axis_of_batched_matrix pattern.
 # Tolerance values account for numerical differences between implementations.
