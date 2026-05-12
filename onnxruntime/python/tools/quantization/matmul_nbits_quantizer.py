@@ -852,10 +852,10 @@ def _build_nbits_output_reshape(
         a_rank_eff = max(rank(A), 2)   # ONNX promotes 1-D A to rank-2
         out_shape = [1] * max(rank(B_orig) - a_rank_eff, 0) + A.shape[:-1] + [N]
 
-    This is built dynamically via Shape/Size/Max/Sub/Max/ConstantOfShape/Slice/Concat
+    This is built dynamically via Shape/Gather/Max/Sub/Max/ConstantOfShape/Slice/Concat
     so it works regardless of A's static rank (handles rank(A) == 1, rank(A) == 2
     — the common transformer case — as well as rank(A) >= rank(B_orig) where no
-    leading-1 prepending is needed).
+    leading-1 prepending is needed). All ops used are valid from opset 11 onward.
 
     Args:
         a_input_name: name of the activation input edge (A) feeding MatMulNBits.
@@ -874,7 +874,9 @@ def _build_nbits_output_reshape(
     rank_b_orig = len(b_original_shape)
     n_dim = b_original_shape[-1]
 
-    p = name_prefix
+    # Incorporate the unique output tensor name so initializer names are unique
+    # even when multiple MatMul nodes share the same node.name (Fix 2).
+    p = name_prefix + "_" + final_output
     init_zero = p + "_zero"
     init_one = p + "_one"
     init_two = p + "_two"
@@ -897,6 +899,7 @@ def _build_nbits_output_reshape(
     )
 
     a_shape = p + "_a_shape"
+    a_shape_of_shape = p + "_a_shape_of_shape"
     a_rank = p + "_a_rank"
     a_rank_eff = p + "_a_rank_eff"
     extra_raw = p + "_extra_raw"
@@ -910,7 +913,12 @@ def _build_nbits_output_reshape(
 
     nodes = [
         onnx.helper.make_node("Shape", [a_input_name], [a_shape], name=p + "_shape_a"),
-        onnx.helper.make_node("Size", [a_shape], [a_rank], name=p + "_size_a"),
+        # Use Shape(shape) + Gather instead of Size to stay within opset 11
+        # (Size requires opset >= 13 when applied to a shape tensor).
+        # Shape applied to the 1-D shape vector yields [rank_a] as a 1-element
+        # tensor; Gather with scalar index 0 extracts it as a scalar int64.
+        onnx.helper.make_node("Shape", [a_shape], [a_shape_of_shape], name=p + "_shape_of_a_shape"),
+        onnx.helper.make_node("Gather", [a_shape_of_shape, init_zero], [a_rank], name=p + "_gather_rank"),
         # ONNX MatMul promotes a 1-D activation to rank-2 before computing the
         # output shape, so use Max(a_rank, 2) as the effective rank when
         # computing how many leading 1s to prepend.
