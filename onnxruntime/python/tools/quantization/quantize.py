@@ -22,6 +22,7 @@ from .quant_utils import (
     QuantFormat,
     QuantizationMode,
     QuantType,
+    get_opset_version,
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
     save_and_reload_model_with_shape_infer,
@@ -375,8 +376,8 @@ def get_qdq_config(
     # QuantizeLinear/DequantizeLinear supports INT16/UINT16 and INT4/UINT4 without contrib-domain ops.
     # 16-bit types in TensorQuantOverrides also trigger the same opset bump, so a mixed 16-bit + 4-bit
     # override config will be served at opset 21 where neither type needs contrib ops.
-    onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
-    if onnx_opset.version < 21:
+    onnx_opset_version = get_opset_version(model)
+    if onnx_opset_version < 21:
         override_types = overrides_helper.get_quant_types()
         overrides_have_16bit = any(t in q16_types for t in override_types)
         # If any 16-bit type is present (top-level or override), quantize_static() will bump the
@@ -713,7 +714,7 @@ def quantize_static(
         model,
         weight_type,
         activation_type,
-        tensor_quant_overrides=extra_options.get("TensorQuantOverrides"),
+        tensor_quant_overrides=(extra_options or {}).get("TensorQuantOverrides"),
     )
     is_model_updated = updated_model is not model
     if is_model_updated:

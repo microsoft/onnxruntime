@@ -15,7 +15,7 @@ import onnx
 
 from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
-from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType, ms_domain
+from onnxruntime.quantization.quant_utils import compute_scale_zp, get_opset_version, get_qmin_qmax_for_qType
 
 
 class DummyDataReader(CalibrationDataReader):
@@ -466,15 +466,17 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
         # The model opset should have been auto-bumped to >= 21
         qdq_model = onnx.load_model(qdq_model_name)
-        ai_onnx_opset = next(
-            opset.version for opset in qdq_model.opset_import if not opset.domain or opset.domain == "ai.onnx"
-        )
+        ai_onnx_opset = get_opset_version(qdq_model)
         self.assertGreaterEqual(ai_onnx_opset, 21)
 
         # Q/DQ ops should be in the default domain (NOT 'com.microsoft')
         for node in qdq_model.graph.node:
             if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
-                self.assertNotEqual(node.domain, ms_domain)
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
 
     def test_16bit_overrides_not_set_ms_domain(self):
         """
@@ -502,11 +504,15 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         # Output should the default uint8 type
         self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
 
-        # Q/DQ ops should all have the 'com.microsoft' domain
+        # Q/DQ ops should be in the default domain (NOT 'com.microsoft')
         qdq_model = onnx.load_model(qdq_model_name)
         for node in qdq_model.graph.node:
             if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
-                self.assertNotEqual(node.domain, ms_domain)
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
 
     def test_16bit_convert_quant_type_bumps_opset_to_21(self):
         """
@@ -538,15 +544,17 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
 
         # The model opset should have been auto-bumped to >= 21 due to convert.quant_type = QInt16
         qdq_model = onnx.load_model(qdq_model_name)
-        ai_onnx_opset = next(
-            opset.version for opset in qdq_model.opset_import if not opset.domain or opset.domain == "ai.onnx"
-        )
+        ai_onnx_opset = get_opset_version(qdq_model)
         self.assertGreaterEqual(ai_onnx_opset, 21)
 
         # Q/DQ ops should be in the default domain (NOT 'com.microsoft')
         for node in qdq_model.graph.node:
             if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
-                self.assertNotEqual(node.domain, ms_domain)
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
 
     def test_override_validation_nonexisting_tensor(self):
         """

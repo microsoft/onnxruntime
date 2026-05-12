@@ -15,6 +15,7 @@ import onnx
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
 from onnxruntime.quantization import CalibrationMethod, QuantFormat, QuantType, get_qdq_config, quantize
+from onnxruntime.quantization.quant_utils import get_opset_version
 
 
 class TestGetQDQConfig(unittest.TestCase):
@@ -335,8 +336,8 @@ class TestGetQDQConfig(unittest.TestCase):
         qdq_model = onnx.load_model(qdq_model_path)
 
         # The quantized model must have been bumped to opset 21.
-        onnx_opset = next(x for x in qdq_model.opset_import if not x.domain or x.domain == "ai.onnx")
-        self.assertEqual(onnx_opset.version, 21)
+        onnx_opset_version = get_opset_version(qdq_model)
+        self.assertEqual(onnx_opset_version, 21)
 
         # All Q/DQ nodes must use the default ONNX domain (not com.microsoft).
         for node in qdq_model.graph.node:
@@ -415,8 +416,8 @@ class TestGetQDQConfig(unittest.TestCase):
         qdq_model = onnx.load_model(qdq_model_path)
 
         # The quantized model must have been bumped to opset 21.
-        onnx_opset = next(x for x in qdq_model.opset_import if not x.domain or x.domain == "ai.onnx")
-        self.assertEqual(onnx_opset.version, 21)
+        onnx_opset_version = get_opset_version(qdq_model)
+        self.assertEqual(onnx_opset_version, 21)
 
         # All Q/DQ nodes must use the default ONNX domain (not com.microsoft).
         for node in qdq_model.graph.node:
@@ -464,6 +465,24 @@ class TestGetQDQConfig(unittest.TestCase):
         # UseQDQContribOps must NOT be set: the 16-bit override triggers an opset bump to 21,
         # making native Q/DQ ops sufficient for all types including the 4-bit one.
         self.assertFalse(qdq_config.extra_options.get("UseQDQContribOps", False))
+
+        qdq_model_path = os.path.join(self._tmp_dir_path, "add_mixed_16bit_4bit_opset18_qdq.onnx")
+        quantize(float_model, qdq_model_path, qdq_config)
+
+        qdq_model = onnx.load_model(qdq_model_path)
+
+        # The quantized model must have been bumped to opset 21.
+        onnx_opset_version = get_opset_version(qdq_model)
+        self.assertGreaterEqual(onnx_opset_version, 21)
+
+        # All Q/DQ nodes must use the default ONNX domain (not com.microsoft).
+        for node in qdq_model.graph.node:
+            if node.op_type in ("QuantizeLinear", "DequantizeLinear"):
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
 
 
 if __name__ == "__main__":
