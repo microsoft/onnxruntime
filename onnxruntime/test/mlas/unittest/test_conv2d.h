@@ -4,11 +4,16 @@
 #pragma once
 
 #include <cstring>
+#include <vector>
 
 #include "test_util.h"
 
 #if defined(MLAS_TARGET_AMD64)
 #include "core/mlas/lib/mlasi.h"
+#endif
+
+#if defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+#include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 #endif
 
 template <bool Threaded>
@@ -302,6 +307,168 @@ class MlasConv2DTest : public MlasTestBase {
   }
 
   MlasConv2DTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
+
+#if defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+  void TestKleidiAILhsCacheIgnoresInputContent() {
+    if (!ArmKleidiAI::UseSME) {
+      return;
+    }
+
+    struct ConvGeometry {
+      const char* name;
+      size_t input_channels;
+      size_t input_height;
+      size_t input_width;
+      size_t filter_count;
+      size_t kernel_height;
+      size_t kernel_width;
+      size_t padding;
+      size_t dilation_height;
+      size_t dilation_width;
+      size_t stride_height;
+      size_t stride_width;
+    };
+
+    constexpr size_t BatchCount = 1;
+    constexpr size_t GroupCount = 1;
+    constexpr ConvGeometry geometries[] = {
+        {"padded_3x3", 16, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1},
+        {"strided_3x3", 24, 13, 9, 16, 3, 3, 1, 1, 1, 2, 2},
+        {"dilated_3x3", 8, 15, 13, 20, 3, 3, 2, 2, 2, 1, 1},
+        {"wide_kernel", 12, 10, 12, 24, 3, 5, 2, 1, 1, 1, 2},
+    };
+
+    const auto fill_input = [](std::vector<float>& input, size_t seed) {
+      for (size_t i = 0; i < input.size(); ++i) {
+        input[i] = static_cast<float>((static_cast<int>((i * (seed + 3)) % 31) - 15) * 0.075f +
+                                      static_cast<float>(seed) * 0.125f);
+      }
+    };
+
+    for (const auto& geometry : geometries) {
+      SCOPED_TRACE(geometry.name);
+
+      const int64_t output_height64 =
+          ((int64_t(geometry.input_height) + 2 * int64_t(geometry.padding)) -
+           (int64_t(geometry.dilation_height) * (int64_t(geometry.kernel_height) - 1) + 1)) /
+              int64_t(geometry.stride_height) +
+          1;
+      const int64_t output_width64 =
+          ((int64_t(geometry.input_width) + 2 * int64_t(geometry.padding)) -
+           (int64_t(geometry.dilation_width) * (int64_t(geometry.kernel_width) - 1) + 1)) /
+              int64_t(geometry.stride_width) +
+          1;
+
+      ASSERT_GT(output_height64, 0);
+      ASSERT_GT(output_width64, 0);
+
+      const size_t output_height = static_cast<size_t>(output_height64);
+      const size_t output_width = static_cast<size_t>(output_width64);
+      const size_t input_elements =
+          BatchCount * GroupCount * geometry.input_channels * geometry.input_height * geometry.input_width;
+      const size_t filter_elements = GroupCount * geometry.filter_count * geometry.input_channels *
+                                     geometry.kernel_height * geometry.kernel_width;
+      const size_t bias_elements = GroupCount * geometry.filter_count;
+      const size_t output_elements = BatchCount * GroupCount * geometry.filter_count * output_height * output_width;
+
+      std::vector<float> input_a(input_elements);
+      std::vector<float> input_a_copy(input_elements);
+      std::vector<float> input_b(input_elements);
+      std::vector<float> filter(filter_elements);
+      std::vector<float> bias(bias_elements);
+      std::vector<float> output(output_elements);
+      std::vector<float> output_reference(output_elements);
+
+      fill_input(input_a, 1);
+      input_a_copy = input_a;
+      fill_input(input_b, 2);
+
+      for (size_t i = 0; i < filter_elements; ++i) {
+        filter[i] = static_cast<float>((static_cast<int>((i * 5) % 23) - 11) * 0.05f);
+      }
+
+      for (size_t i = 0; i < bias_elements; ++i) {
+        bias[i] = static_cast<float>((static_cast<int>(i % 7) - 3) * 0.02f);
+      }
+
+      const auto verify_conv = [&](const std::vector<float>& input, const char* label) {
+        SCOPED_TRACE(label);
+
+        MlasConv2D(BatchCount,
+                   GroupCount,
+                   geometry.input_channels,
+                   geometry.input_height,
+                   geometry.input_width,
+                   geometry.filter_count,
+                   geometry.kernel_height,
+                   geometry.kernel_width,
+                   geometry.padding,
+                   geometry.padding,
+                   geometry.padding,
+                   geometry.padding,
+                   geometry.dilation_height,
+                   geometry.dilation_width,
+                   geometry.stride_height,
+                   geometry.stride_width,
+                   output_height,
+                   output_width,
+                   input.data(),
+                   filter.data(),
+                   bias.data(),
+                   output.data());
+
+        ReferenceConv2D(BatchCount,
+                        GroupCount,
+                        geometry.input_channels,
+                        geometry.input_height,
+                        geometry.input_width,
+                        geometry.filter_count,
+                        geometry.kernel_height,
+                        geometry.kernel_width,
+                        geometry.padding,
+                        geometry.padding,
+                        geometry.dilation_height,
+                        geometry.dilation_width,
+                        geometry.stride_height,
+                        geometry.stride_width,
+                        output_height,
+                        output_width,
+                        input.data(),
+                        filter.data(),
+                        bias.data(),
+                        output_reference.data());
+
+        for (size_t i = 0; i < output_elements; ++i) {
+          ASSERT_TRUE(CloseEnough(output[i], output_reference[i]))
+              << "Mismatch at output index " << i
+              << ": actual=" << output[i]
+              << ", expected=" << output_reference[i];
+        }
+      };
+
+      ArmKleidiAI::MlasConvClearLhsCacheForTest();
+      EXPECT_EQ(ArmKleidiAI::MlasConvLhsCacheEntryCountForTest(), size_t{0});
+
+      verify_conv(input_a, "initial_input");
+      EXPECT_EQ(ArmKleidiAI::MlasConvLhsCacheEntryCountForTest(), size_t{1});
+
+      verify_conv(input_a_copy, "same_content_different_buffer");
+      EXPECT_EQ(ArmKleidiAI::MlasConvLhsCacheEntryCountForTest(), size_t{1})
+          << "same geometry with a different input buffer should reuse the LHS indirection cache";
+
+      verify_conv(input_b, "different_content_different_buffer");
+      EXPECT_EQ(ArmKleidiAI::MlasConvLhsCacheEntryCountForTest(), size_t{1})
+          << "same geometry with different input content should reuse the LHS indirection cache";
+
+      fill_input(input_a, 3);
+      verify_conv(input_a, "different_content_same_buffer");
+      EXPECT_EQ(ArmKleidiAI::MlasConvLhsCacheEntryCountForTest(), size_t{1})
+          << "same geometry with mutated input content should not add cache entries";
+    }
+
+    ArmKleidiAI::MlasConvClearLhsCacheForTest();
+  }
+#endif
 
 #if defined(MLAS_TARGET_AMD64)
   void TestMobileClipAvx512DispatchSelection(size_t GroupCount,
@@ -678,6 +845,9 @@ class MlasConv2DTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
+#if defined(USE_KLEIDIAI) && defined(MLAS_ENABLE_TEST_HOOKS)
+    TestKleidiAILhsCacheIgnoresInputContent();
+#endif
 #if defined(MLAS_TARGET_AMD64)
     TestMobileClipAvx512DispatchSelection(64, 64, 64);
     TestMobileClipAvx512DispatchSelection(128, 32, 32);

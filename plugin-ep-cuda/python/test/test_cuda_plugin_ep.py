@@ -16,7 +16,19 @@ import platform
 import sys
 import tempfile
 import traceback
+from contextlib import suppress
 from pathlib import Path
+
+# On Windows, Python 3.8+ no longer searches PATH when loading DLLs. Add each
+# PATH entry explicitly so that CUDA and cuDNN libraries placed there (e.g. via
+# ##vso[task.prependpath] in Azure Pipelines) are visible to LoadLibraryExW
+# when ORT loads the CUDA plugin EP shared library.
+if sys.platform == "win32" and sys.version_info >= (3, 8):
+    for _path_entry in os.environ.get("PATH", "").split(os.pathsep):
+        _normalized_path_entry = _path_entry.strip().strip('"').strip("'")
+        if _normalized_path_entry and os.path.isdir(_normalized_path_entry):
+            with suppress(OSError):
+                os.add_dll_directory(_normalized_path_entry)
 
 import numpy as np
 import onnx

@@ -1,10 +1,20 @@
 # ONNX Runtime WebGPU Plugin Execution Provider
 
-WebGPU Execution Provider plugin for ONNX Runtime. Install alongside `onnxruntime` to enable WebGPU acceleration.
+WebGPU Execution Provider plugin for ONNX Runtime. Install alongside `onnxruntime` to enable WebGPU
+acceleration.
+
+## Prerequisites
+
+This package provides the WebGPU plugin EP only. You must separately install an ONNX Runtime package
+(e.g. `onnxruntime`) of version `@min_onnxruntime_version@` or later.
+
+If the installed ONNX Runtime is incompatible, the plugin EP will report an error when its library is
+registered.
 
 ## Installation
 
 ```bash
+pip install "onnxruntime>=@min_onnxruntime_version@"
 pip install onnxruntime-ep-webgpu
 ```
 

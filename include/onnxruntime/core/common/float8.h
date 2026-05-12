@@ -685,6 +685,184 @@ inline void FloatToFloat8E5M2FNUZ(const float* flt, Float8E5M2FNUZ* blf, size_t 
   }
 }
 
+// Float8E8M0
+// 8-bit floating point with 8 exponent bits and 0 mantissa bits (no sign bit).
+// All representable values are powers of two: 2^(val - 127).
+// Special value: 0xFF = NaN.
+struct Float8E8M0 {
+  uint8_t val{0};  // Raw 8-bit exponent value. Represents 2^(val - 127). 0xFF = NaN.
+#if defined(__HIP__)
+  ORT_HOST_DEVICE Float8E8M0() = default;
+#else
+  Float8E8M0() = default;
+#endif
+
+  struct FromBitsT {};
+  static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
+  constexpr ORT_HOST_DEVICE Float8E8M0(unsigned char bits, FromBitsT) : val(bits) {}
+
+  inline explicit ORT_HOST_DEVICE Float8E8M0(float v, bool saturate = true) {
+    uint32_t b;
+    std::memcpy(&b, &v, sizeof(b));
+
+    uint32_t sign = b & 0x80000000;
+    uint32_t exponent = (b & 0x7F800000) >> 23;
+    uint32_t mantissa = b & 0x007FFFFF;
+
+    // NaN (check before sign since NaN has no sign semantics)
+    if (exponent == 0xFF && mantissa != 0) {
+      val = 0xFF;
+      return;
+    }
+
+    // Infinity (check before sign to handle -Inf consistently)
+    if (exponent == 0xFF && mantissa == 0) {
+      if (sign) {
+        // Negative infinity
+        if (saturate) {
+          val = 0x00;
+        } else {
+          val = 0xFF;  // NaN
+        }
+      } else {
+        // Positive infinity
+        if (saturate) {
+          val = 0xFE;  // Largest finite value: 2^127
+        } else {
+          val = 0xFF;  // NaN (no infinity in this format)
+        }
+      }
+      return;
+    }
+
+    // Negative values (except -0) cannot be represented
+    if (sign && (exponent != 0 || mantissa != 0)) {
+      if (saturate) {
+        // Saturate negative to smallest positive (2^-127)
+        val = 0x00;
+      } else {
+        val = 0xFF;  // NaN
+      }
+      return;
+    }
+
+    // Zero: E8M0 cannot represent zero.
+    if (exponent == 0 && mantissa == 0) {
+      if (saturate) {
+        val = 0x00;  // Saturate to smallest representable: 2^(-127)
+      } else {
+        val = 0xFF;  // NaN (zero is out of range)
+      }
+      return;
+    }
+
+    // Denormalized float32: value = 2^(-126) * (mantissa / 2^23)
+    // The largest subnormal is ~2^(-126) * (1 - 2^-23), which should round to 2^(-126) = val 1.
+    // The midpoint between 2^(-127) and 2^(-126) is 1.5 * 2^(-127).
+    // Subnormals with value >= midpoint round up to 2^(-126) (val=1), others to 2^(-127) (val=0).
+    // Midpoint in subnormal mantissa: 0x00600000 (mantissa >= 0.75 * 2^23 means value >= 1.5 * 2^-127).
+    if (exponent == 0) {
+      if (saturate) {
+        if (mantissa >= 0x00600000) {
+          val = 0x01;  // Round up to 2^(-126)
+        } else {
+          val = 0x00;  // Round down to 2^(-127)
+        }
+      } else {
+        val = 0xFF;  // NaN (subnormals are below E8M0 min for saturate=false)
+      }
+      return;
+    }
+
+    // Normal float32: value is 2^(exponent - 127) * (1 + mantissa/2^23)
+    // We need to round to the nearest power of 2.
+    // Round half up: round to next power of 2 when mantissa >= 0.5
+    // (i.e., when the float value is >= 1.5 * nearest lower power of 2)
+    // This aligns with the OCP Microscaling Formats (MX) spec for E8M0 scaling factors.
+    if (mantissa >= 0x00400000) {  // >= 0.5
+      exponent += 1;
+    }
+
+    // After rounding, exponent may overflow
+    if (exponent > 0xFE) {
+      if (saturate) {
+        val = 0xFE;  // Largest finite: 2^127
+      } else {
+        val = 0xFF;  // NaN
+      }
+      return;
+    }
+
+    val = static_cast<uint8_t>(exponent);
+  }
+
+  inline ORT_HOST_DEVICE bool IsNaN() const {
+    return val == 0xFF;
+  }
+
+  inline ORT_HOST_DEVICE float ToFloat() const {
+    if (val == 0xFF) {
+      // NaN
+      uint32_t res = 0x7FC00000;  // quiet NaN
+      float float_res;
+      std::memcpy(&float_res, &res, sizeof(float));
+      return float_res;
+    }
+
+    if (val == 0) {
+      // 2^(-127) is a denormalized float32: sign=0, exponent=0, mantissa=2^22
+      // Denorm value = 2^(-126) * (mantissa/2^23) = 2^(-126) * 0.5 = 2^(-127)
+      uint32_t res = 0x00400000;
+      float float_res;
+      std::memcpy(&float_res, &res, sizeof(float));
+      return float_res;
+    }
+
+    // For val 1-254: Value is 2^(val - 127)
+    // In float32: exponent field = val, mantissa = 0, sign = 0
+    uint32_t res = static_cast<uint32_t>(val) << 23;
+    float float_res;
+    std::memcpy(&float_res, &res, sizeof(float));
+    return float_res;
+  }
+
+  inline ORT_HOST_DEVICE operator float() const { return ToFloat(); }
+};
+
+inline ORT_HOST_DEVICE bool operator==(const Float8E8M0& left, const Float8E8M0& right) { return left.val == right.val; }
+inline ORT_HOST_DEVICE bool operator!=(const Float8E8M0& left, const Float8E8M0& right) { return left.val != right.val; }
+inline ORT_HOST_DEVICE bool operator<(const Float8E8M0& left, const Float8E8M0& right) { return left.val < right.val; }
+
+// User defined suffixes to make it easier to declare
+// initializers with Float8E8M0 from unsigned char
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+
+inline Float8E8M0 operator""_f8e8m0(unsigned long long int v) {
+  return Float8E8M0(narrow<uint8_t>(v), Float8E8M0::FromBits());
+}
+
+inline Float8E8M0 operator""_f8e8m0f(long double v) {
+  return Float8E8M0(static_cast<float>(v), true);
+}
+
+#endif
+
+inline void Float8E8M0ToFloat(const Float8E8M0* blf, float* flt, size_t size) {
+  auto src = blf;
+  auto d = flt;
+  for (; size != 0; ++src, ++d, --size) {
+    *d = src->ToFloat();
+  }
+}
+
+inline void FloatToFloat8E8M0(const float* flt, Float8E8M0* blf, size_t size, bool saturate) {
+  auto src = flt;
+  auto d = blf;
+  for (; size != 0; ++src, ++d, --size) {
+    new (d) Float8E8M0(*src, saturate);
+  }
+}
+
 }  // namespace onnxruntime
 
 namespace std {
@@ -928,6 +1106,71 @@ class numeric_limits<onnxruntime::Float8E5M2FNUZ> {
   static constexpr int min_exponent10 = -4;
   static constexpr int max_exponent = 16;
   static constexpr int max_exponent10 = 4;
+  static constexpr auto traps = false;
+  static constexpr auto tinyness_before = false;
+};
+
+template <>
+class numeric_limits<onnxruntime::Float8E8M0> {
+ public:
+  // Float8E8M0 has no sign bit, so lowest == min (smallest positive normal)
+  static constexpr onnxruntime::Float8E8M0 lowest() {
+    return onnxruntime::Float8E8M0(0x00, onnxruntime::Float8E8M0::FromBits());  // 2^-127
+  }
+
+  static constexpr onnxruntime::Float8E8M0 max() {
+    return onnxruntime::Float8E8M0(0xFE, onnxruntime::Float8E8M0::FromBits());  // 2^127
+  }
+
+  static constexpr onnxruntime::Float8E8M0 min() {
+    return onnxruntime::Float8E8M0(0x00, onnxruntime::Float8E8M0::FromBits());  // 2^-127
+  }
+
+  static constexpr onnxruntime::Float8E8M0 denorm_min() {
+    // E8M0 has no denormalized values; return min() as required by the standard when has_denorm == false
+    return onnxruntime::Float8E8M0(0x00, onnxruntime::Float8E8M0::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E8M0 epsilon() {
+    // epsilon = (next representable value above 1.0) - 1.0 = 2.0 - 1.0 = 1.0
+    // because E8M0 values are powers of 2, so 1.0 (val=127) is followed by 2.0 (val=128)
+    return onnxruntime::Float8E8M0(0x7F, onnxruntime::Float8E8M0::FromBits());
+  }
+
+  static constexpr onnxruntime::Float8E8M0 round_error() {
+    return onnxruntime::Float8E8M0(0x7F, onnxruntime::Float8E8M0::FromBits());  // 1.0
+  }
+
+  static constexpr onnxruntime::Float8E8M0 infinity() {
+    // no infinity, returns quiet NaN instead
+    return quiet_NaN();
+  }
+
+  static constexpr onnxruntime::Float8E8M0 quiet_NaN() {
+    return onnxruntime::Float8E8M0(0xFF, onnxruntime::Float8E8M0::FromBits());
+  }
+
+  static constexpr bool is_specialized = true;
+  static constexpr bool is_signed = false;
+  static constexpr bool is_integer = false;
+  static constexpr bool is_exact = false;
+  static constexpr bool has_infinity = false;
+  static constexpr bool has_quiet_NaN = true;
+  static constexpr bool has_signaling_NaN = false;
+  static constexpr auto has_denorm = false;
+  static constexpr auto has_denorm_loss = false;
+  static constexpr auto round_style = round_to_nearest;
+  static constexpr bool is_iec559 = false;
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_modulo = false;
+  static constexpr int digits = 1;
+  static constexpr int digits10 = 0;
+  static constexpr int max_digits10 = 1;
+  static constexpr int radix = 2;
+  static constexpr int min_exponent = -126;
+  static constexpr int min_exponent10 = -38;
+  static constexpr int max_exponent = 128;
+  static constexpr int max_exponent10 = 38;
   static constexpr auto traps = false;
   static constexpr auto tinyness_before = false;
 };

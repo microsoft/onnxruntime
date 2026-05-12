@@ -709,7 +709,7 @@ if enable_training or enable_training_apis:
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
 
-package_data["onnxruntime"] = data + examples + extra
+package_data["onnxruntime"] = data + examples + extra + ["py.typed"]
 
 version_number = ""
 with open("VERSION_NUMBER") as f:
