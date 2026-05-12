@@ -7470,7 +7470,7 @@ struct OrtApi {
    * \see OrtApi::SetSessionExecutionMode
    */
   ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
-  
+
   /** \brief Get the OrtModelPackageApi instance, providing APIs for loading, inspecting,
    *         and creating sessions from ORT model packages.
    *

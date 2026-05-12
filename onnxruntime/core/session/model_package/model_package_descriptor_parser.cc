@@ -34,7 +34,7 @@ struct VariantMetadataSchema {
 struct EpCompatibilitySchema {
   std::optional<std::string> ep;  // nullable in schema
   std::optional<std::string> device;
-  std::optional<std::string> compatibility_string;
+  std::optional<std::vector<std::string>> compatibility_strings;
 };
 
 struct VariantSchema {
@@ -85,12 +85,36 @@ std::optional<std::unordered_map<std::string, std::string>> ParseFlatOptionsObje
   return result;
 }
 
+std::optional<std::vector<std::string>> ParseCompatibilityStrings(const json& j, const char* key_name) {
+  if (!j.contains(key_name) || j[key_name].is_null()) {
+    return std::nullopt;
+  }
+
+  const auto& value = j[key_name];
+  if (value.is_string()) {
+    return std::vector<std::string>{value.get<std::string>()};  // backward-compatible
+  }
+
+  if (!value.is_array()) {
+    throw std::invalid_argument(MakeString("\"", key_name, "\" must be a string or an array of strings."));
+  }
+
+  std::vector<std::string> result;
+  result.reserve(value.size());
+  for (size_t i = 0; i < value.size(); ++i) {
+    if (!value[i].is_string()) {
+      throw std::invalid_argument(MakeString("\"", key_name, "\" must contain only strings."));
+    }
+    result.push_back(value[i].get<std::string>());
+  }
+
+  return result;
+}
+
 void from_json(const json& j, EpCompatibilitySchema& c) {
   if (j.contains(kEpKey) && !j[kEpKey].is_null()) c.ep = j[kEpKey].get<std::string>();
   if (j.contains(kDeviceKey) && j[kDeviceKey].is_string()) c.device = j[kDeviceKey].get<std::string>();
-  if (j.contains(kCompatibilityStringKey) && j[kCompatibilityStringKey].is_string()) {
-    c.compatibility_string = j[kCompatibilityStringKey].get<std::string>();
-  }
+  c.compatibility_strings = ParseCompatibilityStrings(j, kCompatibilityStringKey);
 }
 
 void from_json(const json& j, VariantSchema& v) {
@@ -168,6 +192,22 @@ Status FindSingleOnnxFile(const std::filesystem::path& search_dir,
   return Status::OK();
 }
 
+std::string CompatibilityStringsToLogString(const std::optional<std::vector<std::string>>& v) {
+  if (!v.has_value() || v->empty()) {
+    return "";
+  }
+
+  std::ostringstream oss;
+  for (size_t i = 0; i < v->size(); ++i) {
+    if (i > 0) {
+      oss << ",";
+    }
+    oss << (*v)[i];
+  }
+
+  return oss.str();
+}
+
 std::string BuildModelInfoLogString(const ModelVariantInfo& variant) {
   std::ostringstream oss;
   oss << "component='" << variant.component_model_name
@@ -181,7 +221,7 @@ std::string BuildModelInfoLogString(const ModelVariantInfo& variant) {
       const auto& ec = variant.ep_compatibility[i];
       oss << "{ep='" << ec.ep.value_or("")
           << "', device='" << ec.device.value_or("")
-          << "', compatibility_string='" << ec.compatibility_string.value_or("")
+          << "', compatibility_strings='" << CompatibilityStringsToLogString(ec.compatibility_strings)
           << "'}";
       if (i + 1 < variant.ep_compatibility.size()) {
         oss << ", ";
@@ -379,8 +419,12 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
       VariantEpCompatibilityInfo ec{};
       ec.ep = ec_schema.ep;
       ec.device = ec_schema.device;
-      ec.compatibility_string = ec_schema.compatibility_string;
-      ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+      ec.compatibility_strings = ec_schema.compatibility_strings;
+
+      const size_t compatibility_count = ec.compatibility_strings.has_value() ? ec.compatibility_strings->size() : 0;
+      ec.compiled_model_compatibilities.assign(
+          compatibility_count,
+          OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
       variant_info.ep_compatibility.push_back(std::move(ec));
     }
 

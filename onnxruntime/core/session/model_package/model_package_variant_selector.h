@@ -27,9 +27,6 @@ class ModelVariantSelector {
   Status SelectVariant(const ModelPackageComponentContext& context,
                        gsl::span<const VariantSelectionEpInfo> ep_infos,
                        std::optional<ModelVariantInfo>& selected_variant) const;
-
- private:
-  int CalculateVariantScore(const ModelVariantInfo& variant) const;
 };
 
 }  // namespace onnxruntime

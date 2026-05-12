@@ -23,9 +23,9 @@ namespace onnxruntime {
 
 struct VariantEpCompatibilityInfo {
   std::optional<std::string> ep;
-  std::optional<std::string> device;                // from metadata.json: "device"
-  std::optional<std::string> compatibility_string;  // from metadata.json: "compatibility_string"
-  OrtCompiledModelCompatibility compiled_model_compatibility{};
+  std::optional<std::string> device;
+  std::optional<std::vector<std::string>> compatibility_strings;
+  std::vector<OrtCompiledModelCompatibility> compiled_model_compatibilities{};
 };
 
 struct VariantModelInfo {
