@@ -290,7 +290,7 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
     if (past_dims[4] != k_hidden_size / num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'past' dimension 2 shall have length of ", k_hidden_size / num_heads_);
+                             "Inputs 'past' dimension 4 shall have length of ", k_hidden_size / num_heads_);
     }
 
     if (!past_present_share_buffer_) {

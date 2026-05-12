@@ -222,7 +222,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // inputs are rejected before any allocation/copy work.
   const T* weight_scale_data = weight_scale_tensor->Data<T>();
   std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
-  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
+  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](T& dequant_scale) {
     return dequant_scale *= input_scale;
   });
 
