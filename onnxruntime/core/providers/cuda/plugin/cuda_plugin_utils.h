@@ -11,6 +11,12 @@
 
 #include "core/common/common.h"
 
+// The minimum ORT API version required by the CUDA plugin EP.
+// This matches MIN_ONNXRUNTIME_VERSION (1.26.0) and must be used in GetApi()
+// and ort_version_supported so that the plugin is compatible with ORT 1.26+
+// without requesting v27-only OrtApi entries that ORT 1.26 does not provide.
+static constexpr uint32_t kCudaPluginEpMinOrtApiVersion = 26;
+
 #include <cuda_runtime_api.h>
 #include <cublas_v2.h>
 #include <cudnn.h>

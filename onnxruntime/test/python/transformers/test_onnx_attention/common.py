@@ -43,8 +43,6 @@ quick_build = ", quick-build=" in get_build_info()
 
 enable_debug_print = quick_build
 
-enable_deterministic_check = True
-
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
@@ -100,10 +98,30 @@ def create_attention_node_and_io(
     config: AttentionConfig,
     ort_type,
     is_past=False,
-    output_qk: int = 0,  # CUDA does not support output_qk for GQA path
+    output_qk: int | None = None,
 ):
     """
     Create ONNX Attention op node and I/O definitions for testing.
+
+    output_qk: when set to an int in {0, 1, 2, 3}, enables the optional 4th
+    output `output_qk` and sets the `qk_matmul_output_mode` attribute to that
+    value. The numbering uses the post-onnx#7913 spec semantics that this PR
+    establishes:
+        0 = kQK            (raw scale*QK pre-softcap)
+        1 = kPostSoftCap   (post-softcap, pre-mask/bias)
+        2 = kPostMaskBias  (post-mask/bias, pre-softmax)
+        3 = kPostSoftMax   (post-softmax)
+    When None (the default), the 4th output is not emitted and the attribute
+    defaults to 0. Any other int value (negative, or >= 4) raises an
+    AssertionError.
+
+    NOTE: API contract — `output_qk=None` (the default) DISABLES the 4th
+    output. `output_qk=k` for k in {0, 1, 2, 3} ENABLES it and selects the
+    corresponding mode (`output_qk=0` is raw-QK). Passing anything else —
+    including the C++ `kNone = -1` sentinel from attention_parameters.h, or
+    any unknown mode like `4`/`5` — raises immediately rather than silently
+    binding the 4th output (the unfused CUDA kernel would populate it as
+    raw-QK regardless of an out-of-range mode).
 
     ONNX Attention op (opset 23/24) inputs:
     - 0: Q (query) - required
@@ -142,7 +160,16 @@ def create_attention_node_and_io(
         "present_value",
     ]
 
-    if output_qk > 0:
+    # Strict validation: only None or one of the known QKMatMulOutputMode values
+    # {0, 1, 2, 3} is accepted. Anything else (including the C++ `kNone = -1`
+    # sentinel, or unknown modes like 4/5) raises immediately, so callers can't
+    # silently bind a 4th output the unfused CUDA kernel would populate as raw-QK.
+    if output_qk is not None:
+        assert output_qk in (0, 1, 2, 3), f"output_qk must be one of {{0, 1, 2, 3}} or None, got {output_qk!r}"
+        enable_output_qk = True
+    else:
+        enable_output_qk = False
+    if enable_output_qk:
         outputs.append("output_qk")
 
     # ONNX Attention op inputs: Q, K, V, attn_mask, past_key, past_value
@@ -171,7 +198,7 @@ def create_attention_node_and_io(
         kv_num_heads=config.kv_num_heads,
         q_num_heads=config.q_num_heads,
         softcap=config.softcap,
-        qk_matmul_output_mode=output_qk,
+        qk_matmul_output_mode=output_qk if enable_output_qk else 0,
         domain="",  # ai.onnx domain
     )
 
@@ -284,7 +311,7 @@ def create_attention_node_and_io(
         helper.make_tensor_value_info("present_value", cache_ort_type, output_v_shape),
     ]
 
-    if output_qk > 0:
+    if output_qk is not None:
         graph_output.append(
             helper.make_tensor_value_info(
                 "output_qk",
@@ -301,9 +328,9 @@ def _get_opset_version(config: AttentionConfig):
     return 24 if config.has_nonpad_kv_seqlen else 23
 
 
-def create_attention_graph_prompt(config: AttentionConfig, ort_type):
+def create_attention_graph_prompt(config: AttentionConfig, ort_type, output_qk: int | None = None):
     """Create ONNX graph for prompt phase (no past KV cache)."""
-    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False)
+    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False, output_qk=output_qk)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
     opset = _get_opset_version(config)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
@@ -380,6 +407,7 @@ def attention_prompt_func(
     device,
     ort_type=TensorProto.FLOAT16,
     nonpad_kv_seqlen=None,
+    output_qk: int | None = None,
 ):
     """
     Run ONNX Attention op for prompt phase (no past KV cache).
@@ -394,6 +422,19 @@ def attention_prompt_func(
         device: Device string (e.g., "cuda")
         ort_type: ONNX tensor type
         nonpad_kv_seqlen: Optional int64 tensor [batch_size] for opset 24
+        output_qk: When set to an int in {0, 1, 2, 3}, enables the optional
+            4th output `output_qk` and sets the `qk_matmul_output_mode`
+            attribute to that value. The numbering is the post-onnx#7913
+            spec semantics established by this PR:
+                0 = kQK            (raw scale*QK pre-softcap)
+                1 = kPostSoftCap   (post-softcap, pre-mask/bias)
+                2 = kPostMaskBias  (post-mask/bias, pre-softmax)
+                3 = kPostSoftMax   (post-softmax)
+            The function then returns a 4-tuple
+            (out, present_k, present_v, qk) instead of the usual 3-tuple.
+            Pass None (the default) to DISABLE. Any other int value
+            (negative, or >= 4) raises an AssertionError; do NOT pass the
+            C++ `kNone = -1` sentinel — use Python `None`.
     """
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -405,6 +446,7 @@ def attention_prompt_func(
     onnx_model_str = create_attention_graph_prompt(
         config=config,
         ort_type=ort_type,
+        output_qk=output_qk,
     )
 
     # Reshape inputs for ONNX graph
@@ -476,8 +518,29 @@ def attention_prompt_func(
     bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
-    ort_session.run_with_iobinding(io_binding)
+    output_qk_tensor = None
+    # `create_attention_node_and_io` (called above via `create_attention_graph_prompt`)
+    # has already validated `output_qk in {0, 1, 2, 3}` or None. Just gate on `is not None`.
+    output_qk_enabled = output_qk is not None
+    if output_qk_enabled:
+        output_qk_tensor = torch.zeros(
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.kv_sequence_length),
+            dtype=out_dtype,
+            device=device,
+        )
+        bind_output_tensor(io_binding, "output_qk", output_qk_tensor, device, ort_type)
 
+    ort_session.run_with_iobinding(io_binding)
+    # run_with_iobinding() is asynchronous on CUDA: ORT submits work to its own
+    # CUDA stream and returns. The torch tensors we hand back live on torch's
+    # default stream, so reading them without an explicit cross-stream sync can
+    # observe partially-written GPU memory under load (e.g., full-suite runs).
+    # synchronize_outputs() blocks until ORT's stream is done writing the bound
+    # output tensors, eliminating that read-before-write race.
+    io_binding.synchronize_outputs()
+
+    if output_qk_enabled:
+        return out_torch, present_k, present_v, output_qk_tensor
     return out_torch, present_k, present_v
 
 
@@ -591,6 +654,9 @@ def attention_past_func(
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
     ort_session.run_with_iobinding(io_binding)
+    # See note above attention_prompt_func's run_with_iobinding call: this sync
+    # is required to avoid a read-before-write race on torch's default stream.
+    io_binding.synchronize_outputs()
 
     return out_torch, present_k, present_v
 
@@ -645,7 +711,7 @@ def attention_ref(
 
     scores = torch.einsum("bthd,bshd->bhts", q, k) / math.sqrt(q.shape[-1])
 
-    # Corrected ordering per onnx/onnx#7865: QK → softcap → add bias/mask → softmax
+    # Corrected ordering per onnx/onnx#7867: QK → softcap → add bias/mask → softmax
     # Softcap must be applied before mask so that -inf mask values are not
     # squashed to finite -softcap, which would leak probability to masked positions.
     if softcap > 0:

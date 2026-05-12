@@ -53,12 +53,18 @@ stages:
 
     - script: |
         set -e -x
+
         # Pin Vulkan to SwiftShader (software Vulkan, built from source in
         # the Docker image) so the test does not require a GPU agent.
         # Keeping these env vars at `docker run` time (rather than baking
         # them into the image) leaves the image reusable for a potential
         # future real-GPU test job.
         swiftshader_icd=/opt/swiftshader/vk_swiftshader_icd.json
+
+        min_ort_version_file="$(Build.SourcesDirectory)/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION"
+        min_ort_version=$(tr -d '\r\n' < "$min_ort_version_file")
+        echo "using minimum onnxruntime version ${min_ort_version} from ${min_ort_version_file}"
+
         docker run --rm \
           --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
           --volume "$(Build.BinariesDirectory):/build" \
@@ -66,14 +72,15 @@ stages:
           --env "VK_ICD_FILENAMES=${swiftshader_icd}" \
           --env "VK_DRIVER_FILES=${swiftshader_icd}" \
           --env "ORT_TEST_VERBOSE=$(System.Debug)" \
+          --env "MIN_ORT_VERSION=${min_ort_version}" \
           onnxruntimewebgpuplugin \
-          /bin/bash -c "
+          /bin/bash -c '
             set -e -x
             python3 -m venv /build/test_venv
             source /build/test_venv/bin/activate
-            python3 -m pip install onnxruntime onnx numpy
-            wheel=\$(find /build/python_wheel -name 'onnxruntime_ep_webgpu-*.whl' | head -1)
-            python3 -m pip install \"\$wheel\"
+            python3 -m pip install onnx "onnxruntime==${MIN_ORT_VERSION}" numpy
+            wheel=$(find /build/python_wheel -name "onnxruntime_ep_webgpu-*.whl" | head -1)
+            python3 -m pip install "$wheel"
             python3 -u /onnxruntime_src/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py
-          "
+          '
       displayName: 'Install and test Python package'

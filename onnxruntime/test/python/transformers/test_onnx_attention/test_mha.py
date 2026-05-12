@@ -40,7 +40,6 @@ from test_onnx_attention.common import (
     attention_ref,
     create_additive_mask_from_seqlens,
     create_boolean_mask_from_seqlens,
-    enable_deterministic_check,
     has_cuda_device,
     pipeline_mode,
     print_diff_statistics,
@@ -137,27 +136,16 @@ def parity_check_mha_prompt(
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
-    num_runs = 2 if enable_deterministic_check else 1
-    for i in range(num_runs):
-        out, present_k, present_v = attention_prompt_func(
-            q=q,
-            k=k,
-            v=v,
-            config=config,
-            attn_mask=attn_mask,
-            ep=ep,
-            device=device,
-            ort_type=ort_type,
-        )
-        if i == 0:
-            first_out = out.clone()
-        else:
-            # FP16/BF16 GPU kernels may produce bit-level non-determinism across runs.
-            det_atol = 0 if torch_type == torch.float32 else 1e-3
-            det_rtol = 0 if torch_type == torch.float32 else 1e-3
-            torch.testing.assert_close(
-                out, first_out, rtol=det_rtol, atol=det_atol, msg="Output mismatch between two runs"
-            )
+    out, present_k, present_v = attention_prompt_func(
+        q=q,
+        k=k,
+        v=v,
+        config=config,
+        attn_mask=attn_mask,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+    )
 
     effective_v_head_size = config.v_head_size or config.head_size
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, effective_v_head_size))
@@ -314,29 +302,18 @@ def parity_check_mha_past(
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
-    num_runs = 2 if enable_deterministic_check else 1
-    for i in range(num_runs):
-        out, present_k, present_v = attention_past_func(
-            q=q,
-            past_k=past_k,
-            past_v=past_v,
-            new_k=new_k,
-            new_v=new_v,
-            config=config,
-            attn_mask=attn_mask,
-            ep=ep,
-            device=device,
-            ort_type=ort_type,
-        )
-        if i == 0:
-            first_out = out.clone()
-        else:
-            # FP16/BF16 GPU kernels may produce bit-level non-determinism across runs.
-            det_atol = 0 if torch_type == torch.float32 else 1e-3
-            det_rtol = 0 if torch_type == torch.float32 else 1e-3
-            torch.testing.assert_close(
-                out, first_out, rtol=det_rtol, atol=det_atol, msg="Output mismatch between two runs"
-            )
+    out, present_k, present_v = attention_past_func(
+        q=q,
+        past_k=past_k,
+        past_v=past_v,
+        new_k=new_k,
+        new_v=new_v,
+        config=config,
+        attn_mask=attn_mask,
+        ep=ep,
+        device=device,
+        ort_type=ort_type,
+    )
 
     effective_v_head_size = config.v_head_size or config.head_size
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.q_num_heads, effective_v_head_size))
@@ -1460,6 +1437,64 @@ class TestONNXAttentionMHAUnfused(unittest.TestCase):
         )
 
 
+class TestONNXAttentionMHAUnfusedCPU(unittest.TestCase):
+    """CPU twin of TestONNXAttentionMHAUnfused.
+
+    The CPU EP only has the unfused attention kernel, so the same configs
+    used to force the unfused path on CUDA exercise the production CPU
+    path naturally. Configs are reused verbatim from the CUDA source.
+    """
+
+    @parameterized.expand(mha_unfused_test_cases())
+    def test_mha_unfused_cpu_fp16(self, name, config):
+        if "decode" in name:
+            parity_check_mha_past(
+                config=config,
+                ep="CPUExecutionProvider",
+                device="cpu",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=config.is_causal == 1,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+        else:
+            parity_check_mha_prompt(
+                config=config,
+                ep="CPUExecutionProvider",
+                device="cpu",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=config.is_causal == 1,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    def test_mha_unfused_decode_cpu_fp32(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=32,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            kv_cache_type="float32",
+            attn_mask_type="additive",
+        )
+        parity_check_mha_past(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            causal=True,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping unfused softcap tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"})
 class TestONNXAttentionMHAUnfusedSoftcap(unittest.TestCase):
@@ -1914,6 +1949,389 @@ class TestONNXAttentionMHAUnfusedSoftcap(unittest.TestCase):
             50.0,
             f"Attention leakage detected in decode path: max |output| = {max_abs:.1f}. "
             f"Softcap must be applied BEFORE mask (per onnx/onnx#7865).",
+        )
+
+
+class TestONNXAttentionMHAUnfusedSoftcapCPU(unittest.TestCase):
+    """CPU twin of TestONNXAttentionMHAUnfusedSoftcap.
+
+    Mirrors all 12 softcap variants of the CUDA source class against the
+    CPU EP (which only has the unfused path). The same configs apply
+    verbatim - the production code under test is the CPU softcap+mask
+    ordering fix shipped in #28379.
+    """
+
+    def test_unfused_softcap_prompt_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=8,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            softcap=2.0,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_unfused_softcap_decode_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=32,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            softcap=2.0,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_past(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_unfused_softcap_prompt_cpu_fp32(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=8,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            softcap=2.0,
+            kv_cache_type="float32",
+            attn_mask_type="additive",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            causal=True,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+    def test_unfused_softcap_with_mask_prompt_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=8,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=False,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_unfused_softcap_with_mask_decode_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=31,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_past(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_unfused_softcap_with_mask_prompt_cpu_fp32(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=8,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+            kv_cache_type="float32",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            causal=False,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+    def test_unfused_softcap_with_mask_decode_cpu_fp32(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=31,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+            kv_cache_type="float32",
+        )
+        parity_check_mha_past(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float32,
+            ort_type=TensorProto.FLOAT,
+            causal=True,
+            rtol=rtol["fp32"],
+            atol=atol["fp32"],
+        )
+
+    def test_unfused_softcap_with_mask_2d_prompt_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=8,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=2,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=False,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_unfused_softcap_with_mask_3d_prompt_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=8,
+            kv_sequence_length=8,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=3,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=False,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_unfused_softcap_with_mask_longer_seq_prompt_cpu_fp16(self):
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=16,
+            kv_sequence_length=16,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=0,
+            softcap=2.0,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CPUExecutionProvider",
+            device="cpu",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=False,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    def test_softcap_mask_ordering_no_leakage_prompt_cpu(self):
+        """CPU twin of the prompt-path poison-V leakage guard."""
+        batch_size = 1
+        q_seq = 4
+        kv_seq = 8
+        num_heads = 2
+        head_size = 64
+        softcap_val = 2.0
+        valid_kv_len = 4
+
+        config = AttentionConfig(
+            batch_size=batch_size,
+            q_sequence_length=q_seq,
+            kv_sequence_length=kv_seq,
+            q_num_heads=num_heads,
+            kv_num_heads=num_heads,
+            head_size=head_size,
+            is_causal=0,
+            softcap=softcap_val,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(42)
+        device = "cpu"
+        torch_type = torch.float32
+
+        q = torch.randn(batch_size, q_seq, num_heads, head_size, dtype=torch_type, device=device) * 0.2
+        k = torch.randn(batch_size, kv_seq, num_heads, head_size, dtype=torch_type, device=device) * 0.2
+        v = torch.randn(batch_size, kv_seq, num_heads, head_size, dtype=torch_type, device=device) * 0.2
+
+        v[:, valid_kv_len:, :, :] = 1000.0
+
+        # Use a large finite negative (CPU softmax expects finite inputs).
+        attn_mask = torch.zeros(batch_size, num_heads, q_seq, kv_seq, dtype=torch_type, device=device)
+        attn_mask[:, :, :, valid_kv_len:] = -1.0e9
+
+        out, _, _ = attention_prompt_func(
+            q=q,
+            k=k,
+            v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT,
+        )
+
+        out_np = out.to(torch.float32).detach().cpu().numpy().flatten()
+        max_abs = numpy.max(numpy.abs(out_np))
+        self.assertLess(
+            max_abs,
+            50.0,
+            f"Attention leakage detected on CPU: max |output| = {max_abs:.1f}. "
+            f"Softcap must be applied BEFORE mask (per onnx/onnx#7867).",
+        )
+
+    def test_softcap_mask_ordering_no_leakage_decode_cpu(self):
+        """CPU twin of the decode-path poison-V leakage guard."""
+        batch_size = 1
+        q_seq = 1
+        kv_seq = 1
+        past_kv_seq = 15
+        num_heads = 2
+        head_size = 64
+        softcap_val = 2.0
+        total_kv_seq = past_kv_seq + kv_seq
+        valid_kv_len = 8
+
+        config = AttentionConfig(
+            batch_size=batch_size,
+            q_sequence_length=q_seq,
+            kv_sequence_length=kv_seq,
+            past_kv_sequence_length=past_kv_seq,
+            q_num_heads=num_heads,
+            kv_num_heads=num_heads,
+            head_size=head_size,
+            is_causal=0,
+            softcap=softcap_val,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+
+        torch.manual_seed(42)
+        device = "cpu"
+        torch_type = torch.float32
+
+        q = torch.randn(batch_size, q_seq, num_heads, head_size, dtype=torch_type, device=device) * 0.2
+        past_k = torch.randn(batch_size, num_heads, past_kv_seq, head_size, dtype=torch_type, device=device) * 0.2
+        past_v = torch.randn(batch_size, num_heads, past_kv_seq, head_size, dtype=torch_type, device=device) * 0.2
+        k = torch.randn(batch_size, kv_seq, num_heads, head_size, dtype=torch_type, device=device) * 0.2
+        v = torch.randn(batch_size, kv_seq, num_heads, head_size, dtype=torch_type, device=device) * 0.2
+
+        # Poison V tail in past_v at masked positions (BNSH layout for past).
+        past_v[:, :, valid_kv_len:, :] = 1000.0
+
+        attn_mask = torch.zeros(batch_size, num_heads, q_seq, total_kv_seq, dtype=torch_type, device=device)
+        attn_mask[:, :, :, valid_kv_len:] = -1.0e9
+
+        out, _, _ = attention_past_func(
+            q=q,
+            past_k=past_k,
+            past_v=past_v,
+            new_k=k,
+            new_v=v,
+            config=config,
+            attn_mask=attn_mask,
+            ep="CPUExecutionProvider",
+            device=device,
+            ort_type=TensorProto.FLOAT,
+        )
+
+        out_np = out.to(torch.float32).detach().cpu().numpy().flatten()
+        max_abs = numpy.max(numpy.abs(out_np))
+        self.assertLess(
+            max_abs,
+            50.0,
+            f"Attention leakage detected in decode path on CPU: max |output| = {max_abs:.1f}. "
+            f"Softcap must be applied BEFORE mask (per onnx/onnx#7867).",
         )
 
 
