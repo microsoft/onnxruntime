@@ -115,6 +115,53 @@ namespace cuda {
 
 using PadsVector = PadBase::PadsVector;
 
+// In the plugin build, PadBase::ComputePads is not accessible because it
+// depends on CPU provider internals. ComputePadsImpl is a minimal inline
+// equivalent. Keep in sync with PadBase::ComputePads in pad.h.
+template <typename KernelContextType>
+static void ComputePadsLocal(KernelContextType& ctx,
+                             size_t data_rank,
+                             gsl::span<const int64_t> pads_data,
+                             PadsVector& pads) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  PadBase::ComputePadsImpl(ctx, data_rank, pads_data, pads);
+#else
+  PadBase::ComputePads(ctx, data_rank, pads_data, pads);
+#endif
+}
+
+// In the plugin build, PadBase::HandleDimValueZero lives in CPU provider code
+// that cannot be linked into the plugin. Inline the same validation here.
+// Keep in sync with PadBase::HandleDimValueZero in pad.h.
+static Status HandleDimValueZeroLocal(const Mode& mode,
+                                      const TensorShape& input_shape,
+                                      const TensorShape& output_shape) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  switch (mode) {
+    case Mode::Constant:
+      break;
+    case Mode::Edge:
+    case Mode::Reflect: {
+      for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+        if (input_shape[i] == 0 && output_shape[i] > 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Cannot use '", mode == Mode::Edge ? "edge" : "reflect",
+                                 "' mode to pad dimension with a value of 0. Input shape:",
+                                 input_shape);
+        }
+      }
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode of ", static_cast<int>(mode));
+  }
+
+  return Status::OK();
+#else
+  return PadBase::HandleDimValueZero(mode, input_shape, output_shape);
+#endif
+}
+
 static bool IsNCHWInputWithPaddingAlongHAndW(size_t input_rank,
                                              const TArray<int64_t>& lower_pads,
                                              const TArray<int64_t>& upper_pads) {
@@ -226,7 +273,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   // this is expected for constant mode only, otherwise the output is empty
   // no error
   if (input_shape.Size() == 0) {
-    ORT_RETURN_IF_ERROR(PadBase::HandleDimValueZero(mode_, input_shape, output_shape));
+    ORT_RETURN_IF_ERROR(HandleDimValueZeroLocal(mode_, input_shape, output_shape));
     if (mode_ == Mode::Constant) {
       const int64_t output_size = output_shape.Size();
       if (output_size > 0) {

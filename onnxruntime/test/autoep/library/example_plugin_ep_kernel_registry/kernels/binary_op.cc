@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <chrono>
 #include <gsl/span>
 #include <sstream>
+#include <utility>
 #include "binary_op.h"
 #include "utils.h"
 #include "../ep.h"
+#include "../ep_profiling.h"
 
 // Defines a kernel creation function for version 14 of Mul.
 ONNX_OPERATOR_KERNEL_EX(
@@ -73,6 +76,14 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
 
+  std::optional<uint64_t> active_profiler_id = EpEventManager::GetActiveProfilerId();
+  std::chrono::high_resolution_clock::time_point kernel_start_ts;
+  std::chrono::high_resolution_clock::time_point kernel_end_ts;
+
+  if (active_profiler_id.has_value()) {
+    kernel_start_ts = std::chrono::high_resolution_clock::now();
+  }
+
   Ort::KernelContext kernel_context(kernel_ctx);
 
   // Get first input's data.
@@ -121,6 +132,16 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
     }
   }
 
+  if (active_profiler_id.has_value()) {
+    kernel_end_ts = std::chrono::high_resolution_clock::now();
+
+    auto& ep_event_manager = EpEventManager::GetInstance();
+    std::string event_name = "ExampleKernelEp_";
+    event_name += op_type;
+
+    EpEventManager::Event event(std::move(event_name), kernel_start_ts, kernel_end_ts);
+    ep_event_manager.AddEpEvent(*active_profiler_id, std::move(event));
+  }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

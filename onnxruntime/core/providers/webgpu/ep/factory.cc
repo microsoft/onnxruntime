@@ -66,7 +66,7 @@ uint32_t ORT_API_CALL Factory::GetVendorIdImpl(const OrtEpFactory* /*this_ptr*/)
 }
 
 const char* ORT_API_CALL Factory::GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
-  return "0.1.0";
+  return ORT_PLUGIN_EP_VERSION;
 }
 
 OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(

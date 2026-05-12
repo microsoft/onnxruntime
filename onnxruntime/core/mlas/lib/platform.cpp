@@ -19,12 +19,18 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#include "erf_neon_fp16.h"
+#include "gelu_neon_fp16.h"
+#endif
 #if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#include <thread>
+#include <cctype>
+#include <cstdlib>
 #include <mutex>
+#include <thread>
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
@@ -43,6 +49,54 @@ Abstract:
 
 #if defined(MLAS_TARGET_S390X)
 #include <sys/auxv.h>
+#endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#ifndef COMPAT_HWCAP_ISA_V
+#define COMPAT_HWCAP_ISA_V (1UL << ('V' - 'A'))
+#endif
+#endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+namespace {
+
+bool
+MlasStringEqualsIgnoreCase(
+    const char* value,
+    const char* expected
+    )
+{
+    while (*value != '\0' && *expected != '\0') {
+        const auto lhs = static_cast<unsigned char>(*value);
+        const auto rhs = static_cast<unsigned char>(*expected);
+        if (std::tolower(lhs) != std::tolower(rhs)) {
+            return false;
+        }
+        ++value;
+        ++expected;
+    }
+
+    return *value == '\0' && *expected == '\0';
+}
+
+bool
+MlasShouldForceScalarRiscv(
+    const char* value
+    )
+{
+    if (value == nullptr || value[0] == '\0') {
+        return false;
+    }
+
+    return MlasStringEqualsIgnoreCase(value, "1") ||
+           MlasStringEqualsIgnoreCase(value, "true") ||
+           MlasStringEqualsIgnoreCase(value, "on") ||
+           MlasStringEqualsIgnoreCase(value, "yes");
+}
+
+}  // namespace
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
@@ -260,6 +314,33 @@ Return Value:
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
+
+#if defined(MLAS_TARGET_RISCV64)
+    this->GemmFloatKernel = nullptr;
+    this->ErfKernelRoutine = MlasErfKernel;
+    this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+
+#if defined(MLAS_USE_RVV)
+    bool has_rvv = true;
+#if defined(__linux__)
+    has_rvv = (getauxval(AT_HWCAP) & COMPAT_HWCAP_ISA_V) != 0;
+#endif
+    if (MlasShouldForceScalarRiscv(std::getenv("ORT_MLAS_RISCV_FORCE_SCALAR"))) {
+        has_rvv = false;
+    }
+    if (has_rvv) {
+        this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+        this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+    }
+#endif
+#endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 
@@ -583,7 +664,9 @@ Return Value:
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    this->ConvNchwBf16Kernel = MlasConvNchwBf16KernelNeon;
+    this->ConvDepthwiseBf16Kernel = MlasConvDepthwiseBf16KernelNeon;
     this->ConvPointwiseBf16Kernel = MlasConvPointwiseBf16KernelNeon;
 #endif
     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelNeon;
@@ -654,6 +737,23 @@ Return Value:
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(_WIN32)
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasSveGeluFP16Kernel;
+            this->TanhFP16KernelRoutine = MlasSveTanhFP16Kernel;
+        }
+        else{
+            this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
+        }
+    #else
+        this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+        this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+    #endif
 #endif
 
     //

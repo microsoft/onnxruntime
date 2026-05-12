@@ -29,6 +29,8 @@ namespace test {
 // unit testing infrastructure.
 namespace dynamic_plugin_ep_infra {
 
+inline constexpr std::string_view kCudaPluginExecutionProviderName{"CudaPluginExecutionProvider"};
+
 // Note: `Initialize()` and `Shutdown()` are not thread-safe.
 // They should be called before and after calls to most of the other functions in this namespace.
 // The exception to this is `ParseInitializationConfig()`, which may be called before `Initialize()`.

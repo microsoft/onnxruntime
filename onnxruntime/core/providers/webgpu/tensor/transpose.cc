@@ -63,10 +63,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Transpose);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Transpose,
+    kOnnxDomain,
+    23, 23,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Transpose);
+
 ONNX_OPERATOR_KERNEL_EX(
     Transpose,
     kOnnxDomain,
-    23,
+    24,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),

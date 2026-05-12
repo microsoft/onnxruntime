@@ -15,11 +15,11 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
   WebGpuProfiler(WebGpuContext& context);
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuProfiler);
   ~WebGpuProfiler() {}
-  bool StartProfiling(TimePoint) override;
+  Status StartProfiling(TimePoint) override;
   void EndProfiling(TimePoint, onnxruntime::profiling::Events&) override;
   void Start(uint64_t) override {
   }
-  void Stop(uint64_t) override {
+  void Stop(uint64_t, const profiling::EventRecord&) override {
   }
   inline bool Enabled() const { return enabled_; }
   // GPU events collected during session-level profiling.

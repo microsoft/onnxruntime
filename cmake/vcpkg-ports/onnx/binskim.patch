@@ -1,16 +1,16 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 584c0419a..5d4ffff99 100644
+index 044996e..ded7e39 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -52,6 +52,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
+@@ -53,6 +53,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
  option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
  option(ONNX_DISABLE_STATIC_REGISTRATION "Disable static registration for ONNX operator schemas." OFF)
  option(ONNX_USE_UNITY_BUILD "Enable Unity (Jumbo) build for" OFF)
 +option(ONNX_MINIMAL_BUILD "Build only essential ONNX components" OFF)
+ option(ONNX_INSTALL "Install ONNX targets, headers, and CMake config files" ON)
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime" OFF)
- endif()
-@@ -397,14 +398,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
+@@ -399,14 +400,28 @@ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
                                 onnx/onnx-operators.in.proto
                                 onnx/onnx-data.in.proto)
  
@@ -48,10 +48,10 @@ index 584c0419a..5d4ffff99 100644
  set(LINKED_PROTOBUF_TARGET protobuf::libprotobuf)
  if(ONNX_USE_LITE_PROTO)
 diff --git a/cmake/Utils.cmake b/cmake/Utils.cmake
-index 07f2b9071..388d9f7a3 100644
+index 1987edd..04b3088 100644
 --- a/cmake/Utils.cmake
 +++ b/cmake/Utils.cmake
-@@ -31,18 +31,7 @@ endfunction()
+@@ -103,18 +103,7 @@ endfunction()
  
  function(add_onnx_compile_options target)
    if(MSVC)
@@ -71,10 +71,10 @@ index 07f2b9071..388d9f7a3 100644
        target_compile_options(${target} PRIVATE "/WX")
      endif()
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
-index 887151217..ac2e8c463 100644
+index a6a8a83..153da87 100644
 --- a/onnx/defs/nn/old.cc
 +++ b/onnx/defs/nn/old.cc
-@@ -4152,7 +4152,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+@@ -4026,7 +4026,6 @@ ONNX_OPERATOR_SET_SCHEMA(
      GroupNormalization,
      18,
      OpSchema()

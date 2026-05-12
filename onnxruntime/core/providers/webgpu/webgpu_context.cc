@@ -86,7 +86,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
 #endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
-      if (required_features.size() > 0) {
+      if (!required_features.empty()) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
@@ -124,6 +124,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     device_queue_ = device_.GetQueue();
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
+    // buffer segment offsets are always properly aligned for WebGPU bind group creation.
+    if (device_limits_.minStorageBufferOffsetAlignment > 0) {
+      device_limits_.maxStorageBufferBindingSize -=
+          (device_limits_.maxStorageBufferBindingSize % device_limits_.minStorageBufferOffsetAlignment);
+    }
     // cache device features
     wgpu::SupportedFeatures supported_features;
     Device().GetFeatures(&supported_features);
@@ -182,7 +188,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
-  if (outputs.size() == 0) {
+  if (outputs.empty()) {
     return Status::OK();
   }
 

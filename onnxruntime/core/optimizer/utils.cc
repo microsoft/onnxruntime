@@ -339,6 +339,10 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
           const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input->Name(), true);
           if (initializer) {
             Initializer i(graph, *initializer, graph.ModelPath());
+            // Clip min/max are expected to be scalar/1-element tensors.
+            if (i.size() != 1) {
+              return false;
+            }
             switch (initializer->data_type()) {
               case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
                 value = *i.data<float>();
@@ -493,6 +497,13 @@ bool IsScalar(const NodeArg& input_arg) {
 
   auto dim_size = shape->dim_size();
   return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
+}
+
+void DuplicateNodeAnnotation(const Node& src, Node& dst) {
+  const auto& src_annotation = src.GetLayeringAnnotation();
+  if (!src_annotation.empty()) {
+    dst.SetLayeringAnnotation(src_annotation);
+  }
 }
 
 template <typename T>

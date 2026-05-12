@@ -2,6 +2,17 @@
 // Licensed under the MIT License.
 //
 // CUDA implementation of DeformConv (deformable convolution 2D).
+// High-level pipeline matches CPU `nn/deform_conv.cc`: im2col then grouped GEMM then optional bias;
+// this file hosts the EP and batch chunking; device kernels live in `deform_conv_impl.cu`.
+//
+// High-level pipeline (batch may be chunked for col_buffer memory; see GetNParallelImgs):
+//   (1) Deformable im2col per chunk: DeformConvIm2ColImpl launches GPU kernels that fill col_buffer
+//       (bilinear sampling + optional mask fused in threads; no separate sampling plan like CPU).
+//   (2) Grouped strided batched GEMM: Y = W * Col via cuBLAS (row-major vs column-major mapping in ComputeInternal).
+//   (3) Optional bias: add B[m] to each output channel map (DeformConvAddBiasImpl).
+//
+// Main difference vs CPU path: CPU builds an AoSoA bilinear plan once per image then reuses it across channels;
+// CUDA recomputes bilinear samples in the im2col kernel while walking offset/mask tensors.
 
 #include "core/providers/shared_library/provider_api.h"
 #include "deform_conv.h"
@@ -21,31 +32,30 @@ namespace {
 
 constexpr int kMaxParallelImgs = 32;
 
-// Returns the greatest divisor of n that is <= bound. Used to choose uniform batch chunk sizes.
-// Fast path: if n % bound == 0 (common for batch 32/64/128), return immediately.
-// When n >= bound^2, linear scan from bound down is O(bound). Otherwise divisor enumeration
-// from 1 to sqrt(n) is O(sqrt(n)). Uses integer comparison (no sqrt) for branch decision.
-int GetGreatestDivisorBelowBound(int n, int bound) {
-  if (bound <= 0 || n <= 0) return 1;
-  if (n % bound == 0) return bound;  // Fast path: batch is multiple of target
+// ceil(numer / denom) for numer >= 0, denom > 0 (integer, no floating point).
+// Avoid (numer + denom - 1) / denom: numer near INT_MAX overflows signed int (UB in C++).
+inline int CeilDiv(int numer, int denom) {
+  return numer / denom + (numer % denom != 0 ? 1 : 0);
+}
 
-  // n >= bound^2 <=> bound <= sqrt(n) => linear scan is cheaper
-  if (static_cast<int64_t>(n) >= static_cast<int64_t>(bound) * bound) {
-    for (int k = bound - 1; k > 1; --k) {
-      if (n % k == 0) return k;
-    }
-  } else {
-    // n < bound^2 <=> bound > sqrt(n) => divisor enumeration is cheaper
-    int best = 1;
-    for (int i = 1; static_cast<int64_t>(i) * i <= static_cast<int64_t>(n); ++i) {
-      if (n % i != 0) continue;
-      const int q = n / i;
-      if (q <= bound && q > best) best = q;
-      if (i <= bound && i > best) best = i;
-    }
-    return best;
-  }
-  return 1;
+// Chooses DeformConv batch chunk size k (images per outer-loop iteration) given batch N and
+// a hard cap T from temp-memory budget (target_parallel_imgs).
+//
+// Goals (in order):
+//   1) Minimize the number of outer rounds I = ceil(N / k). Under k <= T, the minimum achievable
+//      I is I* = ceil(N / min(N, T)) — take the largest allowed step min(N, T), same as always
+//      using k = T when N > T, or one round when N <= T.
+//   2) Among all k with ceil(N/k) == I*, pick k = ceil(N / I*) so chunk sizes are as balanced as
+//      possible (last chunk is only slightly smaller than full chunks). k need not divide N; choosing
+//      k = ceil(N / I*) instead of always k = T often shrinks col_buffer stride when a full-T last
+//      chunk would leave a much smaller tail.
+//
+// Closed form: k_cap = min(N, T), I = ceil(N / k_cap), return ceil(N / I).
+inline int GetDeformConvParallelChunkSize(int N, int T) {
+  if (N <= 0 || T <= 0) return 1;
+  const int k_cap = std::min(N, T);
+  const int num_rounds = CeilDiv(N, k_cap);
+  return CeilDiv(N, num_rounds);
 }
 
 // Returns the maximum temp memory (bytes) allowed for DeformConv's im2col + GEMM buffers.
@@ -76,28 +86,25 @@ size_t GetDeformConvEffectiveMaxTempBytes(size_t total_global_mem) {
 }
 
 // Returns how many images to process in parallel per batch chunk for DeformConv.
-// Chooses the largest divisor of batch size N that fits in the temp budget and does not
-// exceed kMaxParallelImgs, so that batch dimension is split evenly (no remainder).
-// Note: if N is prime and N > target_parallel_imgs, the greatest divisor <= target_parallel_imgs is 1,
-// so batching is effectively disabled (single-image chunks).
+//
+// Temp budget → cap T (see below). Chunk size k = GetDeformConvParallelChunkSize(N, T): minimize
+// outer-loop rounds first, then balance chunk sizes via ceil(N / ceil(N / min(N,T))).
+// The host loop still uses cur_parallel = min(k, N - b), so k need not divide N.
 //
 // Formulas:
-//   kernel_size = kH * kW
-//   output_image_size = out_h * out_w
-//   bytes_per_image = output_image_size * (C * kernel_size + M / group) * sizeof(T)
-//     (temp bytes per image: im2col col buffer + GEMM output buffer per output position)
+//   kernel_size / output_image_size come from validated common dims
+//   bytes_per_image = output_image_size * C * kernel_size * sizeof(T)
+//     (temp bytes per image: im2col col buffer only; GEMM writes directly to Y)
 //   max_parallel_imgs_mem = max(1, floor(effective_max_temp / bytes_per_image))
-//   target_parallel_imgs = min(kMaxParallelImgs, max_parallel_imgs_mem)
-//   return GetGreatestDivisorBelowBound(N, target_parallel_imgs)
+//   target_parallel_imgs T = min(kMaxParallelImgs, max_parallel_imgs_mem)
+//   return GetDeformConvParallelChunkSize(N, T)
 template <typename T>
-int GetNParallelImgs(const DeformConvParams& params, size_t total_global_mem) {
+int GetNParallelImgs(const DeformConvParams& params, int64_t kernel_size, int64_t output_image_size, size_t total_global_mem) {
   const size_t effective_max_temp = GetDeformConvEffectiveMaxTempBytes(total_global_mem);
-  const int64_t kernel_size = params.kH * params.kW;
-  const int64_t output_image_size = params.out_h * params.out_w;
-  const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * (params.C * kernel_size + params.M / params.group) * sizeof(T);
+  const size_t bytes_per_image = SafeInt<size_t>(output_image_size) * params.C * kernel_size * sizeof(T);
   const int max_parallel_imgs_mem = std::max(1, static_cast<int>(effective_max_temp / std::max(size_t(1), bytes_per_image)));
   const int target_parallel_imgs = std::min(kMaxParallelImgs, max_parallel_imgs_mem);
-  return GetGreatestDivisorBelowBound(static_cast<int>(params.N), target_parallel_imgs);
+  return GetDeformConvParallelChunkSize(narrow<int>(params.N), target_parallel_imgs);
 }
 
 }  // namespace
@@ -146,12 +153,13 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const int n_parallel_imgs = GetNParallelImgs<T>(params, GetDeviceProp().totalGlobalMem);
-
-  const int64_t kernel_size = kH * kW;
-  const int64_t output_image_size = out_h * out_w;
-  const int64_t input_image_size = H * W_in;
-  const int64_t kernel_dim = (C / group) * kernel_size;
+  DeformConvCommonDims common_dims;
+  ORT_RETURN_IF_ERROR(DeformConvValidateAndComputeCommonDims(params, common_dims));
+  const int64_t kernel_size = common_dims.kernel_size;
+  const int64_t output_image_size = common_dims.output_image_size;
+  const int64_t input_image_size = common_dims.input_image_size;
+  const int64_t kernel_dim = common_dims.kernel_dim;
+  const int n_parallel_imgs = GetNParallelImgs<T>(params, kernel_size, output_image_size, GetDeviceProp().totalGlobalMem);
 
   const int64_t col_stride = static_cast<int64_t>(n_parallel_imgs) * output_image_size;
   const int64_t col_buffer_size = (C * kernel_size) * col_stride;
@@ -159,8 +167,6 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   auto col_buffer = IAllocator::MakeUniquePtr<T>(alloc, SafeInt<size_t>(col_buffer_size));
-  // Removed col_transposed allocation as we avoid physical transpose.
-  auto gemm_output_buffer = IAllocator::MakeUniquePtr<T>(alloc, SafeInt<size_t>((M / group) * col_stride));
 
   const T* Xdata = X->Data<T>();
   const T* Wdata = W->Data<T>();
@@ -180,6 +186,7 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     const int64_t cur_out_size = static_cast<int64_t>(cur_parallel) * output_image_size;
 
     const T* X_block = Xdata + b * (C * input_image_size);
+    // Stride per full image along N: offset [N, offset_group*2*kH*kW, OH, OW] -> offset_group * 2*kH*kW * OH*OW floats.
     const T* offset_block = offset_data + b * (offset_group * 2 * kernel_size * output_image_size);
     const T* mask_block = use_mask ? (mask_data + b * (offset_group * kernel_size * output_image_size)) : nullptr;
 
@@ -215,16 +222,18 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
     //   - W (row [M/group, kernel_dim]) -> cuBLAS interprets as col-major [kernel_dim, M/group] = W^T
     //   - C = A*B = Col^T * W^T = (W*Col)^T = Y^T; C is col-major [cur_out_size, M/group] = Y in row-major
     //
-    // m=cur_out_size, n=M/group, k=kernel_dim; lda=cur_out_size, ldb=kernel_dim, ldc=cur_out_size.
+    // Per batch image: m=output_image_size, n=M/group, k=kernel_dim; lda=cur_out_size, ldb=kernel_dim,
+    // ldc=output_image_size (row-major Y slice [M/group, OH*OW]).
     //
-    // cur_parallel==1: cur_out_size==output_image_size, C layout (pos, channel) matches NCHW Y_g[0,ch,pos] -> write
-    // directly into Y_g. Use strided batched for all groups in one call.
-    // cur_parallel>1: layouts differ -> write to gemm_output_buffer, then DeformConvCopyGemmOutputRowMajorToNCHW.
+    // cur_parallel==1: one strided-batched GEMM over all groups (single launch).
+    // cur_parallel>1: per group, strided-batched GEMM with batch_count=cur_parallel; each batch writes one image
+    // directly into NCHW Y (strideC = M * output_image_size), avoiding a temp buffer + scatter kernel.
 
-    const bool gemm_writes_directly = (cur_parallel == 1);
-    if (gemm_writes_directly) {
-      // Strided batched: one call for all groups. Strides between batches:
-      const int64_t stride_col = kernel_dim * col_stride;  // = kernel_dim * output_image_size when cur_parallel==1
+    if (cur_parallel == 1) {
+      // col_buffer is packed per iteration with the current chunk width (cur_out_size).
+      // Using outer-scope col_stride (based on n_parallel_imgs) breaks tail chunks where
+      // cur_out_size != col_stride (including one-image tails) when group > 1.
+      const int64_t stride_col = kernel_dim * cur_out_size;
       const int64_t stride_weight = (M / group) * kernel_dim;
       const int64_t stride_y = (M / group) * output_image_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
@@ -249,44 +258,42 @@ Status DeformConv<T>::ComputeInternal(OpKernelContext* context) const {
           device_prop,
           UseTF32()));
     } else {
-      // cur_parallel>1: GEMM output layout differs from NCHW; write to buffer then copy per group.
+      const int64_t stride_a_col = output_image_size;
+      const int64_t stride_b = 0;
+      const int64_t stride_c_y = M * output_image_size;
       for (int64_t g = 0; g < group; ++g) {
         const T* W_g = Wdata + g * (M / group) * kernel_dim;
-        const T* col_g = col_buffer.get() + g * kernel_dim * col_stride;
+        const T* col_g = col_buffer.get() + g * kernel_dim * cur_out_size;
         T* Y_g = Ydata + b * M * output_image_size + g * (M / group) * output_image_size;
 
-        CUBLAS_RETURN_IF_ERROR((cublasGemmHelper(
+        CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
             cublas,
             CUBLAS_OP_N,
             CUBLAS_OP_N,
-            narrow<int>(cur_out_size),
+            narrow<int>(output_image_size),
             narrow<int>(M / group),
             narrow<int>(kernel_dim),
             &alpha,
             reinterpret_cast<const CudaT*>(col_g),
             narrow<int>(cur_out_size),
+            stride_a_col,
             reinterpret_cast<const CudaT*>(W_g),
             narrow<int>(kernel_dim),
+            stride_b,
             &beta,
-            reinterpret_cast<CudaT*>(gemm_output_buffer.get()),
-            narrow<int>(cur_out_size),
+            reinterpret_cast<CudaT*>(Y_g),
+            narrow<int>(output_image_size),
+            stride_c_y,
+            narrow<int>(cur_parallel),
             device_prop,
-            UseTF32())));
-
-        ORT_RETURN_IF_ERROR(DeformConvCopyGemmOutputRowMajorToNCHW<T>(
-            stream,
-            gemm_output_buffer.get(),
-            Y_g,
-            M,
-            M / group,
-            output_image_size,
-            cur_parallel));
+            UseTF32()));
       }
     }
   }
 
   if (Bdata != nullptr) {
-    ORT_RETURN_IF_ERROR(DeformConvAddBiasImpl<T>(stream, Ydata, Bdata, N, M, out_h, out_w));
+    ORT_RETURN_IF_ERROR(DeformConvAddBiasImpl<T>(stream, Ydata, Bdata, N, M, out_h, out_w,
+                                                 static_cast<int64_t>(device_prop.maxGridSize[1])));
   }
 
   return Status::OK();

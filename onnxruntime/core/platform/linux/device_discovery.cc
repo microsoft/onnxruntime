@@ -9,6 +9,7 @@
 #include <iterator>
 #include <optional>
 #include <regex>
+#include <string>
 #include <string_view>
 
 #include "core/common/common.h"
@@ -22,14 +23,14 @@ namespace onnxruntime {
 
 namespace {
 
-Status ErrorCodeToStatus(const std::error_code& ec) {
+Status ErrorCodeToStatus(const std::error_code& ec, const std::filesystem::path& path, const std::string_view context) {
   if (!ec) {
     return Status::OK();
   }
 
   return Status{common::StatusCategory::ONNXRUNTIME, common::StatusCode::FAIL,
                 MakeString("Error: std::error_code with category name: ", ec.category().name(),
-                           ", value: ", ec.value(), ", message: ", ec.message())};
+                           ", value: ", ec.value(), ", message: ", ec.message(), ", filesystem path: ", path, ", context: ", context)};
 }
 
 struct GpuSysfsPathInfo {
@@ -41,7 +42,7 @@ Status DetectGpuSysfsPaths(std::vector<GpuSysfsPathInfo>& gpu_sysfs_paths_out) {
   std::error_code error_code{};
   const fs::path sysfs_class_drm_path = "/sys/class/drm";
   const bool sysfs_class_drm_path_exists = fs::exists(sysfs_class_drm_path, error_code);
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_class_drm_path, "Checking existence of DRM sysfs path"));
 
   if (!sysfs_class_drm_path_exists) {
     gpu_sysfs_paths_out = std::vector<GpuSysfsPathInfo>{};
@@ -70,7 +71,7 @@ Status DetectGpuSysfsPaths(std::vector<GpuSysfsPathInfo>& gpu_sysfs_paths_out) {
   std::vector<GpuSysfsPathInfo> gpu_sysfs_paths{};
 
   auto dir_iterator = fs::directory_iterator{sysfs_class_drm_path, error_code};
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_class_drm_path, "Iterating over DRM sysfs devices"));
 
   for (const auto& dir_item : dir_iterator) {
     const auto& dir_item_path = dir_item.path();
@@ -122,7 +123,7 @@ Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::s
 
   std::error_code error_code;
   auto pci_bus_id_path = std::filesystem::canonical(sysfs_path / "device", error_code);  // resolves symlink to PCI bus id, e.g. 0000:65:00.0
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_path / "device", "Getting PCI bus id from DRM device by resolving symlink"));
 
   auto pci_bus_id_filename = pci_bus_id_path.filename();
   if (std::regex_match(pci_bus_id_filename.string(), pci_bus_id_regex)) {
@@ -131,9 +132,9 @@ Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::s
     pci_bus_id = {};
     LOGS_DEFAULT(WARNING) << MakeString("Skipping pci_bus_id for PCI path at \"",
                                         pci_bus_id_path.string(),
-                                        "\" because filename \"", pci_bus_id_filename, "\" dit not match expected pattern of ",
+                                        "\" because filename ", pci_bus_id_filename, " did not match expected pattern of ",
                                         regex_pattern);
-  };
+  }
 
   return Status::OK();
 }
@@ -188,7 +189,7 @@ Status DetectGpuPciPaths(const fs::path& sysfs_pci_devices_path,
                          std::vector<GpuPciPathInfo>& gpu_pci_paths_out) {
   std::error_code error_code{};
   const bool path_exists = fs::exists(sysfs_pci_devices_path, error_code);
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_pci_devices_path, "Checking path exists"));
 
   if (!path_exists) {
     gpu_pci_paths_out = {};
@@ -198,7 +199,7 @@ Status DetectGpuPciPaths(const fs::path& sysfs_pci_devices_path,
   std::vector<GpuPciPathInfo> gpu_pci_paths{};
 
   auto dir_iterator = fs::directory_iterator{sysfs_pci_devices_path, error_code};
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_pci_devices_path, "Getting directory_iterator"));
 
   for (const auto& dir_item : dir_iterator) {
     const auto& device_path = dir_item.path();
@@ -278,7 +279,10 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
 
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
     OrtHardwareDevice gpu_device{};
-    ORT_RETURN_IF_ERROR(GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device));
+    if (auto status = GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device); !status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << MakeString("Failed to detect devices under ", gpu_sysfs_path_info.path, ": ", status.ErrorMessage());
+      continue;
+    }
     gpu_devices.emplace_back(std::move(gpu_device));
   }
 
@@ -297,7 +301,10 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
 
     for (const auto& gpu_pci_path_info : gpu_pci_path_infos) {
       OrtHardwareDevice gpu_device{};
-      ORT_RETURN_IF_ERROR(pci_device_discovery::GetGpuDeviceFromPci(gpu_pci_path_info, gpu_device));
+      if (auto status = pci_device_discovery::GetGpuDeviceFromPci(gpu_pci_path_info, gpu_device); !status.IsOK()) {
+        LOGS_DEFAULT(WARNING) << MakeString("Failed to detect devices under ", gpu_pci_path_info.path, ": ", status.ErrorMessage());
+        continue;
+      }
       gpu_devices.emplace_back(std::move(gpu_device));
     }
   }

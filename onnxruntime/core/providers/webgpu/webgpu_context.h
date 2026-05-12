@@ -170,7 +170,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
-  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
 #if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 #endif

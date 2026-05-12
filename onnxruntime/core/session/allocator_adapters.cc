@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "allocator_adapters.h"
+#include "core/common/parse_string.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/session/abi_devices.h"
@@ -23,6 +24,51 @@ namespace {
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
 constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
 constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+constexpr uint32_t kOrtAllocatorShrinkMinVersion = 25;
+
+// Shared helper to parse OrtKeyValuePairs stats into AllocatorStats.
+// Used by both IAllocatorImplWrappingOrtAllocator and IArenaImplWrappingOrtAllocator.
+void GetStatsFromOrtAllocator(OrtAllocator* ort_allocator, AllocatorStats* stats) {
+  if (ort_allocator->version >= kOrtAllocatorStatsMinVersion && ort_allocator->GetStats) {
+    OrtKeyValuePairs* kvps = nullptr;
+    Ort::ThrowOnError(ort_allocator->GetStats(ort_allocator, &kvps));
+
+    auto release_fn = [](OrtKeyValuePairs** kvp) {
+      OrtApis::ReleaseKeyValuePairs(*kvp);
+    };
+
+    std::unique_ptr<OrtKeyValuePairs*, decltype(release_fn)> kvp_guard(&kvps, release_fn);
+
+    const auto keys = kvps->Keys(), values = kvps->Values();
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      int64_t val = 0;
+      if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) {
+        continue;  // skip unparseable entries
+      }
+      if (strcmp(keys[i], "Limit") == 0) {
+        stats->bytes_limit = val;
+      } else if (strcmp(keys[i], "InUse") == 0) {
+        stats->bytes_in_use = val;
+      } else if (strcmp(keys[i], "TotalAllocated") == 0) {
+        stats->total_allocated_bytes = val;
+      } else if (strcmp(keys[i], "MaxInUse") == 0) {
+        stats->max_bytes_in_use = val;
+      } else if (strcmp(keys[i], "NumAllocs") == 0) {
+        stats->num_allocs = val;
+      } else if (strcmp(keys[i], "NumReserves") == 0) {
+        stats->num_reserves = val;
+      } else if (strcmp(keys[i], "NumArenaExtensions") == 0) {
+        stats->num_arena_extensions = val;
+      } else if (strcmp(keys[i], "NumArenaShrinkages") == 0) {
+        stats->num_arena_shrinkages = val;
+      } else if (strcmp(keys[i], "MaxAllocSize") == 0) {
+        stats->max_alloc_size = val;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
@@ -64,6 +110,9 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
       return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->AllocOnStream(size, stream);
     };
   }
+
+  // Shrink is not forwarded through the generic adapter — only plugin allocators implement it directly.
+  OrtAllocator::Shrink = nullptr;
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
@@ -151,41 +200,55 @@ void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
 
 void IAllocatorImplWrappingOrtAllocator::GetStats(AllocatorStats* stats) {
   *stats = {};
+  GetStatsFromOrtAllocator(ort_allocator_.get(), stats);
+}
 
-  if (ort_allocator_->version >= kOrtAllocatorStatsMinVersion && ort_allocator_->GetStats) {
-    OrtKeyValuePairs* kvps = nullptr;
-    Ort::ThrowOnError(ort_allocator_->GetStats(ort_allocator_.get(), &kvps));
+// ---------------------------------------------------------------------------
+// IArenaImplWrappingOrtAllocator
+// ---------------------------------------------------------------------------
 
-    auto release_fn = [](OrtKeyValuePairs** kvp) {
-      OrtApis::ReleaseKeyValuePairs(*kvp);
-    };
+IArenaImplWrappingOrtAllocator::IArenaImplWrappingOrtAllocator(OrtAllocatorUniquePtr ort_allocator)
+    : IArena(*ort_allocator->Info(ort_allocator.get())), ort_allocator_(std::move(ort_allocator)) {
+}
 
-    std::unique_ptr<OrtKeyValuePairs*, decltype(release_fn)> kvp_guard(&kvps, release_fn);
+void* IArenaImplWrappingOrtAllocator::Alloc(size_t size) {
+  return ort_allocator_->Alloc(ort_allocator_.get(), size);
+}
 
-    const auto keys = kvps->Keys(), values = kvps->Values();
+void IArenaImplWrappingOrtAllocator::Free(void* p) {
+  return ort_allocator_->Free(ort_allocator_.get(), p);
+}
 
-    for (size_t i = 0; i < keys.size(); ++i) {
-      if (strcmp(keys[i], "Limit") == 0) {
-        stats->bytes_limit = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "InUse") == 0) {
-        stats->bytes_in_use = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "TotalAllocated") == 0) {
-        stats->total_allocated_bytes = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "MaxInUse") == 0) {
-        stats->max_bytes_in_use = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "NumAllocs") == 0) {
-        stats->num_allocs = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "NumReserves") == 0) {
-        stats->num_reserves = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "NumArenaExtensions") == 0) {
-        stats->num_arena_extensions = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "NumArenaShrinkages") == 0) {
-        stats->num_arena_shrinkages = std::stoll(values[i]);
-      } else if (strcmp(keys[i], "MaxAllocSize") == 0) {
-        stats->max_alloc_size = std::stoll(values[i]);
-      }
-    }
+void* IArenaImplWrappingOrtAllocator::Reserve(size_t size) {
+  if (ort_allocator_->version >= kOrtAllocatorReserveMinVersion && ort_allocator_->Reserve) {
+    return ort_allocator_->Reserve(ort_allocator_.get(), size);
   }
+
+  return ort_allocator_->Alloc(ort_allocator_.get(), size);
+}
+
+bool IArenaImplWrappingOrtAllocator::IsStreamAware() const {
+  return ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream != nullptr;
+}
+
+void* IArenaImplWrappingOrtAllocator::AllocOnStream(size_t size, Stream* stream) {
+  if (ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream) {
+    return ort_allocator_->AllocOnStream(ort_allocator_.get(), size, static_cast<OrtSyncStream*>(stream));
+  }
+
+  return ort_allocator_->Alloc(ort_allocator_.get(), size);
+}
+
+void IArenaImplWrappingOrtAllocator::GetStats(AllocatorStats* stats) {
+  *stats = {};
+  GetStatsFromOrtAllocator(ort_allocator_.get(), stats);
+}
+
+Status IArenaImplWrappingOrtAllocator::Shrink() {
+  if (ort_allocator_->version >= kOrtAllocatorShrinkMinVersion && ort_allocator_->Shrink) {
+    return ToStatusAndRelease(ort_allocator_->Shrink(ort_allocator_.get()));
+  }
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

@@ -28,6 +28,7 @@ class QAttention : public OpKernel, public AttentionCPUBase {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -117,6 +118,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
 
 template <typename T>
 Status QAttention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                 int input_idx,
                                                 /*out*/ bool& used_shared_buffers) {
   if (1 != input_idx) {

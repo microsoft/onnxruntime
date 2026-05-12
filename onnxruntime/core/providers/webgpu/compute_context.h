@@ -212,6 +212,16 @@ class ComputeContext final : public ComputeContextBase {
     return op_kernel_.Info().GetDataTransferManager().CopyTensor(src, dst);
   }
 
+  //
+  // Fill a GPU tensor with zeros.
+  //
+  inline void FillZero(Tensor& dst) {
+    webgpu_context_.EndComputePass();
+    auto& command_encoder = webgpu_context_.GetCommandEncoder();
+    WGPUBuffer buffer = reinterpret_cast<WGPUBuffer>(dst.MutableDataRaw());
+    command_encoder.ClearBuffer(buffer, 0, dst.SizeInBytes());
+  }
+
  private:
   OpKernelContext& kernel_context_;
 };

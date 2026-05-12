@@ -236,11 +236,11 @@ Status PrepareForReduce(const Tensor* X,
                         const TensorShape* input_shape_override = nullptr);
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
-Status ReduceComputeCore(const AllocatorPtr& allocator, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
+Status ReduceComputeCore(const AllocatorPtr& allocator, const CudaKernel* kernel, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
                          gsl::span<const int64_t> axes,
                          bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
-                         Stream* ort_stream, cudnnHandle_t cudnn_handle,
+                         cudaStream_t cuda_stream, void* compute_stream, cudnnHandle_t cudnn_handle,
                          const TensorShape* input_shape_override = nullptr);
 
 // CUDA's reduction descriptor cudnnReduceTensorDescriptor_t is a pointer so
