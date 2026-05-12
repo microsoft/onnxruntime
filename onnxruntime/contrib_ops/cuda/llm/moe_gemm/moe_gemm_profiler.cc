@@ -6,6 +6,9 @@
 #include "contrib_ops/cuda/llm/moe_gemm/common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_kernels.h"
 
+#include <functional>
+#include <memory>
+
 namespace onnxruntime::llm::kernels::cutlass_kernels {
 
 void MoeGemmProfiler::initBackend(CutlassMoeFCRunnerInterface* runner, MoeGemmId const& gemmId) {
@@ -43,28 +46,39 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, M
     return std::nullopt;
   }
 
-  auto workspace = allocator_->Alloc(workspace_size);
+  // RAII guards so any throw between allocation and the end of this function still releases
+  // the workspace, the profiling stream, and the timing events. Without these, exceptions
+  // escaping backend_.prepare(), cudaEventRecord(), or cudaEventSynchronize() would leak.
+  void* workspace = allocator_->Alloc(workspace_size);
   if (!workspace) {
     ORT_LLM_LOG_WARNING("Failed to allocate workspace for MoE GEMM profiling");
     return std::nullopt;
   }
+  std::unique_ptr<void, std::function<void(void*)>> workspace_guard(
+      workspace, [a = allocator_](void* p) { if (p) a->Free(p); });
   auto* workspace_ptr = static_cast<char*>(workspace);
 
-  // Create profiling stream
-  cudaStream_t stream;
+  cudaStream_t stream = nullptr;
   CUDA_CALL_THROW(cudaStreamCreate(&stream));
+  std::unique_ptr<CUstream_st, void (*)(cudaStream_t)> stream_guard(
+      stream, [](cudaStream_t s) { if (s) cudaStreamDestroy(s); });
 
-  // Prepare backend
+  cudaEvent_t start = nullptr;
+  cudaEvent_t stop = nullptr;
+  CUDA_CALL_THROW(cudaEventCreate(&start));
+  std::unique_ptr<CUevent_st, void (*)(cudaEvent_t)> start_guard(
+      start, [](cudaEvent_t e) { if (e) cudaEventDestroy(e); });
+  CUDA_CALL_THROW(cudaEventCreate(&stop));
+  std::unique_ptr<CUevent_st, void (*)(cudaEvent_t)> stop_guard(
+      stop, [](cudaEvent_t e) { if (e) cudaEventDestroy(e); });
+
+  // Prepare backend (may throw; guards above will release stream/events/workspace).
   backend_.prepare(maxM, workspace_ptr, nullptr /* expert_weights */, stream);
 
   // Profile each tactic
   float best_time = std::numeric_limits<float>::max();
   Config best_config;
   bool found_one = false;
-
-  cudaEvent_t start, stop;
-  CUDA_CALL_THROW(cudaEventCreate(&start));
-  CUDA_CALL_THROW(cudaEventCreate(&stop));
 
   constexpr int warmup_iters = 3;
   constexpr int profile_iters = 10;
@@ -102,10 +116,7 @@ std::optional<MoeGemmProfiler::Config> MoeGemmProfiler::runProfiling(int maxM, M
     }
   }
 
-  CUDA_CALL_THROW(cudaEventDestroy(start));
-  CUDA_CALL_THROW(cudaEventDestroy(stop));
-  CUDA_CALL_THROW(cudaStreamDestroy(stream));
-  allocator_->Free(workspace);
+  // RAII guards above release stream/events/workspace on the way out.
 
   if (!found_one) {
     ORT_LLM_LOG_WARNING(onnxruntime::MakeString("No valid GEMM config found for ", gemmId));

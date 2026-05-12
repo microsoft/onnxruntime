@@ -191,7 +191,7 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
-        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
     if (MSVC)

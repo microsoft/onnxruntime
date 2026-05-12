@@ -157,14 +157,17 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   } else {
     // Integer quantization (INT4/INT8)
 #if QUICK_BUILD
-    if (is_fp16) {
-      if (expert_weight_bits_ == 4) {
-        m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
-      } else {  // expert_weight_bits_ == 8
-        m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, uint8_t, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
-      }
+    // QUICK_BUILD only instantiates FP16 templates to reduce compile time.
+    // BF16 is rejected here so that we never leave m_moe_runner null.
+    ORT_ENFORCE(is_fp16,
+                "QUICK_BUILD: QMoE BFloat16 integer quantization runner is not compiled. "
+                "Rebuild without ORT_QUICK_BUILD or use float16 input.");
+    if (expert_weight_bits_ == 4) {
+      m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
+          sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+    } else {  // expert_weight_bits_ == 8
+      m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, uint8_t, half>>(
+          sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
     }
 #else
     if (is_fp16) {
@@ -186,6 +189,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     }
 #endif
   }  // end integer quantization
+
+  ORT_ENFORCE(m_moe_runner != nullptr,
+              "QMoE: failed to construct MoE runner for quant_type='", quant_type_,
+              "', expert_weight_bits=", expert_weight_bits_,
+              ", input_type=", (is_fp16 ? "float16" : "bfloat16"),
+              ". Build configuration may be missing the corresponding kernel.");
 }
 
 Status QMoE::ComputeInternal(OpKernelContext* context) const {
@@ -242,6 +251,20 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // W4A8 (WFP4AFP8) optional Variant A activation scales (per-tensor or per-expert FP8 global act scale).
   const Tensor* fc1_act_scale = (is_wfp4afp8 && !packed_fc1_act_scale_) ? context->Input<Tensor>(18) : nullptr;
   const Tensor* fc2_act_scale = (is_wfp4afp8 && !packed_fc2_act_scale_) ? context->Input<Tensor>(19) : nullptr;
+
+  // Inputs 20/21 (fc1_act_block_scale, fc2_act_block_scale) are reserved by the schema for
+  // future MXFP activation block-scale support. Reject them at runtime so users cannot
+  // silently bind tensors that this kernel does not honor.
+  if (context->InputCount() > 20 && context->Input<Tensor>(20) != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "QMoE: input 20 (fc1_act_block_scale) is reserved for future MXFP "
+                           "activation block-scale support and is not yet implemented.");
+  }
+  if (context->InputCount() > 21 && context->Input<Tensor>(21) != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "QMoE: input 21 (fc2_act_block_scale) is reserved for future MXFP "
+                           "activation block-scale support and is not yet implemented.");
+  }
 
   const bool has_any_zero_point = (fc1_zeros != nullptr || fc2_zeros != nullptr || fc3_zeros != nullptr ||
                                    packed_fc1_bias_ != nullptr || packed_fc2_bias_ != nullptr);
@@ -368,74 +391,87 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   bool use_awq = (fc1_zeros != nullptr) || (packed_fc1_bias_ != nullptr);
   onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
-  std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
 
-  // Use profiler with proper weight type for quantized weights
-  if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
-    auto tactics = m_moe_runner->getTactics();
-    if (!tactics.empty()) {
-      m_moe_runner->setTactic(tactics[0], tactics[0]);
-    }
-  } else {
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-    mGemmProfiler.setAllocator(std::move(allocator));
-    mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_),
-                                    static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
-                                    static_cast<int64_t>(block_size_), activation_type_,
-                                    false, true, parallelism_config, sm_);
+  // Profile and capture the best tactics under the profiler mutex, then release the mutex so
+  // that scratch allocation, weight dequantization, scale prepping, softmax, and other
+  // CPU-bound work can proceed concurrently across QMoE inferences. The mutex is reacquired
+  // around setTactic + runMoe because they mutate shared `m_moe_runner` state.
+  std::optional<onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::Config> config1;
+  std::optional<onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::Config> config2;
+  size_t workspace_size = 0;
+  {
+    std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
 
-    onnxruntime::llm::nvinfer::DataType dtype = is_fp16_ ? onnxruntime::llm::nvinfer::DataType::kHALF : onnxruntime::llm::nvinfer::DataType::kBF16;
-    // Weight type: FP4 for MXFP4, INT4 for 4-bit integer, INT8 for 8-bit integer
-    onnxruntime::llm::nvinfer::DataType wtype;
-    if (is_fp4) {
-      wtype = use_fp4_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP4;
-    } else if (is_wfp4afp8) {
-      // Native W4A8 path uses FP8 activation + FP4 weights through the block-scaled dispatch.
-      // Profile against the FP4 weight tactic; fall back to dense dtype when the dequant path is selected.
-      wtype = use_wfp4afp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP4;
-    } else if (is_fp8) {
-      wtype = use_fp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP8;
+    // Use profiler with proper weight type for quantized weights
+    if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
+      auto tactics = m_moe_runner->getTactics();
+      if (!tactics.empty()) {
+        config1 = tactics[0];
+        config2 = tactics[0];
+        m_moe_runner->setTactic(config1, config2);
+      }
     } else {
-      wtype = (expert_weight_bits_ == 4) ? onnxruntime::llm::nvinfer::DataType::kINT4
-                                         : onnxruntime::llm::nvinfer::DataType::kINT8;
+      AllocatorPtr allocator;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+      mGemmProfiler.setAllocator(std::move(allocator));
+      mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_),
+                                      static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
+                                      static_cast<int64_t>(block_size_), activation_type_,
+                                      false, true, parallelism_config, sm_);
+
+      onnxruntime::llm::nvinfer::DataType dtype = is_fp16_ ? onnxruntime::llm::nvinfer::DataType::kHALF : onnxruntime::llm::nvinfer::DataType::kBF16;
+      // Weight type: FP4 for MXFP4, INT4 for 4-bit integer, INT8 for 8-bit integer
+      onnxruntime::llm::nvinfer::DataType wtype;
+      if (is_fp4) {
+        wtype = use_fp4_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP4;
+      } else if (is_wfp4afp8) {
+        // Native W4A8 path uses FP8 activation + FP4 weights through the block-scaled dispatch.
+        // Profile against the FP4 weight tactic; fall back to dense dtype when the dequant path is selected.
+        wtype = use_wfp4afp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP4;
+      } else if (is_fp8) {
+        wtype = use_fp8_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP8;
+      } else {
+        wtype = (expert_weight_bits_ == 4) ? onnxruntime::llm::nvinfer::DataType::kINT4
+                                           : onnxruntime::llm::nvinfer::DataType::kINT8;
+      }
+
+      using onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId;
+      using onnxruntime::llm::kernels::weight_only::GemmDims;
+
+      // For gated activations (SwiGLU), fc1_out_size is doubled
+      int64_t fc1_out_size = static_cast<int64_t>(moe_params.inter_size);
+      if (is_fused_swiglu) {
+        fc1_out_size = static_cast<int64_t>(moe_params.inter_size) * 2;
+      }
+
+      // GEMM 1: N=fc1_out_size (doubled for gated), K=hidden_size
+      MoeGemmId id1(static_cast<int>(fc1_out_size), static_cast<int>(moe_params.hidden_size), dtype, wtype, MoeGemmId::GemmType::Gemm1);
+      if (mGemmId1 != id1) {
+        mGemmId1 = id1;
+        GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
+                      fc1_out_size, static_cast<int64_t>(moe_params.hidden_size));
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id1);
+      }
+      config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId1);
+
+      // GEMM 2
+      MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, wtype, MoeGemmId::GemmType::Gemm2);
+      if (mGemmId2 != id2) {
+        mGemmId2 = id2;
+        GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
+                      static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id2);
+      }
+      config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId2);
+
+      m_moe_runner->setTactic(config1, config2);
     }
 
-    using onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId;
-    using onnxruntime::llm::kernels::weight_only::GemmDims;
-
-    // For gated activations (SwiGLU), fc1_out_size is doubled
-    int64_t fc1_out_size = static_cast<int64_t>(moe_params.inter_size);
-    if (is_fused_swiglu) {
-      fc1_out_size = static_cast<int64_t>(moe_params.inter_size) * 2;
-    }
-
-    // GEMM 1: N=fc1_out_size (doubled for gated), K=hidden_size
-    MoeGemmId id1(static_cast<int>(fc1_out_size), static_cast<int>(moe_params.hidden_size), dtype, wtype, MoeGemmId::GemmType::Gemm1);
-    if (mGemmId1 != id1) {
-      mGemmId1 = id1;
-      GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
-                    fc1_out_size, static_cast<int64_t>(moe_params.hidden_size));
-      mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id1);
-    }
-    auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId1);
-
-    // GEMM 2
-    MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, wtype, MoeGemmId::GemmType::Gemm2);
-    if (mGemmId2 != id2) {
-      mGemmId2 = id2;
-      GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
-                    static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-      mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id2);
-    }
-    auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId2);
-
-    m_moe_runner->setTactic(config1, config2);
+    workspace_size = m_moe_runner->getWorkspaceSize(
+        moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+        activation_type_, parallelism_config, use_awq);
   }
-
-  size_t workspace_size = m_moe_runner->getWorkspaceSize(
-      moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-      activation_type_, parallelism_config, use_awq);
+  // Lock released — concurrent QMoE inferences can now run prep work in parallel.
 
   // Scratch buffer for workspace + expert_scales + expert_indices
   // expert_scales: num_rows * k * sizeof(float)
@@ -559,6 +595,37 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
           const uint8_t* p_zp = static_cast<const uint8_t*>(zeros->DataRaw());
 
+          // Determine whether zeros are stored packed (two uint4 ZP per byte) or unpacked.
+          // For block-wise 4-bit quantization, scales have shape [E, N, K_blocks] and zeros
+          // have shape either [E, N, K_blocks] (unpacked) or [E, N, ceil(K_blocks/2)] (packed).
+          // Compare the last dim of zeros vs scales explicitly instead of relying on a fragile
+          // numeric heuristic on Shape().Size() ratios, which can mis-classify pathological
+          // shapes (e.g., K_blocks=1 where ceil(1/2)=1 makes packed indistinguishable from
+          // unpacked by element count alone).
+          bool zp_is_packed_4bit = false;
+          if (expert_weight_bits_ == 4) {
+            const auto& zeros_shape = zeros->Shape();
+            const auto& scales_shape = scales->Shape();
+            ORT_ENFORCE(zeros_shape.NumDimensions() == 3 && scales_shape.NumDimensions() == 3,
+                        "Block-wise 4-bit zeros and scales must be 3D, got zeros=",
+                        zeros_shape.ToString(), ", scales=", scales_shape.ToString());
+            ORT_ENFORCE(zeros_shape[0] == scales_shape[0] && zeros_shape[1] == scales_shape[1],
+                        "Block-wise 4-bit zeros and scales must agree on the first two dims, got zeros=",
+                        zeros_shape.ToString(), ", scales=", scales_shape.ToString());
+            const int64_t scales_k = scales_shape[2];
+            const int64_t zeros_k = zeros_shape[2];
+            const int64_t expected_packed_k = (scales_k + 1) / 2;
+            if (zeros_k == scales_k) {
+              zp_is_packed_4bit = false;
+            } else if (zeros_k == expected_packed_k) {
+              zp_is_packed_4bit = true;
+            } else {
+              ORT_THROW("Block-wise 4-bit zeros last dim must be ", scales_k,
+                        " (unpacked) or ", expected_packed_k, " (packed). Got zeros=",
+                        zeros_shape.ToString(), ", scales=", scales_shape.ToString());
+            }
+          }
+
           // Transpose ZP if needed (for 3D ZP)
           auto shape = zeros->Shape();
           IAllocatorUniquePtr<void> temp_zp_transposed;
@@ -581,27 +648,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                   static_cast<int>(num_elements),
                   128.0f,
                   stream);
-            } else {
-              // 4-bit: Check if ZP is packed
+            } else if (zp_is_packed_4bit) {
               size_t scale_el = scales->Shape().Size();
-              if (scale_el > num_elements * 3 / 2) {
-                // Packed ZP (num_elements is ZP bytes, roughly scale_el / 2)
-                int N_stride = static_cast<int>(zeros->Shape()[1]);
-                LaunchQMoEPrePackPacked4BitZPKernel(
-                    p_zp,
-                    static_cast<const half*>(eff_scale),
-                    static_cast<half*>(transient_bias.get()),
-                    static_cast<int>(scale_el),
-                    N_stride,
-                    stream);
-              } else {
-                LaunchQMoEPrePackZP(
-                    p_zp,
-                    static_cast<const half*>(eff_scale),
-                    static_cast<half*>(transient_bias.get()),
-                    static_cast<int>(num_elements),
-                    stream);
-              }
+              int N_stride = static_cast<int>(zeros->Shape()[1]);
+              LaunchQMoEPrePackPacked4BitZPKernel(
+                  p_zp,
+                  static_cast<const half*>(eff_scale),
+                  static_cast<half*>(transient_bias.get()),
+                  static_cast<int>(scale_el),
+                  N_stride,
+                  stream);
+            } else {
+              LaunchQMoEPrePackZP(
+                  p_zp,
+                  static_cast<const half*>(eff_scale),
+                  static_cast<half*>(transient_bias.get()),
+                  static_cast<int>(num_elements),
+                  stream);
             }
           } else if (is_bf16) {
             if (expert_weight_bits_ == 8) {
@@ -612,26 +675,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                   static_cast<int>(num_elements),
                   128.0f,
                   stream);
-            } else {
-              // 4-bit
+            } else if (zp_is_packed_4bit) {
               size_t scale_el = scales->Shape().Size();
-              if (scale_el > num_elements * 3 / 2) {
-                int N_stride = static_cast<int>(zeros->Shape()[1]);
-                LaunchQMoEPrePackPacked4BitZPKernel(
-                    p_zp,
-                    static_cast<const __nv_bfloat16*>(eff_scale),
-                    static_cast<__nv_bfloat16*>(transient_bias.get()),
-                    static_cast<int>(scale_el),
-                    N_stride,
-                    stream);
-              } else {
-                LaunchQMoEPrePackZP(
-                    p_zp,
-                    static_cast<const __nv_bfloat16*>(eff_scale),
-                    static_cast<__nv_bfloat16*>(transient_bias.get()),
-                    static_cast<int>(num_elements),
-                    stream);
-              }
+              int N_stride = static_cast<int>(zeros->Shape()[1]);
+              LaunchQMoEPrePackPacked4BitZPKernel(
+                  p_zp,
+                  static_cast<const __nv_bfloat16*>(eff_scale),
+                  static_cast<__nv_bfloat16*>(transient_bias.get()),
+                  static_cast<int>(scale_el),
+                  N_stride,
+                  stream);
+            } else {
+              LaunchQMoEPrePackZP(
+                  p_zp,
+                  static_cast<const __nv_bfloat16*>(eff_scale),
+                  static_cast<__nv_bfloat16*>(transient_bias.get()),
+                  static_cast<int>(num_elements),
+                  stream);
             }
           } else {
             if (expert_weight_bits_ == 8) {
@@ -642,26 +702,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                   static_cast<int>(num_elements),
                   128.0f,
                   stream);
-            } else {
-              // 4-bit
+            } else if (zp_is_packed_4bit) {
               size_t scale_el = scales->Shape().Size();
-              if (scale_el > num_elements * 3 / 2) {
-                int N_stride = static_cast<int>(zeros->Shape()[1]);
-                LaunchQMoEPrePackPacked4BitZPKernel(
-                    p_zp,
-                    static_cast<const float*>(eff_scale),
-                    static_cast<float*>(transient_bias.get()),
-                    static_cast<int>(scale_el),
-                    N_stride,
-                    stream);
-              } else {
-                LaunchQMoEPrePackZP(
-                    p_zp,
-                    static_cast<const float*>(eff_scale),
-                    static_cast<float*>(transient_bias.get()),
-                    static_cast<int>(num_elements),
-                    stream);
-              }
+              int N_stride = static_cast<int>(zeros->Shape()[1]);
+              LaunchQMoEPrePackPacked4BitZPKernel(
+                  p_zp,
+                  static_cast<const float*>(eff_scale),
+                  static_cast<float*>(transient_bias.get()),
+                  static_cast<int>(scale_el),
+                  N_stride,
+                  stream);
+            } else {
+              LaunchQMoEPrePackZP(
+                  p_zp,
+                  static_cast<const float*>(eff_scale),
+                  static_cast<float*>(transient_bias.get()),
+                  static_cast<int>(num_elements),
+                  stream);
             }
           }
         }
@@ -879,35 +936,42 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     fc2_weight_data = dequant_fc2_weights.get();
   }
 
-  m_moe_runner->runMoe(
-      input->DataRaw(),
-      nullptr,
-      expert_indices,
-      expert_scales,
-      fc1_weight_data,
-      fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr,
-      activation_type_,
-      fc2_weight_data,
-      fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr,
-      quant_params,
-      moe_params.num_rows,
-      moe_params.hidden_size,
-      moe_params.inter_size,
-      moe_params.num_experts,
-      k_,
-      workspace_ptr,
-      output->MutableDataRaw(),
-      unpermuted_row_to_permuted_row,
-      parallelism_config,
-      [&]() {
-        onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(activation_type_);
-        params.alpha = activation_alpha_;
-        params.beta = activation_beta_;
-        params.swiglu_fusion = swiglu_fusion_;
-        params.limit = swiglu_limit_;
-        return params;
-      }(),
-      stream);
+  // Reacquire the profiler mutex to set tactic + run runMoe atomically. Another concurrent
+  // QMoE inference with a different shape may have changed the runner's tactic between the
+  // two locked sections; resetting it here keeps subsequent kernel dispatch consistent.
+  {
+    std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
+    m_moe_runner->setTactic(config1, config2);
+    m_moe_runner->runMoe(
+        input->DataRaw(),
+        nullptr,
+        expert_indices,
+        expert_scales,
+        fc1_weight_data,
+        fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr,
+        activation_type_,
+        fc2_weight_data,
+        fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr,
+        quant_params,
+        moe_params.num_rows,
+        moe_params.hidden_size,
+        moe_params.inter_size,
+        moe_params.num_experts,
+        k_,
+        workspace_ptr,
+        output->MutableDataRaw(),
+        unpermuted_row_to_permuted_row,
+        parallelism_config,
+        [&]() {
+          onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(activation_type_);
+          params.alpha = activation_alpha_;
+          params.beta = activation_beta_;
+          params.swiglu_fusion = swiglu_fusion_;
+          params.limit = swiglu_limit_;
+          return params;
+        }(),
+        stream);
+  }
 
   return Status::OK();
 }
@@ -932,7 +996,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     IAllocatorUniquePtr<void> temp_src_gpu;
     if (tensor.Location().device.Type() == OrtDevice::CPU) {
       temp_src_gpu = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-      cudaMemcpyAsync(temp_src_gpu.get(), p_src, bytes, cudaMemcpyDefault, stream);
+      // Bare cudaMemcpyAsync would silently drop errors and still set is_packed = true below.
+      CUDA_CALL_THROW(cudaMemcpyAsync(temp_src_gpu.get(), p_src, bytes, cudaMemcpyDefault, stream));
       p_src = temp_src_gpu.get();
     }
 
@@ -954,10 +1019,10 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       }
     } else {
       // 2D case or others: Direct Copy
-      cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDefault, stream);
+      CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDefault, stream));
     }
 
-    cudaStreamSynchronize(stream);
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
     is_packed = true;
   };
 
@@ -988,7 +1053,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         IAllocatorUniquePtr<void> temp_zp_gpu;
         if (tensor.Location().device.Type() == OrtDevice::CPU) {
           temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
-          cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream);
+          CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
           p_src_zp = temp_zp_gpu.get();
         }
 
@@ -1024,7 +1089,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         IAllocatorUniquePtr<void> temp_zp_gpu;
         if (tensor.Location().device.Type() == OrtDevice::CPU) {
           temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
-          cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream);
+          CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
           p_src_zp = temp_zp_gpu.get();
         }
 
@@ -1034,7 +1099,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
           size_t batch = shape[0];  // Experts
           LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src_zp), static_cast<uint8_t*>(packed_bias.get()), batch, rows, cols, stream);
         } else {
-          cudaMemcpyAsync(packed_bias.get(), p_src_zp, bytes, cudaMemcpyDefault, stream);
+          CUDA_CALL_THROW(cudaMemcpyAsync(packed_bias.get(), p_src_zp, bytes, cudaMemcpyDefault, stream));
         }
       }
     } else {
@@ -1066,7 +1131,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       IAllocatorUniquePtr<void> temp_zp_gpu;
       if (tensor.Location().device.Type() == OrtDevice::CPU) {
         temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
-        cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream);
+        CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
         p_src_zp = temp_zp_gpu.get();
       }
 
@@ -1098,7 +1163,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         }
       }
     }
-    cudaStreamSynchronize(stream);
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
     is_packed = true;
   };
 
@@ -1128,11 +1193,11 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
     const void* p_src = tensor.DataRaw();
     if (tensor.Location().device.Type() == OrtDevice::CPU) {
-      cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyHostToDevice, stream);
+      CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyHostToDevice, stream));
     } else {
-      cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDeviceToDevice, stream);
+      CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDeviceToDevice, stream));
     }
-    cudaStreamSynchronize(stream);
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
     is_packed = true;
   };
 

@@ -16,6 +16,7 @@
 #endif
 #include <stdexcept>
 #include <memory>
+#include <set>
 #include <sstream>
 
 namespace pybind11 {
@@ -251,6 +252,16 @@ py::array_t<int8_t> PackWeightsForMixedGemm(
     cudaDeviceProp device_prop;
     ThrowIfCudaError(cudaGetDeviceProperties(&device_prop, device_id), "cudaGetDeviceProperties");
     sm = device_prop.major * 10 + device_prop.minor;
+  } else {
+    // Validate force_arch against the SM versions for which preprocess_weights_for_mixed_gemm_cuda
+    // has tile/permutation tables. Unknown SMs would silently produce incorrect weight layouts.
+    static const std::set<int> kSupportedSm = {75, 80, 90};
+    if (kSupportedSm.find(sm) == kSupportedSm.end()) {
+      std::ostringstream oss;
+      oss << "force_arch=" << sm << " is not a supported SM version. "
+          << "Pass -1 for auto-detect, or one of: 75, 80, 90 (arch > 90 will fallback to 80).";
+      throw std::invalid_argument(oss.str());
+    }
   }
 
   auto permutation_map_buffer = make_cuda_ptr(32 * sizeof(int32_t));

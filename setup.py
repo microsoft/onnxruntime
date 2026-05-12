@@ -5,6 +5,7 @@
 # pylint: disable=C0103
 
 import datetime
+import json
 import logging
 import platform
 import shlex
@@ -175,7 +176,7 @@ try:
                     f.write("import os\n")
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("_libcudart = None\n")
-                    f.write(f"for _cudart_lib in {to_preload}:\n")
+                    f.write(f"for _cudart_lib in {json.dumps(to_preload)}:\n")
                     f.write("    try:\n")
                     f.write("        _libcudart = CDLL(_cudart_lib, mode=RTLD_GLOBAL)\n")
                     f.write("        break\n")

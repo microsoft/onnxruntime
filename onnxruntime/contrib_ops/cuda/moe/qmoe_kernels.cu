@@ -625,7 +625,11 @@ void LaunchQMoEDequantizeFp4WeightsImpl(
     cudaStream_t stream) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
-  int grid = static_cast<int>((total + block - 1) / block);
+  ORT_ENFORCE(total >= 0, "QMoEDequantizeFp4Weights: negative element count, got ", total);
+  int64_t grid_i64 = (total + block - 1) / block;
+  ORT_ENFORCE(grid_i64 <= std::numeric_limits<int>::max(),
+              "QMoEDequantizeFp4Weights: grid size exceeds int range: ", grid_i64);
+  int grid = static_cast<int>(grid_i64);
   QMoEDequantizeFp4WeightsKernel<<<grid, block, 0, stream>>>(
       packed_weights, block_scales, global_scales, output, num_experts, n, k);
 }
@@ -708,7 +712,11 @@ void LaunchQMoEDequantizeFp8WeightsImpl(
     cudaStream_t stream) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
-  int grid = static_cast<int>((total + block - 1) / block);
+  ORT_ENFORCE(total >= 0, "QMoEDequantizeFp8Weights: negative element count, got ", total);
+  int64_t grid_i64 = (total + block - 1) / block;
+  ORT_ENFORCE(grid_i64 <= std::numeric_limits<int>::max(),
+              "QMoEDequantizeFp8Weights: grid size exceeds int range: ", grid_i64);
+  int grid = static_cast<int>(grid_i64);
   QMoEDequantizeFp8WeightsKernel<<<grid, block, 0, stream>>>(
       weights, global_scales, output, num_experts, n, k);
 }
@@ -761,7 +769,10 @@ __global__ void BatchedTransposeKernel(const T* __restrict__ input, T* __restric
 void LaunchBatchedTranspose(cudaStream_t stream, const void* input, void* output, int batch, int rows, int cols, int element_size) {
   int64_t total_elements = static_cast<int64_t>(batch) * rows * cols;
   int threads = 256;
-  int blocks = (total_elements + threads - 1) / threads;
+  int64_t blocks_i64 = (total_elements + threads - 1) / threads;
+  ORT_ENFORCE(blocks_i64 <= std::numeric_limits<int>::max(),
+              "LaunchBatchedTranspose grid size exceeds int range: ", blocks_i64);
+  int blocks = static_cast<int>(blocks_i64);
 
   if (element_size == 1) {
     BatchedTransposeKernel<uint8_t><<<blocks, threads, 0, stream>>>(static_cast<const uint8_t*>(input), static_cast<uint8_t*>(output), batch, rows, cols);
@@ -769,6 +780,9 @@ void LaunchBatchedTranspose(cudaStream_t stream, const void* input, void* output
     BatchedTransposeKernel<uint16_t><<<blocks, threads, 0, stream>>>(static_cast<const uint16_t*>(input), static_cast<uint16_t*>(output), batch, rows, cols);
   } else if (element_size == 4) {
     BatchedTransposeKernel<uint32_t><<<blocks, threads, 0, stream>>>(static_cast<const uint32_t*>(input), static_cast<uint32_t*>(output), batch, rows, cols);
+  } else {
+    ORT_THROW("LaunchBatchedTranspose: unsupported element_size ", element_size,
+              " (supported: 1, 2, 4)");
   }
 }
 

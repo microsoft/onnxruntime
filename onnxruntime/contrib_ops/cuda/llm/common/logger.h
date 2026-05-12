@@ -23,8 +23,10 @@
 #endif
 
 #if ORT_LLM_VERBOSE
-#define ORT_LLM_LOG_DEBUG(msg) std::cout << "[Debug] " << msg << std::endl;
+#define ORT_LLM_LOG_TRACE(msg) LOGS_DEFAULT(VERBOSE) << msg
+#define ORT_LLM_LOG_DEBUG(msg) LOGS_DEFAULT(VERBOSE) << msg
 #else
+#define ORT_LLM_LOG_TRACE(msg)
 #define ORT_LLM_LOG_DEBUG(msg)
 #endif
 
