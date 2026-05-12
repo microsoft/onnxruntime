@@ -841,6 +841,10 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_UnicodePath) {
   const fs::path unicode_dir{fs::path(u8"\u4e2d\u6587")};
   fs::remove_all(unicode_dir);
   fs::create_directories(unicode_dir);
+  auto cleanup = gsl::finally([&unicode_dir] {
+    std::error_code ec;
+    fs::remove_all(unicode_dir, ec);
+  });
 
   const fs::path input_model = unicode_dir / fs::path(u8"\u4e2d\u6587.onnx");
   const fs::path output_model = unicode_dir / fs::path(u8"\u4e2d\u6587_ctx.onnx");
@@ -868,8 +872,6 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_UnicodePath) {
     Ort::Session session(*ort_env, input_model.c_str(), session_options);
     ASSERT_TRUE(fs::exists(output_model)) << "EPContext not created at: " << utf8_output_path;
   }
-
-  fs::remove_all(unicode_dir);
 }
 
 // Test that inference works correctly when non-ASCII Unicode characters appear in the model file path.
@@ -879,6 +881,10 @@ TEST(OrtEpLibrary, PluginEp_Inference_UnicodePath) {
   const fs::path unicode_dir{fs::path(u8"\u4e2d\u6587")};
   fs::remove_all(unicode_dir);
   fs::create_directories(unicode_dir);
+  auto cleanup = gsl::finally([&unicode_dir] {
+    std::error_code ec;
+    fs::remove_all(unicode_dir, ec);
+  });
 
   const fs::path input_model = unicode_dir / fs::path(u8"\u4e2d\u6587.onnx");
   fs::copy_file(ORT_TSTR("testdata/mul_1.onnx"), input_model, fs::copy_options::overwrite_existing);
@@ -891,8 +897,6 @@ TEST(OrtEpLibrary, PluginEp_Inference_UnicodePath) {
   Ort::SessionOptions session_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
   RunMulModelWithPluginEp(input_model.c_str(), session_options);
-
-  fs::remove_all(unicode_dir);
 }
 
 TEST(OrtEpLibrary, KernelPluginEp_Inference) {
