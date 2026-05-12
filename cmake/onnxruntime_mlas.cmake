@@ -937,7 +937,6 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
             )
-            # RVV depthwise replaces the MLAS_FLOAT32X4 version
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
             set_source_files_properties(
