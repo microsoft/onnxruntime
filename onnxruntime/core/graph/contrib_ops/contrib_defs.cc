@@ -1434,7 +1434,7 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
 
       The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
         dequantized_weight = (quantized_weight - zero_point) * scale
-      When zero_point is not provided, the default value is 2^(bits-1): 8 for 4 bits, 128 for 8 bits.
+      When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
 
       If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
       the dequantization is performed per block of size block_size along the K (input feature) dimension.
@@ -1475,7 +1475,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
-              "Number of bits used in quantized weights. Default is 4 bits",
+              "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
         .Attr("swiglu_fusion",
