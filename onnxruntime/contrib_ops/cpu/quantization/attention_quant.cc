@@ -90,8 +90,8 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
     return Status::OK();
   }
 
-  const size_t loop_len = 3 * static_cast<size_t>(num_heads_);
-  size_t packed_weights_data_size = packed_weights_size_ * loop_len;
+  const size_t loop_len = SafeInt<size_t>(3) * num_heads_;
+  size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size_) * loop_len;
 
   packed_weights_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weights_data_size, true);
   std::byte* packed_weights_data = static_cast<std::byte*>(packed_weights_.get());
@@ -240,12 +240,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   auto* tp = context->GetOperatorThreadPool();
   // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, D) x weights(D, 3NH)) + bias(3NH)
   // D is hidden dimension of input, where input_hidden_size (D) could be larger than hidden_size (NH) when model is pruned.
-  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
+  const auto batch_size_x_sequence_length_x_hidden_size = SafeInt<size_t>(batch_size) * sequence_length * hidden_size;
+  void* gemm_data = allocator->Alloc(batch_size_x_sequence_length_x_hidden_size * 3 * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
-  auto V = K + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size_x_sequence_length_x_hidden_size);
+  auto V = K + static_cast<size_t>(batch_size_x_sequence_length_x_hidden_size);
   T* QKV[3] = {Q, K, V};
 
   {
@@ -267,16 +268,17 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     scale_bias_procs.reserve(loop_len);
 
     for (int i = 0; i < loop_len; i++) {
-      const int batch_index = static_cast<int>((i / 3) / num_heads_);
-      const int head_index = static_cast<int>((i / 3) % num_heads_);
-      const int qkv_index = static_cast<int>(i % 3);
+      const int batch_index = (i / 3) / num_heads_;
+      const int head_index = (i / 3) % num_heads_;
+      const int qkv_index = i % 3;
 
       int input_offset = SafeInt<int>(batch_index) * sequence_length * input_hidden_size;
       int weights_offset = qkv_index * hidden_size + head_index * head_size;
       int weights_scale_offset = is_weight_scale_per_column ? weights_offset : 0;
       int weights_zp_offset = is_weight_zp_per_column ? weights_offset : 0;
       float* qkv_dest = QKV[qkv_index];
-      int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+      int qkv_offset = (SafeInt<int>(batch_index) * num_heads_ + head_index) *
+                       (SafeInt<int>(sequence_length) * head_size);
 
       //                   original           transposed            iteration
       // A: input          (BxSxD)            (B.)S x D             S x D
