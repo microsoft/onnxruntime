@@ -331,13 +331,13 @@ TEST(CseTests, StringTensorAttr) {
   std::vector<NodeArg*> outputs2 = {&output2};
 
   auto& node1 = graph.AddNode("label_encoder_1", "LabelEncoder", "", inputs, outputs1,
-                               nullptr, "ai.onnx.ml");
+                              nullptr, "ai.onnx.ml");
   node1.AddAttribute("keys_tensor", keys_tensor);
   node1.AddAttribute("values_floats", std::vector<float>{1.0f});
   node1.AddAttribute("default_float", 0.0f);
 
   auto& node2 = graph.AddNode("label_encoder_2", "LabelEncoder", "", inputs, outputs2,
-                               nullptr, "ai.onnx.ml");
+                              nullptr, "ai.onnx.ml");
   node2.AddAttribute("keys_tensor", keys_tensor);
   node2.AddAttribute("values_floats", std::vector<float>{1.0f});
   node2.AddAttribute("default_float", 0.0f);
