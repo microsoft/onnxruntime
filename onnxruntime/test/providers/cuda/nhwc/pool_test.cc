@@ -10,6 +10,7 @@ namespace test {
 template <typename T>
 struct PoolOp {
   std::string pooling_type;
+  int opset = 14;
   std::vector<int64_t> input_dims;
   std::vector<int64_t> kernel_shape;
   int64_t channels;
@@ -20,7 +21,7 @@ struct PoolOp {
   std::unique_ptr<CompareOpTester> get_test() {
     RandomValueGenerator random{};
 
-    auto test = std::make_unique<CompareOpTester>(pooling_type.c_str(), 14);
+    auto test = std::make_unique<CompareOpTester>(pooling_type.c_str(), opset);
     std::vector<T> input_data = random.Uniform<T>(input_dims, 0.0f, 0.3f);
 
     test->AddInput<T>("X", input_dims, input_data);
@@ -53,6 +54,7 @@ TYPED_TEST(CudaNhwcTypedTest, AveragePoolNhwc) {
 TYPED_TEST(CudaNhwcTypedTest, MaxPoolNhwc) {
   auto op = PoolOp<TypeParam>{};
   op.pooling_type = "MaxPool";
+  op.opset = 22;
   op.input_dims = {1, 16, 64, 64};
   op.kernel_shape = {3, 3};
   op.channels = 16;
