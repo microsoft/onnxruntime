@@ -72,8 +72,8 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
     return Status::OK();
   }
 
-  const size_t input_hidden_size = static_cast<size_t>(weights_dims[0]);
-  const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
+  const size_t input_hidden_size = narrow<size_t>(weights_dims[0]);
+  const size_t hidden_size_x3 = narrow<size_t>(weights_dims[1]);
   const size_t hidden_size = hidden_size_x3 / 3;
   const size_t head_size = hidden_size / num_heads_;
 
