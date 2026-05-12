@@ -72,7 +72,8 @@ class GroupQueryAttention final : public WebGpuKernel {
 
   bool use_smooth_softmax_;
   // Epsilon used by per-head RMSNorm when q_norm_weight / k_norm_weight (inputs 14 / 15) are
-  // provided. Only consumed by the fused decode prologue; ignored otherwise.
+  // provided. Consumed whenever those optional norm inputs are used (decode fast path or
+  // prefill fallback), and ignored otherwise.
   float qk_norm_epsilon_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 };
