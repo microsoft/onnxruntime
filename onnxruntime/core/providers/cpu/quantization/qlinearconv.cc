@@ -980,7 +980,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
               gemm_params.ldb = static_cast<size_t>(M);
             }
             gemm_params.ZeroPointB = W_zero_point_data +
-                                      (W_zero_point_is_per_channel ? group_id * group_output_channels : 0);
+                                     (W_zero_point_is_per_channel ? group_id * group_output_channels : 0);
             gemm_params.PerColumnZeroPoints = W_zero_point_is_per_channel;
             gemm_params.C = worker_gemm_output + group_id * group_output_channels;
             gemm_params.ldc = static_cast<size_t>(M);
