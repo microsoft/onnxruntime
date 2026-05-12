@@ -35,8 +35,9 @@ constexpr int64_t kMaxSeq = 8;
 void SetWebGpu(Node& node) { node.SetExecutionProviderType(kWebGpuExecutionProvider); }
 
 // Builds: [Reshape -> SimplifiedLayerNormalization -> Reshape] on Q and K, feeding a
-// GroupQueryAttention node. V goes straight into GQA. The function returns the GQA node
-// so the caller can mutate it (e.g., flip k_norm's epsilon for negative tests).
+// GroupQueryAttention node. V goes straight into GQA. The pattern is configured via
+// BuildOptions so individual tests can flip a single attribute / shape / epsilon to
+// exercise each gate.
 struct BuildOptions {
   float q_epsilon = 1e-6f;
   float k_epsilon = 1e-6f;
