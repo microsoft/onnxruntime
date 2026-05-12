@@ -909,6 +909,10 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Bias_Float16) {
   bool no_beta = true;
   bool simplified = true;
 
+  if (DefaultWebGpuExecutionProvider().get() == nullptr && DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "DirectML does not support this test case.";
+  }
+
   RunTest(input_data,
           skip_data,
           gamma_data,
