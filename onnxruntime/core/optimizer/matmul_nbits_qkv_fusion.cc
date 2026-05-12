@@ -4,6 +4,7 @@
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 
 #include <array>
+#include <optional>
 #include <vector>
 
 #include "core/graph/graph_utils.h"
@@ -73,15 +74,34 @@ bool IsGraphOutput(const Graph& graph, const Node& node, size_t index) {
   return false;
 }
 
+bool HasOutputConsumers(const Node& node, size_t index) {
+  if (!HasProducedOutput(node, index)) {
+    return false;
+  }
+  for (auto edge_it = node.OutputEdgesBegin(); edge_it != node.OutputEdgesEnd(); ++edge_it) {
+    if (static_cast<size_t>(edge_it->GetSrcArgIndex()) == index) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Output 0 of the norm is consumed by the fused op, so it must not be a graph output.
 // For SkipSimplifiedLayerNormalization the optional residual sum at output 3 is
 // preserved by the fused MatMulNBitsQkv op, so it is allowed to remain a graph output.
-// Outputs 1 and 2 (mean / inv_std_var) are not exposed by the fused op.
+// Outputs 1 and 2 (mean / inv_std_var) are not exposed by the fused op and must not
+// be graph outputs or feed any downstream nodes.
 bool IsSupportedNormGraphOutputsForFusion(const Graph& graph, const Node& norm) {
   if (IsGraphOutput(graph, norm, 0)) {
     return false;
   }
   for (size_t i = 1; i < norm.OutputDefs().size(); ++i) {
+    if (i == 1 || i == 2) {
+      if (IsGraphOutput(graph, norm, i) || HasOutputConsumers(norm, i)) {
+        return false;
+      }
+      continue;
+    }
     if (!IsGraphOutput(graph, norm, i)) {
       continue;
     }

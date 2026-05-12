@@ -65,7 +65,10 @@ fn loadSHMA(batch: u32, b_global_base: u32, kidx: u32, col: u32, inv_std: f32)
 }
 
 fn compute_gate_up_sums(b_global: u32, kidx: u32, idx: u32, k_offset: u32) -> vec2<output_element_t> {
-#if !single_scale_weights
+#if single_scale_weights
+  let gate_scale_b = gate_scales_b.getByOffset(0);
+  let up_scale_b = up_scales_b.getByOffset(0);
+#else
   let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
   let gate_scale_b = gate_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
   let up_scale_b = up_scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx);
@@ -201,12 +204,6 @@ $MAIN {
   let inv_std = inverseSqrt(sum_squared_shared[0] / f32(uniforms.K) + uniforms.epsilon);
 #else
   let inv_std = 1.0;
-#endif
-
-#if single_scale_weights
-  let gate_scale_b = gate_scales_b.getByOffset(0);
-  let up_scale_b = up_scales_b.getByOffset(0);
-  let block_idx = 0u;
 #endif
 
 #if k_unroll_tiles == 1

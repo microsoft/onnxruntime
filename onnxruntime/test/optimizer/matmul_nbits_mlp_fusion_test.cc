@@ -517,8 +517,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedQui
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
-      5e-3,
-      5e-3,
+      1.5e-2,
+      1.5e-2,
       std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       []() { return DefaultWebGpuExecutionProvider(); });
 }

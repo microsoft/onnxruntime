@@ -149,6 +149,12 @@ fn process_k_tile(batch: u32, b_global_base: u32, thread_idx: u32, idx: u32, idy
   }
   workgroupBarrier();
 
+#if single_scale_weights
+  let q_scale_b = q_output_element_t(q_scales_b.getByOffset(0));
+  let k_scale_b = q_output_element_t(k_scales_b.getByOffset(0));
+  let v_scale_b = q_output_element_t(v_scales_b.getByOffset(0));
+#endif
+
   for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count) {
     let b_global = b_global_base + local_row_offset + idy;
     let k_offset = kidx / elements_in_value_b + idx;
@@ -224,12 +230,6 @@ $MAIN {
 #else
   // Layer norm already applied upstream; inv_std is unused but kept in the loadSHMA signature.
   let inv_std = 1.0;
-#endif
-
-#if single_scale_weights
-  let q_scale_b = q_output_element_t(q_scales_b.getByOffset(0));
-  let k_scale_b = q_output_element_t(k_scales_b.getByOffset(0));
-  let v_scale_b = q_output_element_t(v_scales_b.getByOffset(0));
 #endif
 
 #if k_unroll_tiles == 1
