@@ -193,11 +193,11 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   const int sequence_length = narrow<int>(shape[1]);
   const int input_hidden_size = narrow<int>(shape[2]);
 
-  const auto hidden_size_x3 = weights_shape.GetDims()[1];
+  const int hidden_size_x3 = narrow<int>(weights_shape.GetDims()[1]);
   ORT_RETURN_IF_NOT(hidden_size_x3 > 0 && hidden_size_x3 % 3 == 0,
                     "Input 'weights' dimension 1 (", hidden_size_x3,
                     ") must be a positive multiple of 3.");
-  const int hidden_size = narrow<int>(hidden_size_x3) / 3;
+  const int hidden_size = hidden_size_x3 / 3;
   const int head_size = hidden_size / num_heads_;
 
   // Validate per-column 'weight_scale' / 'weight_zero_point' shapes against the expected
@@ -206,16 +206,16 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // (which indexes scales/zero-points using offsets up to ~3 * hidden_size - head_size).
   if (is_weight_scale_per_column) {
     ORT_RETURN_IF_NOT(weight_scale_tensor->Shape().NumDimensions() == 1 &&
-                          weight_scale_tensor->Shape().Size() == 3 * hidden_size,
+                          weight_scale_tensor->Shape().Size() == hidden_size_x3,
                       "Input 'weight_scale' must be a scalar or a 1D tensor of size 3 * hidden_size (= ",
-                      3 * hidden_size, "), got shape ", weight_scale_tensor->Shape().ToString());
+                      hidden_size_x3, "), got shape ", weight_scale_tensor->Shape().ToString());
   }
 
   if (is_weight_zp_per_column) {
     ORT_RETURN_IF_NOT(w_zp_tensor->Shape().NumDimensions() == 1 &&
-                          w_zp_tensor->Shape().Size() == 3 * hidden_size,
+                          w_zp_tensor->Shape().Size() == hidden_size_x3,
                       "Input 'weight_zero_point' must be a scalar or a 1D tensor of size 3 * hidden_size (= ",
-                      3 * hidden_size, "), got shape ", w_zp_tensor->Shape().ToString());
+                      hidden_size_x3, "), got shape ", w_zp_tensor->Shape().ToString());
   }
 
   // Build the dequantization scales after shape validation so that malformed
