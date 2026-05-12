@@ -1505,11 +1505,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>block_size_k</tt> : int (default is 128)</dt>
+<dt><tt>block_size_k</tt> : int</dt>
 <dd>Block size along K for A and B block-wise scales.</dd>
-<dt><tt>block_size_m</tt> : int (default is 128)</dt>
+<dt><tt>block_size_m</tt> : int</dt>
 <dd>Block size along M for A block-wise scales.</dd>
-<dt><tt>block_size_n</tt> : int (default is 128)</dt>
+<dt><tt>block_size_n</tt> : int</dt>
 <dd>Block size along N for B block-wise scales.</dd>
 </dl>
 
@@ -6738,4 +6738,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-

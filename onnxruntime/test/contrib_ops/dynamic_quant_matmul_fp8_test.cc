@@ -46,6 +46,70 @@ std::vector<float> ComputeExpectedIdentityAWithQuantizedB(gsl::span<const float>
   return expected;
 }
 
+template <typename Fp8T>
+void RunRuntimeFp8BInput() {
+  constexpr int64_t M = 128;
+  constexpr int64_t N = 128;
+  constexpr int64_t K = 128;
+
+  std::vector<float> a_data(static_cast<size_t>(M * K), 0.25f);
+  std::vector<Fp8T> b_data(static_cast<size_t>(K * N), Fp8T(-0.5f));
+  const float expected_value = 0.25f * -0.5f * static_cast<float>(K);
+  std::vector<float> y_data(static_cast<size_t>(M * N), expected_value);
+
+  std::vector<float> a_scale{1.0f};
+  std::vector<float> b_scale{1.0f};
+  std::vector<Fp8T> a_zp{Fp8T(0.0f)};
+  std::vector<Fp8T> b_zp{Fp8T(0.0f)};
+  std::vector<float> y_scale{1.0f};
+  std::vector<Fp8T> y_zp{Fp8T(0.0f)};
+
+  OpTester test("DynamicQuantMatMulFp8", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("A", {M, K}, a_data);
+  test.AddInput<float>("A_scale", {M / 128, K / 128}, a_scale);
+  test.AddInput<Fp8T>("A_zero_point", {M / 128, K / 128}, a_zp);
+  test.AddInput<Fp8T>("B", {K, N}, b_data);
+  test.AddInput<float>("B_scale", {K / 128, N / 128}, b_scale);
+  test.AddInput<Fp8T>("B_zero_point", {K / 128, N / 128}, b_zp);
+  test.AddInput<float>("Y_scale", {}, y_scale);
+  test.AddInput<Fp8T>("Y_zero_point", {}, y_zp);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+  test.SetOutputAbsErr("Y", 0.5f);
+  test.Run();
+}
+
+template <typename Fp8T>
+void RunConstantBInputs() {
+  constexpr int64_t M = 128;
+  constexpr int64_t N = 128;
+  constexpr int64_t K = 128;
+
+  std::vector<float> a_data(static_cast<size_t>(M * K), 0.25f);
+  std::vector<float> b_data(static_cast<size_t>(K * N), -0.5f);
+  const float expected_value = 0.25f * -0.5f * static_cast<float>(K);
+  std::vector<float> y_data(static_cast<size_t>(M * N), expected_value);
+
+  std::vector<float> a_scale{1.0f};
+  std::vector<float> b_scale{1.0f};
+  std::vector<Fp8T> a_zp{Fp8T(0.0f)};
+  std::vector<Fp8T> b_zp{Fp8T(0.0f)};
+  std::vector<float> y_scale{1.0f};
+  std::vector<Fp8T> y_zp{Fp8T(0.0f)};
+
+  OpTester test("DynamicQuantMatMulFp8", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("A", {M, K}, a_data);
+  test.AddInput<float>("A_scale", {M / 128, K / 128}, a_scale);
+  test.AddInput<Fp8T>("A_zero_point", {M / 128, K / 128}, a_zp);
+  test.AddInput<float>("B", {K, N}, b_data, true /*initializer*/);
+  test.AddInput<float>("B_scale", {K / 128, N / 128}, b_scale, true /*initializer*/);
+  test.AddInput<Fp8T>("B_zero_point", {K / 128, N / 128}, b_zp, true /*initializer*/);
+  test.AddInput<float>("Y_scale", {}, y_scale);
+  test.AddInput<Fp8T>("Y_zero_point", {}, y_zp);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+  test.SetOutputAbsErr("Y", 0.5f);
+  test.Run();
+}
+
 void RunDynamicQuantMatMulFp8WithSharedPrepack(DynamicQuantMatMulFp8SessionTester& test,
                                                OrtValue& shared_b,
                                                PrepackedWeightsContainer& prepacked_weights_container,
@@ -83,34 +147,19 @@ void RunDynamicQuantMatMulFp8WithSharedPrepack(DynamicQuantMatMulFp8SessionTeste
 }
 
 TEST(DynamicQuantMatMulFp8, WithConstantBInputs) {
-  constexpr int64_t M = 128;
-  constexpr int64_t N = 128;
-  constexpr int64_t K = 128;
+  RunConstantBInputs<Float8E4M3FN>();
+}
 
-  std::vector<float> a_data(static_cast<size_t>(M * K), 0.25f);
-  std::vector<float> b_data(static_cast<size_t>(K * N), -0.5f);
-  const float expected_value = 0.25f * -0.5f * static_cast<float>(K);
-  std::vector<float> y_data(static_cast<size_t>(M * N), expected_value);
+TEST(DynamicQuantMatMulFp8, WithConstantBInputsE4M3FNUZ) {
+  RunConstantBInputs<Float8E4M3FNUZ>();
+}
 
-  std::vector<float> a_scale{1.0f};
-  std::vector<float> b_scale{1.0f};
-  std::vector<Float8E4M3FN> a_zp{Float8E4M3FN(0.0f)};
-  std::vector<Float8E4M3FN> b_zp{Float8E4M3FN(0.0f)};
-  std::vector<float> y_scale{1.0f};
-  std::vector<Float8E4M3FN> y_zp{Float8E4M3FN(0.0f)};
+TEST(DynamicQuantMatMulFp8, WithConstantBInputsE5M2) {
+  RunConstantBInputs<Float8E5M2>();
+}
 
-  OpTester test("DynamicQuantMatMulFp8", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("A", {M, K}, a_data);
-  test.AddInput<float>("A_scale", {M / 128, K / 128}, a_scale);
-  test.AddInput<Float8E4M3FN>("A_zero_point", {M / 128, K / 128}, a_zp);
-  test.AddInput<float>("B", {K, N}, b_data, true /*initializer*/);
-  test.AddInput<float>("B_scale", {K / 128, N / 128}, b_scale, true /*initializer*/);
-  test.AddInput<Float8E4M3FN>("B_zero_point", {K / 128, N / 128}, b_zp, true /*initializer*/);
-  test.AddInput<float>("Y_scale", {}, y_scale);
-  test.AddInput<Float8E4M3FN>("Y_zero_point", {}, y_zp);
-  test.AddOutput<float>("Y", {M, N}, y_data);
-  test.SetOutputAbsErr("Y", 0.5f);
-  test.Run();
+TEST(DynamicQuantMatMulFp8, WithConstantBInputsE5M2FNUZ) {
+  RunConstantBInputs<Float8E5M2FNUZ>();
 }
 
 TEST(DynamicQuantMatMulFp8, WithOmittedOutputQuantizationInputs) {
@@ -320,34 +369,19 @@ TEST(DynamicQuantMatMulFp8, RejectsNonConstantB) {
 }
 
 TEST(DynamicQuantMatMulFp8, RuntimeFp8BInput) {
-  constexpr int64_t M = 128;
-  constexpr int64_t N = 128;
-  constexpr int64_t K = 128;
+  RunRuntimeFp8BInput<Float8E4M3FN>();
+}
 
-  std::vector<float> a_data(static_cast<size_t>(M * K), 0.25f);
-  std::vector<Float8E4M3FN> b_data(static_cast<size_t>(K * N), Float8E4M3FN(-0.5f));
-  const float expected_value = 0.25f * -0.5f * static_cast<float>(K);
-  std::vector<float> y_data(static_cast<size_t>(M * N), expected_value);
+TEST(DynamicQuantMatMulFp8, RuntimeFp8BInputE4M3FNUZ) {
+  RunRuntimeFp8BInput<Float8E4M3FNUZ>();
+}
 
-  std::vector<float> a_scale{1.0f};
-  std::vector<float> b_scale{1.0f};
-  std::vector<Float8E4M3FN> a_zp{Float8E4M3FN(0.0f)};
-  std::vector<Float8E4M3FN> b_zp{Float8E4M3FN(0.0f)};
-  std::vector<float> y_scale{1.0f};
-  std::vector<Float8E4M3FN> y_zp{Float8E4M3FN(0.0f)};
+TEST(DynamicQuantMatMulFp8, RuntimeFp8BInputE5M2) {
+  RunRuntimeFp8BInput<Float8E5M2>();
+}
 
-  OpTester test("DynamicQuantMatMulFp8", 1, onnxruntime::kMSDomain);
-  test.AddInput<float>("A", {M, K}, a_data);
-  test.AddInput<float>("A_scale", {M / 128, K / 128}, a_scale);
-  test.AddInput<Float8E4M3FN>("A_zero_point", {M / 128, K / 128}, a_zp);
-  test.AddInput<Float8E4M3FN>("B", {K, N}, b_data);
-  test.AddInput<float>("B_scale", {K / 128, N / 128}, b_scale);
-  test.AddInput<Float8E4M3FN>("B_zero_point", {K / 128, N / 128}, b_zp);
-  test.AddInput<float>("Y_scale", {}, y_scale);
-  test.AddInput<Float8E4M3FN>("Y_zero_point", {}, y_zp);
-  test.AddOutput<float>("Y", {M, N}, y_data);
-  test.SetOutputAbsErr("Y", 0.5f);
-  test.Run();
+TEST(DynamicQuantMatMulFp8, RuntimeFp8BInputE5M2FNUZ) {
+  RunRuntimeFp8BInput<Float8E5M2FNUZ>();
 }
 
 TEST(DynamicQuantMatMulFp8, RejectsRuntimeFp8BZeroPointTypeMismatch) {

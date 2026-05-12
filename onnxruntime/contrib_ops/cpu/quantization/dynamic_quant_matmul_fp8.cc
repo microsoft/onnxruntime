@@ -750,60 +750,59 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
   gemm_shape.N = N;
   gemm_shape.K = K;
 
-  std::vector<MLAS_FP8_GEMM_DATA_PARAMS> gemm_data(num_gemms);
-  std::vector<IAllocatorUniquePtr<uint8_t>> a_fp8_buffers(num_gemms);
   ORT_RETURN_IF_ERROR(ValidatePositiveFiniteScales(a_scales, a_scale_elems, "A scale"));
   ORT_RETURN_IF_ERROR(ValidatePositiveFiniteScales(b_scales, b_scale_elems, "B scale"));
 
   const size_t a_fp8_size = SafeMul<size_t>(M, K);
+  // Reuse one quantized A buffer to keep scratch bounded when broadcasting creates many GEMMs.
+  auto a_fp8_buffer = IAllocator::MakeUniquePtr<uint8_t>(temp_allocator, a_fp8_size, true);
+  MLAS_FP8_GEMM_DATA_PARAMS gemm_data;
   for (size_t gemm_idx = 0; gemm_idx < num_gemms; ++gemm_idx) {
-    auto& params = gemm_data[gemm_idx];
     const size_t a_offset = helper.LeftOffsets()[gemm_idx];
     const size_t scale_batch_index = (a_scale_prefix == 1) ? 0 : gemm_idx;
     const size_t a_scale_batch_offset = SafeMul<size_t>(scale_batch_index, a_scale_batch_stride);
     const float* a_scales_batch = a_scales + a_scale_batch_offset;
-    a_fp8_buffers[gemm_idx] = IAllocator::MakeUniquePtr<uint8_t>(temp_allocator, a_fp8_size, true);
     if (a->IsDataType<float>()) {
       QuantizeBlockwiseFp8A(a->Data<float>() + a_offset, M, K, block_size_m_, block_size_k_, blocks_k, a_scales_batch,
                             nullptr, a_type,
-                            a_fp8_buffers[gemm_idx].get());
+                            a_fp8_buffer.get());
     } else if (a->IsDataType<MLFloat16>()) {
       QuantizeBlockwiseFp8A(a->Data<MLFloat16>() + a_offset, M, K, block_size_m_, block_size_k_, blocks_k,
                             a_scales_batch,
                             nullptr, a_type,
-                            a_fp8_buffers[gemm_idx].get());
+                            a_fp8_buffer.get());
     } else if (a->IsDataType<BFloat16>()) {
       QuantizeBlockwiseFp8A(a->Data<BFloat16>() + a_offset, M, K, block_size_m_, block_size_k_, blocks_k,
                             a_scales_batch,
                             nullptr, a_type,
-                            a_fp8_buffers[gemm_idx].get());
+                            a_fp8_buffer.get());
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "DynamicQuantMatMulFp8 requires A to be float, float16, or bfloat16.");
     }
-    params.A = a_fp8_buffers[gemm_idx].get();
-    params.lda = K;
-    params.B = b_fp8 + helper.RightOffsets()[gemm_idx];
-    params.ldb = N;
-    params.C = y_float_data + helper.OutputOffsets()[gemm_idx];
-    params.ldc = N;
-    params.ScaleA = a_scales_batch;
-    params.ScaleB = b_scales;
-    params.ScaleY = y_scale_data;
-    params.Fp8Type = a_type;
-    params.BlockSizeM = block_size_m_;
-    params.BlockSizeK = block_size_k_;
-    params.BlockSizeN = block_size_n_;
-    params.BlocksM = blocks_m;
-    params.BlocksK = blocks_k;
-    params.BlocksN = blocks_n;
-    params.ScaleAStrideK = 1;
-    params.ScaleAStrideM = blocks_k;
-    params.ScaleBStrideN = 1;
-    params.ScaleBStrideK = blocks_n;
-  }
+    gemm_data.A = a_fp8_buffer.get();
+    gemm_data.lda = K;
+    gemm_data.B = b_fp8 + helper.RightOffsets()[gemm_idx];
+    gemm_data.ldb = N;
+    gemm_data.C = y_float_data + helper.OutputOffsets()[gemm_idx];
+    gemm_data.ldc = N;
+    gemm_data.ScaleA = a_scales_batch;
+    gemm_data.ScaleB = b_scales;
+    gemm_data.ScaleY = y_scale_data;
+    gemm_data.Fp8Type = a_type;
+    gemm_data.BlockSizeM = block_size_m_;
+    gemm_data.BlockSizeK = block_size_k_;
+    gemm_data.BlockSizeN = block_size_n_;
+    gemm_data.BlocksM = blocks_m;
+    gemm_data.BlocksK = blocks_k;
+    gemm_data.BlocksN = blocks_n;
+    gemm_data.ScaleAStrideK = 1;
+    gemm_data.ScaleAStrideM = blocks_k;
+    gemm_data.ScaleBStrideN = 1;
+    gemm_data.ScaleBStrideK = blocks_n;
 
-  MlasFp8GemmBatch(gemm_shape, gemm_data.data(), num_gemms, context->GetOperatorThreadPool());
+    MlasFp8GemmBatch(gemm_shape, &gemm_data, 1, context->GetOperatorThreadPool());
+  }
 
   if (y_float_buffer != nullptr) {
     if (y->IsDataType<MLFloat16>()) {
