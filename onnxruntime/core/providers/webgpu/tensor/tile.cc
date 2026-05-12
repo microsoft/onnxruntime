@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 #include <limits>
+#include <algorithm>
 
 namespace onnxruntime {
 namespace webgpu {
@@ -76,7 +77,14 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
           ? static_cast<int64_t>(std::numeric_limits<size_t>::max())
           : kMaxTileOutputBytes;
   const int64_t element_size = narrow<int64_t>(input_tensor->DataType()->Size());
-  const int64_t max_elements = kMaxSupportedTileOutputBytes / element_size;
+  // The WebGPU shader uses a uint32_t uniform for the total output element
+  // count and dispatches based on it. Clamp the per-element budget to
+  // uint32_t::max() so that any combination of repeats producing more than
+  // 2^32 - 1 elements is rejected by the byte-cap check below instead of
+  // silently truncating to a smaller dispatch / OOB-guard value.
+  const int64_t max_elements =
+      std::min<int64_t>(kMaxSupportedTileOutputBytes / element_size,
+                        static_cast<int64_t>(std::numeric_limits<uint32_t>::max()));
   int64_t total_elements = 1;
   for (size_t axis = 0; axis < input_rank; axis++) {
     if (repeats_data[axis] < 0) {
