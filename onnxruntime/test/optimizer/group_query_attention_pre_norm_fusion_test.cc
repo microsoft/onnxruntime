@@ -302,13 +302,25 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsPackedQkv)
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsAlreadyFusedNode) {
   // If the GQA node already exposes a q_norm_weight (slot 14) input the optimizer must
-  // treat it as already fused and leave the surrounding SLN/Reshape ops in place.
+  // treat it as already fused and leave the surrounding SLN/Reshape ops in place. The
+  // standard CheckUnfusedGraph helper rejects any wiring at slot 14, so use a custom
+  // checker that only verifies the surrounding ops weren't removed.
   BuildOptions opts;
   opts.pre_fused = true;
   auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  auto check = [](Graph& graph) -> Status {
+    const auto op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1,
+                      "Already-fused test: GQA count changed.");
+    ORT_RETURN_IF_NOT(OpCount(op_to_count, "SimplifiedLayerNormalization") == 2,
+                      "Already-fused test: SLN ops were removed.");
+    ORT_RETURN_IF_NOT(OpCount(op_to_count, "Reshape") == 4,
+                      "Already-fused test: Reshape ops were removed.");
+    return Status::OK();
+  };
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
-      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+      TransformerLevel::Level2, /*steps=*/1, nullptr, check));
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
