@@ -2728,7 +2728,6 @@ TEST(ResizeOpTest, Antialias_NHWCBicubic_ExcludeOutside) {
       46.606194f, 19.878183f, 43.87818f, 21.358122f, 45.35812f,
       22.907503f, 46.907505f, 24.387442f, 48.387444f};
 
-  // NHWC bicubic antialias is now supported on CUDA
   TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 4, 6, 2}, X, {1, 8, 4, 2}, Y);
 }
 
