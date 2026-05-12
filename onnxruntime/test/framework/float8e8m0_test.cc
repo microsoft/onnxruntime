@@ -257,7 +257,22 @@ TEST(Float8E8M0_Tests, SubnormalRounding) {
   Float8E8M0 from_small_subnorm(small_subnorm, true);
   EXPECT_EQ(from_small_subnorm.val, 0x00);  // Rounds down to 2^(-127)
 
-  // With saturate=false, subnormals are still valid positive values within E8M0 range,
+  // In nearest mode, subnormals below the midpoint between 2^-127 and 2^-126
+  // round down to 2^-127. Up mode would round this value to 2^-126.
+  uint32_t below_midpoint_bits = 0x00500000;
+  float below_midpoint;
+  std::memcpy(&below_midpoint, &below_midpoint_bits, sizeof(float));
+  Float8E8M0 nearest_below_midpoint(below_midpoint, true, Float8E8M0::RoundMode::Nearest);
+  EXPECT_EQ(nearest_below_midpoint.val, 0x00);
+
+  // The exact midpoint ties upward.
+  uint32_t midpoint_bits = 0x00600000;
+  float midpoint;
+  std::memcpy(&midpoint, &midpoint_bits, sizeof(float));
+  Float8E8M0 nearest_midpoint(midpoint, true, Float8E8M0::RoundMode::Nearest);
+  EXPECT_EQ(nearest_midpoint.val, 0x01);
+
+  // With saturate=false, subnormals within E8M0 range are still valid positive values,
   // so they round normally (not NaN). Largest subnormal rounds up to 2^(-126).
   Float8E8M0 subnorm_nosat(largest_subnorm, false);
   EXPECT_EQ(subnorm_nosat.val, 0x01);

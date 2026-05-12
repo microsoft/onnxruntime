@@ -3129,6 +3129,12 @@ TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
+float FloatFromBits(uint32_t bits) {
+  float value;
+  std::memcpy(&value, &bits, sizeof(float));
+  return value;
+}
+
 template <typename SrcType>
 void TestCastToFloat8E8M0(gsl::span<const SrcType> input,
                           gsl::span<const Float8E8M0> output,
@@ -3255,6 +3261,23 @@ TEST(CastOpTest, FloatToFloat8E8M0_RoundModeNearest) {
       Float8E8M0(129, Float8E8M0::FromBits()),  // 3.0  -> 4.0 (tie, rounds up)
       Float8E8M0(127, Float8E8M0::FromBits()),  // 1.3  -> 1.0 (nearer to 1.0)
       Float8E8M0(128, Float8E8M0::FromBits()),  // 2.5  -> 2.0 (nearer to 2.0)
+  };
+  TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "nearest");
+}
+
+TEST(CastOpTest, FloatToFloat8E8M0_RoundModeNearestSubnormal) {
+  const std::vector<int64_t> shape{4};
+  const std::vector<float> input = {
+      FloatFromBits(0x00400000),  // 2^-127, exact E8M0 minimum
+      FloatFromBits(0x00500000),  // below midpoint, differs from round_mode="up"
+      FloatFromBits(0x00600000),  // exact midpoint, ties upward
+      FloatFromBits(0x007FFFFF),  // largest float32 subnormal
+  };
+  const std::vector<Float8E8M0> expected = {
+      Float8E8M0(0x00, Float8E8M0::FromBits()),
+      Float8E8M0(0x00, Float8E8M0::FromBits()),
+      Float8E8M0(0x01, Float8E8M0::FromBits()),
+      Float8E8M0(0x01, Float8E8M0::FromBits()),
   };
   TestCastToFloat8E8M0<float>(gsl::make_span(input), gsl::make_span(expected), shape, Saturate::True, "nearest");
 }

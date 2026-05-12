@@ -767,11 +767,8 @@ struct Float8E8M0 {
     }
 
     // Denormalized float32: value = 2^(-126) * (mantissa / 2^23), range (0, 2^(-126)).
-    // E8M0 can represent 2^(-127) (val=0) and 2^(-126) (val=1). Round using the same
-    // G/R/S scheme as the ONNX reference (to_float8e8m0 in onnx/numpy_helper.py):
-    //   G (guard) = bit 22 of mantissa; R (round) = bit 21; S (sticky) = bits 20:0.
-    //   For subnormals, lsb of result exponent = 0, so "nearest" rounds up only when
-    //   G=1 AND (R=1 OR S!=0), i.e. mantissa > 0x400000.
+    // E8M0 can represent 2^(-127) (val=0) and 2^(-126) (val=1). For nearest rounding,
+    // the midpoint is 1.5 * 2^(-127), which is mantissa 0x600000. Ties round up.
     if (exponent == 0) {
       // Subnormals with mantissa < 0x400000 have value < E8M0_MIN (2^-127) and
       // cannot be represented. Without saturation they map to NaN.
@@ -794,8 +791,7 @@ struct Float8E8M0 {
           break;
         case RoundMode::Nearest:
         default:
-          // Round to nearest: G=1 and (R=1 or S!=0) means value > midpoint-equivalent.
-          round_up = (mantissa > 0x00400000);
+          round_up = (mantissa >= 0x00600000);
           break;
       }
       if (round_up) {
