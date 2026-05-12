@@ -48,9 +48,7 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
     # Windows ARM64
-    # ARM64 build requires the x64 tblgen.exe (used during the build), which is not correctly
-    # generated in a cross build. So we require x64 to be built first and download tblgen.exe from it.
-    - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+    - ${{ if eq(parameters.build_windows_arm64, true) }}:
       - template: plugin-win-webgpu-stage.yml
         parameters:
           arch: 'arm64'
@@ -74,13 +72,25 @@ stages:
           version_file: ${{ parameters.version_file }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
 
+    # NuGet packaging (runs after all platform builds)
+    - template: plugin-webgpu-nuget-packaging-stage.yml
+      parameters:
+        package_version: ${{ parameters.package_version }}
+        version_file: ${{ parameters.version_file }}
+        DoEsrp: true
+        platforms:
+          win_x64: ${{ parameters.build_windows_x64 }}
+          win_arm64: ${{ parameters.build_windows_arm64 }}
+          linux_x64: ${{ parameters.build_linux_x64 }}
+          macos_arm64: ${{ parameters.build_macos_arm64 }}
+
     # Create zip packages for Foundry Local consumption
     - stage: Package_Foundry_Local_WebGPU_Zips
       displayName: 'Package Foundry Local WebGPU Plugin-EP Zips'
       dependsOn:
         - ${{ if eq(parameters.build_windows_x64, true) }}:
           - Win_plugin_webgpu_x64_Build
-        - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+        - ${{ if eq(parameters.build_windows_arm64, true) }}:
           - Win_plugin_webgpu_arm64_Build
         - ${{ if eq(parameters.build_linux_x64, true) }}:
           - Linux_plugin_webgpu_x64_Build
@@ -111,10 +121,7 @@ stages:
               artifactName: webgpu_plugin_win_x64
               targetPath: $(Build.SourcesDirectory)/webgpu-plugin-win-x64
 
-        # Windows ARM64
-        # ARM64 build requires the x64 tblgen.exe (used during the build), which is not correctly
-        # generated in a cross build. So we require x64 to be built first and download tblgen.exe from it.
-        - ${{ if and(eq(parameters.build_windows_arm64, true), eq(parameters.build_windows_x64, true)) }}:
+        - ${{ if eq(parameters.build_windows_arm64, true) }}:
           - task: DownloadPipelineArtifact@2
             displayName: 'Download webgpu_plugin_win_arm64'
             inputs:

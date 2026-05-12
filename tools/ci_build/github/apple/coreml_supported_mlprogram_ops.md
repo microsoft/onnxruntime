@@ -53,3 +53,4 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Transpose||
 |ai.onnx:Unsqueeze||
 |com.microsoft:QuickGelu|Produced by ORT's `QuickGeluFusion` optimizer pass. Decomposed into `mul` / `sigmoid` / `mul`.|
+|com.microsoft:FusedConv|Produced by ORT's `ConvActivationFusion` pass. Decomposed into `conv` + the fused activation (`Relu`, `Sigmoid`, `Tanh`, `LeakyRelu`, `Clip`, `HardSigmoid`).|

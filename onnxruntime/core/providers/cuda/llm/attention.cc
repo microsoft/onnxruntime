@@ -84,10 +84,10 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
                                : attention_helper::QKMatMulOutputMode::kNone;
   ORT_ENFORCE(qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kNone ||
                   qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQK ||
-                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKMask ||
-                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftCap ||
-                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kQKSoftMax,
-              "qk_matmul_output_mode must be one of: kNone(-1), kQK(0), kQKMask(1), kQKSoftCap(2), kQKSoftMax(3).");
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostSoftCap ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostMaskBias ||
+                  qk_matmul_output_mode_ == attention_helper::QKMatMulOutputMode::kPostSoftMax,
+              "qk_matmul_output_mode must be one of: kNone(-1), kQK(0), kPostSoftCap(1), kPostMaskBias(2), kPostSoftMax(3).");
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   ORT_ENFORCE(softcap_ >= 0.0f, "softcap must be non-negative");
@@ -975,7 +975,7 @@ Status Attention<T>::RunMemoryEfficientAttention(
 //   - attn_mask (bool/float, 2D/3D/4D), causal, softcap.
 //
 // Not supported (returns NOT_IMPLEMENTED upstream):
-//   - qk_matmul_output_mode beyond kNone/kQK (kQKMask, kQKSoftCap, kQKSoftMax).
+//   - qk_matmul_output_mode beyond kNone/kQK (kPostSoftCap, kPostMaskBias, kPostSoftMax).
 // ============================================================================
 template <typename T>
 Status Attention<T>::RunUnfusedAttention(
@@ -1375,8 +1375,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
             sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value,
             parameters.head_size, parameters.v_head_size) &&
         !has_output_qk &&
-        // MEA decode requires head_size == v_head_size for LaunchConcatNewToPastKV
-        // (single head_size parameter). Fall back to unfused when they differ.
+        // MEA requires head_size == v_head_size in two internal paths:
+        //   - LaunchConcatNewToPastKV (decode with past_key)
+        //   - LaunchUngroup (GQA head expansion)
+        // Fall back to unfused attention when they differ.
+        (!is_gqa || parameters.head_size == parameters.v_head_size) &&
         (past_key == nullptr || parameters.head_size == parameters.v_head_size) &&
         // GQA+MEA requires LaunchUngroup which only has fp16/bf16 instantiations.
         // FP32 GQA must fall through to the unfused path.
@@ -1424,7 +1427,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   //   - past_key with H != H_v (separate concat calls for K and V)
 
   // Guard: unified kernel only supports kNone and kQK output modes.
-  // Other modes (kQKMask, kQKSoftCap, kQKSoftMax) expect QK values captured at
+  // Other modes (kPostSoftCap, kPostMaskBias, kPostSoftMax) expect QK values captured at
   // different pipeline stages that the unified kernel does not implement.
   if (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone &&
       qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kQK) {

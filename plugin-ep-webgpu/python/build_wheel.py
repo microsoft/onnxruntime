@@ -10,7 +10,6 @@ Usage:
 
 import argparse
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -20,41 +19,9 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 MIN_ONNXRUNTIME_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
 
-# Matches "@var@" template variables.
-_TEMPLATE_VARIABLE_PATTERN = re.compile(r"@(\w+)@")
-
-
-def gen_file_from_template(
-    template_file: Path, output_file: Path, variable_substitutions: dict[str, str], strict: bool = True
-) -> None:
-    """Generate a file from a template by substituting "@var@" markers with provided values.
-
-    If `strict` is True, raises ValueError when the set of "@var@" names found in the template
-    does not match the keys of `variable_substitutions`.
-
-    Note: substituted values are inserted verbatim with no awareness of the target file's syntax.
-    The caller is responsible for any quoting/escaping required by the target format.
-    """
-    content = template_file.read_text(encoding="utf-8")
-
-    variables_in_file: set[str] = set()
-
-    def replace(match: re.Match[str]) -> str:
-        name = match.group(1)
-        variables_in_file.add(name)
-        return variable_substitutions.get(name, match.group(0))
-
-    content = _TEMPLATE_VARIABLE_PATTERN.sub(replace, content)
-
-    if strict and variables_in_file != variable_substitutions.keys():
-        provided = set(variable_substitutions.keys())
-        raise ValueError(
-            f"Template variables and substitution keys do not match for {template_file}. "
-            f"Only in template: {sorted(variables_in_file - provided)}. "
-            f"Only in substitutions: {sorted(provided - variables_in_file)}."
-        )
-
-    output_file.write_text(content, encoding="utf-8")
+# Import the shared template helper from _packaging_utils.py in the parent directory.
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+from _packaging_utils import gen_file_from_template  # noqa: E402, I001  (path setup must precede import)
 
 
 # Patterns for binaries to include in the package
@@ -86,6 +53,7 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
     shutil.copytree(SCRIPT_DIR / "onnxruntime_ep_webgpu", staging_dir / "onnxruntime_ep_webgpu")
 
     # Copy plugin binaries into the package directory
+    # Note: The binaries are assumed to be directly under `binary_dir`.
     package_dir = staging_dir / "onnxruntime_ep_webgpu"
     copied = []
     for pattern in BINARY_PATTERNS:
@@ -97,15 +65,23 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
     if not copied:
         raise FileNotFoundError(f"No plugin binaries found in {binary_dir}. Looked for: {BINARY_PATTERNS}")
 
-    # Render pyproject.toml from its template
+    # Substitute the minimum ORT version into the staged README in place.
     min_ort_version = MIN_ONNXRUNTIME_VERSION_FILE.read_text(encoding="utf-8").strip()
     if not min_ort_version:
         raise ValueError(f"{MIN_ONNXRUNTIME_VERSION_FILE} is empty")
 
+    staged_readme = package_dir / "README.md"
+    gen_file_from_template(
+        staged_readme,
+        staged_readme,
+        {"min_onnxruntime_version": min_ort_version},
+    )
+
+    # Render pyproject.toml from its template
     gen_file_from_template(
         SCRIPT_DIR / "pyproject.toml.in",
         staging_dir / "pyproject.toml",
-        {"version": version, "min_onnxruntime_version": min_ort_version},
+        {"version": version},
     )
 
 

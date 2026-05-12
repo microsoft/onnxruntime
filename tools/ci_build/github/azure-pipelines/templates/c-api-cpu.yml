@@ -421,10 +421,14 @@ stages:
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: 'NPM_packages'
     variables:
-      ${{ if eq(parameters.IsReleaseBuild, true) }}:
+      ${{ if and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'none')) }}:
         NpmPackagingMode: 'release'
-      ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
+      ${{ elseif and(parameters.IsReleaseBuild, eq(parameters.PreReleaseVersionSuffixString, 'rc')) }}:
+        NpmPackagingMode: 'rc'
+      ${{ elseif not(parameters.IsReleaseBuild) }}:
         NpmPackagingMode: 'dev'
+      ${{ else }}: # IsReleaseBuild + beta, alpha, etc. We don't support those and those suffixes are deprecated.
+        NpmPackagingMode: '<INVALID/UNSUPPORTED COMBINATION>'
 
     steps:
     - checkout: self

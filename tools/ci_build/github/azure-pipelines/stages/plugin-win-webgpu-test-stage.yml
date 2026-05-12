@@ -31,29 +31,113 @@ stages:
       artifact: webgpu_plugin_python_win_${{ parameters.arch }}
       displayName: 'Download Python wheel'
 
-    - task: PowerShell@2
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+
+        echo "creating test_venv"
+        python -m venv "$(Build.BinariesDirectory)\test_venv"
+
+        echo "activating test_venv"
+        & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
+
+        $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-webgpu\MIN_ONNXRUNTIME_VERSION"
+        $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+        echo "using minimum onnxruntime version $minOrtVersion from $minOrtVersionFile"
+
+        echo "installing test dependencies"
+        python -m pip install onnx "onnxruntime==$minOrtVersion" numpy
+
+        $wheelDir = "$(Pipeline.Workspace)\build\webgpu_plugin_python_win_${{ parameters.arch }}"
+        $wheel = (Get-ChildItem "$wheelDir\onnxruntime_ep_webgpu-*.whl")[0]
+        echo "installing ${wheel}"
+        python -m pip install $wheel.FullName
+
+        echo "running test_webgpu_plugin_ep.py"
+        python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
       displayName: 'Install and test Python package'
       env:
         ORT_TEST_VERBOSE: $(System.Debug)
-      inputs:
-        targetType: inline
-        pwsh: true
-        script: |
+
+  # NuGet package test (x64 only — the NuGet package is multi-platform but
+  # the test runs on a single Windows agent that exercises the WebGPU EP).
+  - ${{ if eq(parameters.arch, 'x64') }}:
+    - job: Win_plugin_webgpu_nuget_Test
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        os: windows
+      variables:
+        WebGpuTestProject: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj'
+      steps:
+      - checkout: self
+        submodules: none
+
+      - template: ../templates/setup-feeds-and-python-steps.yml
+
+      # Download the NuGet package produced by the packaging pipeline run that
+      # triggered this pipeline (or that was selected at queue time).
+      - download: build
+        artifact: webgpu_plugin_nuget
+        displayName: 'Download NuGet package'
+
+      # Set up local NuGet feed and extract the package version from the .nupkg filename
+      # so the test project can pin to it (instead of resolving via a floating version).
+      - pwsh: |
           $ErrorActionPreference = 'Stop'
+          $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
+          New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
 
-          echo "creating test_venv"
-          python -m venv "$(Build.BinariesDirectory)\test_venv"
+          # Locate the .nupkg.
+          $nupkg = Get-ChildItem "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\Microsoft.ML.OnnxRuntime.EP.WebGpu.*.nupkg" |
+                   Select-Object -First 1
+          if (-not $nupkg) {
+              throw "No matching .nupkg found under $(Pipeline.Workspace)\build\webgpu_plugin_nuget"
+          }
+          Copy-Item $nupkg.FullName $localFeedDir -Force
 
-          echo "activating test_venv"
-          & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
+          # Extract version from filename: Microsoft.ML.OnnxRuntime.EP.WebGpu.<version>.nupkg
+          # The version starts with a digit, which disambiguates from any future filename suffixes.
+          if ($nupkg.BaseName -notmatch '^Microsoft\.ML\.OnnxRuntime\.EP\.WebGpu\.(\d.*)$') {
+              throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
+          }
+          $packageVersion = $Matches[1]
+          Write-Host "Detected package version: $packageVersion"
+          Write-Host "##vso[task.setvariable variable=OrtWebGpuPackageVersion]$packageVersion"
 
-          echo "installing onnxruntime onnx numpy"
-          python -m pip install onnxruntime onnx numpy
+          $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-webgpu\MIN_ONNXRUNTIME_VERSION"
+          $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+          Write-Host "Using minimum core ORT version: $minOrtVersion from $minOrtVersionFile"
+          Write-Host "##vso[task.setvariable variable=OrtCoreTestVersion]$minOrtVersion"
 
-          $wheelDir = "$(Pipeline.Workspace)\build\webgpu_plugin_python_win_${{ parameters.arch }}"
-          $wheel = (Get-ChildItem "$wheelDir\onnxruntime_ep_webgpu-*.whl")[0]
-          echo "installing ${wheel}"
-          python -m pip install $wheel.FullName
+          # Write a project-level nuget.config that adds ONLY the local feed.
+          # NuGet merges this with the repo-root NuGet.config.
+          $nugetConfig = "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\nuget.config"
+          Set-Content -Path $nugetConfig -Encoding UTF8 -Value @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="local" value="$localFeedDir" />
+            </packageSources>
+          </configuration>
+          "@
+          Write-Host "Wrote project-level nuget.config with local feed: $localFeedDir"
+          Write-Host "Local feed contents:"
+          Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
+        displayName: 'Set up local NuGet feed'
 
-          echo "running test_webgpu_plugin_ep.py"
-          python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+      - pwsh: |
+          dotnet build `
+            "$(WebGpuTestProject)" `
+            --configuration Release `
+            -p:OrtWebGpuPackageVersion=$(OrtWebGpuPackageVersion) `
+            -p:OrtCoreTestVersion=$(OrtCoreTestVersion)
+        displayName: 'Build test project'
+
+      - pwsh: |
+          dotnet run `
+            --project "$(WebGpuTestProject)" `
+            --configuration Release `
+            --no-build
+        displayName: 'Run NuGet package test'

@@ -1431,6 +1431,79 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Floor_Align_Corners) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
+// Test round_prefer_ceil with half_pixel coordinate transformation.
+// Exercises non-integer scale (26->64) where round_prefer_ceil selects
+// source pixels at fractional boundaries.
+TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferCeil_HalfPixel) {
+  OpTester test("Resize", 13);
+
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 1.0f, 64.0f / 26.0f};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel");
+  test.AddAttribute("nearest_mode", "round_prefer_ceil");
+
+  constexpr int64_t N = 1, C = 1, H = 1, W = 26;
+  std::vector<float> X(26);
+  for (int i = 0; i < 26; i++) X[i] = static_cast<float>(i);
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {4}, scales);
+
+  std::vector<float> Y = {
+      0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 3.0f,
+      3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f, 5.0f, 6.0f,
+      6.0f, 7.0f, 7.0f, 7.0f, 8.0f, 8.0f, 9.0f, 9.0f,
+      9.0f, 10.0f, 10.0f, 11.0f, 11.0f, 11.0f, 12.0f, 12.0f,
+      13.0f, 13.0f, 14.0f, 14.0f, 14.0f, 15.0f, 15.0f, 16.0f,
+      16.0f, 16.0f, 17.0f, 17.0f, 18.0f, 18.0f, 18.0f, 19.0f,
+      19.0f, 20.0f, 20.0f, 20.0f, 21.0f, 21.0f, 22.0f, 22.0f,
+      22.0f, 23.0f, 23.0f, 24.0f, 24.0f, 24.0f, 25.0f, 25.0f};
+
+  test.AddOutput<float>("Y", {N, C, H, 64}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
+// Test round_prefer_ceil with half_pixel for a small upsample (2x2 -> 7x8).
+// Verifies that at positive .5 boundaries, ceiling is preferred.
+TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferCeil_HalfPixel_2x2to7x8) {
+  OpTester test("Resize", 13);
+
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 1, 7, 8};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel");
+  test.AddAttribute("nearest_mode", "round_prefer_ceil");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  // half_pixel: x_orig = (x_resized + 0.5) / scale - 0.5
+  // H scale = 7/2 = 3.5, W scale = 8/2 = 4.0
+  // H coords: i=0: -0.357, i=1: -0.071, i=2: 0.214, i=3: 0.5, i=4: 0.786, i=5: 1.071, i=6: 1.357
+  // round_prefer_ceil at 0.5 -> ceil(0.5) = 1
+  // W coords: i=0: -0.375, i=1: -0.125, i=2: 0.125, i=3: 0.375, i=4: 0.625, i=5: 0.875, i=6: 1.125, i=7: 1.375
+  std::vector<float> Y = {1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          3.0f, 3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f};
+
+  test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
 TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
