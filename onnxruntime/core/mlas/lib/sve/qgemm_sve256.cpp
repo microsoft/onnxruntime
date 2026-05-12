@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <vector>
 
 #include "mlasi_sve.h"
@@ -44,7 +43,8 @@ struct MLAS_GEMM_U8X8_KERNEL_UMMLA {
     using PackedBType = uint8_t;
 };
 
-size_t Process1RowTest256(
+template<bool HasZeroPointB>
+MLAS_FORCEINLINE size_t Process1Row(
     const uint8_t* A,
     const uint8_t* B,
     int32_t* C,
@@ -54,8 +54,7 @@ size_t Process1RowTest256(
     size_t ldc,
     const int32_t* RowSumBuffer,
     const int32_t* ColumnSumBuffer,
-    const int32_t* ZeroPointB,
-    bool isZeroPointB)
+    const int32_t* ZeroPointB)
 {
     (void)CountM;
     (void)ldc;
@@ -151,7 +150,7 @@ size_t Process1RowTest256(
         // First 4 columns
         // 
         if(cols_this > 6){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C_ptr, MlasSveReinterpretS32FromU32(acc03));
                 if(cols_this >= 8){
                     MlasSveStoreInt32(pg_b32_4, C_ptr + 4, MlasSveReinterpretS32FromU32(acc47));
@@ -180,7 +179,7 @@ size_t Process1RowTest256(
             }
         }
         else if(cols_this > 4){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C_ptr, MlasSveReinterpretS32FromU32(acc03));
                 if(cols_this >= 6){
                     MlasSveStoreInt32(MlasSveWhileLtB32(0, 2), C_ptr + 4, MlasSveReinterpretS32FromU32(acc47));
@@ -207,7 +206,7 @@ size_t Process1RowTest256(
             }
         }
         else if(cols_this > 2){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 if(cols_this >= 4){
                     MlasSveStoreInt32(pg_b32_4, C_ptr, MlasSveReinterpretS32FromU32(acc03));
                 }
@@ -231,7 +230,7 @@ size_t Process1RowTest256(
             }
         }
         else{
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C_ptr, MlasSveReinterpretS32FromU32(acc03));
             }
             else{
@@ -256,7 +255,8 @@ size_t Process1RowTest256(
     return 1;
 }
 
-size_t Process2RowsTest256(
+template<bool HasZeroPointB>
+MLAS_FORCEINLINE size_t Process2Rows(
     const uint8_t* A,
     const uint8_t* B,
     int32_t* C,
@@ -266,8 +266,7 @@ size_t Process2RowsTest256(
     size_t ldc,
     const int32_t* RowSumBuffer,
     const int32_t* ColumnSumBuffer,
-    const int32_t* ZeroPointB,
-    bool isZeroPointB)
+    const int32_t* ZeroPointB)
 {
     (void)CountM;
 
@@ -365,7 +364,7 @@ size_t Process2RowsTest256(
         // First 4 columns
         // 
         if(cols_this > 6){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 if(cols_this >= 8){
@@ -405,7 +404,7 @@ size_t Process2RowsTest256(
             }
         }
         else if(cols_this > 4){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 if(cols_this >= 6){
@@ -444,7 +443,7 @@ size_t Process2RowsTest256(
             }
         }
         else if(cols_this > 2){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 if(cols_this >= 4){
                     MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                     MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
@@ -476,7 +475,7 @@ size_t Process2RowsTest256(
             }
         }
         else{
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C1, MlasSveReinterpretS32FromU32(acc03_c1));
             }
@@ -506,7 +505,8 @@ size_t Process2RowsTest256(
     return 2;
 }
 
-size_t Process4RowsTest256(
+template<bool HasZeroPointB>
+MLAS_FORCEINLINE size_t Process4Rows(
     const uint8_t* A,
     const uint8_t* B,
     int32_t* C,
@@ -516,8 +516,7 @@ size_t Process4RowsTest256(
     size_t ldc,
     const int32_t* RowSumBuffer,
     const int32_t* ColumnSumBuffer,
-    const int32_t* ZeroPointB,
-    bool isZeroPointB)
+    const int32_t* ZeroPointB)
 {
     (void)CountM;
 
@@ -631,7 +630,7 @@ size_t Process4RowsTest256(
         // First 4 columns
         // 
         if(cols_this > 6){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 MlasSveStoreInt32(pg_b32_4, C2, MlasSveReinterpretS32FromU32(acc03_c2));
@@ -695,7 +694,7 @@ size_t Process4RowsTest256(
             }
         }
         else if(cols_this > 4){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 MlasSveStoreInt32(pg_b32_4, C2, MlasSveReinterpretS32FromU32(acc03_c2));
@@ -758,7 +757,7 @@ size_t Process4RowsTest256(
             }
         }
         else if(cols_this > 2){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 if(cols_this >= 4){
                     MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                     MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
@@ -806,7 +805,7 @@ size_t Process4RowsTest256(
             }
         }
         else{
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C2, MlasSveReinterpretS32FromU32(acc03_c2));
@@ -846,7 +845,8 @@ size_t Process4RowsTest256(
     return 4;
 }
 
-size_t Process8RowsTest256(
+template<bool HasZeroPointB>
+MLAS_FORCEINLINE size_t Process8Rows(
     const uint8_t* A,
     const uint8_t* B,
     int32_t* C,
@@ -856,8 +856,7 @@ size_t Process8RowsTest256(
     size_t ldc,
     const int32_t* RowSumBuffer,
     const int32_t* ColumnSumBuffer,
-    const int32_t* ZeroPointB,
-    bool isZeroPointB)
+    const int32_t* ZeroPointB)
 {
     (void)CountM;
 
@@ -997,7 +996,7 @@ size_t Process8RowsTest256(
         // First 4 columns
         // 
         if(cols_this > 6){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 MlasSveStoreInt32(pg_b32_4, C2, MlasSveReinterpretS32FromU32(acc03_c2));
@@ -1109,7 +1108,7 @@ size_t Process8RowsTest256(
             }
         }
         else if(cols_this > 4){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 MlasSveStoreInt32(pg_b32_4, C2, MlasSveReinterpretS32FromU32(acc03_c2));
@@ -1221,7 +1220,7 @@ size_t Process8RowsTest256(
             }
         }
         else if(cols_this > 2){
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 if(cols_this >= 4){
                     MlasSveStoreInt32(pg_b32_4, C0, MlasSveReinterpretS32FromU32(acc03_c0));
                     MlasSveStoreInt32(pg_b32_4, C1, MlasSveReinterpretS32FromU32(acc03_c1));
@@ -1301,7 +1300,7 @@ size_t Process8RowsTest256(
             }
         }
         else{
-            if(isZeroPointB){
+            if(HasZeroPointB){
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C2, MlasSveReinterpretS32FromU32(acc03_c2));
@@ -1361,77 +1360,96 @@ size_t Process8RowsTest256(
     return 8;
 }
 
-size_t MlasSveQgemmU8X8KernelUmmlaAdd(const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
-                                const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
-                                int32_t* C,
-                                size_t PackedCountK,
-                                size_t CountM,
-                                size_t CountN,
-                                size_t ldc,
-                                const int32_t* RowSumBuffer,
-                                const int32_t* ColumnSumBuffer,
-                                const int32_t* ZeroPointB
-                              )
+template<bool HasZeroPointB>
+MLAS_FORCEINLINE size_t
+MlasSveQgemmU8X8KernelUmmlaImpl(
+    const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
+    const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB)
 {
-    bool isZeroPointB = false;
-     if (MlasSveCntb() >= 32) {
+    if (svcntb() == 32) {
+
         if (CountM >= 8) {
-                return Process8RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-        } 
-        else if (CountM >= 4) {
-            return Process4RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-        } else if (CountM >= 2) {
-            return Process2RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-        } else if (CountM >= 1) {
-            return Process1RowTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+            return Process8Rows<HasZeroPointB>(
+                A, B, C, PackedCountK, CountM, CountN, ldc,
+                RowSumBuffer, ColumnSumBuffer,
+                ZeroPointB);
         }
-     }
-     else{
-        MlasGemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
+        else if (CountM >= 4) {
+            return Process4Rows<HasZeroPointB>(
+                A, B, C, PackedCountK, CountM, CountN, ldc,
+                RowSumBuffer, ColumnSumBuffer,
+                ZeroPointB);
+        }
+        else if (CountM >= 2) {
+            return Process2Rows<HasZeroPointB>(
+                A, B, C, PackedCountK, CountM, CountN, ldc,
+                RowSumBuffer, ColumnSumBuffer,
+                ZeroPointB);
+        }
+        else if (CountM >= 1) {
+            return Process1Row<HasZeroPointB>(
+                A, B, C, PackedCountK, CountM, CountN, ldc,
+                RowSumBuffer, ColumnSumBuffer,
+                ZeroPointB);
+        }
+    }
+    else {
+        if constexpr (HasZeroPointB) {
+            return MlasGemmU8X8KernelUmmlaZero(
+                A, B, C, PackedCountK, CountM, CountN, ldc,
                 RowSumBuffer, ColumnSumBuffer, ZeroPointB);
-     };
-    return 0; // Unsupported CountM
+
+        } else {
+            return MlasGemmU8X8KernelUmmlaAdd(
+                A, B, C, PackedCountK, CountM, CountN, ldc,
+                RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+        }
+    }
+
+    return 0;
 }
 
-size_t MlasSveQgemmU8X8KernelUmmlaZero(const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
-                                const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
-                                int32_t* C,
-                                size_t PackedCountK,
-                                size_t CountM,
-                                size_t CountN,
-                                size_t ldc,
-                                const int32_t* RowSumBuffer,
-                                const int32_t* ColumnSumBuffer,
-                                const int32_t* ZeroPointB
-                              )
+size_t
+MlasSveQgemmU8X8KernelUmmlaZero(
+    const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
+    const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB)
 {
-    bool isZeroPointB = true;
-    if(MlasSveCntb() >= 32){
-        if (CountM >= 8) {
-            return Process8RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-        }
-        else if (CountM >= 4) {
-            return Process4RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-            
-        } else if (CountM >= 2) {
-            return Process2RowsTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
+    return MlasSveQgemmU8X8KernelUmmlaImpl<true>(
+        A, B, C, PackedCountK, CountM, CountN, ldc,
+        RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+}
 
-        } else if (CountM >= 1) {
-            return Process1RowTest256(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                RowSumBuffer, ColumnSumBuffer, ZeroPointB, isZeroPointB);
-        }
-    }
-    else{
-        MlasGemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
-                RowSumBuffer, ColumnSumBuffer, ZeroPointB);
-    }
-    return 0; // Unsupported CountM
+size_t
+MlasSveQgemmU8X8KernelUmmlaAdd(
+    const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedAType* A,
+    const MLAS_GEMM_U8X8_KERNEL_UMMLA::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB)
+{
+    return MlasSveQgemmU8X8KernelUmmlaImpl<false>(
+        A, B, C, PackedCountK, CountM, CountN, ldc,
+        RowSumBuffer, ColumnSumBuffer, ZeroPointB);
 }
 #pragma GCC diagnostic pop

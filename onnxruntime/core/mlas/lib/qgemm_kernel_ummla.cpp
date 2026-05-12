@@ -17,7 +17,7 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm.h"
-#ifdef __ARM_FEATURE_SVE
+#ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
 

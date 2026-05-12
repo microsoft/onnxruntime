@@ -542,7 +542,7 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_sve256.cpp)
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_sve256.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_sve256.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm -O3 -funroll-loops")
         endif()
 
         if (onnxruntime_USE_ARM_NEON_NCHWC)
