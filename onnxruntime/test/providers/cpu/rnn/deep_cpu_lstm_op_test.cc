@@ -1371,19 +1371,19 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {
   std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
 
   std::vector<float> W_data = {-0.494659f, 0.0453352f,
-                                -0.487793f, 0.417264f,
-                                -0.0175329f, 0.489074f,
-                                -0.446013f, 0.414029f};
+                               -0.487793f, 0.417264f,
+                               -0.0175329f, 0.489074f,
+                               -0.446013f, 0.414029f};
   std::vector<int64_t> W_dims = {num_directions, 4 * hidden_size, input_size};
 
   std::vector<float> R_data = {0.146304f, -0.0243403f,
-                                -0.487793f, 0.417264f,
-                                -0.0175329f, 0.489074f,
-                                -0.446013f, 0.414029f,
-                                0.146304f, -0.0243403f,
-                                -0.487793f, 0.417264f,
-                                -0.0175329f, 0.489074f,
-                                -0.446013f, 0.414029f};
+                               -0.487793f, 0.417264f,
+                               -0.0175329f, 0.489074f,
+                               -0.446013f, 0.414029f,
+                               0.146304f, -0.0243403f,
+                               -0.487793f, 0.417264f,
+                               -0.0175329f, 0.489074f,
+                               -0.446013f, 0.414029f};
   std::vector<int64_t> R_dims = {num_directions, 4 * hidden_size, hidden_size};
 
   test.AddInput<float>("X", X_dims, X_data);
@@ -1391,11 +1391,11 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {
   test.AddInput<float>("R", R_dims, R_data, true);
 
   // B, sequence_lens, initial_h, initial_c, P - all optional, not provided
-  test.AddOptionalInputEdge<float>();   // B
-  test.AddOptionalInputEdge<int>();     // sequence_lens
-  test.AddOptionalInputEdge<float>();   // initial_h
-  test.AddOptionalInputEdge<float>();   // initial_c
-  test.AddOptionalInputEdge<float>();   // P
+  test.AddOptionalInputEdge<float>();  // B
+  test.AddOptionalInputEdge<int>();    // sequence_lens
+  test.AddOptionalInputEdge<float>();  // initial_h
+  test.AddOptionalInputEdge<float>();  // initial_c
+  test.AddOptionalInputEdge<float>();  // P
 
   // Only check Y_h output to keep the test simple.
   // Y (sequence output)
