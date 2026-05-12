@@ -5,6 +5,9 @@
 // Exports CreateEpFactories() and ReleaseEpFactory() as the
 // public interface for ORT to load and use the CUDA EP as a plugin.
 
+#include <cstdio>
+#include <cstdlib>
+
 #include "onnxruntime_cxx_api.h"
 
 #include "cuda_ep_factory.h"
@@ -14,6 +17,10 @@
 #else
 #define EXPORT_SYMBOL
 #endif
+
+namespace {
+constexpr uint32_t kFallbackOrtApiVersion = 1;
+}
 
 extern "C" {
 
@@ -26,7 +33,27 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
     OrtEpFactory** factories,
     size_t max_factories,
     size_t* num_factories) {
-  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+  if (ort_api_base == nullptr) {
+    return nullptr;
+  }
+
+  const OrtApi* ort_api = ort_api_base->GetApi(kCudaPluginEpMinOrtApiVersion);
+  if (ort_api == nullptr) {
+    // Use API v1 only to construct an OrtStatus that explains the API v26 requirement.
+    const OrtApi* fallback_api = ort_api_base->GetApi(kFallbackOrtApiVersion);
+    if (fallback_api == nullptr) {
+      // Critical failure path: no compatible API available to even construct an OrtStatus.
+      fprintf(stderr,
+              "CUDA Plugin EP requires ONNX Runtime API version 26+ but could not obtain any compatible "
+              "API from OrtApiBase (fallback API v1 unavailable).\n");
+      std::abort();
+    }
+
+    return fallback_api->CreateStatus(
+        ORT_FAIL,
+        "CUDA Plugin EP requires ONNX Runtime API version 26 or newer (ORT 1.26+).");
+  }
+
   const OrtEpApi* ep_api = ort_api->GetEpApi();
 
   // Initialize the C++ API FIRST before any C++ wrapper usage

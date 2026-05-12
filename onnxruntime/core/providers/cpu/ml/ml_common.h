@@ -10,6 +10,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 #include "core/common/inlined_containers.h"
+#include <numbers>
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -202,7 +203,7 @@ static inline float ErfInv(float x) {
   float sgn = x < 0 ? -1.0f : 1.0f;
   x = (1 - x) * (1 + x);
   float log = std::log(x);
-  float v = 2 / (static_cast<float>(M_PI) * 0.147f) + 0.5f * log;
+  float v = 2 / (std::numbers::pi_v<float> * 0.147f) + 0.5f * log;
   float v2 = 1 / (0.147f) * log;
   float v3 = -v + std::sqrt(v * v - v2);
   x = sgn * std::sqrt(v3);
@@ -268,7 +269,7 @@ static inline void multiclass_probability(int64_t classcount,
   }
 }
 
-static constexpr float ml_sqrt2 = static_cast<float>(M_SQRT2);
+static constexpr float ml_sqrt2 = std::numbers::sqrt2_v<float>;
 
 static inline float ComputeLogistic(float val) {
   float v = 1 / (1 + std::exp(-std::abs(val)));

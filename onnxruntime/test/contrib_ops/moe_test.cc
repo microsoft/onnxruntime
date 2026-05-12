@@ -1438,6 +1438,68 @@ TEST(MoETest, QMoETest_WebGPU_SingleToken) {
   webgpu_execution_providers.push_back(DefaultWebGpuExecutionProvider());
   webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_execution_providers);
 }
+
+// Regression test for issue where large router logits (e.g. one-hot @ 100) caused
+// the WebGPU QMoE gate shader's softmax to overflow (exp(100) = inf, inf/inf = NaN),
+// turning the entire output into NaN. CPU stays finite because it uses the
+// log-sum-exp trick. After the fix, the gate shaders subtract max_val before exp(),
+// so the output should match the CPU result (here, all-zero from zeroed weights).
+TEST(MoETest, QMoETest_WebGPU_SingleToken_LargeLogits) {
+  int num_rows = 1;
+  int num_experts = 2;
+  int hidden_size = 64;
+  int inter_size = 64;
+  int top_k = 1;
+
+  std::vector<float> input(num_rows * hidden_size, 0.1f);
+
+  // One-hot router logit at 100 — pre-fix this overflows exp() and yields NaN.
+  std::vector<float> router_probs = {100.0f, 0.0f};
+
+  // 0x88 weights decode to signed 0 in 4-bit, so FC1 output is 0 regardless of input.
+  // SwiGLU(0,0) * scale = 0, FC2 output = 0, FinalMix output = 0 — independent of
+  // the router probability, as long as the router probabilities are finite.
+  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size / 2, 0x88);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * inter_size / 2, 0x88);
+
+  std::vector<float> fc1_scales(num_experts * 2 * inter_size, 0.01f);
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
+
+  std::vector<float> expected_output(num_rows * hidden_size, 0.0f);
+
+  OpTester webgpu_tester("QMoE", 1, onnxruntime::kMSDomain);
+  webgpu_tester.AddAttribute<int64_t>("k", static_cast<int64_t>(top_k));
+  webgpu_tester.AddAttribute<std::string>("activation_type", "swiglu");
+  webgpu_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  webgpu_tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  webgpu_tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+
+  std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  std::vector<int64_t> fc1_experts_weights_dims = {num_experts, 2 * inter_size, hidden_size / 2};
+  std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size / 2};
+  std::vector<int64_t> fc1_scales_dims = {num_experts, 2 * inter_size};
+  std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+  std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  webgpu_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  webgpu_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  webgpu_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  webgpu_tester.AddInput<MLFloat16>("fc1_scales", fc1_scales_dims, ToFloat16(fc1_scales));
+  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
+  webgpu_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  webgpu_tester.AddInput<MLFloat16>("fc2_scales", fc2_scales_dims, ToFloat16(fc2_scales));
+  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc2_experts_bias
+  webgpu_tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
+  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_scales
+  webgpu_tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
+  webgpu_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(expected_output));
+  webgpu_tester.SetOutputTolerance(0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> webgpu_execution_providers;
+  webgpu_execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_execution_providers);
+}
 #endif
 
 // CPU-specific QMoE tests
