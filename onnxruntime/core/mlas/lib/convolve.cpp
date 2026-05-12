@@ -855,7 +855,7 @@ Return Value:
     }
 }
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 
 void
 MlasDepthwiseThreaded(
@@ -1119,7 +1119,7 @@ Return Value:
         return;
     }
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 
     if (Algorithm == MlasConvAlgorithmDepthwise) {
         // Fill the Working Buffer with Zero for use by the depthwise kernel.
@@ -1178,7 +1178,7 @@ Return Value:
     }
 
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 
     if (Algorithm == MlasConvAlgorithmDepthwise && ((BatchCount > 1) || (GroupCount > 1))) {
         const size_t BatchGroupCount = BatchCount * GroupCount;
@@ -1277,7 +1277,7 @@ Return Value:
                     break;
                 }
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 
                 case MlasConvAlgorithmDepthwise:
                 {
@@ -1549,15 +1549,14 @@ Return Value:
     }
 #endif
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 
-        // Scalar (WASM_SCALAR) / vectorized (ARM64) direct conv for depthwise convolution.
+        // Scalar (WASM_SCALAR) / vectorized (ARM64/RISCV64) direct conv for depthwise convolution.
         // Currently only support 3x3 kernel with padding <=1 and dilations = 1
-        // and on ARM64, it is further restricted to strides = 1.
+        // and on ARM64/RISCV64, it is further restricted to strides = 1.
         // TODO: support more general depthwise convolution.
 
-        // On ARM64, only support stride = 1 for depthwise conv.
-    #if defined(MLAS_TARGET_ARM64)
+    #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
         bool depthwise_conv_stride_support_check = Parameters->StrideShape[0] == 1 && Parameters->StrideShape[1] == 1;
     #else
         bool depthwise_conv_stride_support_check = true;
