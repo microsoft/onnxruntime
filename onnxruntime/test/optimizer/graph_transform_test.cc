@@ -9956,7 +9956,6 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
-<<<<<<< HEAD
 // Tests for graceful handling of zero-element initializers in optimizer passes.
 // Zero-element constant initializers (shape [0], 0 bytes of data) are valid ONNX.
 // Optimizer passes must check initializer size() before accessing data<T>().
