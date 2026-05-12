@@ -65,31 +65,6 @@ const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_cons
   return nullptr;
 }
 
-Status ValidateCompiledModelCompatibilityInfo(const VariantSelectionEpInfo& ep_info,
-                                              const std::string& compatibility_string,
-                                              std::vector<const OrtHardwareDevice*>& constraint_devices,
-                                              OrtCompiledModelCompatibility* compiled_model_compatibility) {
-  if (compatibility_string.empty()) {
-    LOGS_DEFAULT(INFO) << "No compatibility_string constraint. Skip compatibility validation.";
-    return Status::OK();
-  }
-
-  auto* ep_factory = ep_info.ep_factory;
-
-  if (ep_factory &&
-      ep_factory->ort_version_supported >= 23 &&
-      ep_factory->ValidateCompiledModelCompatibilityInfo != nullptr) {
-    auto status = ep_factory->ValidateCompiledModelCompatibilityInfo(ep_factory,
-                                                                     constraint_devices.data(),
-                                                                     constraint_devices.size(),
-                                                                     compatibility_string.c_str(),
-                                                                     compiled_model_compatibility);
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(status));
-  }
-
-  return Status::OK();
-}
-
 bool IsUnconstrainedEpCompatibility(const VariantEpCompatibilityInfo& ec) {
   const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
   const bool no_device = !ec.device.has_value() || ec.device->empty();
@@ -115,6 +90,10 @@ Status ValidateCompiledModelCompatibilityInfoSingle(const VariantSelectionEpInfo
                                                     const std::string& compatibility_string,
                                                     std::vector<const OrtHardwareDevice*>& constraint_devices,
                                                     OrtCompiledModelCompatibility* compiled_model_compatibility) {
+  if (compatibility_string.empty()) {
+    return Status::OK();
+  }
+
   auto* ep_factory = ep_info.ep_factory;
 
   if (ep_factory &&
