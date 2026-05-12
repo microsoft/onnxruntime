@@ -124,10 +124,7 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                  bool use_indirect_dispatch, bool q_BNSH = false,
                                  bool is_unidirectional = false, bool use_seqlen_k = false,
                                  uint32_t m_tile = 1)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size),
-        head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch),
-        q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), use_seqlen_k_(use_seqlen_k),
-        m_tile_(m_tile) {
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), use_seqlen_k_(use_seqlen_k), m_tile_(m_tile) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
