@@ -29,8 +29,10 @@ When matched, the six Reshape/SLN nodes are removed and the pre-norm Q and K
 projections feed GQA directly. The kernel is responsible for applying the RMS
 norm internally (currently the WebGPU EP).
 
-Only fires for execution providers passed in `compatible_execution_providers`,
-typically js + webgpu, because the in-kernel norm path is implemented there.
+Only fires for execution providers passed in `compatible_execution_providers`.
+At present this fusion is registered for the WebGPU EP only, because the
+in-kernel norm path is currently implemented there. The CPU, CUDA, and JSEP
+GroupQueryAttention kernels reject q_norm_weight / k_norm_weight inputs.
 */
 class GroupQueryAttentionPreNormFusion : public GraphTransformer {
  public:
