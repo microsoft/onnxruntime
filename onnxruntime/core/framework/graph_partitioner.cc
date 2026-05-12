@@ -85,6 +85,30 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .Provider(provider_type);
 }
 
+static Status ApplyFusedNodeMemTypes(KernelDefBuilder& builder,
+                                     const NodeComputeInfo& info,
+                                     const IndexedSubGraph::MetaDef& metadef) {
+  if (info.get_input_mem_types && !metadef.inputs.empty()) {
+    std::vector<OrtMemType> mem_types(metadef.inputs.size(), OrtMemTypeDefault);
+    ORT_RETURN_IF_ERROR(info.get_input_mem_types(gsl::make_span(mem_types)));
+    for (size_t i = 0; i < mem_types.size(); ++i) {
+      if (mem_types[i] != OrtMemTypeDefault) {
+        builder.InputMemoryType(mem_types[i], gsl::narrow_cast<int>(i));
+      }
+    }
+  }
+  if (info.get_output_mem_types && !metadef.outputs.empty()) {
+    std::vector<OrtMemType> mem_types(metadef.outputs.size(), OrtMemTypeDefault);
+    ORT_RETURN_IF_ERROR(info.get_output_mem_types(gsl::make_span(mem_types)));
+    for (size_t i = 0; i < mem_types.size(); ++i) {
+      if (mem_types[i] != OrtMemTypeDefault) {
+        builder.OutputMemoryType(mem_types[i], gsl::narrow_cast<int>(i));
+      }
+    }
+  }
+  return Status::OK();
+}
+
 /// <summary>
 /// Check if a node can be placed on a specific provider. If yes, then set the nodes execution provider.
 /// Do nothing if the node is already assigned.
@@ -708,8 +732,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
 
-        ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node->Name(), std::move(node_compute_funcs[j])));
-
         const auto& cur_capability = capabilities_to_compile[j];
         const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
         const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
@@ -719,6 +741,11 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         // used by SessionState
         KernelDefBuilder builder;
         BuildFusedKernelDef(builder, metadef, type);
+        // Must precede the std::move into func_mgr below.
+        ORT_RETURN_IF_ERROR(ApplyFusedNodeMemTypes(builder, node_compute_funcs[j], metadef));
+
+        ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node->Name(), std::move(node_compute_funcs[j])));
+
         ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
             builder,
             [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -1329,7 +1356,6 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 
     ORT_RETURN_IF(single_node_compute_func.empty(), "single_node_compute_func should have 1 element.");
     auto& func_mgr = partition_params.func_mgr.get();
-    ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(single_node_compute_func[0])));
 
     const ComputeCapability& cur_capability = compilation_entry.capability;
     const IndexedSubGraph& indexed_sub_graph = *cur_capability.sub_graph;
@@ -1337,6 +1363,11 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 
     KernelDefBuilder builder;
     BuildFusedKernelDef(builder, metadef, type);
+    // Must precede the std::move into func_mgr below.
+    ORT_RETURN_IF_ERROR(ApplyFusedNodeMemTypes(builder, single_node_compute_func[0], metadef));
+
+    ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node.Name(), std::move(single_node_compute_func[0])));
+
     auto kernel_def = builder.Build();
 
     auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();

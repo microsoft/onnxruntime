@@ -718,6 +718,45 @@ struct OrtNodeComputeInfo {
    * \since Version 1.23.
    */
   void(ORT_API_CALL* ReleaseState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
+
+  /** \brief Optional. If set, called once between Compile() return and fused-KernelDef registration to fill in
+   * the OrtMemType for every input of the fused node. NULL means "no overrides — all inputs default to
+   * OrtMemTypeDefault".
+   *
+   * Mirrors the kernel-path EP capability provided by OrtKernelDefBuilder::SetInputMemType, but for compile-path
+   * (fused-node) EPs. Allows the EP to request placement such as OrtMemTypeCPUInput for specific inputs of the
+   * fused node so ORT can route producer tensors to a host-accessible allocator without inserting a copy.
+   *
+   * \param[in] this_ptr The OrtNodeComputeInfo instance.
+   * \param[in] count The number of input slots in `mem_types` (matches the EP's Compile-time view of the fused node).
+   * \param[out] mem_types Caller-allocated array of length `count`. The EP fills entry `i` with the desired
+   *                      OrtMemType for input index `i`. Slots left at OrtMemTypeDefault leave the input on the
+   *                      EP's default device memory.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  OrtStatus*(ORT_API_CALL* GetInputMemTypes)(_In_ const OrtNodeComputeInfo* this_ptr,
+                                             _In_ size_t count,
+                                             _Out_writes_all_(count) OrtMemType* mem_types);
+
+  /** \brief Optional. If set, called once between Compile() return and fused-KernelDef registration to fill in
+   * the OrtMemType for every output of the fused node. NULL means "no overrides — all outputs default to
+   * OrtMemTypeDefault".
+   *
+   * \param[in] this_ptr The OrtNodeComputeInfo instance.
+   * \param[in] count The number of output slots in `mem_types`.
+   * \param[out] mem_types Caller-allocated array of length `count`. The EP fills entry `i` with the desired
+   *                      OrtMemType for output index `i`.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  OrtStatus*(ORT_API_CALL* GetOutputMemTypes)(_In_ const OrtNodeComputeInfo* this_ptr,
+                                              _In_ size_t count,
+                                              _Out_writes_all_(count) OrtMemType* mem_types);
 };
 
 struct OrtKernelImpl;

@@ -667,6 +667,19 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
       return Status::OK();
     };
 
+    if (api_node_compute_info->ort_version_supported >= 27) {
+      using MemTypesFn = OrtStatus*(ORT_API_CALL*)(const OrtNodeComputeInfo*, size_t, OrtMemType*);
+      auto bind = [api_node_compute_info](MemTypesFn api_fn, GetIoMemTypesFunc& out) {
+        if (api_fn != nullptr) {
+          out = [api_node_compute_info, api_fn](gsl::span<OrtMemType> mem_types) -> Status {
+            return ToStatusAndRelease(api_fn(api_node_compute_info, mem_types.size(), mem_types.data()));
+          };
+        }
+      };
+      bind(api_node_compute_info->GetInputMemTypes, compute_info.get_input_mem_types);
+      bind(api_node_compute_info->GetOutputMemTypes, compute_info.get_output_mem_types);
+    }
+
     node_compute_infos.push_back(std::move(compute_info));
   }
 

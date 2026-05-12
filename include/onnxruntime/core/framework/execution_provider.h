@@ -54,11 +54,15 @@ class IResourceAccountant;
 using CreateFunctionStateFunc = std::function<int(ComputeContext*, FunctionState*)>;
 using ComputeFunc = std::function<Status(FunctionState, const OrtApi*, OrtKernelContext*)>;
 using DestroyFunctionStateFunc = std::function<void(FunctionState)>;
+// Per-I/O memtype overrides for compile-path fused nodes; counterpart to KernelDefBuilder::{Input,Output}MemoryType.
+using GetIoMemTypesFunc = std::function<Status(gsl::span<OrtMemType> mem_types)>;
 
 struct NodeComputeInfo {
   CreateFunctionStateFunc create_state_func;
   ComputeFunc compute_func;
   DestroyFunctionStateFunc release_state_func;
+  GetIoMemTypesFunc get_input_mem_types;
+  GetIoMemTypesFunc get_output_mem_types;
 };
 
 using RunOptions = ::OrtRunOptions;
