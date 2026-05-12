@@ -236,7 +236,15 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     if (is_real) {
       auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
       auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
-      auto weight_size = SafeInt<size_t>(dft_unique_bins) * dft_size;
+
+      size_t weight_size;
+      try {
+        weight_size = SafeInt<size_t>(dft_unique_bins) * dft_size;
+      } catch (const OnnxRuntimeException&) {
+        LOGS(logger, WARNING) << "STFT decomposition skipped: weight size overflow";
+        continue;
+      }
+
       auto real_weights_data = std::vector<float>(weight_size);
       auto imag_weights_data = std::vector<float>(weight_size);
 
@@ -365,7 +373,6 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     // Copy inputs
     auto signal_target_idx = signal_recipient->Index();
-    auto window_target_idx = window_recipient ? window_recipient->Index() : NodeIndex(0);
     for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
       const graph_utils::GraphEdge& edge = *cur;
       NodeIndex target_idx = 0;
@@ -376,8 +383,10 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
           recipient = signal_recipient;
           break;
         case 2:
-          target_idx = window_target_idx;
-          recipient = window_recipient;
+          if (window_recipient) {
+            target_idx = window_recipient->Index();
+            recipient = window_recipient;
+          }
           break;
       }
 
