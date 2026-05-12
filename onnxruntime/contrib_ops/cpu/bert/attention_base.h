@@ -6,6 +6,7 @@
 #include <array>
 #include <vector>
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
@@ -57,11 +58,11 @@ class AttentionBase {
   AttentionBase(const KernelInfoType& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;
     ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-    num_heads_ = static_cast<int>(num_heads);
+    num_heads_ = narrow<int>(num_heads);
 
     is_unidirectional_ = info.template GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
     do_rotary_ = info.template GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
-    rotary_embedding_ = static_cast<int>(info.template GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
+    rotary_embedding_ = narrow<int>(info.template GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
     mask_filter_value_ = info.template GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
     scale_ = info.template GetAttrOrDefault<float>("scale", 0.0f);
     if (!info.template GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
@@ -282,12 +283,12 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              "Inputs 'past' dimension 1 shall have same length as dimension 0 of input 0");
     }
 
-    if (static_cast<int>(past_dims[2]) != num_heads_) {
+    if (past_dims[2] != num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Inputs 'past' dimension 2 shall have length of num_heads", num_heads_);
     }
 
-    if (static_cast<int>(past_dims[4]) != k_hidden_size / num_heads_) {
+    if (past_dims[4] != k_hidden_size / num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Inputs 'past' dimension 2 shall have length of ", k_hidden_size / num_heads_);
     }
@@ -348,17 +349,17 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
-    output_parameters->batch_size = static_cast<int>(batch_size);
-    output_parameters->sequence_length = static_cast<int>(sequence_length);
-    output_parameters->past_sequence_length = static_cast<int>(past_sequence_length);
-    output_parameters->kv_sequence_length = static_cast<int>(kv_sequence_length);
-    output_parameters->total_sequence_length = static_cast<int>(total_sequence_length);
-    output_parameters->max_sequence_length = static_cast<int>(max_sequence_length);
-    output_parameters->input_hidden_size = static_cast<int>(input_hidden_size);
-    output_parameters->hidden_size = static_cast<int>(q_hidden_size);
-    output_parameters->v_hidden_size = static_cast<int>(v_hidden_size);
-    output_parameters->head_size = static_cast<int>(q_hidden_size) / num_heads_;
-    output_parameters->v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
+    output_parameters->batch_size = narrow<int>(batch_size);
+    output_parameters->sequence_length = narrow<int>(sequence_length);
+    output_parameters->past_sequence_length = narrow<int>(past_sequence_length);
+    output_parameters->kv_sequence_length = narrow<int>(kv_sequence_length);
+    output_parameters->total_sequence_length = narrow<int>(total_sequence_length);
+    output_parameters->max_sequence_length = narrow<int>(max_sequence_length);
+    output_parameters->input_hidden_size = narrow<int>(input_hidden_size);
+    output_parameters->hidden_size = narrow<int>(q_hidden_size);
+    output_parameters->v_hidden_size = narrow<int>(v_hidden_size);
+    output_parameters->head_size = narrow<int>(q_hidden_size) / num_heads_;
+    output_parameters->v_head_size = narrow<int>(v_hidden_size) / num_heads_;
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0 && past != nullptr);
@@ -398,7 +399,7 @@ inline Tensor* AttentionBase::GetPresent(TOpKernelContext* context,
                                          int head_size,
                                          int kv_sequence_length,
                                          int& past_sequence_length) const {
-  past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
+  past_sequence_length = (nullptr != past) ? narrow<int>(past->Shape().GetDims()[3]) : 0;
   std::array<int64_t, 5> present_dims{2, batch_size, num_heads_,
                                       static_cast<int64_t>(kv_sequence_length) + past_sequence_length, head_size};
 
