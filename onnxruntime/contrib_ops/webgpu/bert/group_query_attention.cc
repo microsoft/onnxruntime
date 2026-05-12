@@ -216,8 +216,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const Tensor* head_sink = context.Input<Tensor>(11);
   // Inputs 12 and 13 are k_scale / v_scale (KV-cache quant). Not consumed by WebGPU yet.
   // Inputs 14 and 15 are q_norm_weight / k_norm_weight, populated by
-  // GroupQueryAttentionPreNormFusion. The decode-only fast path will consume them in a
-  // follow-up change; until then we reject the node so the rewrite cannot land silently.
+  // GroupQueryAttentionPreNormFusion. WebGPU supports these inputs for the configurations
+  // validated below (do_rotary, non-packed Q/K/V).
   const Tensor* q_norm_weight = context.InputCount() > 14 ? context.Input<Tensor>(14) : nullptr;
   const Tensor* k_norm_weight = context.InputCount() > 15 ? context.Input<Tensor>(15) : nullptr;
   const bool has_qk_norm = (q_norm_weight != nullptr) && (k_norm_weight != nullptr);
