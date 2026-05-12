@@ -448,8 +448,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider,
-                                          onnxruntime::kJsExecutionProvider}));
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

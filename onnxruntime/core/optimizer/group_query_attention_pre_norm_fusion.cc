@@ -207,7 +207,19 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
     }
 
     // Need at least query (0), key (1), value (2), past_key (3) so we can read head_size.
-    if (node.InputDefs().size() < 4 || !HasInput(node, 0) || !HasInput(node, 1)) {
+    // Requiring K at slot 1 also excludes the packed-QKV form (Q occupies slot 0 and K/V
+    // slots are empty), which the WebGPU fused prologue does not support.
+    if (node.InputDefs().size() < 4 || !HasInput(node, 0) || !HasInput(node, 1) || !HasInput(node, 2)) {
+      continue;
+    }
+
+    // The fused decode prologue only applies when rotary embedding is enabled (Qwen3-style
+    // configuration). If the GQA node has do_rotary=0 the kernel will reject the rewritten
+    // node, so skip the fusion here to avoid that regression.
+    const auto& gqa_attrs = node.GetAttributes();
+    auto do_rotary_it = gqa_attrs.find("do_rotary");
+    const int64_t do_rotary = (do_rotary_it == gqa_attrs.end()) ? 0 : do_rotary_it->second.i();
+    if (do_rotary != 1) {
       continue;
     }
     const NodeArg* past_key_arg = node.InputDefs()[3];
@@ -221,7 +233,6 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
     }
     const int64_t head_size = head_size_dim.dim_value();
 
-    const auto& gqa_attrs = node.GetAttributes();
     auto num_heads_it = gqa_attrs.find("num_heads");
     auto kv_num_heads_it = gqa_attrs.find("kv_num_heads");
     if (num_heads_it == gqa_attrs.end() || kv_num_heads_it == gqa_attrs.end()) {

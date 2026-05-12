@@ -45,6 +45,15 @@ struct BuildOptions {
   // If true, the q_norm_weight initializer is given a non-1D shape so the matcher must
   // reject it.
   bool break_q_norm_weight_shape = false;
+  // GQA do_rotary attribute. The WebGPU fused prologue only supports do_rotary=1, so the
+  // optimizer must skip the rewrite when this is 0.
+  int64_t do_rotary = 1;
+  // If true, drop the K input from the GQA node (slot 1 empty), simulating the packed-QKV
+  // form. The optimizer must skip the rewrite in that case.
+  bool packed_qkv = false;
+  // If true, pre-populate the GQA node's slot 14 with a q_norm_weight initializer so the
+  // optimizer treats the node as already fused and skips it.
+  bool pre_fused = false;
 };
 
 void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& opts) {
@@ -113,13 +122,34 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
   NodeArg* present_value = builder.MakeOutput<MLFloat16>(
       std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
 
+  // Build the GQA input list. The packed_qkv variant drops K (slot 1) and V (slot 2).
+  NodeArg& empty_arg = builder.graph_.GetOrCreateNodeArg("", nullptr);
+  std::vector<NodeArg*> gqa_inputs;
+  gqa_inputs.push_back(q_outer_reshape_out);
+  gqa_inputs.push_back(opts.packed_qkv ? &empty_arg : k_outer_reshape_out);
+  gqa_inputs.push_back(opts.packed_qkv ? &empty_arg : v_proj);
+  gqa_inputs.push_back(past_key);
+  gqa_inputs.push_back(past_value);
+  gqa_inputs.push_back(seqlens_k);
+  gqa_inputs.push_back(total_seq_len);
+
+  if (opts.pre_fused) {
+    // Pad slots 7..13 with empty args, then place a real norm weight in slot 14.
+    for (int i = 7; i < 14; ++i) {
+      gqa_inputs.push_back(&empty_arg);
+    }
+    NodeArg* preexisting_q_norm =
+        builder.MakeInitializer<MLFloat16>({kHeadSize}, MLFloat16(1.0f), MLFloat16(1.0f));
+    gqa_inputs.push_back(preexisting_q_norm);
+  }
+
   Node& gqa = builder.AddNode("GroupQueryAttention",
-                              {q_outer_reshape_out, k_outer_reshape_out, v_proj,
-                               past_key, past_value, seqlens_k, total_seq_len},
+                              gqa_inputs,
                               {gqa_out, present_key, present_value},
                               kMSDomain);
   gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
   gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
+  gqa.AddAttribute("do_rotary", opts.do_rotary);
 
   SetWebGpu(q_inner_reshape);
   SetWebGpu(q_sln);
@@ -179,12 +209,16 @@ Status CheckUnfusedGraph(Graph& graph) {
 
 }  // namespace
 
+// Helper: build the transformer registered for the WebGPU EP only (matches production).
+std::unique_ptr<GroupQueryAttentionPreNormFusion> MakeWebGpuTransformer() {
+  return std::make_unique<GroupQueryAttentionPreNormFusion>(
+      InlinedHashSet<std::string_view>{kWebGpuExecutionProvider});
+}
+
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPattern) {
   auto build = [](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, BuildOptions{}); };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_,
-      std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{kWebGpuExecutionProvider, kJsExecutionProvider}),
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
 }
 
@@ -194,9 +228,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsEpsilonM
   opts.k_epsilon = 1e-5f;
   auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_,
-      std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{kWebGpuExecutionProvider, kJsExecutionProvider}),
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 
@@ -205,9 +237,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsBadInner
   opts.break_k_inner_reshape_shape = true;
   auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_,
-      std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{kWebGpuExecutionProvider, kJsExecutionProvider}),
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 
@@ -216,14 +246,12 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNon1DNor
   opts.break_q_norm_weight_shape = true;
   auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_,
-      std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{kWebGpuExecutionProvider, kJsExecutionProvider}),
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 
-TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsUnmatchedEp) {
-  // Build the pattern but assign all nodes to CPU EP. The fusion is gated to WebGPU/JS only,
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsCpuEp) {
+  // Build the pattern but assign all nodes to CPU EP. The fusion is gated to WebGPU only,
   // so the graph must remain unfused.
   auto build = [](ModelTestBuilder& builder) {
     BuildQwenQkPostNormPattern(builder, BuildOptions{});
@@ -232,9 +260,54 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsUnmatchedE
     }
   };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/21, *logger_,
-      std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{kWebGpuExecutionProvider, kJsExecutionProvider}),
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsJsEp) {
+  // JSEP does not implement the fused per-head Q/K RMSNorm prologue, so the optimizer
+  // (which we now register for WebGPU only) must leave JSEP-assigned graphs alone.
+  auto build = [](ModelTestBuilder& builder) {
+    BuildQwenQkPostNormPattern(builder, BuildOptions{});
+    for (auto& node : builder.graph_.Nodes()) {
+      const_cast<Node&>(node).SetExecutionProviderType(kJsExecutionProvider);
+    }
+  };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsWhenDoRotaryDisabled) {
+  // The WebGPU fused prologue requires do_rotary=1; the optimizer must skip otherwise so
+  // the runtime guard never trips.
+  BuildOptions opts;
+  opts.do_rotary = 0;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsPackedQkv) {
+  // Packed-QKV form leaves slots 1 and 2 empty; the WebGPU fused prologue does not support
+  // it, so the optimizer must skip the rewrite.
+  BuildOptions opts;
+  opts.packed_qkv = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsAlreadyFusedNode) {
+  // If the GQA node already exposes a q_norm_weight (slot 14) input the optimizer must
+  // treat it as already fused and leave the surrounding SLN/Reshape ops in place.
+  BuildOptions opts;
+  opts.pre_fused = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
 }
 
