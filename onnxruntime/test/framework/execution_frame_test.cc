@@ -559,6 +559,103 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
   }
 }
 
+// Test that when a caller passes back stale output OrtValues from a previous Run() as fetches
+// for a subsequent Run() with different-shaped inputs, ORT handles the shape mismatch gracefully
+// by re-allocating instead of crashing. This is the scenario described in GitHub issue #28359.
+//
+// The caller's copy of the old output remains valid (OrtValue uses shared_ptr internally).
+// Pre-run validation (ValidateInputsOutputs) catches structural mismatches (wrong type, rank,
+// fixed dims). What remains at kernel execution time is purely dynamic dimension differences.
+TEST(ExecutionFrameTestInit, StaleFetchWithDynamicShapes) {
+  // Build a simple model: input X -> Relu -> output Y
+  // Both X and Y have dynamic shapes (symbolic dims).
+  SessionOptions so;
+  so.enable_mem_pattern = true;
+
+  InferenceSession session(so, GetEnvironment());
+
+  // Use Relu which preserves shape: output shape == input shape
+  onnxruntime::Model model("dynamic_shape_test", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(),
+                           {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  // dynamic shape: {N, M}
+  auto* input_shape = float_tensor.mutable_tensor_type()->mutable_shape();
+  input_shape->add_dim()->set_dim_param("N");
+  input_shape->add_dim()->set_dim_param("M");
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &float_tensor);
+  graph.AddNode("relu", "Relu", "relu", {&input_arg}, {&output_arg});
+  graph.SetInputs({&input_arg});
+  graph.SetOutputs({&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string serialized;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized));
+  std::istringstream model_stream(serialized);
+  ASSERT_STATUS_OK(session.Load(model_stream));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  RunOptions ro;
+  auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+
+  // Run 1: input shape {2, 3}
+  std::vector<float> input_data_1(6, 1.0f);
+  OrtValue input_1;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({2, 3}), input_data_1.data(),
+                       allocator->Info(), input_1);
+
+  std::vector<OrtValue> results;
+  ASSERT_STATUS_OK(session.Run(ro,
+                               AsSpan({std::string("X")}), AsSpan({input_1}),
+                               AsSpan({std::string("Y")}), &results, nullptr));
+
+  ASSERT_EQ(results.size(), 1u);
+  ASSERT_TRUE(results[0].IsTensor());
+  EXPECT_EQ(results[0].Get<Tensor>().Shape(), TensorShape({2, 3}));
+
+  // Save a copy — this should remain valid after Run 2 resets the stale value
+  OrtValue old_output = results[0];
+  const void* old_buffer = old_output.Get<Tensor>().DataRaw();
+
+  // Run 2: different input shape {4, 5}, passing back stale results from Run 1 as fetches.
+  // Before the fix, this would crash with ORT_ENFORCE "OrtValue shape verification failed".
+  std::vector<float> input_data_2(20, 2.0f);
+  OrtValue input_2;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 5}), input_data_2.data(),
+                       allocator->Info(), input_2);
+
+  ASSERT_STATUS_OK(session.Run(ro,
+                               AsSpan({std::string("X")}), AsSpan({input_2}),
+                               AsSpan({std::string("Y")}), &results, nullptr));
+
+  ASSERT_EQ(results.size(), 1u);
+  ASSERT_TRUE(results[0].IsTensor());
+  EXPECT_EQ(results[0].Get<Tensor>().Shape(), TensorShape({4, 5}));
+
+  // Verify the caller's old output copy is still valid (shared_ptr keeps it alive)
+  EXPECT_EQ(old_output.Get<Tensor>().Shape(), TensorShape({2, 3}));
+  EXPECT_EQ(old_output.Get<Tensor>().DataRaw(), old_buffer);
+
+  // Run 3: same shape as Run 2 — should reuse the buffer (no shape mismatch)
+  std::vector<float> input_data_3(20, 3.0f);
+  OrtValue input_3;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 5}), input_data_3.data(),
+                       allocator->Info(), input_3);
+
+  ASSERT_STATUS_OK(session.Run(ro,
+                               AsSpan({std::string("X")}), AsSpan({input_3}),
+                               AsSpan({std::string("Y")}), &results, nullptr));
+
+  ASSERT_EQ(results.size(), 1u);
+  ASSERT_TRUE(results[0].IsTensor());
+  EXPECT_EQ(results[0].Get<Tensor>().Shape(), TensorShape({4, 5}));
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
   constexpr std::array<int64_t, 2> dense_shape{3, 3};

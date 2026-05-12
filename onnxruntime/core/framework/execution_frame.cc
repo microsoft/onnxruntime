@@ -154,19 +154,52 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
     p_ort_value = &all_values_[ort_value_idx];
 
     if (p_ort_value->IsAllocated()) {
-      // already allocated. verify shape matches if tensor.
+      // The OrtValue at this index is already allocated. This happens when the caller passes
+      // a previously obtained output OrtValue back as a fetch for a subsequent Run() call.
+      //
+      // Background: IExecutionFrame::Init() populates all_values_ with caller-provided fetches
+      // before any kernel executes. Each NodeArg in an ONNX graph has exactly one producer, so
+      // at this point no kernel in the current run could have written here yet — the only source
+      // is a fetch placed during Init().
+      //
+      // For models with dynamic or data-dependent output shapes (e.g. NonZero, or models with
+      // symbolic dimensions that change between prefill and decode), the shape computed by the
+      // kernel for this run may differ from the shape of the stale output the caller passed in.
+      //
+      // Pre-run validation (ValidateInputsOutputs in inference_session.cc) already checks
+      // structural properties of caller-provided fetches: element type, rank, and any fixed
+      // dimensions from the model's output shape specification. A mismatch in those causes a
+      // graceful INVALID_ARGUMENT error before execution begins. Anything that passes that
+      // check but fails here is a dynamic dimension difference that cannot be validated
+      // statically — the actual shape is only known once the kernel computes it.
+      //
+      // When the shapes match, we reuse the existing buffer (zero-cost for repeated runs with
+      // the same shapes). When they differ, we reset the stale value and re-allocate. This is
+      // safe because OrtValue uses shared_ptr<void> internally: the caller's copy of the old
+      // output retains its own reference count and remains valid after we reset our copy here.
+      bool shape_matched = true;
+
       if (p_ort_value->IsTensor()) {
-        const Tensor& tensor = p_ort_value->Get<Tensor>();
-        ORT_ENFORCE(shape && tensor.Shape() == *shape,
-                    "OrtValue shape verification failed. Current shape:", tensor.Shape(),
-                    " Requested shape:", shape ? shape->ToString() : "null");
+        if (shape) {
+          const Tensor& tensor = p_ort_value->Get<Tensor>();
+          shape_matched = (tensor.Shape() == *shape);
+        }
       } else if (p_ort_value->IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-        const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
-        ORT_ENFORCE(shape && sp_tensor.DenseShape() == *shape,
-                    "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
-                    " Requested shape:", shape ? shape->ToString() : "null");
+        if (shape) {
+          const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
+          shape_matched = (sp_tensor.DenseShape() == *shape);
+        }
 #endif
+      }
+
+      if (!shape_matched) {
+        // Discard the stale value and fall through to allocate a fresh buffer.
+        *p_ort_value = OrtValue();
+        if (shape != nullptr && IsOutput(ort_value_idx)) {
+          VerifyOutputSizes(output_index, node, *shape);
+        }
+        status = CreateNodeOutputMLValueImpl(*p_ort_value, ort_value_idx, shape);
       }
     } else {
       // shape is nullptr for traditional ML output values
