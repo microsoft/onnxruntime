@@ -51,6 +51,13 @@ jobs:
           dir
         shell: pwsh
 
+      - name: Download cuDNN for CUDA 13.0
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13" .
+          dir
+        shell: pwsh
+
       - name: Add CUDA to PATH
         shell: powershell
         run: |
@@ -58,6 +65,12 @@ jobs:
           Write-Host "CUDA Path: $env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
+
+      - name: Add cuDNN to PATH
+        shell: powershell
+        run: |
+          Write-Host "Adding cuDNN to PATH"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\9.14.0.64_cuda13\bin"
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
@@ -166,6 +179,13 @@ jobs:
           dir
         shell: pwsh
 
+      - name: Download cuDNN for CUDA 13.0
+        working-directory: ${{ runner.temp }}
+        run: |
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13" .
+          dir
+        shell: pwsh
+
       - name: Add CUDA to PATH
         shell: powershell
         run: |
@@ -173,6 +193,12 @@ jobs:
           Write-Host "CUDA Path: $env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
+
+      - name: Add cuDNN to PATH
+        shell: powershell
+        run: |
+          Write-Host "Adding cuDNN to PATH"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\9.14.0.64_cuda13\bin"
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
