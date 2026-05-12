@@ -435,7 +435,74 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
-  // Extended decode path (works for any sequence_length)
+  // Route between prefill path (FlashAttentionProgram, single kernel, requires subgroups)
+  // and fused decode path (QKV + VxReduce, 2 kernels, no subgroups needed).
+  const bool use_split_reduce = (parameters.sequence_length_ <= 4) ||
+                                !context.HasFeature(wgpu::FeatureName::Subgroups) ||
+                                (parameters.sequence_length_ < 64 &&
+                                 static_cast<uint32_t>(parameters.total_sequence_length_) > 1000);
+
+  if (!use_split_reduce) {
+    // Prefill path: FlashAttentionProgram (single kernel with subgroup shuffles)
+    bool has_attention_bias = attention_bias != nullptr;
+    bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+    bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+    bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
+    bool has_head_sink = head_sink != nullptr;
+    FlashAttentionProgram program{"FlashAttention",
+                                  has_attention_bias,
+                                  is_qualcomm,
+                                  is_fp16,
+                                  parameters.head_size_,
+                                  parameters.num_heads_,
+                                  parameters.is_unidirectional_,
+                                  is_nvidia,
+                                  q_BNSH,
+                                  use_seqlen_k,
+                                  has_head_sink};
+    program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                       {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                       {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+    if (has_attention_bias) {
+      program.AddInputs({{attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+    }
+    if (use_seqlen_k) {
+      program.AddInputs({{seqlen_k, ProgramTensorMetadataDependency::None}});
+    }
+    if (has_head_sink) {
+      program.AddInputs({{head_sink, ProgramTensorMetadataDependency::Type}});
+    }
+    program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+    const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
+                                                  : parameters.scale_;
+    const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
+
+    uint32_t attn_bias_dim0 = 1;
+    uint32_t attn_bias_dim1 = 1;
+    if (has_attention_bias) {
+      const auto& bias_shape = attention_bias->Shape();
+      attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
+      attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
+    }
+
+    program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
+        .SetWorkgroupSize(tile_size)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink)
+        .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
+                              {static_cast<uint32_t>(parameters.total_sequence_length_)},
+                              {static_cast<uint32_t>(present_sequence_length)},
+                              {static_cast<uint32_t>(parameters.batch_size_)},
+                              {static_cast<uint32_t>(parameters.n_reps)},
+                              {alpha},
+                              {num_seq_tile},
+                              {attn_bias_dim0},
+                              {attn_bias_dim1}});
+
+    return context.RunProgram(program);
+  }
+
+  // Split-reduce path (QKV + VxReduce)
 
   // Compute m_tile: process multiple Q rows per workgroup to amortize K/V loads
   const uint32_t m_tile = parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u);
