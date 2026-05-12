@@ -1250,6 +1250,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k_quant_type", "Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
         .Attr("v_quant_type", "Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
         .Attr("kv_cache_bit_width", "Bit width of quantized KV cache. Supported values are 8 and 4.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("qk_norm_epsilon",
+              "Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. "
+              "Default value is 1e-6.",
+              AttributeProto::FLOAT,
+              1e-6f)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1314,6 +1319,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(12, "k_scale", "Scale tensor for past_key.", "T_KV_SCALE", OpSchema::Optional)
         .Input(13, "v_scale", "Scale tensor for past_value.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(14,
+               "q_norm_weight",
+               "Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a "
+               "per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap "
+               "their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion "
+               "folds that pattern into this input. Currently honored by the WebGPU and JS execution providers only; other "
+               "EPs must reject the node when this input is set.",
+               "T",
+               OpSchema::Optional)
+        .Input(15,
+               "k_norm_weight",
+               "Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",

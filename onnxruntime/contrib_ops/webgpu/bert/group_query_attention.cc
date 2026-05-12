@@ -9,6 +9,7 @@
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 
 #include "core/common/narrow.h"
+#include "core/providers/webgpu/nn/layer_norm.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/shader_helper.h"
 
@@ -104,7 +105,11 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
   return context.RunProgram(program);
 }
 
-// Fused Q/K rotary embedding
+// Fused Q/K rotary embedding. When q_norm_weight and k_norm_weight are non-null, a per-head
+// RMS normalization (Q[c] *= inverseSqrt(mean(Q[..]^2)+eps) * q_norm_weight[c]; same for K)
+// is fused into the rotary kernel ahead of the rotation. This decode-only fast path replaces
+// the standalone SimplifiedLayerNormalization dispatches that GroupQueryAttentionPreNormFusion
+// folds away.
 Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                  const WebgpuAttentionParameters& params,
                                  const Tensor* query_in,
@@ -113,7 +118,10 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                  const Tensor* cos_cache,
                                  const Tensor* sin_cache,
                                  Tensor* query_out,
-                                 Tensor* key_out) {
+                                 Tensor* key_out,
+                                 const Tensor* q_norm_weight = nullptr,
+                                 const Tensor* k_norm_weight = nullptr,
+                                 float qk_norm_epsilon = 0.0f) {
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -155,9 +163,10 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
        1u});
 
   // Dispatch computations only over the Q domain, and fuse K write operations using a head-index-based condition.
-  FusedQKRotaryEmbeddingProgram program(params.rotary_interleaved_);
+  const bool has_qk_norm = (q_norm_weight != nullptr) && (k_norm_weight != nullptr);
+  FusedQKRotaryEmbeddingProgram program(params.rotary_interleaved_, has_qk_norm);
   program
-      .CacheHint(params.rotary_interleaved_)
+      .CacheHint(params.rotary_interleaved_, has_qk_norm)
       .AddInputs({
           {query_in, ProgramTensorMetadataDependency::TypeAndRank},
           {key_in, ProgramTensorMetadataDependency::Rank},
@@ -178,7 +187,16 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
           {gsl::make_span(k_global_dims)},
           {gsl::make_span(k_input_output_strides)},
           {q_domain_size},
+          {static_cast<uint32_t>(head_size)},
+          {qk_norm_epsilon},
       });
+
+  if (has_qk_norm) {
+    program.AddInputs({
+        {q_norm_weight, ProgramTensorMetadataDependency::Type},
+        {k_norm_weight, ProgramTensorMetadataDependency::Type},
+    });
+  }
 
   return context.RunProgram(program);
 }
@@ -196,6 +214,20 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const Tensor* position_ids = context.Input<Tensor>(9);  // TODO: support sliding window
   const Tensor* attention_bias = context.Input<Tensor>(10);
   const Tensor* head_sink = context.Input<Tensor>(11);
+  // Inputs 12 and 13 are k_scale / v_scale (KV-cache quant). Not consumed by WebGPU yet.
+  // Inputs 14 and 15 are q_norm_weight / k_norm_weight, populated by
+  // GroupQueryAttentionPreNormFusion. The decode-only fast path will consume them in a
+  // follow-up change; until then we reject the node so the rewrite cannot land silently.
+  const Tensor* q_norm_weight = context.InputCount() > 14 ? context.Input<Tensor>(14) : nullptr;
+  const Tensor* k_norm_weight = context.InputCount() > 15 ? context.Input<Tensor>(15) : nullptr;
+  const bool has_qk_norm = (q_norm_weight != nullptr) && (k_norm_weight != nullptr);
+  // The current fused prologue only supports the Qwen3-style configuration that
+  // GroupQueryAttentionPreNormFusion targets: do_rotary, non-packed Q/K/V. Reject any
+  // other configuration so downstream rewrites cannot land silently.
+  ORT_RETURN_IF(((q_norm_weight != nullptr) ^ (k_norm_weight != nullptr)),
+                "GroupQueryAttention: q_norm_weight and k_norm_weight must be provided together.");
+  ORT_RETURN_IF(has_qk_norm && !do_rotary_,
+                "GroupQueryAttention: q_norm_weight / k_norm_weight require do_rotary=1.");
 
   GroupQueryAttentionParameters params = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -227,6 +259,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
 
   WebgpuAttentionParameters parameters(params);
+  ORT_RETURN_IF(has_qk_norm && parameters.is_packed_qkv_,
+                "GroupQueryAttention: q_norm_weight / k_norm_weight are not supported when QKV is packed.");
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);
@@ -304,16 +338,63 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       value = &vSplit;
     }
     if (do_rotary_) {
+      // Per-head RMS normalization handling for Qwen3-style models (GQA inputs 14/15).
+      //   - Decode (sequence_length == 1): fold the norm into the FusedQKRotaryEmbedding
+      //     kernel. Each thread re-reads its head's head_size channels (Approach A); no
+      //     reductions, no shared memory. Sub-microsecond overhead vs ~60us/layer SLN savings.
+      //   - Prefill (sequence_length > 1): fall back to two standalone SimplifiedLayerNorm
+      //     dispatches into scratch tensors, then run the unfused FusedQKRotaryEmbedding.
+      //     Matches the pre-fusion graph timing exactly so prefill cannot regress.
+      Tensor qNorm;
+      Tensor kNorm;
+      const Tensor* q_for_rotary = query;
+      const Tensor* k_for_rotary = key;
+      const Tensor* q_norm_for_fused = nullptr;
+      const Tensor* k_norm_for_fused = nullptr;
+      const bool decode_norm_fast_path = has_qk_norm && parameters.sequence_length_ == 1;
+      if (has_qk_norm && !decode_norm_fast_path) {
+        qNorm = context.CreateGPUTensor(query->DataType(), query->Shape());
+        kNorm = context.CreateGPUTensor(key->DataType(), key->Shape());
+        const uint32_t q_norm_count =
+            static_cast<uint32_t>(parameters.batch_size_) *
+            static_cast<uint32_t>(parameters.sequence_length_) *
+            static_cast<uint32_t>(parameters.num_heads_);
+        const uint32_t k_norm_count =
+            static_cast<uint32_t>(parameters.batch_size_) *
+            static_cast<uint32_t>(parameters.sequence_length_) *
+            static_cast<uint32_t>(parameters.kv_num_heads_);
+        ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+            context, query, q_norm_weight, /*bias=*/nullptr, qk_norm_epsilon_,
+            q_norm_count, static_cast<int64_t>(parameters.head_size_),
+            /*simplified=*/true, &qNorm, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
+        ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+            context, key, k_norm_weight, /*bias=*/nullptr, qk_norm_epsilon_,
+            k_norm_count, static_cast<int64_t>(parameters.head_size_),
+            /*simplified=*/true, &kNorm, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
+        q_for_rotary = &qNorm;
+        k_for_rotary = &kNorm;
+      } else if (decode_norm_fast_path) {
+        q_norm_for_fused = q_norm_weight;
+        k_norm_for_fused = k_norm_weight;
+      }
       // rotary QK
-      qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
-      kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
+      qRotary = context.CreateGPUTensor(q_for_rotary->DataType(), q_for_rotary->Shape());
+      kRotary = context.CreateGPUTensor(k_for_rotary->DataType(), k_for_rotary->Shape());
       ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(context, parameters,
-                                                    query, key,
+                                                    q_for_rotary, k_for_rotary,
                                                     seqlen_k,
                                                     cos_cache, sin_cache,
-                                                    &qRotary, &kRotary));
+                                                    &qRotary, &kRotary,
+                                                    q_norm_for_fused, k_norm_for_fused,
+                                                    qk_norm_epsilon_));
       query = &qRotary;
       key = &kRotary;
+    } else if (has_qk_norm) {
+      // Defensive: do_rotary_ guard above should make this unreachable, but keep it
+      // explicit so a future schema/config drift surfaces as a clear error.
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, NOT_IMPLEMENTED,
+          "GroupQueryAttention: q/k norm weights require do_rotary=1 (no rotary, no norm path).");
     }
   }
 
