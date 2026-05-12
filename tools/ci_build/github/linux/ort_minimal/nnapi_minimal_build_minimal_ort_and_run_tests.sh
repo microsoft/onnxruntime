@@ -21,6 +21,9 @@ python3 "$ORT_ROOT/tools/ci_build/build.py" \
     --build_dir "$MIN_BUILD_DIR" \
     --config Debug \
     --skip_submodule_sync \
+    --use_cache \
+    --use_vcpkg \
+    --use_vcpkg_ms_internal_asset_cache \
     --parallel \
     --cmake_generator=Ninja \
     --use_nnapi \
@@ -35,7 +38,7 @@ python3 "$ORT_ROOT/tools/ci_build/build.py" \
     --disable_generation_ops \
     --disable_exceptions \
     --include_ops_by_config "$ORT_ROOT/onnxruntime/test/testdata/required_ops_and_types.config" \
-    --skip_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+    --skip_tests
 
 # Push onnxruntime_test_all and testdata to emulator
 adb push "$MIN_BUILD_DIR/Debug/onnxruntime_test_all" /data/local/tmp/

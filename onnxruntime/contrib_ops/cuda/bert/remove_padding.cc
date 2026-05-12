@@ -53,7 +53,7 @@ Status RemovePadding<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t sequence_length = dims[1];
   int64_t hidden_size = dims[2];
 
-  auto token_count_buffer = GetScratchBuffer<int>(2, context->GetComputeStream());
+  auto token_count_buffer = GetScratchBuffer<int>(2, GetComputeStream(context));
 
   TensorShapeVector token_offset_shape(2);
   token_offset_shape[0] = batch_size;

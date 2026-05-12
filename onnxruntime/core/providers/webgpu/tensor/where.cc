@@ -82,7 +82,7 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
         -> void {
       const std::string a_expression = "a_data[index_a" + x + "][component_a" + x + "]";
       const std::string b_expression = "b_data[index_b" + x + "][component_b" + x + "]";
-      const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << (component_c" + x + " * 8)))";
+      const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << u32(component_c" + x + " * 8)))";
 
       shader.MainFunctionBody() << "let output_indices" << x << " = " << output_indices.OffsetToIndices("global_idx * 4 + " + x) << ";\n"
                                 << "let offset_a" << x << " = " << a_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"

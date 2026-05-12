@@ -15,6 +15,7 @@
 #include "contrib_ops/cuda/math/gemm_float8.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/cuda_common_type_helpers.h"
 
 namespace onnxruntime {
 namespace contrib {

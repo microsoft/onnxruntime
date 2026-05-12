@@ -120,7 +120,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   attr_2->set_s(compute_capability);
   attr_3->set_name(ONNX_MODEL_FILENAME);
   attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_3->set_s(std::filesystem::path(onnx_model_path).filename().string());
+  attr_3->set_s(PathToUTF8String(std::filesystem::path(onnx_model_path).filename().native()));
   attr_4->set_name(SOURCE);
   attr_4->set_type(onnx::AttributeProto_AttributeType_STRING);
   attr_4->set_s(kTensorrtExecutionProvider);

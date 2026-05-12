@@ -1,0 +1,118 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_bias
+#param has_conv_state
+#param use_silu
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+#if use_silu
+fn silu(x: input_element_t) -> input_element_t {
+  return x / (1.0 + exp(-x));
+}
+#endif
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+
+  let batch_size = uniforms.batch_size;
+  let channels = uniforms.channels;
+  let input_length = uniforms.input_length;
+  let kernel_size = uniforms.kernel_size;
+  let state_length = uniforms.state_length;  // = kernel_size - 1
+
+  let pos = global_idx % input_length;
+  let bc_idx = global_idx / input_length;
+  let batch_idx = bc_idx / channels;
+  let channel_idx = bc_idx % channels;
+
+  // Perform depthwise causal convolution for this (batch, channel, pos).
+  // The convolution window looks back kernel_size-1 positions.
+  // With conv_state providing the history before position 0, the
+  // "virtual" input is: [conv_state[0..state_length-1], input[0..L-1]]
+  //
+  // For output position pos:
+  //   output[pos] = sum_{j=0}^{kernel_size-1} weight[j] * virtual_input[pos + j]
+  // where virtual_input is state_length positions of conv_state
+  // followed by input_length positions of input.
+
+  var acc: input_element_t = 0.0;
+
+  // Weight layout: (D, 1, K) -> channel_idx * kernel_size + j
+  let weight_base = channel_idx * kernel_size;
+
+  for (var j: u32 = 0; j < kernel_size; j = j + 1) {
+    // virtual_pos is the position in the concatenated [conv_state, input]
+    let virtual_pos = pos + j;
+
+    var val: input_element_t = 0.0;
+
+#if has_conv_state
+    if (virtual_pos < state_length) {
+      // Read from conv_state: (B, D, state_length)
+      let state_idx = (batch_idx * channels + channel_idx) * state_length + virtual_pos;
+      val = conv_state[state_idx];
+    } else {
+      // Read from input: (B, D, L)
+      let input_pos = virtual_pos - state_length;
+      let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
+      val = input[input_idx];
+    }
+#else
+    // No conv_state: pad with zeros for positions before the input
+    if (virtual_pos >= state_length) {
+      let input_pos = virtual_pos - state_length;
+      let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
+      val = input[input_idx];
+    }
+#endif
+
+    let w = weight[weight_base + j];
+    acc = acc + val * w;
+  }
+
+#if has_bias
+  acc = acc + bias[channel_idx];
+#endif
+
+#if use_silu
+  acc = silu(acc);
+#endif
+
+  // Write output: (B, D, L)
+  let out_idx = (batch_idx * channels + channel_idx) * input_length + pos;
+  output[out_idx] = acc;
+
+  // Write present_state: the last (kernel_size - 1) elements from the
+  // virtual input [conv_state, input]. We only write present_state once
+  // per (batch, channel), using the thread at pos == 0.
+  if (pos == 0u) {
+    for (var s: u32 = 0; s < state_length; s = s + 1) {
+      var state_val: input_element_t = 0.0;
+      // total_len = state_length + input_length
+      // We want virtual_input[total_len - state_length + s] = virtual_input[input_length + s]
+      let vp = input_length + s;
+
+#if has_conv_state
+      if (vp < state_length) {
+        let si = (batch_idx * channels + channel_idx) * state_length + vp;
+        state_val = conv_state[si];
+      } else {
+        let ip = vp - state_length;
+        let ii = (batch_idx * channels + channel_idx) * input_length + ip;
+        state_val = input[ii];
+      }
+#else
+      if (vp >= state_length) {
+        let ip = vp - state_length;
+        let ii = (batch_idx * channels + channel_idx) * input_length + ip;
+        state_val = input[ii];
+      }
+#endif
+
+      let ps_idx = (batch_idx * channels + channel_idx) * state_length + s;
+      present_state[ps_idx] = state_val;
+    }
+  }
+} // MAIN

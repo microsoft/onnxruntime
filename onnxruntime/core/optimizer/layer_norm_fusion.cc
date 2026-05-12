@@ -474,14 +474,19 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
-                                          {}, {}, kOnnxDomain);
+                                          {}, mul_node, nullptr, kOnnxDomain);
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr &&
         tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
+      if (initializer.size() == 1) {
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      } else {
+        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+      }
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }
@@ -719,14 +724,19 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
     Node& layer_norm_node =
         graph.AddNode(graph.GenerateNodeName(mul_node.Name() + "/SimplifiedLayerNormFusion/"), "SimplifiedLayerNormalization",
-                      "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, {}, kOnnxDomain);
+                      "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, mul_node, nullptr, kOnnxDomain);
 
     // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto =
         graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
     if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
-      layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
+      if (initializer.size() == 1) {
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      } else {
+        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+      }
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }

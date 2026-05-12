@@ -6,7 +6,13 @@ resources:
     type: git
     name: 1ESPipelineTemplates/1ESPipelineTemplates
     ref: refs/tags/release
+
 parameters:
+  - name: is_nightly_build
+    displayName: 'Nightly or Release Candidate build. Set to false if Release build.'
+    type: boolean
+    default: true
+
   - name: cmake_build_type
     type: string
     default: 'Release'
@@ -15,6 +21,13 @@ parameters:
       - Release
       - RelWithDebInfo
       - MinSizeRel
+
+variables:
+  # Magic env-var used by CI build scripts & piped around several docker containers.
+  # This should also be set to `1` for release candidates, despite the name. RCs do not yet have proper handling, so
+  # wheels can only be nightly or full release.
+  # FUTURE WORK: Add proper RC handling/suffix for wheels. Replace this w/ nightly/RC/release options.
+  NIGHTLY_BUILD: ${{ iif(parameters.is_nightly_build, '1', '0') }}
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.

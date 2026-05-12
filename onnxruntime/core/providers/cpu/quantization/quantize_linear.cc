@@ -872,7 +872,7 @@ void ComputeLoop(OpKernelContext* ctx, const InT* input, const InT* scale, const
         output_index += static_cast<size_t>(N);                                                                   \
       }                                                                                                           \
     }                                                                                                             \
-    assert(output_index == static_cast<size_t>(M * K * N));                                                       \
+    assert(output_index == static_cast<size_t>(SafeInt<size_t>(M) * K * N));                                      \
   }
 
 DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(Int4x2, ParQuantizeLinearStdS4, 2)
@@ -890,7 +890,7 @@ DEFINE_COMPUTE_LOOP_FP32_TO_SUB_BYTE(UInt2x4, ParQuantizeLinearStdU2, 4)
                                              int64_t K, int64_t N, bool saturate) {                                    \
     ORT_UNUSED_PARAMETER(saturate);                                                                                    \
                                                                                                                        \
-    size_t total_size = static_cast<size_t>(M * K * N);                                                                \
+    size_t total_size = static_cast<size_t>(SafeInt<size_t>(M) * K * N);                                               \
     auto tmp_buf = std::make_unique<SUB_BYTE_TYPE::UnpackedType[]>(total_size);                                        \
     size_t tmp_buf_index = 0;                                                                                          \
     constexpr size_t shift_bits = (ELEMENTS_PER_BYTE == 2) ? 1 : 2; /* log2(ELEMENTS_PER_BYTE) */                      \
