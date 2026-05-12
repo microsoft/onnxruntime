@@ -27,7 +27,7 @@ Abstract:
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#if defined(MLAS_USE_RVV)
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
 #include <riscv_vector.h>
 #endif
 

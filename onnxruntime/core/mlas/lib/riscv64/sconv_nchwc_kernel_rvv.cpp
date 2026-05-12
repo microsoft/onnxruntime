@@ -24,6 +24,7 @@ Abstract:
 #if defined(MLAS_USE_RVV)
 
 #include <riscv_vector.h>
+#include <cassert>
 #include <limits>
 
 #define MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT     0x00000001
@@ -51,6 +52,7 @@ ApplyPostProcessing(
     }
 
     if (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) {
+        assert(Bias != nullptr);
         vfloat32m4_t bias_vec = __riscv_vle32_v_f32m4(Bias, vl);
         acc = __riscv_vfadd_vv_f32m4(acc, bias_vec, vl);
     }
@@ -207,17 +209,27 @@ MlasConvNchwcFloatKernelRvv(
 
                     size_t kernel_pos = kh * KernelWidth + kw;
 
-                    for (size_t ic = 0; ic < BlockSize; ic++) {
-                        const float* input_element = input_base + ic;
+                    bool in_bounds = (input_base >= input_row_start) &&
+                                     ((input_base + BlockSize) <= input_row_end);
 
-                        float input_value = 0.0f;
-                        if (input_element >= input_row_start && input_element < input_row_end) {
-                            input_value = *input_element;
+                    if (in_bounds) {
+                        for (size_t ic = 0; ic < BlockSize; ic++) {
+                            float input_value = input_base[ic];
+                            size_t filter_offset = kernel_pos * BlockSize * BlockSize + ic * BlockSize;
+                            vfloat32m4_t filt = __riscv_vle32_v_f32m4(&filter[filter_offset], vl);
+                            acc = __riscv_vfmacc_vf_f32m4(acc, input_value, filt, vl);
                         }
-
-                        size_t filter_offset = kernel_pos * BlockSize * BlockSize + ic * BlockSize;
-                        vfloat32m4_t filt = __riscv_vle32_v_f32m4(&filter[filter_offset], vl);
-                        acc = __riscv_vfmacc_vf_f32m4(acc, input_value, filt, vl);
+                    } else {
+                        for (size_t ic = 0; ic < BlockSize; ic++) {
+                            const float* input_element = input_base + ic;
+                            float input_value = 0.0f;
+                            if (input_element >= input_row_start && input_element < input_row_end) {
+                                input_value = *input_element;
+                            }
+                            size_t filter_offset = kernel_pos * BlockSize * BlockSize + ic * BlockSize;
+                            vfloat32m4_t filt = __riscv_vle32_v_f32m4(&filter[filter_offset], vl);
+                            acc = __riscv_vfmacc_vf_f32m4(acc, input_value, filt, vl);
+                        }
                     }
                 }
             }
@@ -509,7 +521,9 @@ MlasPoolAverageFloatKernelRvvImpl(
             float results[BlockSize];
             __riscv_vse32_v_f32m4(results, sum_vec, vl);
             for (size_t i = 0; i < BlockSize; i++) {
-                results[i] /= static_cast<float>(valid_count[i]);
+                results[i] = (valid_count[i] > 0)
+                    ? results[i] / static_cast<float>(valid_count[i])
+                    : 0.0f;
             }
             vfloat32m4_t result_vec = __riscv_vle32_v_f32m4(results, vl);
             __riscv_vse32_v_f32m4(&Output[output_idx * BlockSize], result_vec, vl);
