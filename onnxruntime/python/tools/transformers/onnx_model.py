@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from __future__ import annotations
 
 import itertools
 import logging
@@ -9,6 +10,10 @@ import os
 import sys
 from collections import deque
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from shape_infer_helper import SymbolicShapeInferenceHelper
 
 from float16 import convert_float_to_float16
 from onnx import (
@@ -23,7 +28,6 @@ from onnx import (
     save_model,
 )
 from onnx.external_data_helper import load_external_data_for_tensor, uses_external_data
-from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,8 @@ class OnnxModel:
     def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):  # noqa: B006
         if self.enable_shape_infer:
             if self.shape_infer_helper is None or update:
+                from shape_infer_helper import SymbolicShapeInferenceHelper  # noqa: PLC0415
+
                 self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
 
             try:
@@ -764,6 +770,8 @@ class OnnxModel:
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
+            from shape_infer_helper import SymbolicShapeInferenceHelper  # noqa: PLC0415
+
             shape_infer_helper = SymbolicShapeInferenceHelper(model)
             try:
                 model_with_shape = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)

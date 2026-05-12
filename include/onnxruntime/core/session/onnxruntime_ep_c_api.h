@@ -2551,6 +2551,22 @@ struct OrtEp {
    * \since Version 1.26.
    */
   ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
+
+  /** \brief Called by ORT when session initialization is complete.
+   *
+   * This provides an opportunity for execution providers to optionally synchronize and
+   * clean up temporary resources to reduce memory usage and ensure the first inference run is fast.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes no
+   *       post-initialization work is needed and treats it as a no-op success.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(OnSessionInitializationEnd, _In_ OrtEp* this_ptr);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

@@ -15,6 +15,7 @@
 #include "core/common/path_string.h"
 #include "core/common/profiler.h"
 #include "core/common/status.h"
+#include "core/platform/env.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
@@ -738,6 +739,14 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  /// Logging manager if provided.
+  /// When user_logging_function is set, user_logging_manager_ owns the LoggingManager and
+  /// logging_manager_ points to it. Both MUST be declared before owned_session_logger_ and
+  /// execution_providers_ so they outlive the logger and EPs during destruction (C++ destroys
+  /// members in reverse declaration order).
+  logging::LoggingManager* logging_manager_;
+  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
+
   /// Logger for this session. WARNING: Will contain nullptr if logging_manager_ is nullptr.
   /// This MUST be declared before execution_providers_ so the logger outlives EPs during destruction
   /// (C++ destroys members in reverse declaration order), allowing EP teardown callbacks to safely
@@ -901,12 +910,6 @@ class InferenceSession {
     return session_options_.IsLoadCancellationFlagSet();
   };
 
-  /// Logging manager if provided.
-  logging::LoggingManager* logging_manager_;
-
-  /// User specified logging mgr; logging_manager_ is simply the ptr in this unique_ptr when available
-  std::unique_ptr<logging::LoggingManager> user_logging_manager_;
-
   // Profiler for this session.
   profiling::Profiler session_profiler_;
 
@@ -1028,6 +1031,8 @@ class InferenceSession {
   //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
   //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
   //   and some for the Initialize (create SessionState).
+  //   If "session.use_memory_mapped_ort_model" is set, we memory-map the file instead and store the
+  //   mapping in ort_format_model_mapped_memory_.
   // Short term we free them after Initialize.
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
@@ -1036,8 +1041,12 @@ class InferenceSession {
   // This holds the actual model data
   // In case if the session is started with an input byte array contains model data, and the caller
   // specifies that ORT should use the model bytes directly by setting the session config option
-  // "session.use_ort_model_bytes_directly" to "1", this will be empty
+  // "session.use_ort_model_bytes_directly" to "1", this will be empty.
+  // Also empty when using memory-mapped loading, as the data is held by ort_format_model_mapped_memory_.
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
+
+  // Holds the memory-mapped file data when session.use_memory_mapped_ort_model is set.
+  Env::MappedMemoryPtr ort_format_model_mapped_memory_;
 
   bool using_ort_model_bytes_for_initializers_{false};
 
