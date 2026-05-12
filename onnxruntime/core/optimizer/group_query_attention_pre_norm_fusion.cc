@@ -17,8 +17,6 @@ namespace onnxruntime {
 
 namespace {
 
-constexpr const char* kQNormWeightInputName = "q_norm_weight";
-constexpr const char* kKNormWeightInputName = "k_norm_weight";
 constexpr const char* kQkNormEpsilonAttrName = "qk_norm_epsilon";
 constexpr float kEpsilonTolerance = 1e-9f;
 
