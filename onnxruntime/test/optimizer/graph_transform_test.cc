@@ -10271,5 +10271,25 @@ TEST_F(GraphTransformationTests, STFTDecomposition_NegativeFrameStep) {
   ASSERT_EQ(op_to_count["STFT"], 1);
 }
 
+TEST_F(GraphTransformationTests, STFTDecomposition_NoWindowInput) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "stft_no_window.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["STFT"], 1);
+
+  const InlinedHashSet<std::string_view> empty_ep = {};
+  auto stft_transformer = std::make_unique<STFTDecomposition>(empty_ep);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(stft_transformer), TransformerLevel::Level1));
+  // Should not crash (previously dereferenced nullptr window_recipient)
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // Valid windowless STFT should be successfully decomposed
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["STFT"], 0);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
