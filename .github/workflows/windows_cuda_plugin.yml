@@ -64,6 +64,7 @@ jobs:
           Write-Host "Adding CUDA to PATH"
           Write-Host "CUDA Path: $env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin\x64"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
 
       - name: Add cuDNN to PATH
@@ -193,6 +194,7 @@ jobs:
           Write-Host "Adding CUDA to PATH"
           Write-Host "CUDA Path: $env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin\x64"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
 
       - name: Add cuDNN to PATH
