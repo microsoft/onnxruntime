@@ -26,6 +26,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DequantizeWithOrder">com.microsoft.DequantizeWithOrder</a>
+  * <a href="#com.microsoft.DynamicQuantMatMulFp8">com.microsoft.DynamicQuantMatMulFp8</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
   * <a href="#com.microsoft.DynamicTimeWarping">com.microsoft.DynamicTimeWarping</a>
@@ -1490,6 +1491,69 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain to float types</dd>
 <dt><tt>S</tt> : tensor(float)</dt>
 <dd>Constrain Scale to float32 types</dd>
+</dl>
+
+
+### <a name="com.microsoft.DynamicQuantMatMulFp8"></a><a name="com.microsoft.dynamicquantmatmulfp8">**com.microsoft.DynamicQuantMatMulFp8**</a>
+
+  Symmetric quantized MatMul for fp8 weights (with optional prepack conversion from float16/bfloat16/float) and runtime casting of activations to fp8 using block-wise scales. All zero-point inputs, when provided, must encode 0.0.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>block_size_k</tt> : int (default is 128)</dt>
+<dd>Block size along K for A and B block-wise scales.</dd>
+<dt><tt>block_size_m</tt> : int (default is 128)</dt>
+<dd>Block size along M for A block-wise scales.</dd>
+<dt><tt>block_size_n</tt> : int (default is 128)</dt>
+<dd>Block size along N for B block-wise scales.</dd>
+</dl>
+
+#### Inputs (6 - 8)
+
+<dl>
+<dt><tt>A</tt> : TA</dt>
+<dd>Input tensor A.</dd>
+<dt><tt>A_scale</tt> : TS</dt>
+<dd>Scale of quantized input 'A'. Must be a block-wise tensor with shape (ceil(M / block_size_m), K / block_size_k), or the same shape with output batch dimensions prefixed.</dd>
+<dt><tt>A_zero_point</tt> : TZ</dt>
+<dd>Zero point tensor for input 'A'. Must have the same shape as A_scale and all values must encode 0.0.</dd>
+<dt><tt>B</tt> : TB</dt>
+<dd>Input tensor B. FP8 B may be provided at runtime. Float, float16, and bfloat16 B are only supported when B is a constant initializer that can be quantized during prepack.</dd>
+<dt><tt>B_scale</tt> : TS</dt>
+<dd>Scale of input 'B'. Must be a block-wise tensor with shape (K / block_size_k, N / block_size_n).</dd>
+<dt><tt>B_zero_point</tt> : TZ</dt>
+<dd>Zero point tensor for input 'B'. Must have the same shape as B_scale and all values must encode 0.0.</dd>
+<dt><tt>Y_scale</tt> (optional) : TS</dt>
+<dd>Scale of output 'Y'. Must be a scalar when provided.</dd>
+<dt><tt>Y_zero_point</tt> (optional) : TZ</dt>
+<dd>Zero point tensor for output 'Y'. Must be a scalar encoding 0.0 when provided.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : TY</dt>
+<dd>Output tensor of shape (..., M, N).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>TA</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain input A type to float16, bfloat16, or float.</dd>
+<dt><tt>TB</tt> : tensor(float16), tensor(bfloat16), tensor(float), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz)</dt>
+<dd>Constrain input B type to fp8, or to float16, bfloat16, or float for constant initializers.</dd>
+<dt><tt>TZ</tt> : tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz)</dt>
+<dd>Constrain zero point types to fp8. Only zero-valued zero points are supported.</dd>
+<dt><tt>TS</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain scale types to float, float16, or bfloat16.</dd>
+<dt><tt>TY</tt> : tensor(float16), tensor(bfloat16), tensor(float)</dt>
+<dd>Constrain output type to float16, bfloat16, or float.</dd>
 </dl>
 
 
@@ -6674,5 +6738,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 

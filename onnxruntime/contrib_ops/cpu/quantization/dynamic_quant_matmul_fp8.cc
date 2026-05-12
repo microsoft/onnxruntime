@@ -5,6 +5,7 @@
 #include "dynamic_quant_matmul_fp8.h"
 
 #include "core/common/common.h"
+#include "core/common/fp8_common.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
@@ -42,44 +43,6 @@ enum PackedBMetadataIndex : size_t {
 size_t CeilDiv(size_t value, size_t divisor) {
   ORT_ENFORCE(divisor != 0, "CeilDiv divisor must be non-zero.");
   return value == 0 ? 0 : ((value - 1) / divisor) + 1;
-}
-
-inline float Fp8ByteToFloat(uint8_t value, mlas_fp8_mode mode) {
-  switch (mode) {
-    case MLAS_FP8_MODE_E4M3_INF:
-      return Float8E4M3FN(value, Float8E4M3FN::FromBits()).ToFloat();
-    case MLAS_FP8_MODE_E4M3_SAT:
-      return Float8E4M3FNUZ(value, Float8E4M3FNUZ::FromBits()).ToFloat();
-    case MLAS_FP8_MODE_E5M2_INF:
-      return Float8E5M2(value, Float8E5M2::FromBits()).ToFloat();
-    case MLAS_FP8_MODE_E5M2_SAT:
-      return Float8E5M2FNUZ(value, Float8E5M2FNUZ::FromBits()).ToFloat();
-    default:
-      ORT_THROW("Unsupported FP8 mode.");
-  }
-}
-
-inline uint8_t FloatToFp8Byte(float value, mlas_fp8_mode mode) {
-  switch (mode) {
-    case MLAS_FP8_MODE_E4M3_INF: {
-      const Float8E4M3FN fp8(value, true);
-      return fp8.val;
-    }
-    case MLAS_FP8_MODE_E4M3_SAT: {
-      const Float8E4M3FNUZ fp8(value, true);
-      return fp8.val;
-    }
-    case MLAS_FP8_MODE_E5M2_INF: {
-      const Float8E5M2 fp8(value, true);
-      return fp8.val;
-    }
-    case MLAS_FP8_MODE_E5M2_SAT: {
-      const Float8E5M2FNUZ fp8(value, true);
-      return fp8.val;
-    }
-    default:
-      ORT_THROW("Unsupported fp8 mode for DynamicQuantMatMulFp8.");
-  }
 }
 
 bool IsFp8DataType(ONNX_NAMESPACE::TensorProto_DataType elem_type) {
@@ -207,6 +170,7 @@ void QuantizeBlockwiseFp8A(const SrcT* src,
                            const uint8_t* zero_points,
                            mlas_fp8_mode mode,
                            uint8_t* dst) {
+  ORT_ENFORCE(onnxruntime::IsValidFp8Mode(mode), "DynamicQuantMatMulFp8 FP8 mode must be valid.");
   // Block sizes come from op attributes; scale shapes only provide the number of blocks.
   for (size_t m = 0; m < M; ++m) {
     const size_t block_m = m / block_size_m;
@@ -233,6 +197,7 @@ void QuantizeBlockwiseFp8(const SrcT* src,
                           const uint8_t* zero_points,
                           mlas_fp8_mode mode,
                           uint8_t* dst) {
+  ORT_ENFORCE(onnxruntime::IsValidFp8Mode(mode), "DynamicQuantMatMulFp8 FP8 mode must be valid.");
   // Block sizes come from op attributes; scale shapes only provide the number of blocks.
   const size_t blocks_n = N / block_size_n;
   for (size_t k = 0; k < K; ++k) {

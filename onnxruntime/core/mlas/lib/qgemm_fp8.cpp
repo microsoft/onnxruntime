@@ -7,41 +7,9 @@
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 #include "core/common/common.h"
-#include "core/common/float8.h"
+#include "core/common/fp8_common.h"
 
 namespace {
-
-inline float Fp8ByteToFloat(uint8_t value, mlas_fp8_mode mode) {
-    using onnxruntime::Float8E4M3FN;
-    using onnxruntime::Float8E4M3FNUZ;
-    using onnxruntime::Float8E5M2;
-    using onnxruntime::Float8E5M2FNUZ;
-    switch (mode) {
-        case MLAS_FP8_MODE_E4M3_INF:
-            return Float8E4M3FN(value, Float8E4M3FN::FromBits()).ToFloat();
-        case MLAS_FP8_MODE_E4M3_SAT:
-            return Float8E4M3FNUZ(value, Float8E4M3FNUZ::FromBits()).ToFloat();
-        case MLAS_FP8_MODE_E5M2_INF:
-            return Float8E5M2(value, Float8E5M2::FromBits()).ToFloat();
-        case MLAS_FP8_MODE_E5M2_SAT:
-            return Float8E5M2FNUZ(value, Float8E5M2FNUZ::FromBits()).ToFloat();
-        default:
-            MLAS_THROW_EX(std::invalid_argument, "Unsupported FP8 GEMM mode.");
-            break;
-    }
-}
-
-inline bool IsValidFp8Mode(mlas_fp8_mode mode) {
-    switch (mode) {
-        case MLAS_FP8_MODE_E4M3_INF:
-        case MLAS_FP8_MODE_E4M3_SAT:
-        case MLAS_FP8_MODE_E5M2_INF:
-        case MLAS_FP8_MODE_E5M2_SAT:
-            return true;
-        default:
-            return false;
-    }
-}
 
 // Computes the parallel work item count without wrapping before ptrdiff_t narrowing.
 inline ptrdiff_t CheckedWorkItems(size_t batch_count, size_t m) {
@@ -89,7 +57,7 @@ inline void CheckBlockCount(size_t actual, size_t supplied, const char* dimensio
 inline void CheckFp8GemmBatchParams(
     const MLAS_FP8_GEMM_SHAPE_PARAMS& shape,
     const MLAS_FP8_GEMM_DATA_PARAMS& params) {
-    ORT_ENFORCE(IsValidFp8Mode(params.Fp8Type), "FP8 GEMM mode must be valid.");
+    ORT_ENFORCE(onnxruntime::IsValidFp8Mode(params.Fp8Type), "FP8 GEMM mode must be valid.");
     ORT_ENFORCE(params.BlockSizeM != 0 && params.BlockSizeK != 0 && params.BlockSizeN != 0,
                 "FP8 GEMM block sizes must be non-zero.");
 
@@ -161,6 +129,7 @@ MlasFp8GemmBatch(
         const size_t batch = static_cast<size_t>(tid) / M;
         const size_t m = static_cast<size_t>(tid) % M;
         const auto& params = DataParams[batch];
+        ORT_ENFORCE(onnxruntime::IsValidFp8Mode(params.Fp8Type), "FP8 GEMM mode must be valid.");
 
         const auto* a_fp8 = static_cast<const uint8_t*>(params.A);
         const auto* b_fp8 = static_cast<const uint8_t*>(params.B);
@@ -180,8 +149,8 @@ MlasFp8GemmBatch(
                 const float scale_a_val = scale_a ? scale_a[a_scale_idx] : 1.0f;
                 const float scale_b_val = scale_b ? scale_b[b_scale_idx] : 1.0f;
 
-                const float a_val = Fp8ByteToFloat(a_fp8[m * params.lda + k], params.Fp8Type);
-                const float b_val = Fp8ByteToFloat(b_fp8[k * params.ldb + n], params.Fp8Type);
+                const float a_val = onnxruntime::Fp8ByteToFloat(a_fp8[m * params.lda + k], params.Fp8Type);
+                const float b_val = onnxruntime::Fp8ByteToFloat(b_fp8[k * params.ldb + n], params.Fp8Type);
 
                 const float a_deq = a_val * scale_a_val;
                 const float b_deq = b_val * scale_b_val;

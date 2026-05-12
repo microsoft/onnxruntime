@@ -178,7 +178,8 @@ TEST(Fp8Gemm, EmptyDimensionsSkipUnusedBufferValidation) {
 
 TEST(Fp8Gemm, ZeroColumnReturnsBeforeWorkItemOverflow) {
   MLAS_FP8_GEMM_SHAPE_PARAMS shape{std::numeric_limits<size_t>::max(), 0, 4};
-  EXPECT_NO_THROW(MlasFp8GemmBatch(shape, nullptr, 2, nullptr));
+  MlasFp8GemmBatch(shape, nullptr, 2, nullptr);
+  SUCCEED();
 }
 
 #endif  // !defined(DISABLE_FLOAT8_TYPES)

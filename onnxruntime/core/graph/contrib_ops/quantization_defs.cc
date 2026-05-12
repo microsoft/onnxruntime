@@ -955,27 +955,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "float16/bfloat16/float) and runtime casting of activations to fp8 using block-wise scales. "
                 "All zero-point inputs, when provided, must encode 0.0.")
         .Input(0, "A", "Input tensor A.", "TA")
-        .Input(1, "a_scale",
+        .Input(1, "A_scale",
                "Scale of quantized input 'A'. Must be a block-wise tensor with shape "
                "(ceil(M / block_size_m), K / block_size_k), or the same shape with output batch dimensions prefixed.",
                "TS")
-        .Input(2, "a_zero_point",
-               "Zero point tensor for input 'A'. Must have the same shape as a_scale and all values must encode 0.0.",
+        .Input(2, "A_zero_point",
+               "Zero point tensor for input 'A'. Must have the same shape as A_scale and all values must encode 0.0.",
                "TZ")
         .Input(3, "B",
                "Input tensor B. FP8 B may be provided at runtime. Float, float16, and bfloat16 B are only "
                "supported when B is a constant initializer that can be quantized during prepack.",
                "TB")
-        .Input(4, "b_scale",
+        .Input(4, "B_scale",
                "Scale of input 'B'. Must be a block-wise tensor with shape "
                "(K / block_size_k, N / block_size_n).",
                "TS")
-        .Input(5, "b_zero_point",
-               "Zero point tensor for input 'B'. Must have the same shape as b_scale and all values must encode 0.0.",
+        .Input(5, "B_zero_point",
+               "Zero point tensor for input 'B'. Must have the same shape as B_scale and all values must encode 0.0.",
                "TZ")
-        .Input(6, "y_scale", "Scale of output 'Y'. Must be a scalar when provided.", "TS",
+        .Input(6, "Y_scale", "Scale of output 'Y'. Must be a scalar when provided.", "TS",
                OpSchema::Optional)
-        .Input(7, "y_zero_point",
+        .Input(7, "Y_zero_point",
                "Zero point tensor for output 'Y'. Must be a scalar encoding 0.0 when provided.", "TZ",
                OpSchema::Optional)
         .Output(0, "Y", "Output tensor of shape (..., M, N).", "TY")
