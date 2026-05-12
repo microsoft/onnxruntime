@@ -119,10 +119,22 @@ void CalcNearestPixel(OStringStream& os, ResizeNearestMode mode) {
       body = "select(i32(x_original), i32(ceil(x_original)), is_down_sampling)";
       break;
     case ResizeNearestMode::ROUND_PREFER_FLOOR:
-      body = "select(i32(round(x_original)), i32(floor(x_original)), x_original == f32(i32(x_original)) + 0.5)";
+      // WGSL round() uses tie-away-from-zero. ONNX ROUND_PREFER_FLOOR instead
+      // requires choosing floor() at halfway ties.
+      //
+      // We detect ties via fractional part: fraction = x_original - floor(x_original).
+      // This works for both positive and negative ties:
+      //   x =  2.5 -> floor =  2, fraction = 0.5 (tie)
+      //   x = -0.5 -> floor = -1, fraction = 0.5 (tie)
+      // A small epsilon (1e-6) avoids missing ties due to GPU float precision.
+      body = "select(i32(round(x_original)), i32(floor(x_original)), abs((x_original - floor(x_original)) - 0.5) <= 1e-6)";
       break;
     case ResizeNearestMode::ROUND_PREFER_CEIL:
-      body = "select(i32(round(x_original)), i32(ceil(x_original)), x_original == f32(i32(x_original)) + 0.5)";
+      // Same tie detector as ROUND_PREFER_FLOOR, but choose ceil() on ties.
+      // This is required for negative halfway coordinates, e.g.:
+      //   round(-0.5) = -1 (away from zero) but ceil(-0.5) = 0.
+      // Using epsilon tie detection keeps behavior stable across GPU devices.
+      body = "select(i32(round(x_original)), i32(ceil(x_original)), abs((x_original - floor(x_original)) - 0.5) <= 1e-6)";
       break;
     case ResizeNearestMode::FLOOR:
       body = "i32(floor(x_original))";
