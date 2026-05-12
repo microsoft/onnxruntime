@@ -566,9 +566,11 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 // The caller's copy of the old output remains valid (OrtValue uses shared_ptr internally).
 // Pre-run validation (ValidateInputsOutputs) catches structural mismatches (wrong type, rank,
 // fixed dims). What remains at kernel execution time is purely dynamic dimension differences.
-TEST(ExecutionFrameTestInit, StaleFetchWithDynamicShapes) {
-  // Build a simple model: input X -> Relu -> output Y
-  // Both X and Y have dynamic shapes (symbolic dims).
+TEST(ExecutionFrameTestInit, FetchWithMismatchedDynamicShapes) {
+  // Regression test for https://github.com/microsoft/onnxruntime/issues/28359
+  // Verifies that Run() returns a clear INVALID_ARGUMENT error when the caller provides
+  // a pre-allocated output OrtValue whose shape doesn't match the kernel's computed shape,
+  // and that pre-allocated outputs with matching shapes are used correctly.
   SessionOptions so;
   so.enable_mem_pattern = true;
 
@@ -603,13 +605,18 @@ TEST(ExecutionFrameTestInit, StaleFetchWithDynamicShapes) {
   RunOptions ro;
   auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
 
-  // Run 1: input shape {2, 3}
+  // Run 1: pre-allocate the output buffer with the correct shape {2, 3}.
+  // The kernel should write into this buffer directly.
   std::vector<float> input_data_1(6, 1.0f);
   OrtValue input_1;
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({2, 3}), input_data_1.data(),
                        allocator->Info(), input_1);
 
-  std::vector<OrtValue> results;
+  OrtValue preallocated_output;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({2, 3}), allocator, preallocated_output);
+  const void* preallocated_buffer = preallocated_output.Get<Tensor>().DataRaw();
+
+  std::vector<OrtValue> results = {preallocated_output};
   ASSERT_STATUS_OK(session.Run(ro,
                                AsSpan({std::string("X")}), AsSpan({input_1}),
                                AsSpan({std::string("Y")}), &results, nullptr));
@@ -618,17 +625,35 @@ TEST(ExecutionFrameTestInit, StaleFetchWithDynamicShapes) {
   ASSERT_TRUE(results[0].IsTensor());
   EXPECT_EQ(results[0].Get<Tensor>().Shape(), TensorShape({2, 3}));
 
-  // Save a copy — this should remain valid after Run 2 resets the stale value
-  OrtValue old_output = results[0];
-  const void* old_buffer = old_output.Get<Tensor>().DataRaw();
+  // The output should be in the pre-allocated buffer since shapes matched
+  EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), preallocated_buffer);
 
-  // Run 2: different input shape {4, 5}, passing back stale results from Run 1 as fetches.
-  // Before the fix, this would crash with ORT_ENFORCE "OrtValue shape verification failed".
+  // Verify Run 1 output correctness (Relu of all 1.0f = all 1.0f)
+  auto run1_data = results[0].Get<Tensor>().DataAsSpan<float>();
+  for (float v : run1_data) {
+    EXPECT_EQ(v, 1.0f);
+  }
+
+  // Run 2: different input shape {4, 5}, but results still contains the {2,3} output
+  // from Run 1. Run() should fail with INVALID_ARGUMENT because the pre-allocated
+  // output shape doesn't match the computed output shape.
   std::vector<float> input_data_2(20, 2.0f);
   OrtValue input_2;
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 5}), input_data_2.data(),
                        allocator->Info(), input_2);
 
+  auto status = session.Run(ro,
+                            AsSpan({std::string("X")}), AsSpan({input_2}),
+                            AsSpan({std::string("Y")}), &results, nullptr);
+
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("pre-allocated"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("{2,3}"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("{4,5}"));
+
+  // Run 3: clear the output and retry — should succeed
+  results = {};
   ASSERT_STATUS_OK(session.Run(ro,
                                AsSpan({std::string("X")}), AsSpan({input_2}),
                                AsSpan({std::string("Y")}), &results, nullptr));
@@ -637,23 +662,36 @@ TEST(ExecutionFrameTestInit, StaleFetchWithDynamicShapes) {
   ASSERT_TRUE(results[0].IsTensor());
   EXPECT_EQ(results[0].Get<Tensor>().Shape(), TensorShape({4, 5}));
 
-  // Verify the caller's old output copy is still valid (shared_ptr keeps it alive)
-  EXPECT_EQ(old_output.Get<Tensor>().Shape(), TensorShape({2, 3}));
-  EXPECT_EQ(old_output.Get<Tensor>().DataRaw(), old_buffer);
+  // Verify Run 3 output correctness (Relu of all 2.0f = all 2.0f)
+  auto run3_data = results[0].Get<Tensor>().DataAsSpan<float>();
+  for (float v : run3_data) {
+    EXPECT_EQ(v, 2.0f);
+  }
 
-  // Run 3: same shape as Run 2 — should reuse the buffer (no shape mismatch)
-  std::vector<float> input_data_3(20, 3.0f);
-  OrtValue input_3;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 5}), input_data_3.data(),
-                       allocator->Info(), input_3);
+  // Run 4: same shape {4, 5} with results carrying over — shapes match, should reuse
+  const void* run3_buffer = results[0].Get<Tensor>().DataRaw();
+
+  std::vector<float> input_data_4(20, 3.0f);
+  OrtValue input_4;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 5}), input_data_4.data(),
+                       allocator->Info(), input_4);
 
   ASSERT_STATUS_OK(session.Run(ro,
-                               AsSpan({std::string("X")}), AsSpan({input_3}),
+                               AsSpan({std::string("X")}), AsSpan({input_4}),
                                AsSpan({std::string("Y")}), &results, nullptr));
 
   ASSERT_EQ(results.size(), 1u);
   ASSERT_TRUE(results[0].IsTensor());
   EXPECT_EQ(results[0].Get<Tensor>().Shape(), TensorShape({4, 5}));
+
+  // Same shape — buffer should be reused
+  EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), run3_buffer);
+
+  // Verify Run 4 output correctness (Relu of all 3.0f = all 3.0f)
+  auto run4_data = results[0].Get<Tensor>().DataAsSpan<float>();
+  for (float v : run4_data) {
+    EXPECT_EQ(v, 3.0f);
+  }
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

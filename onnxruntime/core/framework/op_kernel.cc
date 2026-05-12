@@ -80,7 +80,7 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
 
   OrtValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ORT_THROW_IF_ERROR(status);
   return p_ml_value;
 }
 
