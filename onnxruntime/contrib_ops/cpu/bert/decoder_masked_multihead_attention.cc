@@ -179,13 +179,17 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
   }
 
   if (cache_indir != nullptr) {
-    if (beam_width != nullptr && beam_width_value != parameters.beam_width) {
+    // Read beam width from cache_indirection shape directly.
+    // DecoderMaskedMultiHeadAttentionParameters shadows AttentionParameters::beam_width,
+    // so the value set by CheckInputs on the base class is not visible here.
+    int cache_beam_width = static_cast<int>(cache_indir->Shape().GetDims()[1]);
+    if (beam_width != nullptr && beam_width_value != cache_beam_width) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'beam_width' should match cache_indirection dimension 1, got ",
-                             beam_width_value, " and ", parameters.beam_width);
+                             beam_width_value, " and ", cache_beam_width);
     }
 
-    beam_width_value = parameters.beam_width;
+    beam_width_value = cache_beam_width;
   }
 
   AllocatorPtr allocator;
