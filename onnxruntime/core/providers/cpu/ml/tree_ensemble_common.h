@@ -807,31 +807,21 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   }
 }  // namespace detail
 
-#ifndef NDEBUG  // if debug build
-#define TREE_FIND_VALUE(CMP)                                                                           \
-  if (has_missing_tracks_) {                                                                           \
-    while (root->is_not_leaf()) {                                                                      \
-      ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end,                     \
-                  "root->feature_id=", root->feature_id, ">", x_data_end - x_data,                     \
-                  " outside of boundaries");                                                           \
-      val = x_data[root->feature_id];                                                                  \
-      root = (val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))) \
-                 ? root->truenode_or_weight.ptr                                                        \
-                 : root + 1;                                                                           \
-    }                                                                                                  \
-  } else {                                                                                             \
-    while (root->is_not_leaf()) {                                                                      \
-      ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end,                     \
-                  "root->feature_id=", root->feature_id, ">", x_data_end - x_data,                     \
-                  " outside of boundaries");                                                           \
-      val = x_data[root->feature_id];                                                                  \
-      root = val CMP root->value_or_unique_weight ? root->truenode_or_weight.ptr : root + 1;           \
-    }                                                                                                  \
-  }
+// TREE_FIND_VALUE_CHECK: in debug builds, validates feature_id is in bounds before dereferencing;
+// in release builds, this is a no-op (the init-time max_feature_id_ >= C check is the release guard).
+#ifndef NDEBUG
+#define TREE_FIND_VALUE_CHECK()                                                                       \
+  ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end,                      \
+              "root->feature_id=", root->feature_id, ">", x_data_end - x_data,                      \
+              " outside of boundaries")
 #else
+#define TREE_FIND_VALUE_CHECK() ((void)0)
+#endif
+
 #define TREE_FIND_VALUE(CMP)                                                                           \
   if (has_missing_tracks_) {                                                                           \
     while (root->is_not_leaf()) {                                                                      \
+      TREE_FIND_VALUE_CHECK();                                                                         \
       val = x_data[root->feature_id];                                                                  \
       root = (val CMP root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val))) \
                  ? root->truenode_or_weight.ptr                                                        \
@@ -839,11 +829,11 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
     }                                                                                                  \
   } else {                                                                                             \
     while (root->is_not_leaf()) {                                                                      \
+      TREE_FIND_VALUE_CHECK();                                                                         \
       val = x_data[root->feature_id];                                                                  \
       root = val CMP root->value_or_unique_weight ? root->truenode_or_weight.ptr : root + 1;           \
     }                                                                                                  \
   }
-#endif
 
 // Check whether the feature value is set true in the mask
 template <typename T1, typename T2>
@@ -866,9 +856,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
       case NODE_MODE_ORT::BRANCH_LEQ:
         if (has_missing_tracks_) {
           while (root->is_not_leaf()) {
-#ifndef NDEBUG  // if debug build
-            ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end, "root->feature_id=", root->feature_id, " is negative or outside boundary ", x_data_end - x_data);
-#endif
+            TREE_FIND_VALUE_CHECK();
             val = x_data[root->feature_id];
             root = (val <= root->value_or_unique_weight || (root->is_missing_track_true() && _isnan_(val)))
                        ? root->truenode_or_weight.ptr
@@ -899,9 +887,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
       case NODE_MODE_ORT::BRANCH_MEMBER:
         if (has_missing_tracks_) {
           while (root->is_not_leaf()) {
-#ifndef NDEBUG  // if debug build
-            ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end, "root->feature_id=", root->feature_id, " is negative or outside boundary ", x_data_end - x_data);
-#endif
+            TREE_FIND_VALUE_CHECK();
             val = x_data[root->feature_id];
             root = (SetMembershipCheck(val, root->value_or_unique_weight) || (root->is_missing_track_true() && _isnan_(val)))
                        ? root->truenode_or_weight.ptr
@@ -909,9 +895,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
           }
         } else {
           while (root->is_not_leaf()) {
-#ifndef NDEBUG  // if debug build
-            ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end, "root->feature_id=", root->feature_id, " is negative or outside boundary ", x_data_end - x_data);
-#endif
+            TREE_FIND_VALUE_CHECK();
             val = x_data[root->feature_id];
             root = SetMembershipCheck(val, root->value_or_unique_weight) ? root->truenode_or_weight.ptr : root + 1;
           }
@@ -922,9 +906,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
         // val is the feature value, method isIn checks whether the value is in the set.
         if (has_missing_tracks_) {
           while (root->is_not_leaf()) {
-#ifndef NDEBUG  // if debug build
-            ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end, "root->feature_id=", root->feature_id, " is negative or outside boundary ", x_data_end - x_data);
-#endif
+            TREE_FIND_VALUE_CHECK();
             val = x_data[root->feature_id];
             root = (GetCategorySet(root->value_or_unique_weight).isIn(val) || (root->is_missing_track_true() && _isnan_(val)))
                        ? root->truenode_or_weight.ptr
@@ -932,9 +914,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
           }
         } else {
           while (root->is_not_leaf()) {
-#ifndef NDEBUG  // if debug build
-            ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end, "root->feature_id=", root->feature_id, " is negative or outside boundary ", x_data_end - x_data);
-#endif
+            TREE_FIND_VALUE_CHECK();
             val = x_data[root->feature_id];
             root = GetCategorySet(root->value_or_unique_weight).isIn(val) ? root->truenode_or_weight.ptr : root + 1;
           }
@@ -948,9 +928,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
   } else {  // Different rules to compare to node thresholds.
     ThresholdType threshold;
     while (root->is_not_leaf()) {
-#ifndef NDEBUG  // if debug build
-      ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end, "root->feature_id=", root->feature_id, " is negative or outside boundary ", x_data_end - x_data);
-#endif
+      TREE_FIND_VALUE_CHECK();
       val = x_data[root->feature_id];
       threshold = root->value_or_unique_weight;
       switch (root->mode()) {
