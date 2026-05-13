@@ -178,6 +178,16 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                            "If beam width is greater than 1, then cache indirection buffer MUST be present");
   }
 
+  if (cache_indir != nullptr) {
+    if (beam_width != nullptr && beam_width_value != parameters.beam_width) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'beam_width' should match cache_indirection dimension 1, got ",
+                             beam_width_value, " and ", parameters.beam_width);
+    }
+
+    beam_width_value = parameters.beam_width;
+  }
+
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
