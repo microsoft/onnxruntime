@@ -89,18 +89,28 @@ stages:
             targetPath: '$(Build.ArtifactStagingDirectory)/metadata'
             artifactName: cuda_plugin_metadata
         steps:
-        # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
-        # Use a sparse checkout to pull only the .config directory and avoid a full repo clone.
-        - checkout: self
-          fetchDepth: 1
-          sparseCheckoutDirectories: .config
+        - checkout: none
 
         - pwsh: |
             $ErrorActionPreference = 'Stop'
 
+            $tsaConfigDir = Join-Path '$(Build.SourcesDirectory)' '.config'
+            $tsaConfigPath = Join-Path $tsaConfigDir 'tsaoptions.json'
             $metadataDir = Join-Path '$(Build.ArtifactStagingDirectory)' 'metadata'
             $metadataPath = Join-Path $metadataDir 'metadata.json'
+
+            New-Item -ItemType Directory -Path $tsaConfigDir -Force | Out-Null
             New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
+
+            $tsaOptions = [ordered]@{
+              notificationAliases = @('ort-engsys@microsoft.com')
+              areaPath = 'ONNX Runtime\\Engineering Systems'
+              codebaseName = 'onnxruntime'
+              instanceUrl = 'https://aiinfra.visualstudio.com/'
+              projectName = 'ONNX Runtime'
+              ignoreBranchName = $true
+              template = 'AIINFRA_TSA'
+            }
 
             $metadata = [ordered]@{
               cuda_version = '${{ parameters.cuda_version }}'
@@ -111,9 +121,11 @@ stages:
               nuget_artifact = 'cuda_plugin_nuget'
             }
 
+            $tsaOptions | ConvertTo-Json | Set-Content -Path $tsaConfigPath -Encoding UTF8
             $metadata | ConvertTo-Json | Set-Content -Path $metadataPath -Encoding UTF8
+            Get-Content $tsaConfigPath
             Get-Content $metadataPath
-          displayName: 'Create metadata.json'
+          displayName: 'Create TSA config and metadata.json'
 
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:
