@@ -810,9 +810,9 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
 // TREE_FIND_VALUE_CHECK: in debug builds, validates feature_id is in bounds before dereferencing;
 // in release builds, this is a no-op (the init-time max_feature_id_ >= C check is the release guard).
 #ifndef NDEBUG
-#define TREE_FIND_VALUE_CHECK()                                                                       \
-  ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end,                      \
-              "root->feature_id=", root->feature_id, ">", x_data_end - x_data,                      \
+#define TREE_FIND_VALUE_CHECK()                                                \
+  ORT_ENFORCE(root->feature_id >= 0 && x_data + root->feature_id < x_data_end, \
+              "root->feature_id=", root->feature_id, ">", x_data_end - x_data, \
               " outside of boundaries")
 #else
 #define TREE_FIND_VALUE_CHECK() ((void)0)
