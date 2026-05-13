@@ -204,6 +204,8 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
                       "Mask and input must have the same number of dimensions. Got mask dims: ",
                       m_shape.NumDimensions(), " input dims: ", x_shape.NumDimensions());
     const bool input_has_nonzero_channels = x_shape[0] > 0 && x_shape[1] > 0;
+    // Mask N and C dimensions may differ from input (broadcasting via modulo).
+    // Only require them to be nonzero to prevent division-by-zero in total_mask_channels.    
     ORT_RETURN_IF_NOT(!input_has_nonzero_channels || (m_shape[0] > 0 && m_shape[1] > 0),
                       "Mask N and C dimensions must be greater than 0 when input N and C are greater than 0. "
                       "Got mask N=",
