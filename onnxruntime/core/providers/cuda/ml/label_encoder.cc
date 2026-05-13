@@ -62,9 +62,7 @@ static bool TryGetScalarTensorAttribute(const OpKernelInfo& info, const std::str
   auto* attr_tensor_proto = GetTensorProto(attr_tensor_holder);
   auto result = info.GetAttr(tensor_name, attr_tensor_proto);
   if (result.IsOK() && utils::HasDataType(*attr_tensor_proto)) {
-    const void* raw_data = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().data() : nullptr;
-    size_t raw_data_len = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().size() : 0;
-    result = utils::UnpackTensor<T>(*attr_tensor_proto, raw_data, raw_data_len, &value, 1);
+    result = utils::UnpackTensor<T>(*attr_tensor_proto, nullptr, 0, &value, 1);
     ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", attr_name);
     return true;
   }
@@ -115,9 +113,7 @@ static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::strin
   }
   const SafeInt<size_t> tensor_size(element_count);
   std::vector<T> out(tensor_size);
-  const void* raw_data = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().data() : nullptr;
-  size_t raw_data_len = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().size() : 0;
-  result = utils::UnpackTensor<T>(*attr_tensor_proto, raw_data, raw_data_len, out.data(), tensor_size);
+  result = utils::UnpackTensor<T>(*attr_tensor_proto, nullptr, 0, out.data(), tensor_size);
   ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", name);
   return out;
 #endif  // BUILD_CUDA_EP_AS_PLUGIN
