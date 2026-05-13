@@ -41,9 +41,12 @@ TEST(CropOpTest, Crop_Invalid_Scale_Size) {
   test.AddAttribute("scale", scale);
 
   test.AddOutput<float>("y", {1, 1, 2, 2}, {6.0, 7.0, 10.0, 11.0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Attribute scale needs to be specified with two elements (height, width), got 1",
-           {kTensorrtExecutionProvider});
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
