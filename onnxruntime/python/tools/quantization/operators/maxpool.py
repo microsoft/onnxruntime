@@ -1,3 +1,4 @@
+from ..quant_utils import FLOAT8_TYPES
 from .direct_q8 import Direct8BitOp, QDQDirect8BitOp
 
 
@@ -14,6 +15,10 @@ class QMaxPool(Direct8BitOp):
             super(Direct8BitOp, self).quantize()
             return
 
+        # FP8 types are not supported for MaxPool; emit node unquantized.
+        if self.quantizer.activation_qType in FLOAT8_TYPES:
+            return super(Direct8BitOp, self).quantize()
+
         # Direct 8bits op
         return super().quantize()
 
@@ -28,6 +33,10 @@ class QDQMaxPool(QDQDirect8BitOp):
 
         # if version is less than 12, just no change
         if self.quantizer.opset_version < 12:
+            return
+
+        # FP8 types are not supported for MaxPool; leave node unquantized.
+        if self.quantizer.activation_qType in FLOAT8_TYPES:
             return
 
         # Direct 8bits op
