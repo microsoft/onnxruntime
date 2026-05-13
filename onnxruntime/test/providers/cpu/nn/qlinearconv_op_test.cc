@@ -1601,7 +1601,10 @@ TEST(QLinearConvTest, Conv2D_U8U8_Groups_PerChannelZeroPoints) {
   }
 }
 
-TEST(QLinearConvTest, Conv2D_S8S8_Depthwise_PerChannelZeroPoints) {
+// Depthwise config (groups == channels) with non-uniform per-channel weight zero points.
+// The kernel cannot use MlasConvDepthwise with distinct ZPs, so this validates the
+// automatic fallback to the group-GEMM path.
+TEST(QLinearConvTest, Conv2D_S8S8_DepthwiseFallback_PerChannelZeroPoints) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
