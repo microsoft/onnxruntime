@@ -22,6 +22,9 @@ except ImportError:
 
 onnxruntime.preload_dlls()
 
+build_info = onnxruntime.get_build_info()
+has_fp8_qmoe = ", fp8-qmoe=" in build_info
+
 device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 torch.manual_seed(42)
@@ -129,6 +132,7 @@ def create_fp8_moe_onnx_graph(
 
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
 @unittest.skipIf(not has_onnx, "ONNX not available")
+@unittest.skipIf(not has_fp8_qmoe, "CUDA QMoE FP8 kernels not enabled in this build")
 class TestQMoEFP8(unittest.TestCase):
     def _run_fp8_moe_test(self, hidden_size, inter_size, num_experts, top_k, num_tokens, onnx_dtype, use_swiglu=False):
         torch.manual_seed(42)

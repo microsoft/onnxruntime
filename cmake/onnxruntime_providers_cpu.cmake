@@ -50,6 +50,13 @@ else()
   list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_cm[12]_cn[12]_pp\\.generated\\.cu")
 endif()
 
+if(NOT onnxruntime_ENABLE_CUDA_FP8_QMOE)
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_wfp8_.*\\.generated\\.cu")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_fp8_.*\\.generated\\.cu")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_(fp16|bf16)_fp8\\.cu")
+  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
+endif()
+
 file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.cc"

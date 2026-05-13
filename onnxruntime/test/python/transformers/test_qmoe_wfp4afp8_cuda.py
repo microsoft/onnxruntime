@@ -47,6 +47,10 @@ from test_qmoe_fp4_cuda import quantize_weight_to_mxfp4, swiglu_ref
 
 onnxruntime.preload_dlls()
 
+build_info = onnxruntime.get_build_info()
+has_fp4_qmoe = ", fp4-qmoe=" in build_info
+has_fp8_qmoe = ", fp8-qmoe=" in build_info
+
 device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
 
 torch.manual_seed(42)
@@ -167,6 +171,7 @@ def create_wfp4afp8_moe_onnx_graph(
 
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
 @unittest.skipIf(not has_onnx, "ONNX not available")
+@unittest.skipIf(not (has_fp4_qmoe and has_fp8_qmoe), "CUDA QMoE WFP4AFP8 kernels not enabled in this build")
 class TestQMoEWFP4AFP8(unittest.TestCase):
     """Tests for W4A8 (MXFP4 weight + FP8 activation) MoE quantization.
 
@@ -404,6 +409,7 @@ class TestQMoEWFP4AFP8(unittest.TestCase):
 
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
 @unittest.skipIf(not has_onnx, "ONNX not available")
+@unittest.skipIf(not (has_fp4_qmoe and has_fp8_qmoe), "CUDA QMoE WFP4AFP8 kernels not enabled in this build")
 @unittest.skipIf(_cuda_sm() < 100, f"Native WFP4AFP8 requires SM100+, got SM{_cuda_sm()}")
 class TestQMoEWFP4AFP8Native(TestQMoEWFP4AFP8):
     """Tests that explicitly exercise the native FP8 x MXFP4 block-scaled path.

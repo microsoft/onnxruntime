@@ -62,7 +62,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   ORT_ENFORCE(quant_type_ != "wfp4afp8",
               "QMoE quant_type='wfp4afp8' requires ENABLE_CUDA_FP4_QMOE with CUDA 12.8 or newer.");
 #endif
-#if !defined(ENABLE_FP8)
+#if !defined(ENABLE_FP8) || !defined(ENABLE_CUDA_FP8_QMOE)
+  ORT_ENFORCE(quant_type_ != "fp8", "QMoE quant_type='fp8' requires ENABLE_CUDA_FP8_QMOE.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8", "QMoE quant_type='wfp4afp8' requires ENABLE_FP8 (CUDA 11.8 or newer).");
 #endif
 
