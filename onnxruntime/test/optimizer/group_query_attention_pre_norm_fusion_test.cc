@@ -72,8 +72,10 @@ void BuildQwenQkPostNormPattern(ModelTestBuilder& builder, const BuildOptions& o
       std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize}, MLFloat16(0.0f), MLFloat16(0.0f));
   NodeArg* past_value = builder.MakeInput<MLFloat16>(
       std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize}, MLFloat16(0.0f), MLFloat16(0.0f));
-  NodeArg* seqlens_k = builder.MakeInput<int32_t>(std::vector<int64_t>{kBatch}, int32_t{0}, int32_t{0});
-  NodeArg* total_seq_len = builder.MakeInput<int32_t>(std::vector<int64_t>{1}, int32_t{1}, int32_t{1});
+  // Note: ModelTestBuilder::MakeInput<int>(shape, min, max) calls Uniform(min, max - 1)
+  // internally, which asserts on min == max. Use the explicit-data overload instead.
+  NodeArg* seqlens_k = builder.MakeInput<int32_t>(std::vector<int64_t>{kBatch}, std::vector<int32_t>{0});
+  NodeArg* total_seq_len = builder.MakeInput<int32_t>(std::vector<int64_t>{1}, std::vector<int32_t>{1});
 
   // Norm weight initializers: [head_size]. (Or non-1D when forcing a shape mismatch.)
   std::vector<int64_t> q_norm_weight_shape =
