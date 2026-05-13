@@ -126,7 +126,7 @@ OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {
   auto output_arg_index = GetOutputArgIndex(index);
   OrtValue* value = nullptr;
   auto status = execution_frame_->GetOrCreateNodeOutputMLValue(index, output_arg_index, nullptr, value, kernel_->Node());
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ORT_THROW_IF_ERROR(status);
   return value;
 }
 
