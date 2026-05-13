@@ -115,7 +115,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   ORT_RETURN_IF_ERROR(target_w_desc.Set(dims_w, CudnnTensor::GetDataType<CudaT>()));
 
   // Prepare the weight data
-  reorganized_w_data_size_in_bytes = w_size * sizeof(T);
+  reorganized_w_data_size_in_bytes = SafeInt<size_t>(w_size) * sizeof(T);
   reorganized_w_data = GetScratchBuffer<void>(reorganized_w_data_size_in_bytes, alloc_stream);
 
   // In many cases, this allocation is bigger than needed, leaving part of
@@ -149,6 +149,8 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   bool has_bias = B != nullptr;
 
   if (get_W && get_R) {
+    ORT_RETURN_IF(W->Shape().NumDimensions() != 3,
+                  "Constant W must be 3-D, got rank ", W->Shape().NumDimensions());
     CudnnRNN tmp_rnn_desc;
     auto proj_size = hidden_size_;
     ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(W->Shape()[2],  // input_size
@@ -403,7 +405,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     if (Y != nullptr) {
       // User specified this optional output, so need to copy the reversed data to original place
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(y_data, y_reorganized_data.get(), output_size * sizeof(T),
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(y_data, y_reorganized_data.get(), SafeInt<size_t>(output_size) * sizeof(T),
                                            cudaMemcpyDeviceToDevice, Stream(ctx)));
     } else {
       y_data = y_reorganized_data.get();
