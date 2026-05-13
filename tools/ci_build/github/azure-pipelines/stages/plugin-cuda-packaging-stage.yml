@@ -80,7 +80,7 @@ stages:
       jobs:
       - job: Publish_CUDA_Plugin_Metadata
         displayName: 'Publish CUDA plugin metadata'
-        timeoutInMinutes: 5
+        timeoutInMinutes: 15
         workspace:
           clean: all
         templateContext:
@@ -89,7 +89,11 @@ stages:
             targetPath: '$(Build.ArtifactStagingDirectory)/metadata'
             artifactName: cuda_plugin_metadata
         steps:
-        - checkout: none
+        # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
+        # Use a sparse checkout to pull only the .config directory and avoid a full repo clone.
+        - checkout: self
+          fetchDepth: 1
+          sparseCheckoutDirectories: .config
 
         - pwsh: |
             $ErrorActionPreference = 'Stop'
