@@ -951,8 +951,8 @@ TEST(DecoderMaskedMultiHeadAttentionTest, cpu_cache_indirection_beam_index_out_o
   tester.AddOptionalInputEdge<float>();
 
   tester.AddOutput<float>("output", {2, 1, 4}, std::vector<float>(8, 0.0f));
-  tester.AddOptionalOutputEdge<float>();
-  tester.AddOptionalOutputEdge<float>();
+  tester.AddOutput<float>("present_key", {2, 1, 4, 4}, std::vector<float>(32, 0.0f));
+  tester.AddOutput<float>("present_value", {2, 1, 4, 4}, std::vector<float>(32, 0.0f));
   tester.AddOptionalOutputEdge<float>();
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;

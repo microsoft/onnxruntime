@@ -578,8 +578,8 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBeamIndexOutOfRange) {
   tester.AddInput<int32_t>("cache_indirection", {1, 2, 4}, {0, 2, 0, 0, 0, 0, 0, 0});
 
   tester.AddOutput<float>("output", {2, 1, 4}, std::vector<float>(8, 0.0f));
-  tester.AddOptionalOutputEdge<float>();
-  tester.AddOptionalOutputEdge<float>();
+  tester.AddOutput<float>("present_key", {2, 1, 4, 4}, std::vector<float>(32, 0.0f));
+  tester.AddOutput<float>("present_value", {2, 1, 4, 4}, std::vector<float>(32, 0.0f));
   tester.AddOptionalOutputEdge<float>();
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
