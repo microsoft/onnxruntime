@@ -38,6 +38,15 @@ static ONNX_NAMESPACE::TensorProto* GetTensorProto(TensorProtoHolder& holder) {
   return &holder;
 }
 #endif
+
+// Returns the raw data pointer and length from a TensorProto, or {nullptr, 0} if not present.
+static std::pair<const void*, size_t> GetRawData(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  if (utils::HasRawData(tensor_proto)) {
+    const auto& raw = tensor_proto.raw_data();
+    return {raw.data(), raw.size()};
+  }
+  return {nullptr, 0};
+}
 #endif
 
 template <typename T>
@@ -62,8 +71,7 @@ static bool TryGetScalarTensorAttribute(const OpKernelInfo& info, const std::str
   auto* attr_tensor_proto = GetTensorProto(attr_tensor_holder);
   auto result = info.GetAttr(tensor_name, attr_tensor_proto);
   if (result.IsOK() && utils::HasDataType(*attr_tensor_proto)) {
-    const void* raw_data = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().data() : nullptr;
-    size_t raw_data_len = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().size() : 0;
+    const auto [raw_data, raw_data_len] = GetRawData(*attr_tensor_proto);
     result = utils::UnpackTensor<T>(*attr_tensor_proto, raw_data, raw_data_len, &value, 1);
     ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", attr_name);
     return true;
@@ -115,8 +123,7 @@ static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::strin
   }
   const SafeInt<size_t> tensor_size(element_count);
   std::vector<T> out(tensor_size);
-  const void* raw_data = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().data() : nullptr;
-  size_t raw_data_len = utils::HasRawData(*attr_tensor_proto) ? attr_tensor_proto->raw_data().size() : 0;
+  const auto [raw_data, raw_data_len] = GetRawData(*attr_tensor_proto);
   result = utils::UnpackTensor<T>(*attr_tensor_proto, raw_data, raw_data_len, out.data(), tensor_size);
   ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", name);
   return out;
