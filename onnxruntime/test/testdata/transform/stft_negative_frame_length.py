@@ -41,6 +41,6 @@ def make_stft_model(frame_length_value, frame_step_value, has_window, filename):
 
 
 if __name__ == "__main__":
-    make_stft_model(-2, 4, True, "stft_negative_frame_length.onnx")
-    make_stft_model(4, -2, True, "stft_negative_frame_step.onnx")
+    make_stft_model(-2, 4, False, "stft_negative_frame_length.onnx")
+    make_stft_model(4, -2, False, "stft_negative_frame_step.onnx")
     make_stft_model(4, 4, False, "stft_no_window.onnx")

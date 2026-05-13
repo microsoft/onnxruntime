@@ -237,10 +237,10 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
       auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
 
-      size_t weight_size;
-      try {
-        weight_size = SafeInt<size_t>(dft_unique_bins) * dft_size;
-      } catch (const OnnxRuntimeException&) {
+      size_t dft_size_sz, dft_unique_bins_sz, weight_size;
+      if (!SafeCast(dft_unique_bins, dft_unique_bins_sz) ||
+          !SafeCast(dft_size, dft_size_sz) ||
+          !SafeMultiply(dft_unique_bins_sz, dft_size_sz, weight_size)) {
         LOGS(logger, WARNING) << "STFT decomposition skipped: weight size overflow";
         continue;
       }
@@ -249,9 +249,9 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       auto imag_weights_data = std::vector<float>(weight_size);
 
       // Populate weights
-      for (size_t k = 0; k < static_cast<size_t>(dft_unique_bins); k++) {
-        for (size_t n = 0; n < static_cast<size_t>(dft_size); n++) {
-          auto index = k * static_cast<size_t>(dft_size) + n;
+      for (size_t k = 0; k < dft_unique_bins_sz; k++) {
+        for (size_t n = 0; n < dft_size_sz; n++) {
+          auto index = k * dft_size_sz + n;
           auto theta = -2 * std::numbers::pi_v<float> * k * n / static_cast<float>(dft_size);
           real_weights_data[index] = static_cast<float>(cos(theta));
           imag_weights_data[index] = static_cast<float>(sin(theta));
