@@ -44,17 +44,10 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Download CUDA SDK v13.0
+      - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v13.0" .
-          dir
-        shell: pwsh
-
-      - name: Download cuDNN for CUDA 13.0
-        working-directory: ${{ runner.temp }}
-        run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13" .
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
 
@@ -62,16 +55,9 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "CUDA Path: $env:RUNNER_TEMP\v13.0\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin\x64"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
-
-      - name: Add cuDNN to PATH
-        shell: powershell
-        run: |
-          Write-Host "Adding cuDNN to PATH"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\9.14.0.64_cuda13\bin"
+          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
@@ -93,8 +79,7 @@ jobs:
             --build_shared_lib `
             --build_wheel `
             --use_cuda `
-            --cuda_home="$env:RUNNER_TEMP\v13.0" `
-            --cudnn_home="$env:RUNNER_TEMP\9.14.0.64_cuda13" `
+            --cuda_home="$env:RUNNER_TEMP\v12.8" `
             --skip_tests `
             --use_vcpkg `
             --use_vcpkg_ms_internal_asset_cache `
@@ -175,17 +160,10 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Download CUDA SDK v13.0
+      - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v13.0" .
-          dir
-        shell: pwsh
-
-      - name: Download cuDNN for CUDA 13.0
-        working-directory: ${{ runner.temp }}
-        run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13" .
+          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
 
@@ -193,16 +171,9 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "CUDA Path: $env:RUNNER_TEMP\v13.0\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin\x64"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
-
-      - name: Add cuDNN to PATH
-        shell: powershell
-        run: |
-          Write-Host "Adding cuDNN to PATH"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\9.14.0.64_cuda13\bin"
+          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
