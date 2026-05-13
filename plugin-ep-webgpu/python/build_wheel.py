@@ -56,6 +56,15 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str):
     shutil.copy2(SCRIPT_DIR / "setup.py", staging_dir / "setup.py")
     shutil.copytree(SCRIPT_DIR / "onnxruntime_ep_webgpu", staging_dir / "onnxruntime_ep_webgpu")
 
+    # Stage the repo-root LICENSE and ThirdPartyNotices.txt next to setup.py so setuptools
+    # can bundle them via the `license-files` entry in pyproject.toml (PEP 639).
+    repo_root = SCRIPT_DIR.parents[1]
+    for license_filename in ("LICENSE", "ThirdPartyNotices.txt"):
+        src = repo_root / license_filename
+        if not src.is_file():
+            raise FileNotFoundError(f"Expected license file not found: {src}")
+        shutil.copy2(src, staging_dir / license_filename)
+
     # Copy plugin binaries into the package directory
     # Note: The binaries are assumed to be directly under `binary_dir`.
     package_dir = staging_dir / "onnxruntime_ep_webgpu"
