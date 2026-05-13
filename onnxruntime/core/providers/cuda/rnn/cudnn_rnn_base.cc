@@ -17,7 +17,7 @@ Status CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
                                       const void* reorganized_w_data,
                                       const int lin_layer_id,
                                       const T* pos,
-                                      int& offset,
+                                      size_t& offset,
                                       bool is_matrix,
                                       cudaStream_t cuda_stream) const {
   int numDims;
@@ -38,12 +38,12 @@ Status CudnnRnnBase<T>::SetWeightBias(const cudnnHandle_t handle,
       is_matrix ? tensor_desc_matrix : tensor_desc_bias, 3, &dt, &numDims, matDims.data(), strideA.data()));
 
   mem_offset = is_matrix ? mem_offset_matrix : mem_offset_bias;
-  int count = matDims[0] * matDims[1] * matDims[2];
+  size_t count = SafeInt<size_t>(matDims[0]) * matDims[1] * matDims[2];
 
-  if (strideA[0] != count) {
+  if (static_cast<size_t>(strideA[0]) != count) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, StatusCode::INVALID_ARGUMENT, "Stride is not packed");
   }
-  CUDA_CALL_THROW(cudaMemcpyAsync(mem_offset, pos + offset, count * sizeof(T), cudaMemcpyDeviceToDevice, cuda_stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(mem_offset, pos + offset, count * sizeof(T), cudaMemcpyDeviceToDevice, cuda_stream));
 
   offset += count;
 
@@ -58,9 +58,9 @@ Status CudnnRnnBase<T>::SetCudnnRnnWeightBias(const cudnnHandle_t cudnn_handle,
                                               const T* R_data,
                                               const T* B_data,
                                               cudaStream_t cuda_stream) const {
-  int w_offset = 0;
-  int r_offset = 0;
-  int bias_offset = 0;
+  size_t w_offset = 0;
+  size_t r_offset = 0;
+  size_t bias_offset = 0;
   for (int layer = 0; layer < RNN_NUM_LAYERS * num_directions_; ++layer) {
     for (size_t idx = 0; idx < W_lin_layer_id_.size(); ++idx) {
       ORT_RETURN_IF_ERROR(SetWeightBias(
@@ -93,6 +93,12 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
                                           void* alloc_stream, cudaStream_t cuda_stream,
                                           cudnnHandle_t cudnn_handle) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
+  ORT_RETURN_IF(W->Shape().NumDimensions() != 3,
+                "Weight W must be 3-D [num_directions, hidden_size, input_size], got rank ",
+                W->Shape().NumDimensions());
+  ORT_RETURN_IF(R->Shape().NumDimensions() != 3,
+                "Recurrence R must be 3-D [num_directions, hidden_size, hidden_size], got rank ",
+                R->Shape().NumDimensions());
   int64_t input_size = W->Shape()[2];
   // RNN W[num_directions_, hidden_size_, input_size]
   // RNN R[num_directions_, hidden_size_, hidden_size_]
@@ -164,7 +170,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
                                             w_data_cache_size_in_bytes_, w_data_cache_, w_desc_cache_,
                                             tmp_rnn_desc, nullptr, nullptr, DefaultCudnnHandle()));
     }
-    cudaStreamSynchronize(nullptr);
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
 
     weight_cached_ = true;
   }
@@ -179,8 +185,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(RNN_Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
   ORT_ENFORCE(nullptr != X);
   ORT_RETURN_IF(X->Shape().NumDimensions() != 3,
-               "Input X must be 3-D [seq_length, batch_size, input_size], got rank ",
-               X->Shape().NumDimensions());
+                "Input X must be 3-D [seq_length, batch_size, input_size], got rank ",
+                X->Shape().NumDimensions());
 
   // optional inputs
   // [batch_size]
@@ -191,6 +197,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (rnn_mode_ == CUDNN_LSTM) {
     // initial cell. [num_directions_, batch_size, hidden_size_]
     initial_c = ctx->Input<Tensor>(RNN_Input_Index::initial_c);
+    // cuDNN LSTM does not support peephole weights (ONNX input P at index 7)
+    const Tensor* P = ctx->Input<Tensor>(7);
+    ORT_RETURN_IF(P != nullptr,
+                  "CUDA LSTM does not support peephole weights (input P). Use CPU EP instead.");
   }
 
   size_t proj_size = hidden_size_;
@@ -218,10 +228,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // 0-len sequences are not supported by cuDNN.
   // Replace them by sequences of len 1 and mask them out with SetZeroSequences
-  for (int i = 0; i < batch_size; ++i) {
+  for (int64_t i = 0; i < batch_size; ++i) {
     if (0 == sequence_lens_data[i]) {
       seq_len_array[i] = 1;
-      zero_seq_index_cache[zero_seq_count] = i;
+      zero_seq_index_cache[zero_seq_count] = gsl::narrow<int32_t>(i);
       ++zero_seq_count;
     } else {
       seq_len_array[i] = sequence_lens_data[i];
