@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cfenv>
+#include <limits>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -1249,6 +1250,85 @@ TEST(QAttentionTest, InvalidWeightZeroPointPerColumnRank) {
       /*weight_zp_dims=*/{3, 4},
       /*weight_zp_data=*/std::vector<uint8_t>(12, 128),
       /*expected_error_substring=*/"'weight_zero_point' must be a scalar or a 1D tensor of size 3 * hidden_size");
+}
+
+// Regression test: hidden_size must be divisible by num_heads. Without this
+// validation, head_size silently truncates and the per-head GEMM loop leaves
+// part of the hidden dimension uncovered, leading to incorrect results.
+TEST(QAttentionTest, InvalidHiddenSizeNotDivisibleByNumHeads) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int hidden_size = 4;  // 4 % 3 != 0
+  constexpr int number_of_heads = 3;
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+
+  std::vector<uint8_t> input_data(static_cast<size_t>(batch_size * sequence_length * hidden_size), 128);
+  std::vector<uint8_t> weight_data(static_cast<size_t>(hidden_size * 3 * hidden_size), 128);
+  std::vector<float> bias_data(static_cast<size_t>(3 * hidden_size), 0.0f);
+
+  OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+  tester.AddInput<uint8_t>("input", input_dims, input_data);
+  tester.AddInput<uint8_t>("weight", weights_dims, weight_data);
+  tester.AddInput<float>("bias", bias_dims, bias_data);
+  tester.AddInput<float>("input_scale", {1}, {0.1f});
+  tester.AddInput<float>("weight_scale", {1}, {0.1f});
+  tester.AddOptionalInputEdge<int32_t>();  // mask_index
+  tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
+  tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
+
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<float> dummy_output(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.0f);
+  tester.AddOutput<float>("output", output_dims, dummy_output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "must be divisible by num_heads",
+             {}, nullptr, &execution_providers);
+}
+
+// Regression test: num_heads attribute exceeding INT_MAX must be rejected by
+// the narrow<int> conversion in AttentionBase's constructor rather than
+// silently truncating to a negative or otherwise invalid int value.
+TEST(QAttentionTest, InvalidNumHeadsOverflowsInt) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int hidden_size = 4;
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+
+  std::vector<uint8_t> input_data(static_cast<size_t>(batch_size * sequence_length * hidden_size), 128);
+  std::vector<uint8_t> weight_data(static_cast<size_t>(hidden_size * 3 * hidden_size), 128);
+  std::vector<float> bias_data(static_cast<size_t>(3 * hidden_size), 0.0f);
+
+  OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
+  // INT_MAX + 1: representable in int64_t, not in int.
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1);
+  tester.AddInput<uint8_t>("input", input_dims, input_data);
+  tester.AddInput<uint8_t>("weight", weights_dims, weight_data);
+  tester.AddInput<float>("bias", bias_dims, bias_data);
+  tester.AddInput<float>("input_scale", {1}, {0.1f});
+  tester.AddInput<float>("weight_scale", {1}, {0.1f});
+  tester.AddOptionalInputEdge<int32_t>();  // mask_index
+  tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
+  tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
+
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<float> dummy_output(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.0f);
+  tester.AddOutput<float>("output", output_dims, dummy_output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  // The narrow<int> in AttentionBase's constructor throws gsl::narrowing_error
+  // on overflow; its what() returns the literal "narrowing_error".
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "narrowing_error",
+             {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
