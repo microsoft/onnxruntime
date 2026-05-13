@@ -7471,14 +7471,21 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
 
-  /** \brief Get the OrtModelPackageApi instance, providing APIs for loading, inspecting,
-   *         and creating sessions from ORT model packages.
+  /** \brief Get the model package API table.
    *
-   * ONNX Runtime releases guarantee that ::OrtApi is forward- and backward-compatible;
-   * ::OrtModelPackageApi carries its own independent versioning.
+   * Returns a pointer to the ::OrtModelPackageApi function table, which provides APIs to:
+   * - create and release model package options and contexts,
+   * - inspect model package metadata (components/variants),
+   * - select a component/variant and query selected files/options,
+   * - create a session from model package selection results.
    *
-   * \return Pointer to an ::OrtModelPackageApi, or NULL if model package support is not
-   *         available in this build (e.g., minimal builds).
+   * The returned pointer is owned by ONNX Runtime and is valid for the process lifetime.
+   * Do not free it.
+   *
+   * \note May return NULL if model package support is not available in the current build
+   *       (for example, minimal builds).
+   *
+   * \return Pointer to ::OrtModelPackageApi, or NULL if unsupported.
    *
    * \since Version 1.27.
    */
@@ -8570,31 +8577,40 @@ struct OrtInteropApi {
   /// @}
 };
 
-/** \brief APIs for loading, inspecting, and creating sessions from ONNX model packages.
+/** \brief API table for model package workflows.
  *
- * Obtain via OrtApi::GetModelPackageApi. Mirrors the shape of OrtCompileApi.
+ * Obtain this table from OrtApi::GetModelPackageApi(). The APIs support:
+ * - creating model package options from OrtSessionOptions,
+ * - loading a package context from a package root path,
+ * - querying component and variant metadata,
+ * - selecting a component and resolving its best variant,
+ * - querying selected variant files and per-file options,
+ * - creating an OrtSession from the selected component context.
  *
  * Typical flow:
+ * 1) Create model package options:
+ *    - CreateModelPackageOptionsFromSessionOptions()
+ * 2) Load package metadata:
+ *    - CreateModelPackageContext()
+ * 3) Query metadata (optional):
+ *    - ModelPackage_GetComponentModelCount()
+ *    - ModelPackage_GetComponentModelNames()
+ *    - ModelPackage_GetModelVariantCount()
+ *    - ModelPackage_GetModelVariantNames()
+ * 4) Select a component and resolve variant:
+ *    - SelectComponent()
+ * 5) Query selected files/options (optional):
+ *    - ModelPackageComponent_GetSelectedVariantFileCount()
+ *    - ModelPackageComponent_GetSelectedVariantFilePath()
+ *    - ModelPackageComponent_GetSelectedVariantFileSessionOptions()
+ *    - ModelPackageComponent_GetSelectedVariantFileProviderOptions()
+ * 6) Create session:
+ *    - CreateSession()
  *
- *   const OrtModelPackageApi* pkg = g_ort->GetModelPackageApi();
- *
- *   OrtModelPackageOptions* options = nullptr;
- *   pkg->CreateModelPackageOptionsFromSessionOptions(env, session_options, &options);
- *
- *   OrtModelPackageContext* ctx = nullptr;
- *   pkg->CreateModelPackageContext(env, package_root, options, &ctx);
- *
- *   size_t component_count = 0;
- *   pkg->ModelPackageContext_GetComponentModelCount(ctx, &component_count);
- *
- *   const char* component_name = nullptr;
- *   pkg->ModelPackageContext_GetComponentModelName(ctx, 0, &component_name);
- *
- *   OrtSession* session = nullptr;
- *   pkg->CreateSession(env, ctx, component_name, nullptr, nullptr, &session);
- *   g_ort->ReleaseSession(session);
- *   pkg->ReleaseModelPackageContext(ctx);
- *   pkg->ReleaseModelPackageOptions(options);
+ * Ownership:
+ * - Release objects created by this API with the corresponding release methods:
+ *   ReleaseModelPackageOptions(), ReleaseModelPackageContext(),
+ *   ReleaseModelPackageComponentContext().
  *
  * \since Version 1.27.
  */
