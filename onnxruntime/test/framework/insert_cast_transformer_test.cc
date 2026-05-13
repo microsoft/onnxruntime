@@ -934,6 +934,10 @@ TEST(TransformerTest, CpuFp16CpuAssignedNewOptInOpsUseFp32FallbackWhenDisabled) 
 }
 
 TEST(TransformerTest, CpuFp16CpuAssignedExistingFp16OpHasNoExtraCastsWhenDisabled) {
+  if (!MlasFp16AccelerationSupported()) {
+    GTEST_SKIP() << "CPU fp16 kernels are not registered on this platform.";
+  }
+
   auto model = MakeCpuFp16Model("cpu_fp16_add_disabled_cpu_assigned", "Add", true);
   auto& graph = model->MainGraph();
   auto* node = graph.Nodes().begin().operator->();
