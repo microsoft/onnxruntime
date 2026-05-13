@@ -412,13 +412,13 @@ class TestOpMatMul4Bits(unittest.TestCase):
         onnx.save(model, output_model_path)
 
     # The output-restoration helper builds an ONNX-broadcast-correct target shape
-    # dynamically (Shape/Size/Max/Sub/Max/ConstantOfShape/Slice/Concat → Reshape) so it
+    # dynamically (Shape/Gather/Max/Sub/Max/ConstantOfShape/Slice/Concat → Reshape) so it
     # works for arbitrary activation rank, including 1-D activations. The op-count
     # expectations below reflect those helper ops.
     _RESHAPE_HELPER_OP_COUNTS: ClassVar[dict[str, int]] = {
         "Reshape": 3,
-        "Shape": 1,
-        "Size": 1,
+        "Shape": 2,
+        "Gather": 1,
         "Sub": 2,
         "Max": 2,
         "ConstantOfShape": 1,
@@ -501,7 +501,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         When activation rank >= weight rank, MatMulNBits already produces the
         correct output shape, so the post-op reshape is elided as a no-op.
         The quantized graph therefore contains only MatMulNBits:1 and no
-        reshape helper ops (Reshape/Shape/Size/Sub/Max/ConstantOfShape/Slice/Concat).
+        reshape helper ops (Reshape/Shape/Gather/Sub/Max/ConstantOfShape/Slice/Concat).
         """
         np.random.seed(42)
         weight_shape = (1, 52, 288)
@@ -515,7 +515,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         # Assert explicitly that none of the helper ops appear in the quantized graph.
         no_reshape_helpers = {
             "Shape": 0,
-            "Size": 0,
+            "Gather": 0,
             "Sub": 0,
             "Max": 0,
             "ConstantOfShape": 0,
