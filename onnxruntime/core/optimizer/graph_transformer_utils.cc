@@ -57,6 +57,7 @@
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_nbits_qkv_fusion.h"
 #include "core/optimizer/matmul_nbits_mlp_fusion.h"
+#include "core/optimizer/group_query_attention_pre_norm_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -451,6 +452,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
       transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
