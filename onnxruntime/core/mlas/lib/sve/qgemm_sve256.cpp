@@ -64,7 +64,7 @@ MLAS_FORCEINLINE size_t Process1Row(
     //------------------------------------------------------------------
     svbool_t pg_b32_4 = MlasSveWhileLtB32(0, 4);  // stores 4 output columns
     svbool_t pg_b32_8 = MlasSvePtrueB32();  // full accumulator lanes
-    svbool_t pg_b8_32 = MlasSvePtrueB8(); // loads 32 bytes from A/B
+    svbool_t pg_b8_32 = MlasSveWhileLtB8(0, 32); // loads 32 bytes from A/B
     svuint32_t acc03, acc47;
 
     const int32_t rowsum = RowSumBuffer[0];
@@ -275,7 +275,7 @@ MLAS_FORCEINLINE size_t Process2Rows(
     //------------------------------------------------------------------
     svbool_t pg_b32_4 = MlasSveWhileLtB32(0, 4);  // stores 4 output columns
     svbool_t pg_b32_8 = MlasSvePtrueB32();  // full accumulator lanes
-    svbool_t pg_b8_32 = MlasSvePtrueB8(); // loads 32 bytes from A/B
+    svbool_t pg_b8_32 = MlasSveWhileLtB8(0, 32); // loads 32 bytes from A/B
     svuint32_t acc03, acc47;
 
     // const int32_t rowsum = RowSumBuffer[0];
@@ -525,7 +525,7 @@ MLAS_FORCEINLINE size_t Process4Rows(
     //------------------------------------------------------------------
     svbool_t pg_b32_4 = MlasSveWhileLtB32(0, 4);  // stores 4 output columns
     svbool_t pg_b32_8 = MlasSvePtrueB32();  // full accumulator lanes
-    svbool_t pg_b8_32 = MlasSvePtrueB8(); // loads 32 bytes from A/B
+    svbool_t pg_b8_32 = MlasSveWhileLtB8(0, 32); // loads 32 bytes from A/B
     svuint32_t acc03_0, acc03_1, acc47_0, acc47_1;
 
     // const int32_t rowsum = RowSumBuffer[0];
@@ -865,7 +865,7 @@ MLAS_FORCEINLINE size_t Process8Rows(
     //------------------------------------------------------------------
     svbool_t pg_b32_4 = MlasSveWhileLtB32(0, 4);  // stores 4 output columns
     svbool_t pg_b32_8 = MlasSvePtrueB32();  // full accumulator lanes
-    svbool_t pg_b8_32 = MlasSvePtrueB8(); // loads 32 bytes from A/B
+    svbool_t pg_b8_32 = MlasSveWhileLtB8(0, 32); // loads 32 bytes from A/B
     svuint32_t acc03_0, acc03_1, acc03_2, acc03_3, acc47_0, acc47_1, acc47_2, acc47_3;
 
     // const int32_t rowsum = RowSumBuffer[0];

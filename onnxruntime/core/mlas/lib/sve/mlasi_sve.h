@@ -690,6 +690,15 @@ MlasSveWhileLtB32(int32_t From, int32_t To)
     return svwhilelt_b32(From, To);
 }
 
+/// Returns a predicate with lanes [From, To) active for int8 elements.
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
+MLAS_SVBOOL
+MlasSveWhileLtB8(int32_t From, int32_t To)
+{
+    return svwhilelt_b8(From, To);
+}
+
 /// Returns an all-true int32 predicate (svptrue_b32).
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
