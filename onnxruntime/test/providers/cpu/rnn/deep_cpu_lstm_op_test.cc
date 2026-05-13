@@ -1358,7 +1358,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {
   }
 
   constexpr int seq_len = 2, batch_size = 1;
-  constexpr int64_t input_size = 2, hidden_size = 2;
+  constexpr int64_t input_size = 1, hidden_size = 2;
   constexpr int num_directions = 1;
 
   OpTester test("LSTM", 22);
@@ -1367,15 +1367,18 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {
   test.AddAttribute("direction", "forward");
   test.AddAttribute("hidden_size", hidden_size);
 
-  std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
+  // X shape: [seq_len, batch_size, input_size] = [2, 1, 1]
+  std::vector<float> X_data = {-0.455351f, -0.185934f};
   std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
 
+  // W shape: [num_directions, 4*hidden_size, input_size] = [1, 8, 1]
   std::vector<float> W_data = {-0.494659f, 0.0453352f,
                                -0.487793f, 0.417264f,
                                -0.0175329f, 0.489074f,
                                -0.446013f, 0.414029f};
   std::vector<int64_t> W_dims = {num_directions, 4 * hidden_size, input_size};
 
+  // R shape: [num_directions, 4*hidden_size, hidden_size] = [1, 8, 2]
   std::vector<float> R_data = {0.146304f, -0.0243403f,
                                -0.487793f, 0.417264f,
                                -0.0175329f, 0.489074f,
@@ -1397,13 +1400,13 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForward_OpSet22_CUDA) {
   test.AddOptionalInputEdge<float>();  // initial_c
   test.AddOptionalInputEdge<float>();  // P
 
-  // Only check Y_h output to keep the test simple.
-  // Y (sequence output)
-  test.AddOptionalOutputEdge<float>();
+  // Expected values computed via reference LSTM implementation with the same weights.
+  // Y (full sequence output) shape: [seq_len, num_directions, batch_size, hidden_size]
+  std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y", Y_dims, {0.0616098f, -0.0416164f, 0.0455843f, -0.0476148f}, false, 1e-4f, 1e-4f);
   // Y_h (final hidden state)
   std::vector<int64_t> Y_h_dims = {num_directions, batch_size, hidden_size};
-  // Expected values are computed by running the same test with the CUDA EP at opset 14.
-  test.AddOutput<float>("Y_h", Y_h_dims, {-0.0321607f, 0.0540958f}, false, 1e-4f, 1e-4f);
+  test.AddOutput<float>("Y_h", Y_h_dims, {0.0455843f, -0.0476148f}, false, 1e-4f, 1e-4f);
   // Y_c
   test.AddOptionalOutputEdge<float>();
 

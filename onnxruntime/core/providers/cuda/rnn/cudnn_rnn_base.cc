@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "cudnn_rnn_base.h"
 #include "rnn_impl.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -103,7 +104,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   // LSTM R[num_directions_, 4*hidden_size_, hidden_size_]
   // LSTM B[num_directions_, 8*hidden_size_]
   size_t number = W_lin_layer_id_.size();
-  int64_t w_size = num_directions_ * (number * hidden_size_ * (input_size + hidden_size_ + 2));
+  int64_t w_size = SafeInt<int64_t>(num_directions_) * number * hidden_size_ * (input_size + hidden_size_ + 2);
   TensorShapeVector dims_w({w_size, 1, 1});
   ORT_RETURN_IF_ERROR(target_w_desc.Set(dims_w, CudnnTensor::GetDataType<CudaT>()));
 
@@ -177,6 +178,9 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   // inputs
   const Tensor* X = ctx->Input<Tensor>(RNN_Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
   ORT_ENFORCE(nullptr != X);
+  ORT_RETURN_IF(X->Shape().NumDimensions() != 3,
+               "Input X must be 3-D [seq_length, batch_size, input_size], got rank ",
+               X->Shape().NumDimensions());
 
   // optional inputs
   // [batch_size]
@@ -197,7 +201,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   // we thread a single input as sequence_lens of length 1, require to expand to [batch_size]?
   std::vector<int32_t> sequence_lengths_temp;
   if (!sequence_lens) {
-    sequence_lengths_temp.resize(batch_size, gsl::narrow_cast<int32_t>(seq_length));
+    sequence_lengths_temp.resize(batch_size, gsl::narrow<int32_t>(seq_length));
   }
 
   const int32_t* sequence_lens_data = (sequence_lens == nullptr)
@@ -257,15 +261,15 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   const T* x_data = X->Data<T>();
   if (reverse_) {
     // reverse input data
-    x_reversed_data = GetScratchBuffer<T>(seq_length * batch_size * input_size, GetComputeStream(ctx));
+    x_reversed_data = GetScratchBuffer<T>(SafeInt<int64_t>(seq_length) * batch_size * input_size, GetComputeStream(ctx));
     ReverseBySequence(Stream(ctx),
-                      gsl::narrow_cast<int32_t>(seq_length),
+                      gsl::narrow<int32_t>(seq_length),
                       sequence_lens_buffer.GpuPtr(),
-                      gsl::narrow_cast<int32_t>(batch_size),
-                      gsl::narrow_cast<int32_t>(input_size),
+                      gsl::narrow<int32_t>(batch_size),
+                      gsl::narrow<int32_t>(input_size),
                       reinterpret_cast<const CudaT*>(x_data),
                       reinterpret_cast<CudaT*>(x_reversed_data.get()),
-                      seq_length * batch_size * input_size);
+                      SafeInt<int64_t>(seq_length) * batch_size * input_size);
   }
 
   const T* x_data_input = reverse_ ? x_reversed_data.get() : x_data;
@@ -274,7 +278,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->Data<T>();
   T* y_h_data = (Y_h == nullptr) ? nullptr : Y_h->MutableData<T>();
   T* y_c_data = (Y_c == nullptr) ? nullptr : Y_c->MutableData<T>();
-  int64_t output_size = seq_length * num_directions_ * batch_size * hidden_size_;
+  int64_t output_size = SafeInt<int64_t>(seq_length) * num_directions_ * batch_size * hidden_size_;
   T* y_data = nullptr;
   IAllocatorUniquePtr<T> y_alloc_data;
   if (Y != nullptr) {
@@ -357,7 +361,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     // Mask on output for 0 sequence batches
     if (zero_seq_count > 0) {
       // Mask on output for 0 sequence batches
-      SetZeroSequences(zero_seq_count, zero_seq_index_cache, y_data, y_h_data, y_c_data, GetComputeStream(ctx), Stream(ctx));
+      SetZeroSequences(gsl::span<const int32_t>(zero_seq_index_cache.data(), zero_seq_count),
+                       y_data, y_h_data, y_c_data, GetComputeStream(ctx), Stream(ctx));
     }
     return Status::OK();
   }
@@ -369,18 +374,18 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (reverse_) {
       // reverse output data
       ReverseBySequence(Stream(ctx),
-                        gsl::narrow_cast<int32_t>(seq_length),
+                        gsl::narrow<int32_t>(seq_length),
                         sequence_lens_buffer.GpuPtr(),
-                        gsl::narrow_cast<int32_t>(batch_size),
-                        gsl::narrow_cast<int32_t>(hidden_size_),
+                        gsl::narrow<int32_t>(batch_size),
+                        gsl::narrow<int32_t>(hidden_size_),
                         reinterpret_cast<CudaT*>(y_data),
                         reinterpret_cast<CudaT*>(y_reorganized_data.get()),
                         output_size);
     } else {
       ReorderBidirectionalDataInSequence(Stream(ctx),
-                                         gsl::narrow_cast<int32_t>(seq_length),
-                                         gsl::narrow_cast<int32_t>(batch_size),
-                                         gsl::narrow_cast<int32_t>(hidden_size_),
+                                         gsl::narrow<int32_t>(seq_length),
+                                         gsl::narrow<int32_t>(batch_size),
+                                         gsl::narrow<int32_t>(hidden_size_),
                                          reinterpret_cast<CudaT*>(y_data),
                                          reinterpret_cast<CudaT*>(y_reorganized_data.get()),
                                          output_size);
@@ -397,26 +402,27 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Mask on output for 0 sequence batches
   if (zero_seq_count > 0) {
-    SetZeroSequences(zero_seq_count, zero_seq_index_cache, y_data, y_h_data, y_c_data, GetComputeStream(ctx), Stream(ctx));
+    SetZeroSequences(gsl::span<const int32_t>(zero_seq_index_cache.data(), zero_seq_count),
+                     y_data, y_h_data, y_c_data, GetComputeStream(ctx), Stream(ctx));
   }
 
   return Status::OK();
 }
 
 template <typename T>
-void CudnnRnnBase<T>::SetZeroSequences(const int64_t zero_seq_index_cache_size,
-                                       const std::vector<int32_t> zero_seq_index_cache,
+void CudnnRnnBase<T>::SetZeroSequences(gsl::span<const int32_t> zero_seq_index_cache,
                                        T* y_data,
                                        T* y_h_data,
                                        T* y_c_data,
                                        void* alloc_stream, cudaStream_t cuda_stream) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
+  const int64_t zero_seq_index_cache_size = static_cast<int64_t>(zero_seq_index_cache.size());
   CudaAsyncBuffer<int32_t> zero_seq_index_cache_async_buffer(this, zero_seq_index_cache_size);
   memcpy(zero_seq_index_cache_async_buffer.CpuPtr(), zero_seq_index_cache.data(),
          zero_seq_index_cache_size * sizeof(int32_t));
   ORT_THROW_IF_ERROR(zero_seq_index_cache_async_buffer.CopyToGpu(alloc_stream));
   MaskZeroSequences(cuda_stream,
-                    gsl::narrow_cast<int32_t>(hidden_size_),
+                    gsl::narrow<int32_t>(hidden_size_),
                     reinterpret_cast<CudaT*>(y_data),
                     reinterpret_cast<CudaT*>(y_h_data),
                     reinterpret_cast<CudaT*>(y_c_data),
