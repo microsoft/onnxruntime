@@ -12,6 +12,8 @@
 
 #include "core/common/logging/sinks/file_sink.h"
 #include "core/framework/config_options.h"
+#include "core/framework/execution_provider.h"
+#include "core/framework/graph_partitioner_internal.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/resource_accountant.h"
@@ -1559,6 +1561,381 @@ TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_OldVersionFallback)
   ort_ep->ort_version_supported = 26;
 
   ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
+}
+
+namespace mem_type_test {
+
+struct TestNodeComputeInfo : ::OrtNodeComputeInfo {
+  std::vector<OrtMemType> input_mem_types;
+  std::vector<OrtMemType> output_mem_types;
+  // If non-empty, the corresponding hook returns ORT_FAIL with this message instead of
+  // filling the output buffer.
+  std::string fail_inputs_message;
+  std::string fail_outputs_message;
+  const ::OrtApi* ort_api = ::OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+  TestNodeComputeInfo() : ::OrtNodeComputeInfo{} {
+    ort_version_supported = ORT_API_VERSION;
+    CreateState = CreateStateImpl;
+    Compute = ComputeImpl;
+    ReleaseState = ReleaseStateImpl;
+    // Memtype hooks are wired by the individual test as needed.
+  }
+
+  static OrtStatus* ORT_API_CALL CreateStateImpl(::OrtNodeComputeInfo* /*this_ptr*/,
+                                                 OrtNodeComputeContext* /*compute_context*/,
+                                                 void** compute_state) noexcept {
+    *compute_state = nullptr;
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL ComputeImpl(::OrtNodeComputeInfo* /*this_ptr*/, void* /*compute_state*/,
+                                             OrtKernelContext* /*kernel_context*/) noexcept {
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseStateImpl(::OrtNodeComputeInfo* /*this_ptr*/,
+                                            void* /*compute_state*/) noexcept {}
+
+  static OrtStatus* ORT_API_CALL GetInputMemTypesImpl(const ::OrtNodeComputeInfo* this_ptr,
+                                                     size_t count, OrtMemType* mem_types) noexcept {
+    try {
+      const auto* self = static_cast<const TestNodeComputeInfo*>(this_ptr);
+      if (!self->fail_inputs_message.empty()) {
+        return self->ort_api->CreateStatus(ORT_FAIL, self->fail_inputs_message.c_str());
+      }
+      if (count != self->input_mem_types.size()) {
+        return self->ort_api->CreateStatus(ORT_FAIL, "input mem types count mismatch");
+      }
+      for (size_t i = 0; i < count; ++i) {
+        mem_types[i] = self->input_mem_types[i];
+      }
+      return nullptr;
+    } catch (...) {
+      return ::OrtGetApiBase()->GetApi(ORT_API_VERSION)->CreateStatus(ORT_FAIL, "unexpected exception");
+    }
+  }
+
+  static OrtStatus* ORT_API_CALL GetOutputMemTypesImpl(const ::OrtNodeComputeInfo* this_ptr,
+                                                      size_t count, OrtMemType* mem_types) noexcept {
+    try {
+      const auto* self = static_cast<const TestNodeComputeInfo*>(this_ptr);
+      if (!self->fail_outputs_message.empty()) {
+        return self->ort_api->CreateStatus(ORT_FAIL, self->fail_outputs_message.c_str());
+      }
+      if (count != self->output_mem_types.size()) {
+        return self->ort_api->CreateStatus(ORT_FAIL, "output mem types count mismatch");
+      }
+      for (size_t i = 0; i < count; ++i) {
+        mem_types[i] = self->output_mem_types[i];
+      }
+      return nullptr;
+    } catch (...) {
+      return ::OrtGetApiBase()->GetApi(ORT_API_VERSION)->CreateStatus(ORT_FAIL, "unexpected exception");
+    }
+  }
+};
+
+// Builds a minimal 2-input/1-output Add model: y = Add(a, b), with 'a' and 'b' as graph inputs
+// and 'y' as a graph output. Returned model owns the graph.
+inline std::shared_ptr<onnxruntime::Model> BuildSingleAddModel() {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 13;
+  auto model = std::make_shared<onnxruntime::Model>("memtype_test", false, ModelMetaData(), PathString(),
+                                                    IOnnxRuntimeOpSchemaRegistryList(),
+                                                    domain_to_version,
+                                                    std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                    DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model->MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_type;
+  float_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& a = graph.GetOrCreateNodeArg("a", &float_type);
+  auto& b = graph.GetOrCreateNodeArg("b", &float_type);
+  auto& y = graph.GetOrCreateNodeArg("y", &float_type);
+  graph.AddNode("add_0", "Add", "", {&a, &b}, {&y});
+
+  EXPECT_TRUE(graph.Resolve().IsOK());
+  return model;
+}
+
+// Builds an IndexedSubGraph that fuses 'add_0' from the model under name 'fused_add'.
+inline std::unique_ptr<IndexedSubGraph> MakeAddSubGraph(const Graph& graph) {
+  auto sub_graph = std::make_unique<IndexedSubGraph>();
+  for (const auto& node : graph.Nodes()) {
+    sub_graph->nodes.push_back(node.Index());
+  }
+  auto metadef = std::make_unique<IndexedSubGraph::MetaDef>();
+  metadef->name = "fused_add";
+  metadef->domain = "test.domain";
+  metadef->since_version = 1;
+  metadef->inputs = {"a", "b"};
+  metadef->outputs = {"y"};
+  sub_graph->SetMetaDef(std::move(metadef));
+  return sub_graph;
+}
+
+// Drives IExecutionProvider::Compile against `ep` for the single Add node and returns the
+// resulting NodeComputeInfo vector. The TestOrtEp must have its Compile/ReleaseNodeComputeInfos
+// pointers populated by the caller.
+inline Status InvokeCompile(IExecutionProvider& ep, Graph& graph,
+                            const IndexedSubGraph& sub_graph,
+                            std::vector<NodeComputeInfo>& out_node_compute_infos) {
+  Node& fused_node = graph.BeginFuseSubGraph(sub_graph, "fused_add_node");
+  fused_node.SetExecutionProviderType("TestOrtEp");
+  GraphViewer filtered_viewer(graph, sub_graph);
+  std::vector<IExecutionProvider::FusedNodeAndGraph> fused_nodes_and_graphs;
+  fused_nodes_and_graphs.push_back({std::ref(fused_node), std::ref(filtered_viewer)});
+  return ep.Compile(fused_nodes_and_graphs, out_node_compute_infos);
+}
+
+// Per-test configurator for the next OrtNodeComputeInfo handed to ORT through Compile().
+// Each test sets g_configure, then invokes Compile through the EP, which fires CompileImpl.
+using TestNodeConfigureFn = void (*)(TestNodeComputeInfo&);
+inline TestNodeConfigureFn& Configure() {
+  static TestNodeConfigureFn fn = nullptr;
+  return fn;
+}
+
+inline OrtStatus* ORT_API_CALL CompileImpl(OrtEp* /*this_ptr*/, const OrtGraph** /*graphs*/,
+                                           const OrtNode** /*fused_nodes*/, size_t count,
+                                           OrtNodeComputeInfo** node_compute_infos,
+                                           OrtNode** /*ep_context_nodes*/) noexcept {
+  try {
+    for (size_t i = 0; i < count; ++i) {
+      auto info = std::make_unique<TestNodeComputeInfo>();
+      if (Configure() != nullptr) {
+        Configure()(*info);
+      }
+      node_compute_infos[i] = info.release();
+    }
+    return nullptr;
+  } catch (...) {
+    return ::OrtGetApiBase()->GetApi(ORT_API_VERSION)->CreateStatus(ORT_FAIL, "unexpected exception");
+  }
+}
+
+inline void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* /*this_ptr*/,
+                                                    OrtNodeComputeInfo** node_compute_infos,
+                                                    size_t num) noexcept {
+  for (size_t i = 0; i < num; ++i) {
+    delete static_cast<TestNodeComputeInfo*>(node_compute_infos[i]);
+  }
+}
+
+}  // namespace mem_type_test
+
+TEST(PluginExecutionProviderTest, NodeComputeInfo_MemTypeHooks_HappyPath_BothDirections) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+  ort_ep->ReleaseNodeComputeInfos = mem_type_test::ReleaseNodeComputeInfosImpl;
+  ort_ep->Compile = mem_type_test::CompileImpl;
+  mem_type_test::Configure() = [](mem_type_test::TestNodeComputeInfo& info) {
+    info.input_mem_types = {OrtMemTypeCPUInput, OrtMemTypeDefault};
+    info.output_mem_types = {OrtMemTypeCPUOutput};
+    info.GetInputMemTypes = mem_type_test::TestNodeComputeInfo::GetInputMemTypesImpl;
+    info.GetOutputMemTypes = mem_type_test::TestNodeComputeInfo::GetOutputMemTypesImpl;
+  };
+
+  auto model = mem_type_test::BuildSingleAddModel();
+  auto sub_graph = mem_type_test::MakeAddSubGraph(model->MainGraph());
+
+  std::vector<NodeComputeInfo> node_compute_infos;
+  ASSERT_STATUS_OK(mem_type_test::InvokeCompile(*ep, model->MainGraph(), *sub_graph, node_compute_infos));
+  ASSERT_EQ(node_compute_infos.size(), 1u);
+
+  ASSERT_TRUE(static_cast<bool>(node_compute_infos[0].get_input_mem_types));
+  ASSERT_TRUE(static_cast<bool>(node_compute_infos[0].get_output_mem_types));
+
+  std::vector<OrtMemType> in_buf(2, OrtMemTypeDefault);
+  ASSERT_STATUS_OK(node_compute_infos[0].get_input_mem_types(gsl::make_span(in_buf)));
+  EXPECT_EQ(in_buf[0], OrtMemTypeCPUInput);
+  EXPECT_EQ(in_buf[1], OrtMemTypeDefault);
+
+  std::vector<OrtMemType> out_buf(1, OrtMemTypeDefault);
+  ASSERT_STATUS_OK(node_compute_infos[0].get_output_mem_types(gsl::make_span(out_buf)));
+  EXPECT_EQ(out_buf[0], OrtMemTypeCPUOutput);
+}
+
+TEST(PluginExecutionProviderTest, NodeComputeInfo_MemTypeHooks_NullHooks_LeaveFunctorsEmpty) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+  ort_ep->ReleaseNodeComputeInfos = mem_type_test::ReleaseNodeComputeInfosImpl;
+  ort_ep->Compile = mem_type_test::CompileImpl;
+  mem_type_test::Configure() = [](mem_type_test::TestNodeComputeInfo& info) {
+    info.GetInputMemTypes = nullptr;
+    info.GetOutputMemTypes = nullptr;
+  };
+
+  auto model = mem_type_test::BuildSingleAddModel();
+  auto sub_graph = mem_type_test::MakeAddSubGraph(model->MainGraph());
+
+  std::vector<NodeComputeInfo> node_compute_infos;
+  ASSERT_STATUS_OK(mem_type_test::InvokeCompile(*ep, model->MainGraph(), *sub_graph, node_compute_infos));
+  ASSERT_EQ(node_compute_infos.size(), 1u);
+
+  EXPECT_FALSE(static_cast<bool>(node_compute_infos[0].get_input_mem_types));
+  EXPECT_FALSE(static_cast<bool>(node_compute_infos[0].get_output_mem_types));
+}
+
+TEST(PluginExecutionProviderTest, NodeComputeInfo_MemTypeHooks_OldVersion_LeaveFunctorsEmpty) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+  ort_ep->ReleaseNodeComputeInfos = mem_type_test::ReleaseNodeComputeInfosImpl;
+  ort_ep->Compile = mem_type_test::CompileImpl;
+  mem_type_test::Configure() = [](mem_type_test::TestNodeComputeInfo& info) {
+    info.ort_version_supported = 26;  // pre-feature version
+    info.input_mem_types = {OrtMemTypeCPUInput, OrtMemTypeDefault};
+    info.output_mem_types = {OrtMemTypeCPUOutput};
+    info.GetInputMemTypes = mem_type_test::TestNodeComputeInfo::GetInputMemTypesImpl;
+    info.GetOutputMemTypes = mem_type_test::TestNodeComputeInfo::GetOutputMemTypesImpl;
+  };
+
+  auto model = mem_type_test::BuildSingleAddModel();
+  auto sub_graph = mem_type_test::MakeAddSubGraph(model->MainGraph());
+
+  std::vector<NodeComputeInfo> node_compute_infos;
+  ASSERT_STATUS_OK(mem_type_test::InvokeCompile(*ep, model->MainGraph(), *sub_graph, node_compute_infos));
+  ASSERT_EQ(node_compute_infos.size(), 1u);
+
+  EXPECT_FALSE(static_cast<bool>(node_compute_infos[0].get_input_mem_types));
+  EXPECT_FALSE(static_cast<bool>(node_compute_infos[0].get_output_mem_types));
+}
+
+TEST(PluginExecutionProviderTest, NodeComputeInfo_MemTypeHooks_EpError_PropagatesAsStatus) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+  ort_ep->ReleaseNodeComputeInfos = mem_type_test::ReleaseNodeComputeInfosImpl;
+  ort_ep->Compile = mem_type_test::CompileImpl;
+  mem_type_test::Configure() = [](mem_type_test::TestNodeComputeInfo& info) {
+    info.fail_inputs_message = "ep refused input memtypes";
+    info.GetInputMemTypes = mem_type_test::TestNodeComputeInfo::GetInputMemTypesImpl;
+    // outputs hook left null on purpose
+  };
+
+  auto model = mem_type_test::BuildSingleAddModel();
+  auto sub_graph = mem_type_test::MakeAddSubGraph(model->MainGraph());
+
+  std::vector<NodeComputeInfo> node_compute_infos;
+  ASSERT_STATUS_OK(mem_type_test::InvokeCompile(*ep, model->MainGraph(), *sub_graph, node_compute_infos));
+  ASSERT_EQ(node_compute_infos.size(), 1u);
+  ASSERT_TRUE(static_cast<bool>(node_compute_infos[0].get_input_mem_types));
+
+  std::vector<OrtMemType> buf(2, OrtMemTypeDefault);
+  Status status = node_compute_infos[0].get_input_mem_types(gsl::make_span(buf));
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("ep refused input memtypes"));
+}
+
+TEST(PluginExecutionProviderTest, ApplyFusedNodeMemTypes_InputsOnlyMixed) {
+  NodeComputeInfo info;
+  info.get_input_mem_types = [](gsl::span<OrtMemType> mem_types) -> Status {
+    EXPECT_EQ(mem_types.size(), 2u);
+    mem_types[0] = OrtMemTypeCPUInput;
+    mem_types[1] = OrtMemTypeDefault;
+    return Status::OK();
+  };
+
+  IndexedSubGraph::MetaDef metadef;
+  metadef.name = "fused";
+  metadef.domain = "test";
+  metadef.since_version = 1;
+  metadef.inputs = {"a", "b"};
+  metadef.outputs = {"y"};
+
+  KernelDefBuilder builder;
+  builder.SetName(metadef.name).SetDomain(metadef.domain).SinceVersion(metadef.since_version).Provider("TestOrtEp");
+  ASSERT_STATUS_OK(ApplyFusedNodeMemTypes(builder, info, metadef));
+  auto kd = builder.Build();
+  EXPECT_EQ(kd->InputMemoryType(0), OrtMemTypeCPUInput);
+  EXPECT_EQ(kd->InputMemoryType(1), OrtMemTypeDefault);
+  EXPECT_EQ(kd->OutputMemoryType(0), OrtMemTypeDefault);
+}
+
+TEST(PluginExecutionProviderTest, ApplyFusedNodeMemTypes_OutputsOnly) {
+  NodeComputeInfo info;
+  info.get_output_mem_types = [](gsl::span<OrtMemType> mem_types) -> Status {
+    EXPECT_EQ(mem_types.size(), 1u);
+    mem_types[0] = OrtMemTypeCPUOutput;
+    return Status::OK();
+  };
+
+  IndexedSubGraph::MetaDef metadef;
+  metadef.name = "fused";
+  metadef.domain = "test";
+  metadef.since_version = 1;
+  metadef.inputs = {"a", "b"};
+  metadef.outputs = {"y"};
+
+  KernelDefBuilder builder;
+  builder.SetName(metadef.name).SetDomain(metadef.domain).SinceVersion(metadef.since_version).Provider("TestOrtEp");
+  ASSERT_STATUS_OK(ApplyFusedNodeMemTypes(builder, info, metadef));
+  auto kd = builder.Build();
+  EXPECT_EQ(kd->OutputMemoryType(0), OrtMemTypeCPUOutput);
+  EXPECT_EQ(kd->InputMemoryType(0), OrtMemTypeDefault);
+  EXPECT_EQ(kd->InputMemoryType(1), OrtMemTypeDefault);
+}
+
+TEST(PluginExecutionProviderTest, ApplyFusedNodeMemTypes_BothFunctorsEmpty) {
+  NodeComputeInfo info;
+  IndexedSubGraph::MetaDef metadef;
+  metadef.name = "fused";
+  metadef.domain = "test";
+  metadef.since_version = 1;
+  metadef.inputs = {"a", "b"};
+  metadef.outputs = {"y"};
+
+  KernelDefBuilder builder;
+  builder.SetName(metadef.name).SetDomain(metadef.domain).SinceVersion(metadef.since_version).Provider("TestOrtEp");
+  ASSERT_STATUS_OK(ApplyFusedNodeMemTypes(builder, info, metadef));
+  auto kd = builder.Build();
+  EXPECT_EQ(kd->InputMemoryType(0), OrtMemTypeDefault);
+  EXPECT_EQ(kd->InputMemoryType(1), OrtMemTypeDefault);
+  EXPECT_EQ(kd->OutputMemoryType(0), OrtMemTypeDefault);
+}
+
+TEST(PluginExecutionProviderTest, ApplyFusedNodeMemTypes_CallbackReturnsError) {
+  NodeComputeInfo info;
+  info.get_input_mem_types = [](gsl::span<OrtMemType> /*mem_types*/) -> Status {
+    return Status(common::ONNXRUNTIME, common::FAIL, "ep boom");
+  };
+
+  IndexedSubGraph::MetaDef metadef;
+  metadef.name = "fused";
+  metadef.domain = "test";
+  metadef.since_version = 1;
+  metadef.inputs = {"a"};
+  metadef.outputs = {"y"};
+
+  KernelDefBuilder builder;
+  builder.SetName(metadef.name).SetDomain(metadef.domain).SinceVersion(metadef.since_version).Provider("TestOrtEp");
+  Status status = ApplyFusedNodeMemTypes(builder, info, metadef);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("ep boom"));
+}
+
+// Helper must short-circuit on empty metadef I/O (the callbacks below would fail the test if invoked).
+TEST(PluginExecutionProviderTest, ApplyFusedNodeMemTypes_EmptyMetaDef) {
+  bool input_cb_called = false;
+  bool output_cb_called = false;
+  NodeComputeInfo info;
+  info.get_input_mem_types = [&input_cb_called](gsl::span<OrtMemType> /*mem_types*/) -> Status {
+    input_cb_called = true;
+    return Status(common::ONNXRUNTIME, common::FAIL, "should not be called");
+  };
+  info.get_output_mem_types = [&output_cb_called](gsl::span<OrtMemType> /*mem_types*/) -> Status {
+    output_cb_called = true;
+    return Status(common::ONNXRUNTIME, common::FAIL, "should not be called");
+  };
+
+  IndexedSubGraph::MetaDef metadef;
+  metadef.name = "fused";
+  metadef.domain = "test";
+  metadef.since_version = 1;
+  // inputs and outputs deliberately left empty
+
+  KernelDefBuilder builder;
+  builder.SetName(metadef.name).SetDomain(metadef.domain).SinceVersion(metadef.since_version).Provider("TestOrtEp");
+  ASSERT_STATUS_OK(ApplyFusedNodeMemTypes(builder, info, metadef));
+  EXPECT_FALSE(input_cb_called);
+  EXPECT_FALSE(output_cb_called);
 }
 
 }  // namespace onnxruntime::test

@@ -85,9 +85,9 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .Provider(provider_type);
 }
 
-static Status ApplyFusedNodeMemTypes(KernelDefBuilder& builder,
-                                     const NodeComputeInfo& info,
-                                     const IndexedSubGraph::MetaDef& metadef) {
+Status ApplyFusedNodeMemTypes(KernelDefBuilder& builder,
+                              const NodeComputeInfo& info,
+                              const IndexedSubGraph::MetaDef& metadef) {
   if (info.get_input_mem_types && !metadef.inputs.empty()) {
     std::vector<OrtMemType> mem_types(metadef.inputs.size(), OrtMemTypeDefault);
     ORT_RETURN_IF_ERROR(info.get_input_mem_types(gsl::make_span(mem_types)));
