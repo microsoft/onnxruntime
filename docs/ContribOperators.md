@@ -1519,7 +1519,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>A</tt> : TA</dt>
 <dd>Input tensor A.</dd>
 <dt><tt>A_scale</tt> : TS</dt>
-<dd>Scale of quantized input 'A'. Must be a block-wise tensor with shape (ceil(M / block_size_m), K / block_size_k), or the same shape with output batch dimensions prefixed.</dd>
+<dd>Scale of quantized input 'A'. Must be a block-wise tensor with shape (ceil(M / block_size_m), K / block_size_k), or the same shape with A batch dimensions prefixed.</dd>
 <dt><tt>A_zero_point</tt> : TZ</dt>
 <dd>Zero point tensor for input 'A'. Must have the same shape as A_scale and all values must encode 0.0.</dd>
 <dt><tt>B</tt> : TB</dt>

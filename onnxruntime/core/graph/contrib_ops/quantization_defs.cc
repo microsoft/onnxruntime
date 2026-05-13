@@ -957,7 +957,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "A", "Input tensor A.", "TA")
         .Input(1, "A_scale",
                "Scale of quantized input 'A'. Must be a block-wise tensor with shape "
-               "(ceil(M / block_size_m), K / block_size_k), or the same shape with output batch dimensions prefixed.",
+               "(ceil(M / block_size_m), K / block_size_k), or the same shape with A batch dimensions prefixed.",
                "TS")
         .Input(2, "A_zero_point",
                "Zero point tensor for input 'A'. Must have the same shape as A_scale and all values must encode 0.0.",
@@ -1022,23 +1022,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
             const int a_scale_rank = a_scale_shape.dim_size();
             if (a_scale_rank < 2) {
-              fail_type_inference("A scale must have rank 2 or the same rank as Y.");
+              fail_type_inference("A scale must have rank 2 or the same rank as A.");
             }
             if (a_scale_rank != 2) {
-              if (hasInputShape(ctx, 3)) {
-                const auto& y_shape = ctx.getOutputType(0)->tensor_type().shape();
-                const int y_rank = y_shape.dim_size();
-                if (a_scale_rank != y_rank) {
-                  fail_type_inference("A scale must have rank 2 or the same rank as Y.");
+              if (a_scale_rank != a_rank) {
+                fail_type_inference("A scale must have rank 2 or the same rank as A.");
+              }
+              for (int i = 0; i < a_rank - 2; ++i) {
+                if (a_shape.dim(i).has_dim_value() && a_scale_shape.dim(i).has_dim_value() &&
+                    a_shape.dim(i).dim_value() != a_scale_shape.dim(i).dim_value()) {
+                  fail_type_inference("A scale batch dimensions must match A.");
                 }
-                for (int i = 0; i < y_rank - 2; ++i) {
-                  if (y_shape.dim(i).has_dim_value() && a_scale_shape.dim(i).has_dim_value() &&
-                      y_shape.dim(i).dim_value() != a_scale_shape.dim(i).dim_value()) {
-                    fail_type_inference("A scale batch dimensions must match Y.");
-                  }
-                }
-              } else if (a_scale_rank != a_rank) {
-                fail_type_inference("A scale must have rank 2 or the same rank as Y.");
               }
             }
             if (a_shape.dim(a_rank - 2).has_dim_value() && a_scale_shape.dim(a_scale_rank - 2).has_dim_value() &&
@@ -1064,23 +1058,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
             const int a_zp_rank = a_zp_shape.dim_size();
             if (a_zp_rank < 2) {
-              fail_type_inference("A zero point must have rank 2 or the same rank as Y.");
+              fail_type_inference("A zero point must have rank 2 or the same rank as A.");
             }
             if (a_zp_rank != 2) {
-              if (hasInputShape(ctx, 3)) {
-                const auto& y_shape = ctx.getOutputType(0)->tensor_type().shape();
-                const int y_rank = y_shape.dim_size();
-                if (a_zp_rank != y_rank) {
-                  fail_type_inference("A zero point must have rank 2 or the same rank as Y.");
+              if (a_zp_rank != a_rank) {
+                fail_type_inference("A zero point must have rank 2 or the same rank as A.");
+              }
+              for (int i = 0; i < a_rank - 2; ++i) {
+                if (a_shape.dim(i).has_dim_value() && a_zp_shape.dim(i).has_dim_value() &&
+                    a_shape.dim(i).dim_value() != a_zp_shape.dim(i).dim_value()) {
+                  fail_type_inference("A zero point batch dimensions must match A.");
                 }
-                for (int i = 0; i < y_rank - 2; ++i) {
-                  if (y_shape.dim(i).has_dim_value() && a_zp_shape.dim(i).has_dim_value() &&
-                      y_shape.dim(i).dim_value() != a_zp_shape.dim(i).dim_value()) {
-                    fail_type_inference("A zero point batch dimensions must match Y.");
-                  }
-                }
-              } else if (a_zp_rank != a_rank) {
-                fail_type_inference("A zero point must have rank 2 or the same rank as Y.");
               }
             }
             if (a_shape.dim(a_rank - 2).has_dim_value() && a_zp_shape.dim(a_zp_rank - 2).has_dim_value() &&

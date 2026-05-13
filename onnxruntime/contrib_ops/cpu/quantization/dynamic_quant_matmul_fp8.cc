@@ -12,12 +12,15 @@
 #include "core/common/float16.h"
 #include "core/common/float8.h"
 #include "core/common/safeint.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {
@@ -160,28 +163,28 @@ Status ValidateZeroPointValuesAreZero(const Tensor& zero_point, size_t expected_
 }
 
 template <typename SrcT>
-void QuantizeBlockwiseFp8A(const SrcT* src,
-                           size_t M,
-                           size_t K,
-                           size_t block_size_m,
-                           size_t block_size_k,
-                           size_t blocks_k,
-                           const float* scales,
-                           const uint8_t* zero_points,
-                           mlas_fp8_mode mode,
-                           uint8_t* dst) {
-  ORT_ENFORCE(onnxruntime::IsValidFp8Mode(mode), "DynamicQuantMatMulFp8 FP8 mode must be valid.");
-  // Block sizes come from op attributes; scale shapes only provide the number of blocks.
-  for (size_t m = 0; m < M; ++m) {
-    const size_t block_m = m / block_size_m;
+void QuantizeBlockwiseFp8ABlock(const SrcT* src,
+                                size_t M,
+                                size_t K,
+                                size_t block_size_m,
+                                size_t block_size_k,
+                                size_t blocks_k,
+                                size_t block_m,
+                                size_t block_k,
+                                const float* scales,
+                                mlas_fp8_mode mode,
+                                uint8_t* dst) {
+  const size_t m_begin = block_m * block_size_m;
+  const size_t m_end = std::min(M, m_begin + block_size_m);
+  const size_t k_begin = block_k * block_size_k;
+  const size_t k_end = std::min(K, k_begin + block_size_k);
+  const size_t idx = block_m * blocks_k + block_k;
+  const float scale = scales[idx];
+  for (size_t m = m_begin; m < m_end; ++m) {
     const size_t row_offset = m * K;
-    for (size_t k = 0; k < K; ++k) {
-      const size_t block_k = k / block_size_k;
-      const size_t idx = block_m * blocks_k + block_k;
-      const float scale = scales[idx];
-      const float zp = zero_points ? Fp8ByteToFloat(zero_points[idx], mode) : 0.0f;
+    for (size_t k = k_begin; k < k_end; ++k) {
       const float value = static_cast<float>(src[row_offset + k]);
-      const float quantized = (value / scale) + zp;
+      const float quantized = value / scale;
       dst[row_offset + k] = FloatToFp8Byte(quantized, mode);
     }
   }
@@ -194,10 +197,7 @@ void QuantizeBlockwiseFp8(const SrcT* src,
                           size_t block_size_k,
                           size_t block_size_n,
                           const float* scales,
-                          const uint8_t* zero_points,
-                          mlas_fp8_mode mode,
                           uint8_t* dst) {
-  ORT_ENFORCE(onnxruntime::IsValidFp8Mode(mode), "DynamicQuantMatMulFp8 FP8 mode must be valid.");
   // Block sizes come from op attributes; scale shapes only provide the number of blocks.
   const size_t blocks_n = N / block_size_n;
   for (size_t k = 0; k < K; ++k) {
@@ -207,9 +207,8 @@ void QuantizeBlockwiseFp8(const SrcT* src,
       const size_t block_n = n / block_size_n;
       const size_t scale_idx = block_k * blocks_n + block_n;
       const float scale = scales[scale_idx];
-      const float zp = zero_points ? Fp8ByteToFloat(zero_points[scale_idx], mode) : 0.0f;
       const float value = static_cast<float>(src[row_offset + n]);
-      const float quantized = (value / scale) + zp;
+      const float quantized = value / scale;
       const Fp8T fp8_value(quantized, true);
       dst[row_offset + n] = fp8_value.val;
     }
@@ -224,25 +223,20 @@ Status QuantizeToFp8ByMode(mlas_fp8_mode fp8_mode,
                            size_t block_size_k,
                            size_t block_size_n,
                            const float* scales,
-                           const uint8_t* zero_points,
                            uint8_t* dst) {
   // Dispatch quantization using the requested FP8 mode and runtime block sizes.
   switch (fp8_mode) {
     case MLAS_FP8_MODE_E4M3_INF:
-      QuantizeBlockwiseFp8<SrcT, Float8E4M3FN>(src, K, N, block_size_k, block_size_n, scales,
-                                               zero_points, fp8_mode, dst);
+      QuantizeBlockwiseFp8<SrcT, Float8E4M3FN>(src, K, N, block_size_k, block_size_n, scales, dst);
       return Status::OK();
     case MLAS_FP8_MODE_E4M3_SAT:
-      QuantizeBlockwiseFp8<SrcT, Float8E4M3FNUZ>(src, K, N, block_size_k, block_size_n, scales,
-                                                 zero_points, fp8_mode, dst);
+      QuantizeBlockwiseFp8<SrcT, Float8E4M3FNUZ>(src, K, N, block_size_k, block_size_n, scales, dst);
       return Status::OK();
     case MLAS_FP8_MODE_E5M2_INF:
-      QuantizeBlockwiseFp8<SrcT, Float8E5M2>(src, K, N, block_size_k, block_size_n, scales, zero_points,
-                                             fp8_mode, dst);
+      QuantizeBlockwiseFp8<SrcT, Float8E5M2>(src, K, N, block_size_k, block_size_n, scales, dst);
       return Status::OK();
     case MLAS_FP8_MODE_E5M2_SAT:
-      QuantizeBlockwiseFp8<SrcT, Float8E5M2FNUZ>(src, K, N, block_size_k, block_size_n, scales,
-                                                 zero_points, fp8_mode, dst);
+      QuantizeBlockwiseFp8<SrcT, Float8E5M2FNUZ>(src, K, N, block_size_k, block_size_n, scales, dst);
       return Status::OK();
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -416,13 +410,13 @@ Status DynamicQuantMatMulFp8::PrePack(const Tensor& tensor, int input_idx, Alloc
     auto* quantized_b_bytes = static_cast<uint8_t*>(quantized_b_.get());
     if (tensor.IsDataType<float>()) {
       ORT_RETURN_IF_ERROR(QuantizeToFp8ByMode(b_type, tensor.Data<float>(), K, N, block_size_k_, block_size_n_,
-                                              b_scales, nullptr, quantized_b_bytes));
+                                              b_scales, quantized_b_bytes));
     } else if (tensor.IsDataType<MLFloat16>()) {
       ORT_RETURN_IF_ERROR(QuantizeToFp8ByMode(b_type, tensor.Data<MLFloat16>(), K, N, block_size_k_, block_size_n_,
-                                              b_scales, nullptr, quantized_b_bytes));
+                                              b_scales, quantized_b_bytes));
     } else if (tensor.IsDataType<BFloat16>()) {
       ORT_RETURN_IF_ERROR(QuantizeToFp8ByMode(b_type, tensor.Data<BFloat16>(), K, N, block_size_k_, block_size_n_,
-                                              b_scales, nullptr, quantized_b_bytes));
+                                              b_scales, quantized_b_bytes));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Unsupported B type for DynamicQuantMatMulFp8 prepack.");
@@ -625,12 +619,12 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
                   "DynamicQuantMatMulFp8 requires A scale and zero point to have the same shape.");
   }
   if (a_scale_rank != 2) {
-    const size_t y_rank = y->Shape().NumDimensions();
-    ORT_RETURN_IF(a_scale_rank != y_rank,
-                  "DynamicQuantMatMulFp8 requires A scale rank to be 2 or match Y rank.");
-    for (size_t dim = 0; dim < y_rank - 2; ++dim) {
-      ORT_RETURN_IF(a_scale->Shape()[dim] != y->Shape()[dim],
-                    "DynamicQuantMatMulFp8 requires A scale batch dimensions to match Y.");
+    const size_t a_rank = a->Shape().NumDimensions();
+    ORT_RETURN_IF(a_scale_rank != a_rank,
+                  "DynamicQuantMatMulFp8 requires A scale rank to be 2 or match A rank.");
+    for (size_t dim = 0; dim < a_rank - 2; ++dim) {
+      ORT_RETURN_IF(a_scale->Shape()[dim] != a->Shape()[dim],
+                    "DynamicQuantMatMulFp8 requires A scale batch dimensions to match A.");
     }
   }
   // Scale tensor block counts must match the explicit block-size attributes before reading scale data.
@@ -671,8 +665,6 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
           a_scale_prefix, static_cast<size_t>(a_scale->Shape()[dim]));
     }
   }
-  ORT_RETURN_IF(a_scale_prefix != 1 && a_scale_prefix != num_gemms,
-                "DynamicQuantMatMulFp8 requires A scale batch dimensions to match the number of gemms.");
   const size_t a_scale_batch_stride = SafeMul<size_t>(blocks_m, blocks_k);
   const size_t a_zp_count = SafeMul<size_t>(a_scale_prefix, a_scale_batch_stride);
   const size_t b_zp_count = SafeMul<size_t>(blocks_k, blocks_n);
@@ -754,33 +746,68 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(ValidatePositiveFiniteScales(b_scales, b_scale_elems, "B scale"));
 
   const size_t a_fp8_size = SafeMul<size_t>(M, K);
-  // Reuse one quantized A buffer to keep scratch bounded when broadcasting creates many GEMMs.
-  auto a_fp8_buffer = IAllocator::MakeUniquePtr<uint8_t>(temp_allocator, a_fp8_size, true);
-  MLAS_FP8_GEMM_DATA_PARAMS gemm_data;
+  const size_t a_num_elements = static_cast<size_t>(a->Shape().Size());
+  ORT_RETURN_IF(a_num_elements % a_fp8_size != 0,
+                "DynamicQuantMatMulFp8 requires A to contain complete MxK matrices.");
+  const size_t a_batch_count = a_num_elements / a_fp8_size;
+  ORT_RETURN_IF(a_scale_prefix != 1 && a_scale_prefix != a_batch_count,
+                "DynamicQuantMatMulFp8 requires A scale batch dimensions to match A.");
+
+  // Quantize the physical A tensor once. Broadcasted output GEMMs then reuse the same FP8 A slice.
+  auto a_fp8_buffer = IAllocator::MakeUniquePtr<uint8_t>(temp_allocator, a_num_elements, true);
+  const size_t a_quant_work_items = SafeMul<size_t>(a_batch_count, a_scale_batch_stride);
+  ORT_RETURN_IF(a_quant_work_items > static_cast<size_t>(std::numeric_limits<ptrdiff_t>::max()),
+                "DynamicQuantMatMulFp8 A quantization work item count exceeds ptrdiff_t range.");
+  const auto a_quant_work_items_i = static_cast<std::ptrdiff_t>(a_quant_work_items);
+  const size_t a_quant_block_elems = SafeMul<size_t>(block_size_m_, block_size_k_);
+  const TensorOpCost a_quant_unit_cost{
+      static_cast<double>(SafeMul<size_t>(a_quant_block_elems, sizeof(float))),
+      static_cast<double>(SafeMul<size_t>(a_quant_block_elems, sizeof(uint8_t))),
+      static_cast<double>(a_quant_block_elems) * 2.0};
+  const auto quantize_a_batches = [&](const auto* a_data) {
+    concurrency::ThreadPool::TryParallelFor(context->GetOperatorThreadPool(), a_quant_work_items_i,
+                                            a_quant_unit_cost,
+                                            [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+                                              for (std::ptrdiff_t tid = begin; tid < end; ++tid) {
+                                                const size_t work_idx = static_cast<size_t>(tid);
+                                                const size_t a_batch_idx = work_idx / a_scale_batch_stride;
+                                                const size_t scale_block_idx = work_idx % a_scale_batch_stride;
+                                                const size_t block_m = scale_block_idx / blocks_k;
+                                                const size_t block_k = scale_block_idx % blocks_k;
+                                                const size_t a_batch_offset = a_batch_idx * a_fp8_size;
+                                                const size_t scale_batch_index = (a_scale_prefix == 1) ? 0 : a_batch_idx;
+                                                const size_t a_scale_batch_offset = scale_batch_index * a_scale_batch_stride;
+                                                QuantizeBlockwiseFp8ABlock(a_data + a_batch_offset,
+                                                                           M, K, block_size_m_, block_size_k_, blocks_k,
+                                                                           block_m, block_k,
+                                                                           a_scales + a_scale_batch_offset, a_type,
+                                                                           a_fp8_buffer.get() + a_batch_offset);
+                                              }
+                                            });
+  };
+  if (a->IsDataType<float>()) {
+    quantize_a_batches(a->Data<float>());
+  } else if (a->IsDataType<MLFloat16>()) {
+    quantize_a_batches(a->Data<MLFloat16>());
+  } else if (a->IsDataType<BFloat16>()) {
+    quantize_a_batches(a->Data<BFloat16>());
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "DynamicQuantMatMulFp8 requires A to be float, float16, or bfloat16.");
+  }
+
+  std::vector<MLAS_FP8_GEMM_DATA_PARAMS> gemm_data_vec(num_gemms);
   for (size_t gemm_idx = 0; gemm_idx < num_gemms; ++gemm_idx) {
     const size_t a_offset = helper.LeftOffsets()[gemm_idx];
-    const size_t scale_batch_index = (a_scale_prefix == 1) ? 0 : gemm_idx;
+    ORT_RETURN_IF(a_offset >= a_num_elements || (a_offset % a_fp8_size) != 0,
+                  "DynamicQuantMatMulFp8 requires A offsets to reference complete MxK matrices.");
+    const size_t scale_batch_index = (a_scale_prefix == 1) ? 0 : a_offset / a_fp8_size;
+    ORT_RETURN_IF(scale_batch_index >= a_scale_prefix,
+                  "DynamicQuantMatMulFp8 requires A scale batch dimensions to match A.");
     const size_t a_scale_batch_offset = SafeMul<size_t>(scale_batch_index, a_scale_batch_stride);
     const float* a_scales_batch = a_scales + a_scale_batch_offset;
-    if (a->IsDataType<float>()) {
-      QuantizeBlockwiseFp8A(a->Data<float>() + a_offset, M, K, block_size_m_, block_size_k_, blocks_k, a_scales_batch,
-                            nullptr, a_type,
-                            a_fp8_buffer.get());
-    } else if (a->IsDataType<MLFloat16>()) {
-      QuantizeBlockwiseFp8A(a->Data<MLFloat16>() + a_offset, M, K, block_size_m_, block_size_k_, blocks_k,
-                            a_scales_batch,
-                            nullptr, a_type,
-                            a_fp8_buffer.get());
-    } else if (a->IsDataType<BFloat16>()) {
-      QuantizeBlockwiseFp8A(a->Data<BFloat16>() + a_offset, M, K, block_size_m_, block_size_k_, blocks_k,
-                            a_scales_batch,
-                            nullptr, a_type,
-                            a_fp8_buffer.get());
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "DynamicQuantMatMulFp8 requires A to be float, float16, or bfloat16.");
-    }
-    gemm_data.A = a_fp8_buffer.get();
+    auto& gemm_data = gemm_data_vec[gemm_idx];
+    gemm_data.A = a_fp8_buffer.get() + a_offset;
     gemm_data.lda = K;
     gemm_data.B = b_fp8 + helper.RightOffsets()[gemm_idx];
     gemm_data.ldb = N;
@@ -800,9 +827,9 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
     gemm_data.ScaleAStrideM = blocks_k;
     gemm_data.ScaleBStrideN = 1;
     gemm_data.ScaleBStrideK = blocks_n;
-
-    MlasFp8GemmBatch(gemm_shape, &gemm_data, 1, context->GetOperatorThreadPool());
   }
+
+  MlasFp8GemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, context->GetOperatorThreadPool());
 
   if (y_float_buffer != nullptr) {
     if (y->IsDataType<MLFloat16>()) {

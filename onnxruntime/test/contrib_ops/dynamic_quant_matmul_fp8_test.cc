@@ -717,7 +717,7 @@ TEST(DynamicQuantMatMulFp8, RejectsMismatchedAScaleBatchPrefix) {
   test.AddInput<Float8E4M3FN>("Y_zero_point", {}, y_zp);
   test.AddOutput<float>("Y", {Batch, Seq, M, N}, y_data);
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "DynamicQuantMatMulFp8 requires A scale batch dimensions to match Y.");
+           "DynamicQuantMatMulFp8 requires A scale batch dimensions to match A.");
 }
 
 TEST(DynamicQuantMatMulFp8, RejectsMalformedAScaleShapeBeforeReadingScaleData) {
