@@ -49,10 +49,6 @@ inline void CheckBlockedMatrixOffset(size_t blocks0, size_t stride0, size_t bloc
                 "FP8 GEMM block offset overflow.");
 }
 
-inline void CheckBlockCount(size_t actual, size_t supplied, const char* dimension_name) {
-    ORT_ENFORCE(actual == supplied, "FP8 GEMM ", dimension_name, " block count must match shape and block size.");
-}
-
 // Validate caller-provided buffers, strides, and block metadata before parallel workers dereference them.
 inline void CheckFp8GemmBatchParams(
     const MLAS_FP8_GEMM_SHAPE_PARAMS& shape,
@@ -87,13 +83,13 @@ inline void CheckFp8GemmBatchParams(
     const size_t blocks_n = shape.N == 0 ? 0 : ((shape.N - 1) / params.BlockSizeN) + 1;
 
     if (reads_reduction_data && params.ScaleA != nullptr) {
-        CheckBlockCount(blocks_m, params.BlocksM, "M");
-        CheckBlockCount(blocks_k, params.BlocksK, "K");
+        ORT_ENFORCE(blocks_m == params.BlocksM, "FP8 GEMM M block count must match shape and block size.");
+        ORT_ENFORCE(blocks_k == params.BlocksK, "FP8 GEMM K block count must match shape and block size.");
         CheckBlockedMatrixOffset(blocks_m, params.ScaleAStrideM, blocks_k, params.ScaleAStrideK);
     }
     if (reads_reduction_data && params.ScaleB != nullptr) {
-        CheckBlockCount(blocks_k, params.BlocksK, "K");
-        CheckBlockCount(blocks_n, params.BlocksN, "N");
+        ORT_ENFORCE(blocks_k == params.BlocksK, "FP8 GEMM K block count must match shape and block size.");
+        ORT_ENFORCE(blocks_n == params.BlocksN, "FP8 GEMM N block count must match shape and block size.");
         CheckBlockedMatrixOffset(blocks_k, params.ScaleBStrideK, blocks_n, params.ScaleBStrideN);
     }
 }
