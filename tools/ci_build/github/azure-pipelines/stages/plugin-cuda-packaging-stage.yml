@@ -72,6 +72,45 @@ parameters:
   default: ''
 
 stages:
+    # Publish a stable metadata artifact so downstream test pipelines can discover
+    # the CUDA version and artifact names from the selected packaging run.
+    - stage: CUDA_Plugin_Metadata
+      displayName: 'CUDA Plugin Metadata'
+      dependsOn: []
+      jobs:
+      - job: Publish_CUDA_Plugin_Metadata
+        displayName: 'Publish CUDA plugin metadata'
+        timeoutInMinutes: 5
+        workspace:
+          clean: all
+        templateContext:
+          outputs:
+          - output: pipelineArtifact
+            targetPath: '$(Build.ArtifactStagingDirectory)/metadata'
+            artifactName: cuda_plugin_metadata
+        steps:
+        - checkout: none
+
+        - pwsh: |
+            $ErrorActionPreference = 'Stop'
+
+            $metadataDir = Join-Path '$(Build.ArtifactStagingDirectory)' 'metadata'
+            $metadataPath = Join-Path $metadataDir 'metadata.json'
+            New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
+
+            $metadata = [ordered]@{
+              cuda_version = '${{ parameters.cuda_version }}'
+              cuda_version_no_dot = '${{ replace(parameters.cuda_version, '.', '') }}'
+              docker_base_image_linux_x64 = '${{ parameters.docker_base_image }}'
+              python_artifact_linux_x64 = 'cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
+              python_artifact_win_x64 = 'cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
+              nuget_artifact = 'cuda_plugin_nuget'
+            }
+
+            $metadata | ConvertTo-Json | Set-Content -Path $metadataPath -Encoding UTF8
+            Get-Content $metadataPath
+          displayName: 'Create metadata.json'
+
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:
       - template: plugin-win-cuda-stage.yml
@@ -118,43 +157,6 @@ stages:
           python_version: ${{ parameters.python_version }}
           docker_python_exe_path: ${{ parameters.docker_python_exe_path }}
           artifact_name: cuda_plugin_linux_aarch64
-
-    # Merge Linux x64 and aarch64 artifacts into a single combined artifact
-    - ${{ if or(eq(parameters.build_linux_x64, true), eq(parameters.build_linux_aarch64, true)) }}:
-      - stage: Linux_plugin_cuda_Merge_Artifacts
-        dependsOn:
-        - ${{ if eq(parameters.build_linux_x64, true) }}:
-          - Linux_plugin_cuda_x64
-        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-          - Linux_plugin_cuda_aarch64
-        jobs:
-        - job: Linux_plugin_cuda_Merge_Artifacts
-          workspace:
-            clean: all
-          pool:
-            name: 'onnxruntime-Ubuntu2204-AMD-CPU'
-            os: linux
-          templateContext:
-            outputs:
-            - output: pipelineArtifact
-              targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin
-              artifactName: cuda_plugin_linux
-          steps:
-          - checkout: none
-
-          - ${{ if eq(parameters.build_linux_x64, true) }}:
-            - task: DownloadPipelineArtifact@2
-              displayName: 'Download - x64'
-              inputs:
-                artifact: cuda_plugin_linux_x64
-                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin/x64
-
-          - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-            - task: DownloadPipelineArtifact@2
-              displayName: 'Download - aarch64'
-              inputs:
-                artifact: cuda_plugin_linux_aarch64
-                targetPath: $(Build.ArtifactStagingDirectory)/cuda_plugin/aarch64
 
     # NuGet packaging (runs after all platform builds)
     - template: plugin-cuda-nuget-packaging-stage.yml
