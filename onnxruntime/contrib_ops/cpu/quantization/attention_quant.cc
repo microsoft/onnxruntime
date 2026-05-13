@@ -198,6 +198,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                     "Input 'weights' dimension 1 (", hidden_size_x3,
                     ") must be a positive multiple of 3.");
   const int hidden_size = hidden_size_x3 / 3;
+  ORT_RETURN_IF_NOT(hidden_size % num_heads_ == 0,
+                    "hidden_size (", hidden_size, ") must be divisible by num_heads (", num_heads_, ").");
   const int head_size = hidden_size / num_heads_;
 
   // Validate per-column 'weight_scale' / 'weight_zero_point' shapes against the expected
