@@ -60,6 +60,15 @@ static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_qu
 static const char* const kOrtSessionOptionsDisableQDQConstantFolding =
     "session.disable_qdq_constant_folding";
 
+// Constant folding produces new initializers (folded outputs) that get added to the graph.
+// This option limits the maximum size in bytes of any single constant folding output tensor.
+// Nodes whose folded output(s) would exceed this limit are skipped to prevent the optimized
+// model's memory footprint from growing too much compared to the original model.
+// The value should be a non-negative integer in decimal string form.
+// The default value of "0" disables the threshold check (all sizes are allowed).
+static const char* const kOrtSessionOptionsConfigConstantFoldingNodeWeightSizeThreshold =
+    "session.constant_folding_node_weight_size_threshold";
+
 // It controls whether to enable Double QDQ remover and Identical Children Consolidation
 // "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
 // "1": disable. ORT doesn't remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
