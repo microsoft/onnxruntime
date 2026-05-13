@@ -30,6 +30,11 @@ on:
           [
             {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
           ]
+      ref:
+        required: false
+        type: string
+        description: 'Git ref or commit SHA to check out (optional; defaults to the SHA that triggered this workflow)'
+        default: ''
 
 jobs:
   build-and-test:
@@ -76,6 +81,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.08.27'

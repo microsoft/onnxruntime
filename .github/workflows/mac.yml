@@ -1,18 +1,15 @@
 name: "MacOS CI Pipeline"
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-  pull_request:
-    branches:
-      - main
-      - rel-*
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
+    branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -20,8 +17,10 @@ env:
 
 jobs:
   cpu:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
+      ref: ${{ github.event.workflow_run.head_sha || '' }}
       # Only build arm64 for CPU
       matrix_include: >-
         [
@@ -31,8 +30,10 @@ jobs:
       python_version: "3.14"
 
   coreml:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
+      ref: ${{ github.event.workflow_run.head_sha || '' }}
       use_coreml: true
       matrix_include: >-
         [
@@ -43,8 +44,10 @@ jobs:
       python_version: "3.14"
 
   xnnpack:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
+      ref: ${{ github.event.workflow_run.head_sha || '' }}
       use_xnnpack: true
       # only build arm64/Debug for XNNPack
       matrix_include: >-
@@ -54,8 +57,10 @@ jobs:
       python_version: "3.14"
 
   webgpu:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
+      ref: ${{ github.event.workflow_run.head_sha || '' }}
       use_webgpu: true
       matrix_include: >-
         [
@@ -66,6 +71,7 @@ jobs:
       python_version: "3.14"
 
   iphone_simulator:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-15
 
     env:
@@ -81,6 +87,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.08.27'
@@ -119,6 +127,7 @@ jobs:
           ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.simulator_runtime_version }}
 
   Objective-C-StaticAnalysis:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: macos-14
 
     env:
@@ -129,6 +138,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
         with:
           vcpkg-version: '2025.08.27'

@@ -1,18 +1,17 @@
 name: Linux CPU Minimal Build E2E
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-  pull_request:
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
     branches:
       - main
       - rel-*
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -22,6 +21,7 @@ jobs:
   # Job 1: Build full onnxruntime and generate ORT format test files
   build_full_ort:
     name: 1. Build Full ORT and Generate ORT Files
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -34,6 +34,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
 
       - uses: actions/setup-node@v6
@@ -78,6 +79,7 @@ jobs:
   # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
   build_minimal_exceptions_disabled:
     name: 2. Build Minimal (Exceptions Disabled)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -91,6 +93,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
       - uses: actions/setup-node@v6
         with:
@@ -168,6 +171,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
       - uses: actions/setup-node@v6
         with:
@@ -220,6 +224,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
       - uses: actions/setup-node@v6
         with:
@@ -258,6 +263,7 @@ jobs:
   # Job 4: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
   build_minimal_globally_allowed_types:
     name: 4. Build Minimal (Globally Allowed Types)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -271,6 +277,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
       - uses: actions/setup-node@v6
         with:
@@ -310,6 +317,7 @@ jobs:
   # Job 5: Build extended minimal onnxruntime and run tests
   build_extended_minimal:
     name: 5. Build Extended Minimal
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -323,6 +331,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
       - uses: actions/setup-node@v6
         with:
@@ -397,6 +406,7 @@ jobs:
   # Job 6a: Regular build with python and all optional features disabled.
   build_regular_no_optional:
     name: 6a. Build Regular (No Optional Features)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -410,6 +420,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
 
       - name: Get Docker Image using Action
@@ -495,6 +506,7 @@ jobs:
   # Job 6b: Minimal build with all optional features disabled.
   build_minimal_no_optional:
     name: 6b. Build Minimal (No Optional Features)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -508,6 +520,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
 
       - name: gen config
@@ -582,6 +595,7 @@ jobs:
   # Job 6c: Extended minimal build with all optional features disabled.
   build_extended_minimal_no_optional:
     name: 6c. Build Extended Minimal (No Optional Features)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -595,6 +609,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
 
       - name: gen config
@@ -690,6 +705,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
       - uses: actions/setup-node@v6
         with:

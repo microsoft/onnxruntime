@@ -1,14 +1,15 @@
 name: Linux OpenVINO CI
 
 on:
-  push:
-    branches: [main, 'rel-*']
-  pull_request:
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
     branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -20,9 +21,12 @@ permissions:
 jobs:
   build_test_openvino:
     name: Build and Test OpenVINO EP (AlamLinux8, Py3.12)
+    # Only run when triggered manually or when the upstream Linux CUDA CI succeeded
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     # Use the reusable workflow as the other Linux CI pipelines
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
+      ref: ${{ github.event.workflow_run.head_sha || '' }}
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
       build_config: Release
       # Architecture: OpenVino only supports Intel X64

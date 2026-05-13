@@ -2,18 +2,15 @@ name: Android CI
 # This workflow is used to build and test on Android Emulator on Linux
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-  pull_request:
-    branches:
-      - main
-      - rel-*
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
+    branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -24,6 +21,7 @@ permissions:
 
 jobs:
   AndroidBinarySizeCheckJob_MinimalBaseline:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -35,6 +33,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v6
       with:
+        ref: ${{ github.event.workflow_run.head_sha || github.sha }}
         submodules: false
 
     - name: Setup Android NDK
@@ -117,6 +116,7 @@ jobs:
       shell: bash
 
   android_nnapi_ep:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
@@ -126,6 +126,8 @@ jobs:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Use jdk 17
         uses: actions/setup-java@v5
@@ -221,6 +223,7 @@ jobs:
         shell: bash
 
   android_cpu_ep:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     name: Android CI Pipeline
     runs-on: [
         "self-hosted",
@@ -231,6 +234,8 @@ jobs:
       CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Use jdk 17
         uses: actions/setup-java@v5

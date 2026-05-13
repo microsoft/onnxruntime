@@ -1,22 +1,20 @@
 name: ONNX Runtime DirectML Builds
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-  pull_request:
-    branches:
-      - main
-      - rel-*
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
+    branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   build_x64_RelWithDebInfo:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     name: Windows GPU DML CI Pipeline
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
@@ -33,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0 # Fetch all history for all tags and branches
           submodules: 'none'
 

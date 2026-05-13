@@ -62,6 +62,11 @@ on:
         description: 'A unique identifier for the job, used for hosted pool tracking'
         required: true
         type: string
+      ref:
+        description: 'Git ref or commit SHA to check out (optional; defaults to the SHA that triggered this workflow)'
+        required: false
+        type: string
+        default: ''
     secrets:
       GH_TOKEN:
         description: 'GitHub token for accessing actions/packages'
@@ -81,6 +86,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
 
       - name: Set up Python ${{ inputs.python_version }}
         if: inputs.architecture != 'arm64'
