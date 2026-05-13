@@ -94,8 +94,8 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     auto input_dim = input_dims_iter > -1 ? input_dims[input_dims_iter] : 1;
     auto output_dim = output_dims[output_dims_iter];
 
-    input_count *= input_dim;
-    output_count *= output_dim;
+    input_count = SafeInt<int64_t>(input_count) * input_dim;
+    output_count = SafeInt<int64_t>(output_count) * output_dim;
 
     if (0 == input_count || 0 == output_count) {
       return Status::OK();
