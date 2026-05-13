@@ -295,11 +295,12 @@ TEST(CseTests, MergeConstants) {
   ASSERT_EQ(op_count["Add"], 2);
 }
 
+#if !defined(DISABLE_ML_OPS)
 TEST(CseTests, StringTensorAttr) {
   // Regression test for https://github.com/microsoft/onnxruntime/issues/28413.
   // CSE must not crash when it encounters a node with a STRING tensor attribute.
-  // We use LabelEncoder (ai.onnx.ml) because it retains its STRING tensor attribute
-  // through Model::Load (unlike Constant nodes which are converted to initializers).
+  // We use LabelEncoder (ai.onnx.ml) because it has a STRING tensor attribute on
+  // the node, allowing this test to exercise CSE hashing for such attributes.
   const auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model("CseStringTensorAttrTest", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(),
@@ -346,10 +347,13 @@ TEST(CseTests, StringTensorAttr) {
   graph.SetOutputs({&output1, &output2});
   ASSERT_STATUS_OK(graph.Resolve());
 
-  // CSE won't merge these nodes (STRING tensor attrs are treated as distinct),
-  // but it must not crash when hashing them.
+  // CSE should merge the two identical LabelEncoder nodes.
   ASSERT_NO_FATAL_FAILURE(ApplyCse(model));
+
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count["LabelEncoder"], 1);
 }
+#endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
