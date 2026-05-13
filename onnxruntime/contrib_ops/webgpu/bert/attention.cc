@@ -222,21 +222,27 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  let head_idx = batch_head_idx % uniforms.num_heads;\n"
                             << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
 
-  // Add causal masking for unidirectional attention
+  shader.MainFunctionBody() << "  var score = f32(sum * uniforms.alpha)";
+  if (has_attention_bias_) {
+    shader.MainFunctionBody() << " + f32(loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x))";
+  }
+  shader.MainFunctionBody() << ";\n";
+  if (has_softcap_) {
+    shader.MainFunctionBody() << "  // Apply softcap: score = softcap * tanh(score / softcap)\n"
+                              << "  score = uniforms.softcap * tanh(score / uniforms.softcap);\n";
+  }
+
+  // Add causal masking for unidirectional attention (applied after softcap)
   if (is_unidirectional_) {
     shader.MainFunctionBody() << "  // Apply causal masking for unidirectional attention\n"
                               << "  let query_pos = m + local_id.y + past_sequence_length;\n"
                               << "  let key_pos = n + local_id.x;\n"
                               << "  if (key_pos > query_pos) {\n"
-                              << "    sum = -3.4028234663852886e+38; // Set to very negative value for masking\n"
+                              << "    score = -3.4028234663852886e+38; // Set to very negative value for masking\n"
                               << "  }\n";
   }
 
-  shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
-  if (has_attention_bias_) {
-    shader.MainFunctionBody() << " + loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x)";
-  }
-  shader.MainFunctionBody() << ";\n"
+  shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(score);\n"
                             << "}\n";
 
   return Status::OK();
@@ -255,8 +261,10 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   constexpr int tile_size = 12;
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
+  const bool has_softcap = parameters.softcap_ != 0.0f;
+
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_, parameters.is_unidirectional_};
+                                components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_, parameters.is_unidirectional_, has_softcap};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
@@ -288,7 +296,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_length_tile * num_total_seq_length_tile)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_)
+      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr, components, parameters.is_first_prompt_, parameters.is_unidirectional_, has_softcap)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -303,7 +311,8 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                             {num_total_seq_length_tile},
                             {num_seq_length_tile},
                             {attn_bias_dim0},
-                            {attn_bias_dim1}})
+                            {attn_bias_dim1},
+                            {parameters.softcap_}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);
