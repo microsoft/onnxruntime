@@ -28,11 +28,19 @@ stages:
 
     - script: |
         set -e -x
+
         python3 -m venv "$(Build.BinariesDirectory)/test_venv"
         source "$(Build.BinariesDirectory)/test_venv/bin/activate"
-        python3 -m pip install onnxruntime onnx numpy
+
+        min_ort_version_file="$(Build.SourcesDirectory)/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION"
+        min_ort_version=$(tr -d '\r\n' < "$min_ort_version_file")
+        echo "using minimum onnxruntime version ${min_ort_version} from ${min_ort_version_file}"
+
+        python3 -m pip install onnx "onnxruntime==${min_ort_version}" numpy
+
         wheel=$(find "$(Pipeline.Workspace)/build/webgpu_plugin_python_macos_arm64" -name "onnxruntime_ep_webgpu-*.whl" | head -1)
         python3 -m pip install "$wheel"
+
         python3 -u "$(Build.SourcesDirectory)/plugin-ep-webgpu/python/test/test_webgpu_plugin_ep.py"
       displayName: 'Install and test Python package'
       env:

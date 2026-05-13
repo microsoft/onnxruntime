@@ -43,10 +43,20 @@ static bool GetQNodeZeroPointType(const Graph& graph, const Node& q_node,
 }
 
 // Applies a new zero point or scale as the input for a Q/DQ node.
+// Callers must pre-validate via FindNewZeroPointAndScale, which guarantees the
+// initializer is a 1-element scalar. The ORT_ENFORCE below makes that invariant
+// loud: if it ever fires, the caller would otherwise proceed to update only a
+// subset of the four scale/zero_point inputs (q1.scale, q1.zp, dq2.scale,
+// dq2.zp) and remove the inner Q/DQ pair, leaving the graph in an inconsistent
+// state.
 template <typename T>
 static void ApplyNewInputValue(Graph& graph, Node& node, QDQ::InputIndex index, T value) {
   const auto* input_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[index]->Name());
   Initializer input_init{graph, *input_tensor, graph.ModelPath()};
+  ORT_ENFORCE(input_init.size() == 1,
+              "Q/DQ scale/zero-point must be a 1-element scalar; got size ",
+              input_init.size(),
+              ". FindNewZeroPointAndScale should have rejected this earlier.");
   ONNX_NAMESPACE::TensorProto new_input_tensor;
   input_init.data<T>()[0] = value;
   input_init.ToProto(new_input_tensor);
@@ -89,6 +99,11 @@ static bool FindNewZeroPointAndScale(const Graph& graph, const Node& node1, cons
     return false;
   }
 
+  // Zero-point and scale are expected to be scalar/1-element tensors.
+  if (zero_point_init_1.size() != 1 || zero_point_init_2.size() != 1 ||
+      scale_init_1.size() != 1 || scale_init_2.size() != 1) {
+    return false;
+  }
   T zero_point_1 = zero_point_init_1.data<T>()[0];
   T zero_point_2 = zero_point_init_2.data<T>()[0];
   const float scale_1 = scale_init_1.data<float>()[0];

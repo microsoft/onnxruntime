@@ -18,6 +18,20 @@
 namespace onnxruntime {
 namespace QDQ {
 
+// Out-of-line constructor/destructor definitions so NodeGroupSelector is
+// complete when unique_ptr<NodeGroupSelector> is destroyed (required by libc++).
+OpVersionsAndSelector::OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
+                                             std::unique_ptr<NodeGroupSelector> selector_in)
+    : op_versions_map{ops_and_versions_in},
+      selector{std::move(selector_in)} {}
+
+OpVersionsAndSelector::~OpVersionsAndSelector() = default;
+
+Selectors::Selectors() = default;
+Selectors::~Selectors() = default;
+
+SelectorManager::~SelectorManager() = default;
+
 void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
                                  std::unique_ptr<NodeGroupSelector> selector_in) {
   auto entry = std::make_unique<OpVersionsAndSelector>(

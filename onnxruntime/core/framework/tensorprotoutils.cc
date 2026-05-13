@@ -98,6 +98,7 @@ TO_TENSOR_ORT_TYPE(Float8E4M3FN)
 TO_TENSOR_ORT_TYPE(Float8E4M3FNUZ)
 TO_TENSOR_ORT_TYPE(Float8E5M2)
 TO_TENSOR_ORT_TYPE(Float8E5M2FNUZ)
+TO_TENSOR_ORT_TYPE(Float8E8M0)
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
 TO_TENSOR_ORT_TYPE_4BIT_TYPE(Float4E2M1x2)
@@ -738,6 +739,7 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FN)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FNUZ)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2FNUZ)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E8M0)
 #endif
 
 template <>
@@ -1059,6 +1061,41 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   return Status::OK();
 }
 
+// UnpackTensor<Float8E8M0>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float8E8M0* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0 != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = Float8E8M0(static_cast<uint8_t>(v), Float8E8M0::FromBits());
+  }
+
+  return Status::OK();
+}
+
 #endif
 
 #define DEFINE_INT4_UNPACK_TENSOR_IMPL(INT4_TYPE, ONNX_INT4_TYPE)                                           \
@@ -1212,6 +1249,7 @@ INSTANTIATE_UNPACK_TENSOR(Float8E4M3FN)
 INSTANTIATE_UNPACK_TENSOR(Float8E4M3FNUZ)
 INSTANTIATE_UNPACK_TENSOR(Float8E5M2)
 INSTANTIATE_UNPACK_TENSOR(Float8E5M2FNUZ)
+INSTANTIATE_UNPACK_TENSOR(Float8E8M0)
 #endif
 INSTANTIATE_UNPACK_TENSOR(Int4x2)
 INSTANTIATE_UNPACK_TENSOR(UInt4x2)
@@ -1273,6 +1311,7 @@ static common::Status GetSizeInBytesFromTensorElemCountAndType(size_t elem_count
     CASE_PROTO_TRACE(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
     CASE_PROTO_TRACE(FLOAT8E5M2, Float8E5M2);
     CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+    CASE_PROTO_TRACE(FLOAT8E8M0, Float8E8M0);
 #endif
     CASE_PROTO_TRACE_INT4(UINT4, UInt4x2);
     CASE_PROTO_TRACE_INT4(INT4, Int4x2);
@@ -1569,7 +1608,7 @@ Status GetExtDataFromTensorProto(const Env& env,
     if constexpr (endian::native != endian::little) {
       auto allocator = CPUAllocator::DefaultInstance();
 
-      auto deleter = [&allocator](uint8_t* ptr) { allocator->Free(ptr); };
+      auto deleter = [allocator](uint8_t* ptr) { allocator->Free(ptr); };
       std::unique_ptr<uint8_t[], decltype(deleter)> native_data{reinterpret_cast<uint8_t*>(allocator->Alloc(static_cast<size_t>(raw_data_safe_len))), deleter};
 
       size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto.data_type()));
@@ -1809,6 +1848,7 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     CASE_PROTO(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
     CASE_PROTO(FLOAT8E5M2, Float8E5M2);
     CASE_PROTO(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+    CASE_PROTO(FLOAT8E8M0, Float8E8M0);
 #endif
     CASE_PROTO(INT4, Int4x2);
     CASE_PROTO(UINT4, UInt4x2);
@@ -1902,6 +1942,7 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(FLOAT8E4M3FNUZ)
     CASE_TYPE(FLOAT8E5M2)
     CASE_TYPE(FLOAT8E5M2FNUZ)
+    CASE_TYPE(FLOAT8E8M0)
 #endif
     CASE_TYPE(UINT4)
     CASE_TYPE(INT4)
@@ -2605,6 +2646,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
+    CASE_UNPACK(FLOAT8E8M0, onnxruntime::Float8E8M0, int32_data_size);
 #endif
     CASE_UNPACK_SUBBYTE_TYPE(INT4, Int4x2, int32_data_size, CalcNumInt4Pairs);
     CASE_UNPACK_SUBBYTE_TYPE(UINT4, UInt4x2, int32_data_size, CalcNumInt4Pairs);

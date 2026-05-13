@@ -44,14 +44,12 @@ struct LhsCacheKey {
     size_t padding, sh, sw;
     size_t kh, kw;
     size_t dilationh, dilationw;
-    size_t data_hash;
 
     bool operator==(const LhsCacheKey& other) const {
         return ci == other.ci && ih == other.ih && iw == other.iw &&
                padding == other.padding && sh == other.sh && sw == other.sw &&
                kh == other.kh && kw == other.kw &&
-               dilationh == other.dilationh && dilationw == other.dilationw &&
-               data_hash == other.data_hash;
+               dilationh == other.dilationh && dilationw == other.dilationw;
     }
 };
 
@@ -88,8 +86,7 @@ namespace std {
     template<>
     struct hash<LhsCacheKey> {
         size_t operator()(const LhsCacheKey& k) const {
-            return k.data_hash ^
-                (std::hash<size_t>()(k.ci) << 1) ^
+            return (std::hash<size_t>()(k.ci) << 1) ^
                 (std::hash<size_t>()(k.ih) << 2) ^
                 (std::hash<size_t>()(k.iw) << 3) ^
                 (std::hash<size_t>()(k.padding) << 4) ^
@@ -103,6 +100,42 @@ namespace std {
     };
 
 }
+
+namespace {
+
+using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
+
+thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
+thread_local const float* last_pad_ptr = nullptr;
+
+size_t LhsPtrsCacheEntryCount() {
+    size_t count = 0;
+    for (const auto& cache_group : lhs_ptrs_cache_by_pad) {
+        count += cache_group.second.size();
+    }
+    return count;
+}
+
+void ClearLhsPtrsCache() {
+    lhs_ptrs_cache_by_pad.clear();
+    last_pad_ptr = nullptr;
+}
+
+}  // namespace
+
+#if defined(MLAS_ENABLE_TEST_HOOKS)
+size_t
+MLASCALL
+ArmKleidiAI::MlasConvLhsCacheEntryCountForTest() {
+    return LhsPtrsCacheEntryCount();
+}
+
+void
+MLASCALL
+ArmKleidiAI::MlasConvClearLhsCacheForTest() {
+    ClearLhsPtrsCache();
+}
+#endif
 
 
 static constexpr size_t ComputeKernelSize(const size_t D, const size_t K) {
@@ -491,23 +524,19 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
     // Entries include pointers to the pad buffer for out-of-bounds pixels, so we must not reuse entries after the
     // pad buffer is reallocated. To avoid clearing the entire cache, we group caches by pad buffer identity and
     // invalidate only the old group when the pad buffer moves.
-    using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
-    thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
-
     // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
-    thread_local const float* last_pad_ptr = nullptr;
     const float* cur_pad_ptr = pad_ptr.data();
     if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
         lhs_ptrs_cache_by_pad.erase(last_pad_ptr);
     }
     last_pad_ptr = cur_pad_ptr;
 
+    // LhsPtrFill stores geometry offsets only; the current input base is supplied when packing.
     LhsCacheKey key = {
         ci, ih, iw,
         padding, sh, sw,
         kh, kw,
-        1, 1,
-        HashWeights(in)
+        1, 1
     };
 
     auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
