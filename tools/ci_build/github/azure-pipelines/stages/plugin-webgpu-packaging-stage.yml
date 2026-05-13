@@ -103,16 +103,15 @@ stages:
           name: 'onnxruntime-Win-CPU-VS2022-Latest'
           os: windows
         templateContext:
+          sdl:
+            tsa:
+              enabled: false  # No source checkout, which includes the required .config/tsaoptions.json file
           outputs:
           - output: pipelineArtifact
             targetPath: $(Build.ArtifactStagingDirectory)/webgpu-deps-package
             artifactName: foundry-local-webgpu-plugin-ep-zips
         steps:
-        # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
-        # Use a sparse checkout to pull only the .config directory (avoids full repo clone).
-        - checkout: self
-          fetchDepth: 1
-          sparseCheckoutDirectories: .config
+        - checkout: none
 
         - ${{ if eq(parameters.build_windows_x64, true) }}:
           - task: DownloadPipelineArtifact@2
