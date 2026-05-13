@@ -134,5 +134,32 @@ TEST(ContribOpTest, MaxPoolWithMask_DimCountMismatch) {
            "Mask and input must have the same number of dimensions");
 }
 
+TEST(ContribOpTest, MaxPoolWithMask_MaskEmptyBatchDim) {
+  OpTester test("MaxpoolWithMask", 1, onnxruntime::kMSDomain);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
+
+  // Input X has shape {1, 1, 8, 8} (non-empty)
+  std::vector<int64_t> x_dims = {1, 1, 8, 8};
+  std::vector<float> x_vals(64, 1.0f);
+
+  // Mask M has N=0: should trigger the nonzero N/C guard
+  std::vector<int64_t> m_dims = {0, 1, 8, 8};
+  std::vector<int32_t> m_vals;  // 0 elements
+
+  // Placeholder output shape and values (not validated since we expect failure)
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {1.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddInput<int32_t>("M", m_dims, m_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(BaseTester::ExpectResult::kExpectFailure,
+           "Mask N and C dimensions must be greater than 0");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
