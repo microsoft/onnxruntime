@@ -421,6 +421,17 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node,
   return false;
 }
 
+static bool CpuAssignedFp16NodeNeedsFallbackCast(
+    const onnxruntime::Node& node,
+    const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
+    const logging::Logger& logger) {
+  return node.GetExecutionProviderType() == kCpuExecutionProvider &&
+         !node.ContainsSubgraph() &&
+         HasFp16IO(node) &&
+         !HasCpuKernelForCurrentTypes(node, cpu_kernel_registries, logger) &&
+         HasCpuFloat32FallbackKernel(node, cpu_kernel_registries, logger);
+}
+
 // Detect an isolated node that is able to process fp16 data but is between other nodes that have fp16 inputs
 // but will need a Cast inserted to enable them to run.
 //
@@ -888,6 +899,10 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     auto node = graph.GetNode(i);
     if (!node)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT);
+
+    if (CpuAssignedFp16NodeNeedsFallbackCast(*node, cpu_kernel_registries_, logger)) {
+      node->SetExecutionProviderType("");
+    }
 
     if (!enable_cpu_fp16_ &&
         node->GetExecutionProviderType() == kCpuExecutionProvider &&

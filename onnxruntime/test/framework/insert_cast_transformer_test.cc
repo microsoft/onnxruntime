@@ -649,6 +649,10 @@ TEST(TransformerTest, CpuFp16MatMulHeuristicForcesBertLikeShapeToFp32) {
 }
 
 TEST(TransformerTest, CpuFp16MatMulHeuristicKeepsLargeGemvNativeFp16) {
+  if (!CanRunNativeCpuFp16GemmRuntime()) {
+    GTEST_SKIP() << "Native CPU fp16 Gemm/MatMul runtime support is unavailable.";
+  }
+
   auto model = MakeCpuFp16MatMulModelWithShapes("cpu_fp16_matmul_heuristic_large_gemv",
                                                 {1, 4096}, {4096, 4096}, {1, 4096}, true);
   auto& graph = model->MainGraph();
@@ -668,6 +672,10 @@ TEST(TransformerTest, CpuFp16MatMulHeuristicKeepsLargeGemvNativeFp16) {
 }
 
 TEST(TransformerTest, CpuFp16MatMulHeuristicKeepsBatchedLargeGemvNativeFp16) {
+  if (!CanRunNativeCpuFp16GemmRuntime()) {
+    GTEST_SKIP() << "Native CPU fp16 Gemm/MatMul runtime support is unavailable.";
+  }
+
   auto model = MakeCpuFp16MatMulModelWithShapes("cpu_fp16_matmul_heuristic_batched_large_gemv",
                                                 {8, 1, 4096}, {8, 4096, 4096}, {8, 1, 4096}, true);
   auto& graph = model->MainGraph();
@@ -850,6 +858,28 @@ TEST(TransformerTest, CpuFp16UnsupportedOpStillGetsCastsWhenEnabled) {
   EXPECT_EQ(abs_node->GetExecutionProviderType(), kCpuExecutionProvider);
 }
 
+TEST(TransformerTest, CpuFp16UnsupportedCpuAssignedOpStillGetsCasts) {
+  auto model = MakeCpuFp16Model("cpu_fp16_abs_cpu_assigned", "Abs", true);
+  auto& graph = model->MainGraph();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get(),
+                                    false, true);
+  bool modified = false;
+  EXPECT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  EXPECT_STATUS_OK(graph.Resolve());
+
+  const auto op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts.at("Cast"), 2);
+
+  const Node* abs_node = FindNodeByOpType(graph, "Abs");
+  ASSERT_NE(abs_node, nullptr);
+  EXPECT_EQ(abs_node->GetExecutionProviderType(), kCpuExecutionProvider);
+  ASSERT_EQ(abs_node->InputDefs().size(), 1U);
+  ASSERT_EQ(abs_node->OutputDefs().size(), 1U);
+  EXPECT_TRUE(IsNodeArgType(*abs_node->InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(IsNodeArgType(*abs_node->OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+}
+
 TEST(TransformerTest, CpuFp16SupportedCpuOpKeepsFp16WhenEnabled) {
   if (!MlasFp16AccelerationSupported()) {
     GTEST_SKIP() << "CPU fp16 kernels are not registered on this platform.";
@@ -1015,21 +1045,22 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
       o4_def("O4", &tensor_float_16),
       o5_def("O5", &tensor_float_16);
 
-  // for the sake of this example, pretend Clip has no fp16 kernel but Abs does
-  // -> Clip -> Abs -> Clip -> Abs -> Clip ->
+  // For the sake of this example, Clip requires fp32 fallback while Identity
+  // can run fp16 on CPU.
+  // -> Clip -> Identity -> Clip -> Identity -> Clip ->
   //                            |       |
   //                            - O4     - O5
   auto& node1 = graph.AddNode("node1", "Clip", "no fp16", {&i1_def}, {&o1_def});
-  auto& node2 = graph.AddNode("node2", "Abs", "fp16", {&o1_def}, {&o2_def});
+  auto& node2 = graph.AddNode("node2", "Identity", "fp16", {&o1_def}, {&o2_def});
   auto& node3 = graph.AddNode("node3", "Clip", "no fp16", {&o2_def}, {&o3_def});
-  auto& node4 = graph.AddNode("node4", "Abs", "fp16 producing graph output", {&o3_def}, {&o4_def});
+  auto& node4 = graph.AddNode("node4", "Identity", "fp16 producing graph output", {&o3_def}, {&o4_def});
   auto& node5 = graph.AddNode("node5", "Clip", "no fp16", {&o4_def}, {&o5_def});
 
   // manually set outputs as we want O4 and well as O5 to be graph outputs.
   // AddNode creates a NodeArg instance in Graph so need to get address from the node
   graph.SetOutputs({node4.OutputDefs()[0], node5.OutputDefs()[0]});
 
-  // node2 and node4 have a kernel
+  // node2 and node4 are pre-assigned to CPU.
   node2.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   node4.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
 
@@ -1047,12 +1078,8 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
   };
 
   // we expect:
-  //   node2 Abs to get forced to fp32 as it's isolated between node1 and node3 which need Casts
-  //   node4 Abs should not get forced to fp32 as it produces a graph output
-  //
-  // -> CastFp32 -> Clip -> Abs -> Clip -> CastFp16 -> Abs -> CastFp32 -> Clip -> CastFp16
-  //                                                    |                            |
-  //                                                     - O4                         - O5
+  //   node2 Identity to get forced to fp32 as it's isolated between node1 and node3 which need Casts.
+  //   node4 Identity to stay fp16 as it produces graph output O4.
   EXPECT_TRUE(is_type(*node1.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
   EXPECT_TRUE(is_type(*node2.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
   EXPECT_TRUE(is_type(*node3.InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
@@ -1061,6 +1088,31 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
 
   auto ops = CountOpsInGraph(graph);
   EXPECT_EQ(ops["Cast"], 4);
+}
+
+TEST(TransformerTest, CpuAssignedFp16FallbackPreservesGraphOutputType) {
+  auto model = MakeCpuFp16Model("cpu_fp16_abs_cpu_assigned_graph_output", "Abs", true);
+  auto& graph = model->MainGraph();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = true;
+  EXPECT_TRUE(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  auto is_type = [](const NodeArg& node_arg, const MLDataType type) {
+    return node_arg.Type() != nullptr &&
+           DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == type;
+  };
+
+  const Node* abs_node = FindNodeByOpType(graph, "Abs");
+  ASSERT_NE(abs_node, nullptr);
+  EXPECT_TRUE(is_type(*abs_node->InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(is_type(*abs_node->OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  ASSERT_EQ(graph.GetOutputs().size(), 1U);
+  EXPECT_TRUE(is_type(*graph.GetOutputs()[0], DataTypeImpl::GetTensorType<MLFloat16>()));
+
+  auto ops = CountOpsInGraph(graph);
+  EXPECT_EQ(ops["Cast"], 2);
 }
 
 // Verify that RemoveDuplicateCastTransformer does not fuse Cast(float->int32)->Cast(int32->bool)

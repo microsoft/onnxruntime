@@ -65,8 +65,11 @@ TryComputeConvOutSize(
     size_t total_padding = 0;
     size_t padded_input = 0;
     if (mul_overflow_size_t_builtin(padding, 2, &total_padding) ||
-        !TryAddSize(input, total_padding, padded_input) ||
-        padded_input < kernel) {
+        !TryAddSize(input, total_padding, padded_input)) {
+        return false;
+    }
+
+    if (padded_input < kernel) {
         return true;
     }
 
