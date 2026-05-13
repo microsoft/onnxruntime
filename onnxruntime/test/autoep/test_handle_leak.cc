@@ -7,10 +7,10 @@
 #include <string>
 #include <gtest/gtest.h>
 
-#include "core/common/path_string.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "test/autoep/test_autoep_utils.h"
+#include "test/util/include/file_util.h"
 #include "test/util/include/temp_dir.h"
 
 #if defined(_WIN32)
@@ -65,47 +65,37 @@ std::optional<bool> IsLibraryLoaded(const std::filesystem::path& library_path) {
 // has never been loaded, so we can reliably detect refcount leaks via IsLibraryLoaded.
 TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
   const std::filesystem::path& original_library_path = Utils::example_ep_info.library_path;
-  const std::string& registration_name = Utils::example_ep_info.registration_name;
 
-  // Create a temporary directory (RAII: deleted on scope exit).
-  TemporaryDirectory temp_dir(ORT_TSTR("test_handle_leak_temp"));
+  // Use a unique registration name to avoid conflicts with other tests that may have
+  // registered the same EP library and failed to unregister it.
+  const std::string registration_name = "handle_leak_test_ep";
 
   // Copy the EP library to the temp directory with a unique filename so it is guaranteed to
   // not already be loaded in this process.
-#if defined(_WIN32)
+  TemporaryDirectory temp_dir(ORT_TSTR("test_handle_leak_temp"));
   const std::filesystem::path temp_library_path =
-      std::filesystem::path(temp_dir.Path()) / "handle_leak_test_ep.dll";
-#elif defined(__APPLE__)
-  const std::filesystem::path temp_library_path =
-      std::filesystem::path(temp_dir.Path()) / "libhandle_leak_test_ep.dylib";
-#else
-  const std::filesystem::path temp_library_path =
-      std::filesystem::path(temp_dir.Path()) / "libhandle_leak_test_ep.so";
-#endif
+      std::filesystem::path(temp_dir.Path()) /
+      GetSharedLibraryFileName(ORT_TSTR("handle_leak_test_ep"));
 
   std::error_code ec;
   std::filesystem::copy_file(original_library_path, temp_library_path,
                              std::filesystem::copy_options::overwrite_existing, ec);
   ASSERT_FALSE(ec) << "Failed to copy EP library to temp directory: " << ec.message();
 
-  // Verify the platform supports loaded-library probes.
   std::optional<bool> loaded_before = IsLibraryLoaded(temp_library_path);
   if (!loaded_before.has_value()) {
     GTEST_SKIP() << "Platform does not support querying loaded-library state.";
   }
 
   // The copy should not be loaded yet since we just created it with a unique name.
-  ASSERT_FALSE(*loaded_before)
-      << "Freshly copied library should not already be loaded in the process.";
+  ASSERT_FALSE(*loaded_before) << "Freshly copied library should not already be loaded in the process.";
 
   // Register the plugin EP library. Internally this calls ProviderLibrary::Load() (which
   // loads the library and fails to find "GetProvider") and then EpLibraryPlugin::Load().
-  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(),
-                                            temp_library_path.c_str());
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), temp_library_path.c_str());
 
   // The library should be loaded now.
-  ASSERT_TRUE(IsLibraryLoaded(temp_library_path).value_or(false))
-      << "Library should be loaded after registration.";
+  ASSERT_TRUE(IsLibraryLoaded(temp_library_path).value_or(false)) << "Library should be loaded after registration.";
 
   // Unregister releases the EpLibraryPlugin's reference.
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
