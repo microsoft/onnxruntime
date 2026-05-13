@@ -295,65 +295,54 @@ TEST(CseTests, MergeConstants) {
   ASSERT_EQ(op_count["Add"], 2);
 }
 
-#if !defined(DISABLE_ML_OPS)
 TEST(CseTests, StringTensorAttr) {
   // Regression test for https://github.com/microsoft/onnxruntime/issues/28413.
-  // CSE must not crash when it encounters a node with a STRING tensor attribute.
-  // We use LabelEncoder (ai.onnx.ml) because it has a STRING tensor attribute on
-  // the node, allowing this test to exercise CSE hashing for such attributes.
+  // CSE must not crash when it encounters a node with a STRING tensor attribute,
+  // and it must correctly merge identical nodes that have such attributes.
+  // We use two identical Constant nodes with STRING tensor values feeding into
+  // Identity nodes to exercise CSE hashing and comparison for STRING tensors.
   const auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model("CseStringTensorAttrTest", false, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(),
-              {{kOnnxDomain, 21}, {"ai.onnx.ml", 4}}, {}, logger);
+              {{kOnnxDomain, 21}}, {}, logger);
   auto& graph = model.MainGraph();
 
-  ONNX_NAMESPACE::TypeProto string_type;
-  string_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-  string_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+  ONNX_NAMESPACE::TypeProto string_scalar_type;
+  string_scalar_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  string_scalar_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
-  ONNX_NAMESPACE::TypeProto float_type;
-  float_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  float_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+  // STRING tensor value attribute for the Constant nodes.
+  ONNX_NAMESPACE::TensorProto string_value;
+  string_value.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  string_value.add_dims(1);
+  string_value.add_string_data("hello");
 
-  auto& input = graph.GetOrCreateNodeArg("x", &string_type);
-  auto& output1 = graph.GetOrCreateNodeArg("encoded_1", &float_type);
-  auto& output2 = graph.GetOrCreateNodeArg("encoded_2", &float_type);
+  // Two identical Constant nodes producing the same STRING tensor.
+  auto& const_out1 = graph.GetOrCreateNodeArg("const_1", &string_scalar_type);
+  auto& node1 = graph.AddNode("constant_1", "Constant", "", {}, {&const_out1});
+  node1.AddAttribute("value", string_value);
 
-  // Create a STRING tensor attribute for keys_tensor.
-  ONNX_NAMESPACE::TensorProto keys_tensor;
-  keys_tensor.set_name("keys");
-  keys_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
-  keys_tensor.add_dims(1);
-  keys_tensor.add_string_data("a");
+  auto& const_out2 = graph.GetOrCreateNodeArg("const_2", &string_scalar_type);
+  auto& node2 = graph.AddNode("constant_2", "Constant", "", {}, {&const_out2});
+  node2.AddAttribute("value", string_value);
 
-  // Two identical LabelEncoder nodes — same STRING tensor attribute.
-  std::vector<NodeArg*> inputs = {&input};
-  std::vector<NodeArg*> outputs1 = {&output1};
-  std::vector<NodeArg*> outputs2 = {&output2};
+  // Feed the Constant outputs through Identity nodes so they are not direct graph outputs
+  // (CSE does not merge nodes whose outputs are graph outputs).
+  auto& id_out1 = graph.GetOrCreateNodeArg("id_out_1", &string_scalar_type);
+  graph.AddNode("identity_1", "Identity", "", {&const_out1}, {&id_out1});
 
-  auto& node1 = graph.AddNode("label_encoder_1", "LabelEncoder", "", inputs, outputs1,
-                              nullptr, "ai.onnx.ml");
-  node1.AddAttribute("keys_tensor", keys_tensor);
-  node1.AddAttribute("values_floats", std::vector<float>{1.0f});
-  node1.AddAttribute("default_float", 0.0f);
+  auto& id_out2 = graph.GetOrCreateNodeArg("id_out_2", &string_scalar_type);
+  graph.AddNode("identity_2", "Identity", "", {&const_out2}, {&id_out2});
 
-  auto& node2 = graph.AddNode("label_encoder_2", "LabelEncoder", "", inputs, outputs2,
-                              nullptr, "ai.onnx.ml");
-  node2.AddAttribute("keys_tensor", keys_tensor);
-  node2.AddAttribute("values_floats", std::vector<float>{1.0f});
-  node2.AddAttribute("default_float", 0.0f);
-
-  graph.SetInputs({&input});
-  graph.SetOutputs({&output1, &output2});
+  graph.SetInputs({});
+  graph.SetOutputs({&id_out1, &id_out2});
   ASSERT_STATUS_OK(graph.Resolve());
 
-  // CSE should merge the two identical LabelEncoder nodes.
-  ASSERT_NO_FATAL_FAILURE(ApplyCse(model));
+  ApplyCse(model);
 
   auto op_count = CountOpsInGraph(graph);
-  ASSERT_EQ(op_count["LabelEncoder"], 1);
+  ASSERT_EQ(op_count["Constant"], 1);
 }
-#endif  // !defined(DISABLE_ML_OPS)
 
 }  // namespace test
 }  // namespace onnxruntime
