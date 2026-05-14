@@ -223,7 +223,7 @@ stages:
     # arch (PlatformBdistWheel.get_tag() picks up the host platform).
     - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Package
       dependsOn: Win_plugin_webgpu_${{ parameters.arch }}_Build
-      timeoutInMinutes: 30
+      timeoutInMinutes: 60
       workspace:
         clean: all
       pool:
