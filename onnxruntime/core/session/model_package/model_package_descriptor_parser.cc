@@ -98,7 +98,25 @@ std::optional<std::string> ParseCompatibilityString(const json& j, const char* k
 }
 
 void from_json(const json& j, EpCompatibilitySchema& c) {
-  if (j.contains(kEpKey) && !j[kEpKey].is_null()) c.ep = j[kEpKey].get<std::string>();
+  // "ep" is required and must be a non-empty string. Every ep_compatibility entry must explicitly
+  // declare which EP it targets so that variant selection is unambiguous.
+  //
+  // We intentionally do NOT support a wildcard / "portable" entry today (omitted ep, or ep == "*").
+  // If a use case for a portable variant emerges later, the planned extension is to treat a
+  // variant with the entire "ep_compatibility" array omitted as the portable fallback (likely
+  // pinned to CPU at load time). Per-entry wildcards inside the array should stay disallowed even
+  // then, to keep each entry's target unambiguous.
+  if (!j.contains(kEpKey) || j[kEpKey].is_null()) {
+    throw std::invalid_argument(MakeString("\"", kEpKey, "\" is required in each ep_compatibility entry."));
+  }
+  if (!j[kEpKey].is_string()) {
+    throw std::invalid_argument(MakeString("\"", kEpKey, "\" must be a string."));
+  }
+  c.ep = j[kEpKey].get<std::string>();
+  if (c.ep->empty()) {
+    throw std::invalid_argument(MakeString("\"", kEpKey, "\" must be a non-empty string."));
+  }
+
   if (j.contains(kDeviceKey) && j[kDeviceKey].is_string()) c.device = j[kDeviceKey].get<std::string>();
   c.compatibility_string = ParseCompatibilityString(j, kCompatibilityStringKey);
 }

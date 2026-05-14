@@ -65,13 +65,6 @@ const OrtHardwareDevice* FindMatchingHardwareDevice(std::string_view device_cons
   return nullptr;
 }
 
-bool IsUnconstrainedEpCompatibility(const VariantEpCompatibilityInfo& ec) {
-  const bool no_ep = !ec.ep.has_value() || ec.ep->empty();
-  const bool no_device = !ec.device.has_value() || ec.device->empty();
-  const bool no_compat = !ec.compatibility_string.has_value() || ec.compatibility_string->empty();
-  return no_ep && no_device && no_compat;
-}
-
 int CompatibilityToScore(OrtCompiledModelCompatibility compatibility) {
   switch (compatibility) {
     case OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL:
@@ -124,8 +117,9 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
   for (size_t ec_idx = 0; ec_idx < variant.ep_compatibility.size(); ++ec_idx) {
     auto& ec = variant.ep_compatibility[ec_idx];
 
-    // 1. Match EP
-    if (ec.ep.has_value() && !ec.ep->empty() && *ec.ep != ep_info.ep_name) {
+    // 1. Match EP. Parser enforces that "ep" is required and non-empty in every entry, so this is
+    //    a straightforward string compare.
+    if (!ec.ep.has_value() || *ec.ep != ep_info.ep_name) {
       continue;
     }
 
@@ -180,21 +174,6 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
   return result;
 }
 
-VariantMatchResult MatchUnconstrainedVariant(const VariantInfo& variant) {
-  VariantMatchResult result{};
-
-  for (size_t ec_idx = 0; ec_idx < variant.ep_compatibility.size(); ++ec_idx) {
-    if (IsUnconstrainedEpCompatibility(variant.ep_compatibility[ec_idx])) {
-      result.matched = true;
-      result.score = 0;
-      result.selected_ep_compatibility_index = ec_idx;
-      break;
-    }
-  }
-
-  return result;
-}
-
 }  // namespace
 
 Status VariantSelector::SelectVariant(const ModelPackageComponentContext& context,
@@ -226,21 +205,16 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
   std::unordered_set<size_t> candidate_indices_set;
   std::unordered_map<size_t, VariantMatchResult> candidate_matches;
 
-  // 1) Unconstrained variants
-  for (size_t i = 0, end = variants.size(); i < end; ++i) {
-    VariantMatchResult m = MatchUnconstrainedVariant(variants[i]);
-    if (m.matched) {
-      candidate_indices_set.insert(i);
-      candidate_matches[i] = std::move(m);
-    }
-  }
-
-  // 2) EP/device compatibility pass.
+  // EP/device compatibility pass.
   //
-  // Each ep_compatibility entry carries one opaque compatibility string owned by the EP. ORT does
-  // not parse it, decompose it, or aggregate scores across multiple strings -- if the EP needs to
-  // encode multiple sub-targets (e.g. several QNN SoC models), it does so internally in this
-  // single string and validates the full value itself.
+  // Each ep_compatibility entry must declare a target EP (parser-enforced) and carries one opaque
+  // compatibility string owned by that EP. ORT does not parse it, decompose it, or aggregate scores
+  // across multiple strings -- if the EP needs to encode multiple sub-targets (e.g. several QNN SoC
+  // models), it does so internally in this single string and validates the full value itself.
+  //
+  // We do not currently support a "portable" / wildcard variant. If that need arises later, the
+  // planned shape is: a variant with the entire "ep_compatibility" array omitted is treated as the
+  // portable fallback (and likely pinned to CPU at load time). Per-entry wildcards stay disallowed.
   //
   // Current implementation:
   //   For each ep_compatibility entry whose ep/device constraints match the selected EP, call
@@ -260,10 +234,7 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
       VariantMatchResult m = MatchVariantForEp(variants[i], *selected_ep_info);
       if (m.matched) {
         candidate_indices_set.insert(i);
-        auto it = candidate_matches.find(i);
-        if (it == candidate_matches.end() || m.score > it->second.score) {
-          candidate_matches[i] = std::move(m);
-        }
+        candidate_matches[i] = std::move(m);
       }
     }
   }
