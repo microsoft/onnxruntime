@@ -409,22 +409,22 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
       // Select the most suitable model variant based on EP info and model constraints.
       ModelPackageContext model_package_context(package_root);
       const auto& package_info = model_package_context.GetModelPackageInfo();
-      const ComponentModelInfo* component_info = nullptr;
+      const ComponentInfo* component_info = nullptr;
 
-      if (package_info.component_models.empty()) {
+      if (package_info.components.empty()) {
         return OrtApis::CreateStatus(ORT_FAIL, "No component models found in the model package.");
-      } else if (package_info.component_models.size() > 1) {
+      } else if (package_info.components.size() > 1) {
         return OrtApis::CreateStatus(ORT_FAIL,
                                      "Multiple component models found in the model package. "
                                      "Currently only single component model is supported.");
       }
 
-      component_info = &package_info.component_models[0];
+      component_info = &package_info.components[0];
       if (component_info == nullptr) {
         return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Component model not found.");
       }
 
-      ModelPackageComponentContext component_context(component_info->component_model_name, *component_info, ep_infos);
+      ModelPackageComponentContext component_context(component_info->component_name, *component_info, ep_infos);
       ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.ResolveVariant());
       ORT_API_RETURN_IF_STATUS_NOT_OK(component_context.GetSelectedVariantFilePath(selected_model_variant_path));
       model_path_to_use = selected_model_variant_path.c_str();

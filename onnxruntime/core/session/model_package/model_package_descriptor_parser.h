@@ -13,8 +13,8 @@ namespace onnxruntime {
 // Keys for parsing model package JSON files.
 //
 static constexpr const char* kModelPackageManifestFileName = "manifest.json";
-static constexpr const char* kComponentModelNameInMetadataKey = "component_model_name";
-static constexpr const char* kComponentModelMetadataFileName = "metadata.json";
+static constexpr const char* kComponentNameInMetadataKey = "component_name";
+static constexpr const char* kComponentMetadataFileName = "metadata.json";
 
 static constexpr const char* kEpCompatibilityKey = "ep_compatibility";
 static constexpr const char* kEpKey = "ep";
@@ -42,17 +42,17 @@ class ModelPackageDescriptorParser {
   // - component root if metadata.json exists at root
   // - package root otherwise
   Status ParseVariantsFromRoot(const std::filesystem::path& package_root,
-                               /*out*/ std::vector<ModelVariantInfo>& components) const;
+                               /*out*/ std::vector<VariantInfo>& components) const;
 
   // Explicit package-root API (Mode 2).
   Status ParseVariantsFromPackageRoot(const std::filesystem::path& package_root,
-                                      /*out*/ std::vector<ModelVariantInfo>& variants) const;
+                                      /*out*/ std::vector<VariantInfo>& variants) const;
 
  private:
-  Status ParseVariantsFromComponent(const std::string& component_model_name,
+  Status ParseVariantsFromComponent(const std::string& component_name,
                                     const std::filesystem::path& component_model_root,
                                     const json* metadata_variants_obj,
-                                    /*in,out*/ std::vector<ModelVariantInfo>& variants) const;
+                                    /*in,out*/ std::vector<VariantInfo>& variants) const;
 
   const logging::Logger& logger_;
 };

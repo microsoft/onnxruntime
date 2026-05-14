@@ -20,21 +20,21 @@ ORT_API_STATUS_IMPL(CreateModelPackageContext,
                     _In_ const ORTCHAR_T* package_root,
                     _Outptr_ OrtModelPackageContext** out);
 
-ORT_API_STATUS_IMPL(ModelPackage_GetComponentModelCount,
+ORT_API_STATUS_IMPL(ModelPackage_GetComponentCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _Out_ size_t* out_count);
 
-ORT_API_STATUS_IMPL(ModelPackage_GetComponentModelNames,
+ORT_API_STATUS_IMPL(ModelPackage_GetComponentNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                     _Out_ size_t* out_count);
 
-ORT_API_STATUS_IMPL(ModelPackage_GetModelVariantCount,
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Out_ size_t* out_count);
 
-ORT_API_STATUS_IMPL(ModelPackage_GetModelVariantNames,
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
@@ -81,5 +81,24 @@ ORT_API_STATUS_IMPL(CreateSession,
                     _In_ OrtModelPackageComponentContext* ctx,
                     _In_opt_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtSession** session);
+
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpCompatibilityCount,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ const char* variant_name,
+                    _Out_ size_t* out_count);
+
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpCompatibility,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ const char* variant_name,
+                    _In_ size_t ep_idx,
+                    _Outptr_result_maybenull_ const char** out_ep,
+                    _Outptr_result_maybenull_ const char** out_device,
+                    _Outptr_result_maybenull_ const char** out_compatibility_string);
+
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantConsumerMetadata,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _Outptr_ const char** out_json_str);
 
 }  // namespace OrtModelPackageAPI

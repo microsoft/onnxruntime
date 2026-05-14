@@ -51,10 +51,10 @@ std::string MakeVariantJson(std::string_view filename) {
 }
 
 void CreateVariantDescriptor(const std::filesystem::path& package_root,
-                             std::string_view component_model_name,
+                             std::string_view component_name,
                              std::string_view variant_name,
                              std::string_view variant_json) {
-  const auto variant_root = package_root / "models" / std::string(component_model_name) / std::string(variant_name);
+  const auto variant_root = package_root / "models" / std::string(component_name) / std::string(variant_name);
   std::filesystem::create_directories(variant_root);
 
   std::ofstream os(variant_root / "variant.json", std::ios::binary);
@@ -64,7 +64,7 @@ void CreateVariantDescriptor(const std::filesystem::path& package_root,
 std::filesystem::path CreateModelPackage(
     const std::filesystem::path& package_root,
     std::string_view manifest_json,
-    std::string_view component_model_name,
+    std::string_view component_name,
     std::string_view variant_name_1,
     std::string_view variant_name_2,
     const std::filesystem::path& source_model_1,
@@ -75,7 +75,7 @@ std::filesystem::path CreateModelPackage(
 
   CreateManifestJson(package_root, manifest_json);
 
-  const auto models_root = package_root / "models" / std::string(component_model_name);
+  const auto models_root = package_root / "models" / std::string(component_name);
   const auto variant1_dir = models_root / std::string(variant_name_1);
   const auto variant2_dir = models_root / std::string(variant_name_2);
 
@@ -88,9 +88,9 @@ std::filesystem::path CreateModelPackage(
   std::filesystem::copy_file(source_model_1, variant1_model, std::filesystem::copy_options::overwrite_existing, ec);
   std::filesystem::copy_file(source_model_2, variant2_model, std::filesystem::copy_options::overwrite_existing, ec);
 
-  CreateVariantDescriptor(package_root, component_model_name, variant_name_1,
+  CreateVariantDescriptor(package_root, component_name, variant_name_1,
                           MakeVariantJson(source_model_1.filename().string()));
-  CreateVariantDescriptor(package_root, component_model_name, variant_name_2,
+  CreateVariantDescriptor(package_root, component_name, variant_name_2,
                           MakeVariantJson(source_model_2.filename().string()));
 
   return package_root;
@@ -98,9 +98,9 @@ std::filesystem::path CreateModelPackage(
 
 std::filesystem::path CreateComponentModelMetadata(
     const std::filesystem::path& package_root,
-    std::string_view component_model_name,
+    std::string_view component_name,
     std::string_view metadata_json) {
-  const auto component_root = package_root / "models" / std::string(component_model_name);
+  const auto component_root = package_root / "models" / std::string(component_name);
 
   std::filesystem::create_directories(component_root);
 
@@ -111,17 +111,17 @@ std::filesystem::path CreateComponentModelMetadata(
   return component_root;
 }
 
-std::string MakeManifestJson(std::string_view component_model_name) {
+std::string MakeManifestJson(std::string_view component_name) {
   std::ostringstream oss;
   oss << R"({
     "schema_version": 1,
     "components": [")"
-      << component_model_name << R"("]
+      << component_name << R"("]
   })";
   return oss.str();
 }
 
-std::string MakeMetadataJsonTwoVariants(std::string_view component_model_name,
+std::string MakeMetadataJsonTwoVariants(std::string_view component_name,
                                         std::string_view variant_name_1,
                                         std::string_view variant_ep_1,
                                         std::string_view variant_device_1,
@@ -132,8 +132,8 @@ std::string MakeMetadataJsonTwoVariants(std::string_view component_model_name,
                                         std::string_view variant_compatibility_string_2) {
   std::ostringstream oss;
   oss << R"({
-    "component_model_name": ")"
-      << component_model_name << R"(",
+    "component_name": ")"
+      << component_name << R"(",
     "variants": {
       ")"
       << variant_name_1 << R"(": {
@@ -177,7 +177,7 @@ std::filesystem::path CreateModelPackageApiTestPackage(bool multi_file_variant =
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
   constexpr std::string_view metadata_json = R"({
-    "component_model_name": "model_1",
+    "component_name": "model_1",
     "variants": {
       "variant_1": {
         "ep_compatibility": [{
@@ -285,12 +285,12 @@ TEST(ModelPackageApiTest, PackageContextQueries) {
 
   // Query: component count + names
   size_t component_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelCount(model_pkg_context.get(), &component_count));
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentCount(model_pkg_context.get(), &component_count));
   ASSERT_EQ(component_count, 1u);
 
   const char* const* component_names = nullptr;
   size_t component_name_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentModelNames(
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentNames(
       model_pkg_context.get(), &component_names, &component_name_count));
   ASSERT_EQ(component_name_count, 1u);
   ASSERT_NE(component_names, nullptr);
@@ -299,13 +299,13 @@ TEST(ModelPackageApiTest, PackageContextQueries) {
 
   // Query: variant count + names
   size_t variant_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetModelVariantCount(
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantCount(
       model_pkg_context.get(), "model_1", &variant_count));
   ASSERT_EQ(variant_count, 2u);
 
   const char* const* variant_names = nullptr;
   size_t variant_name_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetModelVariantNames(
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantNames(
       model_pkg_context.get(), "model_1", &variant_names, &variant_name_count));
   ASSERT_EQ(variant_name_count, 2u);
 
@@ -822,7 +822,7 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
 }
 
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromModelsFolder) {
-  // manifest.json without "component_models"; discovery should scan models/* with metadata.json.
+  // manifest.json without "components"; discovery should scan models/* with metadata.json.
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_discover_test";
   constexpr std::string_view manifest_json = R"({
     "schema_version": 1,
@@ -834,7 +834,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
   // Prepare component model with metadata and variants
-  const std::string component_model_name = "model_1";
+  const std::string component_name = "model_1";
   const std::string metadata_json = MakeMetadataJsonTwoVariants(
       "model_1",
       "variant_1", "example_ep", "cpu", "",
@@ -842,7 +842,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromMod
 
   // Create metadata.json under models/model_1
   const auto component_root = CreateComponentModelMetadata(package_root,
-                                                           component_model_name,
+                                                           component_name,
                                                            metadata_json);
 
   // Add another component folder without metadata to ensure it's ignored
@@ -903,7 +903,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
                      std::filesystem::path{"testdata/mul_1.onnx"}, std::filesystem::path{"testdata/mul_16.onnx"});
 
   constexpr std::string_view metadata_json = R"({
-    "component_model_name": "model_1",
+    "component_name": "model_1",
     "variants": {
       "variant_1": {
         "ep_compatibility": [{
@@ -941,13 +941,13 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
   }
 
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<ModelVariantInfo> variants;
+  std::vector<VariantInfo> variants;
   auto status = parser.ParseVariantsFromRoot(package_root, variants);
 
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_EQ(variants.size(), 2u);
 
-  std::unordered_map<std::string, const ModelVariantInfo*> by_file;
+  std::unordered_map<std::string, const VariantInfo*> by_file;
   for (const auto& v : variants) {
     ASSERT_EQ(v.files.size(), 1u);
     by_file.emplace(v.files[0].model_file_path.filename().string(), &v);
@@ -982,7 +982,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
                              std::filesystem::copy_options::overwrite_existing, ec);
 
   constexpr std::string_view metadata_json = R"({
-    "component_model_name": "model_1",
+    "component_name": "model_1",
     "variants": {
       "variant_1": {
         "ep_compatibility": [{
@@ -1008,7 +1008,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
   }
 
   ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<ModelVariantInfo> variants;
+  std::vector<VariantInfo> variants;
   auto status = parser.ParseVariantsFromRoot(component_root, variants);
 
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
