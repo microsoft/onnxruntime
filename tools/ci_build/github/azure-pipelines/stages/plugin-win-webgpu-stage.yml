@@ -132,7 +132,7 @@ stages:
             --wgsl_template static
             --disable_rtti
             --enable_lto
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine) $(CrossCompileDefines)
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine) $(CrossCompileDefines)
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
 
