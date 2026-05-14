@@ -690,34 +690,33 @@ namespace {
 
 constexpr std::wstring_view kGlobalRootPrefix{L"\\\\?\\GLOBALROOT"};
 
-HANDLE OpenHandleForFinalPath(const std::filesystem::path& path) {
+wil::unique_hfile OpenHandleForFinalPath(const std::filesystem::path& path) {
   CREATEFILE2_EXTENDED_PARAMETERS params{};
   params.dwSize = sizeof(params);
   params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
-  return ::CreateFile2(path.c_str(),
-                       FILE_READ_ATTRIBUTES,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                       OPEN_EXISTING,
-                       &params);
+  return wil::unique_hfile{::CreateFile2(path.c_str(),
+                                         FILE_READ_ATTRIBUTES,
+                                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                         OPEN_EXISTING,
+                                         &params)};
 }
 
 // Final-path query using VOLUME_NAME_NT, prefixed with "\\?\GLOBALROOT" to stay a valid Win32 path.
 bool TryGetFinalPathNt(const std::filesystem::path& path, std::filesystem::path& result) {
-  HANDLE handle = OpenHandleForFinalPath(path);
-  if (handle == INVALID_HANDLE_VALUE) {
+  wil::unique_hfile handle = OpenHandleForFinalPath(path);
+  if (handle.get() == INVALID_HANDLE_VALUE) {
     return false;
   }
 
   std::wstring buffer(MAX_PATH, L'\0');
   constexpr DWORD kFlags = FILE_NAME_NORMALIZED | VOLUME_NAME_NT;
-  DWORD needed = ::GetFinalPathNameByHandleW(handle, buffer.data(),
+  DWORD needed = ::GetFinalPathNameByHandleW(handle.get(), buffer.data(),
                                              static_cast<DWORD>(buffer.size()), kFlags);
   if (needed != 0 && needed >= buffer.size()) {
     buffer.resize(needed);
-    needed = ::GetFinalPathNameByHandleW(handle, buffer.data(),
+    needed = ::GetFinalPathNameByHandleW(handle.get(), buffer.data(),
                                          static_cast<DWORD>(buffer.size()), kFlags);
   }
-  ::CloseHandle(handle);
 
   if (needed == 0 || needed >= buffer.size()) {
     return false;
