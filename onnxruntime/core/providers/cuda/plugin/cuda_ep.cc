@@ -108,7 +108,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       name_(factory.GetEpName()),
       config_(config),
       logger_(logger) {
-  ort_version_supported = ORT_API_VERSION;
+  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
 
   // Set function pointers for kernel-registry-based EP
   GetName = GetNameImpl;

@@ -578,7 +578,7 @@ class CudaArenaAllocator final : public CudaAllocatorBase {
   CudaArenaAllocator(CudaAllocatorKind kind, const OrtMemoryInfo* memory_info,
                      std::unique_ptr<ArenaImpl> impl)
       : CudaAllocatorBase(kind, memory_info), impl_(std::move(impl)) {
-    version = ORT_API_VERSION;
+    version = kCudaPluginEpMinOrtApiVersion;
     Alloc = AllocImpl;
     Reserve = ReserveImpl;
     Free = FreeImpl;
