@@ -292,8 +292,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // Apply RoPE to Q only. Use the fused kernel with a dummy K to avoid zero-element buffers.
       // K output is discarded since attention uses past_key/past_value.
       qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
-      kDummy = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, 1, parameters.kv_hidden_size_}));
-      kRotary = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, 1, parameters.kv_hidden_size_}));
+      kDummy = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
+      kRotary = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
       ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(context, parameters,
                                                     query, &kDummy,
                                                     seqlen_k,
