@@ -583,6 +583,19 @@ class TestOpMatMul4Bits(unittest.TestCase):
         # check_model_correctness confirms the output shape is [1, N].
         self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
 
+    def test_quantize_matmul_int4_4d_weight_default(self):
+        """Test that Default quantizer handles weight with two unit leading dims, e.g. shape [1, 1, K, N].
+
+        For activation rank 2 and weight rank 4, extra_count = max(4 - max(2, 2), 0) = 2,
+        so the reshape helper prepends two leading 1s to the MatMulNBits output.
+        """
+        np.random.seed(42)
+        weight_shape = (1, 1, 52, 288)  # two unit leading dims
+        model_fp32_path = str(Path(self._tmp_model_dir.name).joinpath("matmul_fp32_4d_default.onnx").absolute())
+        self.construct_model_matmul_3d(model_fp32_path, symmetric=True, weight_shape=weight_shape)
+        data_reader = self.input_feeds(1, {"input": (100, 52)})
+        self.quant_test(model_fp32_path, data_reader, 32, True, extra_quant_nodes=self._RESHAPE_HELPER_OP_COUNTS)
+
 
 if __name__ == "__main__":
     unittest.main()

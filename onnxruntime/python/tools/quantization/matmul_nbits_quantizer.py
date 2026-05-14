@@ -1042,7 +1042,8 @@ class DefaultWeightOnlyQuantizer:
     def quantize_matmul(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """
         Quantize weight B of MatMul node to int4 or int8.
-        Currently only support 2D constant matrix and axis 0 blockwise quantization.
+        Supports 2D constant matrix, and N-D constant matrices whose leading dimensions are all 1
+        (which are squeezed to 2D before quantization). Axis 0 blockwise quantization only.
         """
         bits = self.config.bits
         if bits == 8:
