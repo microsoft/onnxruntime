@@ -528,11 +528,15 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const int64_t W_zero_point_size = W_zero_point->Shape().Size();
   const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
   // Per-channel zero points are uniform when size == 1 or all values match.
-  const bool W_zero_point_is_per_channel = (W_zero_point_size > 1);
   const bool W_zero_point_is_uniform =
-      !W_zero_point_is_per_channel ||
+      (W_zero_point_size <= 1) ||
       std::all_of(W_zero_point_data + 1, W_zero_point_data + W_zero_point_size,
                   [W_zero_point_data](uint8_t v) { return v == W_zero_point_data[0]; });
+  // When non-uniform, w_zero_point must be a full per-channel tensor of size M
+  // so that group_id * group_output_channels indexing is in bounds.
+  ORT_ENFORCE(W_zero_point_is_uniform || W_zero_point_size == M,
+              "QLinearConv : non-uniform weight zero point tensor size (", W_zero_point_size,
+              ") must equal number of output channels (", M, ")");
   // Single representative value used for paths that require a scalar zero point.
   const uint8_t W_zero_point_value = W_zero_point_data[0];
 

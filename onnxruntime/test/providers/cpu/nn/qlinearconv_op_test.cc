@@ -1563,7 +1563,7 @@ TEST(QLinearConvTest, Conv2D_S8S8_PerChannelZeroPoints) {
     for (int64_t i = 0; i < channels; i++) {
       weight_scales.push_back(.10f + static_cast<float>(i) * .003f);
       // Use different (non-zero) zero points per channel.
-      weight_zero_points.push_back(static_cast<int8_t>(-10 + static_cast<int8_t>(i * 3)));
+      weight_zero_points.push_back(static_cast<int8_t>(-10 + i * 3));
     }
     test.SetWeightScales(weight_scales);
     test.SetWeightZeroPoints(weight_zero_points);
@@ -1620,7 +1620,7 @@ TEST(QLinearConvTest, Conv2D_S8S8_DepthwiseFallback_PerChannelZeroPoints) {
   std::vector<int8_t> weight_zero_points;
   for (int64_t i = 0; i < channels; ++i) {
     weight_scales.push_back(.10f + static_cast<float>(i) * .003f);
-    weight_zero_points.push_back(static_cast<int8_t>(-10 + static_cast<int8_t>(i * 3)));
+    weight_zero_points.push_back(static_cast<int8_t>(-10 + i * 3));
   }
 
   test.SetWeightScales(weight_scales);
