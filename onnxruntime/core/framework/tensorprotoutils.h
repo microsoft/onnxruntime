@@ -589,6 +589,15 @@ Status TensorProtoWithExternalDataToTensorProto(
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& external_data_path);
 
+#if defined(_WIN32)
+namespace internal {
+// Internal helper exposed for unit testing of the AppContainer fallback used by
+// WeaklyCanonicalPath. Not part of any public API; subject to change.
+bool WeaklyCanonicalPathNtVolumeFallbackForTesting(const std::filesystem::path& input,
+                                                   std::filesystem::path& result);
+}  // namespace internal
+#endif  // defined(_WIN32)
+
 #endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {
