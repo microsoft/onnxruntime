@@ -474,6 +474,10 @@ TEST(NchwcOptimizerTests, ConvAveragePool) {
 
       helper.AddConvNode(input_arg, conv_output_arg, {128, 48, 5, 5});
 
+      // The NCHWc average pooling path may accumulate floats in a different
+      // order than the reference, producing small rounding differences.
+      helper.per_sample_tolerance_ = 0.002;
+
       auto& pool_node = helper.AddNode("AveragePool", {conv_output_arg}, {output_arg});
       pool_node.AddAttribute("auto_pad", "SAME_UPPER");
       pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{4, 4});
