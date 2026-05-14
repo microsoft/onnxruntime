@@ -6,6 +6,7 @@
 // instead of inheriting from CPU base classes.
 
 #include "core/providers/cuda/plugin/cuda_controlflow_plugin.h"
+#include "cuda_plugin_utils.h"
 #include <cuda_runtime.h>
 
 namespace onnxruntime {
@@ -85,7 +86,7 @@ Status PluginIfKernel::CreateControlFlowKernelImpl(const OrtKernelInfo* info, Or
 // ===================================================================
 
 PluginLoopHelper::PluginLoopHelper() : OrtLoopKernelHelper{} {
-  ort_version_supported = ORT_API_VERSION;
+  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
   Release = ReleaseImpl;
   ConcatOutput = ConcatOutputImpl;
 }
@@ -162,7 +163,7 @@ Status PluginLoopKernel::CreateControlFlowKernelImpl(const OrtKernelInfo* info, 
 // ===================================================================
 
 PluginScanHelper::PluginScanHelper() : OrtScanKernelHelper{} {
-  ort_version_supported = ORT_API_VERSION;
+  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
   Release = ReleaseImpl;
   Transpose = TransposeImpl;
 }

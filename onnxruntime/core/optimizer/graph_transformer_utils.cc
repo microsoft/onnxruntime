@@ -411,7 +411,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
@@ -463,7 +463,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
       auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
-                                                                logger);
+                                                                logger, session_options.config_options);
       if (nhwc_transformer->IsActive()) {
         transformers.emplace_back(std::move(nhwc_transformer));
       }
@@ -566,7 +566,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
         auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
-                                                                  logger);
+                                                                  logger, session_options.config_options);
         if (nhwc_transformer->IsActive()) {
           transformers.emplace_back(std::move(nhwc_transformer));
         }

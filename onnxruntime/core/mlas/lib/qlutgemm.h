@@ -107,7 +107,8 @@ typedef void(MLAS_QNBIT_LUT_PACK_SCALES_AND_ZP)(
     bool HasZeroPoint,
     float* PackedScalesBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 );
 

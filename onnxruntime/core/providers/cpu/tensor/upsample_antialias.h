@@ -22,11 +22,17 @@
 
 namespace onnxruntime {
 
+// Clamped input coordinate range [min, max) for a single output pixel.
+struct InterpolationBound {
+  int64_t min;
+  int64_t max;
+};
+
 template <typename T>
 struct FilterParamsBaseAntiAlias {
-  std::vector<int64_t> bound;
+  std::vector<InterpolationBound> bounds;
   std::vector<int64_t> out_of_bound_idx;
-  int64_t window_size = 2;
+  size_t window_size = 2;
   IAllocatorUniquePtr<T> weight_coefficients;
 };
 
@@ -123,27 +129,34 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
                                          const int64_t output_size,
                                          size_t rindex,
                                          FilterParamsBaseAntiAlias<T>& param_base,
-                                         const float rscale) -> int64_t {
-    param_base.bound.reserve(static_cast<size_t>(output_size) * 2);
+                                         const float rscale) -> size_t {
+    param_base.bounds.reserve(static_cast<size_t>(output_size));
     param_base.out_of_bound_idx.reserve(static_cast<size_t>(output_size));
 
     float scale = 1.0f / rscale;
     float support = (scale >= 1.0f) ? (p.support_size * 0.5f) * scale : p.support_size * 0.5f;
 
-    int32_t window_size = narrow<int32_t>(ceilf(support)) * 2 + 1;
-    const size_t scale_buffer_size = static_cast<size_t>(SafeInt<size_t>(window_size) * output_size);
+    const size_t window_size = SafeInt<size_t>(ceilf(support)) * 2 + 1;
+    const size_t output_count = narrow<size_t>(output_size);
+    const size_t scale_buffer_size = SafeInt<size_t>(window_size) * output_count;
 
     param_base.weight_coefficients = IAllocator::MakeUniquePtr<T>(alloc, scale_buffer_size);
-    // Get pointers to appropriate memory locations in the scratch buffer
-    auto* scale_data = reinterpret_cast<float*>(param_base.weight_coefficients.get());
+    auto* output_weights = param_base.weight_coefficients.get();
     int64_t xmin = 0, xmax = 0;
     float inv_scale = (scale >= 1.0f) ? 1.0f / scale : 1.0f;
 
     const auto roi_start = roi.size() / 2 - (rindex + 1);
     const auto roi_end = roi.size() - (rindex + 1);
 
-    for (int32_t i = 0; i < output_size; i++) {
-      // double center = (i + 0.5) * scale;
+    // Per-pixel scratch buffer for float weight computation, reused across all output pixels.
+    // window_size = ceil(support) * 2 + 1, where support = support_size * 0.5 * max(scale, 1).
+    //   Downsampling (scale < 1): bilinear=3, bicubic=5 (always).
+    //   Upsampling:  2x bilinear=5, 4x bilinear=9, 8x bilinear=17,
+    //                2x bicubic=9,  4x bicubic=17, 8x bicubic=33.
+    // Inline capacity of 33 covers up to 8x bicubic upsample without heap allocation.
+    InlinedVector<float, 33> scale_buffer(window_size);
+
+    for (size_t i = 0; i < output_count; i++) {
       float center = 0.5f + (scale == 1.0f ? static_cast<float>(i)
                                            : get_original_coordinate(static_cast<float>(i), rscale,
                                                                      static_cast<float>(output_size),
@@ -152,60 +165,59 @@ void SetupUpsampleFilterAntiAlias(FilterParamsAntiAlias<T>& p,
       if (center - 0.5f < 0 || center - 0.5f > narrow<float>(input_size - 1)) {
         param_base.out_of_bound_idx.emplace_back(i);
       }
-      float total_weight = 0.0;
+      float total_weight = 0.0f;
 
       auto fmin = std::floor(center - support + 0.5f);
       auto fmax = std::floor(center + support + 0.5f);
       int64_t xmin_real = static_cast<int64_t>(fmin);
       int64_t xmax_real = static_cast<int64_t>(fmax);
-      int64_t xmin_cut = std::max<int64_t>(xmin_real, (0));
+      int64_t xmin_cut = std::max<int64_t>(xmin_real, 0);
       int64_t xmax_cut = std::min<int64_t>(xmax_real, input_size);
 
       xmin = exclude_outside ? xmin_cut : xmin_real;
       xmax = exclude_outside ? xmax_cut : xmax_real;
-      param_base.bound.push_back(xmin_cut);
-      param_base.bound.push_back(xmax_cut);
+      param_base.bounds.push_back({xmin_cut, xmax_cut});
 
-      auto* scale_buffer = &scale_data[i * window_size];
+      std::fill(scale_buffer.begin(), scale_buffer.end(), 0.0f);
       int64_t x = 0;
       xmax -= xmin;
       for (; x < xmax; x++) {
         float w = p.Filter((x + xmin - center + 0.5f) * inv_scale);
-        scale_buffer[x] = w;
+        scale_buffer[narrow<size_t>(x)] = w;
         total_weight += w;
       }
 
       if (!exclude_outside) {
         int64_t neg_xsize = xmin < 0 ? -xmin : 0;
         for (x = 0; x < neg_xsize; x++) {
-          scale_buffer[neg_xsize] += scale_buffer[x];
+          scale_buffer[narrow<size_t>(neg_xsize)] += scale_buffer[narrow<size_t>(x)];
         }
 
         int64_t bound_xsize =
             xmax + xmin > input_size ? xmax + xmin - input_size : 0;
         for (x = xmax - bound_xsize; x < xmax; x++) {
-          scale_buffer[xmax - bound_xsize - 1] +=
-              scale_buffer[x];
+          scale_buffer[narrow<size_t>(xmax - bound_xsize - 1)] +=
+              scale_buffer[narrow<size_t>(x)];
         }
 
         for (x = 0; (neg_xsize | bound_xsize) > 0 && x < xmax_cut - xmin_cut; x++) {
-          scale_buffer[x] = scale_buffer[x + neg_xsize];
+          scale_buffer[narrow<size_t>(x)] = scale_buffer[narrow<size_t>(x + neg_xsize)];
         }
       }
 
-      float total_weight_inv = total_weight == 0.0f ? 1.f : 1.0f / total_weight;
-      auto* scale_buffer_int = reinterpret_cast<int32_t*>(scale_buffer);
-      for (x = 0; x < xmax_cut - xmin_cut; x++) {
-        scale_buffer[x] *= total_weight_inv;
-
-        // normalize the scale to 1 << 22 for int8/uint8
-        if constexpr (std::is_same<T, int32_t>::value) {
-          scale_buffer_int[x] = static_cast<int32_t>(std::round(scale_buffer[x] * ConstValue::mag_factor_x_2));
+      // Normalize weights and write to the output buffer as T.
+      float total_weight_inv = total_weight == 0.0f ? 1.0f : 1.0f / total_weight;
+      auto* dest = &output_weights[i * window_size];
+      const int64_t num_weights = xmax_cut - xmin_cut;
+      for (x = 0; x < num_weights; x++) {
+        float normalized = scale_buffer[narrow<size_t>(x)] * total_weight_inv;
+        if constexpr (std::is_same_v<T, int32_t>) {
+          // Quantized path: normalize the scale to 1 << 22 for int8/uint8
+          dest[x] = static_cast<int32_t>(std::round(normalized * ConstValue::mag_factor_x_2));
+        } else {
+          dest[x] = normalized;
         }
       }
-      /*for (; x < window_size; x++) {
-        scale_buffer[x] = 0;
-      }*/
     }
 
     return window_size;
@@ -269,15 +281,13 @@ void ComputeInterpolationAtLevel1(int64_t num_channels, int64_t input_height, in
 
         for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
           auto* Ydata_offset = Ydata + output_width * y;
-          auto* bound = p_dim.bound.data();
           for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
             AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
 
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * x;
-            int64_t xmin = *bound++;
-            int64_t xmax = *bound++;
+            const auto& [xmin, xmax] = p_dim.bounds[x];
             const auto* Xdata_offset = Xdata + y * input_width + xmin;
-            for (; xmin < xmax; ++xmin) {
+            for (auto xi = xmin; xi < xmax; ++xi) {
               output += (*Xdata_offset++) * (*weight_coeff++);
             }
 
@@ -338,11 +348,9 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
             return;
           }
 
-          const auto* y_bound = p_dim.bound.data();
           for (size_t y = 0; y < narrow<size_t>(output_height); ++y) {
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * y;
-            int64_t ymin = *y_bound++;
-            int64_t ymax = *y_bound++;
+            const auto& [ymin, ymax] = p_dim.bounds[y];
             auto* Ydata_offset = Ydata + output_width * y;
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
               AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
@@ -388,10 +396,8 @@ void ComputeInterpolationAtLevel2(int64_t num_channels, int64_t input_height, in
             const InputType* Xdata = Xdata_span.data() + x_start;
             InputType* Ydata = Ydata_span.data() + y_start;
 
-            const auto* y_bound = p_dim.bound.data();
             const auto* weight_coeff = p_dim.weight_coefficients.get() + p_dim.window_size * y;
-            int64_t ymin = y_bound[2 * narrow<size_t>(y)];
-            int64_t ymax = y_bound[2 * narrow<size_t>(y) + 1];
+            const auto& [ymin, ymax] = p_dim.bounds[narrow<size_t>(y)];
             auto* Ydata_offset = Ydata + output_width * y;
             for (size_t x = 0; x < narrow<size_t>(output_width); ++x) {
               AccumulateType output = is_8bit_v<InputType> ? ConstValue::mag_factor : 0;
@@ -428,21 +434,25 @@ void HandleExtrapolation(int64_t num_channels,
         InputType* Ydata_base_nc =
             Ydata_span.data() + static_cast<size_t>(SafeInt<size_t>(nc) * output_depth * output_height * output_width);
 
-        for (int64_t z = 0; z < output_depth && p.dim_x.out_of_bound_idx.size() > 0; ++z) {
-          for (int64_t y = 0; y < output_height; ++y) {
-            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
-            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
-            for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
-              Ydata_offset[narrow<size_t>(idx_x)] = static_cast<InputType>(extrapolation_value);
+        if (!p.dim_x.out_of_bound_idx.empty()) {
+          for (int64_t z = 0; z < output_depth; ++z) {
+            for (int64_t y = 0; y < output_height; ++y) {
+              const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+              InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
+              for (int64_t idx_x : p.dim_x.out_of_bound_idx) {
+                Ydata_offset[narrow<size_t>(idx_x)] = static_cast<InputType>(extrapolation_value);
+              }
             }
           }
         }
 
-        for (int64_t z = 0; z < output_depth && p.dim_y.out_of_bound_idx.size() > 0; ++z) {
-          for (int64_t y : p.dim_y.out_of_bound_idx) {
-            const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
-            InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
-            std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));
+        if (!p.dim_y.out_of_bound_idx.empty()) {
+          for (int64_t z = 0; z < output_depth; ++z) {
+            for (int64_t y : p.dim_y.out_of_bound_idx) {
+              const SafeInt<size_t> offset = (SafeInt<size_t>(z) * output_height + y) * output_width;
+              InputType* Ydata_offset = Ydata_base_nc + static_cast<size_t>(offset);
+              std::fill_n(Ydata_offset, narrow<size_t>(output_width), static_cast<InputType>(extrapolation_value));
+            }
           }
         }
 
@@ -628,7 +638,6 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
 
     // vertical interpolate
     {
-      // vertical interpolate
       auto xdata_span = gsl::make_span<const T>(image_temp_buffer.get(), temp_span_size);
       auto ydata_span = gsl::make_span<T>(Ydata_base + static_cast<size_t>(SafeInt<size_t>(n) * output_span_size),
                                           output_span_size);
@@ -639,6 +648,9 @@ void NhwcUpsampleBasicAntiAlias(FilterParamsAntiAlias<T1>& p,
   }
 
   if (use_extrapolation) {
+    // NOTE: HandleExtrapolation assumes NCHW layout (it fills per-channel slices).
+    // For NHWC, we pass batch_size * num_channels as the channel count since the
+    // vertical interpolation output is laid out as [batch * channels, output_height, output_width].
     auto ydata_span = gsl::make_span<T>(Ydata_base,
                                         static_cast<size_t>(SafeInt<size_t>(batch_size) * output_span_size));
     HandleExtrapolation(batch_size * num_channels, output_height, output_width, 1,

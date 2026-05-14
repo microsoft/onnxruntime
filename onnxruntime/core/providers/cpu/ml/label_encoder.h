@@ -3,10 +3,12 @@
 
 #pragma once
 #include <filesystem>
+#include <optional>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/ml/ml_common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/to_tensor_proto_element_type.h"
 #include "core/common/safeint.h"
 
 namespace onnxruntime {
@@ -194,16 +196,54 @@ struct NaNEqual {
   }
 };
 
+// Fast-path for reading tensor data directly without intermediate allocation.
+// Returns nullopt if conditions aren't met
+template <typename T>
+std::optional<gsl::span<const T>> TryGetRawDataSpan(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  static_assert(!std::is_same_v<T, std::string>, "TryGetRawDataSpan does not support strings.");
+  static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable.");
+
+  // ONNX always stores raw_data in little-endian per the spec
+  if constexpr (endian::native != endian::little) {
+    return std::nullopt;
+  }
+
+  if (tensor_proto.data_type() != utils::ToTensorProtoElementType<T>() ||
+      !utils::HasRawData(tensor_proto) || utils::HasExternalData(tensor_proto)) {
+    return std::nullopt;
+  }
+
+  SafeInt<size_t> element_count(1);
+  for (auto dim : tensor_proto.dims()) {
+    element_count *= dim;
+  }
+
+  const auto& raw = tensor_proto.raw_data();
+  if (raw.size() != static_cast<size_t>(element_count) * sizeof(T)) {
+    return std::nullopt;
+  }
+
+  const auto* data_ptr = raw.data();
+  if (reinterpret_cast<uintptr_t>(data_ptr) % alignof(T) != 0) {
+    return std::nullopt;
+  }
+
+  return gsl::make_span(reinterpret_cast<const T*>(data_ptr), static_cast<size_t>(element_count));
+}
+
 template <typename TKey, typename TValue>
 class LabelEncoder_4 final : public OpKernel {
  public:
   LabelEncoder_4(const OpKernelInfo& kernel_info) : OpKernel(kernel_info) {
     InitializeAttrFields(kernel_info);
-    auto keys = GetAttribute<TKey>(kernel_info, key_field_name_, "keys_tensor");
-    auto values = GetAttribute<TValue>(kernel_info, value_field_name_, "values_tensor");
-    ORT_ENFORCE(keys.size() == values.size(), "Keys and values must have the same length.");
-    for (size_t i = 0; i < keys.size(); ++i) {
-      map_.emplace(keys[i], values[i]);
+    if (!TryInitializeMapFromRawData(kernel_info)) {
+      auto keys = GetAttribute<TKey>(kernel_info, key_field_name_, "keys_tensor");
+      auto values = GetAttribute<TValue>(kernel_info, value_field_name_, "values_tensor");
+      ORT_ENFORCE(keys.size() == values.size(), "Keys and values must have the same length.");
+      map_.reserve(keys.size());
+      for (size_t i = 0; i < keys.size(); ++i) {
+        map_.emplace(std::move(keys[i]), std::move(values[i]));
+      }
     }
   }
   Status Compute(OpKernelContext* context) const override {
@@ -225,6 +265,31 @@ class LabelEncoder_4 final : public OpKernel {
   }
 
  private:
+  bool TryInitializeMapFromRawData(const OpKernelInfo& kernel_info) {
+    if constexpr (std::is_same_v<TKey, std::string> || std::is_same_v<TValue, std::string>) {
+      return false;
+    } else {
+      const auto* keys_attr = kernel_info.TryGetAttribute("keys_tensor");
+      const auto* values_attr = kernel_info.TryGetAttribute("values_tensor");
+      if (keys_attr == nullptr || values_attr == nullptr ||
+          !utils::HasTensor(*keys_attr) || !utils::HasTensor(*values_attr)) {
+        return false;
+      }
+
+      auto keys_span = TryGetRawDataSpan<TKey>(keys_attr->t());
+      auto values_span = TryGetRawDataSpan<TValue>(values_attr->t());
+      if (!keys_span || !values_span || keys_span->size() != values_span->size()) {
+        return false;
+      }
+
+      map_.reserve(keys_span->size());
+      for (size_t i = 0; i < keys_span->size(); ++i) {
+        map_.emplace((*keys_span)[i], (*values_span)[i]);
+      }
+      return true;
+    }
+  }
+
   void InitializeAttrFields(const OpKernelInfo& kernel_info);
   HashMap<TKey, TValue, NaNHash<TKey>, NaNEqual<TKey>> map_;
   TValue default_value_;

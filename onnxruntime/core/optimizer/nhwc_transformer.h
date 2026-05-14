@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <functional>
 #include "core/common/common.h"
+#include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/optimizer/graph_transformer.h"
@@ -54,10 +56,15 @@ class OpIdHash {
  * @brief Information needed for operator layout transformation
  */
 struct OpTransformInfo {
+  using FilterFn = std::function<bool(const onnx_transpose_optimization::api::GraphRef& graph,
+                                      onnx_transpose_optimization::api::NodeRef& node)>;
+
   const std::string optype_;
   const std::string domain_;
   const int version_;
   const bool has_channels_last_attrib_;
+  const bool transpose_fused_sum_input_;
+  const FilterFn filter_{nullptr};
 };
 
 using OpTransformMap = std::unordered_map<OpIdInfo, OpTransformInfo, OpIdHash>;
@@ -76,7 +83,7 @@ class NhwcTransformer : public GraphTransformer {
  private:
  public:
   explicit NhwcTransformer(AllocatorPtr cpu_allocator, std::shared_ptr<KernelRegistry> cpu_kernel_registry,
-                           const logging::Logger& logger) noexcept;
+                           const logging::Logger& logger, const ConfigOptions& config_options) noexcept;
 
   /**
    * @brief Usually called right after constructor, it shows whether

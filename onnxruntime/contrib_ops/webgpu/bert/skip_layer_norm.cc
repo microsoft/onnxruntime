@@ -146,8 +146,8 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   const Tensor* skip = context.Input(1);
   const Tensor* gamma = context.Input(2);
   // optional
-  const Tensor* beta = context.Input(3);
-  const Tensor* bias = context.Input(4);
+  const Tensor* beta = simplified ? nullptr : context.Input(3);
+  const Tensor* bias = context.Input(simplified ? 3 : 4);
 
   const auto x_shape = x->Shape();
 
@@ -168,9 +168,10 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   const auto skip_shape = skip->Shape();
   const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip_shape.Size());
 
-  SkipLayerNormProgram program{beta != nullptr, bias != nullptr, epsilon_, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
+  SkipLayerNormProgram program{
+      beta != nullptr, bias != nullptr, epsilon_, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
   program
-      .CacheHint(simplified, has_input_skip_bias_sum, split_hidden_dim)
+      .CacheHint(simplified, beta != nullptr, bias != nullptr, has_input_skip_bias_sum, split_hidden_dim)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
