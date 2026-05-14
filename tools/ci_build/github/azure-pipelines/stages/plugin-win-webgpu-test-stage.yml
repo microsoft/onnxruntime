@@ -38,9 +38,7 @@ stages:
       artifact: webgpu_plugin_python_win_${{ parameters.arch }}
       displayName: 'Download Python wheel'
 
-    - pwsh: |
-        $ErrorActionPreference = 'Stop'
-
+    - powershell: |
         echo "creating test_venv"
         python -m venv "$(Build.BinariesDirectory)\test_venv"
 
@@ -91,8 +89,7 @@ stages:
 
       # Set up local NuGet feed and extract the package version from the .nupkg filename
       # so the test project can pin to it (instead of resolving via a floating version).
-      - pwsh: |
-          $ErrorActionPreference = 'Stop'
+      - powershell: |
           $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
           New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
 
@@ -134,7 +131,7 @@ stages:
           Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
         displayName: 'Set up local NuGet feed'
 
-      - pwsh: |
+      - powershell: |
           dotnet build `
             "$(WebGpuTestProject)" `
             --configuration Release `
@@ -142,7 +139,7 @@ stages:
             -p:OrtCoreTestVersion=$(OrtCoreTestVersion)
         displayName: 'Build test project'
 
-      - pwsh: |
+      - powershell: |
           dotnet run `
             --project "$(WebGpuTestProject)" `
             --configuration Release `
