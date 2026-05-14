@@ -219,6 +219,15 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   }
 }
 
+OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (ort_ep_->ort_version_supported >= 27 && ort_ep_->GetMemoryInfoByMemType != nullptr) {
+    if (const OrtMemoryInfo* info = ort_ep_->GetMemoryInfoByMemType(ort_ep_.get(), mem_type)) {
+      return info->device;
+    }
+  }
+  return IExecutionProvider::GetOrtDeviceByMemType(mem_type);
+}
+
 PluginExecutionProvider::~PluginExecutionProvider() {
   if (ort_ep_ && !api_node_compute_infos_.empty() && ort_ep_->ReleaseNodeComputeInfos != nullptr) {
     ort_ep_->ReleaseNodeComputeInfos(ort_ep_.get(), api_node_compute_infos_.data(),
