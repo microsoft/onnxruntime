@@ -19,6 +19,9 @@
 #include "kai/ukernels/matmul/pack/kai_lhs_pack_f32p2vlx1_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme.h"
+#if defined(MLAS_USE_SVE)
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve.h"
+#endif
 
 // Thread-local reusable buffers to reduce allocation overhead across tiles.
 struct KaiTlsBuffers {
@@ -33,9 +36,12 @@ static thread_local KaiTlsBuffers g_kai_tls;
 const KaiF32SgemmKernel& sgemm_gemm = GetKleidiAISGemmUKernel();
 const KaiF32SgemvKernel& sgemm_gemv = GetKleidiAISGemvUKernel();
 
+#if defined(MLAS_USE_SVE)
+const KaiF32SveKernel& sgemm_sve = GetKleidiAISveSGemmUKernel();
+#endif
+
 // Avoid vector setup overhead on tiny outputs.
 constexpr size_t kAlphaBetaNeonMinElements = 32;
-
 
 // Helpers for GEMV
 /*++
@@ -308,6 +314,50 @@ ArmKleidiAI::MlasGemvBatch(
         return true;
 }
 
+static size_t
+PackBSizeSME(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+)
+{
+    if (TransA != CblasNoTrans || N == 0 || K == 0) {
+        return 0;
+    }
+
+    switch (TransB) {
+        case CblasNoTrans:
+            return kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
+        case CblasTrans:
+            return kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(N, K);
+        default:
+            return 0;
+    }
+}
+
+#if defined(MLAS_USE_SVE)
+static size_t
+PackBSizeSVE(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+)
+{
+    if (TransA != CblasNoTrans || N == 0 || K == 0) {
+        return 0;
+    }
+
+    if (TransB != CblasNoTrans) {
+        // SVE FP32 packer currently supports only kxn packing.
+        return 0;
+    }
+
+    return kai_get_rhs_packed_size_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve(N, K);
+}
+#endif
+
 size_t
 MLASCALL
 ArmKleidiAI::MlasGemmPackBSize(
@@ -338,27 +388,148 @@ Return Value:
 
 --*/
 {
-    if (TransA != CblasNoTrans ||  N == 0  || K == 0) {
-        KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize returning 0 size. N=" << N << " K=" << K);
+    // Fail fast on obviously unsupported configurations so the caller can fall back to MLAS quickly.
+    if (N == 0 || K == 0) {
         return 0;
     }
-    //
-    // Compute the number of bytes required to hold the packed buffer.
-    //
-    size_t bytes = 0;
-    switch (TransB) {
-        case CblasNoTrans:
-            bytes = kai_get_rhs_packed_size_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(N, K);
-            break;
-        case CblasTrans:
-            bytes = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(N, K);
-            break;
-        default:
-            KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize TransB is neither CblasNoTrans nor CblasTrans, returning 0.");
+
+    // Prefer SME/SME2 when available at runtime.
+    if (ArmKleidiAI::UseSME || ArmKleidiAI::UseSME2) {
+        // SME/SME2 packers currently require A to be non-transposed.
+        if (TransA != CblasNoTrans) {
             return 0;
+        }
+
+        const size_t bytes = PackBSizeSME(TransA, TransB, N, K);
+        if (bytes == 0) {
+            KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize returning 0 size. N=" << N << " K=" << K);
+            return 0;
+        }
+        return bytes;
     }
 
-    return bytes;
+#if defined(MLAS_USE_SVE)
+    // SVE-only fallback when SME/SME2 is not available.
+    if (ArmKleidiAI::UseSVE) {
+        // SVE packer currently supports only non-transposed A and kxn packing (non-transposed B).
+        if (TransA != CblasNoTrans || TransB != CblasNoTrans) {
+            return 0;
+        }
+
+        const size_t bytes = PackBSizeSVE(TransA, TransB, N, K);
+        if (bytes == 0) {
+            KLEIDIAI_DEBUG_LOG("MlasGemmPackBSize returning 0 size. N=" << N << " K=" << K);
+            return 0;
+        }
+        return bytes;
+    }
+#endif
+
+    return 0;
+}
+
+
+
+#if defined(MLAS_USE_SVE)
+static bool
+PackBSVE(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+)
+{
+    // SVE packer currently supports only kxn packing and requires A to be non-transposed.
+    if (TransA != CblasNoTrans || N == 0 || K == 0 || B == nullptr || PackedB == nullptr) {
+        return false;
+    }
+
+    if (TransB != CblasNoTrans) {
+        KLEIDIAI_DEBUG_LOG("MlasGemmPackB (SVE) unsupported: TransB must be CblasNoTrans (kxn only). Falling back to MLAS.");
+        return false;
+    }
+
+    const size_t nr = sgemm_sve.ukernel.get_nr();
+    const size_t kr = sgemm_sve.ukernel.get_kr();
+    const size_t sr = sgemm_sve.ukernel.get_sr();
+
+    g_kai_tls.bias_zero.resize(N, 0.0f);
+
+    KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve Groups=1"
+                            << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
+    kai_run_rhs_pack_kxn_x32p4vlx1b_x32_x32_sve(
+        1, N, K, nr, kr, sr,
+        ldb * sizeof(float),
+        B, g_kai_tls.bias_zero.data(),
+        nullptr,
+        PackedB,
+        0, nullptr);
+
+    return true;
+}
+#endif
+
+static bool
+PackBSME(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
+)
+{
+    // TODO: Remove once KAI supports transposing for A (SME/SME2 path).
+    if (TransA != CblasNoTrans || N == 0 || K == 0 || B == nullptr || PackedB == nullptr) {
+        if (TransA != CblasNoTrans) {
+            KLEIDIAI_DEBUG_LOG("MlasGemmPackB (SME/SME2) unsupported: TransA must be CblasNoTrans. Falling back to MLAS.");
+        }
+        return false;
+    }
+
+    const size_t nr = sgemm_gemm.ukernel.get_nr();
+    const size_t kr = sgemm_gemm.ukernel.get_kr();
+    const size_t sr = sgemm_gemm.ukernel.get_sr();
+
+    // Ensure size and zero the used span.
+    g_kai_tls.bias_zero.resize(N, 0.0f);
+
+    switch (TransB) {
+        case CblasNoTrans:
+            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme Groups=1"
+                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
+            kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(
+                1, N, K, nr, kr, sr,
+                ldb * sizeof(float),
+                B,
+                g_kai_tls.bias_zero.data(),
+                nullptr,
+                PackedB,
+                0,
+                nullptr);
+            return true;
+
+        case CblasTrans:
+            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme Groups=1"
+                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
+            kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(
+                1, N, K, nr, kr, sr,
+                ldb * sizeof(float),
+                B,
+                g_kai_tls.bias_zero.data(),
+                nullptr,
+                PackedB,
+                0,
+                nullptr);
+            return true;
+
+        default:
+            return false;
+    }
 }
 
 bool
@@ -404,45 +575,57 @@ Return Value:
 
 --*/
 {
-    if (N == 0 || K == 0) {
+    // Fail fast on obviously unsupported configurations so the caller can fall back to MLAS quickly.
+    if (N == 0 || K == 0 || B == nullptr || PackedB == nullptr) {
         return false;
     }
 
-    if (TransA == CblasNoTrans) {
-
-        const size_t nr = sgemm_gemm.ukernel.get_nr();
-        const size_t kr = sgemm_gemm.ukernel.get_kr();
-        const size_t sr = sgemm_gemm.ukernel.get_sr();
-
-        // Ensure size and zero the used span.
-        g_kai_tls.bias_zero.resize(N, 0.0f);
-
-        switch (TransB) {
-            case CblasNoTrans:
-            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme Groups=1"
-                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
-                kai_run_rhs_pack_kxn_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, g_kai_tls.bias_zero.data(), nullptr, PackedB, 0, nullptr);
-                break;
-            case CblasTrans:
-            KLEIDIAI_KERNEL_LOG("kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme Groups=1"
-                                    << " N="<< N << " K=" << K << " nr=" << nr << " kr=" << kr << " sr=" << sr << " rhs_stride_row=" << ldb * sizeof(float));
-                kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, g_kai_tls.bias_zero.data(), nullptr, PackedB, 0, nullptr);
-                break;
-            default:
-            KLEIDIAI_DEBUG_LOG("MlasGemmPackB TransB is neither CblasNoTrans nor CblasTrans, falling back to MLAS.");
-                return false;
+    // Prefer SME/SME2 when available at runtime.
+    if (ArmKleidiAI::UseSME || ArmKleidiAI::UseSME2) {
+        // SME/SME2 packers currently require A to be non-transposed.
+        if (TransA != CblasNoTrans) {
+            return false;
         }
-        return true;
-    }
-    else{
-        KLEIDIAI_DEBUG_LOG("MlasGemmPackB TransA is CblasTrans, falling back to MLAS.");
+
+        if (PackBSME(TransA, TransB, N, K, B, ldb, PackedB)) {
+            return true;
+        }
         return false;
     }
+
+#if defined(MLAS_USE_SVE)
+    // SVE-only fallback when SME/SME2 is not available.
+    if (ArmKleidiAI::UseSVE) {
+        // SVE packer currently supports only non-transposed A and kxn packing (non-transposed B).
+        if (TransA != CblasNoTrans || TransB != CblasNoTrans) {
+            return false;
+        }
+
+        if (PackBSVE(TransA, TransB, N, K, B, ldb, PackedB)) {
+            return true;
+        }
+        return false;
+    }
+#endif
+
+    KLEIDIAI_DEBUG_LOG(
+        "MlasGemmPackB falling back to MLAS. "
+        << "TransA=" << int(TransA) << " TransB=" << int(TransB)
+        << " N=" << N << " K=" << K
+#if defined(MLAS_USE_SVE)
+        << " UseSVE=" << ArmKleidiAI::UseSVE
+#endif
+        << " UseSME=" << ArmKleidiAI::UseSME
+        << " UseSME2=" << ArmKleidiAI::UseSME2
+    );
+
+    return false;
 }
 
-bool
+#if defined(MLAS_USE_SVE)
+static bool
 MLASCALL
-ArmKleidiAI::MlasGemmBatch(
+MlasGemmBatchSVE(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -452,68 +635,130 @@ ArmKleidiAI::MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
 )
-/*++
-
-Routine Description:
-
-    This routine performs a batched matrix multiplication (GEMM or GemV) operation using KleidiAI kernels.
-    It handles both packed and unpacked inputs and manages tiling and kernel selection depending on
-    SME2 availability. If packing is needed, it prepares the required buffers and invokes the
-    appropriate left-hand side (LHS) and right-hand side (RHS) pack functions.
-
-    The function also applies alpha and beta scaling to the result, supports efficient memcpy
-    paths where possible, and dispatches tile-level GEMM work using multithreading.
-
-Arguments:
-
-    TransA - Supplies the transpose operation for matrix A.
-
-    TransB - Supplies the transpose operation for matrix B.
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and rows of matrix B.
-
-    Data - Supplies a pointer to the MLAS_SGEMM_DATA_PARAMS array containing per-batch input/output pointers and parameters.
-
-    BatchSize - Supplies the number of independent GEMM computations to perform in the batch.
-
-    ThreadPool - Supplies the thread pool to parallelize computation across batches and tiles.
-
-Return Value:
-
-    Returns true if the GEMM operation was handled by KleidiAI.
-    Returns false if the configuration requires a fallback to the default MLAS implementation.
-
---*/
 {
-    if (M == 0 || N == 0 || BatchSize == 0) {
-        return true;
+
+    size_t m_step = sgemm_sve.ukernel.get_m_step();
+    size_t n_step = sgemm_sve.ukernel.get_n_step();
+
+    if ((M < m_step || N < n_step) && !Data->BIsPacked) {
+        return false;
     }
 
-    if (K == 0) {
-        for (size_t batch = 0; batch < BatchSize; ++batch) {
-            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+    size_t RhsPackedStride = 0;
+    std::byte* RhsPackedData = nullptr;
+
+    if (!Data[0].BIsPacked) {
+        RhsPackedStride = PackBSizeSVE(TransA, TransB, N, K);
+        if (RhsPackedStride == 0) {
+            return false;
         }
-        return true;
+
+        size_t rhs_resize = 0;
+        if (mul_overflow_size_t_builtin(RhsPackedStride, BatchSize, &rhs_resize)) {
+            return false;
+        }
+
+        g_kai_tls.rhs_packed.resize(rhs_resize);
+        RhsPackedData = g_kai_tls.rhs_packed.data();
+
+        MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
+            std::byte* RhsPackedPtr = &(RhsPackedData[RhsPackedStride * batch_idx]);
+            PackBSVE(TransA, TransB, N, K,
+                             reinterpret_cast<const float*>(Data[batch_idx].B),
+                             Data[batch_idx].ldb, RhsPackedPtr);
+        });
     }
 
-    bool all_alpha_zero = true;
-    for (size_t batch = 0; batch < BatchSize; ++batch) {
-        if (Data[batch].alpha != 0.0f) {
-            all_alpha_zero = false;
-            break;
-        }
-    }
+    std::array<size_t, 3> dim;
+    dim[0] = BatchSize;
+    dim[1] = MlasDivRoundup(M, m_step);
+    dim[2] = MlasDivRoundup(N, n_step);
 
-    if (all_alpha_zero) {
-        for (size_t batch = 0; batch < BatchSize; ++batch) {
-            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+    auto RequiredTiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0] * dim[1] * dim[2]);
+    dim[1] = MlasDivRoundup(RequiredTiles * dim[1], dim[1] * dim[2]);
+    dim[2] = MlasDivRoundup(RequiredTiles * dim[2], dim[1] * dim[2]);
+
+    m_step *= MlasDivRoundup(MlasDivRoundup(M, dim[1]), m_step);
+    n_step *= MlasDivRoundup(MlasDivRoundup(N, dim[2]), n_step);
+
+    dim[1] = MlasDivRoundup(M, m_step);
+    dim[2] = MlasDivRoundup(N, n_step);
+
+    MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [=](ptrdiff_t tid) {
+        ptrdiff_t BIdx = tid / (dim[1] * dim[2]);
+        ptrdiff_t MIdx = (tid % (dim[1] * dim[2])) / dim[2];
+        ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
+
+        const size_t rhs_packed_offset = sgemm_sve.ukernel.get_rhs_packed_offset(NIdx * n_step, K);
+
+        const std::byte* B_base = Data[0].BIsPacked
+            ? reinterpret_cast<const std::byte*>(Data[BIdx].B)
+            : (RhsPackedData + RhsPackedStride * BIdx);
+        const void* BTile = reinterpret_cast<const void*>(B_base + rhs_packed_offset);
+
+        const float* A_base = Data[BIdx].A + (MIdx * m_step) * Data[BIdx].lda;
+
+        const size_t TileSizeM = (MIdx + 1) * m_step > M ? (M - MIdx * m_step) : m_step;
+        const size_t TileSizeN = (NIdx + 1) * n_step > N ? (N - NIdx * n_step) : n_step;
+
+        float* dst_tile = Data[BIdx].C + (MIdx * m_step) * Data[BIdx].ldc + (NIdx * n_step);
+        const float alpha = Data[BIdx].alpha;
+        const float beta = Data[BIdx].beta;
+        const size_t ldc = Data[BIdx].ldc;
+
+        const bool direct_to_c = (alpha == 1.0f && beta == 0.0f);
+
+        float* out_tile = nullptr;
+        size_t out_row_stride_bytes = 0;
+
+        if (direct_to_c) {
+            out_tile = dst_tile;
+            out_row_stride_bytes = ldc * sizeof(float);
+        } else {
+            const size_t tile_elems = TileSizeM * TileSizeN;
+            g_kai_tls.output_tile.resize(tile_elems);
+            out_tile = g_kai_tls.output_tile.data();
+            out_row_stride_bytes = TileSizeN * sizeof(float);
         }
-        return true;
-    }
+        KLEIDIAI_KERNEL_LOG(sgemm_sve.name
+                            << " M=" << TileSizeM << " N=" << TileSizeN << " K=" << K);
+        sgemm_sve.ukernel.run_matmul(
+            TileSizeM,
+            TileSizeN,
+            K,
+            A_base,
+            Data[BIdx].lda * sizeof(float),
+            BTile,
+            out_tile,
+            out_row_stride_bytes,
+            sizeof(float),
+            -std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max());
+
+        if (direct_to_c) {
+            return;
+        }
+
+        ApplyAlphaBeta2D(out_tile, TileSizeM, TileSizeN, alpha, beta, dst_tile, ldc);
+    });
+
+    return true;
+}
+#endif
+
+static bool
+MLASCALL
+MlasGemmBatchSME(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
 
     // Attempt GEMV (M==1 or N==1)
     if (M == 1 || N == 1)
@@ -565,8 +810,18 @@ Return Value:
             kai_run_lhs_pack_f32p2vlx1_f32_sme(M, K, mr, kr, sr, 0, Data[batch_idx].A, Data[batch_idx].lda * sizeof(float), LhsPackedPtr);
         });
     } else {
-        // Multithread pack lhs and rhs
-        RhsPackedStride = ArmKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
+        // Multithread pack lhs and rhs (SME/SME2 path uses SME packers only).
+        // Avoid redundant validation here: transpose requirements are enforced by the dispatcher and packers.
+        // Keep only the checks that matter for sizing/packing work below.
+        if (N == 0 || K == 0) {
+            return false;
+        }
+
+        RhsPackedStride = PackBSizeSME(TransA, TransB, N, K);
+        if (RhsPackedStride == 0) {
+            return false;
+        }
+
         size_t rhs_resize = 0;
         if (mul_overflow_size_t_builtin(RhsPackedStride, BatchSize, &rhs_resize))
         {
@@ -585,9 +840,9 @@ Return Value:
             } else {
                 batch_idx >>= 1;
                 std::byte* RhsPackedPtr = &(RhsPackedData[RhsPackedStride * batch_idx]);
-                ArmKleidiAI::MlasGemmPackB(TransA, TransB, N, K,
-                                           reinterpret_cast<const float*>(Data[batch_idx].B),
-                                           Data[batch_idx].ldb, RhsPackedPtr);
+                PackBSME(TransA, TransB, N, K,
+                                 reinterpret_cast<const float*>(Data[batch_idx].B),
+                                 Data[batch_idx].ldb, RhsPackedPtr);
             }
         });
     }
@@ -696,4 +951,64 @@ Return Value:
         return;
     });
     return true;
+}
+
+bool
+MLASCALL
+ArmKleidiAI::MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    
+    // common alpha beta batch checks done prior to either SME or SVE
+    if (M == 0 || N == 0 || BatchSize == 0) {
+        return true;
+    }
+
+    if (K == 0) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+
+    bool all_alpha_zero = true;
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+        if (Data[batch].alpha != 0.0f) {
+            all_alpha_zero = false;
+            break;
+        }
+    }
+
+    if (all_alpha_zero) {
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+            ApplyBetaToC(Data[batch].C, Data[batch].ldc, M, N, Data[batch].beta);
+        }
+        return true;
+    }
+    
+    // Prefer SME/SME2 when available.
+    // Fail fast on unsupported transpose combinations so the caller can fall back to MLAS quickly.
+    //
+    // Notes:
+    // - The SME/SME2 path currently requires A to be non-transposed (see packers/backends).
+    // - The SVE path currently supports only non-transposed A and B.
+    if ((ArmKleidiAI::UseSME || ArmKleidiAI::UseSME2) && (TransA == CblasNoTrans)) {
+        return MlasGemmBatchSME(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+    }
+
+#if defined(MLAS_USE_SVE)
+    if (ArmKleidiAI::UseSVE && (TransA == CblasNoTrans) && (TransB == CblasNoTrans)) {
+        return MlasGemmBatchSVE(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+    }
+#endif
+
+    return false;
 }
