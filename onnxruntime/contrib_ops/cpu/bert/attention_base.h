@@ -223,6 +223,14 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                            "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
   }
 
+  // Q, K, V are packed along bias_dims[0]. When their hidden sizes are required to be equal,
+  // bias_dims[0] == 3 * hidden_size must be a multiple of 3.
+  if (require_same_hidden_size_ && bias_dims[0] % 3 != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'bias' dimension 0 (", bias_dims[0],
+                           ") must be a multiple of 3 (Q, K, V are packed and have equal hidden sizes).");
+  }
+
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
   int64_t k_hidden_size = q_hidden_size;
   int64_t v_hidden_size = k_hidden_size;
@@ -242,6 +250,10 @@ inline Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     q_hidden_size = qkv_hidden_sizes_[0];
     k_hidden_size = qkv_hidden_sizes_[1];
     v_hidden_size = qkv_hidden_sizes_[2];
+  } else if (q_hidden_size % num_heads_ != 0) {
+    // Match the error message produced by the qkv_hidden_sizes path above.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "hidden_size should be divisible by num_heads:", q_hidden_size);
   }
 
   int64_t kv_sequence_length = sequence_length;

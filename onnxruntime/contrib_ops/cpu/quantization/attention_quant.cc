@@ -194,12 +194,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   const int input_hidden_size = narrow<int>(shape[2]);
 
   const int hidden_size_x3 = narrow<int>(weights_shape.GetDims()[1]);
-  ORT_RETURN_IF_NOT(hidden_size_x3 > 0 && hidden_size_x3 % 3 == 0,
-                    "Input 'weights' dimension 1 (", hidden_size_x3,
-                    ") must be a positive multiple of 3.");
+  // AttentionBase::CheckInputs verifies that weights_dims[1] (== bias_dims[0]) is a multiple of 3
+  // and that hidden_size = bias_dims[0] / 3 is divisible by num_heads_.
   const int hidden_size = hidden_size_x3 / 3;
-  ORT_RETURN_IF_NOT(hidden_size % num_heads_ == 0,
-                    "hidden_size (", hidden_size, ") must be divisible by num_heads (", num_heads_, ").");
   const int head_size = hidden_size / num_heads_;
 
   // Validate per-column 'weight_scale' / 'weight_zero_point' shapes against the expected
