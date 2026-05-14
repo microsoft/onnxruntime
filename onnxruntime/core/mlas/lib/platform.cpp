@@ -19,12 +19,22 @@ Abstract:
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
 #endif
+#if defined(MLAS_NEON_INTRINSICS) && defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+#include "erf_neon_fp16.h"
+#include "gelu_neon_fp16.h"
+#endif
 #if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#include <thread>
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+#include <riscv_vector.h>
+#endif
+
+#include <cctype>
+#include <cstdlib>
 #include <mutex>
+#include <thread>
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
@@ -44,6 +54,8 @@ Abstract:
 #if defined(MLAS_TARGET_S390X)
 #include <sys/auxv.h>
 #endif
+
+
 
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
@@ -260,6 +272,45 @@ Return Value:
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
+
+#if defined(MLAS_TARGET_RISCV64)
+    this->GemmFloatKernel = nullptr;
+    this->ErfKernelRoutine = MlasErfKernel;
+    this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+
+#if defined(MLAS_USE_RVV)
+    this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+
+    // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.
+    if (__riscv_vlenb() >= 16) {
+        this->NchwcBlockSize = 16;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelRvv;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelRvv;
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelRvv;
+    } else {
+        this->NchwcBlockSize = 1;
+        this->ConvNchwFloatKernel = nullptr;
+        this->ConvNchwcFloatKernel = nullptr;
+        this->ConvDepthwiseFloatKernel = nullptr;
+        this->ConvPointwiseFloatKernel = nullptr;
+        this->PoolFloatKernel[MlasMaximumPooling] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = nullptr;
+    }
+#endif
+#endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 
@@ -656,6 +707,23 @@ Return Value:
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
     }
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && !defined(_WIN32)
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            this->ErfFP16KernelRoutine = MlasSveErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasSveGeluFP16Kernel;
+            this->TanhFP16KernelRoutine = MlasSveTanhFP16Kernel;
+        }
+        else{
+            this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
+        }
+    #else
+        this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
+        this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
+    #endif
 #endif
 
     //

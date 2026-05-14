@@ -919,7 +919,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
         ++inlined_count;
       } else {
         // OpType is the same as function name.
-        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType());
+        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
         ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
       }
     }

@@ -186,7 +186,7 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
     }
 
     for (auto it = local_functions->begin(); it != local_functions->end();) {
-      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name());
+      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name(), it->overload());
       if (retained.find(function_id) == retained_end) {
         it = local_functions->erase(it);
       } else {
@@ -250,7 +250,7 @@ Model::Model(const std::string& graph_name,
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name(), func_ptr->overload()),
                                             func_ptr);
   }
 
@@ -260,6 +260,7 @@ Model::Model(const std::string& graph_name,
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         *p_domain_to_version,
                                                         *schema_registry,
@@ -269,7 +270,8 @@ Model::Model(const std::string& graph_name,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 
@@ -383,7 +385,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   model_local_functions_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload()), &func);
   }
 
   ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
@@ -392,6 +394,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         domain_to_version,
                                                         *schema_registry,
@@ -401,7 +404,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 

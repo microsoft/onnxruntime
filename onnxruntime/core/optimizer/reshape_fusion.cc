@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -483,6 +485,16 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
   }
 
   if (contiguous_reshapes.size() < 2) {
+    return false;
+  }
+
+  // The fused shape is taken verbatim from the inferred output shape of the last reshape
+  // (we ensured tensor_shape.Size() != -1 above, so dims are concrete). If any dim is
+  // literally 0, fusing into a single Reshape is unsafe: ONNX Reshape with the default
+  // allowzero=0 would reinterpret the 0 as "copy from input", producing the wrong shape.
+  // Setting allowzero=1 would fix it but requires opset >= 14, which we cannot assume
+  // here (this transformer accepts Reshape opset 5+). Bail out conservatively.
+  if (std::any_of(shape_value.begin(), shape_value.end(), [](int64_t d) { return d == 0; })) {
     return false;
   }
 

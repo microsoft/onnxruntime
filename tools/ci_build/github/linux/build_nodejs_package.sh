@@ -10,14 +10,15 @@ else
     exit 1
 fi
 
-mkdir -p $HOME/.onnx
-docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $BUILD_SOURCESDIRECTORY:/onnxruntime_src \
---volume $BUILD_BINARIESDIRECTORY:/build --volume /data/models:/build/models:ro \
+mkdir -p "$HOME/.onnx"
+docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
+--volume "$BUILD_BINARIESDIRECTORY:/build" --volume /data/models:/build/models:ro \
 -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+-e PIP_INDEX_URL \
 --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
---volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
---volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
---volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build \
+--volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
+--volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
+--volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" -e NIGHTLY_BUILD "onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build" \
 /bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
 --skip_tests --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --build_nodejs \
 --use_webgpu --use_tensorrt --cuda_version=$CUDA_VERSION --cuda_home=/usr/local/cuda-$CUDA_VERSION \

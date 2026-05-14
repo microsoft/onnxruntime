@@ -113,8 +113,13 @@ print("====== output environment variables ======")
 print(f"##vso[task.setvariable variable=ORT_COMMON_FROM]{ort_common_from}")
 
 if tag == "latest" or tag == "" or tag == "rc":
-    if not RELEASE_NODE or not RELEASE_WEB or not RELEASE_REACT_NATIVE:
-        raise Exception("@latest or @rc build must release all packages (node, web, react-native)")
+    # FUTURE WORK:  We will either punt `react-native` out of the core package set, or fix it and re-incorporate it.
+    #               Which one is TBD, but for now we are not requiring `react-native` for @latest or @rc builds.
+    if not RELEASE_NODE or not RELEASE_WEB:
+        raise Exception("@latest or @rc build must release the following packages: node, web")
+    if not RELEASE_REACT_NATIVE:
+        print("WARNING - @latest or @rc build should release `react-native` package. This is temporarily not required.")
+
     if count_ort_node_common_tgz != 1:
         raise Exception("expect one package file for onnxruntime-common for release build")
 

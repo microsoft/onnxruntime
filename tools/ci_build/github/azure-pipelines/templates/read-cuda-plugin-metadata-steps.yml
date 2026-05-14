@@ -1,0 +1,45 @@
+steps:
+- download: build
+  artifact: cuda_plugin_metadata
+  displayName: 'Download CUDA plugin metadata'
+
+- task: PowerShell@2
+  displayName: 'Read CUDA plugin metadata'
+  inputs:
+    targetType: inline
+    pwsh: true
+    script: |
+      $ErrorActionPreference = 'Stop'
+
+      $metadataPath = Join-Path $env:PIPELINE_WORKSPACE 'build/cuda_plugin_metadata/metadata.json'
+      if (-not (Test-Path $metadataPath)) {
+        throw "CUDA plugin metadata not found at $metadataPath"
+      }
+
+      $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
+
+      $requiredProperties = @(
+        'cuda_version',
+        'cuda_version_no_dot',
+        'docker_base_image_linux_x64',
+        'python_artifact_linux_x64',
+        'python_artifact_win_x64',
+        'nuget_artifact'
+      )
+
+      foreach ($property in $requiredProperties) {
+        if (-not $metadata.PSObject.Properties.Name.Contains($property) -or [string]::IsNullOrWhiteSpace($metadata.$property)) {
+          throw "CUDA plugin metadata is missing required property '$property'."
+        }
+      }
+
+      Write-Host "Detected CUDA version: $($metadata.cuda_version)"
+      Write-Host "Linux Python artifact: $($metadata.python_artifact_linux_x64)"
+      Write-Host "Windows Python artifact: $($metadata.python_artifact_win_x64)"
+
+      Write-Host "##vso[task.setvariable variable=CudaVersion]$($metadata.cuda_version)"
+      Write-Host "##vso[task.setvariable variable=CudaVersionNoDot]$($metadata.cuda_version_no_dot)"
+      Write-Host "##vso[task.setvariable variable=CudaDockerBaseImage]$($metadata.docker_base_image_linux_x64)"
+      Write-Host "##vso[task.setvariable variable=CudaPluginPythonLinuxArtifactName]$($metadata.python_artifact_linux_x64)"
+      Write-Host "##vso[task.setvariable variable=CudaPluginPythonWinArtifactName]$($metadata.python_artifact_win_x64)"
+      Write-Host "##vso[task.setvariable variable=CudaPluginNuGetArtifactName]$($metadata.nuget_artifact)"

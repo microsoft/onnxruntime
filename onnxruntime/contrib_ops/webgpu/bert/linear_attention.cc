@@ -81,6 +81,7 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "bert/linear_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(decay_broadcast_dk, decay_broadcast_dk_),
                              WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
+                             WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_v, tile_v_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
                              WGSL_TEMPLATE_PARAMETER(use_vec4, use_vec4));
@@ -242,7 +243,12 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  LinearAttentionProgram program{update_rule_, has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components};
+  // subgroup_min_size > 0 enables subgroup-based reduction; 0 falls back to barrier-tree.
+  int subgroup_min_size = context.HasFeature(wgpu::FeatureName::Subgroups)
+                              ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
+                              : 0;
+
+  LinearAttentionProgram program{update_rule_, has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size};
 
   program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
                      {key, ProgramTensorMetadataDependency::TypeAndRank},
@@ -263,7 +269,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   program.SetDispatchGroupSize(num_workgroups)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(std::to_string(static_cast<int>(update_rule_)),
-                 has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components)
+                 has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(kv_num_heads_)},
                             {static_cast<uint32_t>(seq_length)},
