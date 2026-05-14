@@ -8,8 +8,6 @@
 #include <algorithm>
 #include <cctype>
 #include <limits>
-#include <unordered_map>
-#include <unordered_set>
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
@@ -202,9 +200,6 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
     }
   }
 
-  std::unordered_set<size_t> candidate_indices_set;
-  std::unordered_map<size_t, VariantMatchResult> candidate_matches;
-
   // EP/device compatibility pass.
   //
   // Each ep_compatibility entry must declare a target EP (parser-enforced) and carries one opaque
@@ -230,33 +225,30 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
   //      the highest-ranked one.
   //   c) If neither ABI is implemented, return the first variant whose ep/device constraints match.
   if (selected_ep_info != nullptr) {
+    int best_score = std::numeric_limits<int>::min();
+    std::optional<size_t> best_index;
+    std::optional<size_t> best_ec_index;
+
     for (size_t i = 0, end = variants.size(); i < end; ++i) {
       VariantMatchResult m = MatchVariantForEp(variants[i], *selected_ep_info);
-      if (m.matched) {
-        candidate_indices_set.insert(i);
-        candidate_matches[i] = std::move(m);
+      if (!m.matched) {
+        continue;
+      }
+      // Strict '>' so on ties we keep the first variant seen, giving deterministic
+      // tie-break by manifest declaration order.
+      if (!best_index.has_value() || m.score > best_score) {
+        best_score = m.score;
+        best_index = i;
+        best_ec_index = m.selected_ep_compatibility_index;
       }
     }
-  }
 
-  if (candidate_indices_set.empty()) {
-    return Status::OK();
-  }
-
-  // choose best
-  int best_score = std::numeric_limits<int>::min();
-  size_t best_index = *candidate_indices_set.begin();
-
-  for (size_t idx : candidate_indices_set) {
-    const int score = candidate_matches[idx].score;
-    if (score > best_score) {
-      best_score = score;
-      best_index = idx;
+    if (best_index.has_value()) {
+      selected_variant = std::move(variants[*best_index]);
+      selected_variant->selected_ep_compatibility_index = best_ec_index;
     }
   }
 
-  selected_variant = std::move(variants[best_index]);
-  selected_variant->selected_ep_compatibility_index = candidate_matches[best_index].selected_ep_compatibility_index;
   return Status::OK();
 }
 
