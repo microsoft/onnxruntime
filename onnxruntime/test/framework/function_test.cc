@@ -93,17 +93,21 @@ static Status LoadModel(const char* source) {
   ONNX_NAMESPACE::OnnxParser parser(source);
   ONNX_NAMESPACE::ModelProto model;
   auto parse_status = parser.Parse(model);
-  EXPECT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
-  EXPECT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
-  if (!parse_status.IsOK() || !parser.EndOfInput()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to parse test model.");
+  if (!parse_status.IsOK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to parse test model: ", parse_status.ErrorMessage());
+  }
+  if (!parser.EndOfInput()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Extra unparsed input unexpected.");
   }
 
-  EXPECT_NO_THROW(ONNX_NAMESPACE::checker::check_model(model));
+  try {
+    ONNX_NAMESPACE::checker::check_model(model);
+  } catch (const std::exception& e) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX model check failed: ", e.what());
+  }
 
   std::string serialized_model;
-  EXPECT_TRUE(model.SerializeToString(&serialized_model));
-  if (serialized_model.empty()) {
+  if (!model.SerializeToString(&serialized_model) || serialized_model.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize test model.");
   }
 

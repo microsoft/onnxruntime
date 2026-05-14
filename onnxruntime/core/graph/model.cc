@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/inlined_containers.h"
@@ -89,12 +90,23 @@ enum class VisitState {
   kVisited,
 };
 
+// Guard against pathological (but acyclic) chains of local functions that would overflow the stack.
+static constexpr size_t kMaxLocalFunctionDepth = 100;
+
 Status VisitLocalFunction(
     const std::string& function_id,
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
     InlinedHashMap<std::string, VisitState>& visit_states,
     std::vector<std::string>& call_stack) {
-  auto& visit_state = visit_states[function_id];
+  if (call_stack.size() >= kMaxLocalFunctionDepth) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Model local function call chain exceeds maximum depth of ",
+                           kMaxLocalFunctionDepth, ". Deepest function: ", function_id);
+  }
+
+  auto it = visit_states.find(function_id);
+  ORT_ENFORCE(it != visit_states.end(), "Unexpected function id in visit: ", function_id);
+  auto& visit_state = it->second;
   if (visit_state == VisitState::kVisited) {
     return Status::OK();
   }
