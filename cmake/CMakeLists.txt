@@ -90,6 +90,7 @@ option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
 option(onnxruntime_USE_RVV "Build with RISC-V Vector support in MLAS" OFF)
+option(onnxruntime_USE_RVV_ZVFH "Build with RISC-V Zvfh (FP16 vector) support in MLAS" OFF)
 option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)

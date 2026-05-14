@@ -27,6 +27,8 @@ MlasFp16AccelerationSupported()
 {
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     return MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration();
+#elif defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH)
+    return true;
 #else
     return false;
 #endif

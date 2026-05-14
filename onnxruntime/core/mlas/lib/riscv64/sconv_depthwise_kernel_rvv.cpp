@@ -142,6 +142,7 @@ MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
     assert(pad_bottom <= 1);
     assert(pad_left <= 1);
     assert(pad_right <= 1);
+    MLAS_UNREFERENCED_PARAMETER(pad_bottom);
 
     const float beta = Parameters->Beta;
     const bool accumulate_output = beta != 0.0f;
