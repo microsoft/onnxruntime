@@ -129,6 +129,13 @@ void ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
   };
 }
 
+void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state) {
+  session_options_.value.ep_context_gen_options.ep_context_data_write_func = epctx::EpContextDataWriteFuncHolder{
+      write_func,
+      state,
+  };
+}
+
 Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesystem::path& output_directory,
                                                               const std::filesystem::path& model_name) {
   if (output_directory.empty() || model_name.empty()) {

@@ -226,6 +226,9 @@ struct SessionOptions {
   bool has_explicit_ep_context_gen_options = false;
   epctx::ModelGenOptions ep_context_gen_options = {};
   epctx::ModelGenOptions GetEpContextGenerationOptions() const;
+
+  OrtReadEpContextDataFunc ep_context_data_read_func = nullptr;
+  void* ep_context_data_read_state = nullptr;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
