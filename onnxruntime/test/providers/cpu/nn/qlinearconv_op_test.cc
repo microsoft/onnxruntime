@@ -1632,6 +1632,37 @@ TEST(QLinearConvTest, Conv2D_S8S8_DepthwiseFallback_PerChannelZeroPoints) {
   test.Run();
 }
 
+// Depthwise config (groups == channels) with a full per-channel zero-point tensor whose
+// values are all identical. This should still use the depthwise fast path because the
+// zero points are uniform even though the tensor shape is per-channel.
+TEST(QLinearConvTest, Conv2D_S8S8_Depthwise_PerChannelUniformZeroPoints) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  constexpr int64_t channels = 8;
+
+  QLinearConvOpTester<int8_t, int8_t> test;
+  test.GenerateRandomInput({1, channels, 9, 9}, .05f, 4);
+  test.GenerateRandomWeights({channels, 1, 3, 3}, .10f, 0);
+
+  std::vector<float> weight_scales;
+  std::vector<int8_t> weight_zero_points;
+  for (int64_t i = 0; i < channels; ++i) {
+    weight_scales.push_back(.10f + static_cast<float>(i) * .003f);
+    weight_zero_points.push_back(static_cast<int8_t>(-7));
+  }
+
+  test.SetWeightScales(weight_scales);
+  test.SetWeightZeroPoints(weight_zero_points);
+  test.GenerateRandomBias();
+  test.SetPads({1, 1, 1, 1});
+  test.SetGroups(channels);
+  test.SetOutputScaleAndZeroPoint(.55f, -8);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv2D_S8S8_Depthwise_Kernelsize) {
   TestQLinearConv2dDepthwiseKernelsize<int8_t, int8_t>();
 }
