@@ -9,6 +9,7 @@ import os
 
 import onnx
 import torch
+
 try:
     from transformers.pytorch_utils import Conv1D
 except ImportError:

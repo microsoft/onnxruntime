@@ -7,6 +7,7 @@
 import argparse
 import logging
 import os
+import re
 import warnings
 
 import onnx
@@ -350,16 +351,13 @@ def _get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers):
     Returns:
         list of node names that should be quantized to INT8.
     """
-    import re
 
     def _get_sensitive_layer_indices(num_layers):
         """Select layers using the llama.cpp formula: first/last 12.5% + every 3rd in between."""
         return [
             i
             for i in range(num_layers)
-            if i < num_layers / 8
-            or i >= 7 * num_layers / 8
-            or (i - round(num_layers / 8)) % 3 == 2
+            if i < num_layers / 8 or i >= 7 * num_layers / 8 or (i - round(num_layers / 8)) % 3 == 2
         ]
 
     enc_sensitive_layers = set(_get_sensitive_layer_indices(encoder_layers))
