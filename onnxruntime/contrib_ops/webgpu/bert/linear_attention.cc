@@ -206,9 +206,17 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // per element. This replaces scalar TILE_V loops with native vec4 SIMD operations,
   // reduces shared memory access overhead, and enables coalesced memory reads/writes.
   const int components = (head_dim_v % 4 == 0 && head_dim_v >= 4) ? 4 : 1;
-  int tile_v = (components == 4) ? 1 : 4;
-  if (components == 1 && head_dim_v <= 4) {
-    tile_v = onnxruntime::narrow<int>(head_dim_v);
+  int tile_v = (components == 4) ? 1 : std::min(4, onnxruntime::narrow<int>(head_dim_v));
+
+  int subgroup_min_size = context.HasFeature(wgpu::FeatureName::Subgroups)
+                              ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
+                              : 0;
+  // When subgroup is enabled, use larger tile_v for better data reuse.
+  if (subgroup_min_size > 0) {
+    // Only expand if the vectorized dim has enough columns to fill the larger tile.
+    if (head_dim_v / components >= tile_v * 4) {
+      tile_v *= 4;
+    }
   }
   const int head_dim_v_vectorized = onnxruntime::narrow<int>(head_dim_v) / components;
 
@@ -242,11 +250,6 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
       decay_broadcast_dk = true;
     }
   }
-
-  // subgroup_min_size > 0 enables subgroup-based reduction; 0 falls back to barrier-tree.
-  int subgroup_min_size = context.HasFeature(wgpu::FeatureName::Subgroups)
-                              ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
-                              : 0;
 
   LinearAttentionProgram program{update_rule_, has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size};
 
