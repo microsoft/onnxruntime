@@ -4,6 +4,7 @@
 #param has_bias
 #param has_conv_state
 #param use_silu
+#param is_ntc
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
 
@@ -22,6 +23,8 @@ $MAIN {
   let kernel_size = uniforms.kernel_size;
   let state_length = uniforms.state_length;  // = kernel_size - 1
 
+  // Decompose linear thread index into (batch, channel, pos) regardless of layout.
+  // Dispatch always covers B*C*L, so global_idx mapping is independent of NCT/NTC.
   let pos = global_idx % input_length;
   let bc_idx = global_idx / input_length;
   let batch_idx = bc_idx / channels;
@@ -31,11 +34,6 @@ $MAIN {
   // The convolution window looks back kernel_size-1 positions.
   // With conv_state providing the history before position 0, the
   // "virtual" input is: [conv_state[0..state_length-1], input[0..L-1]]
-  //
-  // For output position pos:
-  //   output[pos] = sum_{j=0}^{kernel_size-1} weight[j] * virtual_input[pos + j]
-  // where virtual_input is state_length positions of conv_state
-  // followed by input_length positions of input.
 
   var acc: input_element_t = 0.0;
 
@@ -50,20 +48,29 @@ $MAIN {
 
 #if has_conv_state
     if (virtual_pos < state_length) {
-      // Read from conv_state: (B, D, state_length)
+      // Read from conv_state: always (B, D, state_length) — channels-first
       let state_idx = (batch_idx * channels + channel_idx) * state_length + virtual_pos;
       val = conv_state[state_idx];
     } else {
-      // Read from input: (B, D, L)
       let input_pos = virtual_pos - state_length;
+#if is_ntc
+      // NTC: input is (B, L, D) — index = (b*L + l)*D + c
+      let input_idx = (batch_idx * input_length + input_pos) * channels + channel_idx;
+#else
+      // NCT: input is (B, D, L) — index = (b*D + c)*L + l
       let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
+#endif
       val = input[input_idx];
     }
 #else
     // No conv_state: pad with zeros for positions before the input
     if (virtual_pos >= state_length) {
       let input_pos = virtual_pos - state_length;
+#if is_ntc
+      let input_idx = (batch_idx * input_length + input_pos) * channels + channel_idx;
+#else
       let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
+#endif
       val = input[input_idx];
     }
 #endif
@@ -80,13 +87,18 @@ $MAIN {
   acc = silu(acc);
 #endif
 
-  // Write output: (B, D, L)
+  // Write output: same layout as input
+#if is_ntc
+  let out_idx = (batch_idx * input_length + pos) * channels + channel_idx;
+#else
   let out_idx = (batch_idx * channels + channel_idx) * input_length + pos;
+#endif
   output[out_idx] = acc;
 
   // Write present_state: the last (kernel_size - 1) elements from the
   // virtual input [conv_state, input]. We only write present_state once
   // per (batch, channel), using the thread at pos == 0.
+  // present_state is always (B, D, K-1) — channels-first.
   if (pos == 0u) {
     for (var s: u32 = 0; s < state_length; s = s + 1) {
       var state_val: input_element_t = 0.0;
@@ -100,13 +112,21 @@ $MAIN {
         state_val = conv_state[si];
       } else {
         let ip = vp - state_length;
+#if is_ntc
+        let ii = (batch_idx * input_length + ip) * channels + channel_idx;
+#else
         let ii = (batch_idx * channels + channel_idx) * input_length + ip;
+#endif
         state_val = input[ii];
       }
 #else
       if (vp >= state_length) {
         let ip = vp - state_length;
+#if is_ntc
+        let ii = (batch_idx * input_length + ip) * channels + channel_idx;
+#else
         let ii = (batch_idx * channels + channel_idx) * input_length + ip;
+#endif
         state_val = input[ii];
       }
 #endif

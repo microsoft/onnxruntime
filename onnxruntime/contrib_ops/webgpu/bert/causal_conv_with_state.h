@@ -24,14 +24,24 @@ enum class CausalConvActivation {
 
 CausalConvActivation ParseCausalConvActivation(const std::string& activation_str);
 
+// Data layout for CausalConvWithState input/output (state is always NCT).
+enum class CausalConvDataFormat {
+  NCT,  // (batch, channels, length)
+  NTC   // (batch, length, channels) — ndim=1 only
+};
+
+CausalConvDataFormat ParseCausalConvDataFormat(const std::string& fmt_str);
+
 // Program for CausalConvWithState
 class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgram> {
  public:
-  CausalConvWithStateProgram(CausalConvActivation activation, bool has_bias, bool has_conv_state)
+  CausalConvWithStateProgram(CausalConvActivation activation, bool has_bias, bool has_conv_state,
+                             CausalConvDataFormat data_format)
       : Program{"CausalConvWithState"},
         activation_(activation),
         has_bias_(has_bias),
-        has_conv_state_(has_conv_state) {}
+        has_conv_state_(has_conv_state),
+        data_format_(data_format) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -47,6 +57,7 @@ class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgr
   CausalConvActivation activation_;
   bool has_bias_;
   bool has_conv_state_;
+  CausalConvDataFormat data_format_;
 };
 
 // Kernel for CausalConvWithState
@@ -57,6 +68,7 @@ class CausalConvWithState final : public WebGpuKernel {
 
  private:
   CausalConvActivation activation_;
+  CausalConvDataFormat data_format_;
   int64_t ndim_;
 };
 
