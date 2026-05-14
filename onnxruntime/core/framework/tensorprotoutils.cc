@@ -11,9 +11,6 @@
 #if defined(__wasm__)
 #include <emscripten.h>
 #endif
-#if defined(_WIN32)
-#include <Windows.h>
-#endif
 
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
@@ -383,147 +380,13 @@ Status TensorProtoWithExternalDataToTensorProto(
   return Status::OK();
 }
 
-#if defined(_WIN32)
-namespace {
-
-constexpr std::wstring_view kGlobalRootPrefix{L"\\\\?\\GLOBALROOT"};
-
-HANDLE OpenHandleForFinalPath(const std::filesystem::path& path) {
-  CREATEFILE2_EXTENDED_PARAMETERS params{};
-  params.dwSize = sizeof(params);
-  params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
-  return ::CreateFile2(path.c_str(),
-                       FILE_READ_ATTRIBUTES,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                       OPEN_EXISTING,
-                       &params);
-}
-
-// Resolves `path` via GetFinalPathNameByHandleW with VOLUME_NAME_NT and prefixes the
-// result with "\\?\GLOBALROOT" so it remains a valid Win32 path.
-bool TryGetFinalPathNt(const std::filesystem::path& path, std::filesystem::path& result) {
-  HANDLE handle = OpenHandleForFinalPath(path);
-  if (handle == INVALID_HANDLE_VALUE) {
-    return false;
-  }
-
-  std::wstring buffer(MAX_PATH, L'\0');
-  constexpr DWORD kFlags = FILE_NAME_NORMALIZED | VOLUME_NAME_NT;
-  DWORD needed = ::GetFinalPathNameByHandleW(handle, buffer.data(),
-                                             static_cast<DWORD>(buffer.size()), kFlags);
-  if (needed != 0 && needed >= buffer.size()) {
-    buffer.resize(needed);
-    needed = ::GetFinalPathNameByHandleW(handle, buffer.data(),
-                                         static_cast<DWORD>(buffer.size()), kFlags);
-  }
-  ::CloseHandle(handle);
-
-  if (needed == 0 || needed >= buffer.size()) {
-    return false;
-  }
-  buffer.resize(needed);
-
-  std::wstring prefixed;
-  prefixed.reserve(kGlobalRootPrefix.size() + buffer.size());
-  prefixed.append(kGlobalRootPrefix);
-  prefixed.append(buffer);
-  result = std::filesystem::path(std::move(prefixed));
-  return true;
-}
-
-// Mirrors std::filesystem::weakly_canonical: walks `input` from the leaf upward to find
-// the longest existing prefix, canonicalizes it via TryGetFinalPathNt, then lexically
-// appends any nonexistent tail. Returns false if no canonical anchor exists.
-bool TryWeaklyCanonicalPathNtVolume(const std::filesystem::path& input,
-                                    std::filesystem::path& result) {
-  std::filesystem::path head = input;
-  std::filesystem::path tail;
-  std::filesystem::path canonical_head;
-  bool found_existing_prefix = false;
-
-  while (true) {
-    std::error_code ec;
-    const bool exists = std::filesystem::exists(head, ec);
-    if (ec) {
-      return false;
-    }
-    if (exists) {
-      if (!TryGetFinalPathNt(head, canonical_head)) {
-        return false;
-      }
-      found_existing_prefix = true;
-      break;
-    }
-    if (head.empty()) {
-      break;
-    }
-    const auto parent = head.parent_path();
-    if (parent == head) {
-      break;
-    }
-    const auto leaf = head.filename();
-    if (!leaf.empty()) {
-      // operator/ would insert a separator before an empty rhs, leaving a trailing
-      // separator that swallows the real filename later.
-      tail = tail.empty() ? leaf : (leaf / tail);
-    }
-    head = parent;
-  }
-
-  if (!found_existing_prefix) {
-    return false;
-  }
-
-  if (tail.empty()) {
-    result = std::move(canonical_head);
-  } else {
-    result = (canonical_head / tail).lexically_normal();
-  }
-  return true;
-}
-
-}  // namespace
-#endif  // defined(_WIN32)
-
-// Wraps std::filesystem::weakly_canonical with error_code handling.
-//
-// On Windows, std::filesystem::weakly_canonical uses GetFinalPathNameByHandleW with
-// VOLUME_NAME_DOS, which fails with ERROR_ACCESS_DENIED inside an AppContainer
-// (Volume Mount Manager queries are denied by the AppContainer token regardless of
-// file ACLs). Fall back to a manual canonicalization with VOLUME_NAME_NT, which
-// preserves volume identity so the cross-volume escape rejection in
-// ValidateExternalDataPath continues to hold. Do NOT switch the fallback to
-// VOLUME_NAME_NONE: it strips volume identity and re-introduces the cross-volume
-// escape that PR #26776 prevents.
+// Wraps Env::GetWeaklyCanonicalPath for std::filesystem::path.
 static Status WeaklyCanonicalPath(const std::filesystem::path& path, std::filesystem::path& result) {
-  std::error_code ec;
-  result = std::filesystem::weakly_canonical(path, ec);
-  if (!ec) {
-    return Status::OK();
-  }
-
-#if defined(_WIN32)
-  if (ec.value() == ERROR_ACCESS_DENIED) {
-    std::filesystem::path fallback;
-    if (TryWeaklyCanonicalPathNtVolume(path, fallback)) {
-      result = std::move(fallback);
-      return Status::OK();
-    }
-  }
-#endif
-
-  ORT_RETURN_IF(ec, "Failed to get the weakly canonical path: ", path, " - ", ec.message());
+  PathString canonical_str;
+  ORT_RETURN_IF_ERROR(Env::Default().GetWeaklyCanonicalPath(path.native(), canonical_str));
+  result = std::filesystem::path(std::move(canonical_str));
   return Status::OK();
 }
-
-#if defined(_WIN32)
-namespace internal {
-bool WeaklyCanonicalPathNtVolumeFallbackForTesting(const std::filesystem::path& input,
-                                                   std::filesystem::path& result) {
-  return TryWeaklyCanonicalPathNtVolume(input, result);
-}
-}  // namespace internal
-#endif
 
 // Wraps std::filesystem::exists with error_code handling.
 static Status PathExists(const std::filesystem::path& path, bool& exists) {

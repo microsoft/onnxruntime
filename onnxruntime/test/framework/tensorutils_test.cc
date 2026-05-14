@@ -21,6 +21,7 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include "core/platform/windows/env.h"
 #endif
 
 using namespace ::onnxruntime::utils;
@@ -716,12 +717,12 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
 }
 
 #if defined(_WIN32)
-// Direct tests for the Windows AppContainer fallback used by WeaklyCanonicalPath.
-// The AppContainer trigger itself can't be reproduced in a unit test environment;
-// see the bug report referenced in WeaklyCanonicalPath's source comment.
+// Direct tests for the Windows AppContainer fallback used by
+// WindowsEnv::GetWeaklyCanonicalPath. The AppContainer trigger itself can't be
+// reproduced in a unit test environment; see microsoft/onnxruntime#28508.
 TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ExistingDirectory) {
   std::filesystem::path canonical;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, canonical));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, canonical));
 
   EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
 
@@ -734,7 +735,7 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ExistingFile) {
 
   std::filesystem::path canonical;
   ASSERT_TRUE(
-      utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_ / "data.bin", canonical));
+      onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_ / "data.bin", canonical));
 
   EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
 
@@ -746,7 +747,7 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ExistingFile) {
 TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_NonExistentLeafLexicallyAppended) {
   const std::filesystem::path leaf{L"does_not_exist.bin"};
   std::filesystem::path canonical;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_ / leaf, canonical));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_ / leaf, canonical));
 
   EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
   EXPECT_EQ(canonical.filename(), leaf);
@@ -754,7 +755,7 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_NonExistentLeafLe
   // The canonicalized parent must be a path-component prefix of the result so that the
   // containment check in ValidateExternalDataPath still works.
   std::filesystem::path parent_canonical;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, parent_canonical));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, parent_canonical));
   auto [parent_end, full_it] = std::mismatch(parent_canonical.begin(), parent_canonical.end(),
                                              canonical.begin(), canonical.end());
   EXPECT_EQ(parent_end, parent_canonical.end())
@@ -763,7 +764,7 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_NonExistentLeafLe
 
 TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_NonExistentMiddleAndLeaf) {
   std::filesystem::path canonical;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(
       base_dir_ / L"missing_dir" / L"data.bin", canonical));
 
   EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
@@ -777,7 +778,7 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_AllNonExistentRet
   // unverified path.
   const std::filesystem::path bogus{L"\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\nope\\data.bin"};
   std::filesystem::path canonical;
-  EXPECT_FALSE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(bogus, canonical));
+  EXPECT_FALSE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(bogus, canonical));
 }
 
 TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_MatchesWeaklyCanonicalAtFile) {
@@ -792,7 +793,7 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_MatchesWeaklyCano
   ASSERT_FALSE(ec) << ec.message();
 
   std::filesystem::path fallback;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(target, fallback));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(target, fallback));
 
   EXPECT_TRUE(std::filesystem::equivalent(reference, fallback, ec))
       << "reference=" << reference << " fallback=" << fallback << " ec=" << ec.message();
@@ -810,8 +811,8 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ResolvesSymlinks)
 
   std::filesystem::path link_canonical;
   std::filesystem::path target_canonical;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(link, link_canonical));
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(target, target_canonical));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(link, link_canonical));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(target, target_canonical));
 
   std::error_code ec;
   EXPECT_TRUE(std::filesystem::equivalent(link_canonical, target_canonical, ec))
@@ -822,11 +823,11 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ResolvesDotDot) {
   CreateDirectories(base_dir_ / "sub_for_dotdot");
 
   std::filesystem::path canonical;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(
       base_dir_ / "sub_for_dotdot" / "..", canonical));
 
   std::filesystem::path base_canonical;
-  ASSERT_TRUE(utils::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, base_canonical));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, base_canonical));
 
   std::error_code ec;
   EXPECT_TRUE(std::filesystem::equivalent(canonical, base_canonical, ec))
