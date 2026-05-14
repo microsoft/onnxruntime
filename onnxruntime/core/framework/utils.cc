@@ -57,7 +57,8 @@ bool ProviderIsCpuBased(const IExecutionProvider& provider) {
 // memory is device-only — the CPU cannot read it.
 //
 // For the mixed case, src alignment must meet tgt's minimum requirement.
-// Alignment 0 means "unspecified" and is treated as compatible with any requirement.
+// Alignment 0 on tgt means "no alignment requirement". Alignment 0 on src means "unknown" and
+// does not satisfy a non-zero tgt alignment requirement.
 bool CanSourceSatisfyTarget(const OrtDevice& src, const OrtDevice& tgt) {
   const bool src_is_cpu_mem = src.UsesCpuMemory();
   const bool tgt_is_cpu_mem = tgt.UsesCpuMemory();
@@ -172,6 +173,7 @@ static void PopulateDeviceFetches(gsl::span<const MLValueCopyInfo> fetch_copy_in
                                   const std::vector<OrtValue>& fetches,
                                   std::vector<OrtValue>& device_fetches) {
   ORT_ENFORCE(fetch_copy_info.size() >= fetches.size());
+  device_fetches.clear();
   device_fetches.reserve(fetches.size());
   for (size_t i = 0; i < fetches.size(); ++i) {
     const auto& src = fetch_copy_info[i].source_device;
