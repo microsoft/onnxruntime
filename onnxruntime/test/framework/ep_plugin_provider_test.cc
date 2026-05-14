@@ -78,18 +78,12 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
 
   // OrtMemoryDevice returned by GetDefaultMemoryDeviceImpl. nullptr means "defer to ORT".
   const OrtMemoryDevice* test_default_memory_device = nullptr;
-  // If set, the impl returns this status without writing to *device. Used to verify the
-  // ThrowOnError path in PluginExecutionProvider construction.
-  OrtStatus* test_default_memory_device_status = nullptr;
   mutable std::atomic<int> get_default_memory_device_call_count{0};
 
   static OrtStatus* ORT_API_CALL GetDefaultMemoryDeviceImpl(const OrtEp* this_ptr,
                                                             const OrtMemoryDevice** device) noexcept {
     const auto* test_ep = static_cast<const TestOrtEp*>(this_ptr);
     test_ep->get_default_memory_device_call_count.fetch_add(1, std::memory_order_relaxed);
-    if (test_ep->test_default_memory_device_status != nullptr) {
-      return test_ep->test_default_memory_device_status;
-    }
     *device = test_ep->test_default_memory_device;
     return nullptr;
   }
@@ -473,15 +467,12 @@ TEST(PluginExecutionProviderTest, GetDefaultMemoryDevice_StatusErrorThrows) {
   auto ort_ep_device = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device.get());
   std::vector<const OrtEpDevice*> ep_devices{ort_ep_device.get()};
 
-  const auto& ort_api = *::OrtGetApiBase()->GetApi(ORT_API_VERSION);
-  OrtStatus* injected_status = ort_api.CreateStatus(ORT_FAIL, "injected failure");
-
   ASSERT_THROW(test_plugin_ep::MakeTestOrtEp(ep_devices, [&](test_plugin_ep::TestOrtEp& test_ep) {
-    test_ep.GetDefaultMemoryDevice = test_plugin_ep::TestOrtEp::GetDefaultMemoryDeviceImpl;
-    test_ep.test_default_memory_device_status = injected_status;
-  }),
-                                              Ort::Exception);
-  // Ort::ThrowOnError releases the status it threw on, so we don't release it here.
+                 test_ep.GetDefaultMemoryDevice = [](const OrtEp* /*this_ptr*/, const OrtMemoryDevice** /*device*/) noexcept {
+                   return Ort::Status("injected failure", ORT_FAIL).release();
+                 };
+               }),
+               Ort::Exception);
 }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 
