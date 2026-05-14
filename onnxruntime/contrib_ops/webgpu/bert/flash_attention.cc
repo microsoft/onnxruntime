@@ -425,14 +425,15 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Create present_key and present_value tensors if they are nullptr
   Tensor internal_present_key;
   Tensor internal_present_value;
+  const int present_kv_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
   if (present_key == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.kv_num_heads_,
+    TensorShapeVector present_kv_shape({parameters.batch_size_, present_kv_heads,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_key = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_key = &internal_present_key;
   }
   if (present_value == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.kv_num_heads_,
+    TensorShapeVector present_kv_shape({parameters.batch_size_, present_kv_heads,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_value = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_value = &internal_present_value;
