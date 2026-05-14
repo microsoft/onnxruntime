@@ -488,9 +488,15 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                       ORT_FAIL, "Session option keys/values size mismatch.");
 
     for (size_t i = 0; i < session_option_keys.size(); ++i) {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(
-          effective_options_storage->value.config_options.AddConfigEntry(
-              session_option_keys[i].c_str(), session_option_values[i].c_str()));
+      // Dispatch through OrtApis::AddSessionOption so well-known typed keys (intra_op_num_threads,
+      // graph_optimization_level, ...) hit their dedicated setters; everything else falls through
+      // to AddSessionConfigEntry. See onnxruntime_c_api.h::AddSessionOption for the full table.
+      OrtStatus* st = OrtApis::AddSessionOption(&*effective_options_storage,
+                                                session_option_keys[i].c_str(),
+                                                session_option_values[i].c_str());
+      if (st != nullptr) {
+        return st;
+      }
     }
 
     // Merge variant/file provider options as flat key/value entries for the selected EP devices.
