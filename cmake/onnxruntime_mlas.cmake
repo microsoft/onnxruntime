@@ -911,6 +911,11 @@ endif()
     if(RISCV64 AND MLAS_SOURCE_IS_NOT_SET)
         file(GLOB_RECURSE mlas_platform_srcs CONFIGURE_DEPENDS
           "${MLAS_SRC_DIR}/scalar/*.cpp")
+        # Remove scalar depthwise kernel; replaced by the vectorized version
+        list(REMOVE_ITEM mlas_platform_srcs
+          "${MLAS_SRC_DIR}/scalar/SconvDepthwiseKernelScalar.cpp")
+        list(APPEND mlas_platform_srcs
+          ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp)
 
         if(onnxruntime_USE_RVV)
           set(OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
@@ -932,11 +937,17 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
             )
+            list(REMOVE_ITEM mlas_platform_srcs
+              "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
             set_source_files_properties(
               ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
           else()
