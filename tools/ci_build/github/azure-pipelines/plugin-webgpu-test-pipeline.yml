@@ -20,7 +20,7 @@ variables:
 resources:
   pipelines:
   - pipeline: build
-    source: 'WebGPU Plugin EP Packaging Pipeline'
+    source: 'Plugin\WebGPU Plugin EP Packaging Pipeline'
     trigger: true
   repositories:
   - repository: 1esPipelines

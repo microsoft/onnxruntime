@@ -91,8 +91,15 @@ extern "C" {
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
-// To make symbols visible on macOS/iOS
-#ifdef __APPLE__
+// Make symbols visible on non-Windows platforms. The visibility attribute is
+// needed when ORT is built as a shared library without a version script
+// (e.g. when compiled within another project's build system). On non-Apple
+// platforms, the default ORT build uses a generated version script
+// (tools/ci_build/gen_def.py) that exports the needed symbols, so this was
+// previously only enabled for __APPLE__. Expanding to __GNUC__ (GCC/Clang)
+// covers additional embedding scenarios while remaining harmless when a
+// version script is also in use.
+#if defined(__GNUC__)
 #define ORT_EXPORT __attribute__((visibility("default")))
 #else
 #define ORT_EXPORT

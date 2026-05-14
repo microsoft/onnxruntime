@@ -38,14 +38,6 @@ parameters:
   type: boolean
   default: true
 
-- name: cuda_version
-  displayName: 'CUDA Version'
-  type: string
-  default: '12.8'
-  values:
-  - '12.8'
-  - '13.0'
-
 extends:
   # The pipeline extends the 1ES PT which will inject SDL and compliance
   # tasks. Uses "Official" to stay consistent with the companion
@@ -84,15 +76,7 @@ extends:
       # Windows x64
       - ${{ if eq(parameters.test_windows_x64, true) }}:
         - template: stages/plugin-win-cuda-test-stage.yml
-          parameters:
-            cuda_version: ${{ parameters.cuda_version }}
 
       # Linux x64
       - ${{ if eq(parameters.test_linux_x64, true) }}:
         - template: stages/plugin-linux-cuda-test-stage.yml
-          parameters:
-            cuda_version: ${{ parameters.cuda_version }}
-            ${{ if eq(parameters.cuda_version, '12.8') }}:
-              docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
-            ${{ if eq(parameters.cuda_version, '13.0') }}:
-              docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'

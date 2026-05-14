@@ -1203,6 +1203,13 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelRvv;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelRvv;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelRvv;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelRvv;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelRvv;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelRvv;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelRvv;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelRvv;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelRvv;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelRvv;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
@@ -1553,6 +1560,15 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
 #endif
 
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
+    uint32_t NchwcBlockSize;
+#endif
+
 MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;
 MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine = nullptr;
 MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
@@ -1760,7 +1776,7 @@ MlasFp32FromBits(
 #pragma warning(pop)
 #endif
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 void
 MLASCALL
 MlasConvDepthwiseFloat_CHW(
@@ -1803,7 +1819,7 @@ MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
 // Also define additional standard NEON intrinsics using the MSVC aliases.
 //
 
-#if defined(_M_ARM64)
+#if defined(_M_ARM64) && !defined(__clang__)
 #ifndef vmaxvq_f32
 #define vmaxvq_f32(src) neon_fmaxv(src)
 #endif

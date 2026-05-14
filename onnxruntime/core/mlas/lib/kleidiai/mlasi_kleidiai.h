@@ -199,6 +199,16 @@ MlasConv(
     float* Output,
     MLAS_THREADPOOL* ThreadPool
     );
+
+#if defined(MLAS_ENABLE_TEST_HOOKS)
+size_t
+MLASCALL
+MlasConvLhsCacheEntryCountForTest();
+
+void
+MLASCALL
+MlasConvClearLhsCacheForTest();
+#endif
 }
 
 /*++
