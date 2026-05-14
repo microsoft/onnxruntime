@@ -1476,6 +1476,7 @@ phi3_blockwise_asymmetric_test_cases = [
 ]
 
 
+@unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE test since it requires CUDA.")
 class TestPhiQMoE(unittest.TestCase):
     @parameterized.expand(phi3_test_cases)
     def test_phi3_qmoe_parity(self, batch_size, sequence_length, quant_bits):
@@ -1674,6 +1675,7 @@ swiglu_blockwise_asymmetric_test_cases = [
 ]
 
 
+@unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE test since it requires CUDA.")
 class TestSwigluQMoE(unittest.TestCase):
     @parameterized.expand(swiglu_test_cases)
     def test_swiglu_qmoe_parity(self, batch_size, sequence_length, quant_bits):

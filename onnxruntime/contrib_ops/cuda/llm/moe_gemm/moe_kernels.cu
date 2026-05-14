@@ -3364,7 +3364,7 @@ template class CutlassMoeFCRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, __nv_bfloat16, _
 #endif
 #endif
 
-#ifdef ENABLE_FP8
+#if defined(ENABLE_FP8) && defined(ENABLE_CUDA_FP8_QMOE)
 // W8A16-FP8: FP8 e4m3 weights with FP16/BF16 activations (native SM90)
 template class CutlassMoeFCRunner<half, __nv_fp8_e4m3>;
 #ifdef ENABLE_BF16

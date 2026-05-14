@@ -70,25 +70,26 @@ constexpr bool isValidHopperMOESpecialisation() {
   // SM90 TMA WS kernels only support f16/bf16, not float32.
   if constexpr (std::is_same_v<std::decay_t<T>, float>) {
     return false;
-  }
-  return (cutlass::platform::is_same<T, WeightType>::value ||
-          (cutlass::platform::is_same<cutlass::uint4b_t, WeightType>::value &&
-           cutlass::platform::is_same<T, __nv_fp8_e4m3>::value)
+  } else {
+    return (cutlass::platform::is_same<T, WeightType>::value ||
+            (cutlass::platform::is_same<cutlass::uint4b_t, WeightType>::value &&
+             cutlass::platform::is_same<T, __nv_fp8_e4m3>::value)
 #ifdef ENABLE_FP8
-          // W8A16-FP8: half/bf16 activations with FP8 e4m3 weights
-          || (cutlass::platform::is_same<__nv_fp8_e4m3, WeightType>::value &&
-              !cutlass::platform::is_same<T, __nv_fp8_e4m3>::value &&
-              !cutlass::platform::is_same<T, __nv_fp8_e5m2>::value)
+            // W8A16-FP8: half/bf16 activations with FP8 e4m3 weights
+            || (cutlass::platform::is_same<__nv_fp8_e4m3, WeightType>::value &&
+                !cutlass::platform::is_same<T, __nv_fp8_e4m3>::value &&
+                !cutlass::platform::is_same<T, __nv_fp8_e5m2>::value)
 #endif
 #ifdef ENABLE_FP4
-          || (cutlass::platform::is_same<__nv_fp4_e2m1, WeightType>::value &&
-              !cutlass::platform::is_same<T, __nv_fp8_e4m3>::value)
+            || (cutlass::platform::is_same<__nv_fp4_e2m1, WeightType>::value &&
+                !cutlass::platform::is_same<T, __nv_fp8_e4m3>::value)
 #endif
-              )
+                )
 #ifdef ENABLE_FP4
-         && !cutlass::platform::is_same<T, __nv_fp4_e2m1>::value
+           && !cutlass::platform::is_same<T, __nv_fp4_e2m1>::value
 #endif
-         && cutlass::platform::is_same<EpilogueTag, cutlass_extensions::EpilogueOpDefault>::value;
+           && cutlass::platform::is_same<EpilogueTag, cutlass_extensions::EpilogueOpDefault>::value;
+  }
 #else
   return false;  // CUTLASS_ARCH_MMA_MODIFIABLE_TMA_SM90_SUPPORTED is set when Hopper kernels are enabled
 #endif

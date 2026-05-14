@@ -863,8 +863,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(p_fc1_block_scales && p_fc1_global_scale && p_fc2_block_scales && p_fc2_global_scale,
                       "QMoE FP4 dequant fallback requires block and global scales for fc1 and fc2.");
 
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     int fc1_n = static_cast<int>(is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size);
     int fc1_k = static_cast<int>(moe_params.hidden_size);
     int fc2_n = static_cast<int>(moe_params.hidden_size);
@@ -873,8 +871,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
     size_t fc1_bytes = SafeInt<size_t>(num_experts) * fc1_n * fc1_k * element_size;
     size_t fc2_bytes = SafeInt<size_t>(num_experts) * fc2_n * fc2_k * element_size;
-    dequant_fc1_weights = IAllocator::MakeUniquePtr<void>(allocator, fc1_bytes, false, GetComputeStream(context));
-    dequant_fc2_weights = IAllocator::MakeUniquePtr<void>(allocator, fc2_bytes, false, GetComputeStream(context));
+    dequant_fc1_weights = GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
+    dequant_fc2_weights = GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
 
     if (is_fp16_) {
       LaunchQMoEDequantizeFp4Weights(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
@@ -905,8 +903,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(p_fc1_global_scale && p_fc2_global_scale,
                       "QMoE FP8 dequant fallback requires fc1_global_scale and fc2_global_scale.");
 
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
     int fc1_n = static_cast<int>(is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size);
     int fc1_k = static_cast<int>(moe_params.hidden_size);
     int fc2_n = static_cast<int>(moe_params.hidden_size);
@@ -915,8 +911,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     size_t element_size = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
     size_t fc1_bytes = SafeInt<size_t>(num_experts) * fc1_n * fc1_k * element_size;
     size_t fc2_bytes = SafeInt<size_t>(num_experts) * fc2_n * fc2_k * element_size;
-    dequant_fc1_weights = IAllocator::MakeUniquePtr<void>(allocator, fc1_bytes, false, GetComputeStream(context));
-    dequant_fc2_weights = IAllocator::MakeUniquePtr<void>(allocator, fc2_bytes, false, GetComputeStream(context));
+    dequant_fc1_weights = GetScratchBuffer<void>(fc1_bytes, GetComputeStream(context));
+    dequant_fc2_weights = GetScratchBuffer<void>(fc2_bytes, GetComputeStream(context));
 
     if (is_fp16_) {
       LaunchQMoEDequantizeFp8Weights(static_cast<const uint8_t*>(fc1_experts_weights->DataRaw()),
