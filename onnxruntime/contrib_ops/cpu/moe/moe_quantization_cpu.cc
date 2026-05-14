@@ -244,7 +244,7 @@ bool TryRunLutGemm(const float* activations,
     MlasLutGemmPack(static_cast<size_t>(rows), static_cast<size_t>(cols), 2,
                     static_cast<size_t>(block_size), zp_ptr != nullptr,
                     reinterpret_cast<const std::byte*>(weights_data + expert_idx * rows * packed_cols),
-                    scales_fp32, zp_ptr, thread_lut_packed_buffer, thread_pool);
+                    scales_fp32, zp_ptr, false, thread_lut_packed_buffer, thread_pool);
     packed_lut_b = thread_lut_packed_buffer;
   }
 
@@ -294,7 +294,7 @@ Status BuildDirectLutPackedBCache(const uint8_t* quantized_data,
 
     MlasLutGemmPack(static_cast<size_t>(rows), static_cast<size_t>(cols), 2, static_cast<size_t>(block_size),
                     has_zero_points, reinterpret_cast<const std::byte*>(expert_quantized), expert_scales_fp32,
-                    expert_zero_points, packed_b_ptr + static_cast<size_t>(expert_idx) * packed_size_per_expert, nullptr);
+                    expert_zero_points, false, packed_b_ptr + static_cast<size_t>(expert_idx) * packed_size_per_expert, nullptr);
   }
 
   return Status::OK();

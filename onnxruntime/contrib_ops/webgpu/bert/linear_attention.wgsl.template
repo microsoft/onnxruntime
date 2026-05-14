@@ -19,6 +19,7 @@
 #param has_initial_state
 #param decay_broadcast_dk
 #param tile_v
+#param subgroup_min_size // 0 = disable subgroup reduction
 
 // Update rule constants
 #define UPDATE_LINEAR 0
@@ -41,15 +42,28 @@ const TILE_V: u32 = tile_v;
 
 // Shared memory for parallel reduction across dk threads.
 #if update_rule == UPDATE_DELTA || update_rule == UPDATE_GATED_DELTA
+#if subgroup_min_size
+const MAX_SG: u32 = (workgroup_size_x + subgroup_min_size - 1u) / subgroup_min_size;
+var<workgroup> sg_retrieved: array<vtype, MAX_SG * TILE_V>;
+var<workgroup> sg_preout: array<vtype, MAX_SG * TILE_V>;
+var<workgroup> sg_kq: array<f32, MAX_SG>;
+var<workgroup> broadcast_buf: array<vtype, TILE_V>;
+#else
 // Fused reduction: retrieved (S^T@k), pre_output (S^T@q), and kq_dot (k^T@q)
 // are reduced in a single barrier tree.
 var<workgroup> red_retrieved: array<vtype, workgroup_size_x * TILE_V>;
 var<workgroup> red_preout: array<vtype, workgroup_size_x * TILE_V>;
 var<workgroup> red_kq: array<f32, workgroup_size_x>;
 var<workgroup> broadcast_buf: array<vtype, TILE_V>;
+#endif
+#else
+#if subgroup_min_size
+const MAX_SG: u32 = (workgroup_size_x + subgroup_min_size - 1u) / subgroup_min_size;
+var<workgroup> sg_buf: array<vtype, MAX_SG * TILE_V>;
 #else
 // Output-only reduction for linear/gated.
 var<workgroup> reduction_buf: array<vtype, workgroup_size_x * TILE_V>;
+#endif
 #endif
 
 $MAIN {
@@ -60,6 +74,11 @@ $MAIN {
   let head_idx = bh % uniforms.num_heads;
   let dk_idx = local_idx;  // thread index = row in state matrix
   let dv_start = dv_tile_idx * TILE_V;
+
+#if subgroup_min_size
+  let sg_idx = local_idx / sg_size;
+  let num_sgs = (workgroup_size_x + sg_size - 1u) / sg_size;
+#endif
 
   // Precompute packed strides for 3D packed inputs (B, T, H*D)
   // Q: (B, T, q_num_heads * dk), K: (B, T, n_k_heads * dk),
@@ -133,8 +152,47 @@ $MAIN {
     }
 
     // Fused reduction: compute retrieved = S^T@k, pre_output = S^T@q_0,
-    // and kq_dot = k^T@q_0 in a single barrier tree.
+    // and kq_dot = k^T@q_0.
     // Then: output_0 = scale * (pre_output + delta * kq_dot)
+#if subgroup_min_size
+    for (var j = 0u; j < TILE_V; j++) {
+      let ret_j = subgroupAdd(state[j] * k_val);
+      let pre_j = subgroupAdd(state[j] * q0_val);
+      if (sg_id == 0u) {
+        sg_retrieved[sg_idx * TILE_V + j] = ret_j;
+        sg_preout[sg_idx * TILE_V + j] = pre_j;
+      }
+    }
+    let kq_sg = subgroupAdd(k_val * q0_val);
+    if (sg_id == 0u) {
+      sg_kq[sg_idx] = kq_sg;
+    }
+    workgroupBarrier();
+
+    // Threads 0..TILE_V-1 each handle one dv position independently.
+    let v_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
+    let beta_base = bt_offset * uniforms.num_heads + head_idx;
+    if (dk_idx < TILE_V) {
+      let j = dk_idx;
+      var retrieved_sum = vtype(0.0);
+      var preout_sum = vtype(0.0);
+      var kq_dot: f32 = 0.0;
+      for (var sg = 0u; sg < num_sgs; sg++) {
+        retrieved_sum += sg_retrieved[sg * TILE_V + j];
+        preout_sum += sg_preout[sg * TILE_V + j];
+        kq_dot += sg_kq[sg];
+      }
+      let beta_val = f32(beta[beta_base]);
+      if (dv_start + j < uniforms.head_dim_v) {
+        let v_val = vtype(value[v_base + j]);
+        let delta_j = beta_val * (v_val - retrieved_sum);
+        broadcast_buf[j] = delta_j;
+        output[bt_offset * packed_dv + out_head_0 * uniforms.head_dim_v + dv_start + j] = otype((preout_sum + delta_j * kq_dot) * uniforms.scale);
+      } else {
+        broadcast_buf[j] = vtype(0.0);
+      }
+    }
+#else
     for (var j = 0u; j < TILE_V; j++) {
       red_retrieved[j * workgroup_size_x + dk_idx] = state[j] * k_val;
       red_preout[j * workgroup_size_x + dk_idx] = state[j] * q0_val;
@@ -172,6 +230,7 @@ $MAIN {
         }
       }
     }
+#endif
     workgroupBarrier();
 
     // All threads: update state with delta (S_new = S_old + k * delta)
@@ -188,6 +247,27 @@ $MAIN {
       if (dk_idx < uniforms.head_dim_k) {
         qg_val = f32(query[bt_offset * packed_dk_q + q_head_g * uniforms.head_dim_k + dk_idx]);
       }
+#if subgroup_min_size
+      // Subgroup reduction of state*qg
+      for (var j = 0u; j < TILE_V; j++) {
+        let pre_j = subgroupAdd(state[j] * qg_val);
+        if (sg_id == 0u) {
+          sg_preout[sg_idx * TILE_V + j] = pre_j;
+        }
+      }
+      workgroupBarrier();
+      // Cross-subgroup reduction + parallel output write
+      if (dk_idx < TILE_V) {
+        let j = dk_idx;
+        var preout_sum = vtype(0.0);
+        for (var sg = 0u; sg < num_sgs; sg++) {
+          preout_sum += sg_preout[sg * TILE_V + j];
+        }
+        if (dv_start + j < uniforms.head_dim_v) {
+          output[bt_offset * packed_dv + q_head_g * uniforms.head_dim_v + dv_start + j] = otype(preout_sum * uniforms.scale);
+        }
+      }
+#else
       for (var j = 0u; j < TILE_V; j++) {
         red_preout[j * workgroup_size_x + dk_idx] = state[j] * qg_val;
       }
@@ -207,6 +287,7 @@ $MAIN {
           }
         }
       }
+#endif
       workgroupBarrier();
     }
 
@@ -228,6 +309,26 @@ $MAIN {
         if (dk_idx < uniforms.head_dim_k) {
           q_val_g = f32(query[bt_offset * packed_dk_q + q_head_idx * uniforms.head_dim_k + dk_idx]);
         }
+#if subgroup_min_size
+        for (var j = 0u; j < TILE_V; j++) {
+          let pre_j = subgroupAdd(state[j] * q_val_g);
+          if (sg_id == 0u) {
+            sg_buf[sg_idx * TILE_V + j] = pre_j;
+          }
+        }
+        workgroupBarrier();
+        if (dk_idx < TILE_V) {
+          let j = dk_idx;
+          var preout_sum = vtype(0.0);
+          for (var sg = 0u; sg < num_sgs; sg++) {
+            preout_sum += sg_buf[sg * TILE_V + j];
+          }
+          let out_base = bt_offset * packed_dv + q_head_idx * uniforms.head_dim_v + dv_start;
+          if (dv_start + j < uniforms.head_dim_v) {
+            output[out_base + j] = otype(preout_sum * uniforms.scale);
+          }
+        }
+#else
         for (var j = 0u; j < TILE_V; j++) {
           reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * q_val_g;
         }
@@ -248,6 +349,7 @@ $MAIN {
             }
           }
         }
+#endif
         workgroupBarrier();
       }
     } else {
@@ -257,6 +359,26 @@ $MAIN {
       if (dk_idx < uniforms.head_dim_k) {
         q_val_inv = f32(query[bt_offset * packed_dk_q + q_head_inv * uniforms.head_dim_k + dk_idx]);
       }
+#if subgroup_min_size
+      for (var j = 0u; j < TILE_V; j++) {
+        let pre_j = subgroupAdd(state[j] * q_val_inv);
+        if (sg_id == 0u) {
+          sg_buf[sg_idx * TILE_V + j] = pre_j;
+        }
+      }
+      workgroupBarrier();
+      if (dk_idx < TILE_V) {
+        let j = dk_idx;
+        var preout_sum = vtype(0.0);
+        for (var sg = 0u; sg < num_sgs; sg++) {
+          preout_sum += sg_buf[sg * TILE_V + j];
+        }
+        let out_base = bt_offset * packed_dv + head_idx * uniforms.head_dim_v + dv_start;
+        if (dv_start + j < uniforms.head_dim_v) {
+          output[out_base + j] = otype(preout_sum * uniforms.scale);
+        }
+      }
+#else
       for (var j = 0u; j < TILE_V; j++) {
         reduction_buf[j * workgroup_size_x + dk_idx] = state[j] * q_val_inv;
       }
@@ -277,6 +399,7 @@ $MAIN {
           }
         }
       }
+#endif
       workgroupBarrier();
     }
 #endif

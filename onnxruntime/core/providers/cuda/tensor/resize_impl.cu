@@ -3,13 +3,19 @@
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/tensor/resize_impl.h"
+#include <limits>
+
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace cuda {
 
+using onnxruntime::kNearestModeEps;
 using onnxruntime::ResizeCoordinateTransformationMode;
 using onnxruntime::ResizeNearestMode;
 using onnxruntime::UpsampleMode;
+
+constexpr int64_t kIntMax = static_cast<int64_t>(std::numeric_limits<int>::max());
 
 struct NearestPixel_SIMPLE {
   __device__ __forceinline__ int operator()(float x_original, bool is_down_sampling) const {
@@ -22,7 +28,8 @@ struct NearestPixel_SIMPLE {
 
 struct NearestPixel_ROUND_PREFER_FLOOR {
   __device__ __forceinline__ int operator()(float x_original, bool) const {
-    if (x_original == static_cast<int>(x_original) + 0.5f) {
+    float fraction = x_original - floorf(x_original);
+    if (fabsf(fraction - 0.5f) <= kNearestModeEps) {
       return static_cast<int>(_Floor(x_original));
     }
     return static_cast<int>(roundf(x_original));
@@ -31,10 +38,8 @@ struct NearestPixel_ROUND_PREFER_FLOOR {
 
 struct NearestPixel_ROUND_PREFER_CEIL {
   __device__ __forceinline__ int operator()(float x_original, bool) const {
-    // for half way cases prefer ceil
-    // roundf rounds away from zero which is correct for positive .5 values
-    // but for negative .5 values (e.g., -0.5) it rounds to -1 instead of 0 (ceil)
-    if (x_original == static_cast<int>(x_original) - 0.5f) {
+    float fraction = x_original - floorf(x_original);
+    if (fabsf(fraction - 0.5f) <= kNearestModeEps) {
       return static_cast<int>(_Ceil(x_original));
     }
     return static_cast<int>(roundf(x_original));
@@ -285,9 +290,9 @@ __global__ void _ResizeNearestKernel2D(
       return;
     }
   }
-  int input_index = input_stride_image * imageid +
-                    input_stride_row * dims_mapping[h].origin_ +
-                    dims_mapping[output_height + w].origin_;
+  int64_t input_index = input_stride_image * imageid +
+                        static_cast<int64_t>(input_stride_row) * dims_mapping[h].origin_ +
+                        dims_mapping[output_height + w].origin_;
   output_data[id] = input_data[input_index];
 }
 
@@ -312,10 +317,10 @@ __global__ void _ResizeNearestKernel3D(
       return;
     }
   }
-  int input_index = static_cast<int>(input_stride_image) * imageid +
-                    static_cast<int>(input_stride_depth) * dims_mapping[d].origin_ +
-                    input_stride_row * dims_mapping[output_depth + h].origin_ +
-                    dims_mapping[output_depth + output_height + w].origin_;
+  int64_t input_index = input_stride_image * imageid +
+                        input_stride_depth * dims_mapping[d].origin_ +
+                        static_cast<int64_t>(input_stride_row) * dims_mapping[output_depth + h].origin_ +
+                        dims_mapping[output_depth + output_height + w].origin_;
   output_data[id] = input_data[input_index];
 }
 
@@ -333,7 +338,7 @@ __global__ void _ResizeNearestKernel(
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   int output_index = static_cast<int>(id);
-  int input_index = 0;
+  int64_t input_index = 0;
   int extrapolation_occurred = 0;
   for (int axis = 0; axis < rank; ++axis) {
     int dim = 0;
@@ -374,7 +379,7 @@ __global__ void _ResizeBilinearCoordinateMapping(
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;
-    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.5f : input_y - y_int;
+    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.0f : input_y - y_int;
   } else {  // x = id - output_height
     float input_x = scale_width == 1 ? static_cast<float>(id - output_height)
                                      : transform_coordinate(static_cast<float>(id - output_height),
@@ -387,7 +392,7 @@ __global__ void _ResizeBilinearCoordinateMapping(
     input_x = max(0.0f, min(input_x, static_cast<float>(input_width - 1)));
     int x_int = static_cast<int>(input_x);
     dims_mapping[id].origin_ = x_int;
-    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.5f : input_x - x_int;
+    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.0f : input_x - x_int;
   }
 }
 
@@ -458,7 +463,7 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     input_z = max(0.0f, min(input_z, static_cast<float>(input_depth - 1)));
     int z_int = static_cast<int>(input_z);
     dims_mapping[id].origin_ = z_int;
-    dims_mapping[id].weight_ = (z_int >= input_depth - 1) ? 0.5f : input_z - z_int;
+    dims_mapping[id].weight_ = (z_int >= input_depth - 1) ? 0.0f : input_z - z_int;
   } else if (id >= output_depth && id < (output_depth + output_height)) {  //  y = id - output_depth
     float input_y = scale_height == 1 ? static_cast<float>(id - output_depth)
                                       : transform_coordinate(static_cast<float>(id - output_depth),
@@ -472,7 +477,7 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     input_y = max(0.0f, min(input_y, static_cast<float>(input_height - 1)));
     int y_int = static_cast<int>(input_y);
     dims_mapping[id].origin_ = y_int;
-    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.5f : input_y - y_int;
+    dims_mapping[id].weight_ = (y_int >= input_height - 1) ? 0.0f : input_y - y_int;
   } else {  // x = id - output_depth - output_height
     float input_x = scale_width == 1 ? static_cast<float>(id - output_depth - output_height)
                                      : transform_coordinate(static_cast<float>(id - output_depth - output_height),
@@ -484,7 +489,7 @@ __global__ void _ResizeTrilinearCoordinateMapping(
     input_x = max(0.0f, min(input_x, static_cast<float>(input_width - 1)));
     int x_int = static_cast<int>(input_x);
     dims_mapping[id].origin_ = x_int;
-    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.5f : input_x - x_int;
+    dims_mapping[id].weight_ = (x_int >= input_width - 1) ? 0.0f : input_x - x_int;
   }
 }
 
@@ -702,7 +707,7 @@ size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
 }
 
 template <typename T>
-void ResizeNearestImpl(
+Status ResizeNearestImpl(
     cudaStream_t stream,
     const int rank,
     TArray<int64_t>& input_shape,
@@ -721,7 +726,17 @@ void ResizeNearestImpl(
     ResizeNearestMode calc_nearest_pixel,
     int64_t* /* prefix_dim_sum */,
     NearestMappingInfo* dims_mapping) {
-  unsigned int blocksPerGrid = static_cast<unsigned int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  ORT_RETURN_IF_NOT(N <= static_cast<size_t>(kIntMax),
+                    "ResizeNearestImpl: output element count exceeds int range.");
+
+  for (int axis = 0; axis < rank; ++axis) {
+    ORT_RETURN_IF_NOT(input_shape[axis] >= 0 && input_shape[axis] <= kIntMax,
+                      "ResizeNearestImpl: input dimension is not in the supported [0, INT_MAX] range.");
+    ORT_RETURN_IF_NOT(output_shape[axis] >= 0 && output_shape[axis] <= kIntMax,
+                      "ResizeNearestImpl: output dimension is not in the supported [0, INT_MAX] range.");
+  }
+
+  unsigned int blocksPerGrid = static_cast<unsigned int>((N + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
   bool could2d = rank >= 2 &&
                  transform_coordinate != ResizeCoordinateTransformationMode::TF_CROP_AND_RESIZE &&
@@ -729,8 +744,13 @@ void ResizeNearestImpl(
   if (could2d) {
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
+    int64_t output_hw = 0;
+
+    ORT_RETURN_IF_NOT(SafeMultiply(output_height, output_width, output_hw) && output_hw <= kIntMax,
+                      "ResizeNearestImpl: output height*width exceeds int range.");
+
     fast_divmod div_output_image = (rank > 2) ? output_div_pitches[rank - 3]
-                                              : fast_divmod(static_cast<int>(output_height * output_width));
+                                              : fast_divmod(static_cast<int>(output_hw));
     int blocksPerDimsMappingGrid = static_cast<int>(ceil((output_height + output_width) / 32.0));
 
     DISPATCH_RESIZE_COORDINATE_TRANSFORMATION_MODE(transform_coordinate, [&]() {
@@ -762,7 +782,7 @@ void ResizeNearestImpl(
           extrapolation_value,
           dims_mapping);
     }
-    return;
+    return Status::OK();
   }
 
   // Check if we can use the optimized 3D path: rank >= 3, not TF_CROP_AND_RESIZE,
@@ -774,8 +794,15 @@ void ResizeNearestImpl(
     int64_t output_depth = output_shape[rank - 3];
     int64_t output_height = output_shape[rank - 2];
     int64_t output_width = output_shape[rank - 1];
+    int64_t output_dh = 0;
+    int64_t output_dhw = 0;
+    ORT_RETURN_IF_NOT(SafeMultiply(output_depth, output_height, output_dh) && output_dh <= kIntMax,
+                      "ResizeNearestImpl: output depth*height exceeds int range.");
+    ORT_RETURN_IF_NOT(SafeMultiply(output_dh, output_width, output_dhw) && output_dhw <= kIntMax,
+                      "ResizeNearestImpl: output depth*height*width exceeds int range.");
+
     fast_divmod div_output_image = (rank > 3) ? output_div_pitches[rank - 4]
-                                              : fast_divmod(static_cast<int>(output_depth * output_height * output_width));
+                                              : fast_divmod(static_cast<int>(output_dhw));
     int blocksPerDimsMappingGrid = static_cast<int>(ceil((output_depth + output_height + output_width) / 32.0));
 
     DISPATCH_RESIZE_COORDINATE_TRANSFORMATION_MODE(transform_coordinate, [&]() {
@@ -793,8 +820,14 @@ void ResizeNearestImpl(
       });
     });
 
-    int64_t input_stride_depth = input_shape[rank - 2] * input_shape[rank - 1];
-    int64_t input_stride_image = input_shape[rank - 3] * input_stride_depth;
+    SafeInt<int64_t> input_stride_depth_safe = 0;
+    SafeInt<int64_t> input_stride_image_safe = 0;
+    input_stride_depth_safe = SafeInt<int64_t>(input_shape[rank - 2]) * input_shape[rank - 1];
+    input_stride_image_safe = SafeInt<int64_t>(input_shape[rank - 3]) * input_stride_depth_safe;
+
+    const int64_t input_stride_depth = static_cast<int64_t>(input_stride_depth_safe);
+    const int64_t input_stride_image = static_cast<int64_t>(input_stride_image_safe);
+
     if (extrapolation_enabled) {
       _ResizeNearestKernel3D<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_depth, output_height, output_width,
@@ -812,7 +845,7 @@ void ResizeNearestImpl(
           extrapolation_value,
           dims_mapping);
     }
-    return;
+    return Status::OK();
   }
 
   int64_t total_dim_sum = std::accumulate(output_shape.Data(), output_shape.Data() + rank, (int64_t)0);
@@ -834,11 +867,11 @@ void ResizeNearestImpl(
       extrapolation_value,
       reinterpret_cast<const int64_t*>(dims_mapping),
       reinterpret_cast<const NearestMappingInfo*>(reinterpret_cast<int64_t*>(dims_mapping) + rank));
-  return;
+  return Status::OK();
 }
 
 template <typename T>
-void ResizeImpl(
+Status ResizeImpl(
     cudaStream_t stream,
     const UpsampleMode upsample_mode,
     const int rank,
@@ -859,14 +892,14 @@ void ResizeImpl(
     ResizeNearestMode nearest_mode,
     void* dims_mapping) {
   if (upsample_mode == UpsampleMode::NN) {
-    ResizeNearestImpl(
+    ORT_RETURN_IF_ERROR(ResizeNearestImpl(
         stream, rank, input_shape, output_shape, input_strides, output_div_pitches,
         scales_vals, roi_vals, input_data, output_data, N,
         extrapolation_enabled, extrapolation_value, cubic_coeff_a,
         coordinate_transform_mode, nearest_mode,
         reinterpret_cast<int64_t*>(dims_mapping),
-        reinterpret_cast<NearestMappingInfo*>(reinterpret_cast<int64_t*>(dims_mapping) + rank));
-    return;
+        reinterpret_cast<NearestMappingInfo*>(reinterpret_cast<int64_t*>(dims_mapping) + rank)));
+    return Status::OK();
   }
 
   // We support a special case of bilinear or bicubic if the input data is 4D with the outer 2 scales being 1.0
@@ -879,14 +912,17 @@ void ResizeImpl(
 
   // Should not hit this as we have already validated input rank/scales and we provide verbose error messages
   // to the user.
-  ORT_ENFORCE(is_2D || is_3D, "Only bilinear/trilinear and bicubic modes are supported in Resize");
+  ORT_RETURN_IF_NOT(is_2D || is_3D, "Only bilinear/trilinear and bicubic modes are supported in Resize");
 
-  int blocksPerGrid = static_cast<int>(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
+  ORT_RETURN_IF_NOT(N <= static_cast<size_t>(kIntMax),
+                    "ResizeImpl: output element count exceeds int range.");
+
+  int blocksPerGrid = static_cast<int>((N + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
   fast_divmod div_output_image;
   if (is_2D) {
-    div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(gsl::narrow_cast<int>(N));
+    div_output_image = (rank > 2) ? output_div_pitches[rank - 3] : fast_divmod(static_cast<int>(N));
   } else if (is_3D) {
-    div_output_image = (rank > 3) ? output_div_pitches[rank - 4] : fast_divmod(gsl::narrow_cast<int>(N));
+    div_output_image = (rank > 3) ? output_div_pitches[rank - 4] : fast_divmod(static_cast<int>(N));
   }
 
   int64_t output_depth = is_3D ? output_shape[rank - 3] : 0;
@@ -914,7 +950,7 @@ void ResizeImpl(
             output_div_pitches[rank - 2], div_output_image,
             input_data, output_data, N, extrapolation_value,
             reinterpret_cast<LinearMappingInfo*>(dims_mapping));
-        return;
+        return Status::OK();
       } else if (is_3D) {
         DISPATCH_RESIZE_COORDINATE_TRANSFORMATION_MODE(coordinate_transform_mode, [&]() {
           _ResizeTrilinearCoordinateMapping<T><<<blocksPerDimsMappingGrid, 32, 0, stream>>>(
@@ -933,10 +969,10 @@ void ResizeImpl(
             output_div_pitches[rank - 3], output_div_pitches[rank - 2], div_output_image,
             input_data, output_data, N, extrapolation_value,
             reinterpret_cast<LinearMappingInfo*>(dims_mapping));
-        return;
+        return Status::OK();
       }
-      ORT_THROW("Resize support 2-D and 3-D dimensions in LINEAR mode.");
-      break;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Resize supports 2-D and 3-D dimensions in LINEAR mode.");
     case UpsampleMode::CUBIC:
       if (is_2D) {
         DISPATCH_RESIZE_COORDINATE_TRANSFORMATION_MODE(coordinate_transform_mode, [&]() {
@@ -956,16 +992,20 @@ void ResizeImpl(
             output_div_pitches[rank - 2], div_output_image,
             input_data, output_data, N, extrapolation_value,
             reinterpret_cast<CubicMappingInfo*>(dims_mapping));
-        return;
+        return Status::OK();
       }
-      ORT_THROW("Resize supports only 2-D in CUBIC mode.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Resize supports only 2-D in CUBIC mode.");
     case UpsampleMode::NN:
-      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Only bilinear/trilinear and bicubic modes are supported in Resize");
   }
+
+  return Status::OK();
 }
 
 #define SPECIALIZED_IMPL(T)                                         \
-  template void ResizeImpl<T>(                                      \
+  template Status ResizeImpl<T>(                                    \
       cudaStream_t stream,                                          \
       const UpsampleMode upsample_mode,                             \
       const int rank,                                               \
