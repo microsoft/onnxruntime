@@ -28,6 +28,14 @@ struct BufferWriteFuncHolder {
 };
 
 /// <summary>
+/// Holds the opaque state and write function that EPs use to write EPContext binary data.
+/// </summary>
+struct EpContextDataWriteFuncHolder {
+  OrtWriteEpContextDataFunc write_func = nullptr;
+  void* state = nullptr;
+};
+
+/// <summary>
 /// Holds path and size threshold used to write out initializers to an external file.
 /// </summary>
 struct ExternalInitializerFileInfo {
@@ -84,10 +92,13 @@ struct ModelGenOptions {
                InitializerHandler>           // Custom function called for every initializer to determine location.
       initializers_location = std::monostate{};
 
+  EpContextDataWriteFuncHolder ep_context_data_write_func = {};
+
   bool HasOutputModelLocation() const;
   const std::filesystem::path* TryGetOutputModelPath() const;
   const BufferHolder* TryGetOutputModelBuffer() const;
   const BufferWriteFuncHolder* TryGetOutputModelWriteFunc() const;
+  const EpContextDataWriteFuncHolder* TryGetEpContextDataWriteFunc() const;
 
   bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;

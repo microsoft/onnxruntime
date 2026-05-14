@@ -179,4 +179,23 @@ ORT_API_STATUS_IMPL(ProfilingEvent_GetDurationUs, _In_ const OrtProfilingEvent* 
 ORT_API_STATUS_IMPL(ProfilingEvent_GetArgValue, _In_ const OrtProfilingEvent* event, _In_ const char* key,
                     _Outptr_result_maybenull_ const char** out);
 
+// EPContext data I/O
+ORT_API_STATUS_IMPL(SessionOptions_GetEpContextConfig,
+                    _In_ const OrtSessionOptions* session_options,
+                    _Outptr_ OrtEpContextConfig** config);
+ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config);
+ORT_API_STATUS_IMPL(ReadEpContextData,
+                    _In_opt_ const OrtEpContextConfig* config,
+                    _In_ const char* file_name,
+                    _In_opt_ const OrtGraph* graph,
+                    _Inout_ OrtAllocator* allocator,
+                    _Outptr_ void** buffer,
+                    _Out_ size_t* buffer_size);
+ORT_API_STATUS_IMPL(WriteEpContextData,
+                    _In_opt_ const OrtEpContextConfig* config,
+                    _In_ const char* file_name,
+                    _In_opt_ const OrtGraph* graph,
+                    _In_ const void* buffer,
+                    _In_ size_t buffer_size);
+
 }  // namespace OrtExecutionProviderApi

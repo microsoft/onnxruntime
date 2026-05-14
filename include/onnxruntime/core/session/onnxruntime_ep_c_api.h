@@ -18,6 +18,7 @@ extern "C" {
  * @{
  */
 ORT_RUNTIME_CLASS(Ep);
+ORT_RUNTIME_CLASS(EpContextConfig);
 ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
@@ -2077,6 +2078,77 @@ struct OrtEpApi {
   ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
                   _In_reads_(num_events) const OrtProfilingEvent* const* events,
                   _In_ size_t num_events);
+
+  /** \brief Get the EPContext configuration from session options.
+   *
+   * Extracts EPContext-related data I/O callbacks from the session options into an opaque OrtEpContextConfig handle.
+   * The EP should call this during CreateEp() while session_options is still valid, and store the returned handle for
+   * use during Compile(). The returned config is always non-NULL and must be released with ReleaseEpContextConfig.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[out] config The extracted OrtEpContextConfig.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(SessionOptions_GetEpContextConfig,
+                  _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtEpContextConfig** config);
+
+  /** \brief Release an OrtEpContextConfig instance.
+   *
+   * \param[in] config The OrtEpContextConfig instance to release. May be NULL.
+   *
+   * \since Version 1.27.
+   */
+  ORT_CLASS_RELEASE(EpContextConfig);
+
+  /** \brief Read EPContext binary data, using an application read callback or falling back to disk.
+   *
+   * If config contains a read callback, the callback is invoked with the provided allocator. Otherwise, ORT reads the
+   * file from disk. The disk fallback derives the base directory from the graph's model path.
+   *
+   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig. May be NULL for disk fallback.
+   * \param[in] file_name EPContext file name as a null-terminated UTF-8 string.
+  * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
+   * \param[in] allocator Allocator for the output buffer.
+   * \param[out] buffer Output buffer containing the EPContext binary data.
+   * \param[out] buffer_size Size of the output buffer in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ReadEpContextData,
+                  _In_opt_ const OrtEpContextConfig* config,
+                  _In_ const char* file_name,
+                  _In_opt_ const OrtGraph* graph,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_ void** buffer,
+                  _Out_ size_t* buffer_size);
+
+  /** \brief Write EPContext binary data, using an application write callback or falling back to disk.
+   *
+   * If config contains a write callback, the data is forwarded to the application's callback. Otherwise, ORT writes the
+   * data to disk. The disk fallback derives the base directory from the graph's model path.
+   *
+   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig. May be NULL for disk fallback.
+   * \param[in] file_name EPContext file name as a null-terminated UTF-8 string.
+  * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
+   * \param[in] buffer The buffer containing EPContext binary data to write.
+   * \param[in] buffer_size Size of the buffer in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(WriteEpContextData,
+                  _In_opt_ const OrtEpContextConfig* config,
+                  _In_ const char* file_name,
+                  _In_opt_ const OrtGraph* graph,
+                  _In_ const void* buffer,
+                  _In_ size_t buffer_size);
 };
 
 /**

@@ -1335,6 +1335,12 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(
+    OrtWriteEpContextDataFunc write_func, void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
     bool embed_ep_context_in_model) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
@@ -1571,6 +1577,13 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFrom
   }
   ThrowOnError(GetApi().AddExternalInitializersFromFilesInMemory(this->p_, names_ptr.data(), buffer_array.data(),
                                                                  file_lengths.data(), inputs_num));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(OrtReadEpContextDataFunc read_func,
+                                                                               void* state) {
+  ThrowOnError(GetApi().SessionOptions_SetEpContextDataReadFunc(this->p_, read_func, state));
   return *this;
 }
 
