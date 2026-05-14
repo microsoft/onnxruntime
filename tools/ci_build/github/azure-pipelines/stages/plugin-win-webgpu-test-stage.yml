@@ -14,8 +14,15 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win2022-VS2022-webgpu-A10
-      os: windows
+      ${{ if eq(parameters.arch, 'arm64') }}:
+        name: onnxruntime-qnn-windows-vs-2022-arm64
+        os: windows
+        hostArchitecture: Arm64
+        demands:
+          - Agent.Version -equals 4.264.2
+      ${{ else }}:
+        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        os: windows
     steps:
     - checkout: self
       clean: true
