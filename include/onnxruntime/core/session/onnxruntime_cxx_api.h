@@ -1668,6 +1668,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                                                const std::vector<char*>& external_initializer_file_buffer_array,
                                                                const std::vector<size_t>& external_initializer_file_lengths);  ///< Wraps OrtApi::AddExternalInitializersFromFilesInMemory
 
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadEpContextDataFunc read_func, void* state);  ///< Wraps OrtApi::SessionOptions_SetEpContextDataReadFunc
+
   SessionOptionsImpl& AppendExecutionProvider_CPU(int use_arena);                                            ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CPU
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
   SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
@@ -1768,6 +1770,9 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
+  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation
