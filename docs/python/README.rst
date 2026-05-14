@@ -8,6 +8,9 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 Changes
 -------
 
+1.26.1
+^^^^^^
+
 1.26.0
 ^^^^^^
 
