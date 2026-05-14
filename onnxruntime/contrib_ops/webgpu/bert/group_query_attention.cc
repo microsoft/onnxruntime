@@ -241,14 +241,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
 
-  // WebGPU flash attention requires present_key/present_value as working KV buffers.
-  if (present_key == nullptr || present_value == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "WebGPU GroupQueryAttention requires present_key and present_value outputs. "
-                           "Optional present outputs are supported on CPU and CUDA EPs only.");
-  }
-
-  parameters.past_present_share_buffer_ = past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
+  // When present_key/present_value outputs are not requested (nullptr), this is a
+  // KV-shared layer. Flash attention will create internal GPU buffers as needed.
+  parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr &&
+                                          past_key != nullptr && past_value != nullptr &&
+                                          past_key->DataRaw() == present_key->DataRaw() &&
+                                          past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
 
@@ -258,6 +256,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   Tensor qRotary;
   Tensor kRotary;
+  Tensor kDummy;  // Placeholder for rotary when kv_empty and key has zero sequence length
+
+  // kv_sequence_length==0 fast path: K/V inputs are empty (shared KV layer).
+  // Skip all K/V processing; only apply RoPE to Q if needed.
+  // Use past_key/past_value directly as the KV context.
+  const bool kv_empty = (parameters.kv_sequence_length_ == 0);
 
   // Use a sliding window if the total sequence exceeds the window's length.
   bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
@@ -269,7 +273,35 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     will_use_flash_attention = CanApplyFlashAttention(temp_params, context);
   }
 
-  if (parameters.is_packed_qkv_ && do_rotary_) {
+  if (kv_empty) {
+    // KV inputs are empty - shared KV layer. Only need to extract Q and optionally apply RoPE to Q.
+    // Avoid creating zero-sized K/V tensors as WebGPU may reject zero-element storage buffers.
+    if (parameters.is_packed_qkv_) {
+      // Extract Q from packed QKV. Create non-zero K/V with sequence_length=1 to satisfy SplitPackedQKV,
+      // but they won't be used for attention (past_key/past_value provide the KV context).
+      qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
+      kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
+      vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
+      ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit, parameters.kv_hidden_size_));
+      parameters.is_packed_qkv_ = false;
+      parameters.qkv_format_ = Q_K_V_BSNH;
+      query = &qSplit;
+      // K/V from split are discarded — attention will use past_key/past_value instead.
+    }
+    if (do_rotary_) {
+      // Apply RoPE to Q only. Use the fused kernel with a dummy K to avoid zero-element buffers.
+      // K output is discarded since attention uses past_key/past_value.
+      qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
+      kDummy = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, 1, parameters.kv_hidden_size_}));
+      kRotary = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, 1, parameters.kv_hidden_size_}));
+      ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(context, parameters,
+                                                    query, &kDummy,
+                                                    seqlen_k,
+                                                    cos_cache, sin_cache,
+                                                    &qRotary, &kRotary));
+      query = &qRotary;
+    }
+  } else if (parameters.is_packed_qkv_ && do_rotary_) {
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
     if (will_use_flash_attention && parameters.past_present_share_buffer_) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
@@ -320,6 +352,13 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink);
+  }
+
+  // Non-flash attention path does not support kv_sequence_length==0 (shared KV layers).
+  if (kv_empty) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "WebGPU non-flash attention path does not support kv_sequence_length==0 (shared KV layers). "
+                           "Flash attention is required for Gemma4 KV-shared decoder layers.");
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,

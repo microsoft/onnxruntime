@@ -426,13 +426,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor internal_present_key;
   Tensor internal_present_value;
   if (present_key == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.kv_num_heads_,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_key = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_key = &internal_present_key;
   }
   if (present_value == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.kv_num_heads_,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_value = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_value = &internal_present_value;
@@ -463,8 +463,21 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   }
 
   const bool do_rotary = (cos_cache != nullptr && sin_cache != nullptr);
+  const bool kv_empty = (parameters.kv_sequence_length_ == 0);
 
-  if (do_rotary) {
+  if (kv_empty) {
+    // kv_sequence_length==0: K/V inputs are empty (shared KV layer).
+    // Skip CopyKVCache and fused split+rotary+copyKV.
+    // Use past_key/past_value directly as the present buffers for attention.
+    ORT_ENFORCE(!do_rotary, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV should not be used with kv_sequence_length==0.");
+    if (past_key != nullptr && past_value != nullptr) {
+      // Safe: flash attention kernels only read from present_key/present_value.
+      // CopyKVCache is skipped when kv_empty, so no writes through these pointers.
+      present_key = const_cast<Tensor*>(past_key);
+      present_value = const_cast<Tensor*>(past_value);
+    }
+    // If past is also null, present_key/present_value were already set to internal empty tensors above.
+  } else if (do_rotary) {
     ORT_ENFORCE(parameters.is_packed_qkv_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires packed QKV input.");
     ORT_ENFORCE(parameters.past_present_share_buffer_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires static KV cache.");
 
