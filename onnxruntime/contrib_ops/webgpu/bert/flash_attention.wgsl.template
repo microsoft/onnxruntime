@@ -1,7 +1,6 @@
 
 #param has_attention_bias
 #param has_head_sink
-#param is_apple
 #param is_fp16
 #param is_qualcomm
 #param is_unidirectional
@@ -10,6 +9,7 @@
 #param qkv_head_size
 #param qkv_num_heads
 #param use_seqlen_k
+#param use_shm_path
 #param max_k_step_param
 
 const head_size : u32 = qkv_head_size;
@@ -61,7 +61,7 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
   }
 }
 
-#if is_apple
+#if use_shm_path
 
 var<private> qk_scores : array<q_element_t, max_k_step>;
 
@@ -240,7 +240,7 @@ $MAIN {
   let seq_causal_length = total_sequence_length;
 #endif
 
-#if is_apple
+#if use_shm_path
 
   for (var k_start = 0u; k_start < loop_bound; k_start += max_k_step) {
     workgroupBarrier();
