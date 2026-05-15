@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+
 """Build the Microsoft.ML.OnnxRuntime.EP.WebGpu NuGet package.
 
 Stages native binaries from build artifacts into the runtimes/ layout expected
