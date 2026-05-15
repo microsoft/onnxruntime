@@ -774,9 +774,6 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Values) 
 }
 
 // Same as above but for path traversal in the indices external data.
-// Note: The indices path also has a pre-existing issue where it checks raw_data().size()
-// even when data_location is EXTERNAL. This test verifies the path traversal is blocked
-// before that check runs (once the fix is in place).
 TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Indices) {
   auto model_dir = base_dir_ / "model_dir";
   std::error_code ec;
@@ -834,10 +831,6 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Indices)
   auto* idx_len = indices->add_external_data();
   idx_len->set_key("length");
   idx_len->set_value(std::to_string(2 * sizeof(int64_t)));
-
-  // Set raw_data to expected size so the pre-existing size check passes.
-  // This simulates a malicious model that also sets raw_data size to match.
-  indices->mutable_raw_data()->resize(2 * sizeof(int64_t), '\0');
 
   ONNX_NAMESPACE::TensorProto dense;
   std::filesystem::path model_path = model_dir / "model.onnx";
