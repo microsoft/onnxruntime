@@ -383,9 +383,9 @@ TEST(InferenceSessionTests, TestGraphCapture) {
                  true /* enable graph capture*/);
 }
 
-// Build a two-op model: Y = Relu(MatMul(A, B))
-// The intermediate MatMul output exercises the per-graph buffer manager.
-static void CreateMatMulReluModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
+// Build a three-op model: Y = MatMul(Relu(MatMul(A, B)), C)
+// The two intermediate tensors (T1 from MatMul, T2 from Relu) exercise the per-graph buffer manager.
+static void CreateMatMulReluMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[onnxruntime::kOnnxDomain] = 7;
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
@@ -398,20 +398,26 @@ static void CreateMatMulReluModel(std::unique_ptr<onnxruntime::Model>& p_model, 
   TypeProto tensor_float;
   tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
 
-  auto& input_arg_a = graph.GetOrCreateNodeArg("A", &tensor_float);
-  auto& input_arg_b = graph.GetOrCreateNodeArg("B", &tensor_float);
-  auto& intermediate = graph.GetOrCreateNodeArg("T", &tensor_float);
-  auto& output_arg = graph.GetOrCreateNodeArg("Y", &tensor_float);
+  auto& input_a = graph.GetOrCreateNodeArg("A", &tensor_float);
+  auto& input_b = graph.GetOrCreateNodeArg("B", &tensor_float);
+  auto& input_c = graph.GetOrCreateNodeArg("C", &tensor_float);
+  auto& t1 = graph.GetOrCreateNodeArg("T1", &tensor_float);
+  auto& t2 = graph.GetOrCreateNodeArg("T2", &tensor_float);
+  auto& output_y = graph.GetOrCreateNodeArg("Y", &tensor_float);
 
-  auto& matmul_node = graph.AddNode("matmul", "MatMul", "MatMul",
-                                    {&input_arg_a, &input_arg_b}, {&intermediate},
-                                    nullptr, onnxruntime::kOnnxDomain);
-  auto& relu_node = graph.AddNode("relu", "Relu", "Relu",
-                                  {&intermediate}, {&output_arg},
-                                  nullptr, onnxruntime::kOnnxDomain);
+  auto& matmul1 = graph.AddNode("matmul1", "MatMul", "MatMul",
+                                {&input_a, &input_b}, {&t1},
+                                nullptr, onnxruntime::kOnnxDomain);
+  auto& relu = graph.AddNode("relu", "Relu", "Relu",
+                             {&t1}, {&t2},
+                             nullptr, onnxruntime::kOnnxDomain);
+  auto& matmul2 = graph.AddNode("matmul2", "MatMul", "MatMul",
+                                {&t2, &input_c}, {&output_y},
+                                nullptr, onnxruntime::kOnnxDomain);
 
-  matmul_node.SetExecutionProviderType(provider_type);
-  relu_node.SetExecutionProviderType(provider_type);
+  matmul1.SetExecutionProviderType(provider_type);
+  relu.SetExecutionProviderType(provider_type);
+  matmul2.SetExecutionProviderType(provider_type);
 
   ASSERT_STATUS_OK(graph.Resolve());
 }
@@ -431,7 +437,7 @@ TEST(InferenceSessionTests, TestReleaseCapturedGraph) {
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 
   std::unique_ptr<Model> p_model;
-  CreateMatMulReluModel(p_model, kGpuExecutionProvider);
+  CreateMatMulReluMatMulModel(p_model, kGpuExecutionProvider);
   std::string s1;
   p_model->ToProto().SerializeToString(&s1);
   std::istringstream str(s1);
@@ -443,22 +449,30 @@ TEST(InferenceSessionTests, TestReleaseCapturedGraph) {
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
   auto gpu_alloc = session_object.GetAllocator(mem_info);
 
-  // Input set 1: values_a1 = {0..11}
-  // MatMul(A1[3x4], B[4x3]) = {42,48,54, 114,136,158, 186,224,262}
-  // Relu preserves all (positive), so expected_y1 = same.
+  // Model: Y = MatMul(Relu(MatMul(A[3x4], B[4x3])), C[3x2]) => Y[3x2]
+  //
+  // Input set 1: A1 = {0..11}
+  //   MatMul(A1, B) = {42,48,54, 114,136,158, 186,224,262}
+  //   Relu = same (all positive)
+  //   Y1 = MatMul(Relu, C) = {96,102, 272,294, 448,486}
+  //
+  // Input set 2: A2 = {12,11,...,1}
+  //   MatMul(A2, B) = {174,216,258, 102,128,154, 30,40,50}
+  //   Relu = same (all positive)
+  //   Y2 = MatMul(Relu, C) = {432,474, 256,282, 80,90}
+
   std::vector<float> values_a1 = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
   std::vector<float> values_b = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
-  std::vector<float> expected_y1 = {42, 48, 54, 114, 136, 158, 186, 224, 262};
+  std::vector<float> values_c = {1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<float> expected_y1 = {96, 102, 272, 294, 448, 486};
 
-  // Input set 2: values_a2 = {12,11,...,1}
-  // MatMul(A2[3x4], B[4x3]) = {174,216,258, 102,128,154, 30,40,50}
-  // Relu preserves all (positive), so expected_y2 = same.
   std::vector<float> values_a2 = {12.0f, 11.0f, 10.0f, 9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
-  std::vector<float> expected_y2 = {174, 216, 258, 102, 128, 154, 30, 40, 50};
+  std::vector<float> expected_y2 = {432, 474, 256, 282, 80, 90};
 
   std::vector<int64_t> dims_a = {3, 4};
   std::vector<int64_t> dims_b = {4, 3};
-  std::vector<int64_t> dims_y = {3, 3};
+  std::vector<int64_t> dims_c = {3, 2};
+  std::vector<int64_t> dims_y = {3, 2};
 
   // Prepare GPU input A (will be overwritten between capture and replay)
   OrtValue ml_a1_cpu;
@@ -476,6 +490,14 @@ TEST(InferenceSessionTests, TestReleaseCapturedGraph) {
   OrtValue ml_b;
   Tensor::InitOrtValue(std::move(gpu_b), ml_b);
 
+  // Prepare GPU input C
+  OrtValue ml_c_cpu;
+  CreateMLValue<float>(cpu_alloc, dims_c, values_c, &ml_c_cpu);
+  Tensor gpu_c(ml_c_cpu.Get<Tensor>().DataType(), ml_c_cpu.Get<Tensor>().Shape(), gpu_alloc);
+  ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(ml_c_cpu.Get<Tensor>(), gpu_c));
+  OrtValue ml_c;
+  Tensor::InitOrtValue(std::move(gpu_c), ml_c);
+
   // Prepare GPU output
   OrtValue ml_y;
   AllocateMLValue<float>(gpu_alloc, dims_y, &ml_y);
@@ -485,6 +507,7 @@ TEST(InferenceSessionTests, TestReleaseCapturedGraph) {
   ASSERT_STATUS_OK(session_object.NewIOBinding(&io_binding));
   ASSERT_STATUS_OK(io_binding->BindInput("A", ml_a));
   ASSERT_STATUS_OK(io_binding->BindInput("B", ml_b));
+  ASSERT_STATUS_OK(io_binding->BindInput("C", ml_c));
   ASSERT_STATUS_OK(io_binding->BindOutput("Y", ml_y));
   ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
 
