@@ -15,7 +15,7 @@ import onnx
 
 from onnxruntime.quantization import CalibrationDataReader, QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.execution_providers.qnn import get_qnn_qdq_config
-from onnxruntime.quantization.quant_utils import compute_scale_zp, get_qmin_qmax_for_qType, ms_domain
+from onnxruntime.quantization.quant_utils import compute_scale_zp, get_opset_version, get_qmin_qmax_for_qType
 
 
 class DummyDataReader(CalibrationDataReader):
@@ -436,11 +436,13 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                     self.assertEqual(zp, expected_zp)
                     self.assertEqual(scale, np.float32(expected_scale))
 
-    def test_16bit_overrides_set_ms_domain(self):
+    def test_16bit_overrides_bump_opset_to_21(self):
         """
-        Test that overriding a tensor to 16bit (when default is 8bit) automatically
-        sets the 'com.microsoft' domain on DQ and Q ops for opset < 21.
-        Before ONNX 1.16.0, we had to use the 'com.microsoft' domain to be able to use 16-bit quantization.
+        Test that overriding a tensor to 16-bit (when default is 8-bit) automatically bumps the model
+        opset to 21 and emits native ai.onnx Q/DQ ops (not 'com.microsoft' domain ops).
+
+        Previously (before the opset-bump heuristic), a sub-opset-21 model with INT16 overrides would
+        use the 'com.microsoft' domain.  Now the model is auto-upgraded so the standard domain is used.
         """
         qdq_model_name = "model_quant_overrides_to_16bit.onnx"
         inp_zp, _, sig_out_zp, _, _, _, _, _, out_zp, _ = self.perform_qdq_quantization(
@@ -459,14 +461,22 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         self.assertEqual(inp_zp.data_type, onnx.TensorProto.UINT16)
         self.assertEqual(sig_out_zp.data_type, onnx.TensorProto.UINT16)
 
-        # Output should the default uint8 type
+        # Output should be the default uint8 type
         self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
 
-        # Q/DQ ops should all have the 'com.microsoft' domain
+        # The model opset should have been auto-bumped to >= 21
         qdq_model = onnx.load_model(qdq_model_name)
+        ai_onnx_opset = get_opset_version(qdq_model)
+        self.assertGreaterEqual(ai_onnx_opset, 21)
+
+        # Q/DQ ops should be in the default domain (NOT 'com.microsoft')
         for node in qdq_model.graph.node:
             if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
-                self.assertEqual(node.domain, ms_domain)
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
 
     def test_16bit_overrides_not_set_ms_domain(self):
         """
@@ -494,11 +504,57 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         # Output should the default uint8 type
         self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
 
-        # Q/DQ ops should all have the 'com.microsoft' domain
+        # Q/DQ ops should be in the default domain (NOT 'com.microsoft')
         qdq_model = onnx.load_model(qdq_model_name)
         for node in qdq_model.graph.node:
             if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
-                self.assertNotEqual(node.domain, ms_domain)
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
+
+    def test_16bit_convert_quant_type_bumps_opset_to_21(self):
+        """
+        Regression test: a 16-bit type specified via the 'convert.quant_type' field inside
+        TensorQuantOverrides should also trigger the opset-21 auto-bump, even when the top-level
+        quant_type for that tensor is 8-bit.
+
+        Verifies that the resulting model has ai.onnx opset >= 21 and that QuantizeLinear /
+        DequantizeLinear nodes are in the default domain (not 'com.microsoft').
+        """
+        qdq_model_name = "model_quant_overrides_convert_16bit.onnx"
+        inp_zp, _, sig_out_zp, _, _, _, _, _, out_zp, _ = self.perform_qdq_quantization(
+            qdq_model_name,
+            activation_type=onnx.TensorProto.UINT8,  # Default to 8bit activations
+            extra_options={
+                "TensorQuantOverrides": {
+                    # quant_type is 8-bit; the 16-bit is only in the convert sub-dict
+                    "INP": [{"quant_type": QuantType.QUInt8, "convert": {"quant_type": QuantType.QInt16}}],
+                }
+            },
+            opset=20,
+        )
+
+        # INP primary quant type stays uint8
+        self.assertEqual(inp_zp.data_type, onnx.TensorProto.UINT8)
+
+        # Output should be the default uint8 type
+        self.assertEqual(out_zp.data_type, onnx.TensorProto.UINT8)
+
+        # The model opset should have been auto-bumped to >= 21 due to convert.quant_type = QInt16
+        qdq_model = onnx.load_model(qdq_model_name)
+        ai_onnx_opset = get_opset_version(qdq_model)
+        self.assertGreaterEqual(ai_onnx_opset, 21)
+
+        # Q/DQ ops should be in the default domain (NOT 'com.microsoft')
+        for node in qdq_model.graph.node:
+            if node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+                self.assertEqual(
+                    node.domain,
+                    "",
+                    f"Expected native ONNX domain for {node.op_type} but got '{node.domain}'",
+                )
 
     def test_override_validation_nonexisting_tensor(self):
         """

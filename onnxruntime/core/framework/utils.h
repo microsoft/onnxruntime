@@ -218,6 +218,11 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
 }
 
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E8M0>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0;
+}
+
 #endif
 
 template <>
