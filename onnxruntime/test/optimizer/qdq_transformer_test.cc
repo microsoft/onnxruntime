@@ -3934,6 +3934,93 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
 #endif
 }
 
+// Regression test for GitHub issue #28491.
+// When a DQ node's data input is a constant (graph initializer or Constant op output),
+// PropagateDQForward must not insert a Q -> DQ pair downstream of a reshape-like node.
+// Doing so can cause subsequent S8-to-U8 weight transformers to flip the DQ dtype while
+// leaving the inserted Q node in its original dtype, clamping int8 negatives to zero.
+TEST(QDQTransformerTests, QDQPropagation_DQForward_ConstantInput_NoPropagation) {
+  // Case 1: DQ data input is a graph initializer.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      // int8 constant weight as a graph initializer
+      auto* weight = builder.MakeInitializer<int8_t>({4}, {-10, 0, 10, 20});
+      auto* output_arg = builder.MakeOutput();
+
+      // DQ node that dequantizes the constant weight
+      constexpr float qdq_scale = 0.1f;
+      constexpr int8_t qdq_zero_point = 0;
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(weight, qdq_scale, qdq_zero_point, dq_output);
+
+      // Reshape downstream of DQ
+      auto* reshape_shape = builder.Make1DInitializer<int64_t>({2, 2});
+      builder.AddNode("Reshape", {dq_output, reshape_shape}, {output_arg});
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const auto op_types = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
+      // No Q or DQ should have been inserted after Reshape.
+      // Expected order: DequantizeLinear -> Reshape  (no trailing Q/DQ).
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+      const std::vector<std::string> expected{qdq_keys.dequantize_linear, "Reshape"};
+      EXPECT_EQ(op_types, expected);
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      12);
+  }
+
+  // Case 2: DQ data input is the output of a Constant op node.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* output_arg = builder.MakeOutput();
+
+      // Create a Constant op node that produces an int8 tensor.
+      ONNX_NAMESPACE::TensorProto constant_tensor;
+      constant_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+      constant_tensor.add_dims(4);
+      const std::vector<int8_t> raw_vals = {-10, 0, 10, 20};
+      constant_tensor.set_raw_data(raw_vals.data(), raw_vals.size() * sizeof(int8_t));
+
+      auto* constant_output = builder.MakeIntermediate();
+      constant_tensor.set_name(constant_output->Name());
+      builder.AddNode("Constant", {}, {constant_output}).AddAttribute("value", constant_tensor);
+
+      // DQ node that dequantizes the Constant op output
+      constexpr float qdq_scale = 0.1f;
+      constexpr int8_t qdq_zero_point = 0;
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(constant_output, qdq_scale, qdq_zero_point, dq_output);
+
+      // Reshape downstream of DQ
+      auto* reshape_shape = builder.Make1DInitializer<int64_t>({2, 2});
+      builder.AddNode("Reshape", {dq_output, reshape_shape}, {output_arg});
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const auto op_types = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
+      // No Q or DQ should have been inserted after Reshape.
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
+      // Constant op may be folded; Q must not appear ANYWHERE in the graph
+      // (the bug would insert it after Reshape, not necessarily at the tail).
+      const bool has_any_q =
+          std::find(op_types.begin(), op_types.end(), qdq_keys.quantize_linear) != op_types.end();
+      EXPECT_FALSE(has_any_q) << "QDQPropagation must not insert QuantizeLinear anywhere "
+                                 "when DQ input is a constant op output.";
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      12);
+  }
+}
+
 TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, bool same_scale, bool same_zp,
                        bool use_contrib_qdq) {
