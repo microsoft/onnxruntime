@@ -539,6 +539,18 @@ DeviceInfo GetDeviceInfoCPUID() {
 
   return cpu_info;
 }
+
+// Returns true if the Win32k system calls are disabled (e.g., in a sandboxed process), in which case calling
+// SetupDiGetClassDevs will throw an SEH exception.
+bool DisallowWin32kSystemCalls() {
+  PROCESS_MITIGATION_SYSTEM_CALL_DISABLE_POLICY policy = {};
+  if (GetProcessMitigationPolicy(GetCurrentProcess(), ProcessSystemCallDisablePolicy,
+                                 &policy, sizeof(policy))) {
+    return policy.DisallowWin32kSystemCalls != 0;
+  }
+  return false;
+}
+
 }  // namespace
 
 // Get devices from various sources and combine them into a single set of devices.
@@ -557,7 +569,12 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
 
   // setupapi_info. key is vendor_id+device_id
   bool have_remote_display_adapter = false;  // set if we see the RdpIdd_IndirectDisplay hardware ID.
-  std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus, have_remote_display_adapter);
+  std::unordered_map<uint64_t, DeviceInfo> setupapi_info;
+  if (!DisallowWin32kSystemCalls()) {
+    setupapi_info = GetDeviceInfoSetupApi(npus, have_remote_display_adapter);
+  } else {
+    LOGS_DEFAULT(INFO) << "Skip SetupDi device discovery due to Win32k lockdown.";
+  }
 
   // d3d12 info. key is luid
   std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info = GetDeviceInfoD3D12(have_remote_display_adapter);
