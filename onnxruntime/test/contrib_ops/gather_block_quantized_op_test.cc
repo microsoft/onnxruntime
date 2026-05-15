@@ -47,6 +47,24 @@ void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t
       }
     }
     data_shape.back() = output_columns;
+  } else if (bits == 2) {
+    // For uint8_t with bits=2, pack 4 elements (2 bits each, after adding 2) into a single uint8_t.
+    // Element index 0 occupies the lowest 2 bits; index 3 occupies the highest 2 bits.
+    int64_t output_columns = (input_columns + 3) / 4;
+    packed_data.reserve(total_rows * output_columns);
+    for (int64_t row = 0; row < total_rows; ++row) {
+      for (int64_t col = 0; col < input_columns; col += 4) {
+        int packed = 0;
+        for (int k = 0; k < 4; ++k) {
+          if ((col + k) < input_columns) {
+            int v = (data[row * input_columns + col + k] + 2) & 0x3;
+            packed |= (v << (2 * k));
+          }
+        }
+        packed_data.push_back(packed);
+      }
+    }
+    data_shape.back() = output_columns;
   } else {
     for (auto v : data) {
       packed_data.push_back(v + 128);
@@ -570,6 +588,36 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_4Bits) {
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_2Bits_Uint8) {
+  // 2-bit signed values in {-2, -1, 0, 1}. The test infra adds an offset of 2 when packing
+  // and the kernel uses default zero_point = 2^(bits-1) = 2, so the dequantized value matches.
+  // Block size 16 covers the entire last dim with one scale per row.
+  std::vector<int> data = {-2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1,
+                           1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2,
+                           0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1,
+                           -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0,
+                           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                           -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2};
+  std::vector<int64_t> data_shape = {2, 3, 16};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+
+  // indices = [1] -> pick outer index 1, so we expect rows 3, 4, 5 of the unpacked data above
+  // (the second {-1,-2,1,0,...}, {1,1,...}, {-2,-2,...} block), each scaled by
+  // scales[3], scales[4], scales[5] = 2.0, 1.0, 2.0.
+  std::vector<float> output = {-2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f,
+                               1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+                               -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  std::vector<int> zero_points = {};
+  RunUnpackedData<uint8_t, float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                           zero_points, /*gather_axis=*/0, /*quantize_axis=*/2,
+                                           /*block_size=*/16, /*bits=*/2, output, output_shape, true);
 }
 #endif
 
