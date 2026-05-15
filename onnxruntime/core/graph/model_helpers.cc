@@ -7,6 +7,8 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/graph/function_utils.h"
@@ -16,45 +18,47 @@ namespace onnxruntime {
 
 namespace {
 
+// Iterative collection of local function calls from a sequence of nodes,
+// including nodes inside nested subgraph attributes. Avoids recursion to
+// prevent stack overflow from maliciously deep subgraph nesting.
+template <typename NodeRange>
 void CollectLocalFunctionCalls(
-    const ONNX_NAMESPACE::NodeProto& node,
-    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    InlinedHashSet<std::string_view>& seen_calls,
-    InlinedVector<std::string_view>& called_functions);
-
-void CollectLocalFunctionCalls(
-    const ONNX_NAMESPACE::GraphProto& graph,
-    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    InlinedHashSet<std::string_view>& seen_calls,
-    InlinedVector<std::string_view>& called_functions) {
-  for (const auto& node : graph.node()) {
-    CollectLocalFunctionCalls(node, model_local_functions, seen_calls, called_functions);
-  }
-}
-
-void CollectLocalFunctionCalls(
-    const ONNX_NAMESPACE::NodeProto& node,
+    const NodeRange& nodes,
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
     InlinedHashSet<std::string_view>& seen_calls,
     InlinedVector<std::string_view>& called_functions) {
-  const auto function_id = function_utils::GetFunctionIdentifier(node.domain(), node.op_type(), node.overload());
-  auto it = model_local_functions.find(function_id);
-  if (it != model_local_functions.end()) {
-    // Use string_view into the map key (stable storage).
-    std::string_view key_view = it->first;
-    if (seen_calls.insert(key_view).second) {
-      called_functions.push_back(key_view);
-    }
-  }
+  InlinedVector<const ONNX_NAMESPACE::GraphProto*> pending_graphs;
 
-  for (const auto& attr : node.attribute()) {
-    if (attr.has_g()) {
-      CollectLocalFunctionCalls(attr.g(), model_local_functions, seen_calls, called_functions);
-    }
+  auto process_nodes = [&](const auto& node_range) {
+    for (const auto& node : node_range) {
+      const auto function_id = function_utils::GetFunctionIdentifier(
+          node.domain(), node.op_type(), node.overload());
+      auto it = model_local_functions.find(function_id);
+      if (it != model_local_functions.end()) {
+        // Use string_view into the map key (stable storage).
+        std::string_view key_view = it->first;
+        if (seen_calls.insert(key_view).second) {
+          called_functions.push_back(key_view);
+        }
+      }
 
-    for (const auto& graph : attr.graphs()) {
-      CollectLocalFunctionCalls(graph, model_local_functions, seen_calls, called_functions);
+      for (const auto& attr : node.attribute()) {
+        if (attr.has_g()) {
+          pending_graphs.push_back(&attr.g());
+        }
+        for (const auto& sub_graph : attr.graphs()) {
+          pending_graphs.push_back(&sub_graph);
+        }
+      }
     }
+  };
+
+  process_nodes(nodes);
+
+  while (!pending_graphs.empty()) {
+    const auto* graph = pending_graphs.back();
+    pending_graphs.pop_back();
+    process_nodes(graph->node());
   }
 }
 
@@ -73,9 +77,7 @@ Status BuildLocalFunctionCallGraph(
 
     InlinedHashSet<std::string_view> seen_calls;
     InlinedVector<std::string_view> callees;
-    for (const auto& node : function_proto->node()) {
-      CollectLocalFunctionCalls(node, model_local_functions, seen_calls, callees);
-    }
+    CollectLocalFunctionCalls(function_proto->node(), model_local_functions, seen_calls, callees);
 
     call_graph.emplace(std::string_view(function_id), std::move(callees));
   }
@@ -106,11 +108,12 @@ Status ValidateCallGraphAcyclic(const LocalFunctionCallGraph& call_graph) {
   std::vector<DfsFrame> dfs_stack;
 
   for (const auto& [root_id, root_callees] : call_graph) {
-    if (visit_states[root_id] == VisitState::kVisited) {
+    auto root_state_it = visit_states.find(root_id);
+    if (root_state_it == visit_states.end() || root_state_it->second == VisitState::kVisited) {
       continue;
     }
 
-    visit_states[root_id] = VisitState::kVisiting;
+    root_state_it->second = VisitState::kVisiting;
     dfs_stack.push_back({root_id, &root_callees, 0});
 
     while (!dfs_stack.empty()) {
