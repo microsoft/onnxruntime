@@ -21,6 +21,9 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads) {
 }
 
 // Test that a rank-0 W input is gracefully rejected rather than causing undefined behavior.
+// These tests exercise shape inference which uses fail_shape_inference (throws InferenceError).
+// In no-exception builds, fail_shape_inference calls abort(), so these tests must be skipped.
+#ifndef ORT_NO_EXCEPTIONS
 TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank0) {
   OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
   test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
@@ -31,9 +34,8 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank0) {
   test.AddInput<float>("W", {}, std::vector<float>{1.0f});  // scalar (rank 0)
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
   test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
-  // Skip ONNX shape inference to avoid potential crashes on invalid-rank inputs.
-  test.AddShapeToTensorData(false);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Weight tensor must have at least 2 dimensions",
+           {kTensorrtExecutionProvider});
 }
 
 // Test that a rank-1 W input is gracefully rejected.
@@ -47,9 +49,10 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank1) {
   test.AddInput<float>("W", {9}, std::vector<float>(9, 1.0f));  // rank 1
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
   test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
-  test.AddShapeToTensorData(false);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Weight tensor must have at least 2 dimensions",
+           {kTensorrtExecutionProvider});
 }
+#endif  // !ORT_NO_EXCEPTIONS
 
 }  // namespace test
 }  // namespace onnxruntime
