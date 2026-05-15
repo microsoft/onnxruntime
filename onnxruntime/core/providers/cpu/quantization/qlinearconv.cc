@@ -59,7 +59,6 @@ class QLinearConv : public OpKernel {
   }
 
   static void ComputeOffset(OpKernelContext* context,
-                            int64_t M,
                             ActType& X_zero_point_value,
                             ActType& Y_zero_point_value) {
     const Tensor* X_zero_point = context->Input<Tensor>(InputTensors::IN_X_ZERO_POINT);
@@ -71,7 +70,6 @@ class QLinearConv : public OpKernel {
 
     X_zero_point_value = *(X_zero_point->Data<ActType>());
     Y_zero_point_value = *(Y_zero_point->Data<ActType>());
-    ORT_UNUSED_PARAMETER(M);
   }
 
   static std::vector<float> ComputeOutputScale(OpKernelContext* context,
@@ -519,13 +517,14 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   ActType X_zero_point_value;
   ActType Y_zero_point_value;
-  ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value);
+  ComputeOffset(context, X_zero_point_value, Y_zero_point_value);
   std::vector<float> output_scales = ComputeOutputScale(context, M);
 
   // Read weight zero points (may be scalar or per-channel).
   const Tensor* W_zero_point = context->Input<Tensor>(InputTensors::IN_W_ZERO_POINT);
   ORT_ENFORCE(IsValidQuantParam(W_zero_point, M), "QLinearConv : filter zero point shape invalid");
   const int64_t W_zero_point_size = W_zero_point->Shape().Size();
+  // MLAS ZeroPointB is typed as uint8_t*; it reinterprets the bits based on BIsSigned.
   const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
   // Per-channel zero points are uniform when size == 1 or all values match.
   const bool W_zero_point_is_uniform =

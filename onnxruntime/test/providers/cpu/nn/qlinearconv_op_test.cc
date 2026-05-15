@@ -1547,6 +1547,33 @@ TEST(QLinearConvTest, Conv2D_U8U8_PerChannelZeroPoints) {
   }
 }
 
+// Tests per-channel weight zero points for uint8 activations with int8 weights (mixed signedness).
+TEST(QLinearConvTest, Conv2D_U8S8_PerChannelZeroPoints) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  for (int64_t channels : std::initializer_list<int64_t>{2, 4, 8, 16, 32}) {
+    QLinearConvOpTester<uint8_t, int8_t> test;
+    test.GenerateRandomInput({1, 3, 9, 9}, .05f, 128);
+    test.GenerateRandomWeights({channels, 3, 3, 3}, .10f, 0);
+    std::vector<float> weight_scales;
+    std::vector<int8_t> weight_zero_points;
+    for (int64_t i = 0; i < channels; i++) {
+      weight_scales.push_back(.10f + static_cast<float>(i) * .002f);
+      // Use different zero points per channel to exercise mixed-signedness per-channel path.
+      weight_zero_points.push_back(static_cast<int8_t>(-8 + i * 3));
+    }
+    test.SetWeightScales(weight_scales);
+    test.SetWeightZeroPoints(weight_zero_points);
+    test.GenerateRandomBias();
+    test.SetPads({1, 1, 1, 1});
+    test.SetOutputScaleAndZeroPoint(.55f, 128);
+    test.Run();
+  }
+}
+
 // Tests per-channel weight zero points with different values for int8 activations.
 TEST(QLinearConvTest, Conv2D_S8S8_PerChannelZeroPoints) {
   // TODO: Unskip when fixed #41968513
