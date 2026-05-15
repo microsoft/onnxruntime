@@ -14,6 +14,7 @@
 #include "core/framework/customregistry.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/model.h"
+#include "core/graph/model_helpers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 
@@ -422,6 +423,275 @@ TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
                     else_out = Identity (temp)
                 }
                 >
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+// --- Synthetic adjacency-list tests for ValidateCallGraphAcyclic ---
+// These test the cycle detection algorithm directly without constructing ONNX models.
+
+TEST(FunctionTest, CallGraphAcyclic_EmptyGraph) {
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SingleNodeNoCalls) {
+  // Single function with no callees.
+  std::string a = "A";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SelfCycle) {
+  std::string a = "A";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("A -> A"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_MutualCycle) {
+  std::string a = "A", b = "B";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_LongerCycle) {
+  // A -> B -> C -> A
+  std::string a = "A", b = "B", c = "C";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {c};
+  call_graph[c] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  // The cycle path should include all three participants.
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("A"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("B"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("C"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_DiamondNoCycle) {
+  // A -> B, A -> C, B -> D, C -> D  (no cycle)
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b, c};
+  call_graph[b] = {d};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_DeepChainNoCycle) {
+  // A -> B -> C -> D  (no cycle)
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {c};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_MultipleIndependentCycles) {
+  // Two independent cycles: A -> B -> A, C -> D -> C
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {a};
+  call_graph[c] = {d};
+  call_graph[d] = {c};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SharedCallsDiamondNoCycle) {
+  // Regression test: acyclic model with shared function calls (diamond pattern).
+  // E -> A, E -> B, A -> C, B -> C, C -> D  (no cycle despite shared references to C)
+  std::string a = "A", b = "B", c = "C", d = "D", e = "E";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[e] = {a, b};
+  call_graph[a] = {c};
+  call_graph[b] = {c};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+// --- Model-level integration tests ---
+
+TEST(FunctionTest, RejectsLongerCycle) {
+  // A -> B -> C -> A (three-function cycle)
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.func_a (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            ly = local.func_b (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_c (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_a (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, AcceptsAcyclicDiamond) {
+  // A -> B, A -> C, B -> D, C -> D (diamond, no cycle)
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.func_a (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            t1 = local.func_b (lx)
+            ly = local.func_c (t1)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        func_d (lx) => (ly) {
+            ly = Identity (lx)
+        }
+        )";
+
+  ASSERT_STATUS_OK(LoadModel(code));
+}
+
+TEST(FunctionTest, AcceptsEmptyFunctionBody) {
+  // A function with zero nodes (output = input via implicit identity).
+  // The ONNX spec allows functions with no nodes if inputs map directly to outputs.
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.empty_func (x)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        empty_func (lx) => (ly) {
+            ly = Identity (lx)
+        }
+        )";
+
+  ASSERT_STATUS_OK(LoadModel(code));
+}
+
+TEST(FunctionTest, RejectsMultipleIndependentCycles) {
+  // Two independent cycles in the same model: A -> B -> A, C -> D -> C
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            t = local.func_a (x)
+            y = local.func_c (t)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            ly = local.func_b (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_a (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_d (lx) => (ly) {
+            ly = local.func_c (lx)
         }
         )";
 
