@@ -392,6 +392,58 @@ def compute_scale_zp_float8(element_type, std):
     return [zero, scale]
 
 
+def compute_scale_zp_blocked(
+    weight: numpy.ndarray,
+    quant_type: int,
+    axis: int,
+    block_size: int,
+    symmetric: bool,
+) -> tuple[numpy.ndarray, numpy.ndarray]:
+    """Compute per-block scale and zero-point for a weight tensor.
+
+    The weight is sliced along *axis* into blocks of *block_size* elements.
+    Returns 2-D arrays with shape ``[n_blocks, <product of other dims>]``.
+
+    :param weight: Float32/float16 weight array.
+    :param quant_type: ONNX tensor data type for quantization.
+    :param axis: Axis along which to apply block-wise quantization.
+    :param block_size: Number of elements per block along *axis*.
+    :param symmetric: Whether to use symmetric quantization per block.
+    :return: Tuple of (zero_point, scale) each with shape [n_blocks, other_dim].
+    """
+    k = weight.shape[axis]
+    n_blocks = (k + block_size - 1) // block_size
+
+    # Flatten all non-axis dims into a single "other" dimension.
+    other = int(numpy.prod([d for i, d in enumerate(weight.shape) if i != axis]))
+    # Move the quantized axis to position 0 for easy slicing.
+    moved = numpy.moveaxis(weight, axis, 0)  # shape: [k, other]
+    moved = moved.reshape(k, other)
+
+    qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=False, symmetric=symmetric)
+    zp_dtype = ONNX_INT_TYPE_RANGE[quant_type][0].dtype
+
+    scales = numpy.empty((n_blocks, other), dtype=weight.dtype)
+    zero_points = numpy.empty((n_blocks, other), dtype=zp_dtype)
+
+    for blk in range(n_blocks):
+        start = blk * block_size
+        end = min(start + block_size, k)
+        chunk = moved[start:end, :]  # shape: [block_size_actual, other]
+        for col in range(other):
+            zp, sc = compute_scale_zp(
+                numpy.min(chunk[:, col]),
+                numpy.max(chunk[:, col]),
+                qmin,
+                qmax,
+                symmetric,
+            )
+            scales[blk, col] = sc
+            zero_points[blk, col] = zp
+
+    return zero_points, scales
+
+
 def compute_data_quant_params(
     data: numpy.ndarray,
     quant_type: onnx.TensorProto.DataType,
@@ -522,6 +574,7 @@ def quantize_onnx_initializer(
     scale: numpy.ndarray,
     axis: int | None = None,
     quant_weight_name: str | None = None,
+    block_size: int = 0,
 ) -> onnx.TensorProto:
     """
     Returns a quantized version of the given ONNX initializer.
@@ -530,15 +583,32 @@ def quantize_onnx_initializer(
     :param quant_type: The final quantized data type.
     :param zero_point: The zero-point value to use for quantization.
     :param scale: The scale value to use for quantization.
-    :param axis: The quantization axis if quantizing per-channel. Defaults to None.
+    :param axis: The quantization axis if quantizing per-channel or per-block. Defaults to None.
     :param quant_weight_name: The name of the quantized initializer.
                               If not specified, the quantized name is generated.
+    :param block_size: Block size for opset-21 block-wise quantization. 0 means disabled.
     :return: The quantized ONNX initializer.
     """
     weight_data = tensor_proto_to_array(weight)
     q_weight_data: numpy.ndarray | None = None
 
-    if axis is None:  # Per-tensor quantization
+    if axis is not None and block_size > 0:  # Per-block quantization
+        k = weight_data.shape[axis]
+        other = int(numpy.prod([d for i, d in enumerate(weight_data.shape) if i != axis]))
+        moved = numpy.moveaxis(weight_data, axis, 0).reshape(k, other)
+        quant_np_dtype = onnx.helper.tensor_dtype_to_np_dtype(quant_type)
+        q_moved = numpy.empty_like(moved, dtype=quant_np_dtype)
+        for blk in range(scale.shape[0]):
+            start = blk * block_size
+            end = min(start + block_size, k)
+            for col in range(other):
+                q_moved[start:end, col] = quantize_nparray(
+                    quant_type, moved[start:end, col].ravel(), scale[blk, col], zero_point[blk, col]
+                )
+        q_weight_data = numpy.moveaxis(
+            q_moved.reshape([k] + [d for i, d in enumerate(weight_data.shape) if i != axis]), 0, axis
+        )
+    elif axis is None:  # Per-tensor quantization
         q_weight_data = quantize_nparray(quant_type, weight_data.ravel(), scale, zero_point)
     else:  # Per-channel quantization
         channel_count = weight_data.shape[axis]
@@ -1022,6 +1092,7 @@ def update_opset_version(
     weight_type: QuantType,
     activation_type: QuantType | None = None,
     tensor_quant_overrides: dict | None = None,
+    block_size: int = 0,
 ) -> ModelProto:
     opset_version = get_opset_version(model)
     target_opset_version = opset_version
@@ -1057,7 +1128,16 @@ def update_opset_version(
             # TensorQuantOverridesHelper.is_valid(). Skip bump heuristic.
             logging.debug("Skipping 16-bit opset bump heuristic for TensorQuantOverrides: structure not as expected.")
 
-    if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+    if opset_version < 21 and block_size > 0:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support block-wise "
+            "quantization natively. "
+            "Please update the model to opset >= 21. Automatically updating the model to opset 21. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 21
+
+    elif opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
         logging.warning(
             f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
             "Please update the model to opset >= 19. Automatically update the model to opset 19. "

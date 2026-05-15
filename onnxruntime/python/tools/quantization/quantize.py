@@ -744,6 +744,7 @@ def quantize_static(
         weight_type,
         activation_type,
         tensor_quant_overrides=(extra_options or {}).get("TensorQuantOverrides"),
+        block_size=(extra_options or {}).get("BlockSize", 0),
     )
     is_model_updated = updated_model is not model
     if is_model_updated:
