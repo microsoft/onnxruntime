@@ -1065,6 +1065,72 @@ TEST_F(PathValidationTest, SparseTensorExternalDataAbsolutePathBlocked_Indices) 
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
 #endif
 }
+
+// Regression test: validation must still reject escaping paths for zero-element dense tensors,
+// which previously returned early before path validation ran.
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroDenseElements) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(0);  // dense shape [0] → dense_elements == 0
+
+  auto* values = sparse.mutable_values();
+  values->set_name("zero_dense_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(0);  // NNZ=0
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value("../secret.bin");  // path traversal
+
+  auto* len_entry = values->add_external_data();
+  len_entry->set_key("length");
+  len_entry->set_value("0");
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "Should reject path-traversal in values even when dense_elements == 0.";
+  EXPECT_THAT(status.ErrorMessage(),
+              ::testing::AnyOf(::testing::HasSubstr("escapes"),
+                               ::testing::HasSubstr("External data path")));
+}
+
+// Regression test: validation must reject escaping paths in indices even when NNZ == 0.
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroNNZ) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);  // dense shape [4] → non-zero dense_elements
+
+  auto* values = sparse.mutable_values();
+  values->set_name("zero_nnz_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(0);  // NNZ=0
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(0);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* idx_loc = indices->add_external_data();
+  idx_loc->set_key("location");
+  idx_loc->set_value("../indices_secret.bin");  // path traversal
+
+  auto* idx_len = indices->add_external_data();
+  idx_len->set_key("length");
+  idx_len->set_value("0");
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "Should reject path-traversal in indices even when NNZ == 0.";
+  EXPECT_THAT(status.ErrorMessage(),
+              ::testing::AnyOf(::testing::HasSubstr("escapes"),
+                               ::testing::HasSubstr("External data path")));
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
