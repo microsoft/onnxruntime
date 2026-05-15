@@ -11,6 +11,7 @@
 #include "core/providers/common.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
+#include <numbers>
 using onnxruntime::narrow;
 namespace onnxruntime {
 namespace contrib {
@@ -114,7 +115,7 @@ void BiasGelu<T, use_approximation>::AddBiasGelu(
   } else {  // BiasGelu
     for (int64_t i = 0; i < count; i++) {
       T value = input[i] + bias[i];
-      output[i] = value * static_cast<T>(M_SQRT1_2);
+      output[i] = value * (T{1} / std::numbers::sqrt2_v<T>);
       temp[i] = value * 0.5f;
     }
 

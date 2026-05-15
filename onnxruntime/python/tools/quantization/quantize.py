@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import tempfile
 from collections.abc import Callable
@@ -14,7 +15,14 @@ from typing import Any
 
 import onnx
 
-from .calibrate import CalibrationDataReader, CalibrationMethod, TensorsData, create_calibrator
+from .calibrate import (
+    CalibrationDataReader,
+    CalibrationMethod,
+    TensorsData,
+    create_calibrator,
+    load_tensors_data,
+    save_tensors_data,
+)
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import (
@@ -22,6 +30,7 @@ from .quant_utils import (
     QuantFormat,
     QuantizationMode,
     QuantType,
+    get_opset_version,
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
     save_and_reload_model_with_shape_infer,
@@ -120,6 +129,9 @@ class StaticQuantConfig(QuantConfig):
                 key value pair dictionary for various options in different case. Current used:
                     extra.Sigmoid.nnapi = True/False  (Default is False)
                     ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                    ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                        (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                        recompute scale accordingly (default is False).
                     WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                     EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                                   Dyanmic mode currently is supported. Will support more in future.
@@ -369,14 +381,24 @@ def get_qdq_config(
         }
         final_extra_options.update(calib_extra_options)
 
-    # ONNX opset < 21 does not support 16-bit quantization, so must use 'com.microsoft' domain
-    # on Q/DQ operators if using 16-bit or 4-bit quantization.
-    onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
-    if onnx_opset.version < 21:
-        opset21_types = q16_types.union(q4_types)
-        overrides_have_opset21_types = any(t in opset21_types for t in overrides_helper.get_quant_types())
-        if activation_type in opset21_types or weight_type in opset21_types or overrides_have_opset21_types:
-            final_extra_options["UseQDQContribOps"] = True
+    # ONNX opset < 21 does not support 4-bit quantization natively, so must use 'com.microsoft' domain
+    # on Q/DQ operators if using 4-bit quantization.  16-bit weight/activation types are excluded here
+    # because quantize_static() will automatically bump the model opset to 21, where native ONNX
+    # QuantizeLinear/DequantizeLinear supports INT16/UINT16 and INT4/UINT4 without contrib-domain ops.
+    # 16-bit types in TensorQuantOverrides also trigger the same opset bump, so a mixed 16-bit + 4-bit
+    # override config will be served at opset 21 where neither type needs contrib ops.
+    onnx_opset_version = get_opset_version(model)
+    if onnx_opset_version < 21:
+        override_types = overrides_helper.get_quant_types()
+        overrides_have_16bit = any(t in q16_types for t in override_types)
+        # If any 16-bit type is present (top-level or override), quantize_static() will bump the
+        # model to opset 21, making contrib ops unnecessary for all types.
+        will_bump_to_opset21 = activation_type in q16_types or weight_type in q16_types or overrides_have_16bit
+        if not will_bump_to_opset21:
+            overrides_have_q4_types = any(t in q4_types for t in override_types)
+            needs_contrib_ops = activation_type in q4_types or weight_type in q4_types or overrides_have_q4_types
+            if needs_contrib_ops:
+                final_extra_options["UseQDQContribOps"] = True
 
     # Allow user's extra_options to override our final_extra_options.
     if extra_options:
@@ -419,6 +441,9 @@ class DynamicQuantConfig(QuantConfig):
             extra_options: key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
                 ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                    (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                    recompute scale accordingly (default is False).
                 WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                 EnableSubgraph = True/False :
                     Default is False. If enabled, subgraph will be quantized. Dynamic mode currently is supported. Will
@@ -479,7 +504,7 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
 def quantize_static(
     model_input: str | Path | onnx.ModelProto,
     model_output: str | Path,
-    calibration_data_reader: CalibrationDataReader,
+    calibration_data_reader: CalibrationDataReader | None = None,
     quant_format=QuantFormat.QDQ,
     op_types_to_quantize=None,
     per_channel=False,
@@ -492,6 +517,7 @@ def quantize_static(
     calibrate_method=CalibrationMethod.MinMax,
     calibration_providers=None,
     extra_options=None,
+    calibration_cache_path: str | Path | None = None,
 ):
     """
     Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
@@ -506,7 +532,13 @@ def quantize_static(
         model_output: file path of quantized model
         calibration_data_reader: a calibration data reader. It
             enumerates calibration data and generates inputs for the
-            original model.
+            original model. May be None if calibration_cache_path points to an
+            existing cache file.
+        calibration_cache_path: optional path to a JSON calibration cache. If
+            the file already exists, calibration inference is skipped and the
+            cached tensor ranges are loaded instead. If the file does not yet
+            exist, calibration runs normally and the result is saved to this
+            path for future reuse.
         quant_format: QuantFormat{QOperator, QDQ}.
             QOperator format quantizes the model with quantized operators directly.
             QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
@@ -544,6 +576,9 @@ def quantize_static(
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
                 ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                    (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                    recompute scale accordingly (default is False).
                 WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                 EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                               Dyanmic mode currently is supported. Will support more in the future.
@@ -673,6 +708,11 @@ def quantize_static(
     }
 
     if extra_options.get("SmoothQuant", False):
+        if calibration_data_reader is None:
+            raise ValueError(
+                "SmoothQuant requires a non-None calibration_data_reader; the calibration cache "
+                "stores per-tensor ranges only and cannot drive the SmoothQuant transform."
+            )
         import importlib  # noqa: PLC0415
 
         try:
@@ -699,53 +739,93 @@ def quantize_static(
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
-    updated_model = update_opset_version(model, weight_type)
+    updated_model = update_opset_version(
+        model,
+        weight_type,
+        activation_type,
+        tensor_quant_overrides=(extra_options or {}).get("TensorQuantOverrides"),
+    )
     is_model_updated = updated_model is not model
     if is_model_updated:
         model = updated_model
 
-    with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
-        if is_model_updated:
-            # Update model_input and avoid to use the original one
-            model_input = copy.deepcopy(model)
+    _cache_path = Path(calibration_cache_path) if calibration_cache_path is not None else None
+    if _cache_path is not None and _cache_path.exists() and not _cache_path.is_file():
+        raise ValueError(f"calibration_cache_path is not a file: {_cache_path}")
+    _cache_hit = _cache_path is not None and _cache_path.is_file()
+    _smooth_quant = bool(extra_options.get("SmoothQuant", False))
 
-        if isinstance(model_input, onnx.ModelProto):
-            output_path = Path(quant_tmp_dir).joinpath("model_input.onnx").as_posix()
-            onnx.save_model(
-                model_input,
-                output_path,
-                save_as_external_data=True,
+    if _cache_hit:
+        with _cache_path.open("r") as _f:
+            _raw = json.load(_f)
+        _cached_sq = bool(_raw.get("smooth_quant", False))
+        if _cached_sq != _smooth_quant:
+            logging.warning(
+                "Calibration cache at %s was produced with smooth_quant=%s; "
+                "current run uses smooth_quant=%s. Recomputing ranges and overwriting cache.",
+                _cache_path,
+                _cached_sq,
+                _smooth_quant,
             )
-            model_input = output_path
-
-        calibrator = create_calibrator(
-            Path(model_input),
-            op_types_to_quantize,
-            augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
-            calibrate_method=calibrate_method,
-            use_external_data_format=use_external_data_format,
-            providers=calibration_providers,
-            extra_options=calib_extra_options,
-        )
-
-        stride = extra_options.get("CalibStridedMinMax", None)
-        if stride:
-            total_data_size = len(calibration_data_reader)
-            if total_data_size % stride != 0:
-                raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
-
-            for start in range(0, total_data_size, stride):
-                end_index = start + stride
-                calibration_data_reader.set_range(start_index=start, end_index=end_index)
-                calibrator.collect_data(calibration_data_reader)
+            _cache_hit = False
         else:
-            calibrator.collect_data(calibration_data_reader)
-        tensors_range = calibrator.compute_data()
-        if not isinstance(tensors_range, TensorsData):
-            raise TypeError(
-                f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+            tensors_range = load_tensors_data(_cache_path)
+            if tensors_range.calibration_method != calibrate_method:
+                raise ValueError(
+                    f"Calibration cache at {_cache_path} was produced with "
+                    f"{tensors_range.calibration_method}, but quantize_static was called "
+                    f"with calibrate_method={calibrate_method}. Delete the cache or "
+                    f"pass a matching calibrate_method."
+                )
+
+    if not _cache_hit:
+        if calibration_data_reader is None:
+            raise ValueError("Either calibration_data_reader or an existing calibration_cache_path must be provided.")
+        with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+            if is_model_updated:
+                # Update model_input and avoid to use the original one
+                model_input = copy.deepcopy(model)
+
+            if isinstance(model_input, onnx.ModelProto):
+                output_path = Path(quant_tmp_dir).joinpath("model_input.onnx").as_posix()
+                onnx.save_model(
+                    model_input,
+                    output_path,
+                    save_as_external_data=True,
+                )
+                model_input = output_path
+
+            calibrator = create_calibrator(
+                Path(model_input),
+                op_types_to_quantize,
+                augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
+                calibrate_method=calibrate_method,
+                use_external_data_format=use_external_data_format,
+                providers=calibration_providers,
+                extra_options=calib_extra_options,
             )
-        del calibrator
+
+            stride = extra_options.get("CalibStridedMinMax", None)
+            if stride:
+                total_data_size = len(calibration_data_reader)
+                if total_data_size % stride != 0:
+                    raise ValueError(f"Total data size ({total_data_size}) is not divisible by stride size ({stride}).")
+
+                for start in range(0, total_data_size, stride):
+                    end_index = start + stride
+                    calibration_data_reader.set_range(start_index=start, end_index=end_index)
+                    calibrator.collect_data(calibration_data_reader)
+            else:
+                calibrator.collect_data(calibration_data_reader)
+            tensors_range = calibrator.compute_data()
+            if not isinstance(tensors_range, TensorsData):
+                raise TypeError(
+                    f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
+                )
+            del calibrator
+
+        if _cache_path is not None:
+            save_tensors_data(tensors_range, _cache_path, smooth_quant=_smooth_quant)
 
     check_static_quant_arguments(quant_format, activation_type, weight_type)
 
@@ -834,6 +914,9 @@ def quantize_dynamic(
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
                 ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                ActivationRestrictedAsymmetric = True/False: (uint8 activations only) snap zero-point to qmin
+                    (when rmin>=0) or the midpoint of the quantized range [qmin, qmax] (when rmin<0);
+                    recompute scale accordingly (default is False).
                 WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                 EnableSubgraph = True/False :
                     Default is False. If enabled, subgraph will be quantized. Dynamic mode currently is supported. Will

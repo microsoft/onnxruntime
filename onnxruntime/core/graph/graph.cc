@@ -527,6 +527,28 @@ bool NodeArg::Exists() const noexcept {
   return exists_;
 }
 
+// Out-of-line constructor and destructor so Graph is complete when
+// unique_ptr<Graph> in subgraphs_ is destroyed (required by libc++).
+Node::Node() = default;
+Node::~Node() = default;
+
+Node::Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+Node::Node(std::string_view name,
+           std::string_view op_type,
+           std::string_view description,
+           gsl::span<NodeArg* const> input_args,
+           gsl::span<NodeArg* const> output_args,
+           const NodeAttributes* attributes,
+           std::string_view domain) {
+  Init(name, op_type, description,
+       input_args,
+       output_args,
+       attributes, domain);
+}
+#endif
+
 Node::EdgeEnd::EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept
     : node_(&node),
       src_arg_index_(src_arg_index),
@@ -1440,6 +1462,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   for (auto& initializer : graph_proto_->initializer()) {
     auto& initializer_name = initializer.name();
     auto initializer_arg = GetNodeArg(initializer_name);
+    ORT_ENFORCE(initializer_arg, "Graph ctor should have created NodeArg for initializer. Missing: ", initializer_name);
     graph_initializers.insert({initializer_name, initializer_arg});
   }
 

@@ -65,6 +65,7 @@ void LUTGEMM_PACK(benchmark::State& state) {
       reinterpret_cast<std::byte*>(QuantBData.data()),
       QuantBScale.data(),
       HasZeroPoint ? QuantBZeroPoint.data() : nullptr,
+      false,  // IsFloatZeroPoint
       PackedBuf.data(),
       tp.get());
 
@@ -74,6 +75,7 @@ void LUTGEMM_PACK(benchmark::State& state) {
         reinterpret_cast<std::byte*>(QuantBData.data()),
         QuantBScale.data(),
         HasZeroPoint ? QuantBZeroPoint.data() : nullptr,
+        false,  // IsFloatZeroPoint
         PackedBuf.data(),
         tp.get());
   }
@@ -138,6 +140,7 @@ void LUTGEMM_COMPUTE(benchmark::State& state) {
       reinterpret_cast<std::byte*>(QuantBData.data()),
       QuantBScale.data(),
       HasZeroPoint ? QuantBZeroPoint.data() : nullptr,
+      false,  // IsFloatZeroPoint
       PackedBuf.data(),
       tp.get());
 

@@ -125,6 +125,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   OrtValue Q;
   OrtValue K;
   OrtValue V;
+  const int kv_sequence_length = parameters.kv_sequence_length;
   if (packed_qkv) {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_ + 2 * kv_num_heads_, sequence_length, head_size, query, Q));
@@ -132,9 +133,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
         allocator, batch_size, num_heads_, sequence_length, head_size, query, Q));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        allocator, batch_size, kv_num_heads_, sequence_length, head_size, key, K));
+        allocator, batch_size, kv_num_heads_, kv_sequence_length, head_size, key, K));
     ORT_RETURN_IF_ERROR(MaybeTransposeToBNSH<T>(
-        allocator, batch_size, kv_num_heads_, sequence_length, head_size, value, V));
+        allocator, batch_size, kv_num_heads_, kv_sequence_length, head_size, value, V));
   }
 
   OrtValue RotaryQKV;
@@ -143,6 +144,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
+    // When kv_sequence_length == 0 (shared KV), only Q needs RoPE — K is skipped below.
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
@@ -200,19 +202,22 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       q_rotary = RotaryQ.GetMutable<Tensor>()->MutableData<T>();
       k_rotary = RotaryK.GetMutable<Tensor>()->MutableData<T>();
     }
-    // Run rotary embedding for Q and K
+    // Run rotary embedding for Q
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, q_input,
                                               pos_ids_data, cos_cache->Data<T>(),
                                               sin_cache->Data<T>(), q_rotary, rotary_interleaved_));
 
-    rotary_params.num_heads = kv_num_heads_;
-    rotary_params.hidden_size = parameters.kv_hidden_size;
-    if (!packed_qkv) {
-      rotary_params.batch_stride = kv_num_heads_ * rotary_params.head_stride;
+    // Run rotary embedding for K (skip when kv_sequence_length == 0, i.e. shared KV with no new tokens)
+    if (kv_sequence_length > 0) {
+      rotary_params.num_heads = kv_num_heads_;
+      rotary_params.hidden_size = parameters.kv_hidden_size;
+      if (!packed_qkv) {
+        rotary_params.batch_stride = kv_num_heads_ * rotary_params.head_stride;
+      }
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
+                                                pos_ids_data, cos_cache->Data<T>(),
+                                                sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
     }
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding<T>(tp, rotary_params, k_input,
-                                              pos_ids_data, cos_cache->Data<T>(),
-                                              sin_cache->Data<T>(), k_rotary, rotary_interleaved_));
     // Pack V into rotary QKV buffer
     if (packed_qkv) {
       const T* v_input = k_input + kv_num_heads_ * sequence_length * head_size;
@@ -233,7 +238,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
+  const T* k_data = packed_qkv ? nullptr : k_rotary;
+  const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
+  return ApplyAttention(q_rotary, k_data, v_data,
                         head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
                         output_qk, seqlens_k, parameters, allocator, context);
 }
