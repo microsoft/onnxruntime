@@ -594,6 +594,11 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
 #endif
 #endif
     }
+    ORT_CATCH(const OnnxRuntimeException& ort_ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = Status(ort_ex.Category(), ort_ex.Code(), ort_ex.what());
+      });
+    }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
         status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
