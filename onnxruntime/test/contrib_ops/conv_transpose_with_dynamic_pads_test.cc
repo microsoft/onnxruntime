@@ -31,6 +31,8 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank0) {
   test.AddInput<float>("W", {}, std::vector<float>{1.0f});  // scalar (rank 0)
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
   test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  // Skip ONNX shape inference to avoid potential crashes on invalid-rank inputs.
+  test.AddShapeToTensorData(false);
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 
@@ -45,6 +47,7 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank1) {
   test.AddInput<float>("W", {9}, std::vector<float>(9, 1.0f));  // rank 1
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
   test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  test.AddShapeToTensorData(false);
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
 

@@ -283,6 +283,21 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     // The following code is from ConvTransposeAttributes::PrepareForCompute
 
     const int rank = static_cast<int>(X->Shape().NumDimensions());
+
+    // ConvTranspose requires X shape (N x C x D1...Dn) and W shape (C x M/group x k1...kn),
+    // both must have at least 3 dimensions.
+    if (rank < 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input X must have at least 3 dimensions (N x C x D1...Dn).",
+                             " X: ", X->Shape().ToString().c_str());
+    }
+
+    if (static_cast<int>(w_shape.NumDimensions()) < 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
+                             " W: ", w_shape.ToString().c_str());
+    }
+
     TensorShape input_shape = X->Shape().Slice(channels_last ? 1 : 2, channels_last ? rank - 1 : rank);
     const int64_t num_input_channels = channels_last ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
@@ -359,8 +374,8 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
     TensorShapeVector y_dims;
 
-    conv_transpose_attrs_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
-                                                    strides, dilations, local_output_padding, N, &pads, &y_dims, channels_last);
+    ORT_RETURN_IF_ERROR(conv_transpose_attrs_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
+                                                                        strides, dilations, local_output_padding, N, &pads, &y_dims, channels_last));
 
     s_.y_dims = gsl::make_span(y_dims);
     s_.Y = context->Output(0, s_.y_dims);

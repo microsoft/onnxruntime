@@ -45,7 +45,7 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   auto num_output_channels = group * filter_shape[1];
   auto batch_size = input_shape[0];
   TensorShapeVector output_shape_vector;
-  conv_transpose_attrs_.ComputePadsAndOutputShape(input_spacial_shape, num_output_channels, kernel_shape_vector, local_strides, local_dilations, local_output_padding, batch_size, &local_pads, &output_shape_vector, is_channels_last);
+  ORT_RETURN_IF_ERROR(conv_transpose_attrs_.ComputePadsAndOutputShape(input_spacial_shape, num_output_channels, kernel_shape_vector, local_strides, local_dilations, local_output_padding, batch_size, &local_pads, &output_shape_vector, is_channels_last));
   TensorShape computed_output_shape(output_shape_vector);
   std::vector<uint32_t> strides;
   std::vector<uint32_t> pads;

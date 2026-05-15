@@ -19,6 +19,7 @@
 #pragma once
 
 #include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 
@@ -61,6 +62,21 @@ struct ConvTransposeAttributes : public ConvAttributes {
     const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
 
     const int rank = static_cast<int>(X->Shape().NumDimensions());
+
+    // ConvTranspose requires X shape (N x C x D1...Dn) and W shape (C x M/group x k1...kn),
+    // both must have at least 3 dimensions.
+    if (rank < 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input X must have at least 3 dimensions (N x C x D1...Dn).",
+                             " X: ", X->Shape().ToString().c_str());
+    }
+
+    if (static_cast<int>(F_Shape.NumDimensions()) < 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
+                             " W: ", F_Shape.ToString().c_str());
+    }
+
     TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2, is_nhwc ? rank - 1 : rank);
     const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
@@ -119,10 +135,22 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (local_output_padding.empty()) {
       local_output_padding.resize(kernel_shape.size(), 0);
     }
+    if (local_output_padding.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_padding size (", local_output_padding.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
+    }
     ConvPadVector local_pads;
     local_pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
-      for (int64_t i = 0; i < Pads->Shape().SizeFromDimension(0); ++i) {
+      const int64_t expected_pads_size = static_cast<int64_t>(kernel_shape.size()) * 2;
+      const int64_t actual_pads_size = Pads->Shape().SizeFromDimension(0);
+      if (actual_pads_size != expected_pads_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Dynamic pads tensor size (", actual_pads_size,
+                               ") does not match expected size (2 * spatial_dims = ", expected_pads_size, ").");
+      }
+      for (int64_t i = 0; i < actual_pads_size; ++i) {
         local_pads.push_back(Pads->Data<int64_t>()[i]);
       }
     } else {
@@ -140,10 +168,23 @@ struct ConvTransposeAttributes : public ConvAttributes {
       local_strides.resize(kernel_shape.size(), 1);
     }
 
+    // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".
+    // This constraint ensures the output_padding is unambiguous — larger values would shift
+    // the output by more than one stride/dilation step, making the inverse of Conv ill-defined.
+    for (size_t i = 0; i < local_output_padding.size(); ++i) {
+      int64_t limit = std::max(local_strides[i], local_dilations[i]);
+      if (local_output_padding[i] >= limit) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "output_padding[", i, "] (", local_output_padding[i],
+                               ") must be less than max(stride, dilation) (", limit,
+                               ") for spatial dimension ", i, ".");
+      }
+    }
+
     TensorShapeVector Y_dims;
 
-    ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
-                              local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims, is_nhwc);
+    ORT_RETURN_IF_ERROR(ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
+                                                  local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims, is_nhwc));
     TensorShape Yshape(Y_dims);
     Tensor* Y = context->Output(0, Yshape);
 
@@ -162,19 +203,27 @@ struct ConvTransposeAttributes : public ConvAttributes {
     return Status::OK();
   }
 
-  void ComputePadsAndOutputShape(TensorShape input_shape, int64_t output_channel,
-                                 const TensorShapeVector& kernel_shape, const TensorShapeVector& p_strides,
-                                 const TensorShapeVector& p_dilations, const TensorShapeVector& p_output_padding, const int64_t N,
-                                 ConvPadVector* p_pads, TensorShapeVector* output_shape_p,
-                                 bool is_nhwc = false) const {
+  Status ComputePadsAndOutputShape(TensorShape input_shape, int64_t output_channel,
+                                   const TensorShapeVector& kernel_shape, const TensorShapeVector& p_strides,
+                                   const TensorShapeVector& p_dilations, const TensorShapeVector& p_output_padding, const int64_t N,
+                                   ConvPadVector* p_pads, TensorShapeVector* output_shape_p,
+                                   bool is_nhwc = false) const {
     size_t output_shape_size = output_shape.size();
+    size_t rank = input_shape.NumDimensions();
+
+    // output_shape attribute, if specified, must have either 'rank' or 'rank + 2' elements
+    if (output_shape_size != 0 && output_shape_size != rank && output_shape_size != rank + 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_shape attribute has ", output_shape_size,
+                             " elements, expected ", rank, " or ", rank + 2, ".");
+    }
+
     if (is_nhwc) {
       output_shape_p->insert(output_shape_p->begin(), {N});
     } else {
       output_shape_p->insert(output_shape_p->begin(), {N, output_channel});
     }
 
-    size_t rank = input_shape.NumDimensions();
     for (size_t dim = 0; dim < rank; ++dim) {
       int64_t dim_size = -1;
 
@@ -182,7 +231,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
         dim_size = output_shape_size == rank ? output_shape[dim] : output_shape[dim + 2];
       }
 
-      ComputeTransposePadAndOutputShape(
+      ORT_RETURN_IF_ERROR(ComputeTransposePadAndOutputShape(
           input_shape[dim],
           p_strides[dim],
           kernel_shape[dim],
@@ -191,21 +240,26 @@ struct ConvTransposeAttributes : public ConvAttributes {
           auto_pad,
           &p_pads->at(dim),
           &p_pads->at(input_shape.NumDimensions() + dim),
-          &dim_size);
+          &dim_size));
 
-      ORT_ENFORCE(dim_size > 0, "Invalid input shape: ", input_shape.ToString());
+      if (dim_size <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Computed output dimension is <= 0 for dim ", dim,
+                               ". Input shape: ", input_shape.ToString());
+      }
       output_shape_p->push_back(dim_size);
     }
     if (is_nhwc) {
       output_shape_p->push_back(output_channel);
     }
+    return Status::OK();
   }
 
   TensorShapeVector output_padding;
   TensorShapeVector output_shape;
 
  private:
-  void ComputeTransposePadAndOutputShape(
+  Status ComputeTransposePadAndOutputShape(
       const int64_t in_size,
       const int64_t stride,
       const int64_t kernel,
@@ -217,12 +271,15 @@ struct ConvTransposeAttributes : public ConvAttributes {
       int64_t* out_size) const {
     // Output shape is explicitly provided - pad values will have to be computed
     if (*out_size != -1) {
-      ORT_ENFORCE(*out_size >= 0);
+      if (*out_size < 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Explicit output size is negative: ", *out_size);
+      }
       // total pad
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
                                        kernel, dilation, *out_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
-      return;
+      return Status::OK();
     }
 
     // Output shape is not provided - it needs to be computed along with pad values (if applicable)
@@ -231,13 +288,30 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
       // The ONNX spec says if `auto_pad` attribute is set, pad until the `out_size`
       // is `in_size * stride`
+      int64_t auto_out_size = 0;
+      ORT_RETURN_IF_NOT(SafeMultiply(in_size, stride, auto_out_size),
+                        "Integer overflow computing auto_pad output size: in_size=", in_size,
+                        " stride=", stride);
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
-                                       kernel, dilation, /*out_size = */ in_size * stride);
+                                       kernel, dilation, auto_out_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 
-    *out_size =
-        (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail;
+    // *out_size = (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail
+    // Use checked arithmetic to detect overflow from adversarial inputs.
+    int64_t term1 = 0, term2 = 0, result = 0;
+    ORT_RETURN_IF_NOT(SafeMultiply(in_size - 1, stride, term1),
+                      "Integer overflow in output size computation.");
+    ORT_RETURN_IF_NOT(SafeMultiply(kernel - 1, dilation, term2),
+                      "Integer overflow in output size computation.");
+    ORT_RETURN_IF_NOT(SafeAdd(term1, adj, result) &&
+                          SafeAdd(result, term2, result) &&
+                          SafeAdd(result, static_cast<int64_t>(1), result) &&
+                          SafeSubtract(result, *pad_head, result) &&
+                          SafeSubtract(result, *pad_tail, result),
+                      "Integer overflow in output size computation.");
+    *out_size = result;
+    return Status::OK();
   }
 };
 
