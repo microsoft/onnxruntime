@@ -212,17 +212,31 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
   std::string ep_context_enable;
+  std::string ep_context_embed_mode;
   std::string weightless_ep_context_nodes_enable;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "1",
+                                                 ep_context_embed_mode));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
                                                  "0", weightless_ep_context_nodes_enable));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
+  config.embed_ep_context_in_model = ep_context_embed_mode != "0";
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
-  auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
+  auto release_ep_context_config = [factory](OrtEpContextConfig* config_to_release) {
+    factory->ep_api.ReleaseEpContextConfig(config_to_release);
+  };
+  std::unique_ptr<OrtEpContextConfig, decltype(release_ep_context_config)> ep_context_config{
+      nullptr, release_ep_context_config};
+  OrtEpContextConfig* ep_context_config_raw = nullptr;
+  RETURN_IF_ERROR(factory->ep_api.SessionOptions_GetEpContextConfig(session_options, &ep_context_config_raw));
+  ep_context_config.reset(ep_context_config_raw);
+
+  auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger,
+                                             ep_context_config.release());
 
   *ep = dummy_ep.release();
   return nullptr;

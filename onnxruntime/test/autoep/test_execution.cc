@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 // #include <absl/base/config.h>
 #include <gsl/gsl>
@@ -27,6 +29,47 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
+struct EpContextDataCallbackState {
+  bool write_called = false;
+  bool read_called = false;
+  std::string write_file_name;
+  std::string read_file_name;
+  std::vector<char> payload;
+};
+
+OrtStatus* ORT_API_CALL StoreEpContextDataCallback(void* state, const char* file_name, const void* buffer,
+                                                   size_t buffer_size) {
+  auto* callback_state = static_cast<EpContextDataCallbackState*>(state);
+  callback_state->write_called = true;
+  callback_state->write_file_name = file_name;
+  callback_state->payload.clear();
+  if (buffer_size != 0) {
+    callback_state->payload.assign(static_cast<const char*>(buffer), static_cast<const char*>(buffer) + buffer_size);
+  }
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL LoadEpContextDataCallback(void* state, const char* file_name, OrtAllocator* allocator,
+                                                  void** buffer, size_t* data_size) {
+  auto* callback_state = static_cast<EpContextDataCallbackState*>(state);
+  callback_state->read_called = true;
+  callback_state->read_file_name = file_name;
+
+  *buffer = nullptr;
+  *data_size = callback_state->payload.size();
+  if (callback_state->payload.empty()) {
+    return nullptr;
+  }
+
+  OrtStatus* status = Ort::GetApi().AllocatorAlloc(allocator, callback_state->payload.size(), buffer);
+  if (status != nullptr) {
+    return status;
+  }
+
+  std::copy(callback_state->payload.begin(), callback_state->payload.end(), static_cast<char*>(*buffer));
+  return nullptr;
+}
 
 void RunMulModelWithPluginEp(const ORTCHAR_T* model_path, const Ort::SessionOptions& session_options) {
   Ort::Session session(*ort_env, model_path, session_options);
@@ -436,6 +479,79 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
+}
+
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataUsesWriteCallback) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* output_model_file = ORT_TSTR("plugin_ep_mul_1_external_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(output_model_file); });
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  EpContextDataCallbackState callback_state;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetEpContextEmbedMode(false);
+  compile_options.SetEpContextDataWriteFunc(StoreEpContextDataCallback, &callback_state);
+
+  ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  ASSERT_TRUE(callback_state.write_called);
+  EXPECT_FALSE(callback_state.write_file_name.empty());
+  EXPECT_EQ(std::string(callback_state.payload.begin(), callback_state.payload.end()), "binary_data");
+}
+
+TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+  const ORTCHAR_T* compiled_model_file = ORT_TSTR("plugin_ep_mul_1_external_ctx_load.onnx");
+  std::filesystem::remove(compiled_model_file);
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove(compiled_model_file); });
+
+  EpContextDataCallbackState write_callback_state;
+  {
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+    compile_options.SetInputModelPath(input_model_file);
+    compile_options.SetOutputModelPath(compiled_model_file);
+    compile_options.SetEpContextEmbedMode(false);
+    compile_options.SetEpContextDataWriteFunc(StoreEpContextDataCallback, &write_callback_state);
+
+    ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+    ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
+    ASSERT_TRUE(write_callback_state.write_called);
+  }
+
+  EpContextDataCallbackState read_callback_state;
+  read_callback_state.payload = write_callback_state.payload;
+  {
+    Ort::SessionOptions session_options;
+    session_options.SetEpContextDataReadFunc(LoadEpContextDataCallback, &read_callback_state);
+
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, compiled_model_file, session_options);
+  }
+
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, write_callback_state.write_file_name);
 }
 
 TEST(OrtEpLibrary, PluginEp_GenWeightlessEpContextModel) {

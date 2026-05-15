@@ -167,13 +167,15 @@ struct EpContextNodeComputeInfo : NodeComputeInfoBase {
   ExampleEp& ep;
 };
 
-ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger)
+ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
+                     OrtEpContextConfig* ep_context_config)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
       name_{name},
       config_{config},
-      logger_{logger} {
+      logger_{logger},
+      ep_context_config_{ep_context_config} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 
   // Initialize the execution provider's function table
@@ -192,7 +194,9 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
                                              ORT_FILE, __LINE__, __FUNCTION__));
 }
 
-ExampleEp::~ExampleEp() = default;
+ExampleEp::~ExampleEp() {
+  ep_api.ReleaseEpContextConfig(ep_context_config_);
+}
 
 /*static*/
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
@@ -408,6 +412,28 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
     auto fused_node_name = fused_node.GetName();
 
     if (is_ep_context_node) {
+      Ort::ConstOpAttr embed_mode_attr;
+      RETURN_IF_ERROR(nodes[0].GetAttributeByName("embed_mode", embed_mode_attr));
+      int64_t embed_mode = 1;
+      RETURN_IF_ERROR(embed_mode_attr.GetValue(embed_mode));
+
+      if (embed_mode == 0) {
+        Ort::ConstOpAttr ep_cache_context_attr;
+        RETURN_IF_ERROR(nodes[0].GetAttributeByName("ep_cache_context", ep_cache_context_attr));
+        std::string ep_cache_context;
+        RETURN_IF_ERROR(ep_cache_context_attr.GetValue(ep_cache_context));
+
+        Ort::AllocatorWithDefaultOptions allocator;
+        void* ep_context_data = nullptr;
+        size_t ep_context_data_size = 0;
+        RETURN_IF_ERROR(ep->ep_api.ReadEpContextData(ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
+                                                     allocator, &ep_context_data, &ep_context_data_size));
+        (void)ep_context_data_size;
+        if (ep_context_data != nullptr) {
+          allocator.Free(ep_context_data);
+        }
+      }
+
       // Create EpContextKernel for EPContext nodes - clearly separates from MulKernel
       ep->ep_context_kernels_.emplace(fused_node_name,
                                       std::make_unique<EpContextKernel>(ep->ort_api, ep->logger_));
@@ -448,7 +474,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
       // Create EpContext nodes for the fused nodes we compiled (only for Mul, not EPContext).
       if (ep->config_.enable_ep_context) {
         assert(ep_context_nodes != nullptr);
-        RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
+        RETURN_IF_ERROR(ep->CreateEpContextNodes(ort_graphs[0], gsl::span<const OrtNode*>(fused_nodes, count),
                                                  gsl::span<OrtNode*>(ep_context_nodes, count)));
       }
     }
@@ -478,7 +504,8 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
 // Creates EPContext nodes from the given fused nodes.
 // This is an example implementation that can be used to generate an EPContext model. However, this example EP
 // cannot currently run the EPContext model.
-OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
+                                           gsl::span<const OrtNode*> fused_nodes,
                                            /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
   try {
     assert(fused_nodes.size() == ep_context_nodes.size());
@@ -511,11 +538,16 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
       collect_input_output_names(fused_node_outputs, /*out*/ output_names);
 
       int64_t is_main_context = (i == 0);
-      int64_t embed_mode = 1;
+      int64_t embed_mode = config_.embed_ep_context_in_model ? 1 : 0;
 
       // Create node attributes. The CreateNode() function copies the attributes.
       std::array<Ort::OpAttr, 6> attributes = {};
-      std::string ep_ctx = "binary_data";
+      std::string ep_ctx = config_.embed_ep_context_in_model ? "binary_data" : fused_node_name + ".ctx";
+      if (!config_.embed_ep_context_in_model) {
+        const std::string ep_context_data = "binary_data";
+        RETURN_IF_ERROR(ep_api.WriteEpContextData(ep_context_config_, ep_ctx.c_str(), graph,
+                                                  ep_context_data.data(), ep_context_data.size()));
+      }
       attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),
                                   ORT_OP_ATTR_STRING);
 
