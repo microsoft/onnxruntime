@@ -2304,9 +2304,10 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
     std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
+    // Validate external data path unconditionally (defense-in-depth even when NNZ=0).
+    ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(sparse_values, model_path));
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
-      ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(sparse_values, model_path));
       std::vector<uint8_t> values_data;
       ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
       ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
