@@ -2524,9 +2524,9 @@ struct OrtEp {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.26.
+   * \since Version 1.27.
    */
-  ORT_API2_STATUS(ReleaseGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+  ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
 
   /** \brief Get the node assignment validation policy for graph capture.
    *

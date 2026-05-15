@@ -726,16 +726,19 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
 }
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
-  // Release all captured graphs and their associated resources
+  // Release all captured graphs (both fully captured and partially captured) and their associated resources.
+  // Use captured_graphs_ keys to also cover partially captured graphs that have GPU command handles
+  // but never completed capture (i.e., CaptureBegin was called but CaptureEnd was not).
   std::vector<int> graph_ids;
-  graph_ids.reserve(captured_graph_ids_.size());
-  for (int id : captured_graph_ids_) {
+  graph_ids.reserve(captured_graphs_.size());
+  for (const auto& [id, _] : captured_graphs_) {
     graph_ids.push_back(id);
   }
   for (int id : graph_ids) {
-    (void)ReleaseGraph(id);
+    (void)ReleaseCapturedGraph(id);
   }
-  // Also release any per-graph buffer managers for graphs that were never fully captured
+  // Release any per-graph buffer managers for graphs that had buffer managers created
+  // but no entries in captured_graphs_ (edge case cleanup)
   per_graph_buffer_mgrs_.clear();
 
   WebGpuContextFactory::ReleaseContext(context_id_);
@@ -858,7 +861,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
   return Status::OK();
 }
 
-Status WebGpuExecutionProvider::ReleaseGraph(int graph_annotation_id) {
+Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
   // Release captured commands
   auto cmd_it = captured_graphs_.find(graph_annotation_id);
   if (cmd_it != captured_graphs_.end()) {

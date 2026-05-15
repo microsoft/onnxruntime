@@ -138,6 +138,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
   auto device_alloc = std::make_shared<webgpu::GpuBufferAllocator>(
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false);
+  webgpu_ep_ptr->SetDefaultGpuAllocator(static_cast<webgpu::GpuBufferAllocator*>(device_alloc.get()));
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),                                                                                              // CPU allocator
       device_alloc,                                                                                                                 // default device allocator

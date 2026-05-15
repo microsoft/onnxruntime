@@ -99,7 +99,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
-  Status ReleaseGraph(int graph_annotation_id) override;
+  Status ReleaseCapturedGraph(int graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
@@ -107,6 +107,11 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
+
+  // Set the default GPU allocator so RefreshBufferManager can be called on it
+  // during OnRunStart/OnRunEnd. Used by the EP adapter path (factory.cc) where
+  // the allocator is created externally rather than via CreatePreferredAllocators.
+  void SetDefaultGpuAllocator(webgpu::GpuBufferAllocator* allocator) { default_gpu_allocator_ = allocator; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
   inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {

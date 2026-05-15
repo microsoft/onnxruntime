@@ -418,7 +418,7 @@ class InferenceSession {
    * Release a previously captured graph and its associated GPU resources.
    * @param graph_annotation_id The annotation ID of the captured graph to release.
    */
-  [[nodiscard]] common::Status ReleaseGraph(int graph_annotation_id);
+  [[nodiscard]] common::Status ReleaseCapturedGraph(int graph_annotation_id);
 
 #ifdef ENABLE_TRAINING
   /**
@@ -1091,9 +1091,9 @@ class InferenceSession {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }
 
-    Status ReleaseGraph(int graph_annotation_id) {
+    Status ReleaseCapturedGraph(int graph_annotation_id) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReleaseGraph(graph_annotation_id);
+        return cached_execution_provider_for_graph_replay_->ReleaseCapturedGraph(graph_annotation_id);
       }
       return Status::OK();
     }

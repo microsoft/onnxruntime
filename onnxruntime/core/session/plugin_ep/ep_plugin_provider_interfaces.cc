@@ -1030,11 +1030,14 @@ Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
   return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
 }
 
-Status PluginExecutionProvider::ReleaseGraph(int graph_annotation_id) {
-  if (ort_ep_->ort_version_supported < 26 || ort_ep_->ReleaseGraph == nullptr) {
-    return Base::ReleaseGraph(graph_annotation_id);
+Status PluginExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
+  // For plugin EPs that don't implement ReleaseCapturedGraph (version < 26 or null function pointer),
+  // fall back to the base class no-op implementation. This is intentional: the request is silently
+  // ignored since the plugin EP doesn't support explicit graph resource release.
+  if (ort_ep_->ort_version_supported < 26 || ort_ep_->ReleaseCapturedGraph == nullptr) {
+    return Base::ReleaseCapturedGraph(graph_annotation_id);
   }
-  return ToStatusAndRelease(ort_ep_->ReleaseGraph(ort_ep_.get(), graph_annotation_id));
+  return ToStatusAndRelease(ort_ep_->ReleaseCapturedGraph(ort_ep_.get(), graph_annotation_id));
 }
 
 OrtGraphCaptureNodeAssignmentPolicy PluginExecutionProvider::GetGraphCaptureNodeAssignmentPolicy() const {

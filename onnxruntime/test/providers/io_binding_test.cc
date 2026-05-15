@@ -9,6 +9,7 @@
 #include "core/graph/model.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/IOBinding.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -380,6 +381,83 @@ TEST(InferenceSessionTests, TestGraphCapture) {
                  kGpuExecutionProvider,
                  nullptr,
                  true /* enable graph capture*/);
+}
+
+TEST(InferenceSessionTests, TestReleaseCapturedGraph) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.TestReleaseCapturedGraph";
+  so.session_log_verbosity_level = 1;
+  InferenceSession session_object{so, GetEnvironment()};
+
+  ConfigOptions config_options{};
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                            webgpu::options::kEnableGraphCapture_ON)
+                  .IsOK());
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  auto* gpu_provider = provider.get();
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+
+  std::unique_ptr<Model> p_model;
+  CreateMatMulModel(p_model, kGpuExecutionProvider);
+  std::string s1;
+  p_model->ToProto().SerializeToString(&s1);
+  std::istringstream str(s1);
+  ASSERT_STATUS_OK(session_object.Load(str));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
+  auto gpu_alloc = session_object.GetAllocator(mem_info);
+
+  std::vector<float> values_a = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+  std::vector<int64_t> dims_a = {3, 4};
+  std::vector<int64_t> dims_b = {4, 3};
+  std::vector<int64_t> dims_y = {3, 3};
+
+  // Prepare GPU inputs
+  OrtValue ml_a_cpu, ml_b_cpu;
+  CreateMLValue<float>(cpu_alloc, dims_a, values_a, &ml_a_cpu);
+  CreateMLValue<float>(cpu_alloc, dims_b, values_a, &ml_b_cpu);
+
+  Tensor gpu_a(ml_a_cpu.Get<Tensor>().DataType(), ml_a_cpu.Get<Tensor>().Shape(), gpu_alloc);
+  ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(ml_a_cpu.Get<Tensor>(), gpu_a));
+  OrtValue ml_a;
+  Tensor::InitOrtValue(std::move(gpu_a), ml_a);
+
+  Tensor gpu_b(ml_b_cpu.Get<Tensor>().DataType(), ml_b_cpu.Get<Tensor>().Shape(), gpu_alloc);
+  ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(ml_b_cpu.Get<Tensor>(), gpu_b));
+  OrtValue ml_b;
+  Tensor::InitOrtValue(std::move(gpu_b), ml_b);
+
+  // Prepare GPU output
+  OrtValue ml_y;
+  AllocateMLValue<float>(gpu_alloc, dims_y, &ml_y);
+
+  // Bind inputs/outputs
+  std::unique_ptr<IOBinding> io_binding;
+  ASSERT_STATUS_OK(session_object.NewIOBinding(&io_binding));
+  ASSERT_STATUS_OK(io_binding->BindInput("A", ml_a));
+  ASSERT_STATUS_OK(io_binding->BindInput("B", ml_b));
+  ASSERT_STATUS_OK(io_binding->BindOutput("Y", ml_y));
+  ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
+
+  // Run with annotation ID 1 to capture a graph
+  RunOptions run_options;
+  run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "1");
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+
+  // Run again to replay the captured graph
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+
+  // Release the captured graph
+  ASSERT_STATUS_OK(session_object.ReleaseCapturedGraph(1));
+
+  // After release, next run should re-capture without error
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+
+  // Replay the re-captured graph
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
 }
 #endif  // !USE_WEBGPU
 #endif
