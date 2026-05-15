@@ -2231,7 +2231,6 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
 }
 
 #if defined(USE_CUDA)
-// TODO: Add rocm kernel defs
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
   std::vector<std::vector<int64_t>> test_dims{
       {768},
@@ -2276,7 +2275,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 
@@ -2294,7 +2293,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   // Didn't implement mixed precision InPlaceAccumulator in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(GradientUtilsTest, ZeroGradientFloat32) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
@@ -2307,7 +2306,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat32) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(GradientUtilsTest, ZeroGradientFloat16) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
 
@@ -2327,7 +2326,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat16) {
 
   test.Run();
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(GradientCheckerTest, WhereGrad) {
   float max_error;
@@ -3019,7 +3018,6 @@ TEST(GradientCheckerTest, TriluGrad) {
   }
 }
 
-// TODO (enable once found why it fails on ROCM)
 #if defined(USE_CUDA)
 TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   float max_error;
@@ -3035,8 +3033,6 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info, shape_info},
@@ -3065,8 +3061,6 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info},
@@ -3097,8 +3091,6 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info, z_info},
@@ -3318,7 +3310,6 @@ TEST(GradientCheckerTest, ConvTransposeGrad) {
   ConvTransposeGradientCheckerTest(&execution_providers);
 }
 
-// TODO: Enable test for ROCM
 TEST(GradientCheckerTest, ResizeGrad) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());

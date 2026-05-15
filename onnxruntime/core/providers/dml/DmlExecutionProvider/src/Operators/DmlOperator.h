@@ -149,6 +149,15 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
 
+        // Reshapes scale and zero_point tensor descriptors (inputs after index 0) so that their
+        // dimension count matches the output shape, enabling correct broadcasting in DML.
+        // For 1D per-axis tensors, the shape is projected along the given axis (e.g. scale[6]
+        // with axis=0 on a 5D output becomes [6,1,1,1,1]).
+        void BroadcastQuantizationParameters(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            gsl::span<const uint32_t> outputShape
+            );
+
         static void TryConvertTensorToBroadcastScalar(
             const MLOperatorKernelCreationContext& kernelInfo,
             const DML_TENSOR_DESC* tensor,

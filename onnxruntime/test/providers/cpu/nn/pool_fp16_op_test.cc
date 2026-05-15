@@ -166,7 +166,7 @@ TEST(PoolFp16Test, MaxPool_DilationPadding_1d) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(PoolFp16Test, MaxPool_Dilation_2d) {
@@ -223,7 +223,7 @@ TEST(PoolFp16Test, MaxPool_DilationPadding_2d) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(PoolFp16Test, MaxPool_Dilation_Ceil0_2d) {
@@ -319,7 +319,7 @@ TEST(PoolTest, MaxPool_DilationPadding_3d) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(PoolBF16Test, AveragePool) {

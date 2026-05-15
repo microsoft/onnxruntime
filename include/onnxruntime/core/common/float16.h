@@ -46,6 +46,7 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
   static const MLFloat16 Infinity;
   static const MLFloat16 NegativeInfinity;
   static const MLFloat16 MaxValue;
+  static const MLFloat16 MinValue;
   static const MLFloat16 Zero;
   static const MLFloat16 One;
   static const MLFloat16 MinusOne;
@@ -180,6 +181,7 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
   static const BFloat16 Infinity;
   static const BFloat16 NegativeInfinity;
   static const BFloat16 MaxValue;
+  static const BFloat16 MinValue;
   static const BFloat16 Zero;
   static const BFloat16 One;
   static const BFloat16 MinusOne;

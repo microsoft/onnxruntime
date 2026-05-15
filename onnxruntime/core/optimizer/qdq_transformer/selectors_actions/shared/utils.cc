@@ -18,6 +18,20 @@
 namespace onnxruntime {
 namespace QDQ {
 
+// Out-of-line constructor/destructor definitions so NodeGroupSelector is
+// complete when unique_ptr<NodeGroupSelector> is destroyed (required by libc++).
+OpVersionsAndSelector::OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
+                                             std::unique_ptr<NodeGroupSelector> selector_in)
+    : op_versions_map{ops_and_versions_in},
+      selector{std::move(selector_in)} {}
+
+OpVersionsAndSelector::~OpVersionsAndSelector() = default;
+
+Selectors::Selectors() = default;
+Selectors::~Selectors() = default;
+
+SelectorManager::~SelectorManager() = default;
+
 void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
                                  std::unique_ptr<NodeGroupSelector> selector_in) {
   auto entry = std::make_unique<OpVersionsAndSelector>(
@@ -87,8 +101,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Neg", {}},
           {"DepthToSpace", {}},
           {"SpaceToDepth", {}},
-          {"Clip", {}},
           {"LpNormalization", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetClipOpVersionsMap() {
+  return {{"Clip", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
@@ -159,6 +175,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetScatterElementsOpVersionsMa
   return {{"ScatterElements", {}}};
 }
 
+static const OpVersionsAndSelector::OpVersionsMap GetRMSNormalizationOpVersionsMap() {
+  return {{"RMSNormalization", {}}};
+}
+
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
   /* register selectors for miscellaneous ops */
@@ -168,16 +188,23 @@ void RegisterMiscSelectors(Selectors& qdq_selectors) {
 }
 
 void RegisterDropDQSelectors(Selectors& qdq_selectors) {
-  /* register selectors for ops that have a sigle DQ -> node */
+  /* register selectors for ops that have a single DQ -> node */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<DropDQNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetDropDQOpVersionsMap(),
                                  std::move(selector));
 }
 
 void RegisterUnarySelectors(Selectors& qdq_selectors) {
-  /* regsiter selectors for unary ops */
+  /* register selectors for unary ops */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<UnaryNodeGroupSelector>();
   qdq_selectors.RegisterSelector(GetUnaryOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterClipSelector(Selectors& qdq_selectors) {
+  /* register selector for Clip op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ClipNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetClipOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -301,10 +328,18 @@ void RegisterScatterElementsSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterRMSNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for RMSNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<RMSNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetRMSNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
+  RegisterClipSelector(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
   RegisterSplitSelector(qdq_selectors_);
@@ -322,6 +357,7 @@ void SelectorManager::CreateSelectors() {
   RegisterTopKSelector(qdq_selectors_);
   RegisterCumSumSelector(qdq_selectors_);
   RegisterScatterElementsSelector(qdq_selectors_);
+  RegisterRMSNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

@@ -23,7 +23,8 @@
 namespace onnxruntime {
 
 struct ConvTransposeAttributes : public ConvAttributes {
-  explicit ConvTransposeAttributes(const OpKernelInfo& info)
+  template <typename KernelInfoType>
+  explicit ConvTransposeAttributes(const KernelInfoType& info)
       : ConvAttributes(info),
         output_padding(info.GetAttrsOrDefault("output_padding")),
         output_shape(info.GetAttrsOrDefault("output_shape")) {
@@ -97,6 +98,18 @@ struct ConvTransposeAttributes : public ConvAttributes {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input channels is not divisible by group.",
                              " num_input_channels: ", num_input_channels,
                              " group: ", group);
+    }
+
+    // Bias shape validation (It should be a 1D tensor with size M)
+    // See https://github.com/microsoft/onnxruntime/issues/26144
+    if (B != nullptr) {
+      if (B->Shape().NumDimensions() != 1 || B->Shape()[0] != num_output_channels) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Bias shape is not compatible with number of output channels."
+                               " It should be a 1-D tensor with size num_output_channels(M).",
+                               " Bias: ", B->Shape(),
+                               " num_output_channels: ", num_output_channels);
+      }
     }
 
     TensorShapeVector kernel_shape;

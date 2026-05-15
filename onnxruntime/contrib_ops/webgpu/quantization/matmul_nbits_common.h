@@ -21,6 +21,11 @@ namespace webgpu {
 std::string GenerateZeroPointReadingCode(uint32_t nbits, bool has_zero_points,
                                          const std::string& output_type = "output_element_t");
 
+/// Returns true when the default WebGPU device supports the DP4A kernel path
+/// (Subgroups feature present and non-Apple vendor).
+/// \p context_id is the WebGpuContext slot (0 for the default context).
+bool HasDP4ADeviceSupport(int context_id = 0);
+
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

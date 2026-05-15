@@ -12,7 +12,6 @@ import tempfile
 import timeit
 from datetime import datetime
 
-import coloredlogs
 import numpy as np
 from perf_utils import (
     acl,
@@ -2259,12 +2258,13 @@ def parse_arguments():
 
 def setup_logger(verbose):
     if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+            force=True,
         )
     else:
-        coloredlogs.install(fmt="%(message)s")
+        logging.basicConfig(format="%(message)s", force=True)
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 

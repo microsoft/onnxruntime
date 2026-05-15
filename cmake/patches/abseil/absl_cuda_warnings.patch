@@ -1,0 +1,40 @@
+diff --git a/absl/hash/internal/hash.h b/absl/hash/internal/hash.h
+index 1234567..abcdefg 100644
+--- a/absl/hash/internal/hash.h
++++ b/absl/hash/internal/hash.h
+@@ -477,7 +477,7 @@ H AbslHashValue(H hash_state, T (&)[N]) {
+ template <typename H, typename T, size_t N>
+ H AbslHashValue(H hash_state, T (&)[N]) {
+   static_assert(
+-      sizeof(T) == -1,
++      sizeof(T) == size_t(-1),
+       "Hashing C arrays is not allowed. For string literals, wrap the literal "
+       "in absl::string_view(). To hash the array contents, use "
+       "absl::MakeSpan() or make the array an std::array. To hash the array "
+diff --git a/absl/hash/hash.h b/absl/hash/hash.h
+index 1234567..abcdefg 100644
+--- a/absl/hash/hash.h
++++ b/absl/hash/hash.h
+@@ -333,7 +333,8 @@ class HashState : public hash_internal::HashStateBase<HashState> {
+       absl::enable_if_t<
+           std::is_base_of<hash_internal::HashStateBase<T>, T>::value, int> = 0>
+   static HashState Create(T* state) {
+-    HashState s;
++    HashState s = {};
++    (void)s;
+     s.Init(state);
+     return s;
+   }
+diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
+index 1234567..abcdefg 100644
+--- a/absl/container/internal/raw_hash_set.h
++++ b/absl/container/internal/raw_hash_set.h
+@@ -464,7 +464,7 @@ inline uint16_t NextSeed() {
+ inline uint16_t NextSeed() {
+   static_assert(PerTableSeed::kBitCount == 16);
+   thread_local uint16_t seed =
+-      static_cast<uint16_t>(reinterpret_cast<uintptr_t>(&seed));
++      static_cast<uint16_t>(reinterpret_cast<uintptr_t>(&seed) & 0xFFFFu);
+   seed += uint16_t{0xad53};
+   return seed;
+ }

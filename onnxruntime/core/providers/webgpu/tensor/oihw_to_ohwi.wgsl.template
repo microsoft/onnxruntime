@@ -1,0 +1,54 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use .getByOffset .setByOffset
+
+fn load_src(co : u32, ci : u32, h_w : u32) -> src_element_t {
+  if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
+    let offset = co * uniforms.I * uniforms.H * uniforms.W +
+                 ci * uniforms.H * uniforms.W +
+                 h_w;
+    return src.getByOffset(offset);
+  }
+  return src_element_t();
+}
+
+fn write_output(co : u32, h_w : u32, ci : u32, value : output_element_t) {
+  if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
+    let offset = co * uniforms.H * uniforms.W * uniforms.I +
+                 h_w * uniforms.I +
+                 ci;
+    output.setByOffset(offset, value);
+  }
+}
+
+var<workgroup> data_cache : array<array<src_element_t, 64>, 4>;
+
+$MAIN {
+  let group_co : u32 = workgroup_idx / uniforms.Ci_tiles;
+  let group_ci : u32 = (workgroup_idx % uniforms.Ci_tiles) * 64;
+
+  if (group_co >= uniforms.O || group_ci >= uniforms.I) {
+    return;
+  }
+
+  for (var h_w_idx = 0u; h_w_idx < uniforms.H_W_tiles; h_w_idx++) {
+    // load
+    for (var ci_idx = 0u; ci_idx < 64u; ci_idx += 16u) {
+      let load_ci_idx = ci_idx + local_idx / 4;
+      let load_h_w_idx = local_idx % 4;
+
+      data_cache[load_h_w_idx][load_ci_idx] = load_src(group_co,
+                                                       group_ci + load_ci_idx,
+                                                       h_w_idx * 4 + load_h_w_idx);
+    }
+    workgroupBarrier();
+
+    // store
+    for (var local_h_w_idx = 0u; local_h_w_idx < 4u; local_h_w_idx++) {
+      let output_data = data_cache[local_h_w_idx][local_idx];
+      write_output(group_co, h_w_idx * 4 + local_h_w_idx, group_ci + local_idx, output_data);
+    }
+    workgroupBarrier();
+  }
+}  // MAIN

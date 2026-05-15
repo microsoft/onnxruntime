@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <limits>
+
+#include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
@@ -30,19 +33,26 @@ class ReshapeHelper {
                       " the dimension size of the input tensor.");
           requested_shape[i] = input_shape[i];
         }
-        size *= requested_shape[i];
+        const int64_t dim = requested_shape[i];
+        if (dim != 0 && size > (std::numeric_limits<int64_t>::max() / dim)) {
+          ORT_THROW("The requested shape has too many elements. Input shape:", input_shape,
+                    ", requested shape:", TensorShape(requested_shape));
+        }
+        size *= dim;
       }
     }
 
+    const auto requested_shape_size = size;
+
     if (unknown_dim != -1) {
       // calculate unknown dimension
-      ORT_ENFORCE(size != 0 && (input_shape_size % size) == 0,
+      ORT_ENFORCE(requested_shape_size != 0 && (input_shape_size % requested_shape_size) == 0,
                   "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
                   ", requested shape:", TensorShape(requested_shape));
-      requested_shape[unknown_dim] = input_shape_size / size;
+      requested_shape[unknown_dim] = input_shape_size / requested_shape_size;
     } else {
       // check if the output shape is valid.
-      ORT_ENFORCE(input_shape_size == size,
+      ORT_ENFORCE(input_shape_size == requested_shape_size,
                   "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
                   ", requested shape:", TensorShape(requested_shape));
     }

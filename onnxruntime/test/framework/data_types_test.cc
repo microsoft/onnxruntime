@@ -525,6 +525,7 @@ TEST_F(DataTypeTest, MLFloat16TestNAN) {
   EXPECT_TRUE(std::isnan(NanFromBFloat16));
 
   EXPECT_FALSE(MLFloat16::FromBits(MLFloat16::kMaxValueBits).IsNaN());
+  EXPECT_FALSE(MLFloat16::FromBits(MLFloat16::kMinValueBits).IsNaN());
 }
 
 TEST_F(DataTypeTest, MLFloat16NaNComparision) {
@@ -694,6 +695,7 @@ TEST_F(DataTypeTest, BFloat16TestNAN) {
   EXPECT_TRUE(std::isnan(NanFromBFloat16));
 
   EXPECT_FALSE(BFloat16::FromBits(BFloat16::kMaxValueBits).IsNaN());
+  EXPECT_FALSE(BFloat16::FromBits(BFloat16::kMinValueBits).IsNaN());
 }
 
 TEST_F(DataTypeTest, BFloat16NaNComparision) {

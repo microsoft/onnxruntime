@@ -55,13 +55,15 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   return Status::OK();
 }
 
-bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
+bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
                                              const logging::Logger& logger) const {
   int32_t input_type;
   if (!GetType(*node.InputDefs()[0], input_type, logger))
     return false;
 
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+       !input_params.create_mlprogram || input_params.coreml_version < 6) &&
       input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Input type: [" << input_type

@@ -456,7 +456,7 @@ bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
       return false;
     }
     // verify size expressed by the dims matches the raw tensor size
-    uint32_t qnn_tensor_size = CalcQnnTensorNumElems(qnn_tensor) * gsl::narrow_cast<uint32_t>(data_size);
+    const auto qnn_tensor_size = utils::GetQnnTensorDataSizeInBytes(qnn_tensor);
     auto qnn_tensor_buf_size = GetQnnTensorClientBuf(qnn_tensor).dataSize;
     if (qnn_tensor_size != qnn_tensor_buf_size) {
       ss << "Data length mismatch for static tensor. node_name: " << node_name

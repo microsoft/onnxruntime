@@ -52,13 +52,18 @@ def directory_setup_factory(tmp_path):
             create_empty_file(linux_native_dir / "libonnxruntime_providers_cuda.so")
         (linux_dir / "_manifest" / "spdx_2.2").mkdir(parents=True, exist_ok=True)
 
-        # --- Additional platforms (for CPU test) ---
+        # --- macOS and other platforms (for CPU test) ---
         if package_type == "cpu":
-            # Add linux-aarch64 for CPU test
+            # Add linux-aarch64 and osx-arm64 for CPU test
             linux_aarch64_dir = java_artifact_dir / "onnxruntime-java-linux-aarch64"
             linux_aarch64_native_dir = linux_aarch64_dir / "ai" / "onnxruntime" / "native" / "linux-aarch64"
             linux_aarch64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(linux_aarch64_dir / "libcustom_op_library.so")
+
+            osx_arm64_dir = java_artifact_dir / "onnxruntime-java-osx-arm64"
+            osx_arm64_native_dir = osx_arm64_dir / "ai" / "onnxruntime" / "native" / "osx-arm64"
+            osx_arm64_native_dir.mkdir(parents=True, exist_ok=True)
+            create_empty_file(osx_arm64_dir / "libcustom_op_library.dylib")
 
         return tmp_path
 
@@ -128,9 +133,12 @@ def test_cpu_packaging(directory_setup_factory, version_string):
     with zipfile.ZipFile(testing_jar_path, "r") as zf:
         jar_contents = zf.namelist()
         assert "libcustom_op_library.so" in jar_contents
+        assert "libcustom_op_library.dylib" in jar_contents
 
     # 3. Verify the custom op libraries were removed from the source directories
     linux_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-x64"
     linux_aarch64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-linux-aarch64"
+    osx_arm64_dir = temp_build_dir / "java-artifact" / "onnxruntime-java-osx-arm64"
     assert not (linux_dir / "libcustom_op_library.so").exists()
     assert not (linux_aarch64_dir / "libcustom_op_library.so").exists()
+    assert not (osx_arm64_dir / "libcustom_op_library.dylib").exists()

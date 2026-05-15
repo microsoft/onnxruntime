@@ -31,9 +31,9 @@ class ExpandDims final : public OpKernel {
     const TensorShape& X_shape = X->Shape();
 
     TensorShapeVector expanded_shape(X_shape.AsShapeVector());
-    int64_t X_NumDims = X_shape.Size();
-    ORT_ENFORCE(axis <= X_NumDims && axis >= -X_NumDims,
-                "Axis must be within range [", -X_NumDims, ", ", X_NumDims, "].", " Axis is ", axis);
+    const int64_t num_insertion_points = X_shape.NumDimensions() + 1;
+    ORT_ENFORCE(axis >= -num_insertion_points && axis < num_insertion_points,
+                "Axis must be within range [", -num_insertion_points, ", ", num_insertion_points - 1, "]. Axis is ", axis);
     if (axis >= 0) {
       expanded_shape.insert(expanded_shape.begin() + axis, 1);
     } else {

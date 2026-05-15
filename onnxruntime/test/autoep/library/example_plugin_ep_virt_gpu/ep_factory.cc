@@ -12,19 +12,19 @@
 
 EpFactoryVirtualGpu::EpFactoryVirtualGpu(const OrtApi& ort_api, const OrtEpApi& ep_api,
                                          const OrtModelEditorApi& model_editor_api,
+                                         bool allow_virtual_devices,
                                          const OrtLogger& /*default_logger*/)
     : OrtEpFactory{},
       ort_api_(ort_api),
       ep_api_(ep_api),
       model_editor_api_(model_editor_api),
-      allow_virtual_devices_{false} {
+      allow_virtual_devices_{allow_virtual_devices} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
   GetVendorId = GetVendorIdImpl;
   GetVersion = GetVersionImpl;
 
-  SetEnvironmentOptions = SetEnvironmentOptionsImpl;
   GetSupportedDevices = GetSupportedDevicesImpl;
 
   CreateEp = CreateEpImpl;
@@ -67,19 +67,6 @@ uint32_t ORT_API_CALL EpFactoryVirtualGpu::GetVendorIdImpl(const OrtEpFactory* t
 const char* ORT_API_CALL EpFactoryVirtualGpu::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const EpFactoryVirtualGpu*>(this_ptr);
   return factory->ep_version_.c_str();
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL EpFactoryVirtualGpu::SetEnvironmentOptionsImpl(OrtEpFactory* this_ptr,
-                                                                       const OrtKeyValuePairs* options) noexcept {
-  auto* factory = static_cast<EpFactoryVirtualGpu*>(this_ptr);
-  const char* value = factory->ort_api_.GetKeyValue(options, "allow_virtual_devices");
-
-  if (value != nullptr) {
-    factory->allow_virtual_devices_ = strcmp(value, "1") == 0;
-  }
-
-  return nullptr;
 }
 
 /*static*/

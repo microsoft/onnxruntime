@@ -45,9 +45,20 @@ jobs:
       set -e -x
       export ONNX_ML=1
       export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
-      python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'    
+      python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+
+  - script: |
+      set -e -x
+      if ! /usr/libexec/java_home -v 17 >/dev/null 2>&1; then
+        brew install --cask temurin@17
+      fi
+      JAVA_HOME=$(/usr/libexec/java_home -v 17)
+      echo "JAVA_HOME is set to: $JAVA_HOME"
+      echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME"
+      echo "##vso[task.prependpath]$JAVA_HOME/bin"
+    displayName: 'Install JDK 17'
 
   - template: mac-cpu-packaging-steps.yml
     parameters:
       MacosArch: arm64
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64

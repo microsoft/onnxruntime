@@ -40,19 +40,19 @@ static void RunModTest(const std::vector<TestInputDef<DataType>>& input_defs,
 
 // Test that Mod with dynamic divisor.
 TEST_F(QnnCPUBackendTests, Mod_dynamic_Divisor) {
-  RandomValueGenerator rand_gen_{optional<RandomValueGenerator::RandomSeedType>{2345}};
+  RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const std::vector<int64_t> dividend_shape{1, 4, 5};
-  auto dividend = rand_gen_.Uniform<int32_t>(dividend_shape, -100.0f, 100.0f);
+  auto dividend = rand_gen.Uniform<int32_t>(dividend_shape, -100, 100);
 
   const std::vector<int64_t> divisor_shape{1, 5};
-  auto divisor = rand_gen_.Uniform<int32_t>(divisor_shape, 1.0f, 10.0f);
+  auto divisor = rand_gen.Uniform<int32_t>(divisor_shape, 1, 10);
   RunModTest<int32_t>({TestInputDef<int32_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int32_t>({1, 5}, false, divisor)},
                       {},
                       ExpectedEPNodeAssignment::All);
 
   // Test negative divisor
-  auto neg_divisor = rand_gen_.Uniform<int32_t>(divisor_shape, -10.0f, -1.0f);
+  auto neg_divisor = rand_gen.Uniform<int32_t>(divisor_shape, -10, -1);
   RunModTest<int32_t>({TestInputDef<int32_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int32_t>({1, 5}, false, neg_divisor)},
                       {},
@@ -61,12 +61,12 @@ TEST_F(QnnCPUBackendTests, Mod_dynamic_Divisor) {
 
 // Test that Mod with static divisor.
 TEST_F(QnnCPUBackendTests, Mod_static_Divisor) {
-  RandomValueGenerator rand_gen_{optional<RandomValueGenerator::RandomSeedType>{2345}};
+  RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const std::vector<int64_t> dividend_shape{1, 4, 5};
-  auto dividend = rand_gen_.Uniform<int32_t>(dividend_shape, -100.0f, 100.0f);
+  auto dividend = rand_gen.Uniform<int32_t>(dividend_shape, -100, 100);
 
   const std::vector<int64_t> divisor_shape{1, 5};
-  auto divisor = rand_gen_.Uniform<int32_t>(divisor_shape, 1.0f, 10.0f);
+  auto divisor = rand_gen.Uniform<int32_t>(divisor_shape, 1, 10);
 
   RunModTest<int32_t>({TestInputDef<int32_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int32_t>({1, 5}, true, divisor)},
@@ -74,7 +74,7 @@ TEST_F(QnnCPUBackendTests, Mod_static_Divisor) {
                       ExpectedEPNodeAssignment::All);
 
   // Test negative divisor
-  auto neg_divisor = rand_gen_.Uniform<int32_t>(divisor_shape, -10.0f, -1.0f);
+  auto neg_divisor = rand_gen.Uniform<int32_t>(divisor_shape, -10, -1);
   RunModTest<int32_t>({TestInputDef<int32_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int32_t>({1, 5}, true, neg_divisor)},
                       {},
@@ -87,12 +87,12 @@ TEST_F(QnnCPUBackendTests, Mod_static_Divisor) {
 
 // Test that Mod with dynamic divisor.
 TEST_F(QnnHTPBackendTests, Mod_dynamic_Divisor) {
-  RandomValueGenerator rand_gen_{optional<RandomValueGenerator::RandomSeedType>{2345}};
+  RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const std::vector<int64_t> dividend_shape{1, 4, 5};
-  auto dividend = rand_gen_.Uniform<int64_t>(dividend_shape, -100.0f, 100.0f);
+  auto dividend = rand_gen.Uniform<int64_t>(dividend_shape, -100, 100);
 
   const std::vector<int64_t> divisor_shape{1, 5};
-  auto divisor = rand_gen_.Uniform<int64_t>(divisor_shape, 1.0f, 10.0f);
+  auto divisor = rand_gen.Uniform<int64_t>(divisor_shape, 1, 10);
 
   RunModTest<int64_t>({TestInputDef<int64_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int64_t>({1, 5}, false, divisor)},
@@ -101,7 +101,7 @@ TEST_F(QnnHTPBackendTests, Mod_dynamic_Divisor) {
                       "htp");
 
   // Test negative divisor
-  auto neg_divisor = rand_gen_.Uniform<int64_t>(divisor_shape, -10.0f, -1.0f);
+  auto neg_divisor = rand_gen.Uniform<int64_t>(divisor_shape, -10, -1);
   RunModTest<int64_t>({TestInputDef<int64_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int64_t>({1, 5}, false, neg_divisor)},
                       {},
@@ -111,12 +111,12 @@ TEST_F(QnnHTPBackendTests, Mod_dynamic_Divisor) {
 
 // Test that Mod with static divisor.
 TEST_F(QnnHTPBackendTests, Mod_static_Divisor) {
-  RandomValueGenerator rand_gen_{optional<RandomValueGenerator::RandomSeedType>{2345}};
+  RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const std::vector<int64_t> dividend_shape{1, 4, 5};
-  auto dividend = rand_gen_.Uniform<int64_t>(dividend_shape, -100.0f, 100.0f);
+  auto dividend = rand_gen.Uniform<int64_t>(dividend_shape, -100, 100);
 
   const std::vector<int64_t> divisor_shape{1, 5};
-  auto divisor = rand_gen_.Uniform<int64_t>(divisor_shape, 1.0f, 10.0f);
+  auto divisor = rand_gen.Uniform<int64_t>(divisor_shape, 1, 10);
 
   RunModTest<int64_t>({TestInputDef<int64_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int64_t>({1, 5}, true, divisor)},
@@ -125,7 +125,7 @@ TEST_F(QnnHTPBackendTests, Mod_static_Divisor) {
                       "htp");
 
   // Test negative divisor
-  auto neg_divisor = rand_gen_.Uniform<int64_t>(divisor_shape, -10.0f, -1.0f);
+  auto neg_divisor = rand_gen.Uniform<int64_t>(divisor_shape, -10, -1);
   RunModTest<int64_t>({TestInputDef<int64_t>({1, 4, 5}, false, dividend),
                        TestInputDef<int64_t>({1, 5}, true, neg_divisor)},
                       {},

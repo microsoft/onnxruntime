@@ -31,7 +31,7 @@ RUN pip install --upgrade pip
 RUN pip install setuptools>=68.2.2 psutil
 
 # Install TensorRT
-RUN TRT_VERSION="10.9.0.34-1+cuda12.8" &&\
+RUN TRT_VERSION="10.14.1.48-1+cuda12.9" &&\
     apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
     apt-get update &&\
     apt-get install -y \

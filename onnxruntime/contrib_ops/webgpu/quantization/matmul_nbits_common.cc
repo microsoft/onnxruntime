@@ -4,6 +4,7 @@
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include <sstream>
 #include "core/common/common.h"
+#include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -52,6 +53,12 @@ fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> )"
   }
 
   return ss.str();
+}
+
+bool HasDP4ADeviceSupport(int context_id) {
+  auto& ctx = onnxruntime::webgpu::WebGpuContextFactory::GetContext(context_id);
+  return ctx.DeviceHasFeature(wgpu::FeatureName::Subgroups) &&
+         ctx.AdapterInfo().vendor != std::string_view{"apple"};
 }
 
 }  // namespace webgpu

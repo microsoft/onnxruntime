@@ -92,6 +92,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
         dynamic_axes=dynamic_axes,
         opset_version=11,
         do_constant_folding=True,
+        dynamo=False,
     )
     print("exported:", onnx_model_path)
 
@@ -180,8 +181,6 @@ def create_ort_session(onnx_model_path, use_gpu=True, optimized=True, verbose=Fa
         elif torch.version.hip:
             if not optimized:
                 execution_providers.append("MIGraphXExecutionProvider")
-
-            execution_providers.append("ROCMExecutionProvider")
 
     execution_providers.append("CPUExecutionProvider")
 

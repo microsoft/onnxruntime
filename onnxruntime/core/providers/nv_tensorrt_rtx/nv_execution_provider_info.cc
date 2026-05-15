@@ -16,6 +16,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
                                                                      const ConfigOptions& session_options) {
   NvExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
+  void* user_aux_stream_array = nullptr;
   void* onnx_bytestream = nullptr;
   void* external_data_bytestream = nullptr;
   ORT_THROW_IF_ERROR(
@@ -41,8 +42,17 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
                 user_compute_stream = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
+          .AddValueParser(
+              nv::provider_option_names::kUserAuxStreamArray,
+              [&user_aux_stream_array](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                user_aux_stream_array = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(nv::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(nv::provider_option_names::kMaxSharedMemSize, info.max_shared_mem_size)
+          .AddAssignmentToReference(nv::provider_option_names::kLengthAuxStreamArray, info.auxiliary_streams)
           .AddAssignmentToReference(nv::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(nv::provider_option_names::kDetailedBuildLog, info.detailed_build_log)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMinShapes, info.profile_min_shapes)
@@ -56,6 +66,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
 
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
+  info.user_aux_stream_array = user_aux_stream_array;
   info.onnx_bytestream = onnx_bytestream;
   info.external_data_bytestream = external_data_bytestream;
 
@@ -98,8 +109,10 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {nv::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {nv::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
+      {nv::provider_option_names::kUserAuxStreamArray, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_aux_stream_array))},
       {nv::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {nv::provider_option_names::kMaxSharedMemSize, MakeStringWithClassicLocale(info.max_shared_mem_size)},
+      {nv::provider_option_names::kLengthAuxStreamArray, MakeStringWithClassicLocale(info.auxiliary_streams)},
       {nv::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {nv::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.detailed_build_log)},
       {nv::provider_option_names::kProfilesMinShapes, MakeStringWithClassicLocale(info.profile_min_shapes)},

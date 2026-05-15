@@ -27,7 +27,7 @@ auto initialize_matrix = [](int64_t rows, int64_t cols) {
   std::vector<float> data;
   data.reserve(rows * cols);
   for (int64_t i = 0; i < rows * cols; ++i) {
-    data.push_back(((i % 7) + 1));
+    data.push_back(static_cast<float>((i % 7) + 1));
   }
   return data;
 };
@@ -50,7 +50,7 @@ auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
     case BiasType::MBias:
       shape = {M, 1};
       for (int64_t i = 0; i < M; ++i) {
-        data.push_back(((i % 7) + 1));
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
     case BiasType::ScalarBias:
@@ -60,13 +60,13 @@ auto initialize_bias = [](BiasType bias_type, int64_t M, int64_t N) {
     case BiasType::MNBias:
       shape = {M, N};
       for (int64_t i = 0; i < M * N; ++i) {
-        data.push_back(((i % 7) + 1));
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
     case BiasType::NBias:
       shape = {N};
       for (int64_t i = 0; i < N; ++i) {
-        data.push_back((i % 7) + 1);
+        data.push_back(static_cast<float>((i % 7) + 1));
       }
       break;
   }
@@ -95,7 +95,7 @@ auto get_bias_value = [](const std::vector<float>& bias_data, BiasType bias_type
 
 }  // namespace
 
-// Only CUDA, ROCM, CoreML and XNNPack kernels have float 16 support
+// Only CUDA, CoreML and XNNPack kernels have float 16 support
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -195,7 +195,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   }
 }
 
-// Only CUDA, ROCM and CoreML kernels have float 16 support
+// Only CUDA and CoreML kernels have float 16 support
 TEST(GemmOpTest, GemmTransB_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -242,7 +242,7 @@ TEST(GemmOpTest, GemmTransB_f16) {
   }
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(GemmOpTest, GemmNoTrans_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -270,13 +270,6 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   test.Config(run_with_tunable_op);
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
-  test.ConfigEps(std::move(execution_providers))
-      .RunWithConfig();
-
-  execution_providers.clear();
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
 #elif USE_DNNL
   execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif
@@ -1515,7 +1508,7 @@ TEST_P(GemmOptimizePackedTest, TestVariants) {
 std::vector<GemmOptimizePackedParams> GenerateGemmParams() {
   std::vector<GemmOptimizePackedParams> params;
 
-  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}};
+  std::vector<std::tuple<int64_t, int64_t, int64_t>> test_sizes = {{1, 1, 1}, {1, 64, 448}, {2, 3, 4}, {8, 8, 8}, {31, 31, 31}, {32, 32, 32}, {33, 67, 99}, {37, 64, 256}, {48, 48, 120}, {60, 16, 92}, {63, 64, 65}, {64, 64, 64}, {64, 64, 65}, {72, 80, 84}, {96, 24, 48}, {128, 32, 64}, {128, 128, 128}, {129, 129, 129}, {256, 64, 1024}, {16, 768, 192}, {15, 768, 192}, {16, 768, 191}};
 
   std::vector<BiasType>
       bias_types = {BiasType::noBias, BiasType::MBias, BiasType::ScalarBias, BiasType::MNBias, BiasType::NBias};

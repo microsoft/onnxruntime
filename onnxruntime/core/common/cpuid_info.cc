@@ -162,13 +162,7 @@ void CPUIDInfo::X86Init() {
         // Check for TPAUSE
         CheckIntelResult check_intel = CheckIntel();
         if (check_intel.is_intel) {
-#ifdef __linux__
-#if !defined(__ANDROID__)
-          has_tpause_ = __builtin_cpu_supports("waitpkg") != 0;
-#endif
-#else
           has_tpause_ = (data[2] & (1 << 5)) != 0;
-#endif
         }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);
@@ -237,9 +231,9 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
-  // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
+  // Read MIDR register values from Windows registry
   // There should be one per CPU
-  std::vector<uint64_t> midr_values{}, id_aa64isar1_el1_values{};
+  std::vector<uint64_t> midr_values{};
 
   // TODO!! Don't support multiple processor group yet!!
   constexpr int MAX_CORES = 64;
@@ -272,17 +266,7 @@ void CPUIDInfo::ArmWindowsInit() {
       break;
     }
 
-    uint64_t id_aa64isar1_el1_value;
-    data_size = sizeof(id_aa64isar1_el1_value);
-
-    // CP 4031 corresponds to ID_AA64ISAR1_EL1 register
-    if (::RegGetValueA(HKEY_LOCAL_MACHINE, processor_subkey, "CP 4031", RRF_RT_REG_QWORD,
-                       nullptr, &id_aa64isar1_el1_value, &data_size) != ERROR_SUCCESS) {
-      break;
-    }
-
     midr_values.push_back(midr_value);
-    id_aa64isar1_el1_values.push_back(id_aa64isar1_el1_value);
   }
 
   // process midr_values
@@ -308,22 +292,15 @@ void CPUIDInfo::ArmWindowsInit() {
     }
   }
 
-  has_arm_neon_i8mm_ = std::all_of(
-      id_aa64isar1_el1_values.begin(), id_aa64isar1_el1_values.end(),
-      [](uint64_t id_aa64isar1_el1_value) {
-        // I8MM, bits [55:52]
-        return ((id_aa64isar1_el1_value >> 52) & 0xF) != 0;
-      });
-
-  has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
+    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-    // cpuinfo_has_arm_i8mm() doesn't work on Windows yet. See https://github.com/pytorch/cpuinfo/issues/279.
-    // has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
-    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && has_arm_neon_i8mm_;
+    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
+    has_arm_sme_ = cpuinfo_has_arm_sme();
+    has_arm_sme2_ = cpuinfo_has_arm_sme2();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
 }
@@ -383,7 +360,11 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
   // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
+  // On Wasm/Emscripten, cpuinfo cannot detect the CPU vendor so skip to avoid
+  // an unhelpful "Unknown CPU vendor" warning.
+#if !defined(__wasm__)
   VendorInfoInit();
+#endif
 
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();

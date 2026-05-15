@@ -19,7 +19,7 @@ Abstract:
 #include "qgemm.h"
 
 // TODO: When overrides are implemented, remove this
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -201,18 +201,34 @@ MlasGemmBatch(
     });
 }
 
+bool
+MLASCALL
+MlasIsDynamicQGemmAvailable(const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+{
+#if defined(USE_KLEIDIAI)
+  return (ArmKleidiAI::UseSME2 || ArmKleidiAI::UseSME) &&
+         (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai);
+#else
+  MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+  return false;
+#endif
+}
+
 void
 MLASCALL
 MlasDynamicQGemmBatch (
     const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 ) {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
-    //No fallback and putting in guards. This implementation is SME2 specific.
-    if(ArmKleidiAI::UseSME2){
-        ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+    assert(MlasIsDynamicQGemmAvailable(BackendKernelSelectorConfig));
+
+#if defined(USE_KLEIDIAI)
+    //No fallback
+    if (GetMlasPlatform().MlasDynamicQGemmBatchOverride != nullptr) {
+        GetMlasPlatform().MlasDynamicQGemmBatchOverride(Shape, DataParams, BatchN, ThreadPool);
     }
 #endif
 
@@ -220,6 +236,7 @@ MlasDynamicQGemmBatch (
     MLAS_UNREFERENCED_PARAMETER(DataParams);
     MLAS_UNREFERENCED_PARAMETER(BatchN);
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 }
 
 int32_t
@@ -329,20 +346,23 @@ size_t
 MLASCALL
 MlasDynamicQgemmPackBSize(
     size_t N,
-    size_t K
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
+    assert(MlasIsDynamicQGemmAvailable(BackendKernelSelectorConfig));
+
     size_t bytes = 0;
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+#if defined(USE_KLEIDIAI)
     //No fallback available
-    //TODO: Insert Override
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
-        bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
+    if (GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride != nullptr) {
+       bytes = GetMlasPlatform().MlasDynamicQGemmPackBSizeOverride(N, K);
     }
 #endif
 
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 
     return bytes;
 }
@@ -354,8 +374,9 @@ MlasGemmPackBSize(
     size_t N,
     size_t K,
     bool AIsSigned,
-    bool BIsSigned
-    )
+    bool BIsSigned,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
 /*++
 
 Routine Description:
@@ -369,9 +390,15 @@ Arguments:
 
     K - Supplies the the number of rows of matrix B.
 
+    AIsSigned - Supplies true if matrix A is signed data, else false if matrix
+        A is unsigned data.
+
     BIsSigned - Supplies true if matrix B is signed data, else false if matrix
         B is unsigned data.
 
+    BackendKernelSelectorConfig - Supplies the backend kernel selector
+                                  configuration options, else nullptr if the
+                                  default configuration should be used.
 Return Value:
 
     Returns the number of bytes required to pack the matrix, else zero if the
@@ -405,11 +432,15 @@ Return Value:
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired = (BytesRequired + BufferAlignment - 1) &
         ~(BufferAlignment - 1);
-    // If this gemm B argument is used in a dynamically quantization gemm operation we can optimize for
+    // If this gemm B argument is used in a dynamically quantized gemm operation we can optimize for
     // this use case. Concat both packed representations for later decision. This allows for cases later
-    // where we still have the prepack at the cost of some memory otherwise we can use the qgemm quantization 
+    // where we still have the prepack at the cost of some memory otherwise we can use the qgemm quantization
     // for better performance
-    return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K);
+    if (MlasIsDynamicQGemmAvailable(BackendKernelSelectorConfig)) {
+        return AlignedBytesRequired + MlasDynamicQgemmPackBSize(N, K, BackendKernelSelectorConfig);
+    } else {
+        return AlignedBytesRequired;
+    }
 }
 
 void
@@ -420,13 +451,16 @@ MlasDynamicQgemmPackB(
     const int8_t* B,
     const float* Scales,
     const float* Bias,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 )
 {
-#if defined(USE_KLEIDIAI) && !defined(_MSC_VER)
+    assert(MlasIsDynamicQGemmAvailable(BackendKernelSelectorConfig));
+
+#if defined(USE_KLEIDIAI)
     //No fallback
-    if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()){//Still require this since no override
-        ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
+    if (GetMlasPlatform().MlasDynamicQGemmPackBOverride != nullptr) {
+        GetMlasPlatform().MlasDynamicQGemmPackBOverride(N, K, B, Scales, Bias, PackedB);
     }
 #endif
 
@@ -436,6 +470,7 @@ MlasDynamicQgemmPackB(
     MLAS_UNREFERENCED_PARAMETER(Scales);
     MLAS_UNREFERENCED_PARAMETER(Bias);
     MLAS_UNREFERENCED_PARAMETER(PackedB);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 }
 
 
@@ -478,6 +513,7 @@ Return Value:
 
 --*/
 {
+
     //
     // Retrieve the packing parameters.
     //

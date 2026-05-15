@@ -3,10 +3,14 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 #ifdef _WIN32
-#include <iostream>
 #include <locale>
 #endif
 
@@ -35,6 +39,7 @@
 
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 #include "test/unittest_util/test_dynamic_plugin_ep.h"
+#include "test/util/include/skipping_test_listener.h"
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 
 std::unique_ptr<Ort::Env> ort_env;
@@ -48,6 +53,9 @@ constexpr const char* kLogLevel = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
 // Specify dynamic plugin EP configuration JSON.
 // Refer to `onnxruntime::test::dynamic_plugin_ep_infra::ParseInitializationConfig()` for more information.
 constexpr const char* kDynamicPluginEpConfigJson = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON";
+// Specify a file path from which to read dynamic plugin EP configuration JSON.
+// Mutually exclusive with kDynamicPluginEpConfigJson.
+constexpr const char* kDynamicPluginEpConfigJsonFile = "ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON_FILE";
 #endif  // defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
 }  // namespace env_var_names
 
@@ -76,9 +84,27 @@ extern "C" void ortenv_setup() {
 #if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
     {
       namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
-      if (auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
-              env_var_names::kDynamicPluginEpConfigJson);
-          dynamic_plugin_ep_config_json.has_value()) {
+
+      auto dynamic_plugin_ep_config_json = onnxruntime::ParseEnvironmentVariable<std::string>(
+          env_var_names::kDynamicPluginEpConfigJson);
+      auto dynamic_plugin_ep_config_json_file = onnxruntime::ParseEnvironmentVariable<std::string>(
+          env_var_names::kDynamicPluginEpConfigJsonFile);
+
+      ORT_ENFORCE(!dynamic_plugin_ep_config_json.has_value() || !dynamic_plugin_ep_config_json_file.has_value(),
+                  "Only one of ", env_var_names::kDynamicPluginEpConfigJson,
+                  " and ", env_var_names::kDynamicPluginEpConfigJsonFile,
+                  " should be set, not both.");
+
+      if (dynamic_plugin_ep_config_json_file.has_value()) {
+        const auto& config_file_path = *dynamic_plugin_ep_config_json_file;
+        std::cout << "Reading dynamic plugin EP configuration from file: " << config_file_path << "\n";
+        std::ifstream config_file{config_file_path};
+        ORT_ENFORCE(config_file, "Failed to open dynamic plugin EP configuration file: ", config_file_path);
+        dynamic_plugin_ep_config_json.emplace(
+            std::istreambuf_iterator<char>{config_file}, std::istreambuf_iterator<char>{});
+      }
+
+      if (dynamic_plugin_ep_config_json.has_value()) {
         std::cout << "Initializing dynamic plugin EP infrastructure with configuration:\n"
                   << *dynamic_plugin_ep_config_json << "\n";
         dynamic_plugin_ep_infra::InitializationConfig config{};
@@ -107,12 +133,28 @@ extern "C" void ortenv_teardown() {
   ort_env.reset();
 }
 
+static std::vector<std::unique_ptr<::testing::TestEventListener>> MakeTestEventListeners() {
+  std::vector<std::unique_ptr<::testing::TestEventListener>> result{};
+#if defined(TEST_MAIN_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  {
+    namespace dynamic_plugin_ep_infra = onnxruntime::test::dynamic_plugin_ep_infra;
+    const auto tests_to_skip = dynamic_plugin_ep_infra::GetTestsToSkip();
+    auto skipping_test_listener = std::make_unique<onnxruntime::test::SkippingTestListener>(tests_to_skip);
+    result.emplace_back(std::move(skipping_test_listener));
+  }
+#endif
+  return result;
+}
+
 #ifdef USE_TENSORRT
 
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
 #pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
@@ -122,6 +164,8 @@ extern "C" void ortenv_teardown() {
 
 #if defined(_MSC_VER)
 #pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 class DummyLogger : public nvinfer1::ILogger {
@@ -151,6 +195,14 @@ int TEST_MAIN(int argc, char** argv) {
   ORT_TRY {
     ortenv_setup();
     ::testing::InitGoogleTest(&argc, argv);
+
+    {
+      auto& test_listeners = ::testing::UnitTest::GetInstance()->listeners();
+      auto test_listeners_to_add = MakeTestEventListeners();
+      for (auto& test_listener_to_add : test_listeners_to_add) {
+        test_listeners.Append(test_listener_to_add.release());
+      }
+    }
 
     status = RUN_ALL_TESTS();
   }

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/common/logging/logging.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -13,43 +12,20 @@
 struct OrtSyncStream : public onnxruntime::Stream {};
 struct OrtSyncNotification : onnxruntime::synchronize::Notification {};
 
-using onnxruntime::logging::Logger;
-
-#define LOG_AND_RETURN_IF_ORT_ERROR(fn, logger)                                              \
-  do {                                                                                       \
-    OrtStatus* _status = (fn);                                                               \
-    if (_status != nullptr) {                                                                \
-      LOGS(logger, ERROR) << "Plug-in EP Error: [" << OrtApis::GetErrorCode(_status) << "] " \
-                          << OrtApis::GetErrorMessage(_status);                              \
-      OrtApis::ReleaseStatus(_status);                                                       \
-      return;                                                                                \
-    }                                                                                        \
-  } while (0)
-
 namespace onnxruntime {
 namespace plugin_ep {
 
 class Notification : public synchronize::Notification {
  public:
-  Notification(Stream& stream, OrtSyncNotificationImpl& impl, const Logger& logger)
+  Notification(Stream& stream, OrtSyncNotificationImpl& impl, const OrtLogger& logger)
       : synchronize::Notification(stream), impl_{impl}, logger_{logger} {
   }
 
-  static void WaitNotificationOnDevice(onnxruntime::Stream* stream, synchronize::Notification& notification) {
-    auto* this_ptr = static_cast<Notification*>(&notification);
+  static void WaitNotificationOnDevice(onnxruntime::Stream* stream, synchronize::Notification& notification);
 
-    LOG_AND_RETURN_IF_ORT_ERROR(this_ptr->impl_.WaitOnDevice(&this_ptr->impl_, static_cast<OrtSyncStream*>(stream)),
-                                this_ptr->logger_);
-  }
+  static void WaitNotificationOnHost(onnxruntime::Stream* /*stream*/, synchronize::Notification& notification);
 
-  static void WaitNotificationOnHost(onnxruntime::Stream* /*stream*/, synchronize::Notification& notification) {
-    auto* this_ptr = static_cast<Notification*>(&notification);
-    LOG_AND_RETURN_IF_ORT_ERROR(this_ptr->impl_.WaitOnHost(&this_ptr->impl_), this_ptr->logger_);
-  }
-
-  void Activate() override {
-    LOG_AND_RETURN_IF_ORT_ERROR(impl_.Activate(&impl_), logger_);
-  }
+  void Activate() override;
 
   ~Notification() override {
     impl_.Release(&impl_);
@@ -57,12 +33,12 @@ class Notification : public synchronize::Notification {
 
  private:
   OrtSyncNotificationImpl& impl_;
-  const Logger& logger_;
+  const OrtLogger& logger_;
 };
 
 class Stream : public onnxruntime::Stream {
  public:
-  Stream(const OrtDevice& memory_device, OrtSyncStreamImpl& impl, const logging::Logger& logger)
+  Stream(const OrtDevice& memory_device, OrtSyncStreamImpl& impl, const OrtLogger& logger)
       : onnxruntime::Stream(impl.GetHandle(&impl), memory_device), impl_{impl}, logger_{logger} {
   }
 
@@ -78,9 +54,7 @@ class Stream : public onnxruntime::Stream {
     return plugin_notification;
   }
 
-  void Flush() override {
-    LOG_AND_RETURN_IF_ORT_ERROR(impl_.Flush(&impl_), logger_);
-  }
+  void Flush() override;
 
   Status CleanUpOnRunEnd() override {
     auto* ort_status = impl_.OnSessionRunEnd(&impl_);
@@ -103,7 +77,7 @@ class Stream : public onnxruntime::Stream {
   OrtStatus* CreateNotificationImpl(size_t num_consumers, std::unique_ptr<Notification>& result);
 
   OrtSyncStreamImpl& impl_;
-  const Logger& logger_;
+  const OrtLogger& logger_;
 };
 }  // namespace plugin_ep
 }  // namespace onnxruntime

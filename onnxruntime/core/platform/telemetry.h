@@ -66,13 +66,26 @@ class Telemetry {
                                   const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                                   bool use_fp16, bool captureState) const;
 
-  virtual void LogCompileModel(uint32_t session_id) const;
+  virtual void LogCompileModelStart(uint32_t session_id,
+                                    const std::string& input_source,
+                                    const std::string& output_target,
+                                    uint32_t flags,
+                                    int graph_optimization_level,
+                                    bool embed_ep_context,
+                                    bool has_external_initializers_file,
+                                    const std::vector<std::string>& execution_provider_ids) const;
+
+  virtual void LogCompileModelComplete(uint32_t session_id,
+                                       bool success,
+                                       uint32_t error_code,
+                                       uint32_t error_category,
+                                       const std::string& error_message) const;
 
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                                const char* function, uint32_t line) const;
 
   virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                              std::unordered_map<int64_t, long long> duration_per_batch_size) const;
+                              const std::unordered_map<int64_t, long long>& duration_per_batch_size) const;
 
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
@@ -87,6 +100,21 @@ class Telemetry {
   virtual void LogProviderOptions(const std::string& provider_id,
                                   const std::string& provider_options_string,
                                   bool captureState) const;
+
+  virtual void LogModelLoadStart(uint32_t session_id) const;
+
+  virtual void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const;
+
+  virtual void LogSessionCreationEnd(uint32_t session_id,
+                                     const common::Status& status) const;
+
+  virtual void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                               const std::string& lib_path) const;
+
+  virtual void LogRegisterEpLibraryStart(const std::string& registration_name) const;
+
+  virtual void LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                       const common::Status& status) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);

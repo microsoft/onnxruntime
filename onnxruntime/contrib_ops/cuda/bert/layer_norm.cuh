@@ -27,7 +27,6 @@ limitations under the License.
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <cublas_v2.h>
-#include <cub/cub.cuh>
 
 using namespace onnxruntime::cuda;
 using namespace cub;

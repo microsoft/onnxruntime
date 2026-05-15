@@ -10,6 +10,12 @@
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/file_util.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -27,6 +33,11 @@ const Utils::ExamplePluginInfo Utils::example_ep_virt_gpu_info(
     "example_plugin_ep_virt_gpu.virtual",  // Ends in ".virtual" to allow creation of virtual devices.
     // This EP's name is hardcoded to the following
     "EpVirtualGpu");
+
+const Utils::ExamplePluginInfo Utils::example_ep_kernel_registry_info(
+    GetSharedLibraryFileName(ORT_TSTR("example_plugin_ep_kernel_registry")),
+    "example_plugin_ep_kernel_registry",
+    "ExampleKernelEp");
 
 void Utils::GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device) {
   const OrtApi& c_api = Ort::GetApi();
@@ -61,6 +72,39 @@ void Utils::RegisterAndGetExampleEp(Ort::Env& env, const ExamplePluginInfo& ep_i
   registered_ep = RegisteredEpDeviceUniquePtr(example_ep, [&env, &ep_info, c_api](const OrtEpDevice* /*ep*/) {
     Ort::Status ignored{c_api.UnregisterExecutionProviderLibrary(env, ep_info.registration_name.c_str())};
   });
+}
+
+void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
+                               LoadExampleEpHooksPtr& example_ep_hooks) {
+  ExampleEpHooks hooks{};
+#if defined(_WIN32)
+  HMODULE lib = LoadLibraryW(ep_info.library_path.wstring().c_str());
+  ASSERT_NE(lib, nullptr);
+
+  hooks.reset_sync_count = reinterpret_cast<ExampleEpHooks::ResetSyncCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetSyncCount"));
+  hooks.get_sync_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetSyncCount"));
+#else
+  void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+  ASSERT_NE(lib, nullptr);
+
+  hooks.reset_sync_count = reinterpret_cast<Utils::ExampleEpHooks::ResetSyncCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetSyncCount"));
+  hooks.get_sync_count = reinterpret_cast<Utils::ExampleEpHooks::GetSyncCountFn>(
+      dlsym(lib, "ExampleEpTestHooks_GetSyncCount"));
+#endif
+
+  example_ep_hooks = LoadExampleEpHooksPtr(
+      new ExampleEpHooks(std::move(hooks)),
+      [lib](Utils::ExampleEpHooks* hook) {
+        delete hook;
+#if defined(_WIN32)
+        FreeLibrary(lib);
+#else
+        dlclose(lib);
+#endif
+      });
 }
 
 }  // namespace test

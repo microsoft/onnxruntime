@@ -55,59 +55,6 @@ ONNX_CPU_OPERATOR_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
-Status ScatterND::ValidateShapes(
-    const TensorShape& input_shape,
-    const TensorShape& indice_shape,
-    const TensorShape& update_shape) {
-  auto input_rank = input_shape.NumDimensions();
-  auto indice_rank = indice_shape.NumDimensions();
-  auto update_rank = update_shape.NumDimensions();
-
-  if (input_rank == 0 || indice_rank == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "input tensor and indices tensor must has rank larger than 0. ",
-                           "input shape: ", input_shape, ", indices shape: ", indice_shape);
-  }
-
-  auto last_indice_dimension = indice_shape[indice_rank - 1];
-  if (last_indice_dimension > static_cast<int64_t>(input_rank)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
-  }
-
-  bool is_update_shape_invalid = [&]() {
-    // Validate rank of update tensor
-    // Per spec, the rank of the update tensor should be:
-    // (Rank of input tensor) + (Rank of indices tensor) -1 - last_indice_dimension
-    if (update_rank != (input_rank + indice_rank - 1 - static_cast<ptrdiff_t>(last_indice_dimension))) {
-      return true;
-    }
-
-    // Validate shape of the update tensor
-    // Part 1: The shape of the update tensor upto the indices rank - 1 (exclusive)
-    // should match the shape of the indices tensor upto indices rank - 1 (exclusive)
-    if (indice_shape.Slice(0, indice_rank - 1) != update_shape.Slice(0, indice_rank - 1)) {
-      return true;
-    }
-
-    // Part 2: The shape of the update tensor after indices rank - 1 (inclusive)
-    // should match the shape of the input tensor after `last_indice_dimension`
-    if (input_shape.Slice(onnxruntime::narrow<size_t>(last_indice_dimension)) != update_shape.Slice(indice_rank - 1)) {
-      return true;
-    }
-
-    return false;
-  }();
-
-  if (is_update_shape_invalid) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "updates tensor should have shape equal to indices.shape[:-1] + data.shape[indices.shape[-1]:]. ",
-                           "updates shape: ", update_shape, ", indices shape: ", indice_shape, ", data shape: ", input_shape);
-  }
-
-  return Status::OK();
-}
-
 template <typename TData>
 struct Prepare {
   const TData* input_base;
@@ -356,34 +303,34 @@ struct ScatterNDDispatchTarget {
     Prepare<TData> prepare;
     ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
 
-    auto lambda = [&](int64_t i) {
+    auto lambda = [&](ptrdiff_t i) {
       switch (reduction) {
         case ScatterND::Reduction::Add: {
           auto func = Func_Add_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         case ScatterND::Reduction::Mul: {
           auto func = Func_Mul_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         case ScatterND::Reduction::Min: {
           auto func = Func_Min_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         case ScatterND::Reduction::Max: {
           auto func = Func_Max_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
         default:
@@ -391,7 +338,7 @@ struct ScatterNDDispatchTarget {
           auto func = Func_Copy_ND<TData>();
           func(
               prepare.output_base + prepare.element_offsets[onnxruntime::narrow<size_t>(i)],
-              prepare.input_base + i * prepare.element_to_copy,
+              prepare.input_base + static_cast<int64_t>(i) * prepare.element_to_copy,
               prepare.element_to_copy);
         } break;
       }
@@ -399,7 +346,7 @@ struct ScatterNDDispatchTarget {
     concurrency::ThreadPool::TryParallelFor(
         tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
         [&lambda](ptrdiff_t first, ptrdiff_t last) {
-          for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+          for (ptrdiff_t i = first, end = last; i < end; ++i) {
             lambda(i);
           }
         });

@@ -31,9 +31,6 @@ const validateInputs = (inputs: readonly TensorView[], attributes: DequantizeLin
   if (inputs.length === 3 && inputs[0].dataType !== inputs[2].dataType) {
     throw new Error('x and x-zero-point must have the same data type.');
   }
-  if (inputs[0].dataType === DataType.int32 && inputs.length > 2) {
-    throw new Error('In the case of dequantizing int32 there is no zero point.');
-  }
   if (inputs[1].dims.length !== 0 && inputs[1].dims.length !== 1 && inputs[1].dims.length !== inputs[0].dims.length) {
     throw new Error('scale input must be a scalar, a 1D tensor, or have the same rank as the input tensor.');
   }

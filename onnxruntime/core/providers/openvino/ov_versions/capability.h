@@ -16,7 +16,7 @@ class GetCapability {
   const EPCtxHandler& ep_ctx_handler_;
   const GraphViewer& graph_viewer_;
   std::string device_type_;
-  DataOps* data_ops_;
+  std::unique_ptr<DataOps> data_ops_;
   bool is_wholly_supported_graph_ = false;
   bool has_external_weights_ = false;
 

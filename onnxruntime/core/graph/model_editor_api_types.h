@@ -81,6 +81,7 @@ struct ModelEditorValueInfo : public OrtValueInfo {
                            "OrtModelEditorApi does not support querying if a OrtValueInfo is defined in an outer scope.");
   }
 
+  bool owned_ = false;  // true after ownership transferred to a graph
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
 };
@@ -154,6 +155,7 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting the parent graph for OrtNode");
   }
 
+  bool owned_ = false;  // true after ownership transferred to a graph
   size_t id = 0;
   std::string operator_name;
   std::string domain_name;
@@ -235,8 +237,9 @@ struct ModelEditorGraph : public OrtGraph {
 
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> inputs;
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> outputs;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
+  std::unordered_map<std::string, OrtValue> initializers;
+  std::unordered_map<std::string, OrtValue> external_initializers;
+  bool owned_ = false;  // true after ownership transferred to a model
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;

@@ -9,7 +9,7 @@
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
-#include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 
@@ -20,6 +20,7 @@ class QLinearConv : public OpKernel {
  public:
   explicit QLinearConv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -29,10 +30,13 @@ class QLinearConv : public OpKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
   enum InputTensors : int {
     IN_X = 0,
     IN_X_SCALE = 1,
@@ -247,7 +251,8 @@ class QLinearConv : public OpKernel {
         //
         // Note: The size of this buffer is less than or equal to the size of the original
         // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-        auto* group_reordered_W = static_cast<int8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
+        auto* group_reordered_W = static_cast<int8_t*>(alloc->Alloc(
+            static_cast<size_t>(SafeInt<size_t>(group_output_channels) * group_input_channels * kernel_size)));
         BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
 
         const size_t W_offset = group_output_channels * kernel_dim;
@@ -419,7 +424,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
     packed_W_size_ = MlasGemmPackBSize(group_output_channels,
                                        kernel_dim,
                                        std::is_same<ActType, int8_t>::value,
-                                       is_W_signed_);
+                                       is_W_signed_, &mlas_backend_kernel_selector_config_);
     if (packed_W_size_ != 0) {
       size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
       packed_W_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_W_data_size, true);
@@ -435,7 +440,9 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
       //
       // Note: The size of this buffer is less than or equal to the size of the original
       // weight tensor, so the allocation size is guaranteed to fit inside size_t.
-      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(alloc, group_output_channels * group_input_channels * kernel_size, true);
+      auto group_reordered_W_buffer = IAllocator::MakeUniquePtr<void>(
+          alloc, static_cast<size_t>(SafeInt<size_t>(group_output_channels) * group_input_channels * kernel_size),
+          true);
       auto* group_reordered_W = static_cast<uint8_t*>(group_reordered_W_buffer.get());
 
       const size_t W_offset = group_output_channels * kernel_dim;
@@ -492,6 +499,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename ActType>
 Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                        int input_idx,
                                                        /*out*/ bool& used_shared_buffers) {
   if (input_idx != 3) {

@@ -57,10 +57,10 @@ MlasQ4GemmPackBSize(
  *
  * @param QType      type of block quantization
  * @param PackedBuf  destination buffer
- * @param FpData     the pointer to fp32 matrix
- * @param N          the number of columns of matrix B.
- * @param K          the number of rows of matrix B.
- * @param ldb        leading dimension of B
+ * @param FpData     the pointer to fp32 matrix, with shape [K, N].
+ * @param N          the number of columns of matrix B (Output Channels).
+ * @param K          the number of rows of matrix B (Input Channels).
+ * @param ldb        leading dimension of FpData (usually N)
 */
 void
 MLASCALL

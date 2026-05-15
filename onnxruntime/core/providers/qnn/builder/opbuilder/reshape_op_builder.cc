@@ -37,8 +37,33 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   if (do_op_validation) {
     NodeAttrHelper node_helper(node_unit);
     auto allowzero = node_helper.Get("allowzero", static_cast<int64_t>(0));
+
+    // Only reject allowzero=1 if the shape input is not constant or it actually contains zeros
     if (0 != allowzero) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Reshape doesn't support dynamic shape!");
+      const auto& inputs = node_unit.Inputs();
+      const auto& initializer_tensors = qnn_model_wrapper.GetInitializerTensors();
+      auto shape_tensor_iter = initializer_tensors.find(inputs[1].node_arg.Name());
+
+      if (shape_tensor_iter == initializer_tensors.end()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "QNN Reshape requires a constant shape input");
+      }
+
+      // Check if the constant shape contains any zeros
+      const auto* shape_tensor = shape_tensor_iter->second;
+      std::vector<uint8_t> unpacked_tensor;
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*shape_tensor, unpacked_tensor));
+
+      const int64_t* shape_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      size_t shape_size = unpacked_tensor.size() / sizeof(int64_t);
+
+      for (size_t i = 0; i < shape_size; ++i) {
+        if (shape_data[i] == 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "QNN Reshape does not support shapes with zero dimensions. "
+                                 "The 'allowzero' attribute is not supported by QNN.");
+        }
+      }
     }
   }
 

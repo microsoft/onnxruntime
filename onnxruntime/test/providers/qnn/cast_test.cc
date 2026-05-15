@@ -163,6 +163,7 @@ TEST_F(QnnHTPBackendTests, TestCastFloatToBoolHTP) {
 
 // Cast float16 to bool on HTP.
 TEST_F(QnnHTPBackendTests, TestCastFloat16ToBoolHTP) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   RunCastFP16HTPTest({3, 3},
                      ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL,
                      ExpectedEPNodeAssignment::All);

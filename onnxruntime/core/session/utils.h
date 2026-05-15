@@ -71,5 +71,9 @@ Status AddEpOptionsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devic
                                     gsl::span<const char* const> ep_options_vals,
                                     SessionOptions& session_options);
 
+// Adss EP specific custom domains to the OrtSessionOptions configuration.
+Status AddEpCustomDomainsToSessionOptions(gsl::span<const OrtEpDevice* const> ep_devices,
+                                          OrtSessionOptions& ort_session_options);
+
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

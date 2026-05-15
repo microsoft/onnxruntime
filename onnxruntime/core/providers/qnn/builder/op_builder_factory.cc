@@ -51,7 +51,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
-    CreateSimpleOpBuilder("Concat", *this);
+    CreateConcatOpBuilder("Concat", *this);
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
     CreateSimpleOpBuilder("DequantizeLinear", *this);
@@ -161,6 +161,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateRMSNormOpBuilder("RMSNormalization", *this);
+  }
+
+  {
     CreateLRNOpBuilder("LRN", *this);
   }
 
@@ -209,6 +213,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateQuickGeluOpBuilder("QuickGelu", *this);
+  }
+
+  {
     CreateModOpBuilder("Mod", *this);
   }
 
@@ -222,6 +230,11 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateInverseOpBuilder("Inverse", *this);
+  }
+
+  {
+    CreateFusedMatMulOpBuilder("FusedMatMul", *this);
+    CreateMatMulNBitsOpBuilder("MatMulNBits", *this);
   }
 }
 

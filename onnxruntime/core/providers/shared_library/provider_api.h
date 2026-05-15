@@ -7,6 +7,18 @@
 //       switching providers to be runnable as shared libraries. The interfaces will become more tightly integrated into the core code.
 
 #pragma once
+
+// When building the CUDA EP as a plugin (BUILD_CUDA_EP_AS_PLUGIN),
+// skip all SHARED_PROVIDER type redefinitions. The adapter header (ep/adapters.h)
+// provides its own facade types, and the SHARED_PROVIDER bridge would conflict.
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+
+// Plugin build: provider_api.h is a complete no-op. We do NOT define
+// SHARED_PROVIDER so that #ifndef SHARED_PROVIDER guards in framework
+// headers (op_kernel.h, etc.) remain active.
+
+#else  // !BUILD_CUDA_EP_AS_PLUGIN — normal SHARED_PROVIDER path
+
 #define SHARED_PROVIDER 1
 
 #ifdef _WIN32
@@ -30,6 +42,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 #include "core/framework/tensor_shape.h"
 #include "core/providers/providers.h"
@@ -79,6 +92,9 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_UINT4 = 21,
   TensorProto_DataType_INT4 = 22,
   TensorProto_DataType_FLOAT4E2M1 = 23,
+  TensorProto_DataType_FLOAT8E8M0 = 24,
+  TensorProto_DataType_UINT2 = 25,
+  TensorProto_DataType_INT2 = 26,
 };
 
 enum TensorProto_DataLocation : int {
@@ -98,7 +114,8 @@ enum Version : int {
   IR_VERSION_2021_7_31 = 8,
   IR_VERSION_2023_5_5 = 9,
   IR_VERSION_2024_3_25 = 10,
-  IR_VERSION = 11
+  IR_VERSION_2025_05_12 = 11,
+  IR_VERSION = 12
 };
 
 enum OperatorStatus : int {
@@ -217,9 +234,6 @@ class TensorShape;
 struct Prepare;
 struct PrepareContext;
 enum class Mode : int;
-struct EinsumComputePreprocessor;
-template <typename T>
-struct EinsumTypedComputeProcessor;
 struct SessionOptions;
 
 namespace contrib {
@@ -248,7 +262,6 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 }  // namespace onnxruntime
 
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/external_data_loader.h"
@@ -290,6 +303,7 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSInternalNHWCDomain = "com.ms.internal.nhwc";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
@@ -298,7 +312,6 @@ constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
-constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNvTensorRTRTXExecutionProvider = "NvTensorRTRTXExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
@@ -307,7 +320,7 @@ constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 template <typename T>
-using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
 
 inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
 
@@ -317,9 +330,6 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
-
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
@@ -412,7 +422,16 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
 }
 
-inline std::vector<std::unique_ptr<ComputeCapability>>
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2;
+}
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt2x4>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2;
+}
+
+inline std::vector<std::unique_ptr<ComputeCapability> >
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::unordered_set<const Node*>& supported_nodes,
                           const std::unordered_set<std::string>& stop_ops,
@@ -460,7 +479,7 @@ inline Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name)
 }  // namespace graph_utils
 
 namespace QDQ {
-inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+inline std::pair<std::vector<std::unique_ptr<NodeUnit> >, std::unordered_map<const Node*, const NodeUnit*> >
 GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) {
   return g_host->QDQ__GetAllNodeUnits(graph_viewer, logger);
 }
@@ -505,3 +524,5 @@ inline T* Initializer::data() {
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
+
+#endif  // !BUILD_CUDA_EP_AS_PLUGIN

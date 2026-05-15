@@ -4,15 +4,20 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <core/common/inlined_containers_fwd.h>
 #include "core/common/status.h"
 #include <core/common/safeint.h>
 #include <core/common/narrow.h>
+#include "core/providers/common.h"
+#include <type_traits>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
 #endif
@@ -53,6 +58,12 @@ enum ResizeNearestMode {
   FLOOR = 3,
   CEIL = 4,
 };
+
+// Tolerance for detecting .5 ties in nearest-mode rounding (ROUND_PREFER_CEIL / ROUND_PREFER_FLOOR).
+// Coordinate transforms such as half_pixel use float division which introduces rounding error,
+// e.g. (4.5f / 0.3f - 0.5f) yields ~14.4999 instead of the exact 14.5.
+// This epsilon is used in both CPU (upsamplebase.h) and CUDA (resize_impl.cu) nearest-pixel functions.
+constexpr float kNearestModeEps = 1e-6f;
 
 enum class AspectRatioPolicy {
   STRETCH,
@@ -120,35 +131,95 @@ void PrintAntiAliasBuffers(std::ostream& os, gsl::span<int64_t> bounds, gsl::spa
   os << std::endl;
 }
 
+namespace upsamplebase_helper {
+
+inline void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                     InlinedVector<float>& scales, AspectRatioPolicy keep_aspect_ratio_policy,
+                                     const TensorShapeVector& axes) {
+  if (keep_aspect_ratio_policy == AspectRatioPolicy::STRETCH) {
+    return;
+  }
+
+  std::unordered_set<int64_t> axes_set(axes.begin(), axes.end());
+
+  float scale_in_policy = 0.0f;
+  if (keep_aspect_ratio_policy == AspectRatioPolicy::NOT_LARGER) {
+    scale_in_policy = std::numeric_limits<float>::max();
+
+    for (size_t i = 0; i < scales.size(); ++i) {
+      if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+        scale_in_policy = std::min(scale_in_policy, scales[i]);
+      }
+    }
+  } else if (keep_aspect_ratio_policy == AspectRatioPolicy::NOT_SMALLER) {
+    scale_in_policy = std::numeric_limits<float>::lowest();
+
+    for (size_t i = 0; i < scales.size(); ++i) {
+      if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+        scale_in_policy = std::max(scale_in_policy, scales[i]);
+      }
+    }
+  }
+
+  for (size_t i = 0; i < scales.size(); ++i) {
+    if (axes_set.empty() || axes_set.count(static_cast<int64_t>(i)) > 0) {
+      scales[i] = scale_in_policy;
+      output_dims[i] = static_cast<int64_t>(std::round(scales[i] * input_dims[i]));
+    } else {
+      scales[i] = 1.0f;
+      output_dims[i] = input_dims[i];
+    }
+  }
+}
+
+}  // namespace upsamplebase_helper
+
+namespace upsamplebase_detail {
+// SFINAE trait to detect whether a Node type has InputDefs() member function.
+// The framework Node has it; the plugin adapter Node does not.
+template <typename T, typename = void>
+struct has_input_defs : std::false_type {};
+template <typename T>
+struct has_input_defs<T, std::void_t<decltype(std::declval<const T&>().InputDefs())>> : std::true_type {};
+}  // namespace upsamplebase_detail
+
 class UpsampleBase {
  public:
   // Make this available in other EP via provider bridge
   // it works iff output_shape is specified
+#ifdef SHARED_PROVIDER
   void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
                                 InlinedVector<float>& scales) const;
+#else
+  void AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                InlinedVector<float>& scales) const {
+    upsamplebase_helper::AdjustOutputSizeAsPolicy(output_dims, input_dims, scales, keep_aspect_ratio_policy_, axes_);
+  }
+#endif
 
  protected:
-  explicit UpsampleBase(const OpKernelInfo& info)
+  template <typename KernelInfoType>
+  explicit UpsampleBase(const KernelInfoType& info)
       : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();
     is_resize_ = (opset >= 10);
 
     std::string mode;
-    ORT_ENFORCE(info.GetAttr<std::string>("mode", &mode).IsOK());
+    ORT_ENFORCE(info.template GetAttr<std::string>("mode", &mode).IsOK());
     mode_ = StringToUpsampleMode(mode);
 
     auto input_count = info.GetInputCount();
     if (input_count == 1) {  // opset < 10
       std::vector<float> scales;
-      ORT_THROW_IF_ERROR(info.GetAttrs<float>("scales", scales));
+      ORT_THROW_IF_ERROR(info.template GetAttrs<float>("scales", scales));
       ORT_THROW_IF_ERROR(ScalesValidation(scales, mode_));
       scales_.assign(scales.cbegin(), scales.cend());
       scales_cached_ = true;
     }
 
     if (opset >= 18) {
-      antialias_ = info.GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
+      antialias_ = info.template GetAttrOrDefault<int64_t>("antialias", 0) == 0 ? false : true;
 
       if (antialias_) {
         ORT_ENFORCE((UpsampleMode::LINEAR == mode_ || UpsampleMode::CUBIC == mode_),
@@ -156,21 +227,21 @@ class UpsampleBase {
       }
 
       // The attribute is absent in opset < 18, but the default value as if stretch.
-      std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
+      std::string keep_aspect_ratio_policy = info.template GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
       keep_aspect_ratio_policy_ = StringToKeepAspectRatioPolicy(keep_aspect_ratio_policy);
 
       // guard against unit tests that can add an attribute
-      auto axes = info.GetAttrsOrDefault<int64_t>("axes");
+      auto axes = info.template GetAttrsOrDefault<int64_t>("axes");
       axes_.assign(axes.cbegin(), axes.cend());
     }
 
-    extrapolation_value_ = info.GetAttrOrDefault<float>("extrapolation_value", 0.0f);
+    extrapolation_value_ = info.template GetAttrOrDefault<float>("extrapolation_value", 0.0f);
 
     // Coordinate transformation mode attr was introduced in version 11.
     // before that asymmetric mode was the only available transformation mode
     std::string coordinate_transform_mode_name =
         opset > 10
-            ? info.GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
+            ? info.template GetAttrOrDefault<std::string>("coordinate_transformation_mode", "half_pixel")
             : "asymmetric";
 
     coordinate_transform_mode_ = StringToCoordinateTransformationMode(coordinate_transform_mode_name);
@@ -184,18 +255,21 @@ class UpsampleBase {
     use_extrapolation_ = need_roi_input_ = (coordinate_transform_mode_ == TF_CROP_AND_RESIZE);
 
     std::string nearest_mode_name = (mode_ == NN && opset >= 11)
-                                        ? info.GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor")
+                                        ? info.template GetAttrOrDefault<std::string>("nearest_mode", "round_prefer_floor")
                                         : "";
     nearest_mode_ = StringToNearestMode(nearest_mode_name);
     get_nearest_pixel_ = GetNearestPixelFromOriginal(nearest_mode_);
 
-    cubic_coeff_a_ = info.GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
-    exclude_outside_ = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
+    cubic_coeff_a_ = info.template GetAttrOrDefault<float>("cubic_coeff_a", antialias_constants::kCubicCoeffA);
+    exclude_outside_ = info.template GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
 
     if ((exclude_outside_ == 1 && mode_ != CUBIC) && (antialias_ == false || mode_ != LINEAR)) {
+      // ONNX spec allows exclude_outside for CUBIC mode.
+      // Opset 18 extended the antialias filter behavior which requires renormalization
+      // of weights for LINEAR mode as well when antialias is enabled.
       ORT_THROW(
-          "exclude_outside can be set to 1 when (1 mode is CUBIC. "
-          "\n(2 mode is CUBIC or LINEAR when anti-aliasing is on"
+          "exclude_outside can be set to 1 when (1) mode is CUBIC, or "
+          "(2) mode is LINEAR when anti-aliasing is enabled"
           ". Current mode is set to " +
           mode + " and anti-aliasing is set to " + std::to_string(antialias_));
     }
@@ -218,8 +292,15 @@ class UpsampleBase {
     if (scales_input_idx_ > 0) {
       const Tensor* scale;
       bool get_scale = info.TryGetConstantInput(scales_input_idx_, &scale);
-      auto x_shape = node.InputDefs()[0]->Shape();
-      int64_t rank = x_shape ? x_shape->dim_size() : -1;
+      int64_t rank = -1;
+      if constexpr (upsamplebase_detail::has_input_defs<decltype(node)>::value) {
+        auto x_shape = node.InputDefs()[0]->Shape();
+        rank = x_shape ? x_shape->dim_size() : -1;
+      } else {
+        auto type_info = info.GetKernelInfo().GetInputTypeInfo(0);
+        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        rank = static_cast<int64_t>(tensor_info.GetDimensionsCount());
+      }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
         scales_cached_ = true;
@@ -391,6 +472,10 @@ class UpsampleBase {
         };
       case ROUND_PREFER_CEIL:
         return [](float x_original, bool) {
+          float fraction = x_original - std::floor(x_original);
+          if (std::abs(fraction - 0.5f) <= kNearestModeEps) {
+            return static_cast<int64_t>(std::ceil(x_original));
+          }
           return static_cast<int64_t>(std::round(x_original));
         };
       case FLOOR:
@@ -403,8 +488,8 @@ class UpsampleBase {
         };
       default:  // default is round_prefer_floor
         return [](float x_original, bool) {
-          // for half way cases prefer floor
-          if (x_original == static_cast<int64_t>(x_original) + 0.5f) {
+          float fraction = x_original - std::floor(x_original);
+          if (std::abs(fraction - 0.5f) <= kNearestModeEps) {
             return static_cast<int64_t>(std::floor(x_original));
           }
           return static_cast<int64_t>(std::round(x_original));
@@ -478,14 +563,20 @@ class UpsampleBase {
     // in which case the other axes is ignored and use default scale of 1
     // scales_size == axes_.size() should be guaranteed if axes is not empty
     if (rank > 0 && (scales_size != rank || axes_.size())) {
-      InlinedVector<float> new_scales(size_t(rank), 1.0f);
-      ORT_RETURN_IF_NOT(*std::max_element(axes_.begin(), axes_.end()) < rank && (int64_t(axes_.size()) == scales_size),
-                        "all values in axes should be less than rank of the data");
+      if (axes_.empty()) {
+        ORT_RETURN_IF_NOT(scales_size == rank,
+                          "Number of elements in scales should be equal to rank of the data when axes is not provided.");
+      } else {
+        ORT_RETURN_IF_NOT(static_cast<int64_t>(axes_.size()) == scales_size,
+                          "Number of elements in scales should be equal to number of axes.");
 
-      for (size_t i = 0; i < axes_.size(); i++) {
-        new_scales[static_cast<size_t>(axes_[i])] = scales[i];
+        InlinedVector<float> new_scales(size_t(rank), 1.0f);
+        for (size_t i = 0; i < axes_.size(); i++) {
+          const int64_t axis = HandleNegativeAxis(axes_[i], rank);
+          new_scales[static_cast<size_t>(axis)] = scales[i];
+        }
+        scales.swap(new_scales);
       }
-      scales.swap(new_scales);
     }
     return ScalesValidation(scales, mode_);
   }
@@ -508,11 +599,10 @@ class UpsampleBase {
 
     if (axes_.size()) {
       output_dims.assign(input_dims.begin(), input_dims.end());
-      ORT_RETURN_IF_NOT(*std::max_element(axes_.begin(), axes_.end()) < int64_t(output_dims.size()),
-                        "axes should be less than output_dims.size()");
-
+      const int64_t rank = static_cast<int64_t>(output_dims.size());
       for (size_t i = 0; i < axes_.size(); i++) {
-        output_dims[static_cast<size_t>(axes_[i])] = size_span[i];
+        const int64_t axis = HandleNegativeAxis(axes_[i], rank);
+        output_dims[static_cast<size_t>(axis)] = size_span[i];
       }
     } else {
       std::copy(size_span.begin(), size_span.end(), output_dims.begin());
@@ -547,11 +637,15 @@ class UpsampleBase {
     return ScalesValidation(scales, mode_);
   }
 
+  // Compute output dimensions from scales and input dimensions.
+  // Per the ONNX spec: output_dimension = floor(input_dimension * scale).
+  // Use std::floor explicitly so the implementation matches the spec-defined
+  // flooring behavior instead of relying on conversion-time truncation semantics.
   void ComputeOutputShape(gsl::span<const float> scales,
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
-      output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
+      output_dims[i] = static_cast<int64_t>(std::floor(scales[i] * input_dims[i]));
     }
   }
 
@@ -563,8 +657,10 @@ class UpsampleBase {
       for (size_t i = rank; i < rank * 2; ++i) {
         roi_tmp[i] = 1;
       }
+      const int64_t rank_i64 = static_cast<int64_t>(rank);
       for (size_t i = 0; i < axes_.size(); i++) {
-        auto v_in_axes = static_cast<size_t>(axes_[i]);
+        const int64_t axis = HandleNegativeAxis(axes_[i], rank_i64);
+        auto v_in_axes = static_cast<size_t>(axis);
         roi_tmp[v_in_axes] = (roi_array[i]);
         roi_tmp[rank + v_in_axes] = (roi_array[axes_.size() + i]);
       }

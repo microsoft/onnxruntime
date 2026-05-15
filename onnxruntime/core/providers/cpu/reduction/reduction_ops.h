@@ -273,7 +273,8 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
         tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]), ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
         [one, data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
           for (ptrdiff_t d = begin; d < last; ++d) {
-            math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N), onnxruntime::narrow<ptrdiff_t>(fast_shape[1]), one.data(), data + stridei * d, out + strideo * d, nullptr);
+            // TODO(hasesh): Plumb through the mlas backend kernel selector config here
+            math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N), onnxruntime::narrow<ptrdiff_t>(fast_shape[1]), one.data(), data + stridei * d, out + strideo * d, nullptr, nullptr);
           }
         });
   }
@@ -782,6 +783,51 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
   static void fill_for_empty_set(Tensor& output) {
     EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
   }
+};
+
+// Traits indicating whether a reduction aggregator applies element-wise transforms
+// in addition to reduction.
+// For axes=[] with noop_with_empty_axes=1, no reduction is performed; we either
+// apply the aggregator's element-wise PreOp/PostOp to each element, or
+// return the input unchanged for identity aggregators.
+//
+// PreOp: per-element transform during accumulation (AGG::update).
+// PostOp: transform applied after accumulation (AGG::get_value).
+// Add a specialization for aggregators that define a PreOp and/or PostOp.
+template <typename AGG>
+struct ReduceAggTraits {
+  static constexpr bool kHasPreOp = false;
+  static constexpr bool kHasPostOp = false;
+};
+
+template <typename T>
+struct ReduceAggTraits<ReduceAggregatorL1<T>> {
+  static constexpr bool kHasPreOp = true;
+  static constexpr bool kHasPostOp = false;
+};
+
+template <typename T>
+struct ReduceAggTraits<ReduceAggregatorL2<T>> {
+  static constexpr bool kHasPreOp = true;
+  static constexpr bool kHasPostOp = true;
+};
+
+template <typename T, typename TVAL>
+struct ReduceAggTraits<ReduceAggregatorSumSquare<T, TVAL>> {
+  static constexpr bool kHasPreOp = true;
+  static constexpr bool kHasPostOp = false;
+};
+
+template <typename T>
+struct ReduceAggTraits<ReduceAggregatorLogSum<T>> {
+  static constexpr bool kHasPreOp = false;
+  static constexpr bool kHasPostOp = true;
+};
+
+template <typename T>
+struct ReduceAggTraits<ReduceAggregatorLogSumExp<T>> {
+  static constexpr bool kHasPreOp = true;
+  static constexpr bool kHasPostOp = true;
 };
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,

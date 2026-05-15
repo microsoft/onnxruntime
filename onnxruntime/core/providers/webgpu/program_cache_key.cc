@@ -17,7 +17,7 @@ namespace webgpu {
 
 namespace {
 // append the info of an input or output to the cachekey
-void AppendTensorInfo(std::ostream& ss,
+void AppendTensorInfo(OStringStream& ss,
                       const TensorShape& tensor_shape,
                       ProgramVariableDataType var_type,
                       ProgramTensorMetadataDependency dependency,

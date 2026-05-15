@@ -41,8 +41,8 @@ Arguments:
     A - Supplies the address of matrix A.
 
     B - Supplies the address of matrix B. The matrix data has been packed using
-        MlasSgemmCopyPackB or MlasSgemmTransposePackB. Note that in scalar,
-        the packing wide is 4.
+        MlasSgemmCopyPackB or MlasSgemmTransposePackB with a packing width
+        of 16.
 
     C - Supplies the address of matrix C.
 

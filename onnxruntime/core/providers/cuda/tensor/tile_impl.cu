@@ -7,13 +7,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-#ifdef USE_ROCM
-constexpr int num_elements_per_thread = 2;
-constexpr int num_threads_per_block = 512;
-#else
 constexpr int num_elements_per_thread = GridDim::maxElementsPerThread;
 constexpr int num_threads_per_block = GridDim::maxThreadsPerBlock;
-#endif
 
 template <typename T>
 __global__ void _UnRolledTileKernel(const size_t shape_rank, const TArray<fast_divmod> fdm_input_shape,

@@ -11,6 +11,7 @@
 #include "nlohmann/json.hpp"
 
 #include "core/common/common.h"
+#include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_env.h"
@@ -90,6 +91,7 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
     config.selected_ep_name = parsed_json.value<decltype(config.selected_ep_name)>("selected_ep_name", {});
     config.selected_ep_device_indices =
         parsed_json.value<decltype(config.selected_ep_device_indices)>("selected_ep_device_indices", {});
+    config.tests_to_skip = parsed_json.value<decltype(config.tests_to_skip)>("tests_to_skip", {});
 
     config_out = std::move(config);
     return Status::OK();
@@ -166,7 +168,7 @@ void Shutdown() {
   g_plugin_ep_infrastructure_state.reset();
 }
 
-std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger) {
+std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* ep_options) {
   if (!IsInitialized()) {
     return nullptr;
   }
@@ -180,6 +182,13 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger) {
   std::vector<const char*> default_ep_option_key_cstrs{}, default_ep_option_value_cstrs{};
   StrMapToKeyValueCstrVectors(state.config.default_ep_options,
                               default_ep_option_key_cstrs, default_ep_option_value_cstrs);
+
+  if (ep_options != nullptr) {
+    for (const auto& [key, value] : ep_options->configurations) {
+      default_ep_option_key_cstrs.push_back(key.c_str());
+      default_ep_option_value_cstrs.push_back(value.c_str());
+    }
+  }
 
   OrtSessionOptions ort_session_options{};
   ORT_THROW_IF_ERROR(AddEpOptionsToSessionOptions(state.selected_c_ep_devices,
@@ -196,6 +205,14 @@ std::optional<std::string> GetEpName() {
   }
 
   return g_plugin_ep_infrastructure_state->ep_name;
+}
+
+std::vector<std::string> GetTestsToSkip() {
+  if (!IsInitialized()) {
+    return {};
+  }
+
+  return g_plugin_ep_infrastructure_state->config.tests_to_skip;
 }
 
 }  // namespace onnxruntime::test::dynamic_plugin_ep_infra

@@ -9,13 +9,34 @@ import tempfile
 from pathlib import Path
 
 
+def clean_gpg_trustdb() -> None:
+    if platform.system() == "Windows":
+        # Clean up GPG trust database if it exists
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            trustdb_path = Path(appdata) / "gnupg" / "trustdb.gpg"
+            if trustdb_path.exists():
+                try:
+                    trustdb_path.unlink()
+                except OSError as e:
+                    print(f"Warning: failed to delete GPG trust database at {trustdb_path}: {e}")
+
+
 def get_gpg_path() -> Path:
     """Finds the path to the GPG executable."""
     if platform.system() == "Windows":
+        # Check both Program Files (x86) and Program Files, gpg distribution
+        # changed on 12/31/2025
         program_files_x86 = os.environ.get("ProgramFiles(x86)")  # noqa: SIM112
-        if not program_files_x86:
-            raise OSError("ProgramFiles(x86) environment variable not found.")
-        return Path(program_files_x86) / "gnupg/bin/gpg.exe"
+        program_files = os.environ.get("ProgramFiles")  # noqa: SIM112
+
+        for base_path in [program_files_x86, program_files]:
+            if base_path:
+                gpg_path = Path(base_path) / "gnupg/bin/gpg.exe"
+                if gpg_path.is_file():
+                    return gpg_path
+
+        raise FileNotFoundError("GPG executable not found in Program Files or Program Files (x86).")
 
     gpg_path_str = shutil.which("gpg")
     if gpg_path_str is None:
@@ -103,8 +124,15 @@ def main() -> None:
         private_key_file.write_text(gpg_private_key, encoding="utf-8")
         passphrase_file.write_text(gpg_passphrase, encoding="utf-8")
 
+        # Clear GPG trustdb to avoid issues with cached trust settings
+        clean_gpg_trustdb()
+
+        # Check GPG trust database to generate a fresh one
+        print("Checking trust db")
+        run_command([str(gpg_exe_path), "--check-trustdb"])
+
         print("Importing GnuPG private key.")
-        run_command([str(gpg_exe_path), "--batch", "--import", str(private_key_file)])
+        run_command([str(gpg_exe_path), "--batch", "--yes", "--import", str(private_key_file)])
         print("Successfully imported GnuPG private key.")
 
         print(f"\nProcessing {len(files_to_process)} files in '{jar_file_directory}'.")

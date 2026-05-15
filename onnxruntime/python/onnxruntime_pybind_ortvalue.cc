@@ -47,13 +47,7 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
             "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
       } else if (strcmp(GetDeviceName(device), HIP) == 0) {
-#if USE_ROCM
-        if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-          throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-        }
-
-        allocator = GetRocmAllocator(device.Id());
-#elif USE_MIGRAPHX
+#if USE_MIGRAPHX
         allocator = GetMIGraphXAllocator(device.Id());
 #else
         throw std::runtime_error(
@@ -123,20 +117,6 @@ void addOrtValueMethods(pybind11::module& m) {
             // in CUDA
             CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
                                  true, false, CpuToCudaMemCpy);
-          } else
-#endif
-#ifdef USE_ROCM
-              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
-            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-            }
-
-            // InputDeflist is null because OrtValue creation is not tied to a specific model
-            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors
-            // in ROCM
-            CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
-                                 true, false, CpuToRocmMemCpy);
           } else
 #endif
 #if USE_MIGRAPHX
@@ -212,19 +192,6 @@ void addOrtValueMethods(pybind11::module& m) {
                 CpuToCudaMemCpy);
           } else
 #endif
-#if USE_ROCM
-              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
-            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-            }
-
-            onnxruntime::python::CopyDataToTensor(
-                py_values,
-                values_type,
-                *(ml_value->GetMutable<Tensor>()),
-                CpuToRocmMemCpy);
-          } else
-#endif
 #if USE_MIGRAPHX
               if (device.Vendor() == OrtDevice::VendorIds::AMD) {
             onnxruntime::python::CopyDataToTensor(
@@ -269,6 +236,9 @@ void addOrtValueMethods(pybind11::module& m) {
         } else {
           throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
         }
+      })
+      .def("update_inplace", [](OrtValue* ml_value, const OrtValue& source) {
+        python::UpdateOrtValueInplace(*ml_value, source);
       })
       // Create an ortvalue value on top of the numpy array, but interpret the data
       // as a different type with the same element size.
@@ -432,23 +402,32 @@ void addOrtValueMethods(pybind11::module& m) {
         switch (device.Vendor()) {
 #ifdef USE_CUDA
           case OrtDevice::VendorIds::NVIDIA:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device));
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction(device),
+                                      /*zero_copy_non_owning=*/true);
 #endif
 #ifdef USE_CANN
           case OrtDevice::VendorIds::HUAWEI:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
+            return GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction(),
+                                      /*zero_copy_non_owning=*/true);
 #endif
 
 #ifdef USE_DML
           case OrtDevice::VendorIds::MICROSOFT:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction(device));
+            return GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction(device),
+                                      /*zero_copy_non_owning=*/true);
 #endif
 #ifdef USE_MIGRAPHX
           case OrtDevice::VendorIds::AMD:
-            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction(device));
+            return GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction(device),
+                                      /*zero_copy_non_owning=*/true);
 #endif
           default:
-            return GetPyObjFromTensor(*ml_value, nullptr, nullptr);
+            // OrtValue.numpy() is called by the user who explicitly holds the OrtValue
+            // Python object, so the backing memory lifetime is managed externally.
+            // zero_copy_non_owning=true is safe here (and required to preserve the
+            // zero-copy semantics that OrtValue.numpy() / __array__ rely on).
+            return GetPyObjFromTensor(*ml_value, nullptr, nullptr,
+                                      /*zero_copy_non_owning=*/true);
         }
 #ifdef _MSC_VER
 #pragma warning(pop)

@@ -11,7 +11,6 @@
 #include <vector>
 #include <string>
 #include <string_view>
-
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ov_interface.h"
@@ -72,6 +71,8 @@ namespace backend_utils {
 
 bool IsDebugEnabled();
 
+std::string GetPerfCountDumpPath();
+
 // Internal diagnostic function.
 bool IsCILogEnabled();
 
@@ -99,15 +100,10 @@ CreateOVModel(std::string&& model,
               const SessionContext& session_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
 
-void CreateOVTensors(const std::string& device_name,
-                     SharedContext::SharedWeights::Metadata::Map& metadata_map,
-                     SharedContext::SharedWeights::WeightsFile& weights);
-void DestroyOVTensors(SharedContext::SharedWeights::Metadata::Map& metadata_map);
-
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName);
+                            std::ostream& stream);
 
-void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
+void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream);
 
 bool IsModelStreamXML(std::istream& model_stream);
 

@@ -55,15 +55,26 @@ class TestQnnPreprocessModel(unittest.TestCase):
         bias_const = onnx.numpy_helper.from_array(np.array(bias_val, dtype=np.float32), "bias_const")
         two_const = onnx.numpy_helper.from_array(np.array(2.0, dtype=np.float32), "two_const")
 
-        m_rm0_node = onnx.helper.make_node("ReduceMean", ["l2_seq_output", "axes_const"], ["m_rm0_out"])
-        m_sub_node = onnx.helper.make_node("Sub", ["l2_seq_output", "m_rm0_out"], ["m_sub_out"])
-        m_pow_node = onnx.helper.make_node("Pow", ["m_sub_out", "two_const"], ["m_pow_out"])
-        m_rm1_node = onnx.helper.make_node("ReduceMean", ["m_pow_out", "axes_const"], ["m_rm1_out"])
-        m_add0_node = onnx.helper.make_node("Add", ["m_rm1_out", "eps_const"], ["m_add0_out"])
-        m_sqrt_node = onnx.helper.make_node("Sqrt", ["m_add0_out"], ["m_sqrt_out"])
-        m_div_node = onnx.helper.make_node("Div", ["m_sub_out", "m_sqrt_out"], ["m_div_out"])
-        m_mul_node = onnx.helper.make_node("Mul", ["m_div_out", "scale_const"], ["m_mul_out"])
-        m_add1_node = onnx.helper.make_node("Add", ["m_mul_out", "bias_const"], ["output"])
+        m0_rm0_node = onnx.helper.make_node("ReduceMean", ["l2_seq_output", "axes_const"], ["m0_rm0_out"])
+        m0_sub_node = onnx.helper.make_node("Sub", ["l2_seq_output", "m0_rm0_out"], ["m0_sub_out"])
+        m0_pow_node = onnx.helper.make_node("Pow", ["m0_sub_out", "two_const"], ["m0_pow_out"])
+        m0_rm1_node = onnx.helper.make_node("ReduceMean", ["m0_pow_out", "axes_const"], ["m0_rm1_out"])
+        m0_add0_node = onnx.helper.make_node("Add", ["m0_rm1_out", "eps_const"], ["m0_add0_out"])
+        m0_sqrt_node = onnx.helper.make_node("Sqrt", ["m0_add0_out"], ["m0_sqrt_out"])
+        m0_div_node = onnx.helper.make_node("Div", ["m0_sub_out", "m0_sqrt_out"], ["m0_div_out"])
+        m0_mul_node = onnx.helper.make_node("Mul", ["m0_div_out", "scale_const"], ["m0_mul_out"])
+        m0_add1_node = onnx.helper.make_node("Add", ["m0_mul_out", "bias_const"], ["m0_add1_out"])
+
+        # Alternate ReduceMean sequence
+        m1_rm0_node = onnx.helper.make_node("ReduceMean", ["m0_add1_out", "axes_const"], ["m1_rm0_out"])
+        m1_sub_node = onnx.helper.make_node("Sub", ["m0_add1_out", "m1_rm0_out"], ["m1_sub_out"])
+        m1_mul0_node = onnx.helper.make_node("Mul", ["m1_sub_out", "m1_sub_out"], ["m1_mul0_out"])
+        m1_rm1_node = onnx.helper.make_node("ReduceMean", ["m1_mul0_out", "axes_const"], ["m1_rm1_out"])
+        m1_add0_node = onnx.helper.make_node("Add", ["m1_rm1_out", "eps_const"], ["m1_add0_out"])
+        m1_sqrt_node = onnx.helper.make_node("Sqrt", ["m1_add0_out"], ["m1_sqrt_out"])
+        m1_div_node = onnx.helper.make_node("Div", ["m1_sub_out", "m1_sqrt_out"], ["m1_div_out"])
+        m1_mul1_node = onnx.helper.make_node("Mul", ["m1_div_out", "scale_const"], ["m1_mul1_out"])
+        m1_add1_node = onnx.helper.make_node("Add", ["m1_mul1_out", "bias_const"], ["output"])
 
         graph = onnx.helper.make_graph(
             [
@@ -76,15 +87,24 @@ class TestQnnPreprocessModel(unittest.TestCase):
                 l2_clip_node,
                 l2_expand_node,
                 l2_div_node,
-                m_rm0_node,
-                m_sub_node,
-                m_pow_node,
-                m_rm1_node,
-                m_add0_node,
-                m_sqrt_node,
-                m_div_node,
-                m_mul_node,
-                m_add1_node,
+                m0_rm0_node,
+                m0_sub_node,
+                m0_pow_node,
+                m0_rm1_node,
+                m0_add0_node,
+                m0_sqrt_node,
+                m0_div_node,
+                m0_mul_node,
+                m0_add1_node,
+                m1_rm0_node,
+                m1_sub_node,
+                m1_mul0_node,
+                m1_rm1_node,
+                m1_add0_node,
+                m1_sqrt_node,
+                m1_div_node,
+                m1_mul1_node,
+                m1_add1_node,
             ],
             "qnn_f32_model",
             [root_inp],
@@ -119,8 +139,8 @@ class TestQnnPreprocessModel(unittest.TestCase):
 
         fused_model = onnx.load_model("model.qnn_pp.onnx")
 
-        # 3 fused Ops: Gelu, LpNorm, LayerNorm
-        self.assertEqual(len(fused_model.graph.node), 3)
+        # 4 fused Ops: Gelu, LpNorm, LayerNorm of two patterns
+        self.assertEqual(len(fused_model.graph.node), 4)
         expected_op_types = {"Gelu", "LpNormalization", "LayerNormalization"}
         for node in fused_model.graph.node:
             self.assertIn(node.op_type, expected_op_types)
@@ -167,8 +187,8 @@ class TestQnnPreprocessModel(unittest.TestCase):
 
         fused_model = onnx.load_model("model.qnn_pp.onnx", load_external_data=False)
 
-        # 3 fused Ops: Gelu, LpNorm, LayerNorm
-        self.assertEqual(len(fused_model.graph.node), 3)
+        # 4 fused Ops: Gelu, LpNorm, LayerNorm of two patterns
+        self.assertEqual(len(fused_model.graph.node), 4)
         expected_op_types = {"Gelu", "LpNormalization", "LayerNormalization"}
         for node in fused_model.graph.node:
             self.assertIn(node.op_type, expected_op_types)

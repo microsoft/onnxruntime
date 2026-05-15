@@ -87,6 +87,7 @@ QDQRegistry = {
     "LayerNormalization": QDQNormalization,
     "BatchNormalization": QDQNormalization,
     "TopK": QDQDirect8BitOp,
+    "CumSum": QDQOperatorBase,
 }
 
 

@@ -7,6 +7,8 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
     "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/session/model_package/*.h"
+    "${ONNXRUNTIME_ROOT}/core/session/model_package/*.cc"
     )
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -25,6 +27,7 @@ endif()
 if (onnxruntime_MINIMAL_BUILD)
   file(GLOB autoep_srcs
     "${ONNXRUNTIME_ROOT}/core/session/plugin_ep/*.*"
+    "${ONNXRUNTIME_ROOT}/core/session/model_package/*.*"
   )
 
   set(onnxruntime_session_src_exclude
@@ -71,8 +74,4 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
-
-if (onnxruntime_USE_NCCL AND onnxruntime_USE_ROCM)
-  add_dependencies(onnxruntime_session generate_hipified_files)
 endif()

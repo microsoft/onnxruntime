@@ -64,15 +64,15 @@ steps:
   - ${{ if eq(parameters.DownloadTRT, true) }}:
     - powershell: |
         # These values are copied from common-variables.yml
-        $cuda12_trt_version = '10.9.0.34'
-        $cuda13_trt_version = '10.13.3.9'
+        $cuda12_trt_version = '10.14.1.48'
+        $cuda13_trt_version = '10.14.1.48'
 
         $trtFolder = ""
         if ("${{ parameters.CudaVersion }}" -eq "13.0") {
           $trtFolder = "TensorRT-$cuda13_trt_version.Windows.win10.cuda-13.0"
         }
         elseif ("${{ parameters.CudaVersion }}" -eq "12.8") {
-          $trtFolder = "TensorRT-$cuda12_trt_version.Windows10.x86_64.cuda-12.8"
+          $trtFolder = "TensorRT-$cuda12_trt_version.Windows.win10.cuda-12.9"
         }
 
         Write-Host "Setting TrtFolderRuntime variable to: $trtFolder"
@@ -91,7 +91,7 @@ steps:
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/local/$(TrtFolderRuntime) $(Agent.TempDirectory)
 
     - powershell: |
-        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\lib"
+        Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\$(TrtFolderRuntime)\lib;$(Agent.TempDirectory)\$(TrtFolderRuntime)\bin"
       displayName: 'Append TensorRT Directory to PATH'
 
     - task: CmdLine@2

@@ -63,7 +63,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                                    hw_target,
                                                                    device_config,
                                                                    enable_causallm,
-                                                                   model_file_path());
+                                                                   model_file_path(),
+                                                                   session_context_);
       } else {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob
@@ -138,22 +139,22 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
-  auto metadata = shared_context_.shared_weights.metadata;
   if (session_context_.so_share_ep_contexts) {
-    initializer = [&metadata](OVInferRequestPtr ir_ptr) {
-      const auto input_count = ir_ptr->GetNumInputs();
-      for (auto i = 0u; i < input_count; i++) {
-        using Key = SharedContext::SharedWeights::Metadata::Key;
-        const auto tensor_key = Key{ir_ptr->GetInputTensorName(i)};
-        if (metadata.contains(tensor_key)) {
-          auto& value = metadata.at(tensor_key);
-          ir_ptr->SetTensor(tensor_key.name, value.tensor);
-        }
-      }
+    auto model_dir = session_context_.GetModelPath().parent_path();
+    initializer = [this, model_dir = std::move(model_dir)](OVInferRequestPtr ir_ptr) {
+      shared_context_.SetSharedWeightsOnInferRequest(ir_ptr->GetInfReq(), model_dir);
     };
   }
+
   infer_req_pool_ = std::make_unique<InferRequestPool>(exe_network_, num_infer_req, std::move(initializer));
   bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
+
+  std::string perf_count = openvino_ep::backend_utils::GetPerfCountDumpPath();
+  if (!perf_count.empty()) {
+    PerfDirCreate(perf_count);
+  } else {
+    dir_.clear();
+  }
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -184,35 +185,24 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
         device_config.emplace(ov::hint::inference_precision(subgraph_context_.model_precision));
     }
   }
-#ifndef NDEBUG
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    device_config.emplace(ov::enable_profiling(true));
-  }
-#endif
 
   // Set a priority level for the current workload for preemption;  default priority is "DEFAULT"
   // CPU Plugin doesn't support workload priority
   if (session_context_.device_type.find("CPU") == std::string::npos)
     device_config.emplace(ov::hint::model_priority(session_context_.model_priority));
 
-  if (session_context_.device_type.find("NPU") != std::string::npos) {
-    std::pair<std::string, ov::Any> device_property;
-    device_property = std::make_pair("NPU_COMPILER_TYPE", "DRIVER");
-
-    const std::string env_npu_compiler_type = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_NPU_COMPILER_TYPE");
-    if (!env_npu_compiler_type.empty()) {
-      device_property = std::make_pair("NPU_COMPILER_TYPE", env_npu_compiler_type);
-    }
-    device_config.emplace(ov::device::properties("NPU", device_property));
 #if (((OPENVINO_VERSION_MAJOR == 2024) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2024))
+  if (session_context_.device_type.find("NPU") != std::string::npos) {
     if (session_context_.so_context_enable) {
       OVCore::Get()->core.set_property("NPU", ov::intel_npu::bypass_umd_caching(true));
     }
-#endif
   }
+#endif
 
   if (!session_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = session_context_.load_config;
+    // Only skip compilation params for pre-compiled blob import, not OVIR (which compiles OVIR)
+    const bool skip_compilation_params = subgraph_context_.is_ep_ctx_graph && !subgraph_context_.is_ep_ctx_ovir_encapsulated;
 
     // Extract device names from device string and apply their configs
     // Examples: "GPU" -> ["GPU"], "AUTO:GPU.0,CPU" -> ["AUTO", "GPU", "CPU"]
@@ -224,6 +214,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
       if (auto config_it = target_config.find(std::string(base_device)); config_it != target_config.end()) {
         for (const auto& [key, value] : config_it->second) {
+          // Skip compilation-only parameters when importing pre-compiled models
+          if (skip_compilation_params && key == "NPU_COMPILATION_MODE_PARAMS") continue;
           device_config[key] = value;
         }
       }
@@ -242,13 +234,13 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableCaching() {
+void BasicBackend::EnableCaching(ov::AnyMap& device_config) {
   // cache_dir argument has no effect when working with an embed-mode EPContext Graph
   if (subgraph_context_.is_ep_ctx_graph) return;
 
   if (!session_context_.cache_dir.empty() && !session_context_.so_context_enable) {
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    OVCore::Get()->SetCache(session_context_.cache_dir.string());
+    device_config.emplace(ov::cache_dir(session_context_.cache_dir.string()));
   }
 }
 
@@ -262,7 +254,7 @@ void BasicBackend::EnableGPUThrottling(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::EnableStreams() {
+void BasicBackend::EnableStreams(ov::AnyMap& device_config) {
   // Return silently for NPU as it's currently treated as a read-only flag by the NPU plugin
   // and throws an exception for the same
   if (session_context_.device_type.find("NPU") != std::string::npos)
@@ -279,7 +271,7 @@ void BasicBackend::EnableStreams() {
     }
     // Do nothing
   } else {
-    OVCore::Get()->SetStreams(session_context_.device_type, session_context_.num_streams);
+    device_config.emplace(ov::num_streams(session_context_.num_streams));
   }
 }
 
@@ -293,13 +285,13 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   PopulateConfigValue(device_config);
 
   // Enable caching
-  EnableCaching();
+  EnableCaching(device_config);
 
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
   // Enable streams; default=1 unless overridden by user configuration
-  EnableStreams();
+  EnableStreams(device_config);
 
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);
@@ -315,33 +307,19 @@ void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
   }
 }
 
-void BasicBackend::ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
-                                                      const ov::PartialShape& partial_shape) const {
-  // Check if the number of dimensions matches
-  if (static_cast<int64_t>(ort_dims.size()) != partial_shape.rank().get_length()) {
-    ORT_THROW("Mismatch in number of dimensions between ORT tensor and OpenVINO PartialShape.");
-  }
-  // Validate each dimension
-  for (size_t i = 0; i < ort_dims.size(); ++i) {
-    const auto& ov_dim = partial_shape[i];  // OpenVINO dimension at index i
-    int64_t ort_dim = ort_dims[i];          // ORT dimension at index i
-
-    // Check if the ORT dimension is within the specified range
-    int64_t min_dim = ov_dim.get_min_length();
-    int64_t max_dim = ov_dim.get_max_length();
-    if (ort_dim < min_dim || ort_dim > max_dim) {
-      ORT_THROW(" ORT Dimension is out of range");
-    }
-  }
-}
-
 void BasicBackend::RewindKVCache(size_t index) {
   infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
     infer_request->RewindKVCache(index);
   });
 }
 
-void BasicBackend::Infer(OrtKernelContext* ctx) const {
+void BasicBackend::SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  infer_req_pool_->forEachIdleRequest([&](OVInferRequestPtr& infer_request) {
+    infer_request->SetReorderKVCacheStatus(src_indices, dst_indices);
+  });
+}
+
+void BasicBackend::Infer(OrtKernelContext* ctx) {
   Ort::KernelContext context(ctx);
 
   LOGS_DEFAULT(INFO) << log_tag << "Running graph " << subgraph_context_.subgraph_name;
@@ -381,9 +359,6 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
       // Set the input shape based on the input tensor from ort
       auto tensor = context.GetInput(input_info.onnx_index);
       auto ort_shape = tensor.GetTensorTypeAndShapeInfo().GetShape();
-      if (input_info.IsBoundedDynamic()) {
-        ValidateOrtDimsAgainstPartialShape(ort_shape, input_info.shape);
-      }
       auto input_shape = ParameterShape(ort_shape);
 
       infer_request->SetTensor(input_info.name,
@@ -445,13 +420,71 @@ void BasicBackend::Infer(OrtKernelContext* ctx) const {
     std::cout << "Inference successful" << std::endl;
   }
 
-#ifndef NDEBUG
-  // Print performance counts before releasing the infer_request for thread safety
-  if (openvino_ep::backend_utils::IsDebugEnabled()) {
-    std::string& hw_target = session_context_.device_type;
-    printPerformanceCounts(infer_request, std::cout, hw_target);
+  if (!dir_.empty()) {
+    PerfDump(infer_request);
   }
-#endif
+}
+
+void BasicBackend::PerfDirCreate(const std::string& perf_count) {
+  bool is_profiling_enabled = false;
+  try {
+    is_profiling_enabled = GetOVCompiledModel().get_property(ov::enable_profiling);
+  } catch (const ov::Exception& e) {
+    LOGS_DEFAULT(INFO) << log_tag << e.what();
+  }
+
+  if (!is_profiling_enabled) {
+    LOGS_DEFAULT(WARNING) << log_tag
+                          << "Performance counting was requested, but OpenVINO compiled model profiling "
+                          << "(ov::enable_profiling) is disabled. No perf CSV will be produced.";
+    dir_.clear();
+    return;
+  }
+
+  try {
+    std::filesystem::path perf_path(perf_count);
+    if (std::filesystem::exists(perf_path)) {
+      if (!std::filesystem::is_directory(perf_path)) {
+        LOGS_DEFAULT(INFO) << log_tag << "Perf count path '" << perf_path.string() << "' exists but is not a directory.";
+        dir_.clear();
+        return;
+      }
+    } else {
+      std::filesystem::create_directories(perf_path);
+    }
+    dir_ = std::move(perf_path);
+  } catch (const std::filesystem::filesystem_error& e) {
+    LOGS_DEFAULT(INFO) << log_tag << "Filesystem error for perf count path '" << perf_count << "': " << e.what();
+    dir_.clear();
+  }
+}
+
+void BasicBackend::PerfDump(OVInferRequestPtr infer_request) {
+  // Print performance counts before releasing the infer_request for thread safety
+  static std::mutex _mutex;
+  const std::string prefix = "OpenVINOExecutionProvider_OpenVINO-EP";
+  std::string subgraph_suffix;
+  if (subgraph_context_.subgraph_name.size() >= prefix.size() &&
+      subgraph_context_.subgraph_name.compare(0, prefix.size(), prefix) == 0) {
+    subgraph_suffix = subgraph_context_.subgraph_name.substr(prefix.size());
+  } else {
+    // Fallback: use the full subgraph name if it does not start with the expected prefix
+    subgraph_suffix = subgraph_context_.subgraph_name;
+  }
+
+  std::string filestring = subgraph_suffix + "_perf_count.csv";
+  std::filesystem::path filename(session_context_.GetModelPath().stem().string() + filestring);
+  filename = dir_ / filename;
+  std::unique_lock<std::mutex> lock(_mutex);
+  std::ofstream out(filename);
+  {
+    if (out.is_open()) {
+      printPerformanceCounts(infer_request, out);
+      out.close();
+    } else {
+      LOGS_DEFAULT(INFO) << log_tag << filename << ": File error";
+    }
+  }
 }
 
 }  // namespace openvino_ep

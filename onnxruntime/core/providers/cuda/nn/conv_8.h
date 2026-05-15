@@ -189,15 +189,12 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size, GetComputeStream(context));
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
     }
-
-    const CUDAExecutionProvider* cuda_ep =
-        static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
 
     TensorShapeVector x_dims_cudnn{x_dims.begin(), x_dims.end()};
     TensorShapeVector y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
@@ -210,7 +207,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.
-      if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+      if (this->GetCudnnConv1dPadToNc1d()) {
         x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
         y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
         w_dims.insert(w_dims.begin() + 2, 1);
@@ -313,13 +310,13 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
 
       cudnnConvolutionFwdAlgoPerf_t perf;
       int algo_count = 1;
-      int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+      int cudnn_conv_algo = this->GetCudnnConvAlgo();
       ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
       switch (cudnn_conv_algo) {
         case 0: {
           static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
-          size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetCudnnHandle(context), s_, kAllAlgos, num_algos)
-                                                                      : AlgoSearchWorkspaceSize;
+          size_t max_ws_size = this->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(GetCudnnHandle(context), s_, kAllAlgos, num_algos)
+                                                                   : AlgoSearchWorkspaceSize;
           // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
           // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
           IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
@@ -376,7 +373,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       return Status::OK();
     }
     if (s_.post_slicing_required) {
-      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, context->GetComputeStream());
+      s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size, GetComputeStream(context));
       s_.y_data = reinterpret_cast<CudaT*>(s_.memory_for_cudnn_conv_results.get());
     } else {
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
@@ -394,7 +391,7 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   }
   const auto alpha = Consts<CudaT>::One;
   const auto beta = Consts<CudaT>::Zero;
-  IAllocatorUniquePtr<void> workspace = GetWorkSpace(context->GetComputeStream());
+  IAllocatorUniquePtr<void> workspace = GetWorkSpace(GetComputeStream(context));
   auto cudnn_handle = GetCudnnHandle(context);
   CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(cudnn_handle,
                                                 &alpha,

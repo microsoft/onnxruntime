@@ -48,7 +48,6 @@ class Loop : public controlflow::IControlFlowKernel {
 
   static std::unique_ptr<OpKernel> Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream);
 
- protected:
   // derived class can provide implementation for handling concatenation of Loop output on a different device
   void SetConcatOutputFunc(const ConcatOutput& concat_output_func) { concat_output_func_ = concat_output_func; }
 

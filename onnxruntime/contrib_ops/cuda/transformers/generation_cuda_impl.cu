@@ -1,16 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// cub.cuh includes device/dispatch_radix_sort.cuh which has assignment in conditional expressions
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4706)
-#endif
-#include <cub/cub.cuh>
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-
 #include <cub/util_type.cuh>
 
 #include "core/providers/cuda/cuda_common.h"
@@ -1263,7 +1253,6 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           current_length);
 }
 
-#ifndef USE_ROCM
 namespace {
 template <typename T, size_t size>
 struct TypeMapper : public V_vec_m_<T, size> {};
@@ -1278,7 +1267,6 @@ struct TypeMapper<int32_t, 4> {
   using Type = uint4;
 };
 }  // namespace
-#endif
 
 template <typename T>
 __global__ void KeyCacheExpansionKernel(const T* input,
@@ -1330,7 +1318,6 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   tpb |= (tpb >> 16);
   tpb++;
 
-#ifndef USE_ROCM
   if ((head_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 block(tpb);
@@ -1348,16 +1335,13 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                                         max_seq_length,
                                                         equiv_head_size);
   } else {
-#endif
     const dim3 block(tpb);
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
                                                         key_cache_expanded,
                                                         beam_width,
                                                         max_seq_length,
                                                         head_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void KeyCacheExpansionKernelLauncher(const float* key_cache,
@@ -1417,7 +1401,6 @@ void BufferExpansionKernelLauncher(const T* input,
                                    cudaStream_t stream) {
   const dim3 block(128);
 
-#ifndef USE_ROCM
   if ((chunk_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
@@ -1431,14 +1414,11 @@ void BufferExpansionKernelLauncher(const T* input,
                                                       reinterpret_cast<vec_type*>(output),
                                                       chunk_size / 2);
   } else {
-#endif
     const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
     BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
                                                       output,
                                                       chunk_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void BufferExpansionKernelLauncher(const float* input,

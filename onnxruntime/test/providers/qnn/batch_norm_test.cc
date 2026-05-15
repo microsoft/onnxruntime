@@ -3,8 +3,10 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <cmath>
 #include <string>
 #include "core/graph/graph.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/common/float16.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
@@ -365,6 +367,8 @@ TEST_F(QnnHTPBackendTests, DISABLED_BatchNorm2D_U16U16S32) {
 
 // Test FP16 BatchNormalization on the HTP backend.
 TEST_F(QnnHTPBackendTests, BatchNorm_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   constexpr int64_t num_channels = 2;
   std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
                                    -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
@@ -378,6 +382,7 @@ TEST_F(QnnHTPBackendTests, BatchNorm_FP16) {
 // Test FP32 BatchNormalization on the HTP backend with the enable_htp_fp16_precision option enabled
 // to run it with fp16 precision.
 TEST_F(QnnHTPBackendTests, BatchNorm_FP32_as_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   ProviderOptions provider_options;
 
   provider_options["backend_type"] = "htp";
@@ -409,6 +414,104 @@ TEST_F(QnnHTPBackendTests, BatchNorm3D) {
                                         TestInputDef<float>({num_channels}, true, {1.0f, 2.0f}),  // Scale initializer
                                         TestInputDef<float>({num_channels}, true, {1.1f, 2.1f}),  // Bias initializer
                                         ExpectedEPNodeAssignment::None);
+}
+
+// Tests BatchNorm with Q->DQ structure commonly seen in quantized models
+template <typename InputQType, typename ParamQType>
+GetTestQDQModelFn<InputQType> BuildBatchNormQdqParamsTestCase(const TestInputDef<float>& input_def,
+                                                              const TestInputDef<float>& scale_def,
+                                                              const TestInputDef<float>& bias_def) {
+  ORT_ENFORCE(input_def.IsRawData());
+  ORT_ENFORCE(scale_def.IsRawData());
+
+  return [input_def, scale_def, bias_def](ModelTestBuilder& builder,
+                                          std::vector<QuantParams<InputQType>>& output_qparams) {
+    const auto& input_shape = input_def.GetShape();
+    const auto& input_data = input_def.GetRawData();
+    const int64_t num_channels = input_shape[1];
+
+    // Input: float -> Q -> DQ
+    bool symmetric = sizeof(InputQType) == sizeof(uint16_t);
+    NodeArg* input = MakeTestInput(builder, input_def);
+    QuantParams<InputQType> input_qparams = GetTestInputQuantParams<InputQType>(input_def, symmetric);
+    NodeArg* input_qdq = AddQDQNodePair<InputQType>(builder, input, input_qparams.scale, input_qparams.zero_point);
+
+    NodeAttributes axis_0_attrs;
+    utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(0)), axis_0_attrs);
+
+    // Scale: float_init -> Q -> DQ (per-channel with axis=0, symmetric)
+    const auto& scale_data = scale_def.GetRawData();
+    std::vector<float> scale_scales(num_channels);
+    std::vector<ParamQType> scale_zero_points(num_channels, static_cast<ParamQType>(0));
+    for (int64_t c = 0; c < num_channels; ++c) {
+      float abs_max = std::abs(scale_data[c]);
+      if (abs_max == 0.0f) abs_max = 1.0f;
+      scale_scales[c] = abs_max / static_cast<float>(std::numeric_limits<ParamQType>::max());
+    }
+    std::vector<int64_t> param_shape = {num_channels};
+    NodeArg* scale_float_init = builder.MakeInitializer<float>(param_shape, scale_data);
+    NodeArg* scale_qdq = AddQDQNodePair<ParamQType>(builder, scale_float_init, scale_scales, scale_zero_points,
+                                                    &axis_0_attrs, &axis_0_attrs);
+
+    NodeArg* bias = builder.MakeInitializer<float>(bias_def.GetShape(), bias_def.GetRawData());
+
+    // Compute mean and var from input data
+    std::vector<float> mean_vals(num_channels);
+    std::vector<float> var_vals(num_channels);
+    ComputeChannelMeanAndVar(input_data, input_shape, mean_vals, var_vals);
+
+    // Mean: float_init -> Q -> DQ (per-channel with axis=0, symmetric)
+    std::vector<float> mean_scales(num_channels);
+    std::vector<ParamQType> mean_zero_points(num_channels, static_cast<ParamQType>(0));
+    for (int64_t c = 0; c < num_channels; ++c) {
+      float abs_max = std::abs(mean_vals[c]);
+      if (abs_max == 0.0f) abs_max = 1.0f;
+      mean_scales[c] = abs_max / static_cast<float>(std::numeric_limits<ParamQType>::max());
+    }
+    NodeArg* mean_float_init = builder.MakeInitializer<float>(param_shape, mean_vals);
+    NodeArg* mean_qdq = AddQDQNodePair<ParamQType>(builder, mean_float_init, mean_scales, mean_zero_points,
+                                                   &axis_0_attrs, &axis_0_attrs);
+
+    // Var: float_init -> Q -> DQ (per-channel with axis=0, symmetric)
+    std::vector<float> var_scales(num_channels);
+    std::vector<ParamQType> var_zero_points(num_channels, static_cast<ParamQType>(0));
+    for (int64_t c = 0; c < num_channels; ++c) {
+      float abs_max = std::abs(var_vals[c]);
+      if (abs_max == 0.0f) abs_max = 1.0f;
+      var_scales[c] = abs_max / static_cast<float>(std::numeric_limits<ParamQType>::max());
+    }
+    NodeArg* var_float_init = builder.MakeInitializer<float>(param_shape, var_vals);
+    NodeArg* var_qdq = AddQDQNodePair<ParamQType>(builder, var_float_init, var_scales, var_zero_points,
+                                                  &axis_0_attrs, &axis_0_attrs);
+
+    auto* batchnorm_output = builder.MakeIntermediate();
+    builder.AddNode("BatchNormalization", {input_qdq, scale_qdq, bias, mean_qdq, var_qdq},
+                    {batchnorm_output});
+
+    AddQDQNodePairWithOutputAsGraphOutput<InputQType>(builder, batchnorm_output,
+                                                      output_qparams[0].scale, output_qparams[0].zero_point);
+  };
+}
+
+// Test BatchNorm with Q->DQ on input/scale/mean/var, float bias
+TEST_F(QnnHTPBackendTests, BatchNorm2dQdqParams) {
+  constexpr int64_t num_channels = 2;
+  std::vector<float> input_data = {-8.0f, -6.0f, -4.0f, -2.0f, 0.0f, 1.1f, 3.3f, 8.0f,
+                                   -7.0f, -5.0f, -3.0f, -1.0f, 0.0f, 2.1f, 4.3f, 7.0f};
+
+  TestInputDef<float> input_def({2, num_channels, 2, 2}, false, input_data);
+  TestInputDef<float> scale_def({num_channels}, true, {1.0f, 2.0f});
+  TestInputDef<float> bias_def({num_channels}, true, {1.1f, 2.1f});
+
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  TestQDQModelAccuracy(BuildBatchNormTestCase(input_def, scale_def, bias_def),
+                       BuildBatchNormQdqParamsTestCase<uint16_t, int8_t>(input_def, scale_def, bias_def),
+                       provider_options,
+                       21,
+                       ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

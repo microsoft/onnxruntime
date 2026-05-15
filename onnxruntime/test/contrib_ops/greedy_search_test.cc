@@ -60,13 +60,8 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
 #else
   bool is_cuda = false;
 #endif
-#ifdef USE_ROCM
-  bool is_rocm = true;
-#else
-  bool is_rocm = false;
-#endif
 
-  if (is_cuda || is_rocm) {
+  if (is_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     if (is_cuda) {
@@ -142,13 +137,8 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
 #else
   bool is_cuda = false;
 #endif
-#ifdef USE_ROCM
-  bool is_rocm = true;
-#else
-  bool is_rocm = false;
-#endif
 
-  if (is_cuda || is_rocm) {
+  if (is_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     if (is_cuda) {

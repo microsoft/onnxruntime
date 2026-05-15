@@ -15,7 +15,8 @@ namespace onnxruntime {
 
 class SqueezeBase {
  protected:
-  explicit SqueezeBase(const OpKernelInfo& info) {
+  template <typename KernelInfoType>
+  explicit SqueezeBase(const KernelInfoType& info) {
     TensorShapeVector axes;
     size_t numInputs = info.GetInputCount();
     if (numInputs == 1) {

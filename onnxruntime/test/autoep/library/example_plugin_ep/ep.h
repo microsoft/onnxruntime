@@ -8,7 +8,51 @@
 #include "../plugin_ep_utils.h"
 
 class ExampleEpFactory;
-struct MulKernel;
+
+/// <summary>
+/// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
+/// </summary>
+struct MulKernel {
+  MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
+            const std::unordered_map<std::string, FloatInitializer>& float_initializers,
+            std::string input0_name, std::string input1_name)
+      : ort_api(ort_api),
+        logger(logger),
+        float_initializers(float_initializers),
+        input0_name(input0_name),
+        input1_name(input1_name) {}
+
+  const FloatInitializer* TryGetSavedInitializer(const std::string& name) const;
+
+  void GetInputDataAndShape(Ort::KernelContext kernel_context, size_t index,
+                            /*out*/ gsl::span<const float>& data,
+                            /*out*/ std::vector<int64_t>& shape) const;
+
+  OrtStatus* Compute(OrtKernelContext* kernel_ctx);
+
+  const OrtApi& ort_api;
+  const OrtLogger& logger;
+  const std::unordered_map<std::string, FloatInitializer>& float_initializers;
+  std::string input0_name;
+  std::string input1_name;
+};
+
+/// <summary>
+/// Kernel for EPContext nodes loaded from compiled models.
+///
+/// This example EP does not support EPContext inference - Compute() returns NOT_IMPLEMENTED.
+/// A production EP would deserialize the ep_cache_context attribute and restore compiled state.
+/// This kernel exists to clearly separate EPContext handling from MulKernel.
+/// </summary>
+struct EpContextKernel {
+  EpContextKernel(const OrtApi& ort_api, const OrtLogger& logger)
+      : ort_api(ort_api), logger(logger) {}
+
+  OrtStatus* Compute(OrtKernelContext* kernel_ctx);
+
+  const OrtApi& ort_api;
+  const OrtLogger& logger;
+};
 
 /// <summary>
 /// Example EP that can compile a single Mul operator.
@@ -17,6 +61,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
  public:
   struct Config {
     bool enable_ep_context = false;
+    bool enable_weightless_ep_context_nodes = false;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 
@@ -24,8 +69,12 @@ class ExampleEp : public OrtEp, public ApiPtrs {
 
   ~ExampleEp();
 
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>>& Kernels() {
-    return kernels_;
+  std::unordered_map<std::string, std::unique_ptr<MulKernel>>& MulKernels() {
+    return mul_kernels_;
+  }
+
+  std::unordered_map<std::string, std::unique_ptr<EpContextKernel>>& EpContextKernels() {
+    return ep_context_kernels_;
   }
 
  private:
@@ -51,15 +100,27 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos) noexcept;
 
+  static const char* ORT_API_CALL GetCompiledModelCompatibilityInfoImpl(OrtEp* this_ptr,
+                                                                        const OrtGraph* graph) noexcept;
+
+  static OrtStatus* ORT_API_CALL SyncImpl(_In_ OrtEp* this_ptr) noexcept;
+
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
-  OrtStatus* SaveConstantInitializers(const OrtGraph* graph);
+  // Returns true if the EP should save constant initializers so that they are available during inference.
+  bool CopiesConstantInitializers() const;
+
+  // If the given `OrtValueInfo` represents a constant initializer, this function saves a copy of the initializer data
+  // within this EP instance so that it is available during inference.
+  OrtStatus* TrySaveConstantInitializer(Ort::ConstValueInfo maybe_initializer);
 
   ExampleEpFactory& factory_;
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
+  std::unordered_map<std::string, std::unique_ptr<MulKernel>> mul_kernels_;
+  std::unordered_map<std::string, std::unique_ptr<EpContextKernel>> ep_context_kernels_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;
+  std::string compatibility_info_;  // Cached compatibility string returned by GetCompiledModelCompatibilityInfo
 };

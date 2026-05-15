@@ -26,7 +26,6 @@
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 template <typename T>
@@ -35,7 +34,8 @@ common::Status SoftmaxCPU(size_t N,
                           const T* Xdata,
                           T* Ydata,
                           bool logarithmic,
-                          onnxruntime::concurrency::ThreadPool* thread_pool) {
+                          onnxruntime::concurrency::ThreadPool* thread_pool,
+                          const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // the Math functions SoftmaxCPU uses only support int32_t as input, so enforce that
   if (N * D > INT32_MAX || N > INT32_MAX || D > INT32_MAX) {
     std::ostringstream ss;
@@ -58,7 +58,7 @@ common::Status SoftmaxCPU(size_t N,
   // Put the intermediate result X - max(X) into Y by first copying X to Y, and then subtracting max from each entry
   gsl::copy(gsl::make_span(Xdata, nd), gsl::make_span(Ydata, nd));
 
-  math::Gemm<T>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax.data(), sum_multiplier.data(), 1, Ydata, thread_pool);
+  math::Gemm<T>(CblasNoTrans, CblasNoTrans, n, d, 1, -1, rowmax.data(), sum_multiplier.data(), 1, Ydata, thread_pool, mlas_backend_kernel_selector_config);
 
   // Exponentiation
   math::Exp<T, CPUMathUtil>(nd, Ydata, Ydata, nullptr);
@@ -90,7 +90,8 @@ template common::Status SoftmaxCPU<double>(size_t N,
                                            const double* Xdata,
                                            double* Ydata,
                                            bool logarithmic,
-                                           onnxruntime::concurrency::ThreadPool* thread_pool);
+                                           onnxruntime::concurrency::ThreadPool* thread_pool,
+                                           const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 template <>
 common::Status SoftmaxCPU<float>(size_t N,
@@ -98,7 +99,9 @@ common::Status SoftmaxCPU<float>(size_t N,
                                  const float* Xdata,
                                  float* Ydata,
                                  bool logarithmic,
-                                 onnxruntime::concurrency::ThreadPool* thread_pool) {
+                                 onnxruntime::concurrency::ThreadPool* thread_pool,
+                                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
   MlasComputeSoftmax(Xdata, Ydata, N, D, logarithmic, false, 0.0f, thread_pool);
   return Status::OK();
 }

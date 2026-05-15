@@ -5,24 +5,32 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
-#include "core/providers/cpu/llm/attention_helper.h"
+#include "core/providers/cpu/llm/attention_parameters.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 
+// This value is used to mask out a value from the input as ``Softmax(-infinity, ...) = 0``.
+// If the mask is added, -infinity + x = -infinity.
+// inifinity is replaced by lowest() because softmax implemented in MLAS
+// is expected an input with only infinity values.
+// This change assumes that lowest() is sufficiently low enough to not impact the result.
 template <typename T>
-inline T negative_infinity() {
-  return -std::numeric_limits<T>::infinity();
+inline T mask_filter_value() {
+  return std::numeric_limits<T>::lowest();
 }
 
 template <>
-inline MLFloat16 negative_infinity() {
-  return MLFloat16(-std::numeric_limits<float>::infinity());
+inline MLFloat16 mask_filter_value() {
+  return MLFloat16::MinValue;
 }
 
 template <typename T>
 class AttentionBase : public OpKernel {
  public:
-  AttentionBase(const OpKernelInfo& info) : OpKernel(info) {}
+  AttentionBase(const OpKernelInfo& info) : OpKernel(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+  }
 
   Status ApplyAttention(OpKernelContext* context,
                         const T* Q,                                              // Q data with shape BxNxSxH
@@ -77,6 +85,8 @@ class AttentionBase : public OpKernel {
                       std::ptrdiff_t batch_i,
                       std::ptrdiff_t head_i,
                       bool transposed) const;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 template <typename T>

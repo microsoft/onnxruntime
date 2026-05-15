@@ -269,6 +269,7 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 }
 
 Status MatMul::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                         gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                          int input_idx, /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
   if (input_idx != 1) {

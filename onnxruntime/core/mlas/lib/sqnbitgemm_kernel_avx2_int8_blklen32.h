@@ -1670,12 +1670,12 @@ MlasQ4Int8TileGemmKernelBlkLen32Avx2(
                 // .../onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx2_int8_blklen32.h:1531:13: note: array 'acc' declared here
                 //  1531 |             __m256 acc[NCols4];
                 //       |             ^
-#if defined(__clang__) && defined(HAS_ARRAY_BOUNDS)
+#ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warray-bounds"
 #endif
                 __m128 acc_1 = FoldAccumulators(acc[4], acc[5], acc[6], acc[7]);
-#if defined(__clang__) && defined(HAS_ARRAY_BOUNDS)
+#ifdef __clang__
 #pragma clang diagnostic pop
 #endif
                 if (BiasPtr != nullptr) {

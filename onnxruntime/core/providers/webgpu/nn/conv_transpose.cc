@@ -57,6 +57,11 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
 
   bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
+  // Validate bias shape if provided
+  if (has_bias && (bias->Shape().NumDimensions() != 1 || bias->Shape()[0] != num_output_channels)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid bias");
+  }
+
   if (input_shape.NumDimensions() == 3 && filter_shape.NumDimensions() == 3) {
     // ConvTranspose1D
     TensorShapeVector input_shape_vector = input_shape.AsShapeVector();
@@ -87,12 +92,11 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
     inputs.push_back(bias);
     input_output_shapes.push_back(bias->Shape());
   }
-  uint32_t auto_pad_adjust = conv_transpose_attrs_.auto_pad == AutoPadType::SAME_LOWER ? 1 : 0;
-  auto pad0 = conv_transpose_attrs_.auto_pad == AutoPadType::NOTSET ? pads[0] : (pads[0] + pads[2] + auto_pad_adjust) / 2;
-  auto pad1 = conv_transpose_attrs_.auto_pad == AutoPadType::NOTSET ? pads[1] : (pads[1] + pads[3] + auto_pad_adjust) / 2;
+  // pads[0] and pads[1] already contain the correct head (beginning) padding values
+  // computed by ComputePadsAndOutputShape() which handles auto_pad correctly.
   Tensor* output = context.Output(0, computed_output_shape);
   input_output_shapes.push_back(output_shape);
-  auto program = CreateConvTranspose2DProgram(inputs, {pad0, pad1}, strides, dilations, output, is_channels_last, input_output_shapes, static_cast<uint32_t>(conv_transpose_attrs_.group));
+  auto program = CreateConvTranspose2DProgram(inputs, {pads[0], pads[1]}, strides, dilations, output, is_channels_last, input_output_shapes, static_cast<uint32_t>(conv_transpose_attrs_.group));
   return context.RunProgram(program);
 }
 

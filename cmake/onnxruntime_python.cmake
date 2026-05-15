@@ -69,6 +69,20 @@ endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
+message(STATUS "Python_EXECUTABLE: ${Python_EXECUTABLE}")
+
+# Query Py_GIL_DISABLED (PEP 703)
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -c
+          "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED') or '0')"
+  RESULT_VARIABLE _py_result
+  OUTPUT_VARIABLE _py_gil_disabled
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if (_py_result EQUAL 0 AND _py_gil_disabled STREQUAL "1")
+  message(STATUS "Py_GIL_DISABLED=1 detected: Enabling free-threaded support for onnxruntime_pybind11_state")
+endif()
+
 if(MSVC)
   # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
@@ -78,6 +92,12 @@ if(MSVC)
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
+endif()
+# pybind11 3.0 headers trigger -Wmaybe-uninitialized in GCC's flow analysis
+# of property accessor lambdas. Suppress it for this target only.
+# See https://github.com/microsoft/onnxruntime/issues/25681
+if(HAS_MAYBE_UNINITIALIZED)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-maybe-uninitialized")
 endif()
 
 # We export symbols using linker and the compiler does not know anything about it
@@ -99,14 +119,13 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      target_include_directories(onnxruntime_pybind11_state PRIVATE ${CUDNN_INCLUDE_DIR})
+    endif()
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
-endif()
-if(onnxruntime_USE_ROCM)
-  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -180,14 +199,15 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
 )
 
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
+endif()
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)
   # onnxruntime_pybind11_state is a DLL
@@ -285,8 +305,22 @@ if (WIN32)
   if (onnxruntime_USE_CUDA)
     file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
     if(onnxruntime_CUDNN_HOME)
-      file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
-      if (NOT CUDNN_DLL_PATH)
+      # may have x64 in the path
+      # may have a path with CUDA toolkit version if multiple installed on the machine
+      set(CUDNN_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
+      )
+      set(CUDNN_DLL_PATH "")
+      foreach(search_path ${CUDNN_SEARCH_PATHS})
+        file(GLOB CUDNN_DLL_PATH "${search_path}")
+        if(CUDNN_DLL_PATH)
+          break()
+        endif()
+      endforeach()
+      if(NOT CUDNN_DLL_PATH)
         message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
       endif()
     else()
@@ -442,6 +476,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
   )
+  file(GLOB onnxruntime_python_transformers_test_onnx_attention_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_onnx_attention/*.py"
+  )
   file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
   )
@@ -595,6 +632,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
@@ -774,7 +812,6 @@ endif()
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-                                  AND NOT onnxruntime_USE_ROCM
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -796,6 +833,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_onnx_attention_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
@@ -1039,16 +1079,6 @@ if (onnxruntime_USE_CANN)
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           $<TARGET_FILE:onnxruntime_providers_cann>
-          $<TARGET_FILE:onnxruntime_providers_shared>
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-    )
-endif()
-
-if (onnxruntime_USE_ROCM)
-    add_custom_command(
-      TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-          $<TARGET_FILE:onnxruntime_providers_rocm>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )

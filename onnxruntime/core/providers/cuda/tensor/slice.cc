@@ -177,10 +177,10 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   if (dynamic) {
     TensorShapeVector input_starts, input_ends, input_axes, input_steps;
     ORT_RETURN_IF_ERROR(FillInputVectors(ctx, input_starts, input_ends, input_axes, input_steps));
-    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
+    ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
 
   } else {
-    ORT_RETURN_IF_ERROR(PrepareForCompute(StartsAttribute(), EndsAttribute(), AxesAttribute(), compute_metadata));
+    ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(StartsAttribute(), EndsAttribute(), AxesAttribute(), compute_metadata));
   }
 
   TensorShape output_shape(compute_metadata.output_dims_);
@@ -212,8 +212,8 @@ template <bool dynamic>
 Status Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts,
                                         TensorShapeVector& input_ends, TensorShapeVector& input_axes,
                                         TensorShapeVector& input_steps) const {
-  return FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
-                              ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
+  return SliceBase::FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
+                                         ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
 }
 
 template <bool dynamic>
@@ -258,12 +258,7 @@ Status FuncSlice(
 
   SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
 
-  ORT_RETURN_IF_ERROR(
-      SliceOp::PrepareForComputeHelper(starts_span, ends_span, axes_span, steps_span, compute_metadata));
-
-  ORT_RETURN_IF_ERROR(SliceBase::FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                                                   compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_input_dims_,
-                                                   compute_metadata.p_flattened_output_dims_));
+  ORT_RETURN_IF_ERROR(SliceBase::PrepareForCompute(starts_span, ends_span, axes_span, steps_span, compute_metadata));
 
   TensorShape output_shape(compute_metadata.output_dims_);
 

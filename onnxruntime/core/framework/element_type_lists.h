@@ -12,6 +12,7 @@
 #include "core/common/float8.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
 #include "core/framework/float4.h"
 
 namespace onnxruntime {
@@ -99,6 +100,23 @@ using AllIRv11 =
 using AllIRv11 = AllIRv10;
 #endif
 
+// IR v12 adds FLOAT8E8M0 (8-bit exponent-only float for MX scaling)
+#if !defined(DISABLE_FLOAT8_TYPES)
+using AllIRv12 =
+    boost::mp11::mp_push_back<
+        AllIRv11,
+        Float8E8M0>;
+#else
+using AllIRv12 = AllIRv11;
+#endif
+
+// IR v13 adds INT2/UINT2 (2-bit integer types)
+using AllIRv13 =
+    boost::mp11::mp_push_back<
+        AllIRv12,
+        UInt2x4,
+        Int2x4>;
+
 // TODO: This needs upgrade to some newer version ,buit it has been
 // at this version for a while and it needs changes at the use sites
 // where-in the types in the newer IR versions are not supported.
@@ -112,7 +130,8 @@ using AllFloat8 =
         Float8E4M3FN,
         Float8E4M3FNUZ,
         Float8E5M2,
-        Float8E5M2FNUZ>;
+        Float8E5M2FNUZ,
+        Float8E8M0>;
 #endif
 
 #if !defined(DISABLE_FLOAT4_TYPES)

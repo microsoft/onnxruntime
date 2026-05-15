@@ -832,10 +832,18 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
   meta_def->name() = "MGXKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
 
-  // Assign inputs and outputs to subgraph's meta_def
+  // Assign inputs and outputs to subgraph's meta_def.
+  // Drop constant initializers from inputs: MIGraphX loads them internally via
+  // the serialized ONNX model passed to parse_onnx_buffer(), so ORT does not
+  // need to allocate them on the device. Keeping them as inputs would cause
+  // double allocation of weights on the GPU.
   for (const auto& input : inputs) {
     if (input.second->Exists()) {
-      meta_def->inputs().push_back(input.second->Name());
+      const std::string& input_name = input.second->Name();
+      if (graph.IsConstantInitializer(input_name, /*check_outer_scope=*/true)) {
+        continue;
+      }
+      meta_def->inputs().push_back(input_name);
     }
   }
 
@@ -1373,7 +1381,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
       }
 
       auto prog_output_shapes = prog.get_output_shapes();
-      for (std::size_t i = 0; i < output_names.size(); ++i) {
+      for (std::size_t i = 0; i < prog_output_shapes.size(); ++i) {
         auto out_len = prog_output_shapes[i].lengths();
         options.set_input_parameter_shape(output_names[i], out_len);
       }

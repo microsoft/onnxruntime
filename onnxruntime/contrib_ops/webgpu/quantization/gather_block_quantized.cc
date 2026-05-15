@@ -149,7 +149,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
     TensorShape data_representation_4bit_shape{x->Shape()};
     MLDataType new_dtype = (x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) ? DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<Int4x2>();
     auto memory_info = OrtMemoryInfo{
-        "WebGPU_Buffer",
+        WEBGPU_BUFFER,
         OrtDeviceAllocator,
         OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}};
 

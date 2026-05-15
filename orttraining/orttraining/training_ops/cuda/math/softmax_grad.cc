@@ -30,12 +30,7 @@ struct DispatchSoftmaxGradImpl {
 
 }  // namespace
 
-// MIOpen doesn't support double so ROCm kernel doesn't have double support for now.
-#ifdef USE_ROCM
-#define SOFTMAX_GRAD_TYPES float, MLFloat16, BFloat16
-#else
 #define SOFTMAX_GRAD_TYPES float, double, MLFloat16, BFloat16
-#endif
 
 #define REGISTER_SOFTMAX_GRAD_KERNEL(name)                                                                \
   ONNX_OPERATOR_KERNEL_EX(                                                                                \

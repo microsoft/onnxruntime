@@ -31,12 +31,7 @@ struct DispatchBiasSoftmaxImpl {
 
 }  // namespace
 
-// MIOpen doesn't support double so ROCm kernel doesn't have double support for now.
-#ifdef USE_ROCM
-#define BIAS_SOFTMAX_TYPES float, MLFloat16
-#else
 #define BIAS_SOFTMAX_TYPES float, MLFloat16, double
-#endif
 
 ONNX_OPERATOR_KERNEL_EX(
     BiasSoftmax, kMSDomain, 1, kCudaExecutionProvider,

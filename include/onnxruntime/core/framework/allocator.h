@@ -85,8 +85,8 @@ constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 constexpr const char* OpenVINO_RT = "OpenVINO_RT";
 constexpr const char* OpenVINO_RT_NPU = "OpenVINO_RT_NPU";
 constexpr const char* QNN_HTP_SHARED = "QnnHtpShared";
-constexpr const char* WEBGPU_BUFFER = "WebGPU_Buffer";
-constexpr const char* WEBNN_TENSOR = "WebNN_Tensor";
+constexpr const char* WEBGPU_BUFFER = "WebGPU_Buf";  // limited to 10 chars to ensure std::string SSO for web
+constexpr const char* WEBNN_TENSOR = "WebNN_Ten";    // limited to 10 chars to ensure std::string SSO for web
 
 constexpr size_t kAllocAlignment = 256;
 constexpr const size_t kAlloc4KAlignment = 4096;
@@ -175,6 +175,11 @@ class IAllocator {
   virtual void GetStats(AllocatorStats* stats) {
     *stats = {};
   }
+
+  // Returns a pointer to this allocator as an IArena if it is one, nullptr otherwise.
+  // Used by SafeArenaCast to avoid dependency on RTTI.
+  virtual class IArena* AsArena() { return nullptr; }
+  virtual const class IArena* AsArena() const { return nullptr; }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
@@ -364,6 +369,8 @@ class IArena : public IAllocator {
   virtual Status Shrink() = 0;
   // Only implemented when IsStreamAware() returns true
   virtual void ReleaseStreamBuffers(Stream* /*stream*/) {}
+  IArena* AsArena() override { return this; }
+  const IArena* AsArena() const override { return this; }
   static IArena* SafeArenaCast(IAllocator* allocator);
 };
 

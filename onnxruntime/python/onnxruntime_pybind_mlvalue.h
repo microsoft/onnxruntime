@@ -122,28 +122,26 @@ AllocatorPtr GetCannAllocator(OrtDevice::DeviceId id);
 
 #endif
 
-#ifdef USE_ROCM
-
-bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
-
-AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id);
-
-void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes);
-
-void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes);
-
-const std::unordered_map<OrtDevice, MemCpyFunc>* GetRocmToHostMemCpyFunction(const OrtDevice&);
-
-#endif
-
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc,
                           const std::string& name_input, const pybind11::object& value, OrtValue* p_mlvalue,
                           bool accept_only_numpy_array = false, bool use_numpy_data_memory = true,
                           const MemCpyFunc& mem_cpy_to_device = CpuToCpuMemCpy);
 
+/// @param zero_copy_non_owning  When false (default), CPU tensors that do not own
+///   their buffer are copied to a new numpy array to prevent dangling pointers
+///   (e.g. when a model output aliases a numpy input array).  Set to true ONLY
+///   when the caller explicitly manages the backing memory lifetime — currently
+///   this is limited to OrtValue.numpy(), where the user holds the OrtValue
+///   Python object and is responsible for keeping it alive.
 pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
                                     const DataTransferManager* data_transfer_manager = nullptr,
-                                    const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+                                    const std::unordered_map<OrtDevice, MemCpyFunc>* mem_cpy_to_host_functions = nullptr,
+                                    bool zero_copy_non_owning = false);
+
+// Update the tensor data in an OrtValue in-place from another OrtValue.
+// Both OrtValues must contain tensors of the same data type and size.
+// This function supports various device-to-device transfers.
+void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src);
 
 // The below two functions are used to convert OrtValue to numpy arrays
 
