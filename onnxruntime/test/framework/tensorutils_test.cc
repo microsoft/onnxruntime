@@ -888,9 +888,7 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Values) 
   ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject path-traversal "
                                  "in values external_data location, but it succeeded (reading "
                                  "arbitrary file outside model directory).";
-  EXPECT_THAT(status.ErrorMessage(),
-              ::testing::AnyOf(::testing::HasSubstr("escapes"),
-                               ::testing::HasSubstr("External data path")));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
 }
 
 // Same as above but for path traversal in the indices external data.
@@ -957,9 +955,7 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Indices)
   Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
   ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject path-traversal "
                                  "in indices external_data location, but it succeeded.";
-  EXPECT_THAT(status.ErrorMessage(),
-              ::testing::AnyOf(::testing::HasSubstr("escapes"),
-                               ::testing::HasSubstr("External data path")));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
 }
 
 // Regression test: SparseTensorProtoToDenseTensorProto must reject absolute paths

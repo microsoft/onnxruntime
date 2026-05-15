@@ -2142,6 +2142,14 @@ static Status CopySparseData(const std::string& name,
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
+        // For inline raw_data, validate size before unpacking to avoid a large allocation from a
+        // malformed tensor with small indices shape but oversized raw_data. For external data,
+        // raw_data is empty so we can only validate after unpacking.
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int64_t),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int64_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         ORT_RETURN_IF_NOT(unpack_buffer.size() == SafeInt<size_t>(indices_elements) * sizeof(int64_t),
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
@@ -2156,6 +2164,11 @@ static Status CopySparseData(const std::string& name,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       if (needs_unpack) {
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int32_t),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int32_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         ORT_RETURN_IF_NOT(unpack_buffer.size() == SafeInt<size_t>(indices_elements) * sizeof(int32_t),
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
@@ -2175,6 +2188,11 @@ static Status CopySparseData(const std::string& name,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       if (needs_unpack) {
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int16_t),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int16_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         ORT_RETURN_IF_NOT(unpack_buffer.size() == SafeInt<size_t>(indices_elements) * sizeof(int16_t),
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
@@ -2194,6 +2212,11 @@ static Status CopySparseData(const std::string& name,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       if (needs_unpack) {
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == narrow<size_t>(indices_elements),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int8_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
         ORT_RETURN_IF_NOT(unpack_buffer.size() == narrow<size_t>(indices_elements),
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
