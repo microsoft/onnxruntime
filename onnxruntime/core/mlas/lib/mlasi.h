@@ -880,6 +880,7 @@ void
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    bool ChannelsLast,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     );
@@ -900,6 +901,7 @@ bool
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    bool ChannelsLast,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     );

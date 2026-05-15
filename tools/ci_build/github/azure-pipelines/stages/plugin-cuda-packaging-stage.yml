@@ -80,7 +80,7 @@ stages:
       jobs:
       - job: Publish_CUDA_Plugin_Metadata
         displayName: 'Publish CUDA plugin metadata'
-        timeoutInMinutes: 5
+        timeoutInMinutes: 15
         workspace:
           clean: all
         templateContext:
@@ -94,9 +94,18 @@ stages:
         - pwsh: |
             $ErrorActionPreference = 'Stop'
 
+            $tsaConfigDir = Join-Path '$(Build.SourcesDirectory)' '.config'
+            $tsaConfigPath = Join-Path $tsaConfigDir 'tsaoptions.json'
+            $tsaConfigUrl = 'https://raw.githubusercontent.com/microsoft/onnxruntime/$(Build.SourceVersion)/.config/tsaoptions.json'
             $metadataDir = Join-Path '$(Build.ArtifactStagingDirectory)' 'metadata'
             $metadataPath = Join-Path $metadataDir 'metadata.json'
+
+            New-Item -ItemType Directory -Path $tsaConfigDir -Force | Out-Null
             New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
+
+            # Guardian's TSA upload step still runs for this job, so fetch the exact config
+            # file from the commit being packaged instead of doing a source checkout.
+            Invoke-WebRequest -Uri $tsaConfigUrl -OutFile $tsaConfigPath
 
             $metadata = [ordered]@{
               cuda_version = '${{ parameters.cuda_version }}'
@@ -108,8 +117,9 @@ stages:
             }
 
             $metadata | ConvertTo-Json | Set-Content -Path $metadataPath -Encoding UTF8
+            Get-Content $tsaConfigPath
             Get-Content $metadataPath
-          displayName: 'Create metadata.json'
+          displayName: 'Fetch TSA config and create metadata.json'
 
     # Windows x64
     - ${{ if eq(parameters.build_windows_x64, true) }}:

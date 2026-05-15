@@ -960,6 +960,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t BatchCount;
     size_t GroupCount;
     size_t InputChannels;
+    bool ChannelsLast;
     size_t InputShape[3];
     size_t KernelShape[3];
     size_t DilationShape[3];
@@ -974,6 +975,9 @@ struct MLAS_CONV_PARAMETERS {
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    const void* PackedFilter = nullptr;
+    size_t PackedFilterGroupStride = 0;
+    bool FilterIsPacked = false;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -1000,8 +1004,23 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t FilterCount,
                 const MLAS_ACTIVATION* Activation,
                 size_t* WorkingBufferSize,
+                bool ChannelsLast,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
+
+bool
+MLASCALL
+MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
 
 void
 MLASCALL
