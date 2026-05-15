@@ -2126,7 +2126,6 @@ static Status CopySparseData(const std::string& name,
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
   const bool needs_unpack = utils::HasRawData(indices) || utils::HasExternalData(indices);
-  ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(indices, model_path));
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
@@ -2333,6 +2332,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     }
   }
 
+  // Validate external data paths before any early returns or allocations.
+  // This ensures malicious paths are rejected even for zero-element tensors,
+  // and prevents large allocations before an invalid path is caught.
+  ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(sparse_values, model_path));
+  ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(indices, model_path));
+
   if (dense_elements == 0) {
     // if there are no elements in the dense tensor, we can return early with an empty tensor proto
     return status;
@@ -2345,8 +2350,6 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
     std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
-    // Validate external data path unconditionally (defense-in-depth even when NNZ=0).
-    ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(sparse_values, model_path));
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
       std::vector<uint8_t> values_data;
