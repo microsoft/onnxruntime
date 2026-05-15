@@ -2101,10 +2101,12 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 // Validates that a TensorProto's external data path does not escape the model directory.
 // Also validates that the file exists when filesystem access is available (skipped on WASM without a virtual FS).
 // Returns Status::OK() (no-op) for tensors that do not use file-based external data.
-// Gates on data_location == EXTERNAL directly (not HasExternalDataInFile) to avoid bypasses
-// via UNDEFINED data_type or duplicate location entries with in-memory markers.
 static Status ValidateExternalDataPathForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                 const std::filesystem::path& model_path) {
+  // Gates on data_location == EXTERNAL directly instead of using HasExternalData()/HasExternalDataInFile(),
+  // which also require data_type != UNDEFINED. That check is appropriate for data processing (can't unpack
+  // without a type), but too narrow for security validation: we must validate any declared external path
+  // regardless of data_type.
   if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
     return Status::OK();
   }
