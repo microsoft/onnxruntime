@@ -736,8 +736,8 @@ endif()
 # message(STATUS "++++++++ Paco END")
 if (PLATFORM_NAME STREQUAL "macabi")
   # Needed for maccatalyst C compilation
-  # i.e. the flags below add "--target=x86_64-apple-ios14.0-macabi -ffunction-sections -fdata-sections"
-  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS})
+  separate_arguments(_macabi_c_flags UNIX_COMMAND "${CMAKE_C_FLAGS}")
+  target_compile_options(onnxruntime_mlas PRIVATE ${_macabi_c_flags})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

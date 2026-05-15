@@ -1452,16 +1452,17 @@ def generate_build_tree(
         # https://forums.developer.apple.com/forums/thread/122571
         if args.macos == "Catalyst":
             macabi_target = f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi"
+            macabi_warn_flags = "-Wno-overriding-option -Wno-deprecated-enum-enum-conversion"
             cmake_args += [
                 "-DCMAKE_CXX_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_CC_COMPILER_TARGET=" + macabi_target,
-                f"-DCMAKE_CXX_FLAGS=--target={macabi_target}",
-                f"-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
-                f"-DCMAKE_C_FLAGS=--target={macabi_target}",
-                f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
-                f"-DCMAKE_CC_FLAGS=--target={macabi_target}",
-                f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target}",
+                f"-DCMAKE_CXX_FLAGS=--target={macabi_target} {macabi_warn_flags}",
+                f"-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target} {macabi_warn_flags}",
+                f"-DCMAKE_C_FLAGS=--target={macabi_target} {macabi_warn_flags}",
+                f"-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target} {macabi_warn_flags}",
+                f"-DCMAKE_CC_FLAGS=--target={macabi_target} {macabi_warn_flags}",
+                f"-DCMAKE_CC_FLAGS_RELEASE=-O3 -DNDEBUG --target={macabi_target} {macabi_warn_flags}",
             ]
         if args.visionos:
             cmake_args += [
