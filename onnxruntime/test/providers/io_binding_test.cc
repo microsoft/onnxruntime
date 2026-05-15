@@ -442,22 +442,42 @@ TEST(InferenceSessionTests, TestReleaseCapturedGraph) {
   ASSERT_STATUS_OK(io_binding->BindOutput("Y", ml_y));
   ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
 
+  std::vector<float> expected_values_y = {42, 48, 54, 114, 136, 158, 186, 224, 262};
+
+  auto verify_output = [&]() {
+    std::vector<OrtValue>& outputs = io_binding->GetOutputs();
+    ASSERT_EQ(1u, outputs.size());
+    auto& rtensor = outputs.front().Get<Tensor>();
+    Tensor cpu_tensor(rtensor.DataType(), rtensor.Shape(), cpu_alloc);
+    ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor));
+    OrtValue ml_value;
+    Tensor::InitOrtValue(std::move(cpu_tensor), ml_value);
+    VerifySingleOutput({ml_value}, dims_y, expected_values_y);
+  };
+
   // Run with annotation ID 1 to capture a graph
   RunOptions run_options;
-  run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "1");
+  ORT_ENFORCE(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "1").IsOK());
   ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+  verify_output();
 
   // Run again to replay the captured graph
   ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+  verify_output();
 
   // Release the captured graph
   ASSERT_STATUS_OK(session_object.ReleaseCapturedGraph(1));
 
   // After release, next run should re-capture without error
   ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+  verify_output();
 
   // Replay the re-captured graph
   ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+  verify_output();
+
+  // Release the re-captured graph
+  ASSERT_STATUS_OK(session_object.ReleaseCapturedGraph(1));
 }
 #endif  // !USE_WEBGPU
 #endif
