@@ -492,6 +492,52 @@ class MlasConv2DTest : public MlasTestBase {
     }
   }
 
+  void TestBatchedConv3DWorkingBufferUsesThreadTileSize() {
+    constexpr size_t Dimensions = 3;
+    constexpr size_t BatchCount = 12;
+    constexpr size_t GroupCount = 1;
+    constexpr size_t InputChannels = 1;
+    constexpr size_t FilterCount = 6;
+    int64_t InputShape[] = {32, 64, 64};
+    int64_t KernelShape[] = {7, 7, 7};
+    int64_t DilationShape[] = {1, 1, 1};
+    int64_t Padding[] = {3, 3, 3, 3, 3, 3};
+    int64_t StrideShape[] = {1, 1, 1};
+    int64_t OutputShape[] = {32, 64, 64};
+
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasIdentityActivation;
+
+    MLAS_CONV_PARAMETERS Parameters;
+    size_t WorkingBufferSize = 0;
+
+    MlasConvPrepare(&Parameters,
+                    Dimensions,
+                    BatchCount,
+                    GroupCount,
+                    InputChannels,
+                    InputShape,
+                    KernelShape,
+                    DilationShape,
+                    Padding,
+                    StrideShape,
+                    OutputShape,
+                    FilterCount,
+                    &Activation,
+                    &WorkingBufferSize,
+                    false,
+                    0.0f,
+                    threadpool_);
+
+    if (Parameters.Algorithm != MlasConvAlgorithmExpandThenGemmSegmented) {
+      GTEST_SKIP() << "This platform uses a different Conv3D algorithm.";
+    }
+
+    const size_t full_column_buffer_size = Parameters.OutputSize * Parameters.K;
+    ASSERT_LT(WorkingBufferSize, full_column_buffer_size)
+        << "Batched Conv3D should not allocate a full im2col buffer per worker.";
+  }
+
   void Test(
       size_t BatchCount,
       size_t GroupCount,
@@ -688,5 +734,6 @@ class MlasConv2DTest : public MlasTestBase {
     TestMobileClipBetaActivationRegression(64, 64, 64);
     TestMobileClipBetaActivationRegression(128, 32, 32);
     TestMobileClipBetaActivationRegression(256, 16, 16);
+    TestBatchedConv3DWorkingBufferUsesThreadTileSize();
   }
 };
