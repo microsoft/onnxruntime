@@ -124,6 +124,31 @@ bool MatchPreNormReshapeChain(Graph& graph,
     return false;
   }
 
+  // SimplifiedLayerNormalization permits its input (T), scale (V) and output (T) to use different
+  // element types. The fused GroupQueryAttention input slots reuse the projection's element type
+  // (T), so we can only fuse when scale and output also use T -- otherwise the rewrite would
+  // change the node's type constraints and produce a semantically different graph. Require all
+  // three to match before fusing.
+  auto get_elem_type = [](const NodeArg* arg) -> int32_t {
+    if (arg == nullptr) {
+      return ONNX_NAMESPACE::TensorProto::UNDEFINED;
+    }
+    const auto* type_proto = arg->TypeAsProto();
+    if (type_proto == nullptr || !type_proto->has_tensor_type() ||
+        !type_proto->tensor_type().has_elem_type()) {
+      return ONNX_NAMESPACE::TensorProto::UNDEFINED;
+    }
+    return type_proto->tensor_type().elem_type();
+  };
+  const int32_t sln_input_elem_type = get_elem_type(sln->InputDefs()[0]);
+  const int32_t sln_scale_elem_type = get_elem_type(sln->InputDefs()[1]);
+  const int32_t sln_output_elem_type = get_elem_type(sln->OutputDefs()[0]);
+  if (sln_input_elem_type == ONNX_NAMESPACE::TensorProto::UNDEFINED ||
+      sln_input_elem_type != sln_scale_elem_type ||
+      sln_input_elem_type != sln_output_elem_type) {
+    return false;
+  }
+
   // Norm weight must be an initializer of shape [head_size].
   NodeArg* norm_weight_arg = sln->MutableInputDefs()[1];
   const ONNX_NAMESPACE::TensorProto* norm_weight_tensor =

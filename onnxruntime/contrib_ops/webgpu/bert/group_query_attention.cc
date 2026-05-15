@@ -261,6 +261,21 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   WebgpuAttentionParameters parameters(params);
   ORT_RETURN_IF(has_qk_norm && parameters.is_packed_qkv_,
                 "GroupQueryAttention: q_norm_weight / k_norm_weight are not supported when QKV is packed.");
+  if (has_qk_norm) {
+    // The fused prologue indexes q/k_norm_weight as a 1-D tensor of length head_size. Validate
+    // shape here so a hand-authored model with a wrong shape fails with INVALID_ARGUMENT instead
+    // of silently reading the wrong offsets (or out of bounds).
+    const auto& q_norm_shape = q_norm_weight->Shape();
+    ORT_RETURN_IF_NOT(q_norm_shape.NumDimensions() == 1 &&
+                          q_norm_shape[0] == static_cast<int64_t>(parameters.head_size_),
+                      "GroupQueryAttention: q_norm_weight must be a 1-D tensor of shape [head_size=",
+                      parameters.head_size_, "], got ", q_norm_shape.ToString(), ".");
+    const auto& k_norm_shape = k_norm_weight->Shape();
+    ORT_RETURN_IF_NOT(k_norm_shape.NumDimensions() == 1 &&
+                          k_norm_shape[0] == static_cast<int64_t>(parameters.head_size_),
+                      "GroupQueryAttention: k_norm_weight must be a 1-D tensor of shape [head_size=",
+                      parameters.head_size_, "], got ", k_norm_shape.ToString(), ".");
+  }
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);

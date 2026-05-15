@@ -331,11 +331,8 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
   // q_norm_weight (input 14) / k_norm_weight (input 15) are emitted by the WebGPU-only
   // GroupQueryAttentionPreNormFusion optimizer pass. JSEP does not implement the fused
   // per-head Q/K RMS normalization prologue, so reject the node if either input is present
-  // rather than silently dropping the normalization.
-  if (
-    (context.inputs.length > 14 && context.inputs[14] && context.inputs[14].dims.length > 0) ||
-    (context.inputs.length > 15 && context.inputs[15] && context.inputs[15].dims.length > 0)
-  ) {
+  // (regardless of rank, including scalars) rather than silently dropping the normalization.
+  if ((context.inputs.length > 14 && context.inputs[14]) || (context.inputs.length > 15 && context.inputs[15])) {
     throw new Error(
       'GroupQueryAttention (JSEP): q_norm_weight / k_norm_weight inputs are not supported. ' +
         'The per-head Q/K RMS normalization prologue is implemented only on the native WebGPU EP.',
