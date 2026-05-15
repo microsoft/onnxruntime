@@ -19,5 +19,34 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads) {
   test.AddOutput<float>("Y", {1, 1, 6, 6}, std::vector<float>{0.07368518f, -0.08925839f, -0.06627201f, 0.06301362f, 0.03732984f, -0.01919658f, -0.00628807f, -0.02817563f, -0.01472169f, 0.04392925f, -0.00689478f, -0.01549204f, 0.07957941f, -0.11459791f, -0.09505399f, 0.07681622f, 0.03604182f, -0.01853423f, -0.0270785f, -0.00680824f, -0.06650258f, 0.08004665f, 0.07918708f, -0.0724144f, 0.06256775f, -0.17838378f, -0.18863615f, 0.20064656f, 0.133717f, -0.06876295f, -0.06398046f, -0.00864975f, 0.19289537f, -0.01490572f, -0.13673618f, 0.01949645f});
   test.Run();
 }
+
+// Test that a rank-0 W input is gracefully rejected rather than causing undefined behavior.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank0) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {}, std::vector<float>{1.0f});  // scalar (rank 0)
+  test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
+  test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
+// Test that a rank-1 W input is gracefully rejected.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank1) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {9}, std::vector<float>(9, 1.0f));  // rank 1
+  test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
+  test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

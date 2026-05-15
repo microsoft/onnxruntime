@@ -62,6 +62,11 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
     return;  // Input tensor should have at least two dimensions.
   }
 
+  auto weight_shape = ctx.getInputType(1)->tensor_type().shape();
+  if (weight_shape.dim_size() < 2) {
+    return;  // Weight tensor should have at least two dimensions.
+  }
+
   // first dim is the batch axis and the next is the number of channels.
   size_t n_input_dims = static_cast<size_t>(input_shape.dim_size() - size_t{2});
 
@@ -147,7 +152,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 
   *final_output_shape->add_dim() = input_shape.dim(0);
   *final_output_shape->add_dim() =
-      ctx.getInputType(1)->tensor_type().shape().dim(1) *
+      weight_shape.dim(1) *
       group;  // channels should be the second dim of second input multiply
   // group.
 
