@@ -208,6 +208,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const int components = (head_dim_v % 4 == 0 && head_dim_v >= 4) ? 4 : 1;
   int tile_v = (components == 4) ? 1 : std::min(4, onnxruntime::narrow<int>(head_dim_v));
 
+  // subgroup_min_size > 0 enables subgroup-based reduction; 0 falls back to barrier-tree.
   int subgroup_min_size = context.HasFeature(wgpu::FeatureName::Subgroups)
                               ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
                               : 0;
