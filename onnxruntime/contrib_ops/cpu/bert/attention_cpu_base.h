@@ -194,7 +194,7 @@ class AttentionCPUBase : public AttentionBase {
                                                int beam_width,
                                                int past_sequence_length,
                                                int max_sequence_length) {
-    if (cache_indirection_data == nullptr || beam_width <= 1 || past_sequence_length <= 0) {
+    if (cache_indirection_data == nullptr || beam_width <= 0 || past_sequence_length <= 0) {
       return Status::OK();
     }
 
