@@ -1069,6 +1069,20 @@ TEST_F(PathValidationTest, SparseTensorExternalDataAbsolutePathBlocked_Indices) 
 // Regression test: validation must still reject escaping paths for zero-element dense tensors,
 // which previously returned early before path validation ran.
 TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroDenseElements) {
+  auto model_dir = base_dir_ / "model_dir";
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
+
+  // Create the escaping file so that a "file not found" error would NOT be raised.
+  auto secret_file = base_dir_ / "secret.bin";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
+    ofs.put('\0');
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
+  }
+
   ONNX_NAMESPACE::SparseTensorProto sparse;
   sparse.add_dims(0);  // dense shape [0] → dense_elements == 0
 
@@ -1091,16 +1105,28 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroDens
   indices->add_dims(0);
 
   ONNX_NAMESPACE::TensorProto dense;
-  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  std::filesystem::path model_path = model_dir / "model.onnx";
   Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
   ASSERT_FALSE(status.IsOK()) << "Should reject path-traversal in values even when dense_elements == 0.";
-  EXPECT_THAT(status.ErrorMessage(),
-              ::testing::AnyOf(::testing::HasSubstr("escapes"),
-                               ::testing::HasSubstr("External data path")));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
 }
 
 // Regression test: validation must reject escaping paths in indices even when NNZ == 0.
 TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroNNZ) {
+  auto model_dir = base_dir_ / "model_dir";
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
+
+  // Create the escaping file so that a "file not found" error would NOT be raised.
+  auto secret_file = base_dir_ / "indices_secret.bin";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
+    ofs.put('\0');
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
+  }
+
   ONNX_NAMESPACE::SparseTensorProto sparse;
   sparse.add_dims(4);  // dense shape [4] → non-zero dense_elements
 
@@ -1123,12 +1149,10 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroNNZ)
   idx_len->set_value("0");
 
   ONNX_NAMESPACE::TensorProto dense;
-  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  std::filesystem::path model_path = model_dir / "model.onnx";
   Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
   ASSERT_FALSE(status.IsOK()) << "Should reject path-traversal in indices even when NNZ == 0.";
-  EXPECT_THAT(status.ErrorMessage(),
-              ::testing::AnyOf(::testing::HasSubstr("escapes"),
-                               ::testing::HasSubstr("External data path")));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
 }
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)

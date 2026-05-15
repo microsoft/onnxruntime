@@ -2100,15 +2100,26 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 
 // Validates that a TensorProto's external data path does not escape the model directory.
 // Also validates that the file exists when filesystem access is available (skipped on WASM without a virtual FS).
-// Returns Status::OK() (no-op) for tensors that do not use external data files.
+// Returns Status::OK() (no-op) for tensors that do not use file-based external data.
+// Gates on data_location == EXTERNAL directly (not HasExternalDataInFile) to avoid bypasses
+// via UNDEFINED data_type or duplicate location entries with in-memory markers.
 static Status ValidateExternalDataPathForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                 const std::filesystem::path& model_path) {
-  if (!utils::HasExternalDataInFile(tensor_proto)) {
+  if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
     return Status::OK();
   }
+
   std::unique_ptr<ExternalDataInfo> external_data_info;
   ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-  return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
+  const auto& rel_path = external_data_info->GetRelPath();
+
+  // In-memory external data uses special marker locations — skip file path validation for those.
+  if (rel_path == kTensorProtoLittleEndianMemoryAddressTag ||
+      rel_path == kTensorProtoNativeEndianMemoryAddressTag) {
+    return Status::OK();
+  }
+
+  return utils::ValidateExternalDataPath(model_path, rel_path);
 }
 
 static Status CopySparseData(const std::string& name,
