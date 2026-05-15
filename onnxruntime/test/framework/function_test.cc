@@ -4,6 +4,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <sstream>
+
 #include "core/graph/onnx_protobuf.h"
 #include "onnx/checker.h"
 #include "onnx/defs/parser.h"
@@ -113,7 +115,7 @@ static Status LoadModel(const char* source) {
 
   SessionOptions session_options;
   InferenceSession session_object{session_options, GetEnvironment()};
-  std::stringstream sstr(serialized_model);
+  std::istringstream sstr(serialized_model);
   return session_object.Load(sstr);
 }
 

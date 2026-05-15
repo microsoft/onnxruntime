@@ -53,33 +53,37 @@ namespace {
 void CollectLocalFunctionCalls(
     const ONNX_NAMESPACE::NodeProto& node,
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    InlinedHashSet<std::string>& called_local_functions);
+    InlinedHashSet<std::string>& seen_calls,
+    std::vector<std::string>& called_local_functions);
 
 void CollectLocalFunctionCalls(
     const ONNX_NAMESPACE::GraphProto& graph,
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    InlinedHashSet<std::string>& called_local_functions) {
+    InlinedHashSet<std::string>& seen_calls,
+    std::vector<std::string>& called_local_functions) {
   for (const auto& node : graph.node()) {
-    CollectLocalFunctionCalls(node, model_local_functions, called_local_functions);
+    CollectLocalFunctionCalls(node, model_local_functions, seen_calls, called_local_functions);
   }
 }
 
 void CollectLocalFunctionCalls(
     const ONNX_NAMESPACE::NodeProto& node,
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    InlinedHashSet<std::string>& called_local_functions) {
-  const auto function_id = function_utils::GetFunctionIdentifier(node.domain(), node.op_type());
-  if (model_local_functions.find(function_id) != model_local_functions.end()) {
-    called_local_functions.insert(function_id);
+    InlinedHashSet<std::string>& seen_calls,
+    std::vector<std::string>& called_local_functions) {
+  const auto function_id = function_utils::GetFunctionIdentifier(node.domain(), node.op_type(), node.overload());
+  if (model_local_functions.find(function_id) != model_local_functions.end() &&
+      seen_calls.insert(function_id).second) {
+    called_local_functions.push_back(function_id);
   }
 
   for (const auto& attr : node.attribute()) {
     if (attr.has_g()) {
-      CollectLocalFunctionCalls(attr.g(), model_local_functions, called_local_functions);
+      CollectLocalFunctionCalls(attr.g(), model_local_functions, seen_calls, called_local_functions);
     }
 
     for (const auto& graph : attr.graphs()) {
-      CollectLocalFunctionCalls(graph, model_local_functions, called_local_functions);
+      CollectLocalFunctionCalls(graph, model_local_functions, seen_calls, called_local_functions);
     }
   }
 }
@@ -90,63 +94,8 @@ enum class VisitState {
   kVisited,
 };
 
-// Guard against pathological (but acyclic) chains of local functions that would overflow the stack.
-static constexpr size_t kMaxLocalFunctionDepth = 100;
-
-Status VisitLocalFunction(
-    const std::string& function_id,
-    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    InlinedHashMap<std::string, VisitState>& visit_states,
-    std::vector<std::string>& call_stack) {
-  if (call_stack.size() >= kMaxLocalFunctionDepth) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
-                           "Model local function call chain exceeds maximum depth of ",
-                           kMaxLocalFunctionDepth, ". Deepest function: ", function_id);
-  }
-
-  auto it = visit_states.find(function_id);
-  ORT_ENFORCE(it != visit_states.end(), "Unexpected function id in visit: ", function_id);
-  auto& visit_state = it->second;
-  if (visit_state == VisitState::kVisited) {
-    return Status::OK();
-  }
-
-  if (visit_state == VisitState::kVisiting) {
-    auto cycle_start = std::find(call_stack.cbegin(), call_stack.cend(), function_id);
-    std::string cycle;
-    for (auto it = cycle_start; it != call_stack.cend(); ++it) {
-      if (!cycle.empty()) {
-        cycle.append(" -> ");
-      }
-      cycle.append(*it);
-    }
-    if (!cycle.empty()) {
-      cycle.append(" -> ");
-    }
-    cycle.append(function_id);
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
-                           "Model local function definitions must not be recursive. Cycle detected: ", cycle);
-  }
-
-  visit_state = VisitState::kVisiting;
-  call_stack.push_back(function_id);
-
-  const auto* function_proto = model_local_functions.at(function_id);
-  InlinedHashSet<std::string> called_local_functions;
-  for (const auto& node : function_proto->node()) {
-    CollectLocalFunctionCalls(node, model_local_functions, called_local_functions);
-  }
-
-  for (const auto& called_function_id : called_local_functions) {
-    ORT_RETURN_IF_ERROR(VisitLocalFunction(called_function_id, model_local_functions, visit_states, call_stack));
-  }
-
-  call_stack.pop_back();
-  visit_state = VisitState::kVisited;
-  return Status::OK();
-}
-
+// Iterative DFS to detect cycles in the local function call graph.
+// Uses an explicit stack to avoid stack overflow from arbitrarily deep (but acyclic) function chains.
 Status ValidateModelLocalFunctionAcyclic(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions) {
   InlinedHashMap<std::string, VisitState> visit_states;
@@ -156,10 +105,95 @@ Status ValidateModelLocalFunctionAcyclic(
     visit_states.emplace(function_id, VisitState::kNotVisited);
   }
 
-  std::vector<std::string> call_stack;
-  for (const auto& [function_id, _] : model_local_functions) {
+  // Each frame records the function being visited and an index into its callees vector.
+  struct DfsFrame {
+    std::string function_id;
+    std::vector<std::string> callees;
+    size_t next_callee_index;
+  };
+
+  std::vector<DfsFrame> dfs_stack;
+  // Set of function_ids currently on the stack, for O(1) cycle detection.
+  InlinedHashSet<std::string> on_stack;
+
+  for (const auto& [root_id, _] : model_local_functions) {
     ORT_UNUSED_PARAMETER(_);
-    ORT_RETURN_IF_ERROR(VisitLocalFunction(function_id, model_local_functions, visit_states, call_stack));
+
+    auto root_it = visit_states.find(root_id);
+    ORT_ENFORCE(root_it != visit_states.end(), "Unexpected function id: ", root_id);
+    if (root_it->second == VisitState::kVisited) {
+      continue;
+    }
+
+    // Push the root onto the DFS stack.
+    {
+      const auto* function_proto = model_local_functions.at(root_id);
+      InlinedHashSet<std::string> seen_calls;
+      std::vector<std::string> callees;
+      for (const auto& node : function_proto->node()) {
+        CollectLocalFunctionCalls(node, model_local_functions, seen_calls, callees);
+      }
+      root_it->second = VisitState::kVisiting;
+      on_stack.insert(root_id);
+      dfs_stack.push_back({root_id, std::move(callees), 0});
+    }
+
+    while (!dfs_stack.empty()) {
+      auto& frame = dfs_stack.back();
+
+      if (frame.next_callee_index >= frame.callees.size()) {
+        // All callees processed — mark as visited and pop.
+        auto state_it = visit_states.find(frame.function_id);
+        ORT_ENFORCE(state_it != visit_states.end(), "Unexpected function id: ", frame.function_id);
+        state_it->second = VisitState::kVisited;
+        on_stack.erase(frame.function_id);
+        dfs_stack.pop_back();
+        continue;
+      }
+
+      const auto& callee_id = frame.callees[frame.next_callee_index];
+      frame.next_callee_index++;
+
+      auto callee_it = visit_states.find(callee_id);
+      ORT_ENFORCE(callee_it != visit_states.end(), "Unexpected function id in visit: ", callee_id);
+
+      if (callee_it->second == VisitState::kVisited) {
+        continue;
+      }
+
+      if (callee_it->second == VisitState::kVisiting) {
+        // Build cycle description from the stack.
+        std::string cycle;
+        bool in_cycle = false;
+        for (const auto& f : dfs_stack) {
+          if (f.function_id == callee_id) {
+            in_cycle = true;
+          }
+          if (in_cycle) {
+            if (!cycle.empty()) {
+              cycle.append(" -> ");
+            }
+            cycle.append(f.function_id);
+          }
+        }
+        cycle.append(" -> ");
+        cycle.append(callee_id);
+
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                               "Model local function definitions must not be recursive. Cycle detected: ", cycle);
+      }
+
+      // Push the callee onto the DFS stack.
+      const auto* callee_proto = model_local_functions.at(callee_id);
+      InlinedHashSet<std::string> seen_calls;
+      std::vector<std::string> callees;
+      for (const auto& node : callee_proto->node()) {
+        CollectLocalFunctionCalls(node, model_local_functions, seen_calls, callees);
+      }
+      callee_it->second = VisitState::kVisiting;
+      on_stack.insert(callee_id);
+      dfs_stack.push_back({callee_id, std::move(callees), 0});
+    }
   }
 
   return Status::OK();
