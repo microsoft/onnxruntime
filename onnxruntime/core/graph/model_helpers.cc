@@ -121,7 +121,9 @@ Status ValidateCallGraphAcyclic(const LocalFunctionCallGraph& call_graph) {
 
       if (frame.next_callee_index >= frame.callees->size()) {
         // All callees processed — mark as fully visited and pop.
-        visit_states[frame.function_id] = VisitState::kVisited;
+        auto it = visit_states.find(frame.function_id);
+        ORT_ENFORCE(it != visit_states.end());
+        it->second = VisitState::kVisited;
         dfs_stack.pop_back();
         continue;
       }

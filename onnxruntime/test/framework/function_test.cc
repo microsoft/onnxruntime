@@ -624,9 +624,9 @@ TEST(FunctionTest, AcceptsAcyclicDiamond) {
   ASSERT_STATUS_OK(LoadModel(code));
 }
 
-TEST(FunctionTest, AcceptsEmptyFunctionBody) {
-  // A function with zero nodes (output = input via implicit identity).
-  // The ONNX spec allows functions with no nodes if inputs map directly to outputs.
+TEST(FunctionTest, AcceptsTrivialSingleNodeFunction) {
+  // A local function with a single Identity node — verifies that trivial
+  // (but non-empty) function bodies pass acyclicity validation.
   const char* code = R"(
         <
         ir_version: 8,
@@ -634,14 +634,14 @@ TEST(FunctionTest, AcceptsEmptyFunctionBody) {
         >
         agraph (float[N] x) => (float[N] y)
         {
-            y = local.empty_func (x)
+            y = local.trivial_func (x)
         }
 
         <
         opset_import: [ "" : 16 ],
         domain: "local"
         >
-        empty_func (lx) => (ly) {
+        trivial_func (lx) => (ly) {
             ly = Identity (lx)
         }
         )";
