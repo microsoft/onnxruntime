@@ -4017,9 +4017,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_ConstantInput_NoPropagation) 
 
     const auto& logger = DefaultLoggingManager().DefaultLogger();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, logger,
-                                         std::make_unique<QDQPropagationTransformer>(),
-                                         TransformerLevel::Level1, 1,
-                                         nullptr, post_graph_checker));
+                                          std::make_unique<QDQPropagationTransformer>(),
+                                          TransformerLevel::Level1, 1,
+                                          nullptr, post_graph_checker));
   }
 }
 
