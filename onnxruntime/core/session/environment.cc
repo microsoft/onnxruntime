@@ -60,7 +60,7 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
-#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+#if !defined(NDEBUG) && !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #include "absl/debugging/symbolize.h"
 #endif
 
@@ -275,7 +275,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
   // Initialize abseil symbolizer for readable stack traces in debug builds.
   // Windows uses C++23 <stacktrace> instead, so skip abseil symbolizer there.
-#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+#if !defined(NDEBUG) && !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
   std::call_once(symbolizerInitOnceFlag, []() {
     absl::InitializeSymbolizer(nullptr);
   });
