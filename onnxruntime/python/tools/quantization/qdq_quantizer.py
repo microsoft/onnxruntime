@@ -725,22 +725,20 @@ class QDQQuantizer(BaseQuantizer):
                 quant_params["zero_point"],
                 quant_params["scale"],
                 axis,
-                block_size=block_size or 0,
+                block_size=block_size,
             )
             self.model.add_initializer(quant_weight)
 
             q_weight_name = quant_weight.name
-            dq_kwargs: dict[str, Any] = {"axis": axis, "domain": self.qdq_op_domain}
-            if block_size:
-                dq_kwargs["block_size"] = block_size
-            dequant_node = onnx.helper.make_node(
-                DEQUANT_OP_NAME,
-                [quant_weight.name, scale_zp_initializers.scale.name, scale_zp_initializers.zero_point.name],
-                [weight_dequant_output],
+            self._create_dq_node(
+                quant_weight.name,
+                weight_dequant_output,
                 add_dequant_suffix(weight_name),
-                **dq_kwargs,
+                scale_zp_initializers.scale.name,
+                scale_zp_initializers.zero_point.name,
+                axis=axis,
+                block_size=block_size,
             )
-            self.model.add_node(dequant_node)
 
         # Log entry for this quantized weight
         quantized_value = QuantizedValue(
