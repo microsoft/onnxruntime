@@ -3713,7 +3713,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             AttributeProto::INT,
             static_cast<int64_t>(128))
       .Attr("bits",
-            "Number of bits used for weight quantization. Must be 2, 4 or 8 . ",
+            "Number of bits used for weight quantization. Must be 2, 4 or 8. ",
             AttributeProto::INT,
             static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
