@@ -3975,6 +3975,10 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_ConstantInput_NoPropagation) 
   }
 
   // Case 2: DQ data input is the output of a Constant op node.
+  // Run QDQPropagationTransformer directly (bypassing ConstantFolding) so the
+  // Constant op node is still present when PropagateDQForward evaluates it.
+  // Using TransformerTester would fold the Constant into an initializer first,
+  // masking the is_constant_op_output code path under test.
   {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* output_arg = builder.MakeOutput();
@@ -4001,23 +4005,21 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_ConstantInput_NoPropagation) 
       builder.AddNode("Reshape", {dq_output, reshape_shape}, {output_arg});
     };
 
-    auto check_graph = [&](InferenceSessionWrapper& session) {
-      const auto op_types = GetNodeOpTypesInTopologicalOrder(session.GetGraph(), true);
-      // No Q or DQ should have been inserted after Reshape.
+    // post_graph_checker runs on Graph& directly, after only QDQPropagationTransformer.
+    // QuantizeLinear must not have been inserted anywhere.
+    auto post_graph_checker = [&](Graph& graph) -> Status {
+      const auto op_counts = CountOpsInGraph(graph);
       const QDQOpKeys qdq_keys = GetQDQOpKeys(false);
-      // Constant op may be folded; Q must not appear ANYWHERE in the graph
-      // (the bug would insert it after Reshape, not necessarily at the tail).
-      const bool has_any_q =
-          std::find(op_types.begin(), op_types.end(), qdq_keys.quantize_linear) != op_types.end();
-      EXPECT_FALSE(has_any_q) << "QDQPropagation must not insert QuantizeLinear anywhere "
-                                 "when DQ input is a constant op output.";
+      TEST_RETURN_IF_NOT(op_counts.count(qdq_keys.quantize_linear) == 0 ||
+                         op_counts.at(qdq_keys.quantize_linear) == 0);
+      return Status::OK();
     };
 
-    TransformerTester(build_test_case,
-                      check_graph,
-                      TransformerLevel::Default,
-                      TransformerLevel::Level1,
-                      12);
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, logger,
+                                         std::make_unique<QDQPropagationTransformer>(),
+                                         TransformerLevel::Level1, 1,
+                                         nullptr, post_graph_checker));
   }
 }
 

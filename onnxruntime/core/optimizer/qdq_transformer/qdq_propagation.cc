@@ -363,7 +363,8 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
     const bool is_initializer_constant = graph_utils::NodeArgIsConstant(graph, *dq_data_input);
     const Node* dq_data_producer = graph.GetProducerNode(dq_data_input->Name());
     const bool is_constant_op_output = dq_data_producer != nullptr &&
-                                       dq_data_producer->OpType() == "Constant";
+                                       dq_data_producer->OpType() == "Constant" &&
+                                       dq_data_producer->Domain() == kOnnxDomain;
     if (is_initializer_constant || is_constant_op_output) {
       continue;
     }
