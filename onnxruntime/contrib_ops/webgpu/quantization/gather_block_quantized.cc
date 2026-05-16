@@ -21,7 +21,8 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
-  bool is_4bit = bits_ == 4;
+  const bool is_2bit = bits_ == 2;
+  const bool is_4bit = bits_ == 4;
   const std::string unpack = (is_signed_) ? "unpack4xI8" : "unpack4xU8";
 
   shader.MainFunctionBody()
@@ -57,7 +58,18 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
   shader.MainFunctionBody()
       << "  let data_offset = " << x_shape.IndicesToOffset("data_indices") << ";\n";
 
-  if (is_4bit) {
+  if (is_2bit) {
+    // 2-bit values are packed 4 per byte (LSB first). x is the original uint8 tensor with
+    // Flatten=4 (4 bytes per u32); the input_shape uniform here is the *dequantized* shape,
+    // so data_offset is the dequantized 2-bit-element index.
+    shader.MainFunctionBody()
+        << "  let byte_idx_2b = data_offset / 4;\n"
+        << "  let bit_shift_2b = (data_offset % 4) * 2;\n"
+        << "  let packed_word_2b = " << x.GetByOffset("byte_idx_2b / 4") << ";\n"
+        << "  let byte_in_word_2b = byte_idx_2b % 4;\n"
+        << "  let unpacked_bytes_2b = " << unpack << "(u32(packed_word_2b));\n"
+        << "  var quantized_data = (unpacked_bytes_2b[byte_in_word_2b] >> bit_shift_2b) & 0x3;\n";
+  } else if (is_4bit) {
     shader.MainFunctionBody()
         << "  let data_index = data_offset % 8;\n"
         << "  let packed_4bit_quantized_data = " << x.GetByOffset("data_offset / 8") << ";\n"
@@ -83,7 +95,18 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  var scale = " << scales.GetByIndices("scale_indices") << ";\n";
 
   if (!has_zeropoint_) {
-    const std::string default_zero_point = is_uint8_ ? is_4bit ? "input_element_t(8)" : "input_element_t(128)" : "input_element_t(0)";
+    std::string default_zero_point;
+    if (is_uint8_) {
+      if (is_2bit) {
+        default_zero_point = "input_element_t(2)";
+      } else if (is_4bit) {
+        default_zero_point = "input_element_t(8)";
+      } else {
+        default_zero_point = "input_element_t(128)";
+      }
+    } else {
+      default_zero_point = "input_element_t(0)";
+    }
     shader.MainFunctionBody()
         << "  let zero_point = " << default_zero_point << ";\n";
   } else {
@@ -91,7 +114,15 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
     shader.MainFunctionBody()
         << "  let zero_point_indices = scale_indices;\n"
         << "  let zero_point_offset = " << scales.IndicesToOffset("zero_point_indices") << ";\n";
-    if (is_4bit) {
+    if (is_2bit) {
+      shader.MainFunctionBody()
+          << "  let zp_byte_idx_2b = zero_point_offset / 4;\n"
+          << "  let zp_bit_shift_2b = (zero_point_offset % 4) * 2;\n"
+          << "  let packed_zp_word_2b = " << zero_point.GetByOffset("zp_byte_idx_2b / 4") << ";\n"
+          << "  let zp_byte_in_word_2b = zp_byte_idx_2b % 4;\n"
+          << "  let zp_unpacked_2b = " << unpack << "(u32(packed_zp_word_2b));\n"
+          << "  var zero_point = (zp_unpacked_2b[zp_byte_in_word_2b] >> zp_bit_shift_2b) & 0x3;\n";
+    } else if (is_4bit) {
       shader.MainFunctionBody()
           << "  let zero_point_index = zero_point_offset % 8;\n"
           << "  let packed_4bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 8") << ";\n"
@@ -174,7 +205,19 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
     zero_points = zero_points_representation_4bit.has_value() ? &zero_points_representation_4bit.value() : zero_points;
   }
 
-  const auto& x_shape = x->Shape();
+  const auto& x_shape_intrinsic = x->Shape();
+  // For bits == 2 with uint8 storage we don't construct a packed-type reinterpret (no UInt2x4 type
+  // exists). Instead, build a logical "dequantized" shape (last dim x4) and feed that to the shader
+  // as the input_shape uniform. The buffer remains the original uint8 storage with Flatten=4, and
+  // the shader does explicit byte+bit-position extraction.
+  TensorShape x_shape;
+  if (bits_ == 2 && is_int8) {
+    TensorShapeVector v = x_shape_intrinsic.AsShapeVector();
+    v.back() *= 4;
+    x_shape = TensorShape(std::move(v));
+  } else {
+    x_shape = x_shape_intrinsic;
+  }
 
   size_t indices_rank = indices->Shape().NumDimensions();
   const auto scales_shape = scales->Shape();
@@ -208,12 +251,25 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{static_cast<uint32_t>(quantize_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(gather_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size_)}})
-      .CacheHint(std::to_string(gather_axis), std::to_string(quantize_axis), std::to_string(block_size_));
+      .CacheHint(std::to_string(bits_), std::to_string(gather_axis), std::to_string(quantize_axis), std::to_string(block_size_));
 
   if (zero_points != nullptr) {
-    ORT_RETURN_IF_NOT(scales_shape == zero_points->Shape(),
-                      "scales and zero_points must have the same shape.");
-    auto zero_points_shape = zero_points->Shape();
+    if (bits_ == 2 && is_int8) {
+      // 2-bit zero points are packed 4 per byte along the quantize axis.
+      const auto& zp_shape = zero_points->Shape();
+      ORT_RETURN_IF_NOT(zp_shape.NumDimensions() == scales_shape.NumDimensions(),
+                        "scales and zero_points must have the same rank.");
+      for (size_t i = 0; i < scales_shape.NumDimensions(); ++i) {
+        int64_t expected = (i == static_cast<size_t>(quantize_axis))
+                               ? (scales_shape[i] + 3) / 4
+                               : scales_shape[i];
+        ORT_RETURN_IF_NOT(zp_shape[i] == expected,
+                          "zero_points shape does not match expected packed shape for 2-bit data.");
+      }
+    } else {
+      ORT_RETURN_IF_NOT(scales_shape == zero_points->Shape(),
+                        "scales and zero_points must have the same shape.");
+    }
     program.AddInputs({{zero_points, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, (bits_ == 4) ? 8 : 4}});
   }
 

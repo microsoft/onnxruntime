@@ -162,6 +162,64 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
   run_test(true);
 }
 
+// WebGPU-specific runner for GatherBlockQuantized. Only supports uint8 data with gather_axis == 0.
+template <typename T2, typename Tind>
+void RunGatherBlockQuantizedWebGpu(const std::vector<uint8_t>& data,
+                                   const std::vector<int64_t>& data_shape,
+                                   const std::vector<Tind>& indices,
+                                   const std::vector<int64_t>& indices_shape,
+                                   const std::vector<T2>& scales,
+                                   const std::vector<int64_t>& scales_shape,
+                                   const std::vector<uint8_t>& zero_points,
+                                   const std::vector<int64_t>& zero_points_shape,
+                                   const int64_t gather_axis,
+                                   const int64_t quantize_axis,
+                                   const int64_t block_size,
+                                   const int64_t bits,
+                                   const std::vector<T2>& output,
+                                   const std::vector<int64_t>& output_shape,
+                                   OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
+#ifdef USE_WEBGPU
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    return;
+  }
+
+  OpTester test("GatherBlockQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", gather_axis);
+  test.AddAttribute<int64_t>("quantize_axis", quantize_axis);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", bits);
+
+  test.AddInput<uint8_t>("data", data_shape, data);
+  test.AddInput<Tind>("indices", indices_shape, indices);
+  test.AddInput<T2>("scales", scales_shape, scales);
+  if (!zero_points.empty()) {
+    test.AddInput<uint8_t>("zero_points", zero_points_shape, zero_points);
+  }
+  test.AddOutput<T2>("output", output_shape, output);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(expect_result, "", {}, nullptr, &eps);
+#else
+  (void)data;
+  (void)data_shape;
+  (void)indices;
+  (void)indices_shape;
+  (void)scales;
+  (void)scales_shape;
+  (void)zero_points;
+  (void)zero_points_shape;
+  (void)gather_axis;
+  (void)quantize_axis;
+  (void)block_size;
+  (void)bits;
+  (void)output;
+  (void)output_shape;
+  (void)expect_result;
+#endif
+}
+
 template <typename T1, typename T2>
 typename std::enable_if<
     (boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16, float>, T1>::value && std::is_same<T2, float>::value) ||
@@ -620,6 +678,53 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_2Bits_Uint8) {
                                            /*block_size=*/16, /*bits=*/2, output, output_shape, true);
 }
 #endif
+
+#ifdef USE_WEBGPU
+TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0NoZeroPoints_2Bits_Uint8) {
+  // Same logical data and expectation as the CPU GatherAxis0NoZeroPoints_2Bits_Uint8 test.
+  // Logical 2-bit values in {-2, -1, 0, 1}, encoded as v+2 in {0..3} and packed 4 per byte
+  // (low-order bits first). 16 logical 2-bit values -> 4 bytes per row.
+  // Pack helper:
+  auto pack4 = [](int v0, int v1, int v2, int v3) -> uint8_t {
+    auto enc = [](int v) { return static_cast<uint8_t>((v + 2) & 0x3); };
+    return static_cast<uint8_t>(enc(v0) | (enc(v1) << 2) | (enc(v2) << 4) | (enc(v3) << 6));
+  };
+
+  // Build packed data: shape {2, 3, 4} (16 logical elements per row -> 4 bytes).
+  std::vector<uint8_t> data;
+  data.reserve(2 * 3 * 4);
+  auto push_row = [&](std::vector<int> row) {
+    ORT_ENFORCE(row.size() == 16);
+    for (size_t i = 0; i < 16; i += 4) {
+      data.push_back(pack4(row[i], row[i + 1], row[i + 2], row[i + 3]));
+    }
+  };
+  push_row({-2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1});
+  push_row({1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2});
+  push_row({0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1});
+  push_row({-1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0});
+  push_row({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  push_row({-2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2});
+
+  std::vector<int64_t> data_shape = {2, 3, 4};
+  std::vector<int32_t> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+
+  std::vector<float> output = {-2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f, -2.f, -4.f, 2.f, 0.f,
+                               1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,
+                               -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f, -4.f};
+  std::vector<int64_t> output_shape = {1, 3, 16};
+
+  std::vector<uint8_t> zero_points = {};
+  std::vector<int64_t> zero_points_shape = {};
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/2,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+}
+#endif  // USE_WEBGPU
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis0_QuantizedAxis1_WithZeroPoints_4Bits() {
