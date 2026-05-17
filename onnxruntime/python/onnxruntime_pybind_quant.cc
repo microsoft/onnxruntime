@@ -205,10 +205,10 @@ py::array_t<int8_t> PackWeightsForMixedGemm(
     throw std::invalid_argument("q_weights must have shape (N, K / (8 / bits))");
   }
 
-  size_t n = static_cast<size_t>(N);
-  size_t k = static_cast<size_t>(K);
+  int n = static_cast<int>(N);
+  int k = static_cast<int>(K);
 
-  size_t packed_weight_bytes = n * k / (8 / bits);
+  size_t packed_weight_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / (8 / bits);
   py::array_t<int8_t> processed_weights({static_cast<pybind11::ssize_t>(packed_weight_bytes)});
   py::buffer_info processed_weights_buf = processed_weights.request();
 

@@ -48,6 +48,7 @@
 #endif
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/common/memory_utils.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
@@ -736,7 +737,7 @@ void mergeExpertPrefixSum(int const* blocked_expert_counts, int const* blocked_e
 
   cudaLaunchKernelEx(&config, mergeExpertPrefixSumKernel, blocked_expert_counts, blocked_expert_counts_cumsum,
                      blocked_row_to_unpermuted_row, permuted_token_selected_experts, permuted_row_to_unpermuted_row,
-                     unpermuted_row_to_permuted_row, num_tokens);
+                     unpermuted_row_to_permuted_row, static_cast<int>(num_tokens));
 }
 
 // threeStepBuildExpertMapsSortFirstToken uses three kernels to achieve the sort of token_selected_experts
@@ -1602,7 +1603,8 @@ void finalizeMoeRoutingKernelLauncher(GemmOutputType const* expanded_permuted_ro
   // Only add bias on rank 0 for tensor parallelism
   bool const is_rank_0 = parallelism_config.tp_rank == 0;
   ScaleBiasType const* bias_ptr = is_rank_0 ? bias : nullptr;
-  int const start_expert_id = num_experts_per_node * parallelism_config.ep_rank;
+  int num_experts_per_node_int = SafeInt<int>(num_experts_per_node);
+  int const start_expert_id = num_experts_per_node_int * parallelism_config.ep_rank;
 
   cudaLaunchConfig_t config;
   config.dynamicSmemBytes = 0;
@@ -1626,7 +1628,7 @@ void finalizeMoeRoutingKernelLauncher(GemmOutputType const* expanded_permuted_ro
                     : &finalizeMoeRoutingNoFillingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE>;
     cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
                        unpermuted_row_to_permuted_row, permuted_row_to_unpermuted_row, token_selected_experts,
-                       expert_first_token_offset, num_rows, cols, experts_per_token, num_experts_per_node, start_expert_id);
+                       expert_first_token_offset, num_rows, cols, experts_per_token, num_experts_per_node_int, start_expert_id);
   } else {
     // If all-gather reduce-scatter is used, finalizeMoeRouting must fill invalid output tokens with zeros.
     int64_t const blocks = num_rows;
@@ -1637,7 +1639,7 @@ void finalizeMoeRoutingKernelLauncher(GemmOutputType const* expanded_permuted_ro
                     ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT>
                     : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE>;
     cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
-                       unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node,
+                       unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
                        start_expert_id);
   }
 }
@@ -3348,7 +3350,7 @@ template class CutlassMoeFCRunner<half, half>;
 template class CutlassMoeFCRunner<half, uint8_t>;
 template class CutlassMoeFCRunner<half, cutlass::uint4b_t>;
 
-#ifdef ENABLE_FP4
+#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
 template class CutlassMoeFCRunner<half, __nv_fp4_e2m1>;
 #ifdef ENABLE_BF16
 template class CutlassMoeFCRunner<__nv_bfloat16, __nv_fp4_e2m1>;

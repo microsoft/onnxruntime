@@ -137,6 +137,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
 #endif
     } else if (quant_type_ == "fp8" && !use_fp8_dequant_fallback_) {
+#if defined(ENABLE_FP8) && defined(ENABLE_CUDA_FP8_QMOE)
       // Native W8A16-FP8: activations are half/bf16, weights are __nv_fp8_e4m3
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp8_e4m3, half>>(
@@ -145,6 +146,9 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_fp8_e4m3, __nv_bfloat16>>(
             sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
       }
+#else
+      ORT_THROW("Native FP8 QMoE requires ENABLE_CUDA_FP8_QMOE to be enabled at build time.");
+#endif
     } else {
       // FP4/WFP4AFP8 dequant fallback or FP8 dequant fallback: use A16 runner
       if (is_fp16) {

@@ -23,6 +23,7 @@
 // Order matters here, packed_stride.hpp is missing cute and convolution includes
 #include "cutlass/util/packed_stride.hpp"
 
+#include "core/common/common.h"  // For ORT_ENFORCE
 #include "contrib_ops/cuda/llm/common/logger.h"
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {

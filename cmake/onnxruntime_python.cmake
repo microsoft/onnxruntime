@@ -88,7 +88,7 @@ if(MSVC)
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
 
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/bigobj>")
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
@@ -235,7 +235,6 @@ if (onnxruntime_USE_CUDA)
   target_sources(onnxruntime_pybind11_state PRIVATE
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
-    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_call.cc"
   )
   include(cutlass)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${cutlass_SOURCE_DIR}/include)

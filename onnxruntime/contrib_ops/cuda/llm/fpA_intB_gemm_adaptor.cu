@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 #if defined(USE_CUDA)
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
+#include <cassert>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::llm {
 namespace kernels {
