@@ -676,7 +676,7 @@ class TestFP4PackingUtility(unittest.TestCase):
         packed_row = ((high << 4) | low).numpy()  # [N, K//2]
 
         # C++ packing
-        result_cpp = _pybind.pack_fp4_weights_for_cuda_moe_gemm(packed_row.reshape(-1), n, k)
+        result_cpp = _pybind.pack_fp4_weights_for_cuda_moe_gemm(packed_row, n, k)
         result_cpp = numpy.array(result_cpp, dtype=numpy.uint8).reshape(k, n // 2)
 
         # Python reference: transpose [N,K] → [K,N], pack [K, N//2]

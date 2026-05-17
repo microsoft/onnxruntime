@@ -34,9 +34,6 @@ if(onnxruntime_QUICK_BUILD)
   list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "flash_fwd.*hdim(32|64|96|192|256)")
 endif()
 
-# The SM90 mixed FP4 launcher is enabled for the native MXFP4 W4A16 path. Keep the
-# fallback stub out of the build so it does not provide duplicate instantiations.
-list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_mixed_fp4_stub\\.cu")
 if(NOT onnxruntime_ENABLE_CUDA_FP4_QMOE)
   list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_.*\\.generated\\.cu")
   list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_.*\\.generated\\.cu")

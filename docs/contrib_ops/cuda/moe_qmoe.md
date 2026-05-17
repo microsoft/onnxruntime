@@ -537,7 +537,6 @@ quant_params = QuantParams::FP4(
 | `moe_gemm/moe_gemm_kernels_bf16_fp4.cu` | `MoeGemmRunner<__nv_bfloat16, __nv_fp4_e2m1, __nv_bfloat16>` |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_*.generated.cu` | SM90 mixed-input FP4 launcher (built when `onnxruntime_ENABLE_CUDA_FP4_QMOE=ON`) |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp4_*.generated.cu` | SM120 mixed-input FP4 launcher |
-| `moe_gemm/launchers/moe_gemm_tma_ws_sm90_mixed_fp4_stub.cu` | Stub — **excluded from the current build**; kept for reference |
 
 > **Build note**: When `onnxruntime_ENABLE_CUDA_FP4_QMOE` is OFF, the stub is also
 > excluded and all `moe_gemm_kernels_*_fp4.cu` / `moe_gemm_tma_ws_sm{90,120}_fp4_*.generated.cu`
@@ -750,7 +749,6 @@ CMake gates relevant to MoE/QMoE (see [cmake/CMakeLists.txt](cmake/CMakeLists.tx
 | `ENABLE_FP4`  | CUDA ≥ 12.8 | FP4 e2m1 type (`__nv_fp4_e2m1`) and FP4 traits. |
 | `onnxruntime_ENABLE_CUDA_FP4_QMOE` | user opt-in (requires `ENABLE_FP4`) | Enables FP4 / WFP4AFP8 kernel instantiations and CUTLASS launchers. |
 | `EXCLUDE_SM_100`, `EXCLUDE_SM_120` | architecture exclusion | Drops the corresponding generated kernels. |
-| `PLACEHOLDER_KERNELS` | targets do not include SM100+ | For the standalone FP4 GEMM kernels (separate from QMoE FP4 launcher). |
 
 CUDA architecture defaults:
 - CUDA 12.8+ : `60;70;75;80;86;89;90;100;120`

@@ -122,7 +122,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
 #endif
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE) && defined(ENABLE_FP8)
+#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE) && defined(ENABLE_FP8) && defined(ENABLE_CUDA_FP8_QMOE)
       // Native W4A8: FP8 e4m3 activations + MXFP4 weights, BF16/FP16 input/output.
       // Template parameters: <T=fp8, WeightType=fp4, OutputType=BF16/FP16, InputType=BF16/FP16>.
       // CUTLASS routes this through the SM100+ block-scaled tensor op path. The runner accepts

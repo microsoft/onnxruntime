@@ -1486,22 +1486,6 @@ if (onnxruntime_USE_CUDA)
       add_definitions("-DENABLE_CUDA_FP4_QMOE")
       message(STATUS "CUDA FP4 QMoE kernels enabled")
     endif()
-    # Check if any target architecture supports FP4 kernels (sm_100+).
-    # If not, define PLACEHOLDER_KERNELS so that stub implementations are used
-    # instead of compiling the full CUTLASS sm_100/sm_120 kernel templates,
-    # which are extremely slow to compile for unsupported architectures.
-    set(_has_sm100_plus FALSE)
-    foreach(_arch ${CMAKE_CUDA_ARCHITECTURES})
-      string(REGEX MATCH "^[0-9]+" _arch_num "${_arch}")
-      if(_arch_num MATCHES "^[0-9]+$" AND _arch_num GREATER_EQUAL 100)
-        set(_has_sm100_plus TRUE)
-        break()
-      endif()
-    endforeach()
-    if(NOT _has_sm100_plus)
-      add_definitions("-DPLACEHOLDER_KERNELS")
-      message(STATUS "No sm_100+ target architecture found, using placeholder FP4 kernels")
-    endif()
   elseif(onnxruntime_ENABLE_CUDA_FP4_QMOE)
     message(FATAL_ERROR "onnxruntime_ENABLE_CUDA_FP4_QMOE requires CUDA Toolkit version 12.8 or newer")
   endif()

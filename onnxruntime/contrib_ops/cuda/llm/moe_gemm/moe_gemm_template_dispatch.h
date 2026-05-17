@@ -744,6 +744,8 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
       ORT_THROW("wfp4a16 (FP4 weights with FP16/BF16 activations) requires SM120+");
     } else if constexpr (use_wfp8a16) {
       ORT_THROW("wfp8a16 (FP8 weights with FP16/BF16 activations) requires SM90+");
+    } else if constexpr (use_fp4 || use_wfp4afp4) {
+      ORT_THROW("FP4 MoE GEMM requires SM90+");
     } else {
       dispatchMoeGemmToCutlass<T, WeightType, ScaleBiasType, cutlass::arch::Sm80, EpilogueTag>(
           inputs, multi_processor_count_);
