@@ -83,6 +83,13 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
 
   if (position_ids != nullptr) {
     // position_ids provided: cos/sin cache is 2D (max_pos, D/2)
+    // position_ids bounds validation is handled by shader-side defense-in-depth checks
+    // (OOB position_ids → pass-through input unchanged). Host-side value scanning is not possible
+    // because WebGPU program inputs must be GPU buffers (InputMemoryType(OrtMemTypeCPUInput) is
+    // incompatible with AddInputs).
+    // Note: ONNX RotaryEmbedding has no base-offset mode (format 0) — position_ids is always
+    // a 2D tensor (batch_size, sequence_length) when provided.
+
     contrib::webgpu::RotaryEmbeddingProgram program{interleaved_};
     program
         .CacheHint(interleaved_)

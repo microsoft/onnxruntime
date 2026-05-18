@@ -32,7 +32,8 @@ LinearAttentionUpdateRule ParseUpdateRule(const std::string& rule_str);
 class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
  public:
   LinearAttentionProgram(LinearAttentionUpdateRule update_rule, bool has_initial_state,
-                         bool has_decay, bool has_beta, bool decay_broadcast_dk, int tile_v, int components)
+                         bool has_decay, bool has_beta, bool decay_broadcast_dk, int tile_v, int components,
+                         int subgroup_min_size)
       : Program{"LinearAttention"},
         update_rule_(update_rule),
         has_initial_state_(has_initial_state),
@@ -40,7 +41,8 @@ class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
         has_beta_(has_beta),
         decay_broadcast_dk_(decay_broadcast_dk),
         tile_v_(tile_v),
-        components_(components) {}
+        components_(components),
+        subgroup_min_size_(subgroup_min_size) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -65,6 +67,7 @@ class LinearAttentionProgram final : public Program<LinearAttentionProgram> {
   bool decay_broadcast_dk_;
   int tile_v_;
   int components_;
+  int subgroup_min_size_;
 };
 
 // Kernel for LinearAttention

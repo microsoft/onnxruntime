@@ -3569,7 +3569,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.NhwcFusedConv"></a><a name="com.microsoft.nhwcfusedconv">**com.microsoft.NhwcFusedConv**</a>
 
   NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
-  Only has fp16 implementation as of 2023/04/15.
 
 #### Version
 
@@ -3600,26 +3599,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd></dd>
+<dd>Input activation tensor in channels-last layout. For 2D convolution this is [N, H, W, C], where N is batch size, H/W are spatial dimensions, and C is the number of input channels.</dd>
 <dt><tt>W</tt> : T</dt>
-<dd></dd>
+<dd>Convolution weight tensor in the standard ONNX Conv filter layout [M, C/group, kH, kW], where M is the number of output channels.</dd>
 <dt><tt>B</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional 1D bias tensor of shape [M].</dd>
 <dt><tt>Z</tt> (optional) : T</dt>
-<dd>Tensor to be added to the output, must be the same shape and format as the output tensor.</dd>
+<dd>Optional residual/add tensor in the same channels-last layout and shape as the output tensor Y. For 2D convolution this is [N, out_H, out_W, M].</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd></dd>
+<dd>Output tensor in channels-last layout. For 2D convolution this is [N, out_H, out_W, M], where M is the number of output channels.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain input and output types to float tensors</dd>
 </dl>
 
@@ -4701,7 +4700,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
         The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
           dequantized_weight = (quantized_weight - zero_point) * scale
-        When zero_point is not provided, the default value is 2^(bits-1): 8 for 4 bits, 128 for 8 bits.
+        When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
   
         If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
@@ -4737,7 +4736,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). If provided, both hidden_size and inter_size must be divisible by the block size. Otherwise, there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
-<dd>Number of bits used in quantized weights. Default is 4 bits</dd>
+<dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
@@ -6109,7 +6108,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
     The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
     the second mode will be used. The first mode breaks each input string into tokens by matching and removing separators.
-    "separators" is a list of strings which are regular expressions. "tokenexp" is a single regular expression.
+    "separators" is a list of strings which are RE2 regular expressions. "tokenexp" is a single RE2 regular expression.
     Let's assume "separators" is [" "] and consider an example.
     If input is
     ["Hello World", "I love computer science !"] whose shape is [2],
@@ -6118,8 +6117,9 @@ This version of the operator has been available since version 1 of the 'com.micr
    ["I", "love", "computer", "science", "!"]]
    whose shape is [2, 5] because you can find at most 5 tokens per input string.
    Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
-   If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
-   will be broken part into individual characters.
+   If "separators" contains a single empty string, the Tokenizer will enter into character tokenization mode. This means all strings
+   will be broken apart into individual characters.
+   Similarly, if "tokenexp" is set to "." (match any single character), character tokenization mode is used.
    For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
    The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
    This operator searches for the first match starting from the beginning of the considered string,
@@ -6149,9 +6149,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>pad_value</tt> : string (required)</dt>
 <dd>The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers.</dd>
 <dt><tt>separators</tt> : list of strings</dt>
-<dd>an optional list of strings attribute that contains a list of separators - regular expressions to match separators Two consecutive segments in X connected by a separator would be divided into two tokens. For example, if the input is "Hello World!" and this attribute contains only one space character, the corresponding output would be ["Hello", "World!"]. To achieve character-level tokenization, one should set the 'separators' to [""], which contains an empty string.</dd>
+<dd>an optional list of strings attribute that contains a list of separators - RE2 regular expressions to match separators. Two consecutive segments in X connected by a separator would be divided into two tokens. For example, if the input is "Hello World!" and this attribute contains only one space character, the corresponding output would be ["Hello", "World!"]. To achieve character-level tokenization, one should set the 'separators' to [""], which contains an empty string.</dd>
 <dt><tt>tokenexp</tt> : string</dt>
-<dd>An optional string. Token's regular expression in basic POSIX format (pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03). If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of 'tokenexp' and 'separators' should be set.</dd>
+<dd>An optional string. Token's regular expression in RE2 format (https://github.com/google/re2/wiki/Syntax). If set, tokenizer may produce tokens matching the specified pattern. Note that one and only one of 'tokenexp' and 'separators' should be set. If tokenexp is ".", the tokenizer enters character tokenization mode.</dd>
 </dl>
 
 #### Inputs

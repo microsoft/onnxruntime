@@ -1434,7 +1434,7 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
 
       The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
         dequantized_weight = (quantized_weight - zero_point) * scale
-      When zero_point is not provided, the default value is 2^(bits-1): 8 for 4 bits, 128 for 8 bits.
+      When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
 
       If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
       the dequantization is performed per block of size block_size along the K (input feature) dimension.
@@ -1475,7 +1475,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("expert_weight_bits",
-              "Number of bits used in quantized weights. Default is 4 bits",
+              "Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits",
               AttributeProto::INT,
               static_cast<int64_t>(4))
         .Attr("swiglu_fusion",
@@ -1954,7 +1954,7 @@ constexpr const char* Tokenizer_ver1_doc = R"DOC(
   Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
   The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
   the second mode will be used. The first mode breaks each input string into tokens by matching and removing separators.
-  "separators" is a list of strings which are regular expressions. "tokenexp" is a single regular expression.
+  "separators" is a list of strings which are RE2 regular expressions. "tokenexp" is a single RE2 regular expression.
   Let's assume "separators" is [" "] and consider an example.
   If input is
   ["Hello World", "I love computer science !"] whose shape is [2],
@@ -1963,8 +1963,9 @@ constexpr const char* Tokenizer_ver1_doc = R"DOC(
  ["I", "love", "computer", "science", "!"]]
  whose shape is [2, 5] because you can find at most 5 tokens per input string.
  Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
- If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
- will be broken part into individual characters.
+ If "separators" contains a single empty string, the Tokenizer will enter into character tokenization mode. This means all strings
+ will be broken apart into individual characters.
+ Similarly, if "tokenexp" is set to "." (match any single character), character tokenization mode is used.
  For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
  The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
  This operator searches for the first match starting from the beginning of the considered string,
@@ -1999,18 +2000,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Tokenizer, 1,
                                     AttributeProto::STRING)
                                 .Attr(
                                     "tokenexp",
-                                    "An optional string. Token's regular expression in basic POSIX format"
-                                    " (pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03)."
-                                    " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of"
-                                    " 'tokenexp' and 'separators' should be set.",
+                                    "An optional string. Token's regular expression in RE2 format"
+                                    " (https://github.com/google/re2/wiki/Syntax)."
+                                    " If set, tokenizer may produce tokens matching the specified pattern. Note that one and only one of"
+                                    " 'tokenexp' and 'separators' should be set."
+                                    " If tokenexp is \".\", the tokenizer enters character tokenization mode.",
                                     AttributeProto::STRING,
                                     OPTIONAL_VALUE)
                                 .Attr(
                                     "separators",
-                                    "an optional list of strings attribute that contains a list of separators - regular expressions to match separators"
+                                    "an optional list of strings attribute that contains a list of separators - RE2 regular expressions to match separators."
                                     " Two consecutive segments in X connected by a separator would be divided into two tokens."
                                     " For example, if the input is \"Hello World!\" and this attribute contains only one space character,"
-                                    " the corresponding output would be [\"Hello\", \"World!\"]. To achieve character-level tokenization,"
+                                    " the corresponding output would be [\"Hello\", \"World!\"]."
+                                    " To achieve character-level tokenization,"
                                     " one should set the 'separators' to [\"\"], which contains an empty string.",
                                     AttributeProto::STRINGS,
                                     OPTIONAL_VALUE)

@@ -70,6 +70,8 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
   const auto num_dim = input_shape.NumDimensions();
   auto* output = ctx->Output(0, input_shape);
 
+  ORT_RETURN_IF_NOT(num_dim >= 2, "Input tensor rank must be >= 2, got: ", num_dim);
+
   int64_t num_batches = 1;
   const int64_t rows = input_shape.GetDims()[num_dim - 2];
   const int64_t cols = input_shape.GetDims()[num_dim - 1];

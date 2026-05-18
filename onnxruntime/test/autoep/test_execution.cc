@@ -28,8 +28,8 @@ namespace test {
 
 namespace {
 
-void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+void RunMulModelWithPluginEp(const ORTCHAR_T* model_path, const Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, model_path, session_options);
 
   // Create input
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -52,6 +52,10 @@ void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
   const float* output_data = ort_output.GetTensorData<float>();
   gsl::span<const float> output_span(output_data, 6);
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
+}
+
+void RunMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
+  RunMulModelWithPluginEp(ORT_TSTR("testdata/mul_1.onnx"), session_options);
 }
 
 void RunCustomMulModelWithPluginEp(const Ort::SessionOptions& session_options) {
@@ -826,6 +830,73 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ErrorOutputModelExists_AutoGenOutp
   }
 
   std::filesystem::remove(expected_output_model_file);
+}
+
+// Test that EPContext generation and inference work correctly when non-ASCII Unicode characters
+// appear in both the model file path and the EPContext output path.
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_UnicodePath) {
+  namespace fs = std::filesystem;
+
+  // Set up a Unicode working directory and model path (U+4E2D U+6587, "中文").
+  const fs::path unicode_dir{fs::path(u8"\u4e2d\u6587")};
+  fs::remove_all(unicode_dir);
+  fs::create_directories(unicode_dir);
+  auto cleanup = gsl::finally([&unicode_dir] {
+    std::error_code ec;
+    fs::remove_all(unicode_dir, ec);
+  });
+
+  const fs::path input_model = unicode_dir / fs::path(u8"\u4e2d\u6587.onnx");
+  const fs::path output_model = unicode_dir / fs::path(u8"\u4e2d\u6587_ctx.onnx");
+
+  fs::copy_file(ORT_TSTR("testdata/mul_1.onnx"), input_model, fs::copy_options::overwrite_existing);
+  fs::remove(output_model);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  std::unordered_map<std::string, std::string> ep_options;
+
+  // Convert the Unicode output path to a UTF-8 string for the session config entry.
+  // ep_context_options.cc must correctly convert this back to a wide path on Windows.
+  const auto u8str = output_model.u8string();
+  const std::string utf8_output_path(u8str.begin(), u8str.end());
+
+  // Generate EPContext model.
+  {
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, utf8_output_path.c_str());
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    Ort::Session session(*ort_env, input_model.c_str(), session_options);
+    ASSERT_TRUE(fs::exists(output_model)) << "EPContext not created at: " << utf8_output_path;
+  }
+}
+
+// Test that inference works correctly when non-ASCII Unicode characters appear in the model file path.
+TEST(OrtEpLibrary, PluginEp_Inference_UnicodePath) {
+  namespace fs = std::filesystem;
+
+  const fs::path unicode_dir{fs::path(u8"\u4e2d\u6587")};
+  fs::remove_all(unicode_dir);
+  fs::create_directories(unicode_dir);
+  auto cleanup = gsl::finally([&unicode_dir] {
+    std::error_code ec;
+    fs::remove_all(unicode_dir, ec);
+  });
+
+  const fs::path input_model = unicode_dir / fs::path(u8"\u4e2d\u6587.onnx");
+  fs::copy_file(ORT_TSTR("testdata/mul_1.onnx"), input_model, fs::copy_options::overwrite_existing);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+  std::unordered_map<std::string, std::string> ep_options;
+
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+  RunMulModelWithPluginEp(input_model.c_str(), session_options);
 }
 
 TEST(OrtEpLibrary, KernelPluginEp_Inference) {

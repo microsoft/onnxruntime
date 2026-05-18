@@ -363,6 +363,9 @@ TEST(TransformerTest, FuseFp16InitializersWithFp32Node_with_graph_optimizations_
 
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
+  // Keep this test focused on FuseInitializersTransformer/NCHWC behavior. NhwcTransformer is
+  // hardware/kernel dependent and can otherwise change the post-init node counts this test asserts on.
+  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
   ASSERT_STATUS_OK(session.Load(model_uri));
   test_graph_structure_at_init(session.GetGraph());
   ASSERT_STATUS_OK(session.Initialize());
@@ -402,6 +405,9 @@ TEST(TransformerTest, FuseFp16InitializersWithFp32Node_with_graph_optimizations_
 
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
+  // Keep this test focused on FuseInitializersTransformer/NCHWC behavior. NhwcTransformer is
+  // hardware/kernel dependent and can otherwise change the post-init node counts this test asserts on.
+  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
   ASSERT_STATUS_OK(session.Load(model_uri));
   test_graph_structure_at_init(session.GetGraph());
   ASSERT_STATUS_OK(session.Initialize());
@@ -443,6 +449,9 @@ TEST(TransformerTest, FuseFp16InitializersWithFp32Node_with_graph_optimizations_
 
   // Create session and check graph before / after initiation
   InferenceSessionWrapper session{so, GetEnvironment()};
+  // Keep this test focused on FuseInitializersTransformer/NCHWC behavior. NhwcTransformer is
+  // hardware/kernel dependent and can otherwise change the post-init node counts this test asserts on.
+  ASSERT_STATUS_OK(session.FilterEnabledOptimizers({"NhwcTransformer"}));
   ASSERT_STATUS_OK(session.Load(model_uri));
   test_graph_structure_at_init(session.GetGraph());
   ASSERT_STATUS_OK(session.Initialize());
