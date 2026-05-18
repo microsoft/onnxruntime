@@ -794,12 +794,19 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
                      "model_1", "variant_2", "variant_1",
                      std::filesystem::path{"testdata/mul_16.onnx"}, std::filesystem::path{"plugin_ep_compat_test.onnx"});
 
+  // Build compat strings dynamically against current ORT_API_VERSION so the EP's ORT-version check
+  // doesn't short-circuit to PREFER_RECOMPILATION for both variants (which would make hardware_architecture
+  // irrelevant and the variant ranking collapse to a tie). With matching ORT versions, the arch differentiates:
+  // arch1 -> OPTIMAL, arch2 -> PREFER_RECOMPILATION; variant_1 must win.
+  const std::string ort_api_version_str = std::to_string(ORT_API_VERSION);
+  const std::string compat_arch2 =
+      "example_ep;version=0.1.0;ort_api_version=" + ort_api_version_str + ";hardware_architecture=arch2";
+  const std::string compat_arch1 =
+      "example_ep;version=0.1.0;ort_api_version=" + ort_api_version_str + ";hardware_architecture=arch1";
   const std::string metadata_json = MakeMetadataJsonTwoVariants(
       "model_1",
-      "variant_2", "example_ep", "cpu",
-      "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2",
-      "variant_1", "example_ep", "cpu",
-      "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1");
+      "variant_2", "example_ep", "cpu", compat_arch2.c_str(),
+      "variant_1", "example_ep", "cpu", compat_arch1.c_str());
 
   CreateComponentModelMetadata(package_root,
                                "model_1",
@@ -1021,6 +1028,533 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
   EXPECT_EQ(variants[0].ep_compatibility[0].device.value_or(""), "cpu");
 
   std::filesystem::remove_all(component_root, ec);
+}
+
+// ------------------------------------------------------------------
+// Tests for descriptor parser: enforced "ep" field in ep_compatibility entries.
+// ------------------------------------------------------------------
+namespace {
+
+// Make a single-component, single-variant package on disk where metadata.json is written
+// directly at the package root (the "single-component metadata flow" of the parser).
+// In this flow ep_compatibility schema validation errors are propagated, instead of being
+// swallowed by the manifest-driven discovery path which falls back to "Missing metadata variants".
+// Returns the package_root.
+std::filesystem::path MakeSingleComponentPackageWithMetadata(std::string_view subdir,
+                                                             std::string_view metadata_json,
+                                                             std::string_view variant_json = R"({"files":[{"filename":"mul_1.onnx"}]})") {
+  const auto package_root = std::filesystem::temp_directory_path() / std::string(subdir);
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+  std::filesystem::create_directories(package_root);
+
+  // Write metadata.json directly under package_root (no manifest, no models/ subdir).
+  {
+    std::ofstream os(package_root / "metadata.json", std::ios::binary);
+    os << metadata_json;
+  }
+
+  // Variants live directly under package_root for the single-component flow.
+  const auto variant_dir = package_root / "variant_1";
+  std::filesystem::create_directories(variant_dir);
+  std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "mul_1.onnx",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+
+  std::ofstream os(variant_dir / "variant.json", std::ios::binary);
+  os << variant_json;
+
+  return package_root;
+}
+
+}  // namespace
+
+TEST(ModelPackageTest, ParserRejects_EpCompatibilityMissingEp) {
+  // The "ep" field is required in every ep_compatibility entry.
+  // Omitting it must yield a parse error (not silently accept a wildcard / portable variant).
+  constexpr std::string_view metadata_json = R"({
+    "component_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep_compatibility": [{
+          "device": "cpu",
+          "compatibility_string": "anything"
+        }]
+      }
+    }
+  })";
+  const auto package_root = MakeSingleComponentPackageWithMetadata(
+      "ort_model_package_parser_missing_ep", metadata_json);
+
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  std::vector<VariantInfo> variants;
+  auto status = parser.ParseVariantsFromRoot(package_root, variants);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("ep"), std::string::npos) << status.ErrorMessage();
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageTest, ParserRejects_EpCompatibilityNullEp) {
+  constexpr std::string_view metadata_json = R"({
+    "component_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep_compatibility": [{
+          "ep": null,
+          "device": "cpu"
+        }]
+      }
+    }
+  })";
+  const auto package_root = MakeSingleComponentPackageWithMetadata(
+      "ort_model_package_parser_null_ep", metadata_json);
+
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  std::vector<VariantInfo> variants;
+  auto status = parser.ParseVariantsFromRoot(package_root, variants);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("ep"), std::string::npos) << status.ErrorMessage();
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageTest, ParserRejects_EpCompatibilityEmptyEp) {
+  constexpr std::string_view metadata_json = R"({
+    "component_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep_compatibility": [{
+          "ep": "",
+          "device": "cpu"
+        }]
+      }
+    }
+  })";
+  const auto package_root = MakeSingleComponentPackageWithMetadata(
+      "ort_model_package_parser_empty_ep", metadata_json);
+
+  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
+  std::vector<VariantInfo> variants;
+  auto status = parser.ParseVariantsFromRoot(package_root, variants);
+
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("ep"), std::string::npos) << status.ErrorMessage();
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// ------------------------------------------------------------------
+// Tests for new pre-selection EP-compat traversal accessors.
+// ------------------------------------------------------------------
+TEST(ModelPackageApiTest, GetVariantEpCompatibility_ReturnsAllEntries) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_pre_selection_ep_compat";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  CreateManifestJson(package_root, MakeManifestJson("model_1"));
+
+  const auto variant1_dir = package_root / "models" / "model_1" / "variant_1";
+  const auto variant2_dir = package_root / "models" / "model_1" / "variant_2";
+  std::filesystem::create_directories(variant1_dir);
+  std::filesystem::create_directories(variant2_dir);
+  std::filesystem::copy_file("testdata/mul_1.onnx", variant1_dir / "mul_1.onnx",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  std::filesystem::copy_file("testdata/mul_1.onnx", variant2_dir / "mul_1.onnx",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+
+  // variant_1 has two ep_compatibility entries (one with compatibility_string omitted).
+  // variant_2 has one entry with all fields populated.
+  constexpr std::string_view metadata_json = R"({
+    "component_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep_compatibility": [
+          { "ep": "example_ep", "device": "cpu" },
+          { "ep": "other_ep",   "device": "gpu", "compatibility_string": "compat_a" }
+        ]
+      },
+      "variant_2": {
+        "ep_compatibility": [
+          { "ep": "example_ep", "device": "npu", "compatibility_string": "compat_b" }
+        ]
+      }
+    }
+  })";
+  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  for (const auto& d : {variant1_dir, variant2_dir}) {
+    std::ofstream os(d / "variant.json", std::ios::binary);
+    os << R"({"files":[{"filename":"mul_1.onnx"}]})";
+  }
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  ASSERT_NE(pkg_api, nullptr);
+
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api->ReleaseModelPackageContext(p);
+  };
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
+  OrtModelPackageContext* raw_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  ctx.reset(raw_ctx);
+
+  // variant_1: 2 entries
+  size_t v1_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibilityCount(
+      ctx.get(), "model_1", "variant_1", &v1_count));
+  ASSERT_EQ(v1_count, 2u);
+
+  // Aggregate the entries in a set since underlying storage may not preserve declaration order.
+  struct Entry {
+    std::string ep, device, compat;
+  };
+  std::vector<Entry> v1_entries;
+  for (size_t i = 0; i < v1_count; ++i) {
+    const char* ep = nullptr;
+    const char* dev = nullptr;
+    const char* compat = nullptr;
+    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibility(
+        ctx.get(), "model_1", "variant_1", i, &ep, &dev, &compat));
+    v1_entries.push_back({ep ? ep : "", dev ? dev : "", compat ? compat : ""});
+  }
+
+  auto find_ep = [&](const std::string& ep_name) -> const Entry* {
+    for (const auto& e : v1_entries) {
+      if (e.ep == ep_name) return &e;
+    }
+    return nullptr;
+  };
+  const auto* example = find_ep("example_ep");
+  const auto* other = find_ep("other_ep");
+  ASSERT_NE(example, nullptr);
+  ASSERT_NE(other, nullptr);
+  EXPECT_EQ(example->device, "cpu");
+  EXPECT_EQ(example->compat, "");  // omitted -> empty / NULL
+  EXPECT_EQ(other->device, "gpu");
+  EXPECT_EQ(other->compat, "compat_a");
+
+  // variant_2: 1 entry
+  size_t v2_count = 0;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibilityCount(
+      ctx.get(), "model_1", "variant_2", &v2_count));
+  ASSERT_EQ(v2_count, 1u);
+
+  const char* ep = nullptr;
+  const char* dev = nullptr;
+  const char* compat = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibility(
+      ctx.get(), "model_1", "variant_2", 0, &ep, &dev, &compat));
+  ASSERT_NE(ep, nullptr);
+  EXPECT_STREQ(ep, "example_ep");
+  ASSERT_NE(dev, nullptr);
+  EXPECT_STREQ(dev, "npu");
+  ASSERT_NE(compat, nullptr);
+  EXPECT_STREQ(compat, "compat_b");
+
+  // Optional out-parameters: callers can pass NULL for fields they don't need.
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibility(
+      ctx.get(), "model_1", "variant_2", 0, nullptr, nullptr, nullptr));
+
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageApiTest, GetVariantEpCompatibility_OutOfRangeIsError) {
+  const auto package_root = MakeSingleComponentPackageWithMetadata(
+      "ort_mp_ep_compat_oor",
+      R"({
+        "component_name": "model_1",
+        "variants": {
+          "variant_1": {
+            "ep_compatibility": [{ "ep": "example_ep", "device": "cpu" }]
+          }
+        }
+      })");
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api->ReleaseModelPackageContext(p);
+  };
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
+  OrtModelPackageContext* raw_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  ctx.reset(raw_ctx);
+
+  const char* ep = nullptr;
+  const char* dev = nullptr;
+  const char* compat = nullptr;
+  OrtStatus* st = pkg_api->ModelPackage_GetVariantEpCompatibility(
+      ctx.get(), "model_1", "variant_1", /*ep_idx*/ 5, &ep, &dev, &compat);
+  EXPECT_NE(st, nullptr);
+  if (st != nullptr) Ort::GetApi().ReleaseStatus(st);
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// ------------------------------------------------------------------
+// Test for the consumer_metadata accessor on a selected variant.
+// ------------------------------------------------------------------
+TEST(ModelPackageApiTest, GetSelectedVariantConsumerMetadata) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_consumer_metadata";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  CreateManifestJson(package_root, MakeManifestJson("model_1"));
+
+  const auto variant_dir = package_root / "models" / "model_1" / "variant_1";
+  std::filesystem::create_directories(variant_dir);
+  std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "mul_1.onnx",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+
+  constexpr std::string_view metadata_json = R"({
+    "component_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep_compatibility": [{ "ep": "example_ep", "device": "cpu" }]
+      }
+    }
+  })";
+  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  // variant.json has a non-trivial consumer_metadata sub-object.
+  {
+    std::ofstream os(variant_dir / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [{ "filename": "mul_1.onnx" }],
+      "consumer_metadata": {
+        "framework": "onnxruntime-genai",
+        "tokens": { "bos": 1, "eos": 2 }
+      }
+    })";
+  }
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  ASSERT_NE(pkg_api, nullptr);
+
+  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
+  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  };
+  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(nullptr, options_deleter);
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(nullptr, component_context_deleter);
+
+  OrtModelPackageOptions* raw_mp_opts = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+  mp_opts.reset(raw_mp_opts);
+
+  OrtModelPackageContext* raw_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  ctx.reset(raw_ctx);
+
+  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+  comp_ctx.reset(raw_comp_ctx);
+
+  const char* json_str = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantConsumerMetadata(comp_ctx.get(), &json_str));
+  ASSERT_NE(json_str, nullptr);
+
+  // The returned blob must be a parseable JSON object with the expected fields.
+  json parsed = json::parse(json_str);
+  ASSERT_TRUE(parsed.is_object());
+  EXPECT_EQ(parsed.value("framework", ""), "onnxruntime-genai");
+  ASSERT_TRUE(parsed.contains("tokens"));
+  EXPECT_EQ(parsed["tokens"].value("bos", 0), 1);
+  EXPECT_EQ(parsed["tokens"].value("eos", 0), 2);
+
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// ------------------------------------------------------------------
+// Test: variant selector tie-break is deterministic across repeated invocations.
+// Two variants advertise compatibility for the same EP/device and EP returns the same
+// validation score for both -- selection must be stable.
+// ------------------------------------------------------------------
+TEST(ModelPackageTest, VariantSelector_TieBreakIsDeterministic) {
+  // Both variants point at the *same* model file (mul_1.onnx) so whichever wins works at runtime.
+  // They advertise identical EP/device pairs and empty compatibility_string so the EP returns the
+  // same score (NOT_APPLICABLE) for both -- a tie. The fix in commit 27217da484 guarantees that
+  // ties resolve deterministically, i.e., selection is stable across repeated runs.
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  std::string first_selected_filename;
+
+  for (int iter = 0; iter < 5; ++iter) {
+    const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_tie_break";
+    std::error_code ec;
+    std::filesystem::remove_all(package_root, ec);
+
+    CreateModelPackage(package_root, MakeManifestJson("model_1"),
+                       "model_1", "variant_a", "variant_b",
+                       std::filesystem::path{"testdata/mul_1.onnx"},
+                       std::filesystem::path{"testdata/mul_1.onnx"});
+
+    const std::string metadata_json = MakeMetadataJsonTwoVariants(
+        "model_1",
+        "variant_a", "example_ep", "cpu", "",
+        "variant_b", "example_ep", "cpu", "");
+    CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+    const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+    ASSERT_NE(pkg_api, nullptr);
+
+    auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
+    auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
+    auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
+      if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+    };
+    std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(nullptr, options_deleter);
+    std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
+    std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(nullptr, component_context_deleter);
+
+    OrtModelPackageOptions* raw_mp_opts = nullptr;
+    ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+    mp_opts.reset(raw_mp_opts);
+
+    OrtModelPackageContext* raw_ctx = nullptr;
+    ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+    ctx.reset(raw_ctx);
+
+    OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
+    ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+    comp_ctx.reset(raw_comp_ctx);
+
+    const ORTCHAR_T* selected_path = nullptr;
+    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(comp_ctx.get(), 0, &selected_path));
+    ASSERT_NE(selected_path, nullptr);
+
+    // Path looks like .../models/model_1/<variant_x>/mul_1.onnx -- the parent dir name is the variant.
+    const auto selected_variant_dir = std::filesystem::path(selected_path).parent_path().filename().string();
+    ASSERT_TRUE(selected_variant_dir == "variant_a" || selected_variant_dir == "variant_b")
+        << "unexpected variant dir: " << selected_variant_dir;
+
+    if (iter == 0) {
+      first_selected_filename = selected_variant_dir;
+    } else {
+      EXPECT_EQ(selected_variant_dir, first_selected_filename)
+          << "tie-break selection drifted across runs (iter " << iter << ")";
+    }
+
+    std::filesystem::remove_all(package_root, ec);
+  }
+}
+
+// ------------------------------------------------------------------
+// Test: a variant's per-file `session_options` flow through OrtApis::AddSessionOption.
+// We verify this by feeding a *known* typed key (intra_op_num_threads) a non-integer value:
+// pre-change behavior would silently stuff it into AddConfigEntry and succeed; post-change
+// behavior parses it via the typed dispatcher and fails CreateSession with a parse error.
+// ------------------------------------------------------------------
+TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionOption) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_session_options_dispatch";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+
+  CreateManifestJson(package_root, MakeManifestJson("model_1"));
+
+  const auto variant_dir = package_root / "models" / "model_1" / "variant_1";
+  std::filesystem::create_directories(variant_dir);
+  std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "mul_1.onnx",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+
+  constexpr std::string_view metadata_json = R"({
+    "component_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep_compatibility": [{ "ep": "example_ep", "device": "cpu" }]
+      }
+    }
+  })";
+  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  // Per-file session_options assigns a typed key (intra_op_num_threads) a value that is not a
+  // valid integer. Routing this through AddSessionOption (the new behavior) must reject it.
+  {
+    std::ofstream os(variant_dir / "variant.json", std::ios::binary);
+    os << R"({
+      "files": [{
+        "filename": "mul_1.onnx",
+        "session_options": {
+          "intra_op_num_threads": "not_an_int"
+        }
+      }]
+    })";
+  }
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  ASSERT_NE(pkg_api, nullptr);
+
+  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
+  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  };
+  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(nullptr, options_deleter);
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(nullptr, component_context_deleter);
+
+  OrtModelPackageOptions* raw_mp_opts = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+  mp_opts.reset(raw_mp_opts);
+
+  OrtModelPackageContext* raw_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  ctx.reset(raw_ctx);
+
+  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+  comp_ctx.reset(raw_comp_ctx);
+
+  // CreateSession iterates the per-file session_options and dispatches each through AddSessionOption.
+  // The bad int value must surface as an error from this call.
+  // Pass nullptr for session_options so the metadata-merge path runs (it is skipped when the caller
+  // supplies their own session_options).
+  OrtSession* raw_session = nullptr;
+  OrtStatus* st = pkg_api->CreateSession(*ort_env, comp_ctx.get(), /*session_options=*/nullptr, &raw_session);
+  ASSERT_NE(st, nullptr) << "CreateSession unexpectedly succeeded with malformed intra_op_num_threads";
+  const std::string err_msg = Ort::GetApi().GetErrorMessage(st);
+  Ort::GetApi().ReleaseStatus(st);
+  if (raw_session != nullptr) {
+    Ort::GetApi().ReleaseSession(raw_session);
+  }
+
+  // Message should mention either AddSessionOption or the typed-int parse failure.
+  const bool mentions_dispatch =
+      err_msg.find("AddSessionOption") != std::string::npos ||
+      err_msg.find("base-10 int32") != std::string::npos ||
+      err_msg.find("intra_op_num_threads") != std::string::npos;
+  EXPECT_TRUE(mentions_dispatch) << "error did not mention typed dispatch: " << err_msg;
+
+  std::filesystem::remove_all(package_root, ec);
 }
 
 }  // namespace test

@@ -1,0 +1,377 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <cstdint>
+#include <filesystem>
+#include <string>
+
+#include "gtest/gtest.h"
+
+#include "core/framework/session_options.h"
+#include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+
+namespace onnxruntime {
+namespace test {
+
+namespace {
+
+// Tiny RAII wrapper around OrtStatus* so tests don't leak on failure.
+struct OrtStatusGuard {
+  OrtStatus* st = nullptr;
+  ~OrtStatusGuard() {
+    if (st != nullptr) Ort::GetApi().ReleaseStatus(st);
+  }
+};
+
+const OrtApi& Api() { return Ort::GetApi(); }
+
+// Build a fresh OrtSessionOptions* via the C API for tests that need a raw handle.
+OrtSessionOptions* MakeOptions() {
+  OrtSessionOptions* opts = nullptr;
+  OrtStatus* st = Api().CreateSessionOptions(&opts);
+  EXPECT_EQ(st, nullptr);
+  if (st != nullptr) Api().ReleaseStatus(st);
+  return opts;
+}
+
+void ReleaseOptions(OrtSessionOptions* opts) { Api().ReleaseSessionOptions(opts); }
+
+OrtStatus* AddOption(OrtSessionOptions* opts, const char* key, const char* value) {
+  return Api().AddSessionOption(opts, key, value);
+}
+
+OrtErrorCode CodeOf(OrtStatus* st) { return Api().GetErrorCode(st); }
+const char* MsgOf(OrtStatus* st) { return Api().GetErrorMessage(st); }
+
+}  // namespace
+
+// -----------------------------------------------------------------------------
+// Bool-valued keys: enable_cpu_mem_arena, enable_mem_pattern, use_deterministic_compute
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, BoolKeys_AcceptsAllSpellings) {
+  // ParseBool accepts: "0", "1", "true", "false", and case-insensitive variants.
+  const char* truthy[] = {"1", "true", "True", "TRUE"};
+  const char* falsy[] = {"0", "false", "False", "FALSE"};
+
+  for (const char* v : truthy) {
+    OrtSessionOptions* opts = MakeOptions();
+    OrtStatusGuard g{AddOption(opts, "enable_cpu_mem_arena", v)};
+    ASSERT_EQ(g.st, nullptr) << "value=" << v;
+    EXPECT_TRUE(opts->value.enable_cpu_mem_arena) << "value=" << v;
+    ReleaseOptions(opts);
+  }
+  for (const char* v : falsy) {
+    OrtSessionOptions* opts = MakeOptions();
+    OrtStatusGuard g{AddOption(opts, "enable_cpu_mem_arena", v)};
+    ASSERT_EQ(g.st, nullptr) << "value=" << v;
+    EXPECT_FALSE(opts->value.enable_cpu_mem_arena) << "value=" << v;
+    ReleaseOptions(opts);
+  }
+}
+
+TEST(AddSessionOptionTest, BoolKey_EnableMemPattern) {
+  OrtSessionOptions* opts = MakeOptions();
+  ASSERT_TRUE(opts->value.enable_mem_pattern);  // default
+
+  {
+    OrtStatusGuard g{AddOption(opts, "enable_mem_pattern", "0")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_FALSE(opts->value.enable_mem_pattern);
+  }
+  {
+    OrtStatusGuard g{AddOption(opts, "enable_mem_pattern", "true")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_TRUE(opts->value.enable_mem_pattern);
+  }
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, BoolKey_UseDeterministicCompute) {
+  OrtSessionOptions* opts = MakeOptions();
+  EXPECT_FALSE(opts->value.use_deterministic_compute);
+  OrtStatusGuard g{AddOption(opts, "use_deterministic_compute", "1")};
+  ASSERT_EQ(g.st, nullptr);
+  EXPECT_TRUE(opts->value.use_deterministic_compute);
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, BoolKey_InvalidValueErrors) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "enable_cpu_mem_arena", "yes")};
+  ASSERT_NE(g.st, nullptr);
+  EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  EXPECT_NE(std::string(MsgOf(g.st)).find("boolean"), std::string::npos) << MsgOf(g.st);
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// Int-valued keys: intra_op_num_threads, inter_op_num_threads,
+//                  log_severity_level, log_verbosity_level
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, IntKey_IntraOpNumThreads) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "4")};
+  ASSERT_EQ(g.st, nullptr);
+  EXPECT_EQ(opts->value.intra_op_param.thread_pool_size, 4);
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, IntKey_InterOpNumThreads) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "inter_op_num_threads", "2")};
+  ASSERT_EQ(g.st, nullptr);
+  EXPECT_EQ(opts->value.inter_op_param.thread_pool_size, 2);
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, IntKey_LogSeverityAndVerbosity) {
+  OrtSessionOptions* opts = MakeOptions();
+  {
+    OrtStatusGuard g{AddOption(opts, "log_severity_level", "2")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_EQ(opts->value.session_log_severity_level, 2);
+  }
+  {
+    OrtStatusGuard g{AddOption(opts, "log_verbosity_level", "3")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_EQ(opts->value.session_log_verbosity_level, 3);
+  }
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, IntKey_EmptyValueErrors) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "")};
+  ASSERT_NE(g.st, nullptr);
+  EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  EXPECT_NE(std::string(MsgOf(g.st)).find("empty"), std::string::npos) << MsgOf(g.st);
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, IntKey_NonIntegerValueErrors) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "not_an_int")};
+  ASSERT_NE(g.st, nullptr);
+  EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  EXPECT_NE(std::string(MsgOf(g.st)).find("base-10 int32"), std::string::npos) << MsgOf(g.st);
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, IntKey_TrailingGarbageErrors) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "12abc")};
+  ASSERT_NE(g.st, nullptr);
+  EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// Log id (logid + log_id alias)
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, LogId_CanonicalAndAlias) {
+  {
+    OrtSessionOptions* opts = MakeOptions();
+    OrtStatusGuard g{AddOption(opts, "logid", "session-A")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_EQ(opts->value.session_logid, "session-A");
+    ReleaseOptions(opts);
+  }
+  {
+    OrtSessionOptions* opts = MakeOptions();
+    OrtStatusGuard g{AddOption(opts, "log_id", "session-B")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_EQ(opts->value.session_logid, "session-B");
+    ReleaseOptions(opts);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Enable profiling: non-empty enables with prefix, empty disables.
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, EnableProfiling_NonEmptyEnables) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "enable_profiling", "myrun_")};
+  ASSERT_EQ(g.st, nullptr);
+  EXPECT_TRUE(opts->value.enable_profiling);
+  EXPECT_EQ(opts->value.profile_file_prefix, ORT_TSTR("myrun_"));
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, EnableProfiling_EmptyDisables) {
+  OrtSessionOptions* opts = MakeOptions();
+  // First enable.
+  {
+    OrtStatusGuard g{AddOption(opts, "enable_profiling", "x_")};
+    ASSERT_EQ(g.st, nullptr);
+    ASSERT_TRUE(opts->value.enable_profiling);
+  }
+  // Empty string disables.
+  {
+    OrtStatusGuard g{AddOption(opts, "enable_profiling", "")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_FALSE(opts->value.enable_profiling);
+  }
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// Graph optimization level (enum)
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, GraphOptimizationLevel_AllSpellings) {
+  struct Case {
+    const char* in;
+    TransformerLevel expected;
+  };
+  const Case cases[] = {
+      {"disable_all", TransformerLevel::Default},
+      {"enable_basic", TransformerLevel::Level1},
+      {"enable_extended", TransformerLevel::Level2},
+      {"enable_layout", TransformerLevel::Level3},
+      {"enable_all", TransformerLevel::MaxLevel},
+      {"ENABLE_ALL", TransformerLevel::MaxLevel},
+      {"Enable_Basic", TransformerLevel::Level1},
+  };
+  for (const auto& c : cases) {
+    OrtSessionOptions* opts = MakeOptions();
+    OrtStatusGuard g{AddOption(opts, "graph_optimization_level", c.in)};
+    ASSERT_EQ(g.st, nullptr) << "value=" << c.in;
+    EXPECT_EQ(opts->value.graph_optimization_level, c.expected) << "value=" << c.in;
+    ReleaseOptions(opts);
+  }
+}
+
+TEST(AddSessionOptionTest, GraphOptimizationLevel_InvalidValueErrors) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "graph_optimization_level", "ludicrous")};
+  ASSERT_NE(g.st, nullptr);
+  EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  EXPECT_NE(std::string(MsgOf(g.st)).find("graph_optimization_level"), std::string::npos);
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// Optimized model filepath (path)
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, OptimizedModelFilepath) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "optimized_model_filepath", "/tmp/opt_model.onnx")};
+  ASSERT_EQ(g.st, nullptr);
+  EXPECT_EQ(opts->value.optimized_model_filepath,
+            std::filesystem::path(ORT_TSTR("/tmp/opt_model.onnx")));
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// Execution mode (enum)
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, ExecutionMode_SequentialAndParallel) {
+  {
+    OrtSessionOptions* opts = MakeOptions();
+    OrtStatusGuard g{AddOption(opts, "execution_mode", "parallel")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_EQ(opts->value.execution_mode, ExecutionMode::ORT_PARALLEL);
+    ReleaseOptions(opts);
+  }
+  {
+    OrtSessionOptions* opts = MakeOptions();
+    OrtStatusGuard g{AddOption(opts, "execution_mode", "Sequential")};
+    ASSERT_EQ(g.st, nullptr);
+    EXPECT_EQ(opts->value.execution_mode, ExecutionMode::ORT_SEQUENTIAL);
+    ReleaseOptions(opts);
+  }
+}
+
+TEST(AddSessionOptionTest, ExecutionMode_InvalidValueErrors) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "execution_mode", "concurrent")};
+  ASSERT_NE(g.st, nullptr);
+  EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// use_per_session_threads — one-way disable, true is a no-op while still enabled,
+// true after a disable is an error (no public ABI to re-enable).
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, UsePerSessionThreads_TrueIsNoOpInitially) {
+  OrtSessionOptions* opts = MakeOptions();
+  ASSERT_TRUE(opts->value.use_per_session_threads);  // default
+  OrtStatusGuard g{AddOption(opts, "use_per_session_threads", "true")};
+  ASSERT_EQ(g.st, nullptr);
+  EXPECT_TRUE(opts->value.use_per_session_threads);
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, UsePerSessionThreads_FalseDisables) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "use_per_session_threads", "false")};
+  ASSERT_EQ(g.st, nullptr);
+  EXPECT_FALSE(opts->value.use_per_session_threads);
+  ReleaseOptions(opts);
+}
+
+TEST(AddSessionOptionTest, UsePerSessionThreads_TrueAfterDisableErrors) {
+  OrtSessionOptions* opts = MakeOptions();
+  {
+    OrtStatusGuard g{AddOption(opts, "use_per_session_threads", "false")};
+    ASSERT_EQ(g.st, nullptr);
+  }
+  {
+    OrtStatusGuard g{AddOption(opts, "use_per_session_threads", "true")};
+    ASSERT_NE(g.st, nullptr);
+    EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+    EXPECT_NE(std::string(MsgOf(g.st)).find("use_per_session_threads"), std::string::npos);
+  }
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// Unknown keys fall through to AddSessionConfigEntry semantics.
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, UnknownKey_FallsThroughToConfigEntry) {
+  OrtSessionOptions* opts = MakeOptions();
+  OrtStatusGuard g{AddOption(opts, "session.disable_prepacking", "1")};
+  ASSERT_EQ(g.st, nullptr);
+
+  // Verify it landed in the config entries (not the typed setters).
+  int has = 0;
+  OrtStatusGuard g2{Api().HasSessionConfigEntry(opts, "session.disable_prepacking", &has)};
+  ASSERT_EQ(g2.st, nullptr);
+  EXPECT_EQ(has, 1);
+
+  char buf[16] = {};
+  size_t size = sizeof(buf);
+  OrtStatusGuard g3{Api().GetSessionConfigEntry(opts, "session.disable_prepacking", buf, &size)};
+  ASSERT_EQ(g3.st, nullptr);
+  EXPECT_STREQ(buf, "1");
+  ReleaseOptions(opts);
+}
+
+// -----------------------------------------------------------------------------
+// Null arguments are rejected with INVALID_ARGUMENT.
+// -----------------------------------------------------------------------------
+TEST(AddSessionOptionTest, NullArguments_AreRejected) {
+  OrtSessionOptions* opts = MakeOptions();
+  {
+    OrtStatusGuard g{AddOption(nullptr, "intra_op_num_threads", "1")};
+    ASSERT_NE(g.st, nullptr);
+    EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  }
+  {
+    OrtStatusGuard g{AddOption(opts, nullptr, "1")};
+    ASSERT_NE(g.st, nullptr);
+    EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  }
+  {
+    OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", nullptr)};
+    ASSERT_NE(g.st, nullptr);
+    EXPECT_EQ(CodeOf(g.st), ORT_INVALID_ARGUMENT);
+  }
+  ReleaseOptions(opts);
+}
+
+}  // namespace test
+}  // namespace onnxruntime
