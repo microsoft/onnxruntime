@@ -380,6 +380,9 @@ class TestAutoEP(AutoEpTestCase):
         self.assertEqual(result.shape, (3, 2))
         self.assertEqual(result.dtype, np.float32)
 
+        # Objects that may reference EP library functions must be released before
+        # unloading the library.
+        del result
         del ort_value
         self.unregister_execution_provider_library(self.EXAMPLE_EP_NAME)
 
@@ -476,6 +479,9 @@ class TestAutoEP(AutoEpTestCase):
         self.assertEqual(arr.shape, (2, 3))
         self.assertEqual(arr.dtype, np.float32)
 
+        # Objects that may reference EP library functions must be released before
+        # unloading the library.
+        del arr
         del ort_value
         self.unregister_execution_provider_library(self.EXAMPLE_EP_NAME)
 
