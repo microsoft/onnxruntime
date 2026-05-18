@@ -25,6 +25,7 @@ from collections import OrderedDict
 import numpy
 import torch
 import torch.nn.functional as F
+from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import helper
 from parameterized import parameterized
 from torch import nn
@@ -789,7 +790,7 @@ class SparseMoeBlockORTHelper(nn.Module):
         self.sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         try:
             ort_session = onnxruntime.InferenceSession(
-                moe_onnx_graph, self.sess_options, providers=["CUDAExecutionProvider"]
+                moe_onnx_graph, self.sess_options, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
             )
         except Exception as e:
             print(f"ERROR: Failed to create ORT session: {e}")
@@ -800,7 +801,9 @@ class SparseMoeBlockORTHelper(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         pass
 
-    def ort_forward(self, hidden_states: torch.Tensor, enable_performance_test=False) -> torch.Tensor:
+    def ort_forward(
+        self, hidden_states: torch.Tensor, enable_performance_test=False, enable_debug=False
+    ) -> torch.Tensor:
         if self.ort_sess is None:
             print(f"ERROR: ORT session is None for {self.__class__.__name__}")
             return None
@@ -815,7 +818,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         if hasattr(self, "quant_bits") and self.quant_bits > 0:
             # QMoE: Pass raw logits directly (QMoE does softmax internally)
             router_input = router_logits
-            # print("DEBUG: Using QMoE routing (raw logits)")
+            if enable_debug:
+                print("DEBUG: Using QMoE routing (raw logits)")
         else:
             # Regular MoE: Apply the same routing logic as PyTorch reference
             # This converts raw logits to proper routing probabilities
@@ -838,70 +842,70 @@ class SparseMoeBlockORTHelper(nn.Module):
                     expert_idx = selected_experts[i, j]
                     router_input[i, expert_idx] = routing_weights[i, j]
 
-        #     print("DEBUG: Using regular MoE routing (processed probabilities)")
+            if enable_debug:
+                print("DEBUG: Using regular MoE routing (processed probabilities)")
 
-        # print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
-        # print(
-        #     f"DEBUG: hidden_states_flat stats: mean={hidden_states_flat.mean():.6f}, std={hidden_states_flat.std():.6f}"
-        # )
+        if enable_debug:
+            print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
+            print(
+                f"DEBUG: hidden_states_flat stats: mean={hidden_states_flat.mean():.6f}, std={hidden_states_flat.std():.6f}"
+            )
 
         torch_dtype = onnx_to_torch_type_map[self.onnx_dtype]
 
         tensors = {
             "input": hidden_states_flat.clone().to(device=device, dtype=torch_dtype),
-            "router_probs": router_logits.clone().to(device=device, dtype=torch_dtype),
+            "router_probs": router_input.clone().to(device=device, dtype=torch_dtype),
             "output": torch.zeros((batch_size * sequence_length, hidden_dim), device=device, dtype=torch_dtype),
         }
 
-        try:
-            iobinding = self.ort_sess.io_binding()
+        iobinding = self.ort_sess.io_binding()
 
-            for name, tensor in tensors.items():
-                if name == "output":
-                    iobinding.bind_output(
-                        name=name,
-                        device_type=tensor.device.type,
-                        device_id=tensor.device.index or 0,
-                        element_type=self.onnx_dtype,
-                        shape=tensor.shape,
-                        buffer_ptr=tensor.data_ptr(),
-                    )
-                else:
-                    iobinding.bind_input(
-                        name=name,
-                        device_type=tensor.device.type,
-                        device_id=tensor.device.index or 0,
-                        element_type=self.onnx_dtype,
-                        shape=tensor.shape,
-                        buffer_ptr=tensor.data_ptr(),
-                    )
+        for name, tensor in tensors.items():
+            if name == "output":
+                iobinding.bind_output(
+                    name=name,
+                    device_type=tensor.device.type,
+                    device_id=tensor.device.index or 0,
+                    element_type=self.onnx_dtype,
+                    shape=tensor.shape,
+                    buffer_ptr=tensor.data_ptr(),
+                )
+            else:
+                iobinding.bind_input(
+                    name=name,
+                    device_type=tensor.device.type,
+                    device_id=tensor.device.index or 0,
+                    element_type=self.onnx_dtype,
+                    shape=tensor.shape,
+                    buffer_ptr=tensor.data_ptr(),
+                )
 
-            # print("DEBUG: About to run ORT inference...")
+        if enable_debug:
+            print("DEBUG: About to run ORT inference...")
 
-            iobinding.synchronize_inputs()
-            self.ort_sess.run_with_iobinding(iobinding)
-            iobinding.synchronize_outputs()
+        iobinding.synchronize_inputs()
+        self.ort_sess.run_with_iobinding(iobinding)
+        iobinding.synchronize_outputs()
 
-            # print("DEBUG: ORT inference completed successfully")
+        if enable_debug:
+            print("DEBUG: ORT inference completed successfully")
 
-            if enable_performance_test:
-                repeat = 100
-                s = time.time()
-                for _ in range(repeat):
-                    iobinding.synchronize_inputs()
-                    self.ort_sess.run_with_iobinding(iobinding)
-                    iobinding.synchronize_outputs()
-                e = time.time()
-                time_ms = (e - s) / repeat * 1000
-                is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
-                is_interleaved = getattr(self, "swiglu_fusion", 0) == 1
-                act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
-                print(f"ORT Performance - {act_type} {self.quant_bits}-bit: {time_ms:.3f} ms/inference")
+        if enable_performance_test:
+            repeat = 100
+            s = time.time()
+            for _ in range(repeat):
+                iobinding.synchronize_inputs()
+                self.ort_sess.run_with_iobinding(iobinding)
+                iobinding.synchronize_outputs()
+            e = time.time()
+            time_ms = (e - s) / repeat * 1000
+            is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
+            is_interleaved = getattr(self, "swiglu_fusion", 0) == 1
+            act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
+            print(f"ORT Performance - {act_type} {self.quant_bits}-bit: {time_ms:.3f} ms/inference")
 
-            return tensors["output"].reshape(batch_size, sequence_length, hidden_dim)
-
-        except Exception as e:
-            raise
+        return tensors["output"].reshape(batch_size, sequence_length, hidden_dim)
 
     def recreate_onnx_model(self):
         """Recreate the ONNX model with the current weights to reflect any changes to the quantization code."""

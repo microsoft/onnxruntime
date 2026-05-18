@@ -19,6 +19,7 @@ import unittest
 import numpy
 import torch
 import torch.nn.functional as F
+from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import helper
 from parameterized import parameterized
 
@@ -414,7 +415,7 @@ class TestQMoEFP4(unittest.TestCase):
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         try:
-            session = onnxruntime.InferenceSession(onnx_model, opts, providers=["CUDAExecutionProvider"])
+            session = onnxruntime.InferenceSession(onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")])
         except Exception as e:
             if "FP4" in str(e) or "ENABLE_FP4" in str(e) or "SM" in str(e):
                 self.skipTest(f"FP4 not supported in this build: {e}")

@@ -9,6 +9,7 @@ import unittest
 import numpy
 import torch
 import torch.nn.functional as F
+from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import helper
 
 import onnxruntime
@@ -180,7 +181,7 @@ class TestQMoEFP8(unittest.TestCase):
 
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        session = onnxruntime.InferenceSession(onnx_model, opts, providers=["CUDAExecutionProvider"])
+        session = onnxruntime.InferenceSession(onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")])
 
         input_tensor = torch.randn(num_tokens, hidden_size, device=device, dtype=torch_dtype)
         router_logits = torch.randn(num_tokens, num_experts, device=device, dtype=torch_dtype)
