@@ -232,11 +232,11 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
 // not for nodes whose partitioner assignment is already on record.
 static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry,
                                                  const logging::Logger& logger,
-                                                 InlinedHashSet<NodeIndex>& already_assigned_nodes) {
+                                                 InlinedHashSet<NodeIndex>& nodes_with_recorded_cpu_assignment) {
   for (auto& node : graph.Nodes()) {
     if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry, logger)) {
       // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32
-      already_assigned_nodes.insert(node.Index());
+      nodes_with_recorded_cpu_assignment.insert(node.Index());
       node.SetExecutionProviderType("");
     }
   }
@@ -522,10 +522,10 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
   // assigned to CPU EP by the partitioner (they have an fp16 CPU kernel and got cast-wrapped to
   // avoid isolated fp16 islands).  Those nodes are tracked here so we can skip the callback —
   // their assignment was already recorded by the partitioner.
-  InlinedHashSet<NodeIndex> already_assigned_nodes;
+  InlinedHashSet<NodeIndex> nodes_with_recorded_cpu_assignment;
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_, logger,
-                                                           already_assigned_nodes));
+                                                           nodes_with_recorded_cpu_assignment));
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
@@ -570,9 +570,9 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       node->SetExecutionProviderType(kCpuExecutionProvider);
 
       // Record the new CPU EP assignment via the partition assignment callback if provided.
-      // Skip nodes in already_assigned_nodes: their CPU EP assignment was made by the partitioner
+      // Skip nodes in nodes_with_recorded_cpu_assignment: their CPU EP assignment was made by the partitioner
       // and is already on record; the callback must not fire again for them.
-      if (on_partition_assignment_fn_ && already_assigned_nodes.find(node->Index()) == already_assigned_nodes.end()) {
+      if (on_partition_assignment_fn_ && nodes_with_recorded_cpu_assignment.find(node->Index()) == nodes_with_recorded_cpu_assignment.end()) {
         auto sub_graph = std::make_unique<IndexedSubGraph>();
         sub_graph->nodes = {node->Index()};
         ComputeCapability capability(std::move(sub_graph));
