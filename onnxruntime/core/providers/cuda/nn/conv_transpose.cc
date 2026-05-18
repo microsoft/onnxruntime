@@ -352,6 +352,11 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     if (local_output_padding.empty()) {
       local_output_padding.resize(kernel_shape.size(), 0);
     }
+    if (local_output_padding.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_padding size (", local_output_padding.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
+    }
     ConvPadVector pads;
     pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
@@ -371,6 +376,17 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     TensorShapeVector strides(conv_transpose_attrs_.strides);
     if (strides.empty()) {
       strides.resize(kernel_shape.size(), 1);
+    }
+
+    // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".
+    for (size_t i = 0; i < local_output_padding.size(); ++i) {
+      int64_t limit = std::max(strides[i], dilations[i]);
+      if (local_output_padding[i] >= limit) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "output_padding[", i, "] (", local_output_padding[i],
+                               ") must be less than max(stride, dilation) (", limit,
+                               ") for spatial dimension ", i, ".");
+      }
     }
 
     TensorShapeVector y_dims;
