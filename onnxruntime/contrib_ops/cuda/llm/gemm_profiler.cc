@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/logger.h"

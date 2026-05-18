@@ -99,46 +99,6 @@ struct GemmIdCoreHash {
   }
 };
 
-// class GemmIdCublas : public GemmIdCore {
-//  public:
-//   bool transA{};
-//   bool transB{};
-//   nvinfer::DataType outputDtype;
-
-//   GemmIdCublas(int n_, int k_, nvinfer::DataType const& dtype_, bool transA_, bool transB_,
-//                nvinfer::DataType const& output_dtype_)
-//       : GemmIdCore(n_, k_, dtype_), transA(transA_), transB(transB_), outputDtype(output_dtype_) {
-//   }
-
-//   GemmIdCublas() {}
-
-//   bool operator==(GemmIdCublas const& id) const {
-//     return isEqual(id) && transA == id.transA && transB == id.transB && outputDtype == id.outputDtype;
-//   }
-
-//   friend std::ostream& operator<<(std::ostream& out, GemmIdCublas const& id) {
-//     out << "(N;K)=(" << id.n << ";" << id.k << "),";
-//     out << " type=" << static_cast<int>(id.dtype);
-//     out << " transA=" << id.transA;
-//     out << " transB=" << id.transB;
-//     out << " outputDtype=" << static_cast<int>(id.outputDtype);
-//     return out;
-//   }
-// };
-
-// // Hash of GemmIdCublas
-// struct GemmIdCublasHash {
-//   std::size_t operator()(GemmIdCublas const& id) const {
-//     auto h1 = std::hash<int>{}(id.n);
-//     auto h2 = std::hash<int>{}(id.k);
-//     auto h3 = std::hash<int>{}(static_cast<int>(id.dtype));
-//     auto h4 = std::hash<bool>{}(id.transA);
-//     auto h5 = std::hash<bool>{}(id.transB);
-//     auto h6 = std::hash<bool>{}(static_cast<int>(id.outputDtype));
-//     return h1 ^ h2 ^ h3 ^ h4 ^ h5 ^ h6;
-//   }
-// };
-
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 class GemmPluginProfiler {
  public:

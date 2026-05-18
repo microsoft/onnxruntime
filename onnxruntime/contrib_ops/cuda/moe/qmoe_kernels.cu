@@ -1,4 +1,7 @@
 
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
