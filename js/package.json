@@ -37,5 +37,9 @@
     "prepare-node-tests": "node ./scripts/prepare-onnx-node-tests",
     "update-version": "node ./scripts/update-version"
   },
+  "overrides": {
+    "diff": "^8.0.3",
+    "serialize-javascript": "^7.0.5"
+  },
   "license": "MIT"
 }

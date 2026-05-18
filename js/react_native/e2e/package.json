@@ -36,5 +36,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "overrides": {
+    "fast-xml-parser": "^5.7.0",
+    "cross-spawn": "^6.0.6"
   }
 }
