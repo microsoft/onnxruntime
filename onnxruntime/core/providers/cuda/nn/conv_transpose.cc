@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "core/common/safeint.h"
 #include "conv_transpose.h"
 #include "core/providers/cuda/tensor/transpose.h"
 
@@ -283,6 +284,16 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     // The following code is from ConvTransposeAttributes::PrepareForCompute
 
     const int rank = static_cast<int>(X->Shape().NumDimensions());
+    if (rank < 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input X must have at least 2 dimensions. Got: ", rank);
+    }
+
+    if (static_cast<int>(w_shape.NumDimensions()) < 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Filter W must have at least 2 dimensions. Got: ", w_shape.NumDimensions());
+    }
+
     TensorShape input_shape = X->Shape().Slice(channels_last ? 1 : 2, channels_last ? rank - 1 : rank);
     const int64_t num_input_channels = channels_last ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
@@ -339,8 +350,27 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     ConvPadVector pads;
     pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
-      for (int64_t i = 0; i < Pads->Shape().SizeFromDimension(0); ++i) {
-        pads.push_back(Pads->Data<int64_t>()[i]);
+      if (Pads == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input is required for dynamic padding mode.");
+      }
+      if (Pads->Shape().NumDimensions() != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input must be a 1D tensor. Got rank: ", Pads->Shape().NumDimensions());
+      }
+      const int64_t expected_pads_size = SafeInt<int64_t>(kernel_shape.size()) * 2;
+      if (Pads->Shape()[0] != expected_pads_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input must have ", expected_pads_size, " elements (2 * num_spatial_dims). Got: ",
+                               Pads->Shape()[0]);
+      }
+      for (int64_t i = 0; i < Pads->Shape()[0]; ++i) {
+        const int64_t pad_val = Pads->Data<int64_t>()[i];
+        if (pad_val < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Pad values must be non-negative. Got: ", pad_val, " at index ", i);
+        }
+        pads.push_back(pad_val);
       }
     } else {
       pads.assign(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());

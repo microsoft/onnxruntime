@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include "core/common/safeint.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 
 namespace onnxruntime {
@@ -61,6 +62,16 @@ struct ConvTransposeAttributes : public ConvAttributes {
     const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
 
     const int rank = static_cast<int>(X->Shape().NumDimensions());
+    if (rank < 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input X must have at least 2 dimensions. Got: ", rank);
+    }
+
+    if (static_cast<int>(F_Shape.NumDimensions()) < 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Filter W must have at least 2 dimensions. Got: ", F_Shape.NumDimensions());
+    }
+
     TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2, is_nhwc ? rank - 1 : rank);
     const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
@@ -122,8 +133,27 @@ struct ConvTransposeAttributes : public ConvAttributes {
     ConvPadVector local_pads;
     local_pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
-      for (int64_t i = 0; i < Pads->Shape().SizeFromDimension(0); ++i) {
-        local_pads.push_back(Pads->Data<int64_t>()[i]);
+      if (Pads == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input is required for dynamic padding mode.");
+      }
+      if (Pads->Shape().NumDimensions() != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input must be a 1D tensor. Got rank: ", Pads->Shape().NumDimensions());
+      }
+      const int64_t expected_pads_size = SafeInt<int64_t>(kernel_shape.size()) * 2;
+      if (Pads->Shape()[0] != expected_pads_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input must have ", expected_pads_size, " elements (2 * num_spatial_dims). Got: ",
+                               Pads->Shape()[0]);
+      }
+      for (int64_t i = 0; i < Pads->Shape()[0]; ++i) {
+        const int64_t pad_val = Pads->Data<int64_t>()[i];
+        if (pad_val < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Pad values must be non-negative. Got: ", pad_val, " at index ", i);
+        }
+        local_pads.push_back(pad_val);
       }
     } else {
       local_pads.assign(pads.begin(), pads.end());
@@ -215,6 +245,11 @@ struct ConvTransposeAttributes : public ConvAttributes {
       int64_t* pad_head,
       int64_t* pad_tail,
       int64_t* out_size) const {
+    ORT_ENFORCE(in_size > 0, "Input spatial dimension must be positive. Got: ", in_size);
+    ORT_ENFORCE(stride > 0, "Stride must be positive. Got: ", stride);
+    ORT_ENFORCE(kernel > 0, "Kernel size must be positive. Got: ", kernel);
+    ORT_ENFORCE(dilation > 0, "Dilation must be positive. Got: ", dilation);
+    ORT_ENFORCE(adj >= 0, "Output padding must be non-negative. Got: ", adj);
     // Output shape is explicitly provided - pad values will have to be computed
     if (*out_size != -1) {
       ORT_ENFORCE(*out_size >= 0);
@@ -237,7 +272,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     }
 
     *out_size =
-        (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail;
+        SafeInt<int64_t>(in_size - 1) * stride + adj + SafeInt<int64_t>(kernel - 1) * dilation + 1 - *pad_head - *pad_tail;
   }
 };
 

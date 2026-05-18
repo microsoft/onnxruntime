@@ -56,10 +56,19 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   int64_t group = getAttribute(ctx, "group", 1);
+  if (group <= 0) {
+    fail_shape_inference("group must be positive");
+  }
 
   auto input_shape = ctx.getInputType(0)->tensor_type().shape();
   if (input_shape.dim_size() < 2) {
-    return;  // Input tensor should have at least two dimensions.
+    fail_shape_inference("Input X must have at least 2 dimensions. Got: ", input_shape.dim_size());
+  }
+
+  // W must also have at least rank 2 (C_in, C_out/group, spatial dims...)
+  auto w_shape = ctx.getInputType(1)->tensor_type().shape();
+  if (w_shape.dim_size() < 2) {
+    fail_shape_inference("Filter W must have at least 2 dimensions. Got: ", w_shape.dim_size());
   }
 
   // first dim is the batch axis and the next is the number of channels.
@@ -147,7 +156,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 
   *final_output_shape->add_dim() = input_shape.dim(0);
   *final_output_shape->add_dim() =
-      ctx.getInputType(1)->tensor_type().shape().dim(1) *
+      w_shape.dim(1) *
       group;  // channels should be the second dim of second input multiply
   // group.
 
