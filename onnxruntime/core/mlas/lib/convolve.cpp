@@ -849,7 +849,7 @@ Return Value:
         if (bias != nullptr) {
             bias += group * FilterCount;
         }
-        float* ColumnBuffer = WorkBlock->WorkingBuffer + Index * OutputSize * K;
+        float* ColumnBuffer = WorkBlock->WorkingBuffer + Index * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
 
         MlasConvOperation(Parameters, input, filter, bias, ColumnBuffer, output, 0, OutputSize);
     }
@@ -1712,14 +1712,11 @@ Return Value:
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
-            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K,
-                                                          Parameters->FilterCount * Parameters->OutputSize,
-                                                          static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
             TargetThreadCount = MaximumThreadCount;
             if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
                 TargetThreadCount = static_cast<ptrdiff_t>(Parameters->BatchCount * Parameters->GroupCount);
             }
-            *WorkingBufferSize = TargetThreadCount * WorkingBufferSizePerThread;
+            *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
         }
     }
 }
