@@ -115,7 +115,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
                                const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, gsl::span<const int64_t> nodes_featureids,
                                gsl::span<const ThresholdType> nodes_values_as_tensor, gsl::span<const float> node_values,
                                gsl::span<const float> target_class_weights, gsl::span<const ThresholdType> target_class_weights_as_tensor,
-                               const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices);
+                               const InlinedVector<TreeNodeElementId>& node_tree_ids, const InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices);
   size_t AddNodes(const size_t i, const InlinedVector<NODE_MODE_ONNX>& cmodes, const InlinedVector<size_t>& truenode_ids,
                   const InlinedVector<size_t>& falsenode_ids, gsl::span<const int64_t> nodes_featureids,
                   gsl::span<const ThresholdType> nodes_values_as_tensor, gsl::span<const float> node_values,
@@ -383,7 +383,7 @@ bool TreeEnsembleCommon<InputType, ThresholdType, OutputType>::CheckIfSubtreesAr
     const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, gsl::span<const int64_t> nodes_featureids,
     gsl::span<const ThresholdType> nodes_values_as_tensor, gsl::span<const float> node_values,
     gsl::span<const float> target_class_weights, gsl::span<const ThresholdType> target_class_weights_as_tensor,
-    const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices) {
+    const InlinedVector<TreeNodeElementId>& node_tree_ids, const InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices) {
   if (left_id == right_id) {
     return true;
   }
