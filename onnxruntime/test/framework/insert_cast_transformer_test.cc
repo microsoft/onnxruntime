@@ -595,13 +595,13 @@ TEST(TransformerTest, IsolatedFp16NodeDoesNotDuplicatePartitionCallback) {
       o2_def("O2", &tensor_float_16),
       o3_def("O3", &tensor_float_16);
 
-  // Relu nodes have no fp16 CPU kernel — leave EP unset so InsertCastTransformer will wrap them.
-  auto& relu1 = graph.AddNode("relu1", "Relu", "no fp16", {&i1_def}, {&o1_def});
-  // Concat has an fp16 CPU kernel — simulate partitioner assignment.
+  // Leave the Relu nodes' EP unset so InsertCastTransformer treats them as newly assigned and wraps them.
+  auto& relu1 = graph.AddNode("relu1", "Relu", "EP unset", {&i1_def}, {&o1_def});
+  // Simulate a node that was already assigned by the partitioner.
   NodeAttributes concat_attrs = {{"axis", utils::MakeAttribute("axis", static_cast<int64_t>(0))}};
-  auto& concat = graph.AddNode("concat", "Concat", "fp16 capable", {&o1_def}, {&o2_def}, &concat_attrs);
+  auto& concat = graph.AddNode("concat", "Concat", "pre-assigned", {&o1_def}, {&o2_def}, &concat_attrs);
   concat.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
-  auto& relu2 = graph.AddNode("relu2", "Relu", "no fp16", {&o2_def}, {&o3_def});
+  auto& relu2 = graph.AddNode("relu2", "Relu", "EP unset", {&o2_def}, {&o3_def});
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();

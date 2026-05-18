@@ -327,9 +327,12 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
-// Builds a minimal ONNX model bytes with a single FP16 Relu node.
-// Graph: X[1,4 float16] -> Relu -> Y[1,4 float16]
-std::string BuildFp16ReluModelBytes() {
+// Builds a minimal ONNX model bytes with a single FP16 HardSigmoid node.
+// Graph: X[1,4 float16] -> HardSigmoid -> Y[1,4 float16]
+// HardSigmoid is used because it has NO MLFloat16 CPU kernel on any build config,
+// ensuring the node remains unassigned during partitioning and exercises the
+// InsertCastTransformer callback path.
+std::string BuildFp16HardSigmoidModelBytes() {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   auto* opset = model.add_opset_import();
@@ -337,7 +340,7 @@ std::string BuildFp16ReluModelBytes() {
   opset->set_version(14);
 
   ONNX_NAMESPACE::GraphProto* graph = model.mutable_graph();
-  graph->set_name("fp16_relu");
+  graph->set_name("fp16_hardsigmoid");
 
   auto add_fp16_value_info = [](ONNX_NAMESPACE::GraphProto* g, bool is_input,
                                 const std::string& name) {
@@ -353,14 +356,14 @@ std::string BuildFp16ReluModelBytes() {
   add_fp16_value_info(graph, /*is_input=*/false, "Y");
 
   auto* node = graph->add_node();
-  node->set_name("relu_0");
-  node->set_op_type("Relu");
+  node->set_name("hardsigmoid_0");
+  node->set_op_type("HardSigmoid");
   node->set_domain("");
   node->add_input("X");
   node->add_output("Y");
 
   std::string bytes;
-  EXPECT_TRUE(model.SerializeToString(&bytes)) << "Failed to serialize FP16 Relu ONNX model";
+  EXPECT_TRUE(model.SerializeToString(&bytes)) << "Failed to serialize FP16 HardSigmoid ONNX model";
   return bytes;
 }
 
@@ -445,18 +448,18 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_PartiallySupportedModelInference) {
   RunAddMulAddModel(session_options, check_ep_node_assignment);
 }
 
-// Verifies that GetEpGraphAssignmentInfo() correctly captures the FP16 Relu node being assigned
-// to the CPU EP by InsertCastTransformer.
+// Verifies that GetEpGraphAssignmentInfo() correctly captures the FP16 HardSigmoid node being
+// assigned to the CPU EP by InsertCastTransformer.
 //
-// During graph partitioning (step 4 in TransformGraph), the FP16 Relu node is not claimed by any
-// EP (the example EP only supports FP32 Mul; the CPU EP has no FP16 Relu kernel), so
+// During graph partitioning (step 4 in TransformGraph), the FP16 assigned node is not claimed by
+// any EP (the example EP only supports FP32 Mul; the CPU EP has no FP16 HardSigmoid kernel), so
 // on_partition_assignment_fn is never called at that stage.
 //
-// InsertCastTransformer (step 6) then converts the FP16 Relu: it inserts Cast(FP16->FP32) before
-// the node, assigns the Relu to the CPU EP, and inserts Cast(FP32->FP16) after.
-// InsertCastTransformer now invokes on_partition_assignment_fn when it assigns the Relu to CPU,
-// so the node must appear in GetEpGraphAssignmentInfo().
-TEST(OrtEpLibrary, PluginEp_AppendV2_Fp16Relu_EpGraphAssignmentInfo) {
+// InsertCastTransformer (step 6) then converts the FP16 HardSigmoid: it inserts Cast(FP16->FP32)
+// before the node, assigns the HardSigmoid to the CPU EP, and inserts Cast(FP32->FP16) after.
+// InsertCastTransformer now invokes on_partition_assignment_fn when it assigns the HardSigmoid to
+// CPU, so the node must appear in GetEpGraphAssignmentInfo().
+TEST(OrtEpLibrary, PluginEp_AppendV2_Fp16HardSigmoid_EpGraphAssignmentInfo) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
   Ort::ConstEpDevice plugin_ep_device(example_ep.get());
@@ -468,23 +471,23 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_Fp16Relu_EpGraphAssignmentInfo) {
   session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphAssignmentInfo, "1");
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  const std::string model_bytes = BuildFp16ReluModelBytes();
+  const std::string model_bytes = BuildFp16HardSigmoidModelBytes();
   Ort::Session session(*ort_env, model_bytes.data(), model_bytes.size(), session_options);
 
-  // InsertCastTransformer assigns the Relu to CPU EP and fires the callback, so there must be
-  // exactly one subgraph entry: the Relu node on the CPU EP.
+  // InsertCastTransformer assigns the HardSigmoid to CPU EP and fires the callback, so there must
+  // be exactly one subgraph entry: the HardSigmoid node on the CPU EP.
   std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphAssignmentInfo();
   ASSERT_EQ(ep_subgraphs.size(), 1u)
-      << "Expected exactly one EP subgraph (Relu on CPU EP), got " << ep_subgraphs.size();
+      << "Expected exactly one EP subgraph (HardSigmoid on CPU EP), got " << ep_subgraphs.size();
 
   std::string ep_name = ep_subgraphs[0].GetEpName();
   ASSERT_EQ(ep_name, kCpuExecutionProvider)
-      << "Expected Relu to be assigned to CPU EP, got: " << ep_name;
+      << "Expected HardSigmoid to be assigned to CPU EP, got: " << ep_name;
 
   const std::vector<Ort::ConstEpAssignedNode> ep_nodes = ep_subgraphs[0].GetNodes();
   ASSERT_EQ(ep_nodes.size(), 1u) << "Expected exactly one node in the CPU EP subgraph";
-  ASSERT_EQ(ep_nodes[0].GetOperatorType(), std::string("Relu"));
-  ASSERT_EQ(ep_nodes[0].GetName(), std::string("relu_0"));
+  ASSERT_EQ(ep_nodes[0].GetOperatorType(), std::string("HardSigmoid"));
+  ASSERT_EQ(ep_nodes[0].GetName(), std::string("hardsigmoid_0"));
 }
 
 // Generate an EPContext model with a plugin EP.
