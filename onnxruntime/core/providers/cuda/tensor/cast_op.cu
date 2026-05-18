@@ -284,9 +284,9 @@ Status CudaCastPairwise(cudaStream_t stream, const Float4E2M1x2* input, float* o
 
   bool is_odd = (num_of_elements & 0x01) != 0;
 
-  int64_t pair_count = static_cast<int64_t>(num_of_elements / 2);
+  size_t pair_count = num_of_elements / 2;
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(static_cast<size_t>(pair_count), static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
+  int blocksPerGrid = static_cast<int>(CeilDiv(pair_count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
 
   if (pair_count == 0) {
     blocksPerGrid = 1;
@@ -296,14 +296,14 @@ Status CudaCastPairwise(cudaStream_t stream, const Float4E2M1x2* input, float* o
     CudaCastPairwiseKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, true,
                            float2, Float4E2M1x2, float, Float4E2M1x2>
         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-            input, reinterpret_cast<float2*>(output), pair_count,
+            input, reinterpret_cast<float2*>(output), static_cast<int64_t>(pair_count),
             CastStd<float2, Float4E2M1x2>(),
             CastStd<float, Float4E2M1x2>());
   } else {
     CudaCastPairwiseKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, false,
                            float2, Float4E2M1x2, float, Float4E2M1x2>
         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-            input, reinterpret_cast<float2*>(output), pair_count,
+            input, reinterpret_cast<float2*>(output), static_cast<int64_t>(pair_count),
             CastStd<float2, Float4E2M1x2>(),
             CastStd<float, Float4E2M1x2>());
   }
@@ -318,9 +318,9 @@ Status CudaCastPairwise(cudaStream_t stream, const float* input, Float4E2M1x2* o
 
   bool is_odd = (num_of_elements & 0x01) != 0;
 
-  int64_t pair_count = static_cast<int64_t>(num_of_elements / 2);
+  size_t pair_count = num_of_elements / 2;
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(static_cast<size_t>(pair_count), static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
+  int blocksPerGrid = static_cast<int>(CeilDiv(pair_count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
 
   if (pair_count == 0) {
     blocksPerGrid = 1;
@@ -330,14 +330,14 @@ Status CudaCastPairwise(cudaStream_t stream, const float* input, Float4E2M1x2* o
     CudaCastPairwiseKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, true,
                            Float4E2M1x2, float2, Float4E2M1x2, float>
         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-            reinterpret_cast<const float2*>(input), output, pair_count,
+            reinterpret_cast<const float2*>(input), output, static_cast<int64_t>(pair_count),
             CastStd<Float4E2M1x2, float2>(),
             CastStd<Float4E2M1x2, float>());
   } else {
     CudaCastPairwiseKernel<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, false,
                            Float4E2M1x2, float2, Float4E2M1x2, float>
         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-            reinterpret_cast<const float2*>(input), output, pair_count,
+            reinterpret_cast<const float2*>(input), output, static_cast<int64_t>(pair_count),
             CastStd<Float4E2M1x2, float2>(),
             CastStd<Float4E2M1x2, float>());
   }
