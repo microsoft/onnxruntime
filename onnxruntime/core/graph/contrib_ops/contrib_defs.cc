@@ -1526,7 +1526,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
                "(num_experts, fusion_size * inter_size), or a 3D tensor with shape "
                "(num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. "
-               "For quant_type='fp4' or 'wfp4afp8', this is a uint8 MXFP block-scale tensor with shape "
+               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, fusion_size * inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
@@ -1542,7 +1542,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
                "(num_experts, hidden_size), or a 3D tensor with shape "
                "(num_experts, hidden_size, inter_size / block_size) when block_size is provided. "
-               "For quant_type='fp4' or 'wfp4afp8', this is a uint8 MXFP block-scale tensor with shape "
+               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, hidden_size, inter_size / 32). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
@@ -1561,7 +1561,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
                "(num_experts, inter_size), or a 3D tensor with shape "
                "(num_experts, inter_size, hidden_size / block_size) when block_size is provided. "
-               "For quant_type='fp4' or 'wfp4afp8', this is a uint8 MXFP block-scale tensor with shape "
+               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
                "(num_experts, inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
@@ -1611,29 +1611,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T4",
                OpSchema::Optional)
         .Input(17,
-               "fc3_global_scale",
-               "1D optional tensor with shape (num_experts,). "
-               "Per-expert global weight scale for FC3. Required when FC3 is present and quant_type is 'fp4', 'fp8', or 'wfp4afp8'.",
-               "T4",
-               OpSchema::Optional)
-        .Input(18,
                "fc1_act_scale",
                "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.",
                "T4",
                OpSchema::Optional)
-        .Input(19,
+        .Input(18,
                "fc2_act_scale",
                "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC2 FP8 activation modes.",
                "T4",
                OpSchema::Optional)
-        .Input(20,
+        .Input(19,
                "fc1_act_block_scale",
-               "Reserved for future MXFP activation block-scale support. Currently ignored.",
+               "3D optional float8e8m0 MXFP activation block-scale tensor for FC1 FP8 activation modes.",
                "T2",
                OpSchema::Optional)
-        .Input(21,
+        .Input(20,
                "fc2_act_block_scale",
-               "Reserved for future MXFP activation block-scale support. Currently ignored.",
+               "3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.",
                "T2",
                OpSchema::Optional)
         .Output(0,
@@ -1643,9 +1637,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
                         "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
-        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(uint8)"},
+        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)"},
                         "Constrain scale types. Float tensors are used for integer quantization scales. "
-                        "Uint8 tensors are used for MXFP block scales.")
+                        "Float8e8m0 tensors are used for MXFP block scales.")
         .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 

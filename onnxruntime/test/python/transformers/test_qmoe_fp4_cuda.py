@@ -272,13 +272,15 @@ def create_fp4_moe_onnx_graph(
         arr = numpy.ascontiguousarray(tensor.cpu().numpy().astype(numpy.uint8))
         initializers.append(helper.make_tensor(name, TensorProto.UINT8, list(tensor.shape), arr.tobytes(), raw=True))
 
-    # FP4 block scales [E, N, K//32] uint8
+    # FP4 block scales [E, N, K//32] float8e8m0
     for name, tensor in [
         ("fc1_scales", fc1_block_scales),
         ("fc2_scales", fc2_block_scales),
     ]:
         arr = numpy.ascontiguousarray(tensor.cpu().numpy().astype(numpy.uint8))
-        initializers.append(helper.make_tensor(name, TensorProto.UINT8, list(tensor.shape), arr.tobytes(), raw=True))
+        initializers.append(
+            helper.make_tensor(name, TensorProto.FLOAT8E8M0, list(tensor.shape), arr.tobytes(), raw=True)
+        )
 
     # FP4 global scales [E] float32 (T4)
     for name, tensor in [

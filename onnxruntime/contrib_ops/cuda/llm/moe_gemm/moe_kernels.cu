@@ -998,18 +998,29 @@ __global__ void computeStridesTmaWarpSpecializedKernel(int64_t const* expert_fir
   computeTmaWarpSpecializedInputStrides(layout_info1, gemm_m, gemm1_n, gemm1_k, expert, groupwise_scale_group_size);
   computeTmaWarpSpecializedInputStrides(layout_info2, gemm_m, gemm2_n, gemm2_k, expert, groupwise_scale_group_size);
 
+  auto const* fc1_weight_block_scale = quant_params.mxfp8_mxfp4.fc1.weight_block_scale
+                                           ? quant_params.mxfp8_mxfp4.fc1.weight_block_scale
+                                       : quant_params.fp8_mxfp4.fc1.weight_block_scale
+                                           ? quant_params.fp8_mxfp4.fc1.weight_block_scale
+                                           : quant_params.fp4.fc1.weight_block_scale;
+  auto const* fc2_weight_block_scale = quant_params.mxfp8_mxfp4.fc2.weight_block_scale
+                                           ? quant_params.mxfp8_mxfp4.fc2.weight_block_scale
+                                       : quant_params.fp8_mxfp4.fc2.weight_block_scale
+                                           ? quant_params.fp8_mxfp4.fc2.weight_block_scale
+                                           : quant_params.fp4.fc2.weight_block_scale;
+
   computeTmaWarpSpecializedInputPointers(layout_info1, gemm_m, gemm1_n, gemm1_k, num_tokens_before_expert, expert,
                                          gemm1_in, weights1,
                                          reinterpret_cast<TmaWarpSpecializedGroupedGemmInput::INT4GroupwiseParams::SFA const*>(
                                              quant_params.groupwise.fc1.weight_scales),
-                                         quant_params.fp4.fc1.weight_block_scale,
+                                         fc1_weight_block_scale,
                                          groupwise_scale_group_size,
                                          bias1, gemm1_output, expert);
   computeTmaWarpSpecializedInputPointers(layout_info2, gemm_m, gemm2_n, gemm2_k, num_tokens_before_expert, expert,
                                          gemm2_in, weights2,
                                          reinterpret_cast<TmaWarpSpecializedGroupedGemmInput::INT4GroupwiseParams::SFA const*>(
                                              quant_params.groupwise.fc2.weight_scales),
-                                         quant_params.fp4.fc2.weight_block_scale,
+                                         fc2_weight_block_scale,
                                          groupwise_scale_group_size,
                                          bias2, gemm2_output, expert);
 
@@ -2134,7 +2145,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
 
     doActivation<GatedActOutputType, UnfusedGemmOutputType>(reinterpret_cast<GatedActOutputType*>(output),
                                                             static_cast<UnfusedGemmOutputType const*>(gemm_output),
-                                                            fc2_fp8_quant, fc1_expert_biases, bias_is_broadcast,
+                                                            quant_params.fp8.quant_fc2, fc1_expert_biases, bias_is_broadcast,
                                                             expert_first_token_offset, num_experts_per_node, inter_size,
                                                             expanded_num_rows, fc1_activation_type, quant_params,
                                                             use_per_expert_act_scale, fc2_fp4_act_flat, stream,
@@ -2526,11 +2537,15 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   layout_info2.stride_c = nullptr;
 
   auto alpha_scale_flat1 = use_fp4        ? quant_params.fp4.fc1.global_scale
-                           : use_wfp4afp8 ? quant_params.fp8_mxfp4.fc1.global_scale
+                           : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc1.global_scale
+                                                 ? quant_params.fp8_mxfp4.fc1.global_scale
+                                                 : quant_params.mxfp8_mxfp4.fc1.global_scale)
                            : use_fp8      ? fp8_dequant1
                                           : nullptr;
   auto alpha_scale_flat2 = use_fp4        ? quant_params.fp4.fc2.global_scale
-                           : use_wfp4afp8 ? quant_params.fp8_mxfp4.fc2.global_scale
+                           : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc2.global_scale
+                                                 ? quant_params.fp8_mxfp4.fc2.global_scale
+                                                 : quant_params.mxfp8_mxfp4.fc2.global_scale)
                            : use_fp8      ? fp8_dequant2
                                           : nullptr;
   if (!alpha_scale_flat1 && !alpha_scale_flat2) {
@@ -2588,10 +2603,14 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType,
   layout_info2.stride_c = nullptr;
 
   auto alpha_scale_flat1 = use_fp4        ? quant_params.fp4.fc1.global_scale
-                           : use_wfp4afp8 ? quant_params.fp8_mxfp4.fc1.global_scale
+                           : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc1.global_scale
+                                                 ? quant_params.fp8_mxfp4.fc1.global_scale
+                                                 : quant_params.mxfp8_mxfp4.fc1.global_scale)
                                           : fp8_dequant1;
   auto alpha_scale_flat2 = use_fp4        ? quant_params.fp4.fc2.global_scale
-                           : use_wfp4afp8 ? quant_params.fp8_mxfp4.fc2.global_scale
+                           : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc2.global_scale
+                                                 ? quant_params.fp8_mxfp4.fc2.global_scale
+                                                 : quant_params.mxfp8_mxfp4.fc2.global_scale)
                                           : fp8_dequant2;
   if (!alpha_scale_flat1) {
     layout_info1.alpha_scale_ptr_array = nullptr;

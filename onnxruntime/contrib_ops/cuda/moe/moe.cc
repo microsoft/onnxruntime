@@ -97,7 +97,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
   onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunner<CudaT, CudaT> moe_runner(sm,
                                                                                           kernel_activation_type,
-                                                                                          fc3_experts_weights_optional != nullptr,
                                                                                           normalize_routing_weights_,
                                                                                           use_sparse_mixer_);
 

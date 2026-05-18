@@ -48,6 +48,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fc2_bias_;
 
   // FP4 pre-packed buffers
+  IAllocatorUniquePtr<void> packed_fp4_fc1_weights_;
+  IAllocatorUniquePtr<void> packed_fp4_fc2_weights_;
   IAllocatorUniquePtr<void> packed_fp4_fc1_block_scales_;
   IAllocatorUniquePtr<void> packed_fp4_fc2_block_scales_;
 
@@ -56,7 +58,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fc2_global_scale_;
 
   // Per-tensor or per-expert FP8 activation global scales used by W4A8 (WFP4AFP8) Variant A.
-  // Inputs 18/19 in the QMoE schema. Optional; absent for the MXFP8 block-scaled variant.
+  // Inputs 17/18 in the QMoE schema. Optional; absent for the MXFP8 block-scaled variant.
   IAllocatorUniquePtr<void> packed_fc1_act_scale_;
   IAllocatorUniquePtr<void> packed_fc2_act_scale_;
 

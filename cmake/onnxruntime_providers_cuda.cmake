@@ -65,7 +65,7 @@
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
   )
 
-  include(onnxruntime_cuda_source_filters)
+  include(onnxruntime_cuda_source_filters.cmake)
   onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)
 
   # disable contrib ops conditionally
@@ -356,6 +356,10 @@
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
+    endif()
+
+    if("100" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+      target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_TMA_GROUPED_GEMMS)
     endif()
 
     if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)

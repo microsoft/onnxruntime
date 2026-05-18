@@ -423,9 +423,11 @@ void doActivation(T* output, GemmOutputType const* gemm_result, float const* fp8
   attrs[0].val.programmaticStreamSerializationAllowed = onnxruntime::llm::common::getEnvEnablePDL();
   config.numAttrs = 1;
   config.attrs = attrs;
-  auto const* fc2_act_global_scale = quant_params.mxfp8_mxfp4.fc2.weight_block_scale
+  auto const* fc2_act_global_scale = quant_params.fp4.fc2.act_global_scale
+                                         ? quant_params.fp4.fc2.act_global_scale
+                                     : quant_params.mxfp8_mxfp4.fc2.global_scale
                                          ? quant_params.mxfp8_mxfp4.fc2.global_scale
-                                         : quant_params.fp4.fc2.act_global_scale;
+                                         : quant_params.fp8_mxfp4.fc2.act_global_scale;
   cudaLaunchKernelEx(&config, fn, output, gemm_result, fp8_quant, bias, bias_is_broadcast, expert_first_token_offset,
 
                      num_experts_per_node, inter_size, isGatedActivation(activation_type), fc2_act_global_scale,

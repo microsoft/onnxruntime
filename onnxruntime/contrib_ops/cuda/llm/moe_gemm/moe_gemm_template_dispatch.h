@@ -624,7 +624,7 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
   int const enable_blackwell = config_sm >= 100 ? CutlassGemmConfig::BLACKWELL : CutlassGemmConfig::NONE;
   int const enable_hopper = config_sm == 90 ? CutlassGemmConfig::HOPPER : CutlassGemmConfig::NONE;
   static constexpr auto fp8_only_flag = use_fp8 ? CutlassGemmConfig::FP8_ONLY : CutlassGemmConfig::NONE;
-  static constexpr auto fp4_only_flag = (use_fp4 || use_wfp4afp4) ? CutlassGemmConfig::FP4_ONLY : CutlassGemmConfig::NONE;
+  static constexpr auto fp4_only_flag = (use_fp4 || use_wfp4afp8) ? CutlassGemmConfig::FP4_ONLY : CutlassGemmConfig::NONE;
   auto config_type_param = static_cast<CutlassGemmConfig::CandidateConfigTypeParam>(weight_only_flag | simt_only_flag | grouped_gemm_flag | enable_blackwell | enable_hopper | fp8_only_flag | fp4_only_flag);
   ORT_ENFORCE(!(enable_blackwell && enable_hopper), "Blackwell and hopper flags are mutually exclusive");
 
@@ -742,9 +742,11 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
           inputs, multi_processor_count_);
     } else if constexpr (use_wfp4a16) {
       ORT_THROW("wfp4a16 (FP4 weights with FP16/BF16 activations) requires SM120+");
+    } else if constexpr (use_wfp4afp8) {
+      ORT_THROW("wfp4afp8 (FP4 weights with FP8 activations) requires SM100+");
     } else if constexpr (use_wfp8a16) {
       ORT_THROW("wfp8a16 (FP8 weights with FP16/BF16 activations) requires SM90+");
-    } else if constexpr (use_fp4 || use_wfp4afp4) {
+    } else if constexpr (use_fp4) {
       ORT_THROW("FP4 MoE GEMM requires SM90+");
     } else {
       dispatchMoeGemmToCutlass<T, WeightType, ScaleBiasType, cutlass::arch::Sm80, EpilogueTag>(
@@ -916,7 +918,7 @@ size_t MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::calcMaxWorkspace
   if constexpr (!std::is_same_v<std::decay_t<T>, float> && kernels::cutlass_kernels::isValidTmaWarpSpecializedMOESpecialisation<T, WeightType>() && !use_w4afp8 && !use_wfp4a16) {
     auto configs = getTmaWarpSpecializedConfigs(sm_);
     auto fpX_block_scaling_type = TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NONE;
-    if constexpr (use_wfp4afp4) {
+    if constexpr (use_wfp4afp8) {
       fpX_block_scaling_type = TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::MXFPX;
     } else if (use_fp4) {
       fpX_block_scaling_type = TmaWarpSpecializedGroupedGemmInput::FpXBlockScalingType::NVFP4;

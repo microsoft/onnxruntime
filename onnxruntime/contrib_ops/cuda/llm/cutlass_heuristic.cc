@@ -389,6 +389,17 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
 #endif
 }
 
+std::vector<CutlassGemmConfig> get_candidate_configs_sm120(CutlassGemmConfig::CandidateConfigTypeParam const config) {
+  if (config & CutlassGemmConfig::GROUPED_GEMM) {
+    if ((config & CutlassGemmConfig::FP4_ONLY) != 0) {
+      return {CutlassGemmConfig{CutlassTileConfigSM120::CtaShape128x128x128B,
+                                MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x1x1}};
+    }
+  }
+
+  return {};
+}
+
 std::vector<CutlassGemmConfig> get_candidate_configs(
     int sm, int const max_split_k, CutlassGemmConfig::CandidateConfigTypeParam const config_type_param) {
   if ((config_type_param & CutlassGemmConfig::FP4_ONLY) && !(config_type_param & CutlassGemmConfig::BLACKWELL)) {
@@ -401,6 +412,9 @@ std::vector<CutlassGemmConfig> get_candidate_configs(
   }
   if (sm >= 100 && sm != 120 && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
     return get_candidate_configs_sm100(config_type_param);
+  }
+  if (sm == 120 && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
+    return get_candidate_configs_sm120(config_type_param);
   }
 
   std::vector<CutlassTileConfig> tiles = get_candidate_tiles(sm, config_type_param);

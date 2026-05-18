@@ -103,11 +103,10 @@ to the selected `quant_type` are simply omitted (most are `Optional`).
 | 14 | `router_weights` | T (Opt) | `(num_tokens, num_experts)` | optional (DeepSeek noaux_tc) |
 | 15 | `fc1_global_scale` | T4 (Opt) | `(num_experts,)` | fp4, fp8, wfp4afp8 |
 | 16 | `fc2_global_scale` | T4 (Opt) | `(num_experts,)` | fp4, fp8, wfp4afp8 |
-| 17 | `fc3_global_scale` | T4 (Opt) | `(num_experts,)` | optional |
-| 18 | `fc1_act_scale` | T4 (Opt) | `(1,)` or `(num_experts,)` | wfp4afp8 (Variant A) |
-| 19 | `fc2_act_scale` | T4 (Opt) | `(1,)` or `(num_experts,)` | wfp4afp8 (Variant A) |
-| 20 | `fc1_act_block_scale` | T2 (Opt, uint8 alias) | `(E, M_pad, K/32)` | wfp4afp8 (Variant B) |
-| 21 | `fc2_act_block_scale` | T2 (Opt, uint8 alias) | `(E, M_pad, inter/32)` | wfp4afp8 (Variant B) |
+| 17 | `fc1_act_scale` | T4 (Opt) | `(1,)` or `(num_experts,)` | wfp4afp8 (Variant A) |
+| 18 | `fc2_act_scale` | T4 (Opt) | `(1,)` or `(num_experts,)` | wfp4afp8 (Variant A) |
+| 19 | `fc1_act_block_scale` | T2 (Opt, float8e8m0) | `(E, M_pad, K/32)` | wfp4afp8 (Variant B) |
+| 20 | `fc2_act_block_scale` | T2 (Opt, float8e8m0) | `(E, M_pad, inter/32)` | wfp4afp8 (Variant B) |
 
 `E = num_experts`. `pack = 8 / expert_weight_bits` for INT/MXFP4 weights; `pack = 1`
 for FP8 weights. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
@@ -537,6 +536,7 @@ quant_params = QuantParams::FP4(
 | `moe_gemm/moe_gemm_kernels_bf16_fp4.cu` | `MoeGemmRunner<__nv_bfloat16, __nv_fp4_e2m1, __nv_bfloat16>` |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_*.generated.cu` | SM90 mixed-input FP4 launcher (built when `onnxruntime_ENABLE_CUDA_FP4_QMOE=ON`) |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp4_*.generated.cu` | SM120 mixed-input FP4 launcher |
+| `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp8_fp4.generated.cu` | SM120 block-scaled FP8×FP4 launcher (WFP4AFP8) |
 
 > **Build note**: When `onnxruntime_ENABLE_CUDA_FP4_QMOE` is OFF, the stub is also
 > excluded and all `moe_gemm_kernels_*_fp4.cu` / `moe_gemm_tma_ws_sm{90,120}_fp4_*.generated.cu`
@@ -671,14 +671,17 @@ When the fallback is selected, MXFP4 weights are decoded with
 exactly the same path used by `quant_type="fp4"` on SM<120. Verified working
 on SM90 (H200) using the bundled Python parity test.
 
-### 11.4 Kernel instantiation file
+### 11.4 Kernel instantiation files
 
 | File | Template |
 |------|----------|
 | `moe_gemm/moe_gemm_kernels_fp8_fp4.cu` | `MoeGemmRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, half>` and BF16 variant |
+| `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp8_fp4.generated.cu` | SM120 block-scaled tensor op launcher (FP8×FP4, 128×128×128 tile) |
 
 Built only when `onnxruntime_ENABLE_CUDA_FP4_QMOE=ON` (which implies
-`ENABLE_FP4`+`ENABLE_FP8`).
+`ENABLE_FP4`+`ENABLE_FP8`). The SM120 launcher additionally requires
+`COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS` (set by cmake when SM120 is
+in `CMAKE_CUDA_ARCHITECTURES`).
 
 ### 11.5 Why two CUTLASS paths
 
@@ -757,17 +760,13 @@ CUDA architecture defaults:
 
 ### CMake exclusion filters (current state)
 
-[cmake/onnxruntime_providers_cpu.cmake](cmake/onnxruntime_providers_cpu.cmake):
+[cmake/onnxruntime_cuda_source_filters.cmake](cmake/onnxruntime_cuda_source_filters.cmake):
 
 ```cmake
-# The SM90 mixed FP4 launcher is enabled for the native MXFP4 W4A16 path. Keep the
-# fallback stub out of the build so it does not provide duplicate instantiations.
-list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX
-     "moe_gemm_tma_ws_sm90_mixed_fp4_stub\\.cu")
-
 if(NOT onnxruntime_ENABLE_CUDA_FP4_QMOE)
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_.*\\.generated\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_.*\\.generated\\.cu")
+  list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp8_fp4\\.generated\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_kernels_(fp16|bf16)_fp4\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_kernels_fp4_fp4\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
@@ -777,6 +776,14 @@ else()
   # cooperative mainloop variants instead, so exclude only those unused units.
   list(FILTER … EXCLUDE REGEX
        "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_cm[12]_cn[12]_pp\\.generated\\.cu")
+endif()
+
+if(NOT onnxruntime_ENABLE_CUDA_FP8_QMOE)
+  list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm90_wfp8_.*\\.generated\\.cu")
+  list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_fp8_.*\\.generated\\.cu")
+  list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp8_fp4\\.generated\\.cu")
+  list(FILTER … EXCLUDE REGEX "moe_gemm_kernels_(fp16|bf16)_fp8\\.cu")
+  list(FILTER … EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
 endif()
 ```
 

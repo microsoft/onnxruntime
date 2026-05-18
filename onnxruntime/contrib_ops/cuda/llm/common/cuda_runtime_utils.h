@@ -94,7 +94,7 @@ inline bool doCheckError(cudaStream_t stream) {
 
 inline void syncAndCheck(cudaStream_t stream, char const* const file, int const line) {
   if (doCheckError(stream)) {
-    cudaStreamSynchronize(stream);
+    ::onnxruntime::CudaCall<cudaError, true>(cudaStreamSynchronize(stream), "cudaStreamSynchronize", "CUDA", cudaSuccess, "", file, line);
     ::onnxruntime::CudaCall<cudaError, true>(cudaGetLastError(), "cudaGetLastError", "CUDA", cudaSuccess, "", file, line);
   }
 }

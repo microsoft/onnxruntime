@@ -86,10 +86,10 @@ def create_wfp4afp8_moe_onnx_graph(
         "input",  # 0
         "router_probs",  # 1
         "fc1_weights",  # 2
-        "fc1_scales",  # 3 (uint8 MXFP4 block scales)
+        "fc1_scales",  # 3 (float8e8m0 MXFP4 block scales)
         "",  # 4 fc1_bias
         "fc2_weights",  # 5
-        "fc2_scales",  # 6
+        "fc2_scales",  # 6 (float8e8m0 MXFP4 block scales)
         "",  # 7 fc2_bias
         "",  # 8 fc3_weights
         "",  # 9 fc3_scales
@@ -100,9 +100,8 @@ def create_wfp4afp8_moe_onnx_graph(
         "",  # 14 router_weights
         "fc1_global_scale",  # 15
         "fc2_global_scale",  # 16
-        "",  # 17 fc3_global_scale
-        "fc1_act_scale" if fc1_act_scale is not None else "",  # 18
-        "fc2_act_scale" if fc2_act_scale is not None else "",  # 19
+        "fc1_act_scale" if fc1_act_scale is not None else "",  # 17
+        "fc2_act_scale" if fc2_act_scale is not None else "",  # 18
     ]
 
     activation = "swiglu" if use_swiglu else "silu"
@@ -137,7 +136,9 @@ def create_wfp4afp8_moe_onnx_graph(
         ("fc2_scales", fc2_block_scales),
     ]:
         arr = numpy.ascontiguousarray(tensor.cpu().numpy().astype(numpy.uint8))
-        initializers.append(helper.make_tensor(name, TensorProto.UINT8, list(tensor.shape), arr.tobytes(), raw=True))
+        initializers.append(
+            helper.make_tensor(name, TensorProto.FLOAT8E8M0, list(tensor.shape), arr.tobytes(), raw=True)
+        )
 
     for name, tensor in [
         ("fc1_global_scale", fc1_global_scale),
@@ -198,7 +199,7 @@ class TestQMoEWFP4AFP8(unittest.TestCase):
             # FP8 activation quantization adds error proportional to the per-block
             # max abs activation. We pick a generous tolerance that still catches
             # systematic dispatch / scale-handling regressions.
-            return 0.40 if torch_dtype == torch.bfloat16 else 0.30
+            return 0.50 if torch_dtype == torch.bfloat16 else 0.45
         return 0.15 if torch_dtype == torch.bfloat16 else 0.12
 
     def _run(

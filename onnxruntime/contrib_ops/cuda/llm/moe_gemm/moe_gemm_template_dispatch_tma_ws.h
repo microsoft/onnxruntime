@@ -78,7 +78,9 @@ void dispatchMoeGemmSelectBiasTmaWarpSpecialized(TmaWarpSpecializedGroupedGemmIn
   if constexpr (std::is_same_v<std::decay_t<T>, float>) {
     ORT_THROW("Float TMA MoE not supported");
   } else {
-    static_assert((Arch::kMinComputeCapability == 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType, EpilogueTag>()) || (Arch::kMinComputeCapability >= 100 && kernels::cutlass_kernels::isValidBlackwellMOESpecialisation<T, WeightType, EpilogueTag>()),
+    static_assert((Arch::kMinComputeCapability == 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType, EpilogueTag>()) ||
+                      (Arch::kMinComputeCapability >= 100 && Arch::kMinComputeCapability < 120 && kernels::cutlass_kernels::isValidBlackwellMOESpecialisation<T, WeightType, EpilogueTag>()) ||
+                      ((Arch::kMinComputeCapability == 120 || Arch::kMinComputeCapability == 121) && kernels::cutlass_kernels::isValidSM120MOESpecialisation<T, WeightType, EpilogueTag>()),
                   "Invalid TMA WS configuration invoked, fallback to Sm80");
 
     ORT_ENFORCE(
