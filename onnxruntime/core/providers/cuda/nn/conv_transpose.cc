@@ -270,6 +270,23 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
   const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
 
+  // ConvTranspose requires X shape (N x C x D1...Dn) and W shape (C x M/group x k1...kn),
+  // both must have at least 3 dimensions. Check before dims-changed comparison because
+  // a scalar (rank 0) has empty dims which matches the default-initialized last_x_dims,
+  // causing the validation block to be skipped entirely.
+  const int rank = static_cast<int>(x_shape.NumDimensions());
+  if (rank < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input X must have at least 3 dimensions (N x C x D1...Dn).",
+                           " X: ", x_shape.ToString().c_str());
+  }
+
+  if (static_cast<int>(w_shape.NumDimensions()) < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
+                           " W: ", w_shape.ToString().c_str());
+  }
+
   bool input_dims_changed = (s_.last_x_dims != x_dims);
   bool w_dims_changed = (s_.last_w_dims != w_dims);
   if (input_dims_changed || w_dims_changed) {
@@ -281,22 +298,6 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     }
 
     // The following code is from ConvTransposeAttributes::PrepareForCompute
-
-    const int rank = static_cast<int>(X->Shape().NumDimensions());
-
-    // ConvTranspose requires X shape (N x C x D1...Dn) and W shape (C x M/group x k1...kn),
-    // both must have at least 3 dimensions.
-    if (rank < 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input X must have at least 3 dimensions (N x C x D1...Dn).",
-                             " X: ", X->Shape().ToString().c_str());
-    }
-
-    if (static_cast<int>(w_shape.NumDimensions()) < 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
-                             " W: ", w_shape.ToString().c_str());
-    }
 
     TensorShape input_shape = X->Shape().Slice(channels_last ? 1 : 2, channels_last ? rank - 1 : rank);
     const int64_t num_input_channels = channels_last ? X->Shape()[rank - 1] : X->Shape()[1];
