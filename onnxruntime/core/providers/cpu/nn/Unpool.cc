@@ -54,8 +54,12 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
   }
 
+  ORT_RETURN_IF_NOT(kernel_shape_.size() == pooling_dims,
+                    "kernel_shape rank mismatch: expected ", pooling_dims, " got ", kernel_shape_.size());
+
   // Get pooled index tensor
   const auto* I = context->Input<Tensor>(1);
+  if (I == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const TensorShape& I_shape = I->Shape();
   const auto* I_data = I->Data<int64_t>();
 
@@ -70,8 +74,12 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   // For feature dims calculate reversing the formula used for MaxPool
   for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
-    inferred_output_dims[dim + 2] =
-        (X_shape[dim + 2] - 1) * strides_[dim] - (pads_[dim] + pads_[kernel_shape_.size() + dim]) + kernel_shape_[dim];
+    int64_t dim_value = (X_shape[dim + 2] - 1) * strides_[dim] -
+                        (pads_[dim] + pads_[kernel_shape_.size() + dim]) + kernel_shape_[dim];
+    ORT_RETURN_IF_NOT(dim_value > 0,
+                      "Computed output dimension is not positive for axis ", dim + 2,
+                      ". Check kernel_shape, strides, and pads attributes.");
+    inferred_output_dims[dim + 2] = dim_value;
   }
 
   TensorShape shape(inferred_output_dims);
@@ -82,6 +90,12 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
       return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     ORT_RETURN_IF_NOT(tensor_shape->Shape().GetDims().size() == 1,
                       "Shape must be 1 dimensional as it's tensor data of a shape");
+
+    ORT_RETURN_IF_NOT(
+        static_cast<size_t>(tensor_shape->Shape().Size()) == X_shape.NumDimensions(),
+        "output_shape must have the same number of elements as the rank of input tensor X."
+        " Got ",
+        tensor_shape->Shape().Size(), ", expected ", X_shape.NumDimensions());
 
     // Turn the shape tensor data into an actual shape
     const auto* p_shape = tensor_shape->Data<int64_t>();
