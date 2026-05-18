@@ -2,13 +2,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""Set plugin package version variables for Azure Pipelines.
+"""Set plugin EP package version variables for Azure Pipelines.
 
 Usage:
-    python set_plugin_build_variables.py <package_version> <version_file_rel>
+    python set_plugin_ep_build_variables.py <package_version> <version_file_rel>
 
 Where:
-    package_version: 'release', 'RC', or 'dev'
+    package_version: 'release', 'rc', or 'dev'
     version_file_rel: path relative to BUILD_SOURCESDIRECTORY of the VERSION_NUMBER file
 """
 
@@ -48,10 +48,9 @@ def main():
 
     if package_version == "release":
         version_string = original_ver
-        universal_version = original_ver
         python_version = original_ver
 
-    elif package_version == "RC":
+    elif package_version == "rc":
         # RC versioning is not yet implemented. Fail the build to prevent publishing
         # an ambiguous version without an RC number.
         print("##vso[task.logissue type=error]RC versioning is not yet implemented. Use 'dev' or 'release' instead.")
@@ -79,34 +78,21 @@ def main():
             print(f"##vso[task.logissue type=error]Failed to get git info: {e}")
             sys.exit(1)
         version_string = f"{original_ver}-dev.{date_str}+{commit_sha}"
-        # Prefix the SHA with "commit-" so the pre-release identifier always contains a
-        # non-digit. Otherwise, an all-numeric short SHA with a leading zero (e.g. "01234567")
-        # would violate SemVer 2.0.0's rule against leading zeros in numeric identifiers.
-        universal_version = f"{original_ver}-dev.{date_str}.commit-{commit_sha}"
         python_version = f"{original_ver}.dev{date_str}"
 
     else:
         print(
-            f"##vso[task.logissue type=error]Unknown package_version '{package_version}'. Must be 'release', 'RC', or 'dev'."
+            f"##vso[task.logissue type=error]Unknown package_version '{package_version}'. Must be 'release', 'rc', or 'dev'."
         )
         sys.exit(1)
 
     print(f"Plugin package version string: {version_string}")
-    print(f"Plugin universal package version string: {universal_version}")
     print(f"Plugin Python package version string: {python_version}")
 
     # Validate semver 2.0.0 format
     semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"
     if not re.match(semver_pattern, version_string):
         print(f"##vso[task.logissue type=error]Version string '{version_string}' is not valid semver 2.0.0.")
-        sys.exit(1)
-
-    # Validate universal version (SemVer 2.0.0, without build metadata)
-    universal_semver_pattern = r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
-    if not re.match(universal_semver_pattern, universal_version):
-        print(
-            f"##vso[task.logissue type=error]Universal version string '{universal_version}' is not valid semver 2.0.0 (without build metadata)."
-        )
         sys.exit(1)
 
     # Validate Python version (PEP 440)
@@ -116,7 +102,6 @@ def main():
         sys.exit(1)
 
     print(f"##vso[task.setvariable variable=PluginPackageVersion]{version_string}")
-    print(f"##vso[task.setvariable variable=PluginUniversalPackageVersion]{universal_version}")
     print(f"##vso[task.setvariable variable=PluginPythonPackageVersion]{python_version}")
     print(f"##vso[task.setvariable variable=PluginEpVersionDefine]onnxruntime_PLUGIN_EP_VERSION={version_string}")
 

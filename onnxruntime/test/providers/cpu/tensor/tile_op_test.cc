@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -267,6 +268,29 @@ TEST(TensorOpTest, TileBoolType) { RunTestWrapperForBool(); }
 TEST(TensorOpTest, TileMLFloat16Type) { RunTestWrapper<MLFloat16>(); }
 #endif
 
+TEST(TensorOpTest, TileRepeatsMustBe1D) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("repeats", {1, 2}, {1, 1});
+  test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be 1 dimensional",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(TensorOpTest, TileRepeatsMustMatchInputRank) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("repeats", {1}, {1});
+  test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "same length as the 'input' tensor",
+           {}, nullptr, &execution_providers);
+}
+
 // Test that negative repeat values are rejected with an error
 TEST(TensorOpTest, TileNegativeRepeats) {
   OpTester test("Tile", 13);
@@ -356,6 +380,118 @@ TEST(TensorOpTest, TileOverflowMultipleAxes) {
   test.AddOutput<float>("output", {0, 0, 0}, {});
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
 }
+
+// Large per-axis repeat values whose product does not overflow int64 but would
+// still request an allocation above the supported upper bound must be rejected.
+// input [1] float32 with repeat [2^32] => 2^32 elements * 4 bytes = 16 GiB.
+TEST(TensorOpTest, TileOutputSizeExceedsLimit1D) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {1}, {1.0f});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{4294967296}});  // 2^32
+  test.AddOutput<float>("output", {0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// A moderately large but supported repeat value is accepted.
+// input [1] float32 with repeat [1000000] => 1M elements * 4 bytes = 4 MB.
+TEST(TensorOpTest, TileOutputSizeWithinLimit) {
+  RunTest<float>({1}, {1000000});
+}
+
+// Combined per-axis repeats can produce a total that is in range for int64 but
+// still above the supported allocation limit.
+// input [2,2] float32 with repeats [32768, 32768] => ~4 billion elements * 4 bytes = ~16 GiB.
+TEST(TensorOpTest, TileOutputSizeExceedsLimitMultiAxis) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<int64_t>("repeats", {2}, {32768, 32768});
+  test.AddOutput<float>("output", {0, 0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// With 8-byte elements a smaller repeat value crosses the supported limit.
+// input [1] double with repeat [536870913] => ~4 GiB + 8 bytes, just above limit.
+TEST(TensorOpTest, TileOutputSizeExceedsLimitDouble) {
+  OpTester test("Tile", 13);
+  test.AddInput<double>("input", {1}, {1.0});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{536870913}});
+  test.AddOutput<double>("output", {0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// The output-size bound applies to std::string tensors as well: the output tensor
+// holds sizeof(std::string) bytes per element for the container backing store.
+// input [1] string with repeat [2^32] easily exceeds the supported maximum.
+TEST(TensorOpTest, TileOutputSizeExceedsLimitString) {
+  OpTester test("Tile", 13);
+  test.AddInput<std::string>("input", {1}, {"x"});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{4294967296}});  // 2^32
+  test.AddOutput<std::string>("output", {0}, {});
+  // DirectML Tile has its own implementation that does not enforce this byte cap.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "exceeds the supported maximum",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+#if defined(USE_WEBGPU)
+// The WebGPU Tile kernel stores per-axis repeat values in a uint32_t shader
+// uniform. Repeat values that would truncate when cast to uint32_t must be
+// rejected before reaching the shader. A zero-element input is used so that
+// the earlier output-byte-size check (which requires dim > 0) does not fire
+// first, exercising the explicit uint32_t-range guard.
+TEST(TensorOpTest, TileRepeatExceedsUint32MaxWebGpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {0}, {});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{4294967296}});  // 2^32
+  test.AddOutput<float>("output", {0}, {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "exceeds the WebGPU supported maximum",
+           {}, nullptr, &execution_providers);
+}
+
+// The WebGPU Tile kernel validates that the 'repeats' input is 1-D, mirroring
+// the CPU kernel's pre-existing check.
+TEST(TensorOpTest, TileRepeatsMustBe1DWebGpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("repeats", {1, 2}, {1, 1});
+  test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be 1 dimensional",
+           {}, nullptr, &execution_providers);
+}
+
+// The WebGPU Tile kernel validates that the 'repeats' length matches the
+// input rank, mirroring the CPU kernel's pre-existing check.
+TEST(TensorOpTest, TileRepeatsMustMatchInputRankWebGpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("repeats", {1}, {1});
+  test.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "same length as the 'input' tensor",
+           {}, nullptr, &execution_providers);
+}
+#endif  // defined(USE_WEBGPU)
 
 }  // namespace test
 }  // namespace onnxruntime
