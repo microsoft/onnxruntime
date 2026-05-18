@@ -471,13 +471,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     // Skip CopyKVCache and fused split+rotary+copyKV.
     // Use past_key/past_value directly as the present buffers for attention.
     ORT_ENFORCE(!do_rotary, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV should not be used with kv_sequence_length==0.");
-    if (past_key != nullptr && past_value != nullptr) {
-      // Alias past as present — flash attention only reads present_key/present_value,
-      // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
-      present_key = const_cast<Tensor*>(past_key);
-      present_value = const_cast<Tensor*>(past_value);
-    }
-    // If past is also null, present_key/present_value were already set to internal empty tensors above.
+    ORT_ENFORCE(past_key != nullptr && past_value != nullptr,
+                "kv_empty path requires past KV context (KV-shared layers reuse another layer's cache).");
+    // Alias past as present — flash attention only reads present_key/present_value,
+    // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
+    present_key = const_cast<Tensor*>(past_key);
+    present_value = const_cast<Tensor*>(past_value);
     ORT_ENFORCE(!parameters.past_present_share_buffer_,
                 "kv_empty path must not use past_present_share_buffer (CopyKVCache is skipped).");
   } else if (do_rotary) {
