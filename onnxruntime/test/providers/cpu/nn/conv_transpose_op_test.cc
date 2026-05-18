@@ -1628,7 +1628,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidOutputPaddingSize) {
   test.AddOutput<float>("Y", {0}, {});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "output_padding size",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ConvTransposeTest, ConvTranspose_OutputPaddingExceedsStride) {
@@ -1642,7 +1642,7 @@ TEST(ConvTransposeTest, ConvTranspose_OutputPaddingExceedsStride) {
   test.AddOutput<float>("Y", {0}, {});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "output_padding",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 }  // namespace test
