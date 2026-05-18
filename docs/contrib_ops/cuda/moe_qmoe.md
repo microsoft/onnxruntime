@@ -456,15 +456,29 @@ static constexpr bool use_wfp4a16 = weight_fp4 &&
 ```
 CutlassMoeFCRunner<half, __nv_fp4_e2m1, half>::dispatchToArch()
   └─ use_wfp4a16 == true
-     └─ sm_dispatch_moe_mixed_dtype_gemm_to_cutlass<..., PackedScalesNum=1>()
-        └─ Ntile=64, Ktile=128
-           └─ generic_mixed_moe_gemm_kernelLauncher()
-              ├─ ElementA = cutlass::half_t / bfloat16_t (activation)
-              ├─ ElementB = cutlass::float_e2m1_t       (weight)
-              ├─ group_size  = 32  (mxfp4_group_size)
-              ├─ ElementScale = cutlass::float_ue8m0_t
-              └─ CollectiveBuilderMixedInput<…, tuple<ElementB, ElementScalePacked>, …>
+     └─ select fusion from hopper_inputs.fusion (NONE or FINALIZE)
+        └─ select K tile: inputs.k % 256 == 0 → PackedScalesNum=1 (K=256)
+                           else              → PackedScalesNum=2 (K=128)
+           └─ sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<..., FUSION, PackedScalesNum>()
+              └─ Ktile = PackedScalesNum==2 ? 128 : 256
+                 └─ dispatch on tile_config_sm90 enum (M×N from heuristic)
+                    └─ sm90_dispatch_moe_mixed_dtype_gemm_config<..., FUSION, Shape<M, N, Ktile>>()
+                       └─ dispatch on cluster_shape
+                          └─ sm90_dispatch_mainloop_schedules<..., FUSION>()
+                             └─ sm90_generic_mixed_moe_gemm_kernelLauncher()
+                                ├─ ElementA = cutlass::half_t  (activation)
+                                ├─ ElementB = cutlass::float_e2m1_t  (weight, stored as FP4)
+                                ├─ group_size = 32 (mxfp4_group_size)
+                                ├─ ElementScale = cutlass::float_ue8m0_t
+                                ├─ CollectiveBuilderMixedInput (FP4→FP16 upconvert in registers)
+                                └─ Epilogue: NONE (per-expert output) or FINALIZE (fused scatter+scale)
 ```
+
+Note: H100/H200 (SM90) does **not** have native FP4 tensor core instructions. The kernel uses FP4 purely
+as a **compressed storage format** — weights are loaded via TMA and upconverted to FP16/BF16 in shared
+memory/registers by `CollectiveBuilderMixedInput` before the actual MMA runs on FP16 tensor cores. This
+is a **memory bandwidth optimization** (4x compression), not a compute throughput feature. Native FP4 MMA
+is available on Blackwell (SM100+) via the separate block-scaled tensor op path (see [§11](#11-wfp4afp8-details)).
 
 Native FP4 path triggers when `sm_ >= 120` (`use_fp4_dequant_fallback_ = sm_ < 120`).
 On older SMs, MXFP4 weights are decoded via `LaunchQMoEDequantizeFp4Weights` and
@@ -479,8 +493,12 @@ fed to the dense A16 runner.
 | Group size | 32 (MXFP4) | 128 (INT4) |
 | `ElementScale` | `float_ue8m0_t` | `__nv_bfloat16` (SFA) |
 | Epilogue α | 1 (no per-group α) | 0 (uses `alpha_ptr_array`) |
-| Ntile | 64 | 128 |
-| Ktile | 128 | `128 × PackedScalesNum / sizeof(T)` |
+| Epilogue fusion | NONE or FINALIZE | NONE or FINALIZE |
+| M tiles | 64, 128 | 64, 128 |
+| N tiles | 16, 32, 64, 128 | 16, 32, 64, 128 |
+| K tiles | 128, 256 | 128 × PackedScalesNum / sizeof(T) |
+| Cluster shapes | (1,1), (2,1), (1,2), (2,2) | (1,1), (2,1), (1,2), (2,2) |
+| Mainloop schedules | Pingpong, Cooperative | Pingpong, Cooperative |
 
 ### 9.4 Mainloop modification
 
@@ -534,7 +552,9 @@ quant_params = QuantParams::FP4(
 |------|----------|
 | `moe_gemm/moe_gemm_kernels_fp16_fp4.cu` | `MoeGemmRunner<half, __nv_fp4_e2m1, half>` |
 | `moe_gemm/moe_gemm_kernels_bf16_fp4.cu` | `MoeGemmRunner<__nv_bfloat16, __nv_fp4_e2m1, __nv_bfloat16>` |
-| `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_*.generated.cu` | SM90 mixed-input FP4 launcher (built when `onnxruntime_ENABLE_CUDA_FP4_QMOE=ON`) |
+| `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_instantiation.cuh` | Instantiation macros: `ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_{PP,CO}` (NONE fusion), `ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_{PP,CO}_FINALIZE` |
+| `moe_gemm/launchers/generate_moe_gemm_tma_ws_sm90_fp4.py` | Python generator: produces 320 `.generated.cu` files across FP16/BF16, M={64,128}, N={16,32,64,128}, K={128,256}, 4 cluster shapes, PP/CO schedules, NONE/FINALIZE fusion |
+| `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_*.generated.cu` | 320 generated SM90 mixed-input FP4 launcher instantiations (built when `onnxruntime_ENABLE_CUDA_FP4_QMOE=ON`) |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp4_*.generated.cu` | SM120 mixed-input FP4 launcher |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp8_fp4.generated.cu` | SM120 block-scaled FP8×FP4 launcher (WFP4AFP8) |
 
@@ -544,6 +564,65 @@ quant_params = QuantParams::FP4(
 > pingpong specializations, so those specific generated units are also excluded
 > (the dispatcher routes that tile through cooperative variants instead). See
 > [§14](#14-build-configuration).
+
+### 9.8 K=128, Epilogue Fusion & Expanded Tile Configs
+
+This subsection documents the expanded SM90 W4A16 mixed-input FP4 MoE GEMM configuration
+that closes the gap with TRT-LLM.
+
+#### Changes Summary
+
+| Gap | Before | After |
+|-----|--------|-------|
+| K tiles | 256 only | {128, 256} — selected at runtime based on `inputs.k % 256` |
+| Epilogue fusion | NONE only | NONE + FINALIZE — routed from `hopper_inputs.fusion` |
+| N tiles accessible | Only `CtaShape128x32x128B` + `ClusterShape_1x1x1` | All instantiated tiles (N={16,32,64,128}, clusters=(1,1),(2,1),(1,2),(2,2)) |
+| Generated .cu files | ~80 | 320 |
+| Mainloop schedules | Pingpong only (for most tiles) | Pingpong + Cooperative (for M=128 tiles) |
+
+#### K Tile Dispatch Mechanism
+
+The `CutlassTileConfigSM90` enum encodes K as "128B" (128 bytes), but for FP4 mixed-input the actual K tile
+in elements differs. The dispatch uses a `PackedScalesNum` encoding trick:
+
+- `PackedScalesNum = 1` → K = 256 elements (selected when `inputs.k % 256 == 0`)
+- `PackedScalesNum = 2` → K = 128 elements (selected otherwise)
+
+Inside `sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass`:
+```cpp
+constexpr int Ktile = is_wfp4a16 ? (PackedScalesNum == 2 ? 128 : 256) : 128 * PackedScalesNum / sizeof(T);
+```
+
+#### Epilogue Fusion
+
+The mixed-input launcher now supports two epilogue modes, matching the same-type launcher pattern:
+
+- **NONE**: Per-expert intermediate output (standard grouped GEMM epilogue)
+- **FINALIZE**: Fused scatter + router-scale + bias epilogue using `EpilogueMoeFusedFinalizeBuilder`
+
+The fusion is routed at runtime in `dispatchToArch`:
+```cpp
+switch (hopper_inputs.fusion) {
+  case EpilogueFusion::FINALIZE:
+    sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<..., FINALIZE, PackedScalesNum>(...);
+    break;
+  case EpilogueFusion::NONE:
+  default:
+    sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<..., NONE, PackedScalesNum>(...);
+    break;
+}
+```
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `launchers/moe_gemm_tma_ws_mixed_input_launcher.h` | Added `EpilogueFusion FUSION` template parameter |
+| `launchers/moe_gemm_tma_ws_mixed_input_launcher.inl` | Added FINALIZE epilogue support (`CollectiveEpilogueFinalize`, `make_epilogue_scalars/args` lambdas) |
+| `launchers/moe_gemm_tma_ws_sm90_fp4_instantiation.cuh` | Added `_PP_FINALIZE` and `_CO_FINALIZE` macros |
+| `launchers/generate_moe_gemm_tma_ws_sm90_fp4.py` | Added `k` and `fusion` fields; generates K={128,256} × NONE/FINALIZE |
+| `moe_gemm_template_dispatch_tma_ws_mixed_dtype.h` | `FUSION` param throughout; `PackedScalesNum`-based K tile; direct N tile mapping; workspace calc with `Ntile=128` |
+| `moe_gemm_template_dispatch.h` | FUSION routing in `dispatchToArch`; removed restrictive wfp4a16 config filter |
 
 ---
 
@@ -775,7 +854,7 @@ else()
   # in this build configuration. The dispatcher routes that tile through
   # cooperative mainloop variants instead, so exclude only those unused units.
   list(FILTER … EXCLUDE REGEX
-       "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_cm[12]_cn[12]_pp\\.generated\\.cu")
+       "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_k[0-9]+_cm[12]_cn[12]_pp(_finalize)?\\.generated\\.cu")
 endif()
 
 if(NOT onnxruntime_ENABLE_CUDA_FP8_QMOE)

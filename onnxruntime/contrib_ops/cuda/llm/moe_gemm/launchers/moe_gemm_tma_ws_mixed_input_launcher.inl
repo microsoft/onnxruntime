@@ -45,6 +45,7 @@
 #include "cutlass/util/tensor_view_io.h"
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/compute_occupancy.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/epilogue/collective/epilogue_moe_finalize.hpp"
 #include "contrib_ops/cuda/llm/cutlass_extensions/epilogue_helpers.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm/collective/collective_builder_mixed_input.hpp"
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm_configs.h"
@@ -69,15 +70,24 @@ namespace cutlass_kernels
 namespace tk = onnxruntime::llm::common;
 namespace tkc = onnxruntime::llm::cutlass_extensions;
 
+using EpilogueFusion = TmaWarpSpecializedGroupedGemmInput::EpilogueFusion;
+
 using namespace cute;
 
-template <typename T, typename WeightType, typename GemmOutputType, typename EpilogueTag, typename CTAShape,
-    typename ClusterShape, typename MainloopScheduleType, typename EpilogueScheduleType,
+template <typename T, typename WeightType, typename GemmOutputType, typename EpilogueTag, EpilogueFusion FUSION,
+    typename CTAShape, typename ClusterShape, typename MainloopScheduleType, typename EpilogueScheduleType,
     cutlass::WeightOnlyQuantOp QuantOp>
 void sm90_generic_mixed_moe_gemm_kernelLauncher(GroupedGemmInput<T, WeightType, GemmOutputType, GemmOutputType> inputs,
     TmaWarpSpecializedGroupedGemmInput hopper_inputs, int sm_count_, size_t* workspace_size)
 {
     ORT_LLM_LOG_ENTRY();
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    /// GEMM kernel configurations
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    static_assert(FUSION == EpilogueFusion::NONE || FUSION == EpilogueFusion::FINALIZE,
+        "Unimplemented fusion provided to TMA WS Mixed MoE gemm launcher");
+    constexpr static bool IsFinalizeFusion = FUSION == EpilogueFusion::FINALIZE;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////
     /// GEMM kernel configurations
@@ -127,6 +137,10 @@ void sm90_generic_mixed_moe_gemm_kernelLauncher(GroupedGemmInput<T, WeightType, 
     using LayoutD = LayoutC;
     constexpr int AlignmentD = 128 / cutlass::sizeof_bits<ElementD>::value;
 
+    using ElementFinalOutput = ElementC;
+    using ElementBias = ElementFinalOutput;
+    using ElementRouterScales = float;
+
     // Core kernel configurations
     using ElementAccumulator = float;    // Element type for internal accumulation
     using ArchTag = cutlass::arch::Sm90; // Tag indicating the minimum SM that supports the intended feature
@@ -142,11 +156,31 @@ void sm90_generic_mixed_moe_gemm_kernelLauncher(GroupedGemmInput<T, WeightType, 
             cutlass::epilogue::PtrArrayTmaWarpSpecializedPingpong,
             cutlass::epilogue::PtrArrayTmaWarpSpecializedCooperative>; // Epilogue to launch
 
-    using CollectiveEpilogue = typename cutlass::epilogue::collective::CollectiveBuilder<cutlass::arch::Sm90,
+    using StrideC = TmaWarpSpecializedGroupedGemmInput::StrideC;
+
+    // Default epilogue (NONE fusion)
+    using CollectiveEpilogueDefault = typename cutlass::epilogue::collective::CollectiveBuilder<cutlass::arch::Sm90,
         cutlass::arch::OpClassTensorOp, TileShape, ClusterShape, cutlass::epilogue::collective::EpilogueTileAuto,
         ElementAccumulator, ElementAccumulator, ElementC, typename cutlass::layout::LayoutTranspose<LayoutC>::type*,
         AlignmentC, ElementD, typename cutlass::layout::LayoutTranspose<LayoutD>::type*, AlignmentD,
         EpilogueSchedule>::CollectiveOp;
+
+    // Fused finalize epilogue (FINALIZE fusion)
+    using CollectiveEpilogueFinalize =
+        typename cutlass::epilogue::collective::EpilogueMoeFusedFinalizeBuilder<
+            ArchTag, TileShape,
+            ElementC, StrideC*,
+            ElementFinalOutput,
+            TmaWarpSpecializedGroupedGemmInput::FusedFinalizeEpilogue::StrideFinalOutput,
+            ElementAccumulator,
+            ElementAccumulator,
+            ElementBias, TmaWarpSpecializedGroupedGemmInput::FusedFinalizeEpilogue::StrideBias,
+            ElementRouterScales,
+            TmaWarpSpecializedGroupedGemmInput::FusedFinalizeEpilogue::StrideRouterScales
+            >::CollectiveOp;
+
+    using CollectiveEpilogue = std::conditional_t<IsFinalizeFusion,
+        CollectiveEpilogueFinalize, CollectiveEpilogueDefault>;
 
     // =========================================================== MIXED INPUT WITH SCALES
     // =========================================================================== The Scale information must get paired
@@ -163,28 +197,60 @@ void sm90_generic_mixed_moe_gemm_kernelLauncher(GroupedGemmInput<T, WeightType, 
         CollectiveMainloop, CollectiveEpilogue>;
 
     using GemmGrouped = cutlass::gemm::device::GemmUniversalAdapter<GemmKernel>;
-    using StrideC = typename GemmKernel::InternalStrideC;
     using StrideD = typename GemmKernel::InternalStrideD;
     using StrideS = typename CollectiveMainloop::StrideScale;
 
     GemmGrouped gemm;
     using Args = typename GemmGrouped::Arguments;
-    Args arguments;
-
-    decltype(arguments.epilogue.thread) fusion_args;
-    fusion_args.alpha = use_wfp4a16 ? 1 : 0;
-    fusion_args.beta = 0;
-    fusion_args.alpha_ptr = nullptr;
-    fusion_args.beta_ptr = nullptr;
-    fusion_args.alpha_ptr_array = use_wfp4a16 ? nullptr : inputs.alpha_scales;
-    fusion_args.beta_ptr_array = nullptr;
-    // One alpha and beta per each group
-    fusion_args.dAlpha = {cute::_0{}, cute::_0{}, use_wfp4a16 ? 0 : 1};
-    fusion_args.dBeta = {cute::_0{}, cute::_0{}, use_wfp4a16 ? 0 : 1};
 
     cutlass::KernelHardwareInfo hw_info;
     hw_info.device_id = 0;
     hw_info.sm_count = sm_count_;
+
+    using EpilogueArguments = typename CollectiveEpilogue::Arguments;
+    using EpilogueScalars = decltype(EpilogueArguments{}.thread);
+
+    auto make_epilogue_scalars = [&]() -> EpilogueScalars {
+        if constexpr (IsFinalizeFusion) {
+            return EpilogueScalars{ElementAccumulator(1.f), ElementAccumulator(0.f)};
+        } else {
+            EpilogueScalars scalars;
+            scalars.alpha = use_wfp4a16 ? 1 : 0;
+            scalars.beta = 0;
+            scalars.alpha_ptr = nullptr;
+            scalars.beta_ptr = nullptr;
+            scalars.alpha_ptr_array = use_wfp4a16 ? nullptr : inputs.alpha_scales;
+            scalars.beta_ptr_array = nullptr;
+            // One alpha and beta per each group
+            scalars.dAlpha = {cute::_0{}, cute::_0{}, use_wfp4a16 ? 0 : 1};
+            scalars.dBeta = {cute::_0{}, cute::_0{}, use_wfp4a16 ? 0 : 1};
+            return scalars;
+        }
+    };
+
+    auto make_epilogue_args = [&]() -> EpilogueArguments {
+        auto scalars = make_epilogue_scalars();
+        if constexpr (IsFinalizeFusion) {
+            auto epi_params = hopper_inputs.fused_finalize_epilogue;
+            return EpilogueArguments{
+                scalars,
+                nullptr, hopper_inputs.stride_c,  // C params
+                reinterpret_cast<ElementFinalOutput*>(epi_params.ptr_final_output),
+                epi_params.stride_final_output,  // D (output) params
+                reinterpret_cast<ElementBias const*>(epi_params.ptr_bias),
+                epi_params.stride_bias,  // Bias params
+                epi_params.ptr_router_scales, epi_params.stride_router_scales,  // Router scales
+                epi_params.ptr_expert_first_token_offset,  // Offset of this expert's token in the router scales
+                epi_params.ptr_source_token_index,         // Index of the source token to sum into
+                epi_params.num_rows_in_final_output        // Number of tokens in the output buffer
+            };
+        } else {
+            return EpilogueArguments{scalars,
+                reinterpret_cast<ElementC const**>(hopper_inputs.ptr_c), hopper_inputs.stride_c,
+                reinterpret_cast<ElementD**>(hopper_inputs.default_epilogue.ptr_d),
+                hopper_inputs.default_epilogue.stride_d};
+        }
+    };
 
     if (workspace_size != nullptr)
     {
@@ -194,23 +260,19 @@ void sm90_generic_mixed_moe_gemm_kernelLauncher(GroupedGemmInput<T, WeightType, 
                 reinterpret_cast<ElementA const**>(hopper_inputs.ptr_a), hopper_inputs.stride_a,
                 reinterpret_cast<ElementScalePacked const**>(hopper_inputs.int4_groupwise_params.ptr_s_a),
                 hopper_inputs.int4_groupwise_params.stride_s_a, group_size},
-            {fusion_args, reinterpret_cast<ElementC const**>(hopper_inputs.ptr_c), hopper_inputs.stride_c,
-                reinterpret_cast<ElementD**>(hopper_inputs.default_epilogue.ptr_d),
-                hopper_inputs.default_epilogue.stride_d},
+            make_epilogue_args(),
             hw_info};
         *workspace_size = gemm.get_workspace_size(args);
         return;
     }
 
-    arguments = Args{cutlass::gemm::GemmUniversalMode::kGrouped,
+    auto arguments = Args{cutlass::gemm::GemmUniversalMode::kGrouped,
         {inputs.num_experts, hopper_inputs.int4_groupwise_params.shape.problem_shapes, nullptr},
         {reinterpret_cast<ElementB const**>(hopper_inputs.ptr_b), hopper_inputs.stride_b,
             reinterpret_cast<ElementA const**>(hopper_inputs.ptr_a), hopper_inputs.stride_a,
             reinterpret_cast<ElementScalePacked const**>(hopper_inputs.int4_groupwise_params.ptr_s_a),
             hopper_inputs.int4_groupwise_params.stride_s_a, group_size},
-        {fusion_args, reinterpret_cast<ElementC const**>(hopper_inputs.ptr_c), hopper_inputs.stride_c,
-            reinterpret_cast<ElementD**>(hopper_inputs.default_epilogue.ptr_d),
-            hopper_inputs.default_epilogue.stride_d},
+        make_epilogue_args(),
         hw_info};
 
     size_t const required_workspace = gemm.get_workspace_size(arguments);

@@ -20,9 +20,10 @@ using PP = cutlass::gemm::KernelTmaWarpSpecializedPingpong;
 using COOP = cutlass::gemm::KernelTmaWarpSpecializedCooperative;
 static constexpr auto QOP = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 
+// NONE fusion instantiation macros (Pingpong and Cooperative)
 #define ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_PP(T, M, N, K, CM, CN, CK) \
   template void sm90_generic_mixed_moe_gemm_kernelLauncher<          \
-      T, __nv_fp4_e2m1, T, EpiTag,                                   \
+      T, __nv_fp4_e2m1, T, EpiTag, EpilogueFusion::NONE,             \
       cute::Shape<cute::Int<M>, cute::Int<N>, cute::Int<K>>,         \
       cute::Shape<cute::Int<CM>, cute::Int<CN>, cute::Int<CK>>,      \
       PP, EpiSched, QOP>(                                            \
@@ -30,10 +31,27 @@ static constexpr auto QOP = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 
 #define ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_CO(T, M, N, K, CM, CN, CK) \
   template void sm90_generic_mixed_moe_gemm_kernelLauncher<          \
-      T, __nv_fp4_e2m1, T, EpiTag,                                   \
+      T, __nv_fp4_e2m1, T, EpiTag, EpilogueFusion::NONE,             \
       cute::Shape<cute::Int<M>, cute::Int<N>, cute::Int<K>>,         \
       cute::Shape<cute::Int<CM>, cute::Int<CN>, cute::Int<CK>>,      \
       COOP, EpiSched, QOP>(                                          \
+      GroupedGemmInput<T, __nv_fp4_e2m1, T, T>, TmaWarpSpecializedGroupedGemmInput, int, size_t*)
+
+// FINALIZE fusion instantiation macros (Pingpong and Cooperative)
+#define ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_PP_FINALIZE(T, M, N, K, CM, CN, CK) \
+  template void sm90_generic_mixed_moe_gemm_kernelLauncher<                   \
+      T, __nv_fp4_e2m1, T, EpiTag, EpilogueFusion::FINALIZE,                  \
+      cute::Shape<cute::Int<M>, cute::Int<N>, cute::Int<K>>,                  \
+      cute::Shape<cute::Int<CM>, cute::Int<CN>, cute::Int<CK>>,               \
+      PP, EpiSched, QOP>(                                                     \
+      GroupedGemmInput<T, __nv_fp4_e2m1, T, T>, TmaWarpSpecializedGroupedGemmInput, int, size_t*)
+
+#define ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_CO_FINALIZE(T, M, N, K, CM, CN, CK) \
+  template void sm90_generic_mixed_moe_gemm_kernelLauncher<                   \
+      T, __nv_fp4_e2m1, T, EpiTag, EpilogueFusion::FINALIZE,                  \
+      cute::Shape<cute::Int<M>, cute::Int<N>, cute::Int<K>>,                  \
+      cute::Shape<cute::Int<CM>, cute::Int<CN>, cute::Int<CK>>,               \
+      COOP, EpiSched, QOP>(                                                   \
       GroupedGemmInput<T, __nv_fp4_e2m1, T, T>, TmaWarpSpecializedGroupedGemmInput, int, size_t*)
 
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels

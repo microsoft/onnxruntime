@@ -31,7 +31,7 @@ macro(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
     # CUDA 13 PTXAS does not complete the FP4 M=128/N=64 pingpong specializations in
     # this build configuration. The dispatcher routes that tile through cooperative
     # mainloop variants instead, so exclude only those unused generated units.
-    list(FILTER ${CU_SRC_LIST} EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_cm[12]_cn[12]_pp\\.generated\\.cu")
+    list(FILTER ${CU_SRC_LIST} EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_k[0-9]+_cm[12]_cn[12]_pp(_finalize)?\\.generated\\.cu")
   endif()
 
   if(NOT onnxruntime_ENABLE_CUDA_FP8_QMOE)

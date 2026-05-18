@@ -23,8 +23,10 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace cutlass_kernels {
 
-template <typename T, typename WeightType, typename GemmOutputType, typename EpilogueTag, typename CTAShape,
-          typename ClusterShape, typename MainloopScheduleType, typename EpilogueScheduleType,
+using EpilogueFusion = TmaWarpSpecializedGroupedGemmInput::EpilogueFusion;
+
+template <typename T, typename WeightType, typename GemmOutputType, typename EpilogueTag, EpilogueFusion FUSION,
+          typename CTAShape, typename ClusterShape, typename MainloopScheduleType, typename EpilogueScheduleType,
           cutlass::WeightOnlyQuantOp QuantOp>
 void sm90_generic_mixed_moe_gemm_kernelLauncher(GroupedGemmInput<T, WeightType, GemmOutputType, GemmOutputType> inputs,
                                                 TmaWarpSpecializedGroupedGemmInput hopper_inputs, int sm_count_, size_t* workspace_size);

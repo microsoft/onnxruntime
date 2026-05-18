@@ -7,7 +7,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-TILE_K = 256
 CLUSTER_K = 1
 OLD_GENERATED_PREFIX = "moe_gemm_tma_ws_sm90_mixed_fp4"
 NEW_GENERATED_PREFIX = "moe_gemm_tma_ws_sm90_fp4"
@@ -19,34 +18,47 @@ class Instantiation:
     cpp_type: str
     m: int
     n: int
+    k: int
     cluster_m: int
     cluster_n: int
     schedule: str
+    fusion: str = "none"  # "none" or "finalize"
     quick_build: bool = False
 
     @property
     def file_name(self) -> str:
+        fusion_suffix = "" if self.fusion == "none" else f"_{self.fusion}"
         return (
-            f"{NEW_GENERATED_PREFIX}_{self.type_name}_m{self.m}_n{self.n}"
-            f"_cm{self.cluster_m}_cn{self.cluster_n}_{self.schedule}.generated.cu"
+            f"{NEW_GENERATED_PREFIX}_{self.type_name}_m{self.m}_n{self.n}_k{self.k}"
+            f"_cm{self.cluster_m}_cn{self.cluster_n}_{self.schedule}{fusion_suffix}.generated.cu"
         )
 
 
 def add_full_build_configs(instantiations: set[Instantiation], type_name: str, cpp_type: str) -> None:
     cluster_shapes = ((1, 1), (2, 1), (1, 2), (2, 2))
+    k_tiles = (128, 256)
+    fusions = ("none", "finalize")
 
-    for m in (64,):
-        for n in (16, 32, 64):
+    for k in k_tiles:
+        for fusion in fusions:
+            for m in (64,):
+                for n in (16, 32, 64):
+                    for cluster_m, cluster_n in cluster_shapes:
+                        instantiations.add(
+                            Instantiation(type_name, cpp_type, m, n, k, cluster_m, cluster_n, "pp", fusion)
+                        )
+
+            for n in (16, 32, 64):
+                for cluster_m, cluster_n in cluster_shapes:
+                    instantiations.add(
+                        Instantiation(type_name, cpp_type, 128, n, k, cluster_m, cluster_n, "pp", fusion)
+                    )
+                    instantiations.add(
+                        Instantiation(type_name, cpp_type, 128, n, k, cluster_m, cluster_n, "co", fusion)
+                    )
+
             for cluster_m, cluster_n in cluster_shapes:
-                instantiations.add(Instantiation(type_name, cpp_type, m, n, cluster_m, cluster_n, "pp"))
-
-    for n in (16, 32, 64):
-        for cluster_m, cluster_n in cluster_shapes:
-            instantiations.add(Instantiation(type_name, cpp_type, 128, n, cluster_m, cluster_n, "pp"))
-            instantiations.add(Instantiation(type_name, cpp_type, 128, n, cluster_m, cluster_n, "co"))
-
-    for cluster_m, cluster_n in cluster_shapes:
-        instantiations.add(Instantiation(type_name, cpp_type, 128, 128, cluster_m, cluster_n, "pp"))
+                instantiations.add(Instantiation(type_name, cpp_type, 128, 128, k, cluster_m, cluster_n, "pp", fusion))
 
 
 def get_instantiations() -> list[Instantiation]:
@@ -55,8 +67,11 @@ def get_instantiations() -> list[Instantiation]:
     add_full_build_configs(instantiations, "fp16", "half")
     add_full_build_configs(instantiations, "bf16", "__nv_bfloat16")
 
-    for n in (16, 32, 64, 128):
-        instantiations.add(Instantiation("fp16", "half", 128, n, 1, 1, "pp", quick_build=True))
+    # Quick-build: a subset of configs for faster compilation
+    for k in (128, 256):
+        for n in (16, 32, 64, 128):
+            instantiations.add(Instantiation("fp16", "half", 128, n, k, 1, 1, "pp", "none", quick_build=True))
+            instantiations.add(Instantiation("fp16", "half", 128, n, k, 1, 1, "pp", "finalize", quick_build=True))
 
     return sorted(instantiations)
 
@@ -66,11 +81,18 @@ def render(instantiation: Instantiation) -> str:
     bf16_close = "#endif  // ENABLE_BF16\n" if instantiation.type_name == "bf16" else ""
     quick_open = "" if instantiation.quick_build else "#ifndef ORT_QUICK_BUILD\n"
     quick_close = "" if instantiation.quick_build else "#endif  // !ORT_QUICK_BUILD\n"
-    macro = (
-        "ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_PP"
-        if instantiation.schedule == "pp"
-        else "ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_CO"
-    )
+
+    if instantiation.fusion == "finalize":
+        if instantiation.schedule == "pp":
+            macro = "ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_PP_FINALIZE"
+        else:
+            macro = "ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_CO_FINALIZE"
+    else:
+        macro = (
+            "ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_PP"
+            if instantiation.schedule == "pp"
+            else "ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_CO"
+        )
 
     return f"""/*
  * Copyright (c) Microsoft Corporation. All rights reserved.
@@ -85,7 +107,7 @@ def render(instantiation: Instantiation) -> str:
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {{
 
-{macro}({instantiation.cpp_type}, {instantiation.m}, {instantiation.n}, {TILE_K}, {instantiation.cluster_m}, {instantiation.cluster_n}, {CLUSTER_K});
+{macro}({instantiation.cpp_type}, {instantiation.m}, {instantiation.n}, {instantiation.k}, {instantiation.cluster_m}, {instantiation.cluster_n}, {CLUSTER_K});
 
 }}  // namespace onnxruntime::llm::kernels::cutlass_kernels
 

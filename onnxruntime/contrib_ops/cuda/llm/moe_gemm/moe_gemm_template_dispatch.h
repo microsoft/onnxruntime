@@ -643,15 +643,6 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
   }
 
   std::vector<cutlass_extensions::CutlassGemmConfig> tma_ws_configs = kernels::cutlass_kernels::get_candidate_configs(config_sm, max_split_k, config_type_param);
-  if constexpr (use_wfp4a16) {
-    tma_ws_configs.erase(
-        std::remove_if(tma_ws_configs.begin(), tma_ws_configs.end(), [](auto const& config) {
-          return config.sm_version == 90 &&
-                 (config.tile_config_sm90 != cutlass_extensions::CutlassTileConfigSM90::CtaShape128x32x128B ||
-                  config.cluster_shape != cutlass_extensions::ClusterShape::ClusterShape_1x1x1);
-        }),
-        tma_ws_configs.end());
-  }
   return tma_ws_configs;
 }
 
@@ -833,10 +824,39 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
 #endif
         ORT_ENFORCE(inputs.gemm_config.is_tma_warp_specialized,
                     "wfp4a16 is only supported for TMA warp specialization");
-        // EpilogueTag is ignored
-        sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
-                                                      cutlass_extensions::EpilogueOpDefault, 1>(
-            inputs, hopper_inputs, multi_processor_count_, nullptr);
+        // Select fusion and K tile based on runtime information
+        auto select_fusion = [&]() {
+          switch (hopper_inputs.fusion) {
+            case TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE:
+              if (inputs.k % 256 == 0) {
+                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
+                                                              cutlass_extensions::EpilogueOpDefault,
+                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE, 1>(
+                    inputs, hopper_inputs, multi_processor_count_, nullptr);
+              } else {
+                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
+                                                              cutlass_extensions::EpilogueOpDefault,
+                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE, 2>(
+                    inputs, hopper_inputs, multi_processor_count_, nullptr);
+              }
+              break;
+            case TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE:
+            default:
+              if (inputs.k % 256 == 0) {
+                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
+                                                              cutlass_extensions::EpilogueOpDefault,
+                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE, 1>(
+                    inputs, hopper_inputs, multi_processor_count_, nullptr);
+              } else {
+                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
+                                                              cutlass_extensions::EpilogueOpDefault,
+                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE, 2>(
+                    inputs, hopper_inputs, multi_processor_count_, nullptr);
+              }
+              break;
+          }
+        };
+        select_fusion();
         return;
 #ifdef ORT_QUICK_BUILD
       }
