@@ -333,7 +333,7 @@ def parse_arguments(argv=None):
     return args
 
 
-def _get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers):
+def get_sensitive_node_names(matmul_nodes: list[str], encoder_layers: int, decoder_layers: int):
     """Identify sensitive MatMul nodes that should use INT8 in k_quant_mixed.
 
     Follows the llama.cpp k-quant mixed strategy adapted for Whisper encoder-decoder:
@@ -351,17 +351,15 @@ def _get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers):
     Returns:
         list of node names that should be quantized to INT8.
     """
-
-    def _get_sensitive_layer_indices(num_layers):
-        """Select layers using the llama.cpp formula: first/last 12.5% + every 3rd in between."""
+    def get_sensitive_layer_indices(num_layers):
         return [
             i
             for i in range(num_layers)
             if i < num_layers / 8 or i >= 7 * num_layers / 8 or (i - round(num_layers / 8)) % 3 == 2
         ]
 
-    enc_sensitive_layers = set(_get_sensitive_layer_indices(encoder_layers))
-    dec_sensitive_layers = set(_get_sensitive_layer_indices(decoder_layers))
+    enc_sensitive_layers = set(get_sensitive_layer_indices(encoder_layers))
+    dec_sensitive_layers = set(get_sensitive_layer_indices(decoder_layers))
 
     # Patterns for sensitive MatMul types within a sensitive layer:
     # - Attention projections: q_proj, k_proj, v_proj (most sensitive to quantization)
@@ -411,7 +409,7 @@ def _get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers):
     return sensitive
 
 
-def make_quant_algo_config(precision, quant_method: str, matmul_nodes=None, encoder_layers=0, decoder_layers=0):
+def make_quant_algo_config(precision: Precision, quant_method: str, matmul_nodes: list[str] | None = None, encoder_layers: int = 0, decoder_layers: int = 0):
     """Create quantization algorithm config for Whisper models.
 
     Args:
@@ -432,7 +430,7 @@ def make_quant_algo_config(precision, quant_method: str, matmul_nodes=None, enco
             customized_weight_config[node_name] = {"bits": 8}
     elif precision == Precision.INT4 and quant_method == "k_quant_mixed":
         # k_quant_mixed: sensitive layers at INT8, rest at INT4
-        sensitive_names = _get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers)
+        sensitive_names = get_sensitive_node_names(matmul_nodes, encoder_layers, decoder_layers)
         for node_name in sensitive_names:
             customized_weight_config[node_name] = {"bits": 8}
         logger.info(
