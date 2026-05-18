@@ -77,8 +77,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
 
     // Wrap in BufferUniquePtr immediately to prevent leaks if MlasTranspose throws.
-    // We must capture a copy of alloc before moving it into the deleter.
-    transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(alloc));
+    transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(std::move(alloc)));
 
     // Initialize memory to 0 as there could be some padding associated with pre-packed
     // buffer memory and we don not want it uninitialized and generate different hashes
