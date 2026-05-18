@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "test_halfgemm.h"
+#include "core/mlas/lib/halfgemm.h"
 #if defined(USE_KLEIDIAI)
 #include "core/mlas/lib/mlasi.h"
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
@@ -24,6 +25,14 @@ Abstract:
 #include <stdexcept>
 #include <limits>
 #include <vector>
+
+namespace {
+
+struct HalfGemmPackBPaddingKernel {
+  static constexpr size_t PackedK = 4;
+};
+
+}  // namespace
 
 #if defined(USE_KLEIDIAI)
 namespace {
@@ -431,6 +440,31 @@ TEST(HalfGemmPackB, ReturnsZeroOnOverflow) {
   EXPECT_EQ(MlasHalfGemmPackBSize(max, 2, true), size_t{0});
 }
 
+TEST(HalfGemmPackB, CopyPackBZeroPadsAlignedKTail) {
+  constexpr size_t N = 5;
+  constexpr size_t K = 3;
+  constexpr size_t AlignedK = 4;
+
+  std::vector<_mlas_fp16_> b(K * N);
+  for (size_t i = 0; i < b.size(); ++i) {
+    b[i] = static_cast<_mlas_fp16_>(i + 1);
+  }
+
+  constexpr _mlas_fp16_ stale_tail_value = 0xFFFF;
+  std::vector<_mlas_fp16_> packed(AlignedK * N, stale_tail_value);
+
+  MlasHalfGemmCopyPackB<HalfGemmPackBPaddingKernel>(
+      packed.data(),
+      b.data(),
+      N,
+      N,
+      K);
+
+  for (size_t n = 0; n < N; ++n) {
+    EXPECT_EQ(packed[K * N + n], 0) << "n=" << n;
+  }
+}
+
 TEST(HalfGemmPackB, GenericPackedBFlagRunsOnFallback) {
   if (!MlasFp16AccelerationSupported()) {
     GTEST_SKIP();
@@ -682,7 +716,9 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithBiasThrows) {
   data.BIsBackendNativePacked = true;
 
   ASSERT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr, nullptr));
+#if !defined(ORT_NO_EXCEPTIONS)
   EXPECT_THROW(MlasHalfGemmBatch(M, N, K, 1, &data, nullptr, nullptr), std::runtime_error);
+#endif
 }
 
 TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithOutputProcessorThrows) {
@@ -727,7 +763,9 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithOutputProcessorThrows) {
   data.OutputProcessor = &output_processor;
 
   ASSERT_FALSE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr, nullptr));
+#if !defined(ORT_NO_EXCEPTIONS)
   EXPECT_THROW(MlasHalfGemmBatch(M, N, K, 1, &data, nullptr, nullptr), std::runtime_error);
+#endif
 }
 
 TEST(HalfGemmKleidiAIPath, ZeroKFallsBack) {

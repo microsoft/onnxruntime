@@ -33,7 +33,13 @@ static bool IsMLFloat16Tensor(const NodeArg& node_arg) {
   return IsTensorOfType<MLFloat16>(node_arg);
 }
 
-bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
+static bool HasCpuFloat32FallbackKernel(
+    const onnxruntime::Node& node,
+    const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
+    const logging::Logger& logger);
+
+bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input,
+                                           const logging::Logger& logger) const {
   // Returns true when this input is an fp16 input to an unassigned node that is eligible
   // for the cast-to-fp32 fallback path.
   //
@@ -41,7 +47,8 @@ bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const 
   // inputs safely requires additional checks of the subgraph boundaries and contents.
   return node->GetExecutionProviderType().empty() &&
          !node->ContainsSubgraph() &&
-         IsMLFloat16Tensor(*input);
+         IsMLFloat16Tensor(*input) &&
+         HasCpuFloat32FallbackKernel(*node, cpu_kernel_registries_, logger);
 }
 
 static bool HasFp16IO(const onnxruntime::Node& node) {
@@ -945,7 +952,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
     std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
     bool casted = false;
     for (auto input : inputs) {
-      if (NeedInsertCast(node, input)) {
+      if (NeedInsertCast(node, input, logger)) {
         auto src_arg = input;
         if (input_def_updates.count(src_arg)) {
           replacement_defs[src_arg] = input_def_updates[src_arg];

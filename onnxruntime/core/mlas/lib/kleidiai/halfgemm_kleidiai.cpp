@@ -4,9 +4,10 @@
 // SPDX-License-Identifier: MIT
 //
 
-#include <vector>
-#include <limits>
+#include <algorithm>
 #include <cstddef>
+#include <limits>
+#include <vector>
 #include "mlas.h"
 
 #include "mlasi_kleidiai.h"
@@ -130,6 +131,7 @@ ArmKleidiAI::MlasHalfGemmBatch(
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     // Validate all batch entries up front so we never partially execute and then
     // fall back (which would corrupt results for the already-written outputs).
+    bool needs_rhs_packing = false;
     for (size_t b = 0; b < BatchN; ++b) {
         const auto& data = DataParams[b];
         if (data.OutputProcessor != nullptr) {
@@ -141,6 +143,9 @@ ArmKleidiAI::MlasHalfGemmBatch(
         if (data.BIsBackendNativePacked && data.ldb != 0) {
             return false;
         }
+        // Native-packed RHS is consumed directly below. Only allocate the
+        // runtime RHS packing scratch when at least one batch entry needs it.
+        needs_rhs_packing = needs_rhs_packing || !data.BIsBackendNativePacked;
     }
 
     const auto& hgemm = GetKleidiAIHgemmUKernel();
@@ -158,7 +163,7 @@ ArmKleidiAI::MlasHalfGemmBatch(
     const float clamp_min = -std::numeric_limits<float>::infinity();
     const float clamp_max = std::numeric_limits<float>::infinity();
 
-    if (!TryResizeVector(g_kai_half_tls.rhs_packed, packed_rhs_size)) {
+    if (needs_rhs_packing && !TryResizeVector(g_kai_half_tls.rhs_packed, packed_rhs_size)) {
         return false;
     }
 

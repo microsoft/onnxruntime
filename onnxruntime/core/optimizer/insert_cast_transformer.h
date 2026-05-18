@@ -59,7 +59,8 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
 
  private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
-  bool NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const;
+  bool NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input,
+                      const logging::Logger& logger) const;
 
   const InlinedVector<gsl::not_null<const KernelRegistry*>> cpu_kernel_registries_;
 

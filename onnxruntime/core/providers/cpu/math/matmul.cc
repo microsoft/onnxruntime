@@ -130,7 +130,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   if (helper.K() == 0) {
     // When we have (M, 0, N) then the inputs are empty, but the output should
     // be filled out with zeros.
-    auto output_span = gsl::make_span(y->MutableData<T>(), y->Shape().Size());
+    auto output_span = gsl::make_span(y->MutableData<T>(), narrow<size_t>(y->Shape().Size()));
     std::fill(output_span.begin(), output_span.end(), T{});
     return Status::OK();
   }
@@ -393,7 +393,7 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
   }
 
   if (helper.K() == 0) {
-    auto output_span = gsl::make_span(y->MutableData<MLFloat16>(), y->Shape().Size());
+    auto output_span = gsl::make_span(y->MutableData<MLFloat16>(), narrow<size_t>(y->Shape().Size()));
     std::fill(output_span.begin(), output_span.end(), MLFloat16{});
     return Status::OK();
   }

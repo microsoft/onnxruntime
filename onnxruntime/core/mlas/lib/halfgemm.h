@@ -32,9 +32,11 @@ Abstract:
 
 #pragma once
 
-#include <cstdlib>
 #include <cassert>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <string>
 
 #include "mlasi.h"
@@ -112,25 +114,45 @@ MlasHalfGemmCopyPackB(
     size_t CountK
 )
 {
+    size_t aligned_count_k_input = 0;
+    if (MlasTryAddSizeT(CountK, KernelType::PackedK - 1, &aligned_count_k_input)) {
+        MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB aligned K overflow");
+    }
+    const size_t AlignedCountK = aligned_count_k_input & ~(KernelType::PackedK - 1);
+    size_t PaddingCountK = AlignedCountK - CountK;
+
     if (ldb == CountN) {
         size_t bytes_to_copy = 0;
-        ORT_ENFORCE(
-            !MlasTryMultiplySizeT(CountK, CountN, &bytes_to_copy) &&
-            !MlasTryMultiplySizeT(bytes_to_copy, sizeof(_mlas_fp16_), &bytes_to_copy),
-            "MlasHalfGemmCopyPackB size overflow");
+        if (MlasTryMultiplySizeT(CountK, CountN, &bytes_to_copy) ||
+            MlasTryMultiplySizeT(bytes_to_copy, sizeof(_mlas_fp16_), &bytes_to_copy)) {
+            MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB size overflow");
+        }
         std::memcpy(D, B, bytes_to_copy);
+        if (PaddingCountK > 0) {
+            size_t padding_bytes = 0;
+            if (MlasTryMultiplySizeT(PaddingCountK, CountN, &padding_bytes) ||
+                MlasTryMultiplySizeT(padding_bytes, sizeof(_mlas_fp16_), &padding_bytes)) {
+                MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB padding size overflow");
+            }
+            std::memset(D + CountK * CountN, 0, padding_bytes);
+        }
         return;
     }
 
     size_t row_bytes = 0;
-    ORT_ENFORCE(
-        !MlasTryMultiplySizeT(CountN, sizeof(_mlas_fp16_), &row_bytes),
-        "MlasHalfGemmCopyPackB row size overflow");
+    if (MlasTryMultiplySizeT(CountN, sizeof(_mlas_fp16_), &row_bytes)) {
+        MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB row size overflow");
+    }
     while (CountK > 0) {
         std::memcpy(D, B, row_bytes);
         B += ldb;
         D += CountN;
         CountK--;
+    }
+    while (PaddingCountK > 0) {
+        std::memset(D, 0, row_bytes);
+        D += CountN;
+        PaddingCountK--;
     }
 }
 
