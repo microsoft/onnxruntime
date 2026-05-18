@@ -1256,4 +1256,100 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
     }
   }
 }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(CApiTest, SparseTensorInvalidIndicesValidation) {
+  auto allocator = Ort::AllocatorWithDefaultOptions();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  // Common dense shape and values
+  const std::vector<int64_t> dense_shape{3, 3};
+  Ort::Value::Shape ort_dense_shape{dense_shape.data(), dense_shape.size()};
+  std::vector<int32_t> values = {1, 1, 1};
+  constexpr int64_t values_len = 3;
+
+  //
+  // COO Negative linear index
+  //
+  {
+    auto coo_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
+    std::vector<int64_t> linear_indices = {-1, 3, 5};
+    ASSERT_THROW(
+        coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {values.data()}},
+                                   linear_indices.data(), linear_indices.size()),
+        Ort::Exception);
+  }
+
+  //
+  // COO Linear index out of upper bounds
+  //
+  {
+    auto coo_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
+    std::vector<int64_t> linear_indices = {0, 3, 9};  // 9 is out of bounds for 3x3=9 (0-8)
+    ASSERT_THROW(
+        coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {values.data()}},
+                                   linear_indices.data(), linear_indices.size()),
+        Ort::Exception);
+  }
+
+  //
+  // COO 2D indices out of row bounds
+  //
+  {
+    auto coo_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
+    std::vector<int64_t> dim_indices = {
+        0, 1,  // Valid
+        3, 0,  // Invalid row 3
+        2, 2   // Valid
+    };
+    ASSERT_THROW(
+        coo_st.FillSparseTensorCoo(info, {&values_len, 1U, {values.data()}},
+                                   dim_indices.data(), dim_indices.size()),
+        Ort::Exception);
+  }
+
+  //
+  // CSR inner index out of column bounds
+  //
+  {
+    auto csr_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
+    std::vector<int64_t> inner_indices = {1, 3, 1};  // 3 is out of bounds for 3 cols (0-2)
+    std::vector<int64_t> outer_indices = {0, 1, 2, 3};
+    ASSERT_THROW(
+        csr_st.FillSparseTensorCsr(info, {&values_len, 1U, {values.data()}},
+                                   inner_indices.data(), inner_indices.size(),
+                                   outer_indices.data(), outer_indices.size()),
+        Ort::Exception);
+  }
+
+  //
+  // CSR outer index not monotonically non-decreasing
+  //
+  {
+    auto csr_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
+    std::vector<int64_t> inner_indices = {0, 1, 2};
+    std::vector<int64_t> outer_indices = {0, 2, 1, 3};  // Drops from 2 to 1
+    ASSERT_THROW(
+        csr_st.FillSparseTensorCsr(info, {&values_len, 1U, {values.data()}},
+                                   inner_indices.data(), inner_indices.size(),
+                                   outer_indices.data(), outer_indices.size()),
+        Ort::Exception);
+  }
+
+  //
+  // CSR outer index out of upper bounds (greater than inner_indices.size())
+  //
+  {
+    auto csr_st = Ort::Value::CreateSparseTensor<int32_t>(allocator, ort_dense_shape);
+    std::vector<int64_t> inner_indices = {0, 1, 2};
+    std::vector<int64_t> outer_indices = {0, 1, 2, 4};  // 4 is > inner_indices.size() (3)
+    ASSERT_THROW(
+        csr_st.FillSparseTensorCsr(info, {&values_len, 1U, {values.data()}},
+                                   inner_indices.data(), inner_indices.size(),
+                                   outer_indices.data(), outer_indices.size()),
+        Ort::Exception);
+  }
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)

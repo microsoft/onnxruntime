@@ -27,16 +27,26 @@ Abstract:
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#include <thread>
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+#include <riscv_vector.h>
+#endif
+
+#include <cctype>
+#include <cstdlib>
 #include <mutex>
+#include <thread>
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
 #include <sys/auxv.h>
 #elif defined(_AIX)
-#define POWER_10       0x40000
-#define POWER_10_ANDUP (POWER_10)
 #include <sys/systemcfg.h>
+#if !defined(POWER_10)
+#define POWER_10       0x40000
+#endif
+#if !defined(POWER_10_ANDUP)
+#define POWER_10_ANDUP (POWER_10)
+#endif
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
 #elif defined(__FreeBSD__)
 #include <machine/cpu.h>
@@ -48,6 +58,8 @@ Abstract:
 #if defined(MLAS_TARGET_S390X)
 #include <sys/auxv.h>
 #endif
+
+
 
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
@@ -264,6 +276,45 @@ Return Value:
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
+
+#if defined(MLAS_TARGET_RISCV64)
+    this->GemmFloatKernel = nullptr;
+    this->ErfKernelRoutine = MlasErfKernel;
+    this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+
+#if defined(MLAS_USE_RVV)
+    this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+
+    // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.
+    if (__riscv_vlenb() >= 16) {
+        this->NchwcBlockSize = 16;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelRvv;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelRvv;
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelRvv;
+    } else {
+        this->NchwcBlockSize = 1;
+        this->ConvNchwFloatKernel = nullptr;
+        this->ConvNchwcFloatKernel = nullptr;
+        this->ConvDepthwiseFloatKernel = nullptr;
+        this->ConvPointwiseFloatKernel = nullptr;
+        this->PoolFloatKernel[MlasMaximumPooling] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = nullptr;
+    }
+#endif
+#endif
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 

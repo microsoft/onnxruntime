@@ -50,6 +50,13 @@ function(filter_test_srcs test_srcs_var)
 endfunction()
 
 set(disabled_warnings)
+
+function(onnxruntime_disable_gtest_character_conversion_as_error target_name)
+  if (HAS_NO_ERROR_CHARACTER_CONVERSION)
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
+  endif()
+endfunction()
+
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   list(REMOVE_DUPLICATES _UT_SOURCES)
@@ -170,9 +177,7 @@ function(AddTest)
     if (${HAS_NOERROR})
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
     endif()
-    if (${HAS_CHARACTER_CONVERSION})
-      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
-    endif()
+    onnxruntime_disable_gtest_character_conversion_as_error(${_UT_TARGET})
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
@@ -847,9 +852,7 @@ if(MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-  if (HAS_CHARACTER_CONVERSION)
-    target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
-  endif()
+  onnxruntime_disable_gtest_character_conversion_as_error(onnxruntime_test_utils)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -1025,7 +1028,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
   list(REMOVE_ITEM all_tests
     "${TEST_SRC_DIR}/providers/cpu/reduction/reduction_ops_test.cc"
-    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc")
+    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test.cc"
+    "${TEST_SRC_DIR}/providers/cpu/tensor/grid_sample_test_custom.cc")
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
@@ -1400,6 +1404,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     SET(MLAS_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench)
     file(GLOB_RECURSE MLAS_BENCH_SOURCE_FILES "${MLAS_BENCH_DIR}/*.cpp" "${MLAS_BENCH_DIR}/*.h")
+    list(FILTER MLAS_BENCH_SOURCE_FILES EXCLUDE REGEX "${MLAS_BENCH_DIR}/riscv64/.*")
     onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES} ${ONNXRUNTIME_ROOT}/core/framework/error_code.cc)
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
@@ -1418,6 +1423,33 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE cpuinfo)
     endif()
     set_target_properties(onnxruntime_mlas_benchmark PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  endif()
+
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+    set(MLAS_RISCV64_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench/riscv64)
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_sgemm_riscv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/sgemm_riscv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_sgemm_riscv_bench PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_link_libraries(
+      onnxruntime_mlas_sgemm_riscv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_sgemm_riscv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_sgemm_riscv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_softmax_riscv_compare
+      ${MLAS_RISCV64_BENCH_DIR}/softmax_rvv_compare.cpp)
+    target_include_directories(
+      onnxruntime_mlas_softmax_riscv_compare
+      PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
+    target_link_libraries(
+      onnxruntime_mlas_softmax_riscv_compare
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_softmax_riscv_compare PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_softmax_riscv_compare PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   if(WIN32)

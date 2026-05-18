@@ -11,7 +11,7 @@
 # -------------------------------------------------------------------------
 
 """
-Shared utilities for ONNX Attention op (opset 23) tests.
+Shared utilities for ONNX Attention op (opset 23/24) tests.
 
 Contains configuration, ONNX graph builders, reference implementation,
 and parity check helpers used by both GQA and MHA test modules.
@@ -38,15 +38,10 @@ torch.manual_seed(0)
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
-# Number of values per parameter (compared to pipeline mode)
-param_count = int(os.getenv("PARAM_COUNT", "3")) if not pipeline_mode else 2
-
 # When quick build is used, flash attention only supports head_size=128
 quick_build = ", quick-build=" in get_build_info()
 
 enable_debug_print = quick_build
-
-enable_deterministic_check = True
 
 # #################################################################################################
 #  Configuration and Helper Classes
@@ -71,14 +66,6 @@ TORCH_DTYPE_TO_ONNX_MAP = {
     torch.int8: TensorProto.INT8,
 }
 
-TORCH_DTYPE_MAP = {
-    "float32": torch.float32,
-    "float16": torch.float16,
-    "bfloat16": torch.bfloat16,
-    "int8": torch.int8,
-    "int4": torch.uint8,
-}
-
 
 @dataclass
 class AttentionConfig:
@@ -88,6 +75,7 @@ class AttentionConfig:
     q_num_heads: int
     kv_num_heads: int
     head_size: int
+    v_head_size: int = 0  # 0 means same as head_size; set explicitly for asymmetric Q/V head sizes
     is_causal: int = 0
     past_kv_sequence_length: int = 0
     softcap: float = 0.0
@@ -110,12 +98,32 @@ def create_attention_node_and_io(
     config: AttentionConfig,
     ort_type,
     is_past=False,
-    output_qk: int = 0,  # CUDA does not support output_qk for GQA path
+    output_qk: int | None = None,
 ):
     """
     Create ONNX Attention op node and I/O definitions for testing.
 
-    ONNX Attention op (opset 23) inputs:
+    output_qk: when set to an int in {0, 1, 2, 3}, enables the optional 4th
+    output `output_qk` and sets the `qk_matmul_output_mode` attribute to that
+    value. The numbering uses the post-onnx#7913 spec semantics that this PR
+    establishes:
+        0 = kQK            (raw scale*QK pre-softcap)
+        1 = kPostSoftCap   (post-softcap, pre-mask/bias)
+        2 = kPostMaskBias  (post-mask/bias, pre-softmax)
+        3 = kPostSoftMax   (post-softmax)
+    When None (the default), the 4th output is not emitted and the attribute
+    defaults to 0. Any other int value (negative, or >= 4) raises an
+    AssertionError.
+
+    NOTE: API contract — `output_qk=None` (the default) DISABLES the 4th
+    output. `output_qk=k` for k in {0, 1, 2, 3} ENABLES it and selects the
+    corresponding mode (`output_qk=0` is raw-QK). Passing anything else —
+    including the C++ `kNone = -1` sentinel from attention_parameters.h, or
+    any unknown mode like `4`/`5` — raises immediately rather than silently
+    binding the 4th output (the unfused CUDA kernel would populate it as
+    raw-QK regardless of an out-of-range mode).
+
+    ONNX Attention op (opset 23/24) inputs:
     - 0: Q (query) - required
     - 1: K (key) - required
     - 2: V (value) - required
@@ -135,6 +143,9 @@ def create_attention_node_and_io(
     else:  # Prompt (no past KV cache)
         present_kv_seqlen = config.kv_sequence_length
 
+    # Effective v_head_size: defaults to head_size when not explicitly set
+    effective_v_head_size = config.v_head_size or config.head_size
+
     if not config.kv_cache_type:
         config.kv_cache_type = {
             TensorProto.FLOAT16: "float16",
@@ -149,7 +160,16 @@ def create_attention_node_and_io(
         "present_value",
     ]
 
-    if output_qk > 0:
+    # Strict validation: only None or one of the known QKMatMulOutputMode values
+    # {0, 1, 2, 3} is accepted. Anything else (including the C++ `kNone = -1`
+    # sentinel, or unknown modes like 4/5) raises immediately, so callers can't
+    # silently bind a 4th output the unfused CUDA kernel would populate as raw-QK.
+    if output_qk is not None:
+        assert output_qk in (0, 1, 2, 3), f"output_qk must be one of {{0, 1, 2, 3}} or None, got {output_qk!r}"
+        enable_output_qk = True
+    else:
+        enable_output_qk = False
+    if enable_output_qk:
         outputs.append("output_qk")
 
     # ONNX Attention op inputs: Q, K, V, attn_mask, past_key, past_value
@@ -168,7 +188,7 @@ def create_attention_node_and_io(
     while inputs and inputs[-1] == "":
         inputs.pop()
 
-    # ONNX Attention op attributes (opset 23)
+    # ONNX Attention op attributes (opset 23/24)
     node = helper.make_node(
         op_type="Attention",
         inputs=inputs,
@@ -178,7 +198,7 @@ def create_attention_node_and_io(
         kv_num_heads=config.kv_num_heads,
         q_num_heads=config.q_num_heads,
         softcap=config.softcap,
-        qk_matmul_output_mode=output_qk,
+        qk_matmul_output_mode=output_qk if enable_output_qk else 0,
         domain="",  # ai.onnx domain
     )
 
@@ -199,13 +219,14 @@ def create_attention_node_and_io(
             helper.make_tensor_value_info(
                 "value",
                 ort_type,
-                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, config.head_size],
+                [config.batch_size, config.kv_num_heads, config.kv_sequence_length, effective_v_head_size],
             ),
         ]
     else:
         # 3D inputs: [batch, seq_len, hidden_size]
         q_hidden_size = config.q_num_heads * config.head_size
         kv_hidden_size = config.kv_num_heads * config.head_size
+        v_hidden_size = config.kv_num_heads * effective_v_head_size
         graph_input = [
             helper.make_tensor_value_info(
                 "query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]
@@ -214,7 +235,7 @@ def create_attention_node_and_io(
                 "key", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
             ),
             helper.make_tensor_value_info(
-                "value", ort_type, [config.batch_size, config.kv_sequence_length, kv_hidden_size]
+                "value", ort_type, [config.batch_size, config.kv_sequence_length, v_hidden_size]
             ),
         ]
 
@@ -263,10 +284,11 @@ def create_attention_node_and_io(
     # Shape: [batch, num_heads, past_seq_len, head_size] (4D BNSH format)
     if is_past:
         past_k_shape = [config.batch_size, config.kv_num_heads, config.past_kv_sequence_length, config.head_size]
+        past_v_shape = [config.batch_size, config.kv_num_heads, config.past_kv_sequence_length, effective_v_head_size]
         graph_input.extend(
             [
                 helper.make_tensor_value_info("past_key", cache_ort_type, past_k_shape),
-                helper.make_tensor_value_info("past_value", cache_ort_type, past_k_shape),
+                helper.make_tensor_value_info("past_value", cache_ort_type, past_v_shape),
             ]
         )
 
@@ -276,19 +298,20 @@ def create_attention_node_and_io(
 
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
+    output_v_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, effective_v_head_size]
 
     if config.use_4d_bnsh:
-        output_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size]
+        output_shape = [config.batch_size, config.q_num_heads, config.q_sequence_length, effective_v_head_size]
     else:
-        output_shape = [config.batch_size, config.q_sequence_length, config.q_num_heads * config.head_size]
+        output_shape = [config.batch_size, config.q_sequence_length, config.q_num_heads * effective_v_head_size]
 
     graph_output = [
         helper.make_tensor_value_info("output", ort_type, output_shape),
         helper.make_tensor_value_info("present_key", cache_ort_type, output_k_shape),
-        helper.make_tensor_value_info("present_value", cache_ort_type, output_k_shape),
+        helper.make_tensor_value_info("present_value", cache_ort_type, output_v_shape),
     ]
 
-    if output_qk > 0:
+    if output_qk is not None:
         graph_output.append(
             helper.make_tensor_value_info(
                 "output_qk",
@@ -305,9 +328,9 @@ def _get_opset_version(config: AttentionConfig):
     return 24 if config.has_nonpad_kv_seqlen else 23
 
 
-def create_attention_graph_prompt(config: AttentionConfig, ort_type):
+def create_attention_graph_prompt(config: AttentionConfig, ort_type, output_qk: int | None = None):
     """Create ONNX graph for prompt phase (no past KV cache)."""
-    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False)
+    node, graph_input, graph_output = create_attention_node_and_io(config, ort_type, is_past=False, output_qk=output_qk)
     graph = helper.make_graph([node], "Attention_Graph", graph_input, graph_output)
     opset = _get_opset_version(config)
     model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
@@ -384,6 +407,7 @@ def attention_prompt_func(
     device,
     ort_type=TensorProto.FLOAT16,
     nonpad_kv_seqlen=None,
+    output_qk: int | None = None,
 ):
     """
     Run ONNX Attention op for prompt phase (no past KV cache).
@@ -398,6 +422,19 @@ def attention_prompt_func(
         device: Device string (e.g., "cuda")
         ort_type: ONNX tensor type
         nonpad_kv_seqlen: Optional int64 tensor [batch_size] for opset 24
+        output_qk: When set to an int in {0, 1, 2, 3}, enables the optional
+            4th output `output_qk` and sets the `qk_matmul_output_mode`
+            attribute to that value. The numbering is the post-onnx#7913
+            spec semantics established by this PR:
+                0 = kQK            (raw scale*QK pre-softcap)
+                1 = kPostSoftCap   (post-softcap, pre-mask/bias)
+                2 = kPostMaskBias  (post-mask/bias, pre-softmax)
+                3 = kPostSoftMax   (post-softmax)
+            The function then returns a 4-tuple
+            (out, present_k, present_v, qk) instead of the usual 3-tuple.
+            Pass None (the default) to DISABLE. Any other int value
+            (negative, or >= 4) raises an AssertionError; do NOT pass the
+            C++ `kNone = -1` sentinel — use Python `None`.
     """
     if not config.kv_cache_type:
         config.kv_cache_type = {
@@ -409,6 +446,7 @@ def attention_prompt_func(
     onnx_model_str = create_attention_graph_prompt(
         config=config,
         ort_type=ort_type,
+        output_qk=output_qk,
     )
 
     # Reshape inputs for ONNX graph
@@ -447,24 +485,26 @@ def attention_prompt_func(
         bind_tensor(io_binding, "nonpad_kv_seqlen", nonpad_kv_seqlen, device, TensorProto.INT64)
 
     # Bind Outputs
-    hidden_size = config.q_num_heads * config.head_size
+    effective_v_head_size = config.v_head_size or config.head_size
+    output_hidden_size = config.q_num_heads * effective_v_head_size
     out_dtype = _get_out_dtype(ort_type)
 
     if config.use_4d_bnsh:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, effective_v_head_size),
             dtype=out_dtype,
             device=device,
         )
     else:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device
+            (config.batch_size, config.q_sequence_length, output_hidden_size), dtype=out_dtype, device=device
         )
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape for prompt (no past)
     present_seqlen = config.kv_sequence_length
-    present_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_k_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_v_dims = [config.batch_size, config.kv_num_heads, present_seqlen, effective_v_head_size]
 
     # Determine dtype for cache tensors
     cache_dtype = out_dtype
@@ -473,13 +513,34 @@ def attention_prompt_func(
     else:
         cache_ort_type = ONNX_TENSOR_TYPE_MAP[config.kv_cache_type]
 
-    present_k = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
-    present_v = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
+    present_k = torch.zeros(tuple(present_k_dims), dtype=cache_dtype, device=device)
+    present_v = torch.zeros(tuple(present_v_dims), dtype=cache_dtype, device=device)
     bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
-    ort_session.run_with_iobinding(io_binding)
+    output_qk_tensor = None
+    # `create_attention_node_and_io` (called above via `create_attention_graph_prompt`)
+    # has already validated `output_qk in {0, 1, 2, 3}` or None. Just gate on `is not None`.
+    output_qk_enabled = output_qk is not None
+    if output_qk_enabled:
+        output_qk_tensor = torch.zeros(
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.kv_sequence_length),
+            dtype=out_dtype,
+            device=device,
+        )
+        bind_output_tensor(io_binding, "output_qk", output_qk_tensor, device, ort_type)
 
+    ort_session.run_with_iobinding(io_binding)
+    # run_with_iobinding() is asynchronous on CUDA: ORT submits work to its own
+    # CUDA stream and returns. The torch tensors we hand back live on torch's
+    # default stream, so reading them without an explicit cross-stream sync can
+    # observe partially-written GPU memory under load (e.g., full-suite runs).
+    # synchronize_outputs() blocks until ORT's stream is done writing the bound
+    # output tensors, eliminating that read-before-write race.
+    io_binding.synchronize_outputs()
+
+    if output_qk_enabled:
+        return out_torch, present_k, present_v, output_qk_tensor
     return out_torch, present_k, present_v
 
 
@@ -565,32 +626,37 @@ def attention_past_func(
     bind_tensor(io_binding, "past_value", past_v_sliced, device, cache_ort_type)
 
     # Bind Outputs
-    hidden_size = config.q_num_heads * config.head_size
+    effective_v_head_size = config.v_head_size or config.head_size
+    output_hidden_size = config.q_num_heads * effective_v_head_size
     out_dtype = _get_out_dtype(ort_type)
 
     if config.use_4d_bnsh:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_num_heads, config.q_sequence_length, config.head_size),
+            (config.batch_size, config.q_num_heads, config.q_sequence_length, effective_v_head_size),
             dtype=out_dtype,
             device=device,
         )
     else:
         out_torch = torch.zeros(
-            (config.batch_size, config.q_sequence_length, hidden_size), dtype=out_dtype, device=device
+            (config.batch_size, config.q_sequence_length, output_hidden_size), dtype=out_dtype, device=device
         )
     bind_output_tensor(io_binding, "output", out_torch, device, ort_type)
 
     # present KV shape (past + new)
     present_seqlen = total_seq_len
-    present_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_k_dims = [config.batch_size, config.kv_num_heads, present_seqlen, config.head_size]
+    present_v_dims = [config.batch_size, config.kv_num_heads, present_seqlen, effective_v_head_size]
 
     cache_dtype = out_dtype
-    present_k = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
-    present_v = torch.zeros(tuple(present_dims), dtype=cache_dtype, device=device)
+    present_k = torch.zeros(tuple(present_k_dims), dtype=cache_dtype, device=device)
+    present_v = torch.zeros(tuple(present_v_dims), dtype=cache_dtype, device=device)
     bind_output_tensor(io_binding, "present_key", present_k, device, cache_ort_type)
     bind_output_tensor(io_binding, "present_value", present_v, device, cache_ort_type)
 
     ort_session.run_with_iobinding(io_binding)
+    # See note above attention_prompt_func's run_with_iobinding call: this sync
+    # is required to avoid a read-before-write race on torch's default stream.
+    io_binding.synchronize_outputs()
 
     return out_torch, present_k, present_v
 
@@ -645,6 +711,9 @@ def attention_ref(
 
     scores = torch.einsum("bthd,bshd->bhts", q, k) / math.sqrt(q.shape[-1])
 
+    # Corrected ordering per onnx/onnx#7867: QK → softcap → add bias/mask → softmax
+    # Softcap must be applied before mask so that -inf mask values are not
+    # squashed to finite -softcap, which would leak probability to masked positions.
     if softcap > 0:
         scores = (scores / softcap).tanh() * softcap
 

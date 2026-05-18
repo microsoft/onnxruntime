@@ -31,6 +31,7 @@
 #include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/tensor/expand.h"
+#include "core/providers/webgpu/tensor/grid_sample.h"
 #include "core/providers/webgpu/generator/range.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 
@@ -448,6 +449,8 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 15, ScatterElements)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 17, ScatterElements)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ScatterElements)>,
+
+    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 16, 19, GridSample)>,
 };
 
 std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool enable_int64) {
@@ -713,6 +716,11 @@ std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::s
                                                                           DataLayout target_data_layout) const {
   // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
   if (node_domain == kOnnxDomain && node_op_type == "Resize") {
+    return target_data_layout != DataLayout::NHWC;
+  }
+
+  // GridSample is NCHW-only (opset 16 spec requires NCHW input)
+  if (node_domain == kOnnxDomain && node_op_type == "GridSample") {
     return target_data_layout != DataLayout::NHWC;
   }
 

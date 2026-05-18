@@ -9,6 +9,9 @@ set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 # mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
 # use internal MLAS headers like mlasi.h.
 set(mlas_private_compile_definitions)
+if(onnxruntime_BUILD_UNIT_TESTS)
+  list(APPEND mlas_private_compile_definitions MLAS_ENABLE_TEST_HOOKS)
+endif()
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -435,6 +438,8 @@ else()
           set(X86 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
           set(X86_64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+          set(RISCV64 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
           set(LOONGARCH64 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
@@ -631,9 +636,13 @@ else()
             enable_language(ASM)
             check_cxx_source_compiles("
               #ifdef _AIX
-              #define POWER_10       0x40000
-              #define POWER_10_ANDUP (POWER_10)
               #include <sys/systemcfg.h>
+              #if !defined(POWER_10)
+              #define POWER_10       0x40000
+              #endif
+              #if !defined(POWER_10_ANDUP)
+              #define POWER_10_ANDUP (POWER_10)
+              #endif
               #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
               int main() {
                 bool HasP10 = (__power_10_andup() && __power_mma_version() == MMA_V31);
@@ -898,6 +907,59 @@ endif()
         set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
         set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mvx -mzvector -march=z15")
+
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(RISCV64 AND MLAS_SOURCE_IS_NOT_SET)
+        file(GLOB_RECURSE mlas_platform_srcs CONFIGURE_DEPENDS
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
+        # Remove scalar depthwise kernel; replaced by the vectorized version
+        list(REMOVE_ITEM mlas_platform_srcs
+          "${MLAS_SRC_DIR}/scalar/SconvDepthwiseKernelScalar.cpp")
+        list(APPEND mlas_platform_srcs
+          ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp)
+
+        if(onnxruntime_USE_RVV)
+          set(OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS} -march=rv64gcv -mabi=lp64d")
+          check_cxx_source_compiles("
+            #include <stddef.h>
+            #include <riscv_vector.h>
+            int main() {
+              size_t vl = __riscv_vsetvl_e32m1(4);
+              return static_cast<int>(vl == 0);
+            }"
+            HAS_RISCV64_RVV
+          )
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS}")
+          unset(OLD_CMAKE_REQUIRED_FLAGS)
+
+          if(HAS_RISCV64_RVV)
+            list(APPEND mlas_platform_srcs
+              ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
+            )
+            list(REMOVE_ITEM mlas_platform_srcs
+              "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
+            set_source_files_properties(
+              ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
+              PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
+            list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
+          else()
+            message(
+              WARNING
+              "onnxruntime_USE_RVV was requested, but the compiler does not support rv64gcv RVV intrinsics. Falling back to scalar MLAS kernels.")
+          endif()
+        endif()
 
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)

@@ -293,6 +293,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     base_opts.output_abs_error = 0.1f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
     base_opts.output_abs_error = 0.055f;
+  } else {
+    base_opts.output_abs_error = 0.05f;
   }
 
   if (rel_error.has_value()) {
@@ -300,6 +302,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   } else if (base_opts.accuracy_level == 4) {
     base_opts.output_rel_error = 0.02f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
+    base_opts.output_rel_error = 0.02f;
+  } else {
     base_opts.output_rel_error = 0.02f;
   }
 
@@ -356,8 +360,6 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   }
 #endif
 }
-
-#if !defined(USE_OPENVINO)
 
 TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
@@ -465,6 +467,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 0>();
 }
 
 TEST(MatMulNBits, Float16_4b_Accuracy4) {
@@ -495,6 +499,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 4>();
 
   // See PR #27412 for details on the following test case,
   // which is added to cover a specific failure case in the past.
@@ -591,7 +597,6 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
   RunTest<float>(opts);
 }
 
-#endif
 #endif
 #endif
 

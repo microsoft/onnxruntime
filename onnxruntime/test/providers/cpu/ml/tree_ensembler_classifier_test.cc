@@ -367,6 +367,88 @@ TEST(MLOpTest, TreeEnsembleClassifierBinaryProbabilities) {
   test.Run();
 }
 
+// Test that LOGISTIC transform is correctly applied when all leaf weights are non-negative
+// (weights_are_all_positive_ = true). This is a regression test for the case where
+// TreeEnsembleClassifier with post_transform=LOGISTIC would skip the sigmoid transformation
+// for leaf-only trees when all weights are non-negative.
+TEST(MLOpTest, TreeEnsembleClassifierBinaryLogisticAllPositiveWeights) {
+  // Leaf-only tree (single leaf node) with all positive weights.
+  // All inputs hit the same leaf, so output is determined by leaf weight + base_value.
+  std::vector<int64_t> treeids = {0};
+  std::vector<int64_t> nodeids = {0};
+  std::vector<int64_t> featureids = {0};
+  std::vector<float> thresholds = {0.0f};
+  std::vector<std::string> modes = {"LEAF"};
+  std::vector<int64_t> truenodeids = {-1};
+  std::vector<int64_t> falsenodeids = {-1};
+  std::vector<int64_t> missing_tracks = {0};
+  std::vector<float> hitrates = {1.0f};
+
+  std::vector<int64_t> class_treeids = {0};
+  std::vector<int64_t> class_nodeids = {0};
+  std::vector<int64_t> class_ids = {0};
+  // All positive weights -> weights_are_all_positive_ = true
+  std::vector<float> class_weights = {1.0f};
+  std::vector<int64_t> classes = {0, 1};
+
+  // Test 1: aggregate score > 0 (no base_values, score = leaf_weight = 1.0)
+  // Expected: sigmoid is applied, [sigmoid(-1.0), sigmoid(1.0)] = [0.26894142, 0.73105859]
+  {
+    OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+    test.AddAttribute("nodes_treeids", treeids);
+    test.AddAttribute("nodes_nodeids", nodeids);
+    test.AddAttribute("nodes_featureids", featureids);
+    test.AddAttribute("nodes_values", thresholds);
+    test.AddAttribute("nodes_modes", modes);
+    test.AddAttribute("nodes_truenodeids", truenodeids);
+    test.AddAttribute("nodes_falsenodeids", falsenodeids);
+    test.AddAttribute("nodes_missing_value_tracks_true", missing_tracks);
+    test.AddAttribute("nodes_hitrates", hitrates);
+    test.AddAttribute("class_treeids", class_treeids);
+    test.AddAttribute("class_nodeids", class_nodeids);
+    test.AddAttribute("class_ids", class_ids);
+    test.AddAttribute("class_weights", class_weights);
+    test.AddAttribute("classlabels_int64s", classes);
+    test.AddAttribute("post_transform", "LOGISTIC");
+
+    // 2 identical samples, single feature
+    test.AddInput<float>("X", {2, 1}, {0.5f, 0.5f});
+    test.AddOutput<int64_t>("Y", {2}, {1, 1});
+    // sigmoid(1.0) = 0.73105859f, sigmoid(-1.0) = 0.26894142f
+    test.AddOutput<float>("Z", {2, 2}, {0.26894142f, 0.73105859f, 0.26894142f, 0.73105859f});
+    test.Run();
+  }
+
+  // Test 2: aggregate score < 0 (base_value=-2.0, score = 1.0 + (-2.0) = -1.0)
+  // Expected: sigmoid is applied, [sigmoid(1.0), sigmoid(-1.0)] = [0.73105859, 0.26894142]
+  {
+    OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
+    test.AddAttribute("nodes_treeids", treeids);
+    test.AddAttribute("nodes_nodeids", nodeids);
+    test.AddAttribute("nodes_featureids", featureids);
+    test.AddAttribute("nodes_values", thresholds);
+    test.AddAttribute("nodes_modes", modes);
+    test.AddAttribute("nodes_truenodeids", truenodeids);
+    test.AddAttribute("nodes_falsenodeids", falsenodeids);
+    test.AddAttribute("nodes_missing_value_tracks_true", missing_tracks);
+    test.AddAttribute("nodes_hitrates", hitrates);
+    test.AddAttribute("class_treeids", class_treeids);
+    test.AddAttribute("class_nodeids", class_nodeids);
+    test.AddAttribute("class_ids", class_ids);
+    test.AddAttribute("class_weights", class_weights);
+    test.AddAttribute("classlabels_int64s", classes);
+    test.AddAttribute("base_values", std::vector<float>{-2.0f});
+    test.AddAttribute("post_transform", "LOGISTIC");
+
+    // 2 identical samples, single feature
+    test.AddInput<float>("X", {2, 1}, {0.5f, 0.5f});
+    test.AddOutput<int64_t>("Y", {2}, {0, 0});
+    // sigmoid(-1.0) = 0.26894142f, sigmoid(1.0) = 0.73105859f
+    test.AddOutput<float>("Z", {2, 2}, {0.73105859f, 0.26894142f, 0.73105859f, 0.26894142f});
+    test.Run();
+  }
+}
+
 TEST(MLOpTest, TreeEnsembleClassifierMismatchedClassArrays) {
   OpTester test("TreeEnsembleClassifier", 1, onnxruntime::kMLDomain);
 
