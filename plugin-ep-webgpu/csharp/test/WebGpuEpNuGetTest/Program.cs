@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.EP.WebGpu;
 
