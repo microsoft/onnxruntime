@@ -1,4 +1,4 @@
-# v4 Model Package CLI — reference materials
+# Model Package CLI — reference materials
 
 This directory contains:
 
@@ -10,7 +10,7 @@ This directory contains:
   `strip_runtime_fields`, …). Importable as a library and runnable as a CLI:
   `python mp_tool.py inspect <pkg>`.
 - **`build_packages.py`** — Worked example that uses `mp_tool` to build
-  four reference v4 packages from raw model directories. Also exercises
+  four reference packages from raw model directories. Also exercises
   multi-file (QNN), multi-component (whisper, nemotron, qwen3-vl), and
   mock variants (phi trtrtx-gpu sourced from qwen2.5).
 
@@ -19,7 +19,7 @@ Run:
 python build_packages.py
 ```
 to (re-)create the four packages under
-`packages/`. Symlinks are used by
+`../packages/`. Symlinks are used by
 default for large ONNX / data files; pass `--copy` to deep-copy.
 
 ## Round-trip verification
@@ -35,17 +35,19 @@ production but referenced here for posterity).
 
 | Package | Components | Variants | Notes |
 | --- | --- | --- | --- |
-| `phi-4-mini-reasoning.v4.ortpackage` | decoder | cpu, cuda, webgpu, vitis-npu, openvino-gpu, openvino-npu, qnn-npu, trtrtx-gpu (mock) | Single-component, multi-EP. QNN is a 4-file pipeline. trtrtx-gpu is a mock for ABI/wiring tests only. |
-| `openai-whisper-small.v4.ortpackage` | encoder, decoder, jump_times | cpu (fp32), cuda (fp16) | Demonstrates per-component overlay split. `jump_times` is an auxiliary component (not a session input). |
-| `nemotron-speech-streaming-en-0.6b.v4.ortpackage` | encoder, decoder, joiner, vad | cpu only | 4-component RNN-T streaming demo. Single variant ⇒ all overlays empty. |
-| `qwen3-vl-2b-instruct.v4.ortpackage` | vision, embedding, decoder | cpu, cuda | Multimodal package; vision points at `processor_config.json` in `configs/`. |
+| `phi-4-mini-reasoning.ortpackage` | decoder | cpu, cuda, webgpu, vitis-npu, openvino-gpu, openvino-npu, qnn-npu, trtrtx-gpu (mock) | Single-component, multi-EP. QNN is a 4-file pipeline. trtrtx-gpu is a mock for ABI/wiring tests only. |
+| `openai-whisper-small.ortpackage` | encoder, decoder, jump_times | cpu (fp32), cuda (fp16) | Demonstrates per-component overlay split. `jump_times` is an auxiliary component (not a session input). |
+| `nemotron-speech-streaming-en-0.6b.ortpackage` | encoder, decoder, joiner, vad | cpu only | 4-component RNN-T streaming demo. Single variant ⇒ all overlays empty. |
+| `qwen3-vl-2b-instruct.ortpackage` | vision, embedding, decoder | cpu, cuda | Multimodal package; vision points at `processor_config.json` in `configs/`. |
 
 ## Open questions flagged for review
 
-1. `manifest.json` uses `schema_version` (was `format_version` in v3). OK?
-2. `metadata.json` `ep_compatibility` is now a map keyed by EP name with a
-   list of compat strings (was per-file in v3). Empty list = no extra
-   refinement. Confirm.
+1. `manifest.json` uses `schema_version`. OK?
+2. `metadata.json` `ep_compatibility` is a list of `{ep, device?,
+   compatibility?}` entries per variant. The inner `compatibility_string` is a
+   single opaque string (or omitted) — variants covering multiple compile
+   targets for one EP encode them inside that string using an EP-defined
+   syntax. Confirm.
 3. Mock TRT variant uses qwen2.5's ONNX as the file content. The overlay
    carries a `_mock` marker. Should we add a more formal `mock: true` flag
    to `metadata.json` so EP scoring can avoid auto-selecting mock variants

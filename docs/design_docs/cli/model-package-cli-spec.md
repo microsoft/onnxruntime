@@ -1,6 +1,6 @@
-# Olive `olive` CLI Spec for v4 Model Packages
+# Olive `olive` CLI Spec for Model Packages
 
-This document specifies the CLI surface for creating v4 model packages from
+This document specifies the CLI surface for creating model packages from
 flat-directory model dirs, designed to be implemented as `olive` subcommands
 in the Olive toolkit.
 
@@ -10,7 +10,7 @@ four reference packages.
 
 **Scope.** This spec defines two subcommands only: `create` and `add`. The
 intent is that a user can take a stack of flat-directory model dirs (one per
-EP build) and assemble a v4 package incrementally without ever editing JSON
+EP build) and assemble a package incrementally without ever editing JSON
 by hand. Re-canonicalizing the base config (`merge`), splitting back out to
 flat dirs (`unmerge`), validation, inspection, etc. are out of scope for the
 first cut and listed under [Open follow-ups](#open-follow-ups).
@@ -36,16 +36,16 @@ first cut and listed under [Open follow-ups](#open-follow-ups).
 
 ---
 
-## File schemas (v4, schema_version `1.0`)
+## File schemas (schema_version `1`)
 
 ### `manifest.json`
 ```jsonc
 {
-  "schema_version": "1.0",
+  "schema_version": 1,
   "package_name": "<string>",
   "package_version": "1.0",
   "description": "<string>",
-  "components": [{"name": "<string>", "metadata": "<rel-path>"}],
+  "components": ["<string>"],
   "configs_dir": "configs"
 }
 ```
@@ -54,7 +54,7 @@ first cut and listed under [Open follow-ups](#open-follow-ups).
 Selection-only — never carries per-file detail.
 ```jsonc
 {
-  "schema_version": "1.0",
+  "schema_version": 1,
   "component_name": "<string>",
   "variants": {
     "<variant-name>": {
@@ -62,7 +62,7 @@ Selection-only — never carries per-file detail.
         {
           "ep": "<EpName>",
           "device": "<id>",          // optional, EP-specific (e.g. "GPU", "NPU")
-          "compatibility": ["<str>", ...]  // optional, EP-side preference strings
+          "compatibility_string": "<str>"   // optional, single opaque EP-side preference string
         }
       ]
     }
@@ -71,15 +71,18 @@ Selection-only — never carries per-file detail.
 ```
 `ep_compatibility` is a list — a variant may be compatible with multiple
 EPs (e.g. CUDA + CPU fallback). Each entry pins an `ep` and optionally a
-`device` and a list of EP-side compatibility strings. Empty / missing
-`compatibility` means *EP-default, no extra refinement*. The selection
+`device` and a single opaque EP-side compatibility string. Empty / missing
+`compatibility_string` means *EP-default, no extra refinement*. The selection
 algorithm filters by `ep` (and `device` if specified), then asks the
-chosen EP to score the matching variants by their `compatibility` lists.
+chosen EP to disambiguate matching variants by their `compatibility_string`
+strings. If a variant covers multiple compile targets for one EP, the
+producer encodes them inside the single string in an EP-defined syntax
+(e.g. comma-separated SoC list); ORT does not interpret the encoding.
 
 ### `<component>/<variant>/variant.json`
 ```jsonc
 {
-  "schema_version": "1.0",
+  "schema_version": 1,
   "files": [
     {
       "filename": "<basename>",
@@ -127,7 +130,7 @@ listed in `shared_files` are assumed to live next to the .onnx.
 
 ### `olive model-package create`
 
-Initialize a new v4 package from a single flat-directory model dir. The flat
+Initialize a new package from a single flat-directory model dir. The flat
 dir is the legacy GenAI shape: a `genai_config.json`, one or more `.onnx`
 files (with `.data` / `.bin` / `.xml` siblings as needed), and tokenizer /
 processor / chat-template files alongside.
@@ -193,19 +196,19 @@ What `create` does:
 
 ### `olive model-package add`
 
-Append a new EP variant to an existing v4 package, sourcing it from a second
+Append a new EP variant to an existing package, sourcing it from a second
 flat-directory model dir.
 
 ```
 olive model-package add <pkg-dir> <flat-dir> \
   --variant <variant-name> \
-  --ep <EpName> [--device <id>] [--compat <str> ...] \
+  --ep <EpName> [--device <id>] [--compat <str>] \
   [--symlink|--copy]
 ```
 
 What `add` does:
 
-1. Validate `<pkg-dir>` looks like a v4 package (`manifest.json` present,
+1. Validate `<pkg-dir>` looks like a model package (`manifest.json` present,
    `configs/genai_config.json` present).
 2. Parse `<flat-dir>/genai_config.json` and discover its roles (same logic
    as `create`).
@@ -254,7 +257,7 @@ follow-up.
 Both `create` and `add` produce per-component overlays whose patches are
 applied independently to the package base by the consumer. When two
 components write the same top-level key (e.g. `model.context_length`)
-with different values, the v4 design says the **primary component** wins
+with different values, the design says the **primary component** wins
 at consumer-side merge time. The mapping is encoded in
 `mp_tool.PRIMARY_ROLE_FOR_TYPE`:
 
@@ -313,10 +316,10 @@ expected to land later:
    reserved. The CLI should learn to detect identical external-data blobs
    across variants, hash them, and dedupe into `<component>/shared_weights/<sha256>/`
    with `shared_files` pointers.
-5. **Manifest signing**: the v4 design hints at a `manifest.sig` for
+5. **Manifest signing**: the design hints at a `manifest.sig` for
    provenance. Out of scope for the reference impl.
 6. **Olive integration tests**: when wiring into `olive`, add fixture
    packages (small test ONNX) covering single- and multi-component cases.
 7. **Authoring from Olive workflow output**: extend Olive's existing
-   `generate-model-package` (in `olive/cli/model_package.py`) to emit v4
-   format directly when `--format v4` is passed.
+   `generate-model-package` (in `olive/cli/model_package.py`) to emit the
+   model package format directly when `--format ortpackage` is passed.

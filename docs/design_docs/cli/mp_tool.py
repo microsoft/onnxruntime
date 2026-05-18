@@ -1,10 +1,10 @@
-"""mp_tool — reference implementation for v4 model package authoring.
+"""mp_tool — reference implementation for model package authoring.
 
-This module provides primitives for creating, merging, and splitting v4 model
+This module provides primitives for creating, merging, and splitting model
 packages. It is designed to be usable both as a standalone CLI script and as
 a library that can be wrapped by Olive's `olive` CLI later.
 
-Layout produced (per the v4 design proposal):
+Layout produced (per the design proposal):
 
     <package>/
     ├── manifest.json
@@ -36,7 +36,7 @@ from typing import Any
 
 logger = logging.getLogger("mp_tool")
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = 1
 LARGE_FILE_SUFFIXES = {".onnx", ".data", ".bin", ".xml", ".so", ".dll", ".dylib"}
 CONFIG_FILE_PATTERNS = {
     "genai_config.json", "tokenizer.json", "tokenizer_config.json",
@@ -143,7 +143,7 @@ def diff_patch(base: Any, target: Any) -> Any:
 def strip_runtime_fields(genai: dict) -> dict:
     """Remove runtime fields from a source genai_config.
 
-    Under v4, these facts live in variant.json (per-file SO/PO and external data),
+    These facts live in variant.json (per-file SO/PO and external data),
     not in the genai_config tree:
       - `session_options` (anywhere in the tree)
       - top-level `model.<role>.filename` (a single-file role's filename is named by
@@ -192,8 +192,8 @@ def extract_runtime_fields(genai: dict, role: str) -> tuple[dict | None, list[di
                if k not in ("provider_options", "log_id")}
 
     # provider_options in source is a list of single-key dicts: [{"cuda": {...}}, {"webgpu": {...}}]
-    # Convert to v4 shape: flat {key: value} dict scoped to the selected EP.
-    # If the source has multiple entries (rare), only the first is used; v4 variants
+    # Convert to variant shape: flat {key: value} dict scoped to the selected EP.
+    # If the source has multiple entries (rare), only the first is used; variants
     # are EP-specific so multi-EP po is not meaningful at the variant level.
     po_flat: dict = {}
     for entry in po_src:
@@ -320,9 +320,11 @@ class PackageBuilder:
 
         `ep_compatibility` is a list of `{ep, device?, compatibility?}` entries.
         Each entry advertises that this variant works with the named EP, optionally
-        targeting a specific device id (e.g. "GPU", "NPU"), with an optional list
-        of EP-side compatibility strings the EP can use to choose between matching
-        variants. `files` items: {filename, source_path,
+        targeting a specific device id (e.g. "GPU", "NPU"), with an optional
+        single opaque EP-side compatibility string the EP can use to choose
+        between matching variants. If a variant covers multiple compile targets
+        for one EP (e.g. several QNN SoCs), encode them inside the single string
+        using whatever syntax the EP defines. `files` items: {filename, source_path,
         session_options?, provider_options?, colocated_files?, shared_files?}.
         """
         comp = self._components.setdefault(component, {})
@@ -362,9 +364,12 @@ class PackageBuilder:
             else:
                 install_file(src, dst, link=False)  # always copy small config files
 
-        # 2. components & variants
+        # 2. components & variants (under reserved models/ subdir)
+        models_dir = self.pkg_dir / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+
         for component_name, variants in self._components.items():
-            comp_dir = self.pkg_dir / component_name
+            comp_dir = models_dir / component_name
             comp_dir.mkdir(parents=True, exist_ok=True)
 
             metadata_variants: dict[str, dict] = {}
@@ -382,10 +387,7 @@ class PackageBuilder:
             write_json(comp_dir / "metadata.json", metadata)
 
         # 3. manifest
-        components = [
-            {"name": name, "metadata": f"{name}/metadata.json"}
-            for name in self._components
-        ]
+        components = list(self._components.keys())
         manifest = {
             "schema_version": SCHEMA_VERSION,
             "package_name": self.package_name,
@@ -399,7 +401,7 @@ class PackageBuilder:
     def _write_variant(self, comp_dir: Path, variant_name: str, vdata: dict) -> None:
         """Install variant files and emit variant.json.
 
-        Note: per the v4 spec, variant.json `files[]` entries do NOT enumerate
+        Note: per the spec, variant.json `files[]` entries do NOT enumerate
         external-data files. ORT discovers them from the ONNX graph's internal
         references. We still install them alongside the .onnx at authoring time
         (driven by the recipe's `colocated_files` list, formerly
@@ -432,7 +434,7 @@ class PackageBuilder:
             if file_spec.get("provider_options"):
                 entry["provider_options"] = file_spec["provider_options"]
             if file_spec.get("shared_files"):
-                # {graph_filename: checksum} per v4 spec
+                # {graph_filename: checksum} per spec
                 entry["shared_files"] = file_spec["shared_files"]
             files_entries.append(entry)
 
@@ -504,11 +506,11 @@ def _cli_inspect(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="v4 model package authoring tool (reference impl)")
+    parser = argparse.ArgumentParser(description="Model package authoring tool (reference impl)")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_insp = sub.add_parser("inspect", help="Print manifest + per-component metadata")
-    p_insp.add_argument("package", help="Path to a v4 model package directory")
+    p_insp.add_argument("package", help="Path to a model package directory")
     p_insp.set_defaults(func=_cli_inspect)
 
     args = parser.parse_args(argv)

@@ -1,9 +1,9 @@
-"""Build the four reference v4 model packages.
+"""Build the four reference model packages.
 
 Run from anywhere:
     python build_packages.py [--copy] [--out <dir>]
 
-Default writes packages to packages/.
+Default writes packages to ../packages/.
 By default, large ONNX/data files are symlinked from the source models. Use
 --copy to deep-copy instead (slow, GBs).
 
@@ -23,11 +23,11 @@ import mp_tool as mp
 
 logger = logging.getLogger("build")
 
-MODELS_ROOT = Path("models")
+MODELS_ROOT = Path(__file__).resolve().parent.parent / "models"
 QWEN25_TRT = MODELS_ROOT / "qwen2.5-0.5b-instruct" / "trtrtx_gpu"
 
 # Default ep_compatibility lists — keep simple. EP-side preference logic will
-# look at these; for v4 demos, we mark NPU variants with soc tags where known
+# look at these; for demos, we mark NPU variants with soc tags where known
 # (qnn) and leave others as the EP default.
 EP_COMPAT_BASE: dict[str, list[str]] = {
     "CPUExecutionProvider": [],
@@ -75,7 +75,7 @@ def _shared_skeleton(genai: dict, roles: list[str]) -> dict:
 
 def build_phi4(out_root: Path, *, link: bool) -> None:
     src = MODELS_ROOT / "Phi-4-mini-reasoning"
-    pkg_dir = out_root / "phi-4-mini-reasoning.v4.ortpackage"
+    pkg_dir = out_root / "phi-4-mini-reasoning.ortpackage"
     if pkg_dir.exists():
         shutil.rmtree(pkg_dir)
 
@@ -107,7 +107,7 @@ def build_phi4(out_root: Path, *, link: bool) -> None:
     def _add(variant_name: str, src_dir: Path, ep: str, files: list[dict],
              *,
              device: str | None = None,
-             compat_strings: list[str] | None = None,
+             compat_string: str | None = None,
              overlay: dict | None = None) -> None:
         # Compute overlay diff from this variant's genai_config relative to base.
         var_genai_path = src_dir / "genai_config.json"
@@ -129,8 +129,8 @@ def build_phi4(out_root: Path, *, link: bool) -> None:
         ep_entry: dict = {"ep": ep}
         if device:
             ep_entry["device"] = device
-        if compat_strings:
-            ep_entry["compatibility"] = compat_strings
+        if compat_string:
+            ep_entry["compatibility_string"] = compat_string
 
         builder.add_variant(
             "decoder", variant_name,
@@ -222,7 +222,7 @@ def build_phi4(out_root: Path, *, link: bool) -> None:
         },
     ]
     _add("qnn-npu", qnn_dir, "QNNExecutionProvider", files=qnn_files,
-         compat_strings=["soc_model_60", "soc_model_69"])
+         compat_string="soc_model_60,soc_model_69")
 
     # mock trtrtx-gpu — sourced from qwen2.5/trtrtx_gpu (mock for ABI testing only)
     _add("trtrtx-gpu", QWEN25_TRT, "NvTensorRtRtxExecutionProvider", files=[{
@@ -235,7 +235,7 @@ def build_phi4(out_root: Path, *, link: bool) -> None:
 
     builder.write()
     _write_decisions(pkg_dir, """\
-# phi-4-mini-reasoning v4 package — decisions
+# phi-4-mini-reasoning package — decisions
 
 - Single component named `decoder` (matches role).
 - 8 variants: cpu, cuda, webgpu, vitis-npu, openvino-gpu, openvino-npu, qnn-npu, trtrtx-gpu (mock).
@@ -247,8 +247,11 @@ def build_phi4(out_root: Path, *, link: bool) -> None:
 - `trtrtx-gpu` is a *mock* variant: ONNX content is sourced from `qwen2.5-0.5b-instruct/trtrtx_gpu`.
   The overlay carries a `_mock` flag for tooling visibility. Do not use for inference correctness tests.
 - Per-variant SO/PO live ONLY in `variant.json files[]`. The base genai_config and
-  per-variant overlays are runtime-field-free per the v4 design proposal.
-- ep_compatibility shape: `{"<EpName>": ["<compat-string>", ...]}`. Empty list = "no special compat".
+  per-variant overlays are runtime-field-free per the design proposal.
+- ep_compatibility shape: list of `{ep, device?, compatibility?}` entries per
+  variant. The inner `compatibility_string` field is a single opaque string (or
+  omitted); a variant covering multiple compile targets for one EP encodes
+  them inside that string using an EP-defined syntax.
 """)
 
 
@@ -258,13 +261,13 @@ def build_phi4(out_root: Path, *, link: bool) -> None:
 
 def build_whisper(out_root: Path, *, link: bool) -> None:
     src = MODELS_ROOT / "openai-whisper-small"
-    pkg_dir = out_root / "openai-whisper-small.v4.ortpackage"
+    pkg_dir = out_root / "openai-whisper-small.ortpackage"
     if pkg_dir.exists():
         shutil.rmtree(pkg_dir)
 
     builder = mp.PackageBuilder(
         pkg_dir, package_name="openai-whisper-small",
-        description="Whisper-small encoder/decoder (+ jump_times) — multi-component v4 demo.",
+        description="Whisper-small encoder/decoder (+ jump_times) — multi-component demo.",
         link=link,
     )
     for r in ["encoder", "decoder"]:
@@ -339,7 +342,7 @@ def build_whisper(out_root: Path, *, link: bool) -> None:
 
     builder.write()
     _write_decisions(pkg_dir, """\
-# openai-whisper-small v4 package — decisions
+# openai-whisper-small package — decisions
 
 - Three components: `encoder`, `decoder`, `jump_times` (auxiliary, used by word-timestamps path).
 - Two variants per component: `cpu` (fp32) and `cuda` (fp16).
@@ -349,7 +352,7 @@ def build_whisper(out_root: Path, *, link: bool) -> None:
   base config (cpu) and that variant. For cpu, all overlays are empty by construction.
 - Top-level base genai_config has a synthetic `model.jump_times` block that ONLY records
   the package-component mapping (not a runtime input block). GenAI's whisper handler can
-  ignore it; the v4 SDK ignores unknown roles by spec.
+  ignore it; the SDK ignores unknown roles by spec.
 - Cross-component overlay conflict policy: not exercised here — encoder and decoder do not
   modify each other's keys, and neither touches top-level fields. If a future variant did,
   the *primary* component (decoder) would win for top-level keys.
@@ -374,7 +377,7 @@ def _scope_overlay_to_role(full_overlay: dict, role: str) -> dict:
 
 def build_nemotron(out_root: Path, *, link: bool) -> None:
     src = MODELS_ROOT / "nemotron-speech-streaming-en-0.6b" / "cpu_and_mobile"
-    pkg_dir = out_root / "nemotron-speech-streaming-en-0.6b.v4.ortpackage"
+    pkg_dir = out_root / "nemotron-speech-streaming-en-0.6b.ortpackage"
     if pkg_dir.exists():
         shutil.rmtree(pkg_dir)
 
@@ -416,7 +419,7 @@ def build_nemotron(out_root: Path, *, link: bool) -> None:
 
     builder.write()
     _write_decisions(pkg_dir, """\
-# nemotron-speech-streaming v4 package — decisions
+# nemotron-speech-streaming package — decisions
 
 - Four components: `encoder`, `decoder`, `joiner`, `vad`. (RNN-T-style streaming model.)
 - Single `cpu` variant per component (only EP shipped upstream).
@@ -435,7 +438,7 @@ def build_nemotron(out_root: Path, *, link: bool) -> None:
 
 def build_qwen3vl(out_root: Path, *, link: bool) -> None:
     src = MODELS_ROOT / "qwen3-vl-2b-instruct"
-    pkg_dir = out_root / "qwen3-vl-2b-instruct.v4.ortpackage"
+    pkg_dir = out_root / "qwen3-vl-2b-instruct.ortpackage"
     if pkg_dir.exists():
         shutil.rmtree(pkg_dir)
 
@@ -489,7 +492,7 @@ def build_qwen3vl(out_root: Path, *, link: bool) -> None:
 
     builder.write()
     _write_decisions(pkg_dir, """\
-# qwen3-vl-2b-instruct v4 package — decisions
+# qwen3-vl-2b-instruct package — decisions
 
 - Three components: `vision`, `embedding`, `decoder`.
 - The decoder ONNX upstream filename is `text.onnx`; we keep the filename in `variant.json`
@@ -497,7 +500,7 @@ def build_qwen3vl(out_root: Path, *, link: bool) -> None:
 - Two variants per component: `cpu` and `cuda`. Both share the same architecture so per-role
   overlays are empty after stripping runtime fields. SO/PO diffs are captured in `variant.json`.
 - The vision component's `config_filename: processor_config.json` field points into `configs/`
-  per the v4 two-roots layout (configs are package-rooted, not variant-rooted).
+  per the two-roots layout (configs are package-rooted, not variant-rooted).
 - This package exercises the multi-component overlay split mechanism:
   the same source genai_config is fanned out into three role-scoped slices (vision, embedding,
   decoder) when computing each variant's overlay.
@@ -519,7 +522,7 @@ def _write_decisions(pkg_dir: Path, body: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="packages")
+    parser.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "packages"))
     parser.add_argument("--copy", action="store_true",
                         help="Deep-copy ONNX/data instead of symlinking")
     parser.add_argument("--only", choices=["phi", "whisper", "nemotron", "qwen3vl"],
