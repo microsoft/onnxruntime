@@ -170,6 +170,18 @@ struct ConvTransposeAttributes : public ConvAttributes {
       local_strides.resize(kernel_shape.size(), 1);
     }
 
+    // Validate output_padding < stride per ONNX spec:
+    // "Additional size added to one side of the output shape. This must be less
+    //  than either stride or dilation in each spatial dimension."
+    for (size_t i = 0; i < local_output_padding.size(); ++i) {
+      if (local_output_padding[i] >= local_strides[i] && local_output_padding[i] >= local_dilations[i]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "output_padding[", i, "] (", local_output_padding[i],
+                               ") must be less than stride (", local_strides[i],
+                               ") or dilation (", local_dilations[i], ").");
+      }
+    }
+
     TensorShapeVector Y_dims;
 
     ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,

@@ -387,6 +387,16 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
       strides.resize(kernel_shape.size(), 1);
     }
 
+    // Validate output_padding < stride per ONNX spec
+    for (size_t i = 0; i < local_output_padding.size(); ++i) {
+      if (local_output_padding[i] >= strides[i] && local_output_padding[i] >= dilations[i]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "output_padding[", i, "] (", local_output_padding[i],
+                               ") must be less than stride (", strides[i],
+                               ") or dilation (", dilations[i], ").");
+      }
+    }
+
     TensorShapeVector y_dims;
 
     conv_transpose_attrs_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,

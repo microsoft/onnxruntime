@@ -166,9 +166,9 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
     for (int i = 0; i < size_of_output; ++i) {
       if (input_shape.dim(i + 2).has_dim_value()) {
         if (output_shape[i] < input_shape.dim(i + 2).dim_value()) {
-          // TODO: throw exception?
-          return;  // output shape value cannot be smaller than the input shape
-                   // value
+          fail_shape_inference("output_shape[", i, "] value (", output_shape[i],
+                               ") cannot be smaller than the input spatial dimension (",
+                               input_shape.dim(i + 2).dim_value(), ")");
         }
       }
       final_output_shape->add_dim()->set_dim_value(output_shape[i]);

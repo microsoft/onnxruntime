@@ -295,5 +295,20 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_ChannelsNotDivisibleByGroup) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "Input channels is not divisible by group");
 }
 
+// Spec gap: output_padding must be less than stride or dilation.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_OutputPaddingTooLarge) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("output_padding", std::vector<int64_t>{2, 2});  // must be < stride(2)
+
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{0, 0, 0, 0});
+  test.AddOutput<float>("Y", {1, 1, 9, 9}, std::vector<float>(81, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output_padding");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
