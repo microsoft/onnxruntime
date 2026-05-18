@@ -188,4 +188,8 @@ void Telemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
   ORT_UNUSED_PARAMETER(status);
 }
 
+void Telemetry::LogMemoryUsage(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
+}
+
 }  // namespace onnxruntime
