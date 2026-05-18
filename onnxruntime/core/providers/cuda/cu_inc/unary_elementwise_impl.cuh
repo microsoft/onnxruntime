@@ -47,7 +47,9 @@ void UnaryElementWiseImpl(
   if (count == 0)  // special case where there's a dim value of 0 in the shape
     return;
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
+  size_t blocksPerGridSize = CeilDiv(count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread);
+  ORT_ENFORCE(blocksPerGridSize <= static_cast<size_t>(INT32_MAX), "Grid size exceeds CUDA limits");
+  int blocksPerGrid = static_cast<int>(blocksPerGridSize);
   int64_t N = static_cast<int64_t>(count);
   _UnaryElementWise<InT, OutT, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(

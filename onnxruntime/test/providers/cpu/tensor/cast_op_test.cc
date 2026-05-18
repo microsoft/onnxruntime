@@ -3184,7 +3184,6 @@ TEST(CastOpTest, CastKernel_Int64IndexArithmetic_NoOverflow) {
   ASSERT_LT(truncated_N, 0);  // Proves the old code was broken (wraps negative)
 }
 
-
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 float FloatFromBits(uint32_t bits) {

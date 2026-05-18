@@ -237,7 +237,9 @@ Status CudaCastStd(cudaStream_t stream, const InT* input, OutT* output, size_t n
   if (num_of_elements <= 0)
     return Status::OK();
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_elements, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
+  size_t blocksPerGridSize = CeilDiv(num_of_elements, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread);
+  ORT_RETURN_IF_NOT(blocksPerGridSize <= static_cast<size_t>(INT32_MAX), "Grid size exceeds CUDA limits");
+  int blocksPerGrid = static_cast<int>(blocksPerGridSize);
   CastKernelStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, OutT, InT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input,
       output,
@@ -286,7 +288,9 @@ Status CudaCastPairwise(cudaStream_t stream, const Float4E2M1x2* input, float* o
 
   size_t pair_count = num_of_elements / 2;
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(pair_count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
+  size_t blocksPerGridSize = CeilDiv(pair_count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread);
+  ORT_RETURN_IF_NOT(blocksPerGridSize <= static_cast<size_t>(INT32_MAX), "Grid size exceeds CUDA limits");
+  int blocksPerGrid = static_cast<int>(blocksPerGridSize);
 
   if (pair_count == 0) {
     blocksPerGrid = 1;
@@ -320,7 +324,9 @@ Status CudaCastPairwise(cudaStream_t stream, const float* input, Float4E2M1x2* o
 
   size_t pair_count = num_of_elements / 2;
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(pair_count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
+  size_t blocksPerGridSize = CeilDiv(pair_count, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread);
+  ORT_RETURN_IF_NOT(blocksPerGridSize <= static_cast<size_t>(INT32_MAX), "Grid size exceeds CUDA limits");
+  int blocksPerGrid = static_cast<int>(blocksPerGridSize);
 
   if (pair_count == 0) {
     blocksPerGrid = 1;
@@ -370,7 +376,9 @@ Status CudaCastSat(cudaStream_t stream, const InT* input, OutT* output, size_t n
   if (num_of_element <= 0)
     return Status::OK();
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread));
+  size_t blocksPerGridSize = CeilDiv(num_of_element, static_cast<size_t>(GridDim::maxThreadsPerBlock) * GridDim::maxElementsPerThread);
+  ORT_RETURN_IF_NOT(blocksPerGridSize <= static_cast<size_t>(INT32_MAX), "Grid size exceeds CUDA limits");
+  int blocksPerGrid = static_cast<int>(blocksPerGridSize);
   CastKernelSat<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread, OutT, InT><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input,
       output,
