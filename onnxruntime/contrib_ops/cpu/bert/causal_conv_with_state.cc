@@ -51,7 +51,8 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : OpKernel
   std::string data_format = info.GetAttrOrDefault<std::string>("data_format", "NCT");
   ORT_ENFORCE(data_format == "NCT",
               "CPU CausalConvWithState only supports data_format='NCT' currently. "
-              "Got: ", data_format);
+              "Got: ",
+              data_format);
 }
 
 namespace {

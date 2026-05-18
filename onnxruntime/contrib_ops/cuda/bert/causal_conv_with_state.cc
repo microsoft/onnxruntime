@@ -39,7 +39,8 @@ CausalConvWithState<T>::CausalConvWithState(const OpKernelInfo& info) : CudaKern
   std::string data_format = info.GetAttrOrDefault<std::string>("data_format", "NCT");
   ORT_ENFORCE(data_format == "NCT",
               "CUDA CausalConvWithState only supports data_format='NCT' currently. "
-              "Got: ", data_format);
+              "Got: ",
+              data_format);
 }
 
 template <typename T>
