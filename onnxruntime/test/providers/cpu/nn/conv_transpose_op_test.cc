@@ -1621,6 +1621,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidWeightRank0) {
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidOutputPaddingSize) {
   OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
   test.AddAttribute("output_padding", std::vector<int64_t>{0, 0, 0});  // 3 values for 2D spatial
   test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
   test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
@@ -1632,6 +1633,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidOutputPaddingSize) {
 
 TEST(ConvTransposeTest, ConvTranspose_OutputPaddingExceedsStride) {
   OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
   // output_padding[i] must be < max(stride[i], dilation[i]). stride=2, so output_padding must be < 2.
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
   test.AddAttribute("output_padding", std::vector<int64_t>{2, 2});
