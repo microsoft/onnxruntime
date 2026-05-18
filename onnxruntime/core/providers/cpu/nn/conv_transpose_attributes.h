@@ -288,29 +288,17 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
       // The ONNX spec says if `auto_pad` attribute is set, pad until the `out_size`
       // is `in_size * stride`
-      int64_t auto_out_size = 0;
-      ORT_RETURN_IF_NOT(SafeMultiply(in_size, stride, auto_out_size),
-                        "Integer overflow computing auto_pad output size: in_size=", in_size,
-                        " stride=", stride);
+      int64_t auto_out_size = SafeInt<int64_t>(in_size) * stride;
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
                                        kernel, dilation, auto_out_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 
     // *out_size = (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail
-    // Use checked arithmetic to detect overflow from adversarial inputs.
-    int64_t term1 = 0, term2 = 0, result = 0;
-    ORT_RETURN_IF_NOT(SafeMultiply(in_size - 1, stride, term1),
-                      "Integer overflow in output size computation.");
-    ORT_RETURN_IF_NOT(SafeMultiply(kernel - 1, dilation, term2),
-                      "Integer overflow in output size computation.");
-    ORT_RETURN_IF_NOT(SafeAdd(term1, adj, result) &&
-                          SafeAdd(result, term2, result) &&
-                          SafeAdd(result, static_cast<int64_t>(1), result) &&
-                          SafeSubtract(result, *pad_head, result) &&
-                          SafeSubtract(result, *pad_tail, result),
-                      "Integer overflow in output size computation.");
-    *out_size = result;
+    // SafeInt throws OnnxRuntimeException on overflow from adversarial inputs.
+    *out_size = SafeInt<int64_t>(in_size - 1) * stride + adj +
+                SafeInt<int64_t>(kernel - 1) * dilation + 1 -
+                *pad_head - *pad_tail;
     return Status::OK();
   }
 };
