@@ -864,6 +864,7 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
           }
         } else {
           while (root->is_not_leaf()) {
+            TREE_FIND_VALUE_CHECK();
             val = x_data[root->feature_id];
             root = val <= root->value_or_unique_weight ? root->truenode_or_weight.ptr : root + 1;
           }
