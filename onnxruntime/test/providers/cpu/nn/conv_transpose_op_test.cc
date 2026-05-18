@@ -1575,11 +1575,12 @@ TEST(ConvTransposeTest, ConvTranspose_ZeroDilation_Dml) {
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank0) {
   OpTester test("ConvTranspose", 11);
+  // Skip ONNX shape inference which may crash on invalid-rank inputs (not our code to fix).
+  // Must be set before AddInput/AddOutput so type protos are built without shape info.
+  test.AddShapeToTensorData(false);
   test.AddInput<float>("X", {}, {1.0f});
   test.AddInput<float>("W", {}, {1.0f});
   test.AddOutput<float>("Y", {0}, {});
-  // Skip ONNX shape inference which may crash on invalid-rank inputs (not our code to fix).
-  test.AddShapeToTensorData(false);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
@@ -1587,10 +1588,10 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank0) {
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank1) {
   OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
   test.AddInput<float>("X", {2}, {1.0f, 2.0f});
   test.AddInput<float>("W", {2}, {1.0f, 2.0f});
   test.AddOutput<float>("Y", {0}, {});
-  test.AddShapeToTensorData(false);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
@@ -1598,10 +1599,10 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank1) {
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank2) {
   OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
   test.AddInput<float>("X", {1, 1}, {1.0f});
   test.AddInput<float>("W", {1, 1}, {1.0f});
   test.AddOutput<float>("Y", {0}, {});
-  test.AddShapeToTensorData(false);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
@@ -1609,10 +1610,10 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank2) {
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidWeightRank0) {
   OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
   test.AddInput<float>("X", {1, 1, 3}, {1.0f, 2.0f, 3.0f});
   test.AddInput<float>("W", {}, {1.0f});
   test.AddOutput<float>("Y", {0}, {});
-  test.AddShapeToTensorData(false);
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
