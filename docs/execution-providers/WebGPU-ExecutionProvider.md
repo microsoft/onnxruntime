@@ -24,7 +24,12 @@ Compared to other GPU execution providers, WebGPU EP aims to be cross-vendor and
 
 ## Install
 
-Pre-built native packages of ONNX Runtime with the WebGPU EP are published with a `webgpu` suffix. See [Install ORT](../install) for the full list of packages; the Python wheel is named `onnxruntime-webgpu` and is built by `tools/ci_build/build.py` when `--use_webgpu` is supplied.
+Two flavors of native WebGPU EP are available:
+
+- **Plugin EP packages (recommended).** Distributed separately and registered at runtime alongside any compatible core ONNX Runtime install.
+  - Python: `pip install onnxruntime onnxruntime-ep-webgpu`
+  - .NET: add a reference to `Microsoft.ML.OnnxRuntime.EP.WebGpu` together with your existing `Microsoft.ML.OnnxRuntime` package.
+- **Static-library Python wheel.** A single wheel with the WebGPU EP built into ONNX Runtime: `pip install onnxruntime-webgpu` (built from source with `--use_webgpu` / `--wheel_name_suffix=webgpu`). Use this when you need a single artifact and only require basic EP registration.
 
 For ONNX Runtime Web (browser), no separate install is required beyond the `onnxruntime-web` package — see the [JavaScript quickstart](../get-started/with-javascript/web.md).
 
@@ -56,20 +61,114 @@ python tools/ci_build/build.py --build_dir build/RelWithDebInfo --config RelWith
 
 | Flag | Description |
 |------|-------------|
-| `--use_webgpu [static_lib\|shared_lib]` | Enable the WebGPU EP. With no value (or `static_lib`), Dawn is linked statically into ONNX Runtime; with `shared_lib`, the EP is built as a [plugin EP library](./plugin-ep-libraries/index.md) (`onnxruntime_USE_EP_API_ADAPTERS=ON`). Sets the CMake flag `onnxruntime_USE_WEBGPU=ON`. |
+| `--use_webgpu [static_lib\|shared_lib]` | Enable the WebGPU EP. `static_lib` (the default if no value is given) builds the WebGPU EP into the main `onnxruntime` library. `shared_lib` builds the WebGPU EP as a separate [plugin EP library](./plugin-ep-libraries/index.md) (`onnxruntime_USE_EP_API_ADAPTERS=ON`) and is what produces the `onnxruntime_providers_webgpu.{dll,so,dylib}` shipped in the `onnxruntime-ep-webgpu` / `Microsoft.ML.OnnxRuntime.EP.WebGpu` packages. `shared_lib` is not supported for WebAssembly builds. Sets the CMake flag `onnxruntime_USE_WEBGPU=ON`. Dawn linkage is controlled separately (see `--use_external_dawn`). |
 | `--use_external_dawn` | Link against an externally-provided Dawn instead of building Dawn from source. Requires `--use_webgpu`. Sets `onnxruntime_USE_EXTERNAL_DAWN=ON`. |
 | `--wgsl_template {static,dynamic}` | Select the WGSL shader-template generator. `static` (default) bakes shader sources in at build time; `dynamic` generates them at runtime. |
 | `--enable_pix_capture` | Windows only. Build with PIX GPU debugger support. Requires `--use_webgpu`. |
 | `--use_jsep` | Enables the JavaScript Execution Provider used by ORT Web's pre-existing WebGPU/WebNN bridge. This is a different EP from `--use_webgpu`; see [Notes](#notes) below. |
 
 {: .note }
-Building from a fully isolated network is not currently supported for native WebGPU because Dawn must be fetched during the build. See [Dependencies](../build/dependencies.md) for context.
+> Building from a fully isolated network is not currently supported for native WebGPU because Dawn must be fetched during the build. See [Dependencies](../build/dependencies.md) for context.
 
 ## Usage
 
-The WebGPU EP is registered through the generic `AppendExecutionProvider` API; there is no dedicated `OrtSessionOptionsAppendExecutionProvider_WebGPU` function. Provider options are passed as a string→string map (see [Configuration options](#configuration-options) for the full list of keys).
+There are two ways to add the WebGPU EP to a session:
 
-### C++
+1. **Plugin EP packages (recommended).** The plugin EP shared library is registered at runtime via `register_execution_provider_library` / `RegisterExecutionProviderLibrary`. The `onnxruntime-ep-webgpu` (Python) and `Microsoft.ML.OnnxRuntime.EP.WebGpu` (.NET) packages bundle the shared library and provide helpers that return its path and the EP name to use.
+2. **Static-library build (short-name API).** When ONNX Runtime is built with `--use_webgpu` (`static_lib`) the WebGPU EP is built into the main `onnxruntime` library and can be added through the generic `AppendExecutionProvider("WebGPU", { ... })` call. Provider options are passed as a string→string map (see [Configuration options](#configuration-options) for the full list of keys).
+
+In both cases the underlying EP and option keys are the same. The plugin EP path is the recommended approach going forward; the short-name API is most useful for C/C++/C# applications that build ONNX Runtime themselves.
+
+### Plugin EP (recommended)
+
+#### Python
+
+```python
+import onnxruntime as ort
+import onnxruntime_ep_webgpu as webgpu_ep
+
+# Register the plugin EP library with ONNX Runtime
+ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
+
+# Discover WebGPU devices
+webgpu_devices = [d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()]
+
+# Create a session using the WebGPU EP
+sess_options = ort.SessionOptions()
+sess_options.add_provider_for_devices(webgpu_devices, {
+    "preferredLayout": "NHWC",
+    "enableGraphCapture": "1",
+})
+session = ort.InferenceSession("model.onnx", sess_options=sess_options)
+```
+
+#### C# / .NET
+
+```csharp
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.EP.WebGpu;
+
+var env = OrtEnv.Instance();
+env.RegisterExecutionProviderLibrary("webgpu_ep", WebGpuEp.GetLibraryPath());
+
+OrtEpDevice? webGpuDevice = null;
+foreach (var d in env.GetEpDevices())
+{
+    if (d.EpName == WebGpuEp.GetEpName())
+    {
+        webGpuDevice = d;
+        break;
+    }
+}
+
+using var sessionOptions = new SessionOptions();
+sessionOptions.AppendExecutionProvider(env, new[] { webGpuDevice },
+    new Dictionary<string, string>
+    {
+        ["preferredLayout"] = "NHWC",
+        ["enableGraphCapture"] = "1",
+    });
+
+using var session = new InferenceSession("model.onnx", sessionOptions);
+```
+
+#### C++
+
+The C++ pattern is the generic plugin EP idiom — the host application is responsible for locating the `onnxruntime_providers_webgpu.{dll,so,dylib}` shared library (from the NuGet package's runtime files, a manual build, etc.):
+
+```cpp
+#include "onnxruntime_cxx_api.h"
+
+Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "webgpu_sample");
+env.RegisterExecutionProviderLibrary("webgpu_ep",
+    ORT_TSTR("onnxruntime_providers_webgpu.dll"));
+
+std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+std::array<Ort::ConstEpDevice, 1> selected{nullptr};
+for (auto d : ep_devices) {
+    if (std::strcmp(d.GetName(), "WebGpuExecutionProvider") == 0) {
+        selected[0] = d;
+        break;
+    }
+}
+
+Ort::KeyValuePairs ep_options;
+ep_options.Add("preferredLayout",    "NHWC");
+ep_options.Add("enableGraphCapture", "1");
+
+Ort::SessionOptions session_options;
+session_options.AppendExecutionProvider_V2(env, selected, ep_options);
+
+Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
+```
+
+See [Using a Plugin Execution Provider Library](./plugin-ep-libraries/usage.md) for the full cross-EP idiom, including library lifetime and per-language API references.
+
+### Static-library build (short-name API)
+
+For applications using a `--use_webgpu` (static-lib) build of ONNX Runtime, the WebGPU EP can also be registered through the generic `AppendExecutionProvider` API. There is no dedicated `OrtSessionOptionsAppendExecutionProvider_WebGPU` function.
+
+#### C++
 
 ```cpp
 #include "onnxruntime_cxx_api.h"
@@ -85,7 +184,7 @@ session_options.AppendExecutionProvider("WebGPU", provider_options);
 Ort::Session session(env, model_path, session_options);
 ```
 
-### C
+#### C
 
 ```c
 const char* keys[]   = {"preferredLayout", "enableGraphCapture"};
@@ -94,26 +193,7 @@ OrtStatus* status = g_ort->SessionOptionsAppendExecutionProvider(
     session_options, "WebGPU", keys, values, 2);
 ```
 
-### Python
-
-The provider name in Python is `"WebGpuExecutionProvider"`.
-
-```python
-import onnxruntime as ort
-
-session = ort.InferenceSession(
-    "model.onnx",
-    providers=[
-        ("WebGpuExecutionProvider", {
-            "preferredLayout": "NHWC",
-            "enableGraphCapture": "1",
-        }),
-        "CPUExecutionProvider",
-    ],
-)
-```
-
-### C#
+#### C#
 
 ```csharp
 using var sessionOptions = new SessionOptions();
@@ -126,6 +206,8 @@ sessionOptions.AppendExecutionProvider("WebGPU", providerOptions);
 
 using var session = new InferenceSession("model.onnx", sessionOptions);
 ```
+
+For Python, use the plugin EP path shown above.
 
 ### JavaScript / TypeScript (ONNX Runtime Web)
 
@@ -141,7 +223,7 @@ Provider options are read from the session's config entries with the key prefix 
 |--------|----------------|-------------|
 | `preferredLayout` | `NCHW`, `NHWC` | Preferred data layout for layout-sensitive kernels. |
 | `enableGraphCapture` | `0`, `1` | Enable [graph capture](#graph-capture) for models with static shapes that run entirely on WebGPU. |
-| `enableInt64` | `0`, `1` | Enable native `int64` support in WGSL kernels (requires a device that exposes the matching feature). |
+| `enableInt64` | `0`, `1` | Enable native `int64` support in WGSL kernels (requires a device that exposes the matching feature). Forced on when `enableGraphCapture` is `1`, regardless of this setting. |
 | `multiRotaryCacheConcatOffset` | non-negative integer | Offset used by multi-rotary cache concatenation kernels (advanced tuning option). |
 | `forceCpuNodeNames` | newline-separated list | Force the listed node names to run on the CPU EP fallback instead of WebGPU. Each line is one node name; empty lines are ignored. |
 | `enablePIXCapture` | `0`, `1` | Enable per-run PIX captures. Only meaningful in a Windows build configured with `--enable_pix_capture`. |
@@ -162,7 +244,10 @@ These options configure the underlying Dawn/WebGPU instance, adapter, and device
 | `validationMode` | `disabled`, `wgpuOnly`, `basic`, `full` | Controls WGSL/runtime validation. `disabled` skips ONNX-side validation, `wgpuOnly` relies on Dawn's validation, `basic` enables lightweight ONNX checks, `full` enables all available checks. Defaults to a build-dependent value. |
 | `maxStorageBufferBindingSize` | integer (bytes) | Override the requested `maxStorageBufferBindingSize` device limit. Cannot exceed the adapter's reported limit. |
 
-### Buffer-cache modes
+{: .note }
+> Pointer-valued options (`webgpuInstance`, `webgpuDevice`, `dawnProcTable`) are parsed as base-10 integers — pass the decimal representation of the pointer value. Hex literals (e.g. `0x...`) are not accepted.
+
+### Buffer cache modes
 
 The EP maintains four pooled-buffer caches. Each accepts the same set of modes:
 
@@ -182,16 +267,16 @@ Modes, in increasing order of caching aggressiveness:
 
 ## Graph capture
 
-When a model has fully static shapes and all kernels run on WebGPU, setting `enableGraphCapture` to `1` records the WebGPU command sequence on the first run and replays the recorded commands on subsequent runs, significantly reducing per-run CPU overhead.
+When a model has fully static shapes and all kernels run on WebGPU, setting `enableGraphCapture` to `1` records the WebGPU command sequence during an early run (after a configurable warm-up period) and replays the recorded commands on subsequent runs, significantly reducing per-run CPU overhead.
 
-If any kernel falls back to CPU, or any input shape changes between runs, graph capture cannot be used and session creation (or the first run) will fail. In that case, leave `enableGraphCapture` unset or set it to `0`.
+If any kernel falls back to CPU, or any input shape changes between runs, graph capture may fail or fall back to regular execution. In that case, leave `enableGraphCapture` unset or set it to `0`.
 
 The same feature is exposed in ORT Web via the `enableGraphCapture` session option — see [`enableGraphCapture`](../tutorials/web/env-flags-and-session-options.md#enablegraphcapture).
 
 ## Profiling and debugging
 
 - **Generic ORT profiling.** ORT's built-in profiler (`SessionOptions::EnableProfiling`) works with the WebGPU EP and produces per-op timing.
-- **Native PIX capture (Windows).** Build with `--use_webgpu --enable_pix_capture`, attach PIX to the host process, and set `enablePIXCapture` to `1` on the session to capture WebGPU/D3D12 work for individual runs.
+- **Native PIX capture (Windows).** Build with `--use_webgpu --enable_pix_capture`, attach PIX to the host process, and set `enablePIXCapture` to `1` on the session to capture WebGPU/D3D12 work for individual runs. PIX only attaches to D3D12, so this requires `dawnBackendType` to be `D3D12` (the default on Windows); it is a no-op when `dawnBackendType` is `Vulkan`.
 - **WebGPU validation.** Tune `validationMode` to surface device-side issues during development; turn it down to `disabled` for production benchmarking to remove validation overhead.
 - **Browser profiling.** For ORT Web, see [WebGPU profiling](../tutorials/web/performance-diagnosis.md#webgpu-profiling).
 
@@ -213,5 +298,3 @@ On Windows the WebGPU EP dispatches to D3D12 through Dawn, while the [DirectML E
 - [Using the WebGPU Execution Provider (ORT Web tutorial)](../tutorials/web/ep-webgpu.md)
 - [Build ONNX Runtime Web](../build/web.md)
 - [WebGPU browser support status](https://webgpu.io/status/)
-
-<p><a href="#">Back to top</a></p>
