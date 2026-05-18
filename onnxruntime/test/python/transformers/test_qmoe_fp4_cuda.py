@@ -34,10 +34,10 @@ except ImportError:
 try:
     from onnxruntime.capi import _pybind_state as _pybind
 
-    has_pybind = hasattr(_pybind, "pack_fp4_weights_for_cuda_moe_gemm")
+    has_pybind_pack_fp4_weights = hasattr(_pybind, "pack_fp4_weights_for_cuda_moe_gemm")
 except ImportError:
     _pybind = None
-    has_pybind = False
+    has_pybind_pack_fp4_weights = False
 
 onnxruntime.preload_dlls()
 
@@ -168,7 +168,7 @@ def pack_fp4_weights_for_moe(q_codes_nk, N, K):
     Pack FP4 codes from [N, K] (4-bit codes) to column-major [K, N//2] bytes.
     Uses the C++ pybind function if available, otherwise falls back to Python.
     """
-    if has_pybind:
+    if has_pybind_pack_fp4_weights:
         # Pack [N, K] codes into [N, K/2] bytes first (row-major), then use C++ transpose
         low = q_codes_nk[:, 0::2].to(torch.uint8)
         high = q_codes_nk[:, 1::2].to(torch.uint8)
@@ -663,7 +663,7 @@ class TestFP4PackingUtility(unittest.TestCase):
             decoded = ue8m0_code_to_float(code)
             self.assertAlmostEqual(val, decoded, places=5, msg=f"ue8m0 roundtrip failed for 2^{exp}")
 
-    @unittest.skipIf(not has_pybind, "pack_fp4_weights_for_cuda_moe_gemm not available")
+    @unittest.skipIf(not has_pybind_pack_fp4_weights, "pack_fp4_weights_for_cuda_moe_gemm not available")
     def test_pybind_pack_matches_python(self):
         """C++ packing matches Python reference."""
         n, k = 64, 128

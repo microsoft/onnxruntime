@@ -9,7 +9,7 @@
 #include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
 #include "core/util/thread_utils.h"
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && !defined(ORT_NO_CUDA_IN_PYBIND)
 #include <cuda_runtime.h>
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
@@ -148,7 +148,7 @@ void QuantizeMatMulBnb4Blockwise(
       tp.get());
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && !defined(ORT_NO_CUDA_IN_PYBIND)
 namespace cuda {
 void ThrowIfCudaError(cudaError_t status, const char* expression) {
   if (status != cudaSuccess) {
@@ -353,7 +353,7 @@ void CreateQuantPybindModule(py::module& m) {
   m.def("quantize_qdq_matmul_2bits", &QuantizeQDQMatMulNBitsBlockwise<MLFloat16, 2>);
   m.def("quantize_qdq_matmul_4bits", &QuantizeQDQMatMul4BitsBlockwise<float>);
   m.def("quantize_qdq_matmul_4bits", &QuantizeQDQMatMul4BitsBlockwise<MLFloat16>);
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && !defined(ORT_NO_CUDA_IN_PYBIND)
   m.def("pack_weights_for_cuda_mixed_gemm", &cuda::PackWeightsForMixedGemm,
         "Pack quantized weights for CUDA mixed-precision GEMM (FpA_IntB format)",
         py::arg("q_weights"), py::arg("N"), py::arg("K"), py::arg("bits"), py::arg("force_arch") = -1);
