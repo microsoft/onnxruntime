@@ -253,13 +253,25 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
 
       if constexpr (std::is_same_v<T1, uint8_t>) {
         if (zero_points_ptr) {
+          // For uint8 we enforce quantize_axis == last dim, which makes quantize_N == 1
+          // and scale_full_block == scale_qaxis_dim. Zero points are packed only along
+          // the quantize axis, so the packed byte must be addressed using the scale row
+          // index and the within-row quantize-axis index, not the flat scale_idx; the
+          // latter crosses row boundaries when scale_qaxis_dim is not a multiple of the
+          // packing factor.
+          const int64_t scale_qaxis_dim = scale_full_block;
+          const int64_t scale_row = scale_idx / scale_qaxis_dim;
+          const int64_t q_in_row = scale_idx % scale_qaxis_dim;
           if (bits_ == 2) {
-            uint8_t packed = zero_points_ptr[scale_idx >> 2];
-            const int shift = static_cast<int>((scale_idx & 3) * 2);
-            zp_val = static_cast<int32_t>((packed >> shift) & 0x03);
+            const int64_t packed_zp_qaxis_dim = (scale_qaxis_dim + 3) / 4;
+            const int64_t byte_idx = scale_row * packed_zp_qaxis_dim + (q_in_row >> 2);
+            const int shift = static_cast<int>((q_in_row & 3) * 2);
+            zp_val = static_cast<int32_t>((zero_points_ptr[byte_idx] >> shift) & 0x03);
           } else if (bits_ == 4) {
-            uint8_t packed = zero_points_ptr[scale_idx >> 1];
-            if (scale_idx & 1) {
+            const int64_t packed_zp_qaxis_dim = (scale_qaxis_dim + 1) / 2;
+            const int64_t byte_idx = scale_row * packed_zp_qaxis_dim + (q_in_row >> 1);
+            uint8_t packed = zero_points_ptr[byte_idx];
+            if (q_in_row & 1) {
               zp_val = static_cast<int32_t>((packed >> 4) & 0x0F);
             } else {
               zp_val = static_cast<int32_t>(packed & 0x0F);
