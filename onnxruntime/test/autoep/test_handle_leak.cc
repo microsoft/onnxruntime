@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <gsl/gsl>
 #include <memory>
 #include <optional>
 #include <string>
@@ -44,7 +45,7 @@ std::optional<bool> IsLibraryLoaded(const std::filesystem::path& library_path) {
   return false;
 #else
   // RTLD_NOLOAD is not available on this platform; cannot probe without loading.
-  (void)library_path;
+  static_cast<void>(library_path);
   return std::nullopt;
 #endif
 #endif
@@ -92,13 +93,18 @@ TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
 
   // Register the plugin EP library. Internally this calls ProviderLibrary::Load() (which
   // loads the library and fails to find "GetProvider") and then EpLibraryPlugin::Load().
-  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), temp_library_path.c_str());
+  ASSERT_NO_THROW(ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), temp_library_path.c_str()));
+  auto cleanup_lib = gsl::finally([&registration_name] {
+    // Ensure the library is unregistered if the test fails. We ignore the error status because unregister will be
+    // called twice if the test runs successfully.
+    Ort::Status ignored{Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, registration_name.c_str())};
+  });
 
   // The library should be loaded now.
   ASSERT_TRUE(IsLibraryLoaded(temp_library_path).value_or(false)) << "Library should be loaded after registration.";
 
   // Unregister releases the EpLibraryPlugin's reference.
-  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+  ASSERT_NO_THROW(ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str()));
 
   // If the fix is applied, the library should be fully unloaded (refcount == 0).
   // Without the fix, ProviderLibrary::Load() leaks a refcount so the library remains mapped.
