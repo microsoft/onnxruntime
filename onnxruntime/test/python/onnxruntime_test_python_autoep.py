@@ -387,9 +387,7 @@ class TestAutoEP(AutoEpTestCase):
         ep_device = self._register_example_plugin_ep_or_skip()
         mem_info = ep_device.memory_info(onnxrt.OrtDeviceMemoryType.HOST_ACCESSIBLE)
 
-        ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(
-            [4], onnx.TensorProto.FLOAT, memory_info=mem_info
-        )
+        ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type([4], onnx.TensorProto.FLOAT, memory_info=mem_info)
 
         self.assertEqual(ort_value.shape(), [4])
         self.assertEqual(ort_value.data_type(), "tensor(float)")
@@ -435,9 +433,7 @@ class TestAutoEP(AutoEpTestCase):
         mem_info = ep_device.memory_info(onnxrt.OrtDeviceMemoryType.HOST_ACCESSIBLE)
 
         with self.assertRaisesRegex(RuntimeError, "non-string numpy arrays"):
-            onnxrt.OrtValue.ortvalue_from_shape_and_type(
-                [2], onnx.TensorProto.STRING, memory_info=mem_info
-            )
+            onnxrt.OrtValue.ortvalue_from_shape_and_type([2], onnx.TensorProto.STRING, memory_info=mem_info)
 
         self.unregister_execution_provider_library(self.EXAMPLE_EP_NAME)
 
