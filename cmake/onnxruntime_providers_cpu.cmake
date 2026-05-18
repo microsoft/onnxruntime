@@ -15,45 +15,6 @@ file(GLOB_RECURSE onnxruntime_cpu_contrib_ops_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/*.cc"
 )
 
-file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
-)
-
-file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
-  "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
-)
-
-# Quick build mode: Filter flash attention kernels for faster development iteration.
-#   - We keep only hdim128 fp16 flash attention kernels in quick build mode.
-#   - All other listed head dimensions are excluded (e.g., 32, 64, 96, 192, 256).
-#     If new head dimensions are added or removed, update this list to match the supported set.
-if(onnxruntime_QUICK_BUILD)
-  message(STATUS "Quick build mode enabled: Only building hdim128 fp16 flash attention kernels")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "flash_fwd.*hdim(32|64|96|192|256)")
-endif()
-
-if(NOT onnxruntime_ENABLE_CUDA_FP4_QMOE)
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_.*\\.generated\\.cu")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_.*\\.generated\\.cu")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_(fp16|bf16)_fp4\\.cu")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_fp4_fp4\\.cu")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
-else()
-  # CUDA 13 PTXAS does not complete the FP4 M=128/N=64 pingpong specializations in
-  # this build configuration. The dispatcher routes that tile through cooperative
-  # mainloop variants instead, so exclude only those unused generated units.
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_cm[12]_cn[12]_pp\\.generated\\.cu")
-endif()
-
-if(NOT onnxruntime_ENABLE_CUDA_FP8_QMOE)
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm90_wfp8_.*\\.generated\\.cu")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_fp8_.*\\.generated\\.cu")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_(fp16|bf16)_fp8\\.cu")
-  list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
-endif()
-
 file(GLOB_RECURSE onnxruntime_js_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/js/*.cc"

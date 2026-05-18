@@ -101,6 +101,10 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shr
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
 
+# Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
+include(onnxruntime_cuda_source_filters)
+onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
+
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
     ${CUDA_PLUGIN_EP_CC_SRCS}

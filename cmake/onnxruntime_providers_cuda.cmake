@@ -54,6 +54,20 @@
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
+  # Collect CUDA contrib ops sources
+  file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.h"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cc"
+  )
+
+  file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
+  )
+
+  include(onnxruntime_cuda_source_filters)
+  onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)
+
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
     if (NOT onnxruntime_ENABLE_ATEN)
@@ -193,10 +207,9 @@
       endif()
     endforeach()
 
-    # Note: The minimum required CUDA version is greater than 11.3.
-    # CUDA 11.3+ supports parallel compilation
+    # Note: CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
-    set(onnxruntime_NVCC_THREADS "4" CACHE STRING "Number of threads that NVCC can use for compilation.")
+    set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
     target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
 
     # suppress warnings like this:
