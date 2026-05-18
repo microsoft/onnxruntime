@@ -351,6 +351,7 @@ def get_sensitive_node_names(matmul_nodes: list[str], encoder_layers: int, decod
     Returns:
         list of node names that should be quantized to INT8.
     """
+
     def get_sensitive_layer_indices(num_layers):
         return [
             i
@@ -409,7 +410,13 @@ def get_sensitive_node_names(matmul_nodes: list[str], encoder_layers: int, decod
     return sensitive
 
 
-def make_quant_algo_config(precision: Precision, quant_method: str, matmul_nodes: list[str] | None = None, encoder_layers: int = 0, decoder_layers: int = 0):
+def make_quant_algo_config(
+    precision: Precision,
+    quant_method: str,
+    matmul_nodes: list[str] | None = None,
+    encoder_layers: int = 0,
+    decoder_layers: int = 0,
+):
     """Create quantization algorithm config for Whisper models.
 
     Args:
