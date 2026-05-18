@@ -50,10 +50,10 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_Groups) {
 
   // X: {N=1, C=2, H=2, W=2}
   test.AddInput<float>("X", {1, 2, 2, 2}, std::vector<float>{1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f});
-  // W: {C_in=2, C_out/group=1, kH=3, kW=3} - each group has its own filter
-  test.AddInput<float>("W", {2, 1, 3, 3}, std::vector<float>{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  // W: {C_in=2, C_out/group=1, kH=3, kW=3} - each group has center-element filter
+  test.AddInput<float>("W", {2, 1, 3, 3}, std::vector<float>{0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f});
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
-  // Output: {N=1, C_out=2, H=2, W=2}
+  // Output: {N=1, C_out=2, H=2, W=2} - center filter with matching pads acts as identity
   test.AddOutput<float>("Y", {1, 2, 2, 2}, std::vector<float>{1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f});
   test.Run();
 }
@@ -121,7 +121,7 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidPadsSize) {
   test.AddInput<int64_t>("Pads", {3}, std::vector<int64_t>{0, 0, 0});  // Wrong size: should be 4
   test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Pads has incorrect number of values");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Pads input must have");
 }
 
 // Security: 2D Pads tensor should fail.
@@ -136,7 +136,7 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidPadsRank) {
   test.AddInput<int64_t>("Pads", {2, 2}, std::vector<int64_t>{0, 0, 0, 0});  // 2D instead of 1D
   test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "'pads' input must be a 1D");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Pads input must be a 1D tensor");
 }
 
 #endif  // !ORT_NO_EXCEPTIONS
@@ -185,7 +185,8 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_1D) {
   test.AddInput<float>("W", {1, 1, 3}, std::vector<float>{1.0f, 1.0f, 1.0f});
   test.AddInput<int64_t>("Pads", {2}, std::vector<int64_t>{1, 1});
   // Output: stride*(L-1) + output_padding + kernel - pad_begin - pad_end = 2*(3-1) + 1 + 3 - 1 - 1 = 6
-  test.AddOutput<float>("Y", {1, 1, 6}, std::vector<float>{1.0f, 2.0f, 4.0f, 3.0f, 5.0f, 3.0f});
+  // Conv transpose scatter: input[0]=1 -> pos {0,1}, input[1]=2 -> pos {1,2,3}, input[2]=3 -> pos {3,4,5}
+  test.AddOutput<float>("Y", {1, 1, 6}, std::vector<float>{1.0f, 3.0f, 2.0f, 5.0f, 3.0f, 3.0f});
 
   test.Run();
 }
