@@ -91,20 +91,17 @@ TEST(OrtEpLibrary, RegisterUnregisterDoesNotLeakLibraryHandle) {
   // The copy should not be loaded yet since we just created it with a unique name.
   ASSERT_FALSE(*loaded_before) << "Freshly copied library should not already be loaded in the process.";
 
-  // Register the plugin EP library. Internally this calls ProviderLibrary::Load() (which
-  // loads the library and fails to find "GetProvider") and then EpLibraryPlugin::Load().
-  ASSERT_NO_THROW(ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), temp_library_path.c_str()));
-  auto cleanup_lib = gsl::finally([&registration_name] {
-    // Ensure the library is unregistered if the test fails. We ignore the error status because unregister will be
-    // called twice if the test runs successfully.
-    Ort::Status ignored{Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, registration_name.c_str())};
-  });
+  // Register the plugin EP library inside a smaller scope so that the gsl::finally cleanup
+  // calls UnregisterExecutionProviderLibrary exactly once when leaving the scope.
+  {
+    ASSERT_NO_THROW(ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), temp_library_path.c_str()));
+    auto cleanup_lib = gsl::finally([&registration_name] {
+      Ort::Status ignored{Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, registration_name.c_str())};
+    });
 
-  // The library should be loaded now.
-  ASSERT_TRUE(IsLibraryLoaded(temp_library_path).value_or(false)) << "Library should be loaded after registration.";
-
-  // Unregister releases the EpLibraryPlugin's reference.
-  ASSERT_NO_THROW(ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str()));
+    // The library should be loaded now.
+    ASSERT_TRUE(IsLibraryLoaded(temp_library_path).value_or(false)) << "Library should be loaded after registration.";
+  }
 
   // If the fix is applied, the library should be fully unloaded (refcount == 0).
   // Without the fix, ProviderLibrary::Load() leaks a refcount so the library remains mapped.
