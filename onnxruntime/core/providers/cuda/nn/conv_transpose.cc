@@ -273,7 +273,9 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
   bool input_dims_changed = (s_.last_x_dims != x_dims);
   bool w_dims_changed = (s_.last_w_dims != w_dims);
-  if (input_dims_changed || w_dims_changed) {
+  // When dynamic_padding is enabled, Pads may change between calls even if X/W
+  // shapes are unchanged, so we must always recompute the output shape.
+  if (input_dims_changed || w_dims_changed || dynamic_padding) {
     if (input_dims_changed)
       s_.last_x_dims = gsl::make_span(x_dims);
 
@@ -346,6 +348,10 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     TensorShapeVector local_output_padding(conv_transpose_attrs_.output_padding);
     if (local_output_padding.empty()) {
       local_output_padding.resize(kernel_shape.size(), 0);
+    } else if (local_output_padding.size() != kernel_rank) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_padding size (", local_output_padding.size(),
+                             ") must match the number of spatial dimensions (", kernel_rank, ").");
     }
     ConvPadVector pads;
     pads.reserve(2 * (input_shape.NumDimensions()));
@@ -381,10 +387,18 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     TensorShapeVector dilations(conv_transpose_attrs_.dilations);
     if (dilations.empty()) {
       dilations.resize(kernel_shape.size(), 1);
+    } else if (dilations.size() != kernel_rank) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "dilations size (", dilations.size(),
+                             ") must match the number of spatial dimensions (", kernel_rank, ").");
     }
     TensorShapeVector strides(conv_transpose_attrs_.strides);
     if (strides.empty()) {
       strides.resize(kernel_shape.size(), 1);
+    } else if (strides.size() != kernel_rank) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "strides size (", strides.size(),
+                             ") must match the number of spatial dimensions (", kernel_rank, ").");
     }
 
     // Validate output_padding < stride per ONNX spec

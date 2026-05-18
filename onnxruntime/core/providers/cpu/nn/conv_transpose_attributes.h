@@ -129,6 +129,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector local_output_padding(output_padding);
     if (local_output_padding.empty()) {
       local_output_padding.resize(kernel_shape.size(), 0);
+    } else if (local_output_padding.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_padding size (", local_output_padding.size(),
+                             ") must match the number of spatial dimensions (", kernel_shape.size(), ").");
     }
     ConvPadVector local_pads;
     local_pads.reserve(2 * (input_shape.NumDimensions()));
@@ -164,10 +168,18 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector local_dilations(dilations);
     if (local_dilations.empty()) {
       local_dilations.resize(kernel_shape.size(), 1);
+    } else if (local_dilations.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "dilations size (", local_dilations.size(),
+                             ") must match the number of spatial dimensions (", kernel_shape.size(), ").");
     }
     TensorShapeVector local_strides(strides);
     if (local_strides.empty()) {
       local_strides.resize(kernel_shape.size(), 1);
+    } else if (local_strides.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "strides size (", local_strides.size(),
+                             ") must match the number of spatial dimensions (", kernel_shape.size(), ").");
     }
 
     // Validate output_padding < stride per ONNX spec:
