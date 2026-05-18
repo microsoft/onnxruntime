@@ -69,9 +69,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 
   using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
-  constexpr int kInputIndexFc3Weight = 8;
-  has_fc3_ = op_kernel_info.GetInputCount() > kInputIndexFc3Weight;
-
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
   auto input_type = op_kernel_info.GetKernelInfo().GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType();
   bool is_fp16 = input_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
@@ -115,10 +112,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
 #if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp4_e2m1, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_fp4_e2m1, __nv_bfloat16>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
 #endif
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
@@ -130,10 +127,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // (MXFP8 branch, triggered by mxfp8_mxfp4.fc{1,2}.weight_block_scale being non-null).
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, half, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, __nv_bfloat16, __nv_bfloat16>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
 #endif
     } else if (quant_type_ == "fp8" && !use_fp8_dequant_fallback_) {
@@ -141,10 +138,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // Native W8A16-FP8: activations are half/bf16, weights are __nv_fp8_e4m3
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp8_e4m3, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_fp8_e4m3, __nv_bfloat16>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
 #else
       ORT_THROW("Native FP8 QMoE requires ENABLE_CUDA_FP8_QMOE to be enabled at build time.");
@@ -153,10 +150,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // FP4/WFP4AFP8 dequant fallback or FP8 dequant fallback: use A16 runner
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, half, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // BFloat16
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
     }
   } else {
@@ -169,27 +166,27 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
                 "Rebuild without ORT_QUICK_BUILD or use float16 input.");
     if (expert_weight_bits_ == 4) {
       m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
-          sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+          sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
     } else {  // expert_weight_bits_ == 8
       m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, uint8_t, half>>(
-          sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+          sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
     }
 #else
     if (is_fp16) {
       if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, uint8_t, half>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
     } else {  // BFloat16
       if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {  // expert_weight_bits_ == 8
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, uint8_t, __nv_bfloat16>>(
-            sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
     }
 #endif
@@ -207,9 +204,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool is_fp8 = (quant_type_ == "fp8");
   const bool is_wfp4afp8 = (quant_type_ == "wfp4afp8");
   const bool is_int = (quant_type_ == "int");
-  // Modes that consume MXFP4 weight block scales (inputs 3/6/9) and per-expert global weight scales.
+  // Modes that consume MXFP4 weight block scales (inputs 3/6) and per-expert global weight scales.
   const bool uses_fp4_weight_scales = is_fp4 || is_wfp4afp8;
-  // Modes that consume per-expert FP-format global weight scales (inputs 15/16/17).
+  // Modes that consume per-expert FP-format global weight scales (inputs 15/16).
   const bool uses_global_weight_scales = is_fp4 || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
@@ -219,15 +216,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc2_experts_weights = context->Input<Tensor>(5);
   const Tensor* fc2_scales = (is_int && !packed_fc2_scales_) ? context->Input<Tensor>(6) : nullptr;
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);
+
+  // FC3 is not supported by the CUTLASS MoE GEMM kernel. For gated activations (SwiGLU),
+  // FC3 must be fused into FC1 (using swiglu_fusion=1 or swiglu_fusion=2).
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(8);
-  const Tensor* fc3_scales_optional = is_int ? context->Input<Tensor>(9) : nullptr;
-  const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(10);
+  ORT_RETURN_IF(fc3_experts_weights_optional != nullptr,
+                "QMoE CUDA kernel does not support separate FC3 weights. "
+                "Use swiglu_fusion=1 or swiglu_fusion=2 to fuse FC3 into FC1.");
 
   const Tensor* fc1_zeros = packed_fc1_bias_ ? nullptr : context->Input<Tensor>(11);
   const Tensor* fc2_zeros = packed_fc2_bias_ ? nullptr : context->Input<Tensor>(12);
-  const Tensor* fc3_zeros = context->Input<Tensor>(13);
-
-  ORT_RETURN_IF(fc3_zeros != nullptr, "QMoE fc3_zero_points is not currently supported.");
 
   auto check_weight_type = [](const Tensor* tensor, const char* name, bool expect_fp8) -> Status {
     ORT_RETURN_IF_NOT(tensor != nullptr, "Input '", name, "' is required.");
@@ -241,17 +239,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(check_weight_type(fc1_experts_weights, "fc1_experts_weights", is_fp8));
   ORT_RETURN_IF_ERROR(check_weight_type(fc2_experts_weights, "fc2_experts_weights", is_fp8));
-  if (fc3_experts_weights_optional) {
-    ORT_RETURN_IF_ERROR(check_weight_type(fc3_experts_weights_optional, "fc3_experts_weights", is_fp8));
-  }
 
-  // Unified FP4 inputs: block scales in fc*_scales (3/6/9), global scales in 15/16/17.
+  // Unified FP4 inputs: block scales in fc*_scales (3/6), global scales in 15/16.
   const Tensor* fp4_fc1_block_scales = (uses_fp4_weight_scales && !packed_fp4_fc1_block_scales_) ? context->Input<Tensor>(3) : nullptr;
   const Tensor* fp4_fc2_block_scales = (uses_fp4_weight_scales && !packed_fp4_fc2_block_scales_) ? context->Input<Tensor>(6) : nullptr;
-  const Tensor* fp4_fc3_block_scales = (uses_fp4_weight_scales && !packed_fp4_fc3_block_scales_) ? context->Input<Tensor>(9) : nullptr;
   const Tensor* fc1_global_scale = (uses_global_weight_scales && !packed_fc1_global_scale_) ? context->Input<Tensor>(15) : nullptr;
   const Tensor* fc2_global_scale = (uses_global_weight_scales && !packed_fc2_global_scale_) ? context->Input<Tensor>(16) : nullptr;
-  const Tensor* fc3_global_scale = (uses_global_weight_scales && !packed_fc3_global_scale_) ? context->Input<Tensor>(17) : nullptr;
 
   // W4A8 (WFP4AFP8) optional Variant A activation scales (per-tensor or per-expert FP8 global act scale).
   const Tensor* fc1_act_scale = (is_wfp4afp8 && !packed_fc1_act_scale_) ? context->Input<Tensor>(18) : nullptr;
@@ -271,7 +264,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "activation block-scale support and is not yet implemented.");
   }
 
-  const bool has_any_zero_point = (fc1_zeros != nullptr || fc2_zeros != nullptr || fc3_zeros != nullptr ||
+  const bool has_any_zero_point = (fc1_zeros != nullptr || fc2_zeros != nullptr ||
                                    packed_fc1_bias_ != nullptr || packed_fc2_bias_ != nullptr);
 
   // Row-wise quantization path does not support asymmetric zero-points in QMoE.
@@ -294,7 +287,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       moe_params, input, router_probs, fc1_experts_weights,
       fc1_experts_bias_optional, fc1_scales, fc1_zeros,
       fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
-      fc3_experts_weights_optional, fc3_experts_bias_optional, fc3_scales_optional, fc3_zeros,
+      nullptr, nullptr, nullptr, nullptr,
       pack_size, is_fused_swiglu, block_size_));
 
   if (uses_fp4_weight_scales) {
@@ -326,18 +319,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF_ERROR(check_fp4_block_scale(fp4_fc2_block_scales, "fc2_scales", moe_params.num_experts,
                                                 moe_params.hidden_size, moe_params.inter_size / fp4_block_size));
     }
-    if (fp4_fc3_block_scales) {
-      ORT_RETURN_IF_ERROR(check_fp4_block_scale(fp4_fc3_block_scales, "fc3_scales", moe_params.num_experts,
-                                                moe_params.inter_size, moe_params.hidden_size / fp4_block_size));
-    }
     if (fc1_global_scale) {
       ORT_RETURN_IF_ERROR(check_global_scale(fc1_global_scale, "fc1_global_scale", moe_params.num_experts, quant_type_.c_str()));
     }
     if (fc2_global_scale) {
       ORT_RETURN_IF_ERROR(check_global_scale(fc2_global_scale, "fc2_global_scale", moe_params.num_experts, quant_type_.c_str()));
-    }
-    if (fc3_global_scale) {
-      ORT_RETURN_IF_ERROR(check_global_scale(fc3_global_scale, "fc3_global_scale", moe_params.num_experts, quant_type_.c_str()));
     }
   }
 
@@ -373,9 +359,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
     if (fc2_global_scale) {
       ORT_RETURN_IF_ERROR(check_global_scale(fc2_global_scale, "fc2_global_scale", moe_params.num_experts));
-    }
-    if (fc3_global_scale) {
-      ORT_RETURN_IF_ERROR(check_global_scale(fc3_global_scale, "fc3_global_scale", moe_params.num_experts));
     }
   }
 
@@ -1218,14 +1201,6 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       TransposeAndPack(packed_fc2_scales_);
       DUMP_PACK_TENSOR("packed_fc2_scales", packed_fc2_scales_, tensor);
     }
-  } else if (input_idx == 9 && has_fc3_) {  // fc3_scales
-    DUMP_TENSOR("fc3_scales", tensor);
-    if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
-      CopyToGpu(packed_fp4_fc3_block_scales_);
-    } else if (quant_type_ == "int") {
-      TransposeAndPack(packed_fc3_scales_);
-      DUMP_PACK_TENSOR("packed_fc3_scales", packed_fc3_scales_, tensor);
-    }
   } else if (input_idx == 11) {  // fc1_zeros
     DUMP_TENSOR("fc1_zeros", tensor);
     compute_bias(packed_fc1_scales_, packed_fc1_bias_);
@@ -1234,7 +1209,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     DUMP_TENSOR("fc2_zeros", tensor);
     compute_bias(packed_fc2_scales_, packed_fc2_bias_);
     DUMP_PACK_TENSOR("packed_fc2_bias", packed_fc2_bias_, tensor);
-  } else if (input_idx >= 15 && input_idx <= 17 &&
+  } else if (input_idx >= 15 && input_idx <= 16 &&
              (quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8")) {
     // FP4/FP8/WFP4AFP8 per-expert global weight scales.
     switch (input_idx) {
@@ -1243,9 +1218,6 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         break;
       case 16:
         CopyToGpu(packed_fc2_global_scale_);
-        break;
-      case 17:
-        CopyToGpu(packed_fc3_global_scale_);
         break;
     }
   } else if ((input_idx == 18 || input_idx == 19) && quant_type_ == "wfp4afp8") {
@@ -1256,8 +1228,6 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       CopyToGpu(packed_fc2_act_scale_);
     }
   }
-  // TODO: fc3_zeros (13) not handled for now as it's optional and rarely used?
-  // Code structure allows adding it easily.
 
   return Status::OK();
 }

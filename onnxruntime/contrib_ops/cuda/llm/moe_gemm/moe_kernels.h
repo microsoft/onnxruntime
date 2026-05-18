@@ -372,7 +372,6 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   // Added by ORT
 
   ActivationType activation_type_;
-  bool has_fc3_;
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int sm_;
@@ -387,7 +386,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   static_assert(std::is_same_v<OutputType, BackBoneType>, "Scale and bias types must match OutputType");
 
  public:
-  CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool has_fc3, bool normalize_routing_weights, bool use_sparse_mixer);
+  CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool normalize_routing_weights, bool use_sparse_mixer);
 
   ~CutlassMoeFCRunner() override = default;
 

@@ -1829,12 +1829,10 @@ template <class T, class WeightType, class OutputType, class InputType, class Sc
 CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>::CutlassMoeFCRunner(
     int sm_version,
     ActivationType activation_type,
-    bool has_fc3,
     bool normalize_routing_weights,
     bool use_sparse_mixer)
     : sm_(sm_version),
       activation_type_(activation_type),
-      has_fc3_(has_fc3),
       normalize_routing_weights_(normalize_routing_weights),
       use_sparse_mixer_(use_sparse_mixer) {
   auto tactics = getTactics(sm_);
