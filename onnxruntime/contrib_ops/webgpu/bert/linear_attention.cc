@@ -213,12 +213,15 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
                               ? static_cast<int>(context.AdapterInfo().subgroupMinSize)
                               : 0;
   // When subgroup is enabled, use larger tile_v for better data reuse.
-  if (subgroup_min_size > 0) {
+  // Only expand for longer sequences (>=16) where the benefit outweighs the
+  // increased register pressure and shared memory usage.
+  if (subgroup_min_size > 0 && seq_length >= 16) {
     // Only expand if the vectorized dim has enough columns to fill the larger tile.
     if (head_dim_v / components >= tile_v * 4) {
       tile_v *= 4;
     }
   }
+
   const int head_dim_v_vectorized = onnxruntime::narrow<int>(head_dim_v) / components;
 
   constexpr uint32_t kMaxSupportedWorkgroupSize = 256;
