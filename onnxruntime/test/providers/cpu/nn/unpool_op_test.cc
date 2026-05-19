@@ -501,10 +501,15 @@ TEST(UnpoolTest, MaxUnpoolMismatchedIndicesShape) {
            {kDmlExecutionProvider});
 }
 
-// Rank-0 input X tensor should be rejected during shape inference.
-// This is validated by ONNX shape inference so it runs on all EPs.
+// Rank-0 input X tensor should be rejected at runtime by the kernel.
+// Shape inference is disabled because the upstream ONNX shape inference fix
+// (onnx/onnx#7997) has not landed yet, and we need to validate the kernel check.
+// DML does not produce the same error message for this validation, so we exclude it.
 TEST(UnpoolTest, MaxUnpoolInvalidInputRank0) {
   OpTester test("MaxUnpool", 11);
+
+  // Disable shape inference so we reach the kernel validation.
+  test.SetAddShapeToTensorData(false);
 
   test.AddAttribute("strides", std::vector<int64_t>{2});
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
@@ -522,13 +527,19 @@ TEST(UnpoolTest, MaxUnpoolInvalidInputRank0) {
   test.AddInput<float>("xT", t_dims, t_vals);
   test.AddInput<int64_t>("xI", i_dims, i_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Input tensor X must have at least 2 dimensions");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input dimension cannot be less than 3",
+           {kDmlExecutionProvider});
 }
 
 // Input with rank less than 3 should be rejected at runtime by the kernel.
+// Shape inference is disabled to ensure we reach the kernel validation.
 // DML does not produce the same error message for this validation, so we exclude it.
 TEST(UnpoolTest, MaxUnpoolInvalidInputRank2) {
   OpTester test("MaxUnpool", 11);
+
+  // Disable shape inference so we reach the kernel validation.
+  test.SetAddShapeToTensorData(false);
 
   test.AddAttribute("strides", std::vector<int64_t>{2});
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
