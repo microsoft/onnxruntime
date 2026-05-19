@@ -616,7 +616,7 @@ export const prepareInputOutputTensor = async (
       rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
     }
   } else if (location === 'ml-tensor') {
-    const mlTensor = tensor[2].mlTensor as MLTensor;
+    const mlTensor = tensor[2].mlTensor;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
     const registerMLTensor = wasm.webnnRegisterMLTensor;
@@ -653,7 +653,7 @@ export const prepareInputOutputTensor = async (
           if (!createTemporaryTensor || !uploadTensor) {
             throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
           }
-          const tensorId = await createTemporaryTensor(sessionId, dataTypeEnum, dims as number[]);
+          const tensorId = await createTemporaryTensor(sessionId, dataTypeEnum, dims);
           uploadTensor(tensorId, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
           rawData = tensorId;
         } else {

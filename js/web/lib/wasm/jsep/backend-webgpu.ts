@@ -252,7 +252,7 @@ export class WebGpuBackend {
     }
     requireFeatureIfAvailable('shader-f16');
     // Try subgroups
-    requireFeatureIfAvailable('subgroups' as GPUFeatureName);
+    requireFeatureIfAvailable('subgroups');
 
     this.device = await adapter.requestDevice(deviceDescriptor);
     this.adapterInfo = new AdapterInfoImpl(adapter.info);
