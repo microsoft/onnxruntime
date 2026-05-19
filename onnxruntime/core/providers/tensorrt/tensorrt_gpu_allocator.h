@@ -90,8 +90,10 @@ class TensorRTGpuAllocator final : public nvinfer1::IGpuAllocator {
       }
 
       if (IsAligned(raw, alignment)) {
-        std::lock_guard<std::mutex> lock(lock_);
-        raw_allocations_[raw] = raw;
+        if (!TrackAllocation(raw, raw)) {
+          allocator_->Free(raw);
+          return nullptr;
+        }
         return raw;
       }
 
@@ -114,11 +116,23 @@ class TensorRTGpuAllocator final : public nvinfer1::IGpuAllocator {
         return nullptr;
       }
 
-      std::lock_guard<std::mutex> lock(lock_);
-      raw_allocations_[aligned] = raw;
+      if (!TrackAllocation(aligned, raw)) {
+        allocator_->Free(raw);
+        return nullptr;
+      }
       return aligned;
     } catch (...) {
       return nullptr;
+    }
+  }
+
+  bool TrackAllocation(void* allocation, void* raw) noexcept {
+    try {
+      std::lock_guard<std::mutex> lock(lock_);
+      raw_allocations_[allocation] = raw;
+      return true;
+    } catch (...) {
+      return false;
     }
   }
 
