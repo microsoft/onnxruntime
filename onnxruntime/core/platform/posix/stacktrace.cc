@@ -33,7 +33,6 @@ inline int GetAddr2LineEnv() {
   return atoi(val);
 }
 
-// Check once whether ORT_ADDR2LINE is set.
 int GetAddr2LineCount() {
   static const int count = GetAddr2LineEnv();
   return count;
@@ -152,9 +151,8 @@ std::vector<std::string> GetStackTrace() {
   int depth = absl::GetStackTrace(addresses, kCallstackLimit, /*skip_count=*/2);
   stack.reserve(depth);
 
-  // Resolve file:line via addr2line only when explicitly opted in via
-  // ORT_ADDR2LINE=1, since it spawns external processes and can be
-  // very slow on large debug binaries.
+  // Resolve file:line via addr2line only when explicitly opted in via ORT_ADDR2LINE=*,
+  // since it spawns external processes and can be very slow on large debug binaries.
   std::unordered_map<void*, std::string> resolved;
   int count = GetAddr2LineCount();
   if (count > 0) {
