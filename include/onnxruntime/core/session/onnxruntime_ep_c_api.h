@@ -2084,10 +2084,10 @@ struct OrtEpApi {
    * Extracts EPContext-related data I/O callbacks from the session options into an opaque OrtEpContextConfig handle.
    * The EP should call this during CreateEp() while session_options is still valid, and store the returned handle for
    * use during Compile(). The returned config is always non-NULL and must be released with ReleaseEpContextConfig.
-    *
-    * The returned handle owns only ORT's copy of callback function pointers and opaque state pointer values. It does not
-    * own the application-provided state. The application is responsible for keeping callback state valid and
-    * synchronized while an EP may call ReadEpContextData or WriteEpContextData with this config.
+   *
+   * The returned handle owns only ORT's copy of callback function pointers and opaque state pointer values. It does not
+   * own the application-provided state. The application is responsible for keeping callback state valid and
+   * synchronized while an EP may call ReadEpContextData or WriteEpContextData with this config.
    *
    * \param[in] session_options The OrtSessionOptions instance.
    * \param[out] config The extracted OrtEpContextConfig.
@@ -2112,13 +2112,13 @@ struct OrtEpApi {
    *
    * If config contains a read callback, the callback is invoked with the provided allocator. Otherwise, ORT reads the
    * file from disk. The disk fallback derives the base directory from the graph's model path.
-    *
-    * This function is synchronous. If a callback is present, it is invoked on the calling thread and its OrtStatus is
-    * returned to the caller. ORT does not serialize concurrent calls across EP instances or EP worker threads.
+   *
+   * This function is synchronous. If a callback is present, it is invoked on the calling thread and its OrtStatus is
+   * returned to the caller. ORT does not serialize concurrent calls across EP instances or EP worker threads.
    *
    * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig. May be NULL for disk fallback.
    * \param[in] file_name EPContext file name as a null-terminated UTF-8 string.
-    * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
+   * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
    * \param[in] allocator Allocator for the output buffer.
    * \param[out] buffer Output buffer containing the EPContext binary data.
    * \param[out] buffer_size Size of the output buffer in bytes.
@@ -2139,18 +2139,18 @@ struct OrtEpApi {
    *
    * If config contains a write callback, the data is forwarded to the application's callback. Otherwise, ORT writes the
    * data to disk. The disk fallback derives the base directory from the graph's model path.
-    *
-    * This function is synchronous. If a callback is present, it is invoked on the calling thread and its OrtStatus is
-    * returned to the caller. ORT does not retain buffer after the callback returns, reorder callback invocations, or
-    * serialize concurrent calls across EP instances or EP worker threads.
-    *
-    * Each call is one complete write operation for file_name. The API does not provide an offset, sequence number, or
-    * final-chunk marker. EPs should prefer one call per EPContext binary, or document EP-specific chunk ordering and
-    * completion semantics if multiple calls are made for the same file_name.
+   *
+   * This function is synchronous. If a callback is present, it is invoked on the calling thread and its OrtStatus is
+   * returned to the caller. ORT does not retain buffer after the callback returns, reorder callback invocations, or
+   * serialize concurrent calls across EP instances or EP worker threads.
+   *
+   * Each call is one complete write operation for file_name. The API does not provide an offset, sequence number, or
+   * final-chunk marker. EPs should prefer one call per EPContext binary, or document EP-specific chunk ordering and
+   * completion semantics if multiple calls are made for the same file_name.
    *
    * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig. May be NULL for disk fallback.
    * \param[in] file_name EPContext file name as a null-terminated UTF-8 string.
-    * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
+   * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
    * \param[in] buffer The buffer containing EPContext binary data to write.
    * \param[in] buffer_size Size of the buffer in bytes.
    *

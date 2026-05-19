@@ -1881,10 +1881,10 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
   Ort::ModelCompilationOptions compilation_options{env, session_options};
   const auto& compile_api = Ort::GetCompileApi();
   ExpectOrtStatus(compile_api.ModelCompilationOptions_SetEpContextDataWriteFunc(nullptr, EpContextWriteCallback,
-                                                                               nullptr),
+                                                                                nullptr),
                   ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
   ExpectOrtStatus(compile_api.ModelCompilationOptions_SetEpContextDataWriteFunc(compilation_options, nullptr,
-                                                                               nullptr),
+                                                                                nullptr),
                   ORT_INVALID_ARGUMENT, "OrtWriteEpContextDataFunc function is null");
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
