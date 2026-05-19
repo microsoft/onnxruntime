@@ -8,6 +8,7 @@
 #include <sstream>
 #include <list>
 #include <string>
+#include <unordered_map>
 #include <thread>
 #include <queue>
 #include <iomanip>
