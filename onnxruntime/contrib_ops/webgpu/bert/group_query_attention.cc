@@ -183,6 +183,80 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
+// Apply rotary embedding to Q only. Reuses FusedQKRotaryEmbeddingProgram with k_global_shape[2]=0
+// so that K branches are never executed in the shader.
+Status RunRotaryEmbeddingQOnly(onnxruntime::webgpu::ComputeContext& context,
+                               const WebgpuAttentionParameters& params,
+                               const Tensor* query_in,
+                               const Tensor* seqlen_k,
+                               const Tensor* cos_cache,
+                               const Tensor* sin_cache,
+                               Tensor* query_out) {
+  const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
+  const auto head_size = params.head_size_;
+
+  // Build Q domain
+  const auto hidden_size_q = params.hidden_size_;
+  const TensorShape q_global_shape({params.batch_size_, params.sequence_length_,
+                                    hidden_size_q / head_size,
+                                    static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
+  const auto rank = q_global_shape.NumDimensions();
+  std::vector<uint32_t> q_global_dims(rank);
+  std::vector<uint32_t> q_global_strides(rank);
+  for (size_t j = 0; j < rank; ++j) {
+    q_global_dims[j] = gsl::narrow_cast<uint32_t>(q_global_shape[j]);
+    q_global_strides[j] = gsl::narrow_cast<uint32_t>(q_global_shape.SizeFromDimension(j + 1));
+  }
+
+  // K domain with 0 heads — shader condition `bsnh[2] < k_global_shape[2]` is never true.
+  std::vector<uint32_t> k_global_dims = {gsl::narrow_cast<uint32_t>(params.batch_size_),
+                                          gsl::narrow_cast<uint32_t>(params.sequence_length_),
+                                          0u,
+                                          gsl::narrow_cast<uint32_t>(head_size - half_rotary_embedding_dim)};
+
+  const auto q_domain_size = gsl::narrow_cast<uint32_t>(q_global_shape.Size());
+
+  const auto q_input_output_strides = std::vector<uint32_t>(
+      {gsl::narrow_cast<uint32_t>(query_in->Shape().SizeFromDimension(1)),
+       gsl::narrow_cast<uint32_t>(hidden_size_q),
+       gsl::narrow_cast<uint32_t>(head_size),
+       1u});
+
+  // K strides are unused but must be provided for uniform layout. Use Q strides as placeholder.
+  const auto k_input_output_strides = q_input_output_strides;
+
+  // WebGPU requires valid buffer bindings even for unused K. Use query_in as k_input (never read)
+  // and a minimal 1-element tensor as k_output (never written).
+  Tensor k_dummy_out = context.CreateGPUTensor(query_in->DataType(), TensorShape({1}));
+
+  FusedQKRotaryEmbeddingProgram program(params.rotary_interleaved_);
+  program
+      .CacheHint(params.rotary_interleaved_, "q_only")
+      .AddInputs({
+          {query_in, ProgramTensorMetadataDependency::TypeAndRank},
+          {query_in, ProgramTensorMetadataDependency::Rank},  // k_input placeholder (never read)
+          {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
+          {cos_cache, ProgramTensorMetadataDependency::Rank},
+          {sin_cache, ProgramTensorMetadataDependency::Rank},
+      })
+      .AddOutputs({
+          {query_out, ProgramTensorMetadataDependency::None},
+          {&k_dummy_out, ProgramTensorMetadataDependency::None},
+      })
+      .SetDispatchGroupSize((q_domain_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({
+          {params.scale_},
+          {gsl::make_span(q_global_dims)},
+          {gsl::make_span(q_global_strides)},
+          {gsl::make_span(q_input_output_strides)},
+          {gsl::make_span(k_global_dims)},
+          {gsl::make_span(k_input_output_strides)},
+          {q_domain_size},
+      });
+
+  return context.RunProgram(program);
+}
+
 Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
@@ -256,7 +330,6 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   Tensor qRotary;
   Tensor kRotary;
-  Tensor kDummy;  // Placeholder for rotary when kv_empty and key has zero sequence length
 
   // kv_sequence_length==0 fast path: K/V inputs are empty (shared KV layer).
   // Skip all K/V processing; only apply RoPE to Q if needed.
@@ -275,30 +348,21 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (kv_empty) {
     // KV inputs are empty - shared KV layer. Only need to extract Q and optionally apply RoPE to Q.
-    // Avoid creating zero-sized K/V tensors as WebGPU may reject zero-element storage buffers.
     if (parameters.is_packed_qkv_) {
-      // Extract Q from packed QKV. Create non-zero K/V with sequence_length=1 to satisfy SplitPackedQKV,
-      // but they won't be used for attention (past_key/past_value provide the KV context).
+      // Extract only Q from packed QKV — no need to allocate K/V split tensors.
       qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
-      kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-      vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-      ORT_RETURN_IF_ERROR(SplitPackedQKV(context, parameters, query, &qSplit, &kSplit, &vSplit, parameters.kv_hidden_size_));
+      ORT_RETURN_IF_ERROR(ExtractQFromPackedQKV(context, parameters, query, &qSplit));
       parameters.is_packed_qkv_ = false;
       parameters.qkv_format_ = Q_K_V_BSNH;
       query = &qSplit;
-      // K/V from split are discarded — attention will use past_key/past_value instead.
     }
     if (do_rotary_) {
-      // Apply RoPE to Q only. Use the fused kernel with a dummy K to avoid zero-element buffers.
-      // K output is discarded since attention uses past_key/past_value.
+      // Apply RoPE to Q only — K doesn't need rotation since we reuse another layer's already-rotated KV cache.
       qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
-      kDummy = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-      kRotary = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
-      ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(context, parameters,
-                                                    query, &kDummy,
-                                                    seqlen_k,
-                                                    cos_cache, sin_cache,
-                                                    &qRotary, &kRotary));
+      ORT_RETURN_IF_ERROR(RunRotaryEmbeddingQOnly(context, parameters,
+                                                  query, seqlen_k,
+                                                  cos_cache, sin_cache,
+                                                  &qRotary));
       query = &qRotary;
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {

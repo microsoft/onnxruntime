@@ -470,6 +470,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     // kv_sequence_length==0: K/V inputs are empty (shared KV layer).
     // Skip CopyKVCache and fused split+rotary+copyKV.
     // Use past_key/past_value directly as the present buffers for attention.
+    // Note: do_rotary is always false here because GQA passes cos_cache=nullptr, sin_cache=nullptr
+    // for kv_empty layers (rotary is applied to Q separately in GQA before calling ApplyFlashAttention).
     ORT_ENFORCE(!do_rotary, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV should not be used with kv_sequence_length==0.");
     ORT_ENFORCE(past_key != nullptr && past_value != nullptr,
                 "kv_empty path requires past KV context (KV-shared layers reuse another layer's cache).");

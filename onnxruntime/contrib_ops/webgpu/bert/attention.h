@@ -34,13 +34,16 @@ class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> 
 
 class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
  public:
-  SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
+  SplitPackedQKVProgram(bool q_only = false) : Program{"SplitPackedQKV"}, q_only_(q_only) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"input_size", ProgramUniformVariableDataType::Uint32},
                                           {"hidden_size", ProgramUniformVariableDataType::Uint32},
                                           {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  bool q_only_;
 };
 
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {

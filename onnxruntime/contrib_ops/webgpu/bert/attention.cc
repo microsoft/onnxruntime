@@ -75,25 +75,38 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
 Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   // Inputs: packed_qkv [B, S, D], outputs: Q, K, V [B, S, D]
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
-  const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
-  sh.MainFunctionBody()
-      << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
-      << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
-      << "  let batch = packed_qkv_indices[0];\n"
-      << "  let seq = packed_qkv_indices[1];\n"
-      << "  let d = packed_qkv_indices[2];\n"
-      << "  let input_data = " << packed_qkv.GetByOffset("global_idx") << ";\n"
-      << "  if (d < uniforms.hidden_size) {\n"
-      << "    " << query.SetByIndices("vec3<u32>(batch, seq, d)", "input_data") << ";\n"
-      << "  } else if (d < (uniforms.hidden_size + uniforms.kv_hidden_size)) {\n"
-      << "    let kd = d - uniforms.hidden_size;\n"
-      << "    " << key.SetByIndices("vec3<u32>(batch, seq, kd)", "input_data") << ";\n"
-      << "  } else {\n"
-      << "    let vd = d - uniforms.hidden_size - uniforms.kv_hidden_size;\n"
-      << "    " << value.SetByIndices("vec3<u32>(batch, seq, vd)", "input_data") << ";\n"
-      << "  }\n";
+  if (q_only_) {
+    const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+    sh.MainFunctionBody()
+        << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
+        << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
+        << "  let batch = packed_qkv_indices[0];\n"
+        << "  let seq = packed_qkv_indices[1];\n"
+        << "  let d = packed_qkv_indices[2];\n"
+        << "  if (d < uniforms.hidden_size) {\n"
+        << "    " << query.SetByIndices("vec3<u32>(batch, seq, d)", packed_qkv.GetByOffset("global_idx")) << ";\n"
+        << "  }\n";
+  } else {
+    const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+    const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+    const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+    sh.MainFunctionBody()
+        << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
+        << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
+        << "  let batch = packed_qkv_indices[0];\n"
+        << "  let seq = packed_qkv_indices[1];\n"
+        << "  let d = packed_qkv_indices[2];\n"
+        << "  let input_data = " << packed_qkv.GetByOffset("global_idx") << ";\n"
+        << "  if (d < uniforms.hidden_size) {\n"
+        << "    " << query.SetByIndices("vec3<u32>(batch, seq, d)", "input_data") << ";\n"
+        << "  } else if (d < (uniforms.hidden_size + uniforms.kv_hidden_size)) {\n"
+        << "    let kd = d - uniforms.hidden_size;\n"
+        << "    " << key.SetByIndices("vec3<u32>(batch, seq, kd)", "input_data") << ";\n"
+        << "  } else {\n"
+        << "    let vd = d - uniforms.hidden_size - uniforms.kv_hidden_size;\n"
+        << "    " << value.SetByIndices("vec3<u32>(batch, seq, vd)", "input_data") << ";\n"
+        << "  }\n";
+  }
   return Status::OK();
 }
 
@@ -111,6 +124,25 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
           {vectorized_input_size},
           {static_cast<uint32_t>(params.hidden_size_ / components)},
           {static_cast<uint32_t>(kv_hidden_size / components)},
+      })
+      .SetDispatchGroupSize((vectorized_input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
+Status ExtractQFromPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params,
+                             const Tensor* packedQKV, Tensor* query) {
+  const int components = std::min({GetMaxComponents(params.hidden_size_), GetMaxComponents(params.kv_hidden_size_), GetMaxComponents(params.v_hidden_size_)});
+  SplitPackedQKVProgram program(/*q_only=*/true);
+  auto input_size = packedQKV->Shape().Size();
+  const uint32_t vectorized_input_size = static_cast<uint32_t>(input_size / components);
+  program
+      .CacheHint("q_only", components)
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
+      .AddOutput({query, ProgramTensorMetadataDependency::TypeAndRank, components})
+      .AddUniformVariables({
+          {vectorized_input_size},
+          {static_cast<uint32_t>(params.hidden_size_ / components)},
+          {static_cast<uint32_t>(params.kv_hidden_size_ / components)},
       })
       .SetDispatchGroupSize((vectorized_input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
