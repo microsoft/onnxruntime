@@ -1582,7 +1582,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFrom
 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(OrtReadEpContextDataFunc read_func,
-                                                                               void* state) {
+                                                                              void* state) {
   ThrowOnError(GetApi().SessionOptions_SetEpContextDataReadFunc(this->p_, read_func, state));
   return *this;
 }
