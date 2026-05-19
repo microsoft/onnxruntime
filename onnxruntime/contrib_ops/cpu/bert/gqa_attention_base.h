@@ -322,8 +322,10 @@ class GQAAttentionBase {
       TensorOpCost unit_cost;
       unit_cost.compute_cycles =
           static_cast<double>(SafeInt<ptrdiff_t>(2) * sequence_length * head_size * seqlen_present_kv_cache);
+      // Q is FP32; K cache is packed (INT8 or INT4) bytes.
       unit_cost.bytes_loaded =
-          static_cast<double>((sequence_length + seqlen_present_kv_cache) * head_size * sizeof(float));
+          static_cast<double>(sequence_length * head_size * sizeof(float) +
+                              seqlen_present_kv_cache * packed_row_bytes);
       unit_cost.bytes_stored =
           static_cast<double>(SafeInt<ptrdiff_t>(sequence_length) * seqlen_present_kv_cache * sizeof(float));
 
@@ -479,9 +481,10 @@ class GQAAttentionBase {
       TensorOpCost unit_cost;
       unit_cost.compute_cycles =
           static_cast<double>(SafeInt<ptrdiff_t>(2) * sequence_length * head_size * seqlen_present_kv_cache);
+      // Probs (softmax output) are FP32; V cache is packed (INT8 or INT4) bytes.
       unit_cost.bytes_loaded =
-          static_cast<double>(SafeInt<ptrdiff_t>(sequence_length + head_size) *
-                              seqlen_present_kv_cache * sizeof(float));
+          static_cast<double>(SafeInt<ptrdiff_t>(sequence_length) * seqlen_present_kv_cache * sizeof(float) +
+                              seqlen_present_kv_cache * packed_row_bytes);
       unit_cost.bytes_stored = static_cast<double>(sequence_length * head_size * sizeof(float));
 
       ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {

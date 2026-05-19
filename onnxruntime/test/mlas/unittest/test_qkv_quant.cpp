@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <random>
+#include <string>
 
 //
 // Tests for MlasKVQuantize / MlasKVDequantize roundtrip and

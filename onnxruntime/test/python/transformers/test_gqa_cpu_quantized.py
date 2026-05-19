@@ -349,9 +349,11 @@ def run_quantized_gqa_prompt_test(
         atol = 0.15 if bit_width == 4 else 0.05
 
     # Check for NaN
-    assert not np.any(np.isnan(out_ort)), f"NaN in output (quant={quant_type}, bit={bit_width})"
+    if np.any(np.isnan(out_ort)):
+        raise AssertionError(f"NaN in output (quant={quant_type}, bit={bit_width})")
     # Check non-zero
-    assert not np.allclose(out_ort, 0.0), f"Output is all zeros (quant={quant_type}, bit={bit_width})"
+    if np.allclose(out_ort, 0.0):
+        raise AssertionError(f"Output is all zeros (quant={quant_type}, bit={bit_width})")
 
     np.testing.assert_allclose(
         out_ort,

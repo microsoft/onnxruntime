@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -72,13 +73,17 @@ enum class KVQuantizationType : int {
 
 inline KVQuantizationType StringToKVQuantizationType(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
+  if (s == "NONE") {
+    return KVQuantizationType::NONE;
+  }
   if (s == "PER_TENSOR") {
     return KVQuantizationType::PER_TENSOR;
   }
   if (s == "PER_CHANNEL") {
     return KVQuantizationType::PER_CHANNEL;
   }
-  return KVQuantizationType::NONE;
+  ORT_THROW("Invalid KV quantization type: '", s,
+            "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL.");
 }
 
 constexpr bool LAYOUT_BSNH = false;

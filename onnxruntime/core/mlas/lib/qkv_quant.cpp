@@ -26,6 +26,7 @@ Abstract:
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 
 namespace {
 

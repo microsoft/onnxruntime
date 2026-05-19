@@ -1244,7 +1244,7 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
 
   // Past cache: zero-filled buffer (prompt phase, share_buffer mode).
   // Must be provided so the type constraint T_CACHE can be resolved.
-  const int packed_head_size = (cfg.bit_width == 4) ? (cfg.head_size / 2) : cfg.head_size;
+  const int packed_head_size = (cfg.bit_width == 4) ? ((cfg.head_size + 1) / 2) : cfg.head_size;
   const int past_elements = cfg.batch_size * cfg.kv_num_heads * cfg.seq_len * packed_head_size;
 
   if (cfg.bit_width == 4) {
@@ -1273,23 +1273,41 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
   tester.AddOptionalInputEdge<float>();    // attention_bias
   tester.AddOptionalInputEdge<float>();    // head_sink
 
-  // Scale inputs (per-tensor: single float)
+  // Scale inputs: one scale per (kv_head, d) channel for PER_CHANNEL; one scalar for PER_TENSOR.
   const int scale_size = (cfg.quant_type == "PER_CHANNEL")
                              ? (cfg.kv_num_heads * cfg.head_size)
                              : 1;
-  // We don't know the exact scale a-priori for prompt (computed from K/V data).
-  // Use a rough scale. The op computes its own scale from the data.
-  // Actually, the scale is provided as input and used as-is.
-  // Compute scale from the key/value data.
-  float k_amax = 0.0f, v_amax = 0.0f;
-  for (auto& v : key_data) k_amax = std::max(k_amax, std::fabs(v));
-  for (auto& v : value_data) v_amax = std::max(v_amax, std::fabs(v));
   float qmax = (cfg.bit_width == 4) ? 7.0f : 127.0f;
-  float k_scale_val = (k_amax > 1e-6f) ? (k_amax / qmax) : 1.0f;
-  float v_scale_val = (v_amax > 1e-6f) ? (v_amax / qmax) : 1.0f;
 
-  std::vector<float> k_scale_data(scale_size, k_scale_val);
-  std::vector<float> v_scale_data(scale_size, v_scale_val);
+  std::vector<float> k_scale_data(scale_size);
+  std::vector<float> v_scale_data(scale_size);
+  // Keep a single per-tensor scalar in scope (used by the verifier for PER_TENSOR).
+  float k_scale_val = 1.0f, v_scale_val = 1.0f;
+  if (cfg.quant_type == "PER_CHANNEL") {
+    // Compute true per-channel scales: distinct per (kv_head, d) pair.
+    // key_data layout: [batch_size, seq_len, kv_num_heads * head_size] (BSNH).
+    for (int ch = 0; ch < scale_size; ++ch) {
+      float k_ch_max = 0.0f, v_ch_max = 0.0f;
+      for (int b = 0; b < cfg.batch_size; ++b) {
+        for (int s = 0; s < cfg.seq_len; ++s) {
+          int idx = (b * cfg.seq_len + s) * kv_hidden_size + ch;
+          k_ch_max = std::max(k_ch_max, std::fabs(key_data[idx]));
+          v_ch_max = std::max(v_ch_max, std::fabs(value_data[idx]));
+        }
+      }
+      k_scale_data[ch] = (k_ch_max > 1e-6f) ? (k_ch_max / qmax) : 1.0f;
+      v_scale_data[ch] = (v_ch_max > 1e-6f) ? (v_ch_max / qmax) : 1.0f;
+    }
+  } else {
+    float k_amax = 0.0f, v_amax = 0.0f;
+    for (auto& v : key_data) k_amax = std::max(k_amax, std::fabs(v));
+    for (auto& v : value_data) v_amax = std::max(v_amax, std::fabs(v));
+    k_scale_val = (k_amax > 1e-6f) ? (k_amax / qmax) : 1.0f;
+    v_scale_val = (v_amax > 1e-6f) ? (v_amax / qmax) : 1.0f;
+    k_scale_data[0] = k_scale_val;
+    v_scale_data[0] = v_scale_val;
+  }
+
   std::vector<int64_t> scale_shape;
   if (cfg.quant_type == "PER_CHANNEL") {
     scale_shape = {static_cast<int64_t>(cfg.kv_num_heads * cfg.head_size)};
@@ -1354,34 +1372,62 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
       }
     }
 
-    // Simulate quantization noise
+    // Helper: returns the channel scale for element at flat BNSH index.
+    // K/V BNSH layout: [B, kv_num_heads, seq_len, head_size]; channel = kv_head * head_size + d.
+    auto get_k_scale = [&](size_t flat) -> float {
+      if (cfg.quant_type != "PER_CHANNEL") return k_scale_val;
+      int d = static_cast<int>(flat) % cfg.head_size;
+      int kv_head = (static_cast<int>(flat) / (cfg.seq_len * cfg.head_size)) % cfg.kv_num_heads;
+      return k_scale_data[kv_head * cfg.head_size + d];
+    };
+    auto get_v_scale = [&](size_t flat) -> float {
+      if (cfg.quant_type != "PER_CHANNEL") return v_scale_val;
+      int d = static_cast<int>(flat) % cfg.head_size;
+      int kv_head = (static_cast<int>(flat) / (cfg.seq_len * cfg.head_size)) % cfg.kv_num_heads;
+      return v_scale_data[kv_head * cfg.head_size + d];
+    };
+
+    // Simulate quantization noise using the same per-channel (or per-tensor) scales.
     std::vector<float> K_deq(kv_elements), V_deq(kv_elements);
     if (cfg.bit_width == 8) {
-      std::vector<int8_t> k_q, v_q;
-      QuantizeInt8PerTensor(K_bnsh, k_q);
-      QuantizeInt8PerTensor(V_bnsh, v_q);
+      std::vector<int8_t> k_q(kv_elements), v_q(kv_elements);
       for (size_t i = 0; i < K_bnsh.size(); i++) {
-        k_q[i] = static_cast<int8_t>(std::round(std::clamp(K_bnsh[i] / k_scale_val, -128.0f, 127.0f)));
+        k_q[i] = static_cast<int8_t>(std::round(std::clamp(K_bnsh[i] / get_k_scale(i), -128.0f, 127.0f)));
       }
       for (size_t i = 0; i < V_bnsh.size(); i++) {
-        v_q[i] = static_cast<int8_t>(std::round(std::clamp(V_bnsh[i] / v_scale_val, -128.0f, 127.0f)));
+        v_q[i] = static_cast<int8_t>(std::round(std::clamp(V_bnsh[i] / get_v_scale(i), -128.0f, 127.0f)));
       }
-      DequantizeInt8PerTensor(k_q, K_deq, k_scale_val);
-      DequantizeInt8PerTensor(v_q, V_deq, v_scale_val);
+      for (size_t i = 0; i < K_deq.size(); i++) K_deq[i] = k_q[i] * get_k_scale(i);
+      for (size_t i = 0; i < V_deq.size(); i++) V_deq[i] = v_q[i] * get_v_scale(i);
     } else {
-      std::vector<uint8_t> k_p(K_bnsh.size() / 2), v_p(V_bnsh.size() / 2);
+      std::vector<uint8_t> k_p((K_bnsh.size() + 1) / 2), v_p((V_bnsh.size() + 1) / 2);
       for (size_t i = 0; i < K_bnsh.size(); i += 2) {
-        int8_t q0 = static_cast<int8_t>(std::round(std::clamp(K_bnsh[i] / k_scale_val, -8.0f, 7.0f)));
-        int8_t q1 = static_cast<int8_t>(std::round(std::clamp(K_bnsh[i + 1] / k_scale_val, -8.0f, 7.0f)));
+        int8_t q0 = static_cast<int8_t>(std::round(std::clamp(K_bnsh[i] / get_k_scale(i), -8.0f, 7.0f)));
+        int8_t q1 = static_cast<int8_t>(std::round(std::clamp(K_bnsh[i + 1] / get_k_scale(i + 1), -8.0f, 7.0f)));
         k_p[i / 2] = PackInt4(q0, q1);
       }
       for (size_t i = 0; i < V_bnsh.size(); i += 2) {
-        int8_t q0 = static_cast<int8_t>(std::round(std::clamp(V_bnsh[i] / v_scale_val, -8.0f, 7.0f)));
-        int8_t q1 = static_cast<int8_t>(std::round(std::clamp(V_bnsh[i + 1] / v_scale_val, -8.0f, 7.0f)));
+        int8_t q0 = static_cast<int8_t>(std::round(std::clamp(V_bnsh[i] / get_v_scale(i), -8.0f, 7.0f)));
+        int8_t q1 = static_cast<int8_t>(std::round(std::clamp(V_bnsh[i + 1] / get_v_scale(i + 1), -8.0f, 7.0f)));
         v_p[i / 2] = PackInt4(q0, q1);
       }
-      DequantizeInt4PerTensor(k_p, K_deq, k_scale_val);
-      DequantizeInt4PerTensor(v_p, V_deq, v_scale_val);
+      // Dequantize using per-element scale (unpack nibbles back).
+      for (size_t i = 0; i < K_bnsh.size(); i += 2) {
+        int8_t q0 = static_cast<int8_t>((k_p[i / 2] & 0x0F) >= 8 ? (k_p[i / 2] & 0x0F) - 16
+                                                                 : (k_p[i / 2] & 0x0F));
+        int8_t q1 = static_cast<int8_t>((k_p[i / 2] >> 4) >= 8 ? (k_p[i / 2] >> 4) - 16
+                                                               : (k_p[i / 2] >> 4));
+        K_deq[i] = q0 * get_k_scale(i);
+        K_deq[i + 1] = q1 * get_k_scale(i + 1);
+      }
+      for (size_t i = 0; i < V_bnsh.size(); i += 2) {
+        int8_t q0 = static_cast<int8_t>((v_p[i / 2] & 0x0F) >= 8 ? (v_p[i / 2] & 0x0F) - 16
+                                                                 : (v_p[i / 2] & 0x0F));
+        int8_t q1 = static_cast<int8_t>((v_p[i / 2] >> 4) >= 8 ? (v_p[i / 2] >> 4) - 16
+                                                               : (v_p[i / 2] >> 4));
+        V_deq[i] = q0 * get_v_scale(i);
+        V_deq[i + 1] = q1 * get_v_scale(i + 1);
+      }
     }
 
     // Reshape Q to BNSH
