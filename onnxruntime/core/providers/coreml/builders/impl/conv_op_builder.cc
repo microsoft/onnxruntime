@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+#include <string_view>
+
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
@@ -14,6 +17,40 @@ using namespace CoreML::Specification;
 
 namespace onnxruntime {
 namespace coreml {
+
+namespace {
+
+// Single source of truth for FusedConv activation handling. Drives both the
+// support check in IsOpSupportedImpl and the MIL op dispatch in
+// AddToModelBuilderImpl. `param_ports` lists the MIL op input ports that map
+// positionally to `activation_params`. ConvActivationFusion packs the params
+// in the same order: LeakyRelu=[alpha], Clip=[min,max], HardSigmoid=[alpha,
+// beta] (see conv_activation_fusion.cc:165-184). For MIL's `clip`, alpha/beta
+// are the min/max bounds.
+struct FusedConvActivationSpec {
+  std::string_view onnx_name;
+  std::string_view mil_op;
+  uint8_t param_count;
+  std::array<std::string_view, 2> param_ports;
+};
+
+constexpr FusedConvActivationSpec kFusedConvActivations[] = {
+    {"Relu", "relu", 0, {}},
+    {"Sigmoid", "sigmoid", 0, {}},
+    {"Tanh", "tanh", 0, {}},
+    {"LeakyRelu", "leaky_relu", 1, {{"alpha"}}},
+    {"Clip", "clip", 2, {{"alpha", "beta"}}},
+    {"HardSigmoid", "sigmoid_hard", 2, {{"alpha", "beta"}}},
+};
+
+const FusedConvActivationSpec* FindFusedConvActivationSpec(std::string_view name) {
+  for (const auto& spec : kFusedConvActivations) {
+    if (spec.onnx_name == name) return &spec;
+  }
+  return nullptr;
+}
+
+}  // namespace
 
 class ConvOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
@@ -92,9 +129,57 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     AddPadTypeAndPads(*conv_op, model_builder, op_type, helper, num_spatial_dims);
 
-    AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
+    const bool is_fused_conv = node.OpType() == "FusedConv";
+    if (!is_fused_conv) {
+      AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
+      model_builder.AddOperation(std::move(conv_op));
+    } else {
+      // com.microsoft:FusedConv = Conv + activation. Emit conv into an
+      // intermediate, then the activation MIL op on top. Mirrors how
+      // ConvActivationFusion was going to compose them on other EPs.
+      const auto output_elem_type = static_cast<int32_t>(
+          node.OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type());
+      std::vector<int64_t> output_shape;
+      ORT_RETURN_IF_NOT(GetShape(*node.OutputDefs()[0], output_shape, logger),
+                        "Failed to get FusedConv output shape");
 
-    model_builder.AddOperation(std::move(conv_op));
+      const std::string& conv_out_name = model_builder.GetUniqueName(node, "fused_conv_conv_out");
+      AddIntermediateOperationOutput(*conv_op, conv_out_name, output_elem_type, output_shape);
+      model_builder.AddOperation(std::move(conv_op));
+
+      const std::string activation = helper.Get("activation", std::string(""));
+      const auto activation_params = helper.Get("activation_params", std::vector<float>{});
+
+      // IsOpSupportedImpl gates both of these, so the lookup and arity check
+      // serve as a defensive backstop rather than primary validation.
+      const auto* spec = FindFusedConvActivationSpec(activation);
+      ORT_RETURN_IF_NOT(spec != nullptr,
+                        "FusedConv has unsupported activation: ", activation);
+      ORT_RETURN_IF_NOT(activation_params.size() == spec->param_count,
+                        "FusedConv activation '", activation, "' expects ",
+                        static_cast<unsigned>(spec->param_count),
+                        " activation_params, got ", activation_params.size());
+
+      auto act_op = model_builder.CreateOperation(node, std::string(spec->mil_op), "activation");
+      AddOperationInput(*act_op, "x", conv_out_name);
+
+      auto add_scalar = [&](std::string_view port_name, float value) {
+        if (output_elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          AddOperationInput(*act_op, std::string(port_name),
+                            model_builder.AddScalarConstant(act_op->type(), std::string(port_name), value));
+        } else {
+          AddOperationInput(*act_op, std::string(port_name),
+                            model_builder.AddScalarConstant(act_op->type(), std::string(port_name), MLFloat16(value)));
+        }
+      };
+
+      for (uint8_t i = 0; i < spec->param_count; ++i) {
+        add_scalar(spec->param_ports[i], activation_params[i]);
+      }
+
+      AddOperationOutput(*act_op, *node.OutputDefs()[0]);
+      model_builder.AddOperation(std::move(act_op));
+    }
   } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
@@ -232,6 +317,57 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& input_defs = node.InputDefs();
+  const bool is_fused_conv = node.OpType() == "FusedConv";
+
+  // FusedConv composes Conv with an activation op in a single node. Only
+  // implemented for the MLProgram path; fall back to CPU in NeuralNetwork mode
+  // rather than emitting an unfused Conv and losing the activation.
+  if (is_fused_conv) {
+    if (!input_params.create_mlprogram) {
+      LOGS(logger, VERBOSE) << "FusedConv is only supported in MLProgram format";
+      return false;
+    }
+    // FusedConv schema (contrib_defs.cc) has 4 inputs: X, W, B (optional),
+    // Z (optional). Z is a residual sum input — Y = activation(Conv(X,W,B) + Z).
+    // The MLProgram lowering below does not read input 3, so accepting a node
+    // with Z would silently drop the residual and produce wrong results.
+    //
+    // TODO: support Z by inserting an `add` MIL op between the conv output
+    // and the activation input — `act_in = add(conv_out, Z)` — preserving the
+    // `act(conv + Z)` ordering. This would unlock CoreML coverage for graphs
+    // optimized at TransformerLevel::Level3 (ORT_ENABLE_ALL) where
+    // ConvAddActivationFusion (core/optimizer/conv_add_act_fusion.cc) produces
+    // FusedConv(B, Z, act) for residual blocks (ResNet/EfficientNet etc).
+    if (input_defs.size() > 3) {
+      LOGS(logger, VERBOSE) << "FusedConv with the optional 'Z' (residual sum) input "
+                               "is not supported by the CoreML EP";
+      return false;
+    }
+    // Only float/float16 are wired through add_scalar in AddToModelBuilderImpl.
+    // FusedConv schema also allows double, which CoreML does not support.
+    const auto x_elem_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+    if (x_elem_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+        x_elem_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      LOGS(logger, VERBOSE) << "FusedConv element type [" << x_elem_type
+                            << "] is not supported by the CoreML EP (expected FLOAT or FLOAT16)";
+      return false;
+    }
+    NodeAttrHelper fused_helper(node);
+    const std::string activation = fused_helper.Get("activation", std::string(""));
+    const auto* spec = FindFusedConvActivationSpec(activation);
+    if (!spec) {
+      LOGS(logger, VERBOSE) << "FusedConv activation [" << activation
+                            << "] is not supported by the CoreML EP";
+      return false;
+    }
+    const auto activation_params = fused_helper.Get("activation_params", std::vector<float>{});
+    if (activation_params.size() != spec->param_count) {
+      LOGS(logger, VERBOSE) << "FusedConv activation [" << activation << "] expects "
+                            << static_cast<unsigned>(spec->param_count)
+                            << " activation_params, got " << activation_params.size();
+      return false;
+    }
+  }
 
   const auto& weight_name = input_defs[1]->Name();
   const auto* weight = input_params.graph_viewer.GetConstantInitializer(weight_name);

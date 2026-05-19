@@ -1,14 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <random>
+#include <string_view>
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "test/unittest_util/graph_transform_test_builder.h"
+#include "core/framework/kernel_registry.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/common.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+#include "core/mlas/lib/mlasi.h"
+#endif
 #include "core/graph/graph.h"
 #include "test/common/dnnl_op_test_utils.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -32,6 +41,180 @@ NodeArg* NhwcMakeInitializer(ModelTestBuilder& builder, const std::vector<int64_
                                     NhwcWeightsRange<T>::min_value,
                                     NhwcWeightsRange<T>::max_value);
 }
+
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+static bool HasFloatNhwcFusedConvKernel() {
+  auto* cpu_ep = TestCPUExecutionProvider();
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  if (!kernel_registry) {
+    return false;
+  }
+
+  KernelRegistry::TypeConstraintMap type_constraints{
+      {"T", DataTypeImpl::GetTensorType<float>()},
+  };
+
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = kernel_registry->TryFindKernel(
+      kCpuExecutionProvider,
+      "NhwcFusedConv",
+      kMSDomain,
+      1,
+      type_constraints,
+      DefaultLoggingManager().DefaultLogger(),
+      &kernel_create_info);
+
+  return status.IsOK() && kernel_create_info != nullptr;
+}
+#endif
+
+static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_shape,
+                                           const std::vector<int64_t>& weight_shape,
+                                           std::vector<int64_t> pads = {},
+                                           std::vector<int64_t> strides = {},
+                                           std::vector<int64_t> dilations = {},
+                                           int64_t group = 1,
+                                           bool has_sum_input = false,
+                                           std::string_view auto_pad = "NOTSET") {
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+  if (!HasFloatNhwcFusedConvKernel() || !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    return false;
+  }
+
+  if (has_sum_input || group != 1 || input_shape.size() != 4 || weight_shape.size() != 4) {
+    return false;
+  }
+
+  std::array<size_t, 2> input_spatial_shape{
+      narrow<size_t>(input_shape[2]),
+      narrow<size_t>(input_shape[3]),
+  };
+  std::array<size_t, 2> kernel_spatial_shape{
+      narrow<size_t>(weight_shape[2]),
+      narrow<size_t>(weight_shape[3]),
+  };
+  std::array<size_t, 2> strides_size_t{1, 1};
+  std::array<size_t, 2> dilations_size_t{1, 1};
+  std::array<size_t, 4> pads_size_t{};
+
+  if (!strides.empty()) {
+    if (strides.size() != strides_size_t.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < strides_size_t.size(); ++i) {
+      if (strides[i] < 0) {
+        return false;
+      }
+
+      strides_size_t[i] = narrow<size_t>(strides[i]);
+    }
+  }
+
+  if (!dilations.empty()) {
+    if (dilations.size() != dilations_size_t.size()) {
+      return false;
+    }
+
+    for (size_t i = 0; i < dilations_size_t.size(); ++i) {
+      if (dilations[i] < 0) {
+        return false;
+      }
+
+      dilations_size_t[i] = narrow<size_t>(dilations[i]);
+    }
+  }
+
+  const AutoPadType auto_pad_type = StringToAutoPadType(std::string(auto_pad));
+  if (auto_pad_type == AutoPadType::NOTSET) {
+    if (pads.empty()) {
+      pads_size_t.fill(0);
+    } else {
+      if (pads.size() != pads_size_t.size()) {
+        return false;
+      }
+
+      for (size_t i = 0; i < pads_size_t.size(); ++i) {
+        if (pads[i] < 0) {
+          return false;
+        }
+
+        pads_size_t[i] = narrow<size_t>(pads[i]);
+      }
+    }
+  } else {
+    for (size_t i = 0; i < 2; ++i) {
+      int64_t pad_head = 0;
+      int64_t pad_tail = 0;
+      int64_t out_dim = 0;
+      const auto status = ComputePadAndOutputShape(
+          input_shape[2 + i],
+          narrow<int64_t>(strides_size_t[i]),
+          weight_shape[2 + i],
+          narrow<int64_t>(dilations_size_t[i]),
+          auto_pad_type,
+          pad_head,
+          pad_tail,
+          out_dim,
+          /*force_symmetric_auto_padding*/ false);
+      if (!status.IsOK() || pad_head < 0 || pad_tail < 0 || out_dim < 0) {
+        return false;
+      }
+
+      pads_size_t[i] = narrow<size_t>(pad_head);
+      pads_size_t[i + 2] = narrow<size_t>(pad_tail);
+    }
+  }
+
+  return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+      /*Dimensions*/ 2,
+      narrow<size_t>(input_shape[0]),
+      /*GroupCount*/ 1,
+      input_spatial_shape.data(),
+      kernel_spatial_shape.data(),
+      dilations_size_t.data(),
+      pads_size_t.data(),
+      strides_size_t.data(),
+      narrow<size_t>(weight_shape[0]),
+      /*Beta*/ 0.0f);
+#else
+  ORT_UNUSED_PARAMETER(input_shape);
+  ORT_UNUSED_PARAMETER(weight_shape);
+  ORT_UNUSED_PARAMETER(pads);
+  ORT_UNUSED_PARAMETER(strides);
+  ORT_UNUSED_PARAMETER(dilations);
+  ORT_UNUSED_PARAMETER(group);
+  ORT_UNUSED_PARAMETER(has_sum_input);
+  ORT_UNUSED_PARAMETER(auto_pad);
+  return false;
+#endif
+}
+
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+static bool HasFp16NhwcFusedConvKernel() {
+  auto* cpu_ep = TestCPUExecutionProvider();
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  if (!kernel_registry) {
+    return false;
+  }
+
+  KernelRegistry::TypeConstraintMap type_constraints{
+      {"T", DataTypeImpl::GetTensorType<MLFloat16>()},
+  };
+
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = kernel_registry->TryFindKernel(
+      kCpuExecutionProvider,
+      "NhwcFusedConv",
+      kMSDomain,
+      1,
+      type_constraints,
+      DefaultLoggingManager().DefaultLogger(),
+      &kernel_create_info);
+
+  return status.IsOK() && kernel_create_info != nullptr;
+}
+#endif
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -222,6 +405,196 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
                     check_nhwc_graph,
                     TransformerLevel::Level2,
                     TransformerLevel::Level3);
+}
+
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(8));
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8);
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1});
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvFloat_RespectsKleidiDisableConfig) {
+  if (!HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1})) {
+    GTEST_SKIP() << "Float NHWC KleidiAI path is not available on this configuration.";
+  }
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  auto add_session_options = [](SessionOptions& session_options) {
+    const auto status = session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasDisableKleidiAi, "1");
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6,
+                    nullptr,
+                    add_session_options);
+}
+
+TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}, {1, 1});
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, FusedConvWithSumFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* bias_arg = builder.MakeInitializer<float>({16}, -0.5f, 0.5f);
+    auto* sum_arg = builder.MakeInput<float>({1, 16, 5, 5}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 0);
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 7, 7}, {16, 8, 3, 3}, {0, 0, 0, 0}, {1, 1}, {}, 1, true);
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 3 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvAutoPadFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 6, 6}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 8, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("auto_pad", "SAME_UPPER");
+    conv_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
+        {1, 8, 6, 6}, {16, 8, 3, 3}, {}, {2, 2}, {}, 1, false, "SAME_UPPER");
+    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
+    const int expected_transposes = expect_nhwc ? 2 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
 }
 
 TEST(NhwcTransformerTests, ConvAveragePool) {
@@ -596,6 +969,35 @@ TEST_F(NhwcTransformerTestsFp16, ConvFp16) {
   test_case({1, 12, 37}, {32, 12, 5});
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
+}
+
+TEST_F(NhwcTransformerTestsFp16, FusedConvWithSumFp16) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = MakeInputARangeFP16(builder, {1, 8, 7, 7}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* weight_arg = MakeInitializerARangeFP16(builder, {16, 8, 3, 3}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* bias_arg = MakeInitializerARangeFP16(builder, {16}, MLFloat16(-0.5f), MLFloat16(0.5f));
+    auto* sum_arg = MakeInputARangeFP16(builder, {1, 16, 5, 5}, MLFloat16(-1.0f), MLFloat16(1.0f));
+    auto* output_arg = builder.MakeOutput();
+
+    Node& fused_conv_node = builder.AddNode("FusedConv", {input_arg, weight_arg, bias_arg, sum_arg}, {output_arg}, kMSDomain);
+    fused_conv_node.AddAttribute("activation", "Relu");
+    fused_conv_node.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+    fused_conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+    fused_conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const int expected_nhwc_fused_conv = HasFp16NhwcFusedConvKernel() ? 1 : 0;
+    const int expected_transposes = HasFp16NhwcFusedConvKernel() ? 3 : 0;
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
+    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
 }
 
 TEST_F(NhwcTransformerTestsFp16, ConvMaxPoolFp16) {

@@ -543,6 +543,19 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  common::Status GetWeaklyCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const override {
+    std::error_code ec;
+    auto canonical = std::filesystem::weakly_canonical(std::filesystem::path{path}, ec);
+    if (ec) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL,
+                            "Failed to get the weakly canonical path: " + path + " - " + ec.message());
+    }
+    canonical_path.assign(canonical.native());
+    return Status::OK();
+  }
+
   common::Status LoadDynamicLibrary(const PathString& library_filename, bool global_symbols, void** handle) const override {
     dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
