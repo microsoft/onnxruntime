@@ -1843,8 +1843,8 @@ TEST(PluginExecutionProviderTest, EpContextDataReadCallbackFailureClearsOutputBu
   Ort::AllocatorWithDefaultOptions allocator;
   void* buffer = reinterpret_cast<void*>(kNonNullSentinel);
   size_t buffer_size = 1;
-  ExpectOrtStatus(ep_api.ReadEpContextData(ep_context_config, "context.bin", nullptr, allocator,
-                                           &buffer, &buffer_size),
+  ExpectOrtStatus(ep_api.ReadEpContextData(
+                      ep_context_config, "context.bin", nullptr, allocator, &buffer, &buffer_size),
                   ORT_FAIL, "read callback failed after allocation");
   EXPECT_EQ(buffer, nullptr);
   EXPECT_EQ(buffer_size, 0U);
