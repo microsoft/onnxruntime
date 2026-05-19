@@ -7,6 +7,7 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "contrib_ops/webgpu/bert/rotary_embedding.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
+#include "contrib_ops/webgpu/bert/turboquant_attention.h"
 
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -195,24 +196,62 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const Tensor* position_ids = context.Input<Tensor>(9);  // TODO: support sliding window
   const Tensor* attention_bias = context.Input<Tensor>(10);
   const Tensor* head_sink = context.Input<Tensor>(11);
+  // TurboQuant graph initializers (added by Option A graph rewrite).
+  const Tensor* k_codebook = context.Input<Tensor>(14);
+  const Tensor* hadamard = context.Input<Tensor>(15);
 
   GroupQueryAttentionParameters params = {};
-  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
-                                                                key,
-                                                                value,
-                                                                past_key,
-                                                                past_value,
-                                                                cos_cache,
-                                                                sin_cache,
-                                                                &params,
-                                                                num_heads_,
-                                                                kv_num_heads_,
-                                                                seqlen_k,
-                                                                total_seqlen_tensor,
-                                                                scale_,
-                                                                softcap_,
-                                                                0,
-                                                                context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+  if (is_turboquant_) {
+    // CheckInputs validates that past_key.dim[3] == head_size which is FALSE
+    // when Option A's graph rewrite has replaced fp16 head_dim with packed
+    // uint8 slot_bytes.  Compute parameters by hand for the TQ path,
+    // mirroring what CheckInputs would set for the equivalent fp16 graph.
+    const auto& q_dims = query->Shape().GetDims();
+    ORT_ENFORCE(q_dims.size() == 3, "query must be 3-D for TurboQuant GQA");
+    const auto& past_dims = past_key->Shape().GetDims();
+    ORT_ENFORCE(past_dims.size() == 4, "past_key must be 4-D for TurboQuant GQA");
+
+    params.batch_size = static_cast<int>(q_dims[0]);
+    params.sequence_length = static_cast<int>(q_dims[1]);
+    params.hidden_size = static_cast<int>(q_dims[2]);
+    params.num_heads = num_heads_;
+    params.kv_num_heads = kv_num_heads_;
+    params.head_size = params.hidden_size / num_heads_;
+    params.kv_hidden_size = params.head_size * kv_num_heads_;
+    params.v_head_size = params.head_size;
+    params.past_kv_format = AttentionQkvFormat::Q_K_V_BNSH;
+    params.scale = (scale_ == 0.0f) ? (1.0f / std::sqrt(static_cast<float>(params.head_size))) : scale_;
+    params.softcap = softcap_;
+    params.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+    params.is_packed_qkv = false;
+
+    // Compute past from past_key.shape[2] — same approach as CheckInputs takes
+    // for the fp16 path.  seqlens_k is unreliable as a primary source: callers
+    // sometimes leave it zero-filled on the prompt step, and the past tensor's
+    // shape is the ground truth either way.
+    params.seqlen_past_kv_cache = static_cast<int>(past_dims[2]);
+    params.total_sequence_length = params.seqlen_past_kv_cache + params.sequence_length;
+    params.seqlen_present_kv_cache = params.total_sequence_length;
+    params.is_first_prompt = (params.seqlen_past_kv_cache == 0);
+    params.is_subsequent_prompt = !params.is_first_prompt && params.sequence_length > 1;
+  } else {
+    ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
+                                                                  key,
+                                                                  value,
+                                                                  past_key,
+                                                                  past_value,
+                                                                  cos_cache,
+                                                                  sin_cache,
+                                                                  &params,
+                                                                  num_heads_,
+                                                                  kv_num_heads_,
+                                                                  seqlen_k,
+                                                                  total_seqlen_tensor,
+                                                                  scale_,
+                                                                  softcap_,
+                                                                  0,
+                                                                  context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+  }
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
@@ -231,11 +270,19 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size_);
   Tensor* output = context.Output(0, output_shape);
+  // For TurboQuant the present_kv tensor is uint8-packed with a slot_bytes
+  // last dim instead of head_size.  Match Option A's graph rewrite layout.
+  int64_t kv_last_dim = parameters.head_size_;
+  if (is_turboquant_) {
+    int k_slot = (parameters.head_size_ * static_cast<int>(key_quant_bits_) + 7) / 8 + 2;
+    int v_slot = (parameters.head_size_ * static_cast<int>(value_quant_bits_) + 7) / 8 + 4;
+    kv_last_dim = static_cast<int64_t>(std::max(k_slot, v_slot));
+  }
   std::vector<int64_t> present_dims{
       parameters.batch_size_,
       kv_num_heads_,
       parameters.seqlen_present_kv_cache_,
-      parameters.head_size_};
+      kv_last_dim};
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
@@ -249,6 +296,29 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   Tensor qRotary;
   Tensor kRotary;
+
+  // TurboQuant branch needs rotary applied to Q/K up-front (standard
+  // ApplyFlashAttention's do_rotary path requires packed-QKV input, which we
+  // don't have here).  Apply rotary inline, then hand off to the TQ
+  // orchestrator with cos/sin = nullptr.
+  if (is_turboquant_ && k_codebook != nullptr && hadamard != nullptr) {
+    if (do_rotary_) {
+      qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
+      kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
+      ORT_RETURN_IF_ERROR(RunFusedQKRotaryEmbedding(
+          context, parameters, query, key, seqlen_k, cos_cache, sin_cache,
+          &qRotary, &kRotary));
+      query = &qRotary;
+      key = &kRotary;
+    }
+    return RunTurboQuantAttention(
+        context, parameters, query, key, value, past_key, past_value,
+        k_codebook, hadamard, attention_bias, head_sink, seqlen_k,
+        /*cos_cache=*/nullptr, /*sin_cache=*/nullptr,
+        present_key, present_value, output,
+        key_quant_bits_, value_quant_bits_, norm_correction_,
+        local_window_size_);
+  }
 
   // Use a sliding window if the total sequence exceeds the window's length.
   bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);

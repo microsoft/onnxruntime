@@ -1,0 +1,204 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// TurboQuant decode kernel — reads the packed uint8 cache and writes fp16
+// K/V into a BNSH scratch buffer for downstream attention.  Mirrors the
+// CUDA TQDecodeKernel.
+//
+// One workgroup per (batch, kv_head, slot).  Workgroup size == head_dim.
+//
+// Outputs:
+//   K_out / V_out: array<f16> of shape (B, N_kv, total_seq, head_dim)
+//     in BNSH layout — the format ApplyFlashAttention / standard webgpu
+//     attention expects.
+
+#param head_dim
+#param key_bits
+#param value_bits
+#param norm_correction
+#param slot_u32
+#param key_packed_u32
+#param value_packed_u32
+
+const HEAD_DIM: u32 = head_dim;
+const KEY_LEVELS: u32 = 1u << key_bits;
+const KEY_PACKED_U32: u32 = key_packed_u32;
+const VALUE_PACKED_U32: u32 = value_packed_u32;
+const SLOT_U32: u32 = slot_u32;
+
+var<workgroup> smem_k: array<f32, head_dim>;
+var<workgroup> reduce_buf: array<f32, head_dim>;
+var<workgroup> shared_norm_corr: f32;
+var<workgroup> shared_vec_norm: f32;
+var<workgroup> shared_v_scale: f32;
+var<workgroup> shared_v_zero: f32;
+var<workgroup> shared_k_codebook: array<f32, 16>;
+
+fn f16_bits_to_f32(b: u32) -> f32 {
+  let sign = (b & 0x8000u) << 16u;
+  let exp = (b >> 10u) & 0x1Fu;
+  let mant = b & 0x3FFu;
+  if (exp == 0u) {
+    if (mant == 0u) { return bitcast<f32>(sign); }
+    // subnormal — approximate
+    return bitcast<f32>(sign | ((mant) << 13u));
+  }
+  if (exp == 0x1Fu) {
+    // inf or nan
+    if (mant != 0u) { return bitcast<f32>(sign | 0x7FC00000u); }
+    return bitcast<f32>(sign | 0x7F800000u);
+  }
+  let exp32 = (exp + 112u) << 23u;
+  let mant32 = mant << 13u;
+  return bitcast<f32>(sign | exp32 | mant32);
+}
+
+$MAIN {
+  let tid = local_idx;
+  let total_seq_len = uniforms.total_seq_len;
+  let n_kv_heads = uniforms.n_kv_heads;
+
+  let s = workgroup_idx % total_seq_len;
+  let h = (workgroup_idx / total_seq_len) % n_kv_heads;
+  let b = workgroup_idx / (total_seq_len * n_kv_heads);
+
+  if (b >= uniforms.batch_size) { return; }
+
+  // Cache the codebook (small, used per element).
+  if (tid < KEY_LEVELS) {
+    shared_k_codebook[tid] = f32(k_codebook[tid]);
+  }
+
+  let max_seq = uniforms.max_seq_len;
+  let slot_u32_off = ((b * n_kv_heads + h) * max_seq + s) * SLOT_U32;
+
+  // Read K indices (one per element of head_dim).  At 4 bits/index, 8 indices
+  // per u32; thread tid needs the u32 at index (tid / 8).
+  var k_idx: u32 = 0u;
+  if (tid < HEAD_DIM) {
+    if (key_bits == 4) {
+      let word = k_cache[slot_u32_off + (tid / 8u)];
+      k_idx = (word >> ((tid % 8u) * 4u)) & 0xFu;
+    } else if (key_bits == 3) {
+      // 8 indices in 3 bytes — bytes are spread across u32 boundaries.
+      let g = tid / 8u;
+      let j = tid % 8u;
+      let byte_off_g = g * 3u;
+      let u32_idx = byte_off_g / 4u;
+      let bit_off = (byte_off_g % 4u) * 8u;
+      var word24: u32 = (k_cache[slot_u32_off + u32_idx] >> bit_off) & 0xFFFFFFu;
+      // If those 3 bytes straddle a u32 boundary we need bits from the next u32.
+      if (bit_off > 8u) {
+        let leftover_bits = bit_off + 24u - 32u;
+        if (leftover_bits > 0u) {
+          let next_word = k_cache[slot_u32_off + u32_idx + 1u];
+          let needed = next_word & ((1u << leftover_bits) - 1u);
+          word24 = word24 | (needed << (24u - leftover_bits));
+        }
+      }
+      k_idx = (word24 >> (j * 3u)) & 0x7u;
+    }
+  }
+  workgroupBarrier();
+
+  if (tid < HEAD_DIM) { smem_k[tid] = shared_k_codebook[k_idx]; }
+  workgroupBarrier();
+
+  // Optional norm correction: re-normalise the centroid vector.
+  if (norm_correction == 1) {
+    if (tid < HEAD_DIM) { reduce_buf[tid] = smem_k[tid] * smem_k[tid]; }
+    workgroupBarrier();
+    var stride: u32 = HEAD_DIM / 2u;
+    loop {
+      if (stride == 0u) { break; }
+      if (tid < stride) { reduce_buf[tid] = reduce_buf[tid] + reduce_buf[tid + stride]; }
+      workgroupBarrier();
+      stride = stride / 2u;
+    }
+    if (tid == 0u) {
+      let sum_sq = reduce_buf[0];
+      shared_norm_corr = select(0.0, inverseSqrt(sum_sq), sum_sq > 1e-30);
+    }
+    workgroupBarrier();
+    if (tid < HEAD_DIM) { smem_k[tid] = smem_k[tid] * shared_norm_corr; }
+    workgroupBarrier();
+  }
+
+  // Read vec_norm fp16 from after packed K bytes.
+  if (tid == 0u) {
+    let vn_u16 = k_cache[slot_u32_off + KEY_PACKED_U32] & 0xFFFFu;
+    shared_vec_norm = f16_bits_to_f32(vn_u16);
+  }
+  workgroupBarrier();
+
+  if (tid < HEAD_DIM) { smem_k[tid] = smem_k[tid] * shared_vec_norm; }
+  workgroupBarrier();
+
+  // Apply Hadamard once more — H is symmetric self-inverse; this rotates
+  // back to original space.
+  var h_butterfly: u32 = 1u;
+  loop {
+    if (h_butterfly >= HEAD_DIM) { break; }
+    if (tid < HEAD_DIM / 2u) {
+      let pair = (tid / h_butterfly) * 2u * h_butterfly + (tid % h_butterfly);
+      let a = smem_k[pair];
+      let bb = smem_k[pair + h_butterfly];
+      smem_k[pair] = a + bb;
+      smem_k[pair + h_butterfly] = a - bb;
+    }
+    workgroupBarrier();
+    h_butterfly = h_butterfly * 2u;
+  }
+  let inv_sqrt_d = inverseSqrt(f32(HEAD_DIM));
+  if (tid < HEAD_DIM) { smem_k[tid] = smem_k[tid] * inv_sqrt_d; }
+  workgroupBarrier();
+
+  // Write K_out — BNSH layout: ((b * N_kv + h) * total_seq_len + s) * D + i.
+  let out_off = ((b * n_kv_heads + h) * total_seq_len + s) * HEAD_DIM;
+  if (tid < HEAD_DIM) {
+    var v = smem_k[tid];
+    if (v > 60000.0) { v = 60000.0; }
+    if (v < -60000.0) { v = -60000.0; }
+    K_out[out_off + tid] = f16(v);
+  }
+
+  // Decode V: read v_scale + v_zero metadata, then unpack indices.
+  if (tid == 0u) {
+    let v_meta_word = v_cache[slot_u32_off + VALUE_PACKED_U32];
+    shared_v_scale = f16_bits_to_f32(v_meta_word & 0xFFFFu);
+    shared_v_zero  = f16_bits_to_f32((v_meta_word >> 16u) & 0xFFFFu);
+  }
+  workgroupBarrier();
+
+  var v_idx: u32 = 0u;
+  if (tid < HEAD_DIM) {
+    if (value_bits == 4) {
+      let word = v_cache[slot_u32_off + (tid / 8u)];
+      v_idx = (word >> ((tid % 8u) * 4u)) & 0xFu;
+    } else if (value_bits == 3) {
+      let g = tid / 8u;
+      let j = tid % 8u;
+      let byte_off_g = g * 3u;
+      let u32_idx = byte_off_g / 4u;
+      let bit_off = (byte_off_g % 4u) * 8u;
+      var word24: u32 = (v_cache[slot_u32_off + u32_idx] >> bit_off) & 0xFFFFFFu;
+      if (bit_off > 8u) {
+        let leftover_bits = bit_off + 24u - 32u;
+        if (leftover_bits > 0u) {
+          let next_word = v_cache[slot_u32_off + u32_idx + 1u];
+          let needed = next_word & ((1u << leftover_bits) - 1u);
+          word24 = word24 | (needed << (24u - leftover_bits));
+        }
+      }
+      v_idx = (word24 >> (j * 3u)) & 0x7u;
+    }
+  }
+  workgroupBarrier();
+
+  if (tid < HEAD_DIM) {
+    var v_hat = shared_v_scale * f32(v_idx) + shared_v_zero;
+    if (v_hat > 60000.0) { v_hat = 60000.0; }
+    if (v_hat < -60000.0) { v_hat = -60000.0; }
+    V_out[out_off + tid] = f16(v_hat);
+  }
+}

@@ -1,0 +1,301 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// TurboQuant encode kernel — writes fresh fp16 K/V tokens into the packed
+// uint8 cache.  Mirrors the CUDA TQEncodeKernel.  Parameters:
+//
+//   head_dim: power-of-two head dimension (e.g. 64, 128).  Workgroup size.
+//   key_bits: 3 or 4 (number of bits per K index).
+//   value_bits: 3 or 4 (number of bits per V index).
+//
+// Storage layout:
+//   K_in / V_in: array<f16> of shape (B, S, N_kv, head_dim) — flat BSNH layout
+//     used by ORT's GroupQueryAttention.
+//   k_codebook: array<f16> of length 2^key_bits — Lloyd-Max centroids (sorted).
+//   k_cache / v_cache: array<u32> — uint8-packed slots, viewed as u32 (4 bytes
+//     each).  Each slot is `slot_u32` u32s.
+//
+// One workgroup per (batch, kv_head, new_token).  Workgroup size == head_dim.
+
+#param head_dim
+#param key_bits
+#param value_bits
+// (norm_correction is not used in encode — only in decode)
+#param slot_u32          // u32s per slot (= slot_bytes / 4)
+#param key_packed_u32    // u32s of packed K indices (= ceil(head_dim*key_bits/8) / 4)
+#param value_packed_u32  // u32s of packed V indices (= ceil(head_dim*value_bits/8) / 4)
+
+const HEAD_DIM: u32 = head_dim;
+const KEY_LEVELS: u32 = 1u << key_bits;
+const VALUE_LEVELS: u32 = 1u << value_bits;
+const KEY_PACKED_U32: u32 = key_packed_u32;
+const VALUE_PACKED_U32: u32 = value_packed_u32;
+const SLOT_U32: u32 = slot_u32;
+
+var<workgroup> smem_k: array<f32, head_dim>;
+var<workgroup> smem_v: array<f32, head_dim>;
+var<workgroup> k_indices: array<u32, head_dim>;
+var<workgroup> v_indices: array<u32, head_dim>;
+var<workgroup> reduce_buf: array<f32, head_dim>;
+var<workgroup> shared_norm: f32;
+var<workgroup> shared_v_min: f32;
+var<workgroup> shared_v_max: f32;
+var<workgroup> shared_k_codebook: array<f32, 16>;  // up to 4-bit (16 levels)
+
+fn lookup_k_index(y: f32) -> u32 {
+  // Linear search over codebook midpoints.  KEY_LEVELS <= 16.
+  var idx: u32 = 0u;
+  for (var j: u32 = 1u; j < KEY_LEVELS; j = j + 1u) {
+    let mid = 0.5 * (shared_k_codebook[j - 1u] + shared_k_codebook[j]);
+    if (y > mid) { idx = idx + 1u; }
+  }
+  return idx;
+}
+
+$MAIN {
+  let tid = local_idx;
+  // Workgroup id maps to (batch, kv_head, slot_in_present).  The dispatch
+  // covers ALL present slots (total_seq_len = past + new), so a single launch
+  // produces the full present cache: copy past slots from past_key/past_value,
+  // and encode-then-pack fresh tokens for slots [past_seq..total_seq).
+  let new_seq_len = uniforms.new_seq_len;
+  let n_kv_heads = uniforms.n_kv_heads;
+  let past_seq_len = uniforms.past_seq_len;
+  let max_seq = uniforms.max_seq_len;
+  let total_seq_len = past_seq_len + new_seq_len;
+
+  let s_cache = workgroup_idx % total_seq_len;
+  let h = (workgroup_idx / total_seq_len) % n_kv_heads;
+  let b = workgroup_idx / (total_seq_len * n_kv_heads);
+
+  if (b >= uniforms.batch_size) { return; }
+
+  // Compute the present-slot u32 offset up-front.  Used by both the copy and
+  // the encode branches; also passed to the existing pack-and-write code at
+  // the end of this kernel.
+  let slot_u32_off = ((b * n_kv_heads + h) * max_seq + s_cache) * SLOT_U32;
+
+  // Past-copy branch — for slots already in the cache, just memcpy.  Each
+  // thread copies one u32 of the slot.
+  if (s_cache < past_seq_len) {
+    let past_off = ((b * n_kv_heads + h) * past_seq_len + s_cache) * SLOT_U32;
+    if (tid < SLOT_U32) {
+      k_cache[slot_u32_off + tid] = k_cache_past[past_off + tid];
+      v_cache[slot_u32_off + tid] = v_cache_past[past_off + tid];
+    }
+    return;
+  }
+
+  // Encode-fresh branch — compute the index of this token within K_in and
+  // run the full encode (Walsh-Hadamard rotation + Lloyd-Max for K, uniform
+  // asymmetric for V).
+  let s_new = s_cache - past_seq_len;
+
+  // Load K/V from BSNH input: stride is ((b * S + s_new) * N_kv + h) * D.
+  // K_in[(b * S + s_new) * N_kv * D + h * D + tid]
+  let in_off = ((b * new_seq_len + s_new) * n_kv_heads + h) * HEAD_DIM;
+  if (tid < HEAD_DIM) {
+    smem_k[tid] = f32(K_in[in_off + tid]);
+    smem_v[tid] = f32(V_in[in_off + tid]);
+  }
+  // Cache the codebook into shared memory so the lookup is fast.
+  if (tid < KEY_LEVELS) {
+    shared_k_codebook[tid] = f32(k_codebook[tid]);
+  }
+  workgroupBarrier();
+
+  // ||k|| via tree reduction.
+  if (tid < HEAD_DIM) { reduce_buf[tid] = smem_k[tid] * smem_k[tid]; }
+  workgroupBarrier();
+  var stride: u32 = HEAD_DIM / 2u;
+  loop {
+    if (stride == 0u) { break; }
+    if (tid < stride) { reduce_buf[tid] = reduce_buf[tid] + reduce_buf[tid + stride]; }
+    workgroupBarrier();
+    stride = stride / 2u;
+  }
+  if (tid == 0u) { shared_norm = sqrt(reduce_buf[0]); }
+  workgroupBarrier();
+  let vec_norm = shared_norm;
+  let inv_norm = select(0.0, 1.0 / vec_norm, vec_norm > 1e-9);
+
+  // Normalise K, then in-place FWHT.
+  if (tid < HEAD_DIM) { smem_k[tid] = smem_k[tid] * inv_norm; }
+  workgroupBarrier();
+
+  var h_butterfly: u32 = 1u;
+  loop {
+    if (h_butterfly >= HEAD_DIM) { break; }
+    if (tid < HEAD_DIM / 2u) {
+      let pair = (tid / h_butterfly) * 2u * h_butterfly + (tid % h_butterfly);
+      let a = smem_k[pair];
+      let bb = smem_k[pair + h_butterfly];
+      smem_k[pair] = a + bb;
+      smem_k[pair + h_butterfly] = a - bb;
+    }
+    workgroupBarrier();
+    h_butterfly = h_butterfly * 2u;
+  }
+  let inv_sqrt_d = inverseSqrt(f32(HEAD_DIM));
+  if (tid < HEAD_DIM) { smem_k[tid] = smem_k[tid] * inv_sqrt_d; }
+  workgroupBarrier();
+
+  // Encode K indices via codebook lookup.
+  if (tid < HEAD_DIM) { k_indices[tid] = lookup_k_index(smem_k[tid]); }
+  workgroupBarrier();
+
+  // V min/max via reductions.
+  if (tid < HEAD_DIM) { reduce_buf[tid] = smem_v[tid]; }
+  workgroupBarrier();
+  stride = HEAD_DIM / 2u;
+  loop {
+    if (stride == 0u) { break; }
+    if (tid < stride) { reduce_buf[tid] = min(reduce_buf[tid], reduce_buf[tid + stride]); }
+    workgroupBarrier();
+    stride = stride / 2u;
+  }
+  if (tid == 0u) { shared_v_min = reduce_buf[0]; }
+  workgroupBarrier();
+
+  if (tid < HEAD_DIM) { reduce_buf[tid] = smem_v[tid]; }
+  workgroupBarrier();
+  stride = HEAD_DIM / 2u;
+  loop {
+    if (stride == 0u) { break; }
+    if (tid < stride) { reduce_buf[tid] = max(reduce_buf[tid], reduce_buf[tid + stride]); }
+    workgroupBarrier();
+    stride = stride / 2u;
+  }
+  if (tid == 0u) { shared_v_max = reduce_buf[0]; }
+  workgroupBarrier();
+
+  let v_min = shared_v_min;
+  let v_max = shared_v_max;
+  let v_scale = (v_max - v_min) / f32(VALUE_LEVELS - 1u);
+  let inv_v_scale = select(0.0, 1.0 / v_scale, v_scale > 1e-12);
+
+  if (tid < HEAD_DIM) {
+    var q = i32(round((smem_v[tid] - v_min) * inv_v_scale));
+    if (q < 0) { q = 0; }
+    if (q > i32(VALUE_LEVELS - 1u)) { q = i32(VALUE_LEVELS - 1u); }
+    v_indices[tid] = u32(q);
+  }
+  workgroupBarrier();
+
+  // Pack and write.  slot_u32_off was already computed at the top of main.
+  // Pack K indices into u32s.  At 4 bits/index, 8 indices per u32.
+  if (key_bits == 4) {
+    if (tid < KEY_PACKED_U32) {
+      var word: u32 = 0u;
+      for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+        word = word | ((k_indices[tid * 8u + i] & 0xFu) << (i * 4u));
+      }
+      k_cache[slot_u32_off + tid] = word;
+    }
+  } else if (key_bits == 3) {
+    // 8 indices in 3 bytes; ceil-pack.  Each thread handles 4 indices = 12 bits =
+    // less than a u32 — too fine-grained.  Simpler: thread 0 packs all.  Optimise later.
+    if (tid == 0u) {
+      var byte_buf: array<u32, 32>;  // up to head_dim*3/8 bytes; we just need head_dim*3/8 max
+      let n_bytes: u32 = (HEAD_DIM * 3u + 7u) / 8u;
+      // 8 indices -> 3 bytes
+      var byte_idx: u32 = 0u;
+      for (var g: u32 = 0u; g < HEAD_DIM / 8u; g = g + 1u) {
+        var word24: u32 = 0u;
+        for (var j: u32 = 0u; j < 8u; j = j + 1u) {
+          word24 = word24 | ((k_indices[g * 8u + j] & 0x7u) << (j * 3u));
+        }
+        byte_buf[byte_idx + 0u] = word24 & 0xFFu;
+        byte_buf[byte_idx + 1u] = (word24 >> 8u) & 0xFFu;
+        byte_buf[byte_idx + 2u] = (word24 >> 16u) & 0xFFu;
+        byte_idx = byte_idx + 3u;
+      }
+      // Now pack the bytes into u32s
+      for (var u: u32 = 0u; u < KEY_PACKED_U32; u = u + 1u) {
+        var word: u32 = 0u;
+        for (var k: u32 = 0u; k < 4u; k = k + 1u) {
+          if (u * 4u + k < n_bytes) {
+            word = word | (byte_buf[u * 4u + k] << (k * 8u));
+          }
+        }
+        k_cache[slot_u32_off + u] = word;
+      }
+    }
+  }
+
+  // Write vec_norm fp16 right after packed K bytes.  Stored in low 16 bits of
+  // u32 at index KEY_PACKED_U32 (or split across the boundary if K bytes don't
+  // align to u32).  For 4-bit hd=64: KEY_PACKED_U32 = 8, vec_norm is u32[8] low.
+  if (tid == 0u) {
+    let vn_u16: u32 = u32(bitcast<u32>(f32_to_f16_bits(vec_norm))) & 0xFFFFu;
+    k_cache[slot_u32_off + KEY_PACKED_U32] = vn_u16;
+  }
+
+  // Pack V indices analogously.
+  if (value_bits == 4) {
+    if (tid < VALUE_PACKED_U32) {
+      var word: u32 = 0u;
+      for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+        word = word | ((v_indices[tid * 8u + i] & 0xFu) << (i * 4u));
+      }
+      v_cache[slot_u32_off + tid] = word;
+    }
+  } else if (value_bits == 3) {
+    if (tid == 0u) {
+      var byte_buf2: array<u32, 32>;
+      let n_bytes2: u32 = (HEAD_DIM * 3u + 7u) / 8u;
+      var byte_idx: u32 = 0u;
+      for (var g: u32 = 0u; g < HEAD_DIM / 8u; g = g + 1u) {
+        var word24: u32 = 0u;
+        for (var j: u32 = 0u; j < 8u; j = j + 1u) {
+          word24 = word24 | ((v_indices[g * 8u + j] & 0x7u) << (j * 3u));
+        }
+        byte_buf2[byte_idx + 0u] = word24 & 0xFFu;
+        byte_buf2[byte_idx + 1u] = (word24 >> 8u) & 0xFFu;
+        byte_buf2[byte_idx + 2u] = (word24 >> 16u) & 0xFFu;
+        byte_idx = byte_idx + 3u;
+      }
+      for (var u: u32 = 0u; u < VALUE_PACKED_U32; u = u + 1u) {
+        var word: u32 = 0u;
+        for (var k: u32 = 0u; k < 4u; k = k + 1u) {
+          if (u * 4u + k < n_bytes2) {
+            word = word | (byte_buf2[u * 4u + k] << (k * 8u));
+          }
+        }
+        v_cache[slot_u32_off + u] = word;
+      }
+    }
+  }
+
+  // Write v_scale fp16 + v_zero (=v_min) fp16 packed into low and high halves
+  // of u32[VALUE_PACKED_U32].
+  if (tid == 0u) {
+    let vs_u16 = u32(bitcast<u32>(f32_to_f16_bits(v_scale))) & 0xFFFFu;
+    let vz_u16 = u32(bitcast<u32>(f32_to_f16_bits(v_min))) & 0xFFFFu;
+    v_cache[slot_u32_off + VALUE_PACKED_U32] = vs_u16 | (vz_u16 << 16u);
+  }
+}
+
+// fp32 -> fp16 bit pattern.  Standard half-precision encoding.
+fn f32_to_f16_bits(x: f32) -> u32 {
+  let bits = bitcast<u32>(x);
+  let sign = (bits >> 16u) & 0x8000u;
+  let exp = (bits >> 23u) & 0xFFu;
+  let mant = bits & 0x7FFFFFu;
+  if (exp == 0xFFu) {
+    // inf or nan
+    if (mant != 0u) { return sign | 0x7E00u; }  // nan
+    return sign | 0x7C00u;                       // inf
+  }
+  if (exp < 113u) {
+    // Subnormal in fp16 or zero.
+    return sign;
+  }
+  if (exp > 142u) {
+    // Overflow -> inf
+    return sign | 0x7C00u;
+  }
+  let exp16 = (exp - 112u) & 0x1Fu;
+  let mant16 = mant >> 13u;
+  return sign | (exp16 << 10u) | mant16;
+}

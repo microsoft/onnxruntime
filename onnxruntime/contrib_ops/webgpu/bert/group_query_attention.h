@@ -58,6 +58,14 @@ class GroupQueryAttention final : public WebGpuKernel {
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+
+    // TurboQuant attributes (added by Option A graph rewrite at session-create
+    // time; absent on stock graphs).
+    const std::string method = info.GetAttrOrDefault<std::string>("kv_quant_method", "none");
+    is_turboquant_ = (method == "turboquant");
+    key_quant_bits_ = static_cast<uint32_t>(info.GetAttrOrDefault<int64_t>("key_quant_bits", 4));
+    value_quant_bits_ = static_cast<uint32_t>(info.GetAttrOrDefault<int64_t>("value_quant_bits", 4));
+    norm_correction_ = info.GetAttrOrDefault<int64_t>("norm_correction", 0) == 1;
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -67,6 +75,10 @@ class GroupQueryAttention final : public WebGpuKernel {
   bool do_rotary_;  // whether or not to use rotary embeddings
   bool rotary_interleaved_;
   int local_window_size_;
+  bool is_turboquant_ = false;
+  uint32_t key_quant_bits_ = 4;
+  uint32_t value_quant_bits_ = 4;
+  bool norm_correction_ = false;
 
   bool use_smooth_softmax_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
