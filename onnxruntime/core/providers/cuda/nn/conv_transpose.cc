@@ -2,6 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -376,12 +377,13 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
                                "Pads input must have ", expected_pads_size,
                                " elements (2 * num_spatial_dims). Got: ", Pads->Shape()[0]);
       }
+      const auto* pads_data = Pads->Data<int64_t>();
       for (int64_t i = 0; i < Pads->Shape()[0]; ++i) {
-        if (Pads->Data<int64_t>()[i] < 0) {
+        if (pads_data[i] < 0) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Pads values must be non-negative. Got pads[", i, "] = ", Pads->Data<int64_t>()[i]);
+                                 "Pads values must be non-negative. Got pads[", i, "] = ", pads_data[i]);
         }
-        pads.push_back(Pads->Data<int64_t>()[i]);
+        pads.push_back(pads_data[i]);
       }
     } else {
       pads.assign(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());

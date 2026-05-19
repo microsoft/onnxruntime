@@ -16,7 +16,7 @@ struct ConvTransposeOp {
   bool bias = false;
   std::vector<int64_t> strides = {1, 1};
   std::vector<int64_t> padding = {0, 0, 0, 0};
-  std::vector<int64_t> output_padding = {0, 0};
+  std::vector<int64_t> output_padding;
   std::vector<int64_t> dilations = {1, 1};
 
   std::unique_ptr<CompareOpTester> get_test() {

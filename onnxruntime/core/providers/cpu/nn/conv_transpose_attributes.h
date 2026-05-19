@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/common/safeint.h"
 
@@ -154,12 +156,13 @@ struct ConvTransposeAttributes : public ConvAttributes {
                                "Dynamic pads tensor size (", actual_pads_size,
                                ") does not match expected size (2 * spatial_dims = ", expected_pads_size, ").");
       }
+      const auto* pads_data = Pads->Data<int64_t>();
       for (int64_t i = 0; i < actual_pads_size; ++i) {
-        if (Pads->Data<int64_t>()[i] < 0) {
+        if (pads_data[i] < 0) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Dynamic pads must be non-negative. Got pads[", i, "] = ", Pads->Data<int64_t>()[i]);
+                                 "Dynamic pads must be non-negative. Got pads[", i, "] = ", pads_data[i]);
         }
-        local_pads.push_back(Pads->Data<int64_t>()[i]);
+        local_pads.push_back(pads_data[i]);
       }
     } else {
       local_pads.assign(pads.begin(), pads.end());
