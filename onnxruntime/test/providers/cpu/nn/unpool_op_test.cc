@@ -659,8 +659,8 @@ TEST(UnpoolTest, MaxUnpoolNegativeComputedDimension) {
 
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
   test.AddAttribute("strides", std::vector<int64_t>{1});
-  // pads sum (1+2=3) exceeds (X_spatial-1)*stride + kernel = (1-1)*1 + 2 = 2
-  test.AddAttribute("pads", vector<int64_t>{1, 2});
+  // pads sum (1+1=2) makes dim_value = (1-1)*1 - (1+1) + 2 = 0, which is not positive
+  test.AddAttribute("pads", vector<int64_t>{1, 1});
 
   std::vector<float> t_vals = {1};
   std::vector<int64_t> t_dims = {1, 1, 1};
