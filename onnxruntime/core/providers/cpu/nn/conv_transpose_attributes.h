@@ -233,6 +233,11 @@ struct ConvTransposeAttributes : public ConvAttributes {
     size_t output_shape_size = output_shape.size();
     size_t rank = input_shape.NumDimensions();
 
+    if (p_pads->size() != 2 * rank) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "pads size (", p_pads->size(), ") does not match expected size (2 * ", rank, ").");
+    }
+
     // output_shape attribute, if specified, must have either 'rank' or 'rank + 2' elements
     if (output_shape_size != 0 && output_shape_size != rank && output_shape_size != rank + 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -260,8 +265,8 @@ struct ConvTransposeAttributes : public ConvAttributes {
           p_dilations[dim],
           p_output_padding[dim],
           auto_pad,
-          &p_pads->at(dim),
-          &p_pads->at(input_shape.NumDimensions() + dim),
+          &(*p_pads)[dim],
+          &(*p_pads)[input_shape.NumDimensions() + dim],
           &dim_size));
 
       if (dim_size <= 0) {

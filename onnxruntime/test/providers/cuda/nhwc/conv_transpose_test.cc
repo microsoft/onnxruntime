@@ -55,6 +55,7 @@ struct ConvTransposeOp {
 
     for (size_t i = 0, end = is_1D ? 1 : 2; i < end; ++i) {
       // formula from https://github.com/onnx/onnx/blob/main/docs/Operators.md#ConvTranspose
+      assert(output_padding.empty() || output_padding.size() >= end);
       const size_t start_pad = i * 2;
       int64_t out_pad = i < output_padding.size() ? output_padding[i] : 0;
       output_dims.push_back(
