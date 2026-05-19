@@ -58,6 +58,16 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   if (local_strides.empty()) {
     local_strides.resize(kernel_shape_vector.size(), 1);
   }
+  if (local_strides.size() != kernel_shape_vector.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "strides size (", local_strides.size(),
+                           ") does not match the number of spatial dimensions (", kernel_shape_vector.size(), ").");
+  }
+  if (local_dilations.size() != kernel_shape_vector.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "dilations size (", local_dilations.size(),
+                           ") does not match the number of spatial dimensions (", kernel_shape_vector.size(), ").");
+  }
   // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".
   for (size_t i = 0; i < local_output_padding.size(); ++i) {
     int64_t limit = std::max(local_strides[i], local_dilations[i]);
