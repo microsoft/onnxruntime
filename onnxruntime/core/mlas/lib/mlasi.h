@@ -1407,6 +1407,7 @@ extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
 //
 struct MLAS_KV_QUANT_GEMM_DISPATCH;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx2;
+extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
 extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 
 //
