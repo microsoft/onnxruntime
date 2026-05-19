@@ -285,6 +285,7 @@ void WindowsTelemetry::LogSessionCreationStart(uint32_t session_id) const {
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
@@ -457,7 +458,7 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingString(input_source.c_str(), "inputSource"),
                     TraceLoggingString(output_target.c_str(), "outputTarget"),
@@ -466,6 +467,7 @@ void WindowsTelemetry::LogCompileModelStart(uint32_t session_id,
                     TraceLoggingBool(embed_ep_context, "embedEpContext"),
                     TraceLoggingBool(has_external_initializers_file, "hasExternalInitializersFile"),
                     TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
@@ -507,7 +509,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingHResult(hr, "hResult"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
@@ -516,6 +518,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 #else
   TraceLoggingWrite(telemetry_provider_handle,
@@ -525,7 +528,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TraceLoggingLevel(WINEVENT_LEVEL_ERROR),
                     // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
@@ -533,6 +536,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 #endif
 }
@@ -559,11 +563,12 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TelemetryPrivacyDataTag(PDT_ProductAndServicePerformance),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"),
                     TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
