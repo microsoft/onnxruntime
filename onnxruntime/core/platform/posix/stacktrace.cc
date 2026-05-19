@@ -15,6 +15,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
+#include <string>
+#include <algorithm>
 #include <unordered_map>
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
