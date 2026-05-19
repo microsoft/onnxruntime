@@ -537,3 +537,23 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// TurboQuant KV-cache rewrite preset.  When set, the TurboQuantKVFusion graph
+// transformer rewrites every GroupQueryAttention node in the model to use
+// TurboQuant KV-cache compression at session-create time.  This means the user
+// can load a stock fp16 q4f16 .onnx model from HuggingFace and opt in to
+// TurboQuant via runtime config alone — no offline model conversion needed.
+//
+// Recognized values:
+// - "" / "none" / "off": disabled (default).
+// - "turboquant_4bit_nc":  4-bit K, 4-bit V, norm correction on.
+// - "turboquant_k3v4_nc":  3-bit K, 4-bit V, norm correction on.
+// - "turboquant_3bit_nc":  3-bit K, 3-bit V, norm correction on.
+//
+// Requires CUDA EP (the TurboQuant kernels live there).  No-op on CPU.
+static const char* const kOrtSessionOptionsTurboQuantKVMethod = "optimization.turboquant_kv_method";
+
+// TurboQuant boundary-protection layers.  Number of attention layers at the
+// start AND the end of the network to leave at fp16 (matching vLLM's behaviour).
+// Default "2".  Set to "0" to TurboQuant every GQA layer.
+static const char* const kOrtSessionOptionsTurboQuantKVBoundary = "optimization.turboquant_kv_boundary";
