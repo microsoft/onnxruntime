@@ -92,7 +92,7 @@ const initOrt = (numThreads: number, loggingLevel: number): void => {
  */
 export const initRuntime = async (env: Env): Promise<void> => {
   // init ORT
-  initOrt(env.wasm.numThreads!, logLevelStringToEnum(env.logLevel));
+  initOrt(env.wasm.numThreads, logLevelStringToEnum(env.logLevel));
 };
 
 /**
@@ -106,7 +106,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
   getInstance().asyncInit?.();
 
   // perform WebGPU availability check ( either JSEP or WebGPU EP )
-  let webgpuAdapter = env.webgpu.adapter as GPUAdapter | null;
+  let webgpuAdapter = env.webgpu.adapter;
   if (epName === 'webgpu') {
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
@@ -955,7 +955,7 @@ export const run = async (
                   gpuBuffer,
                   download: async () => {
                     const arrayBuffer = await downloadDataFunction();
-                    const data = new (tensorTypeToTypedArrayConstructor(type!))(arrayBuffer);
+                    const data = new (tensorTypeToTypedArrayConstructor(type))(arrayBuffer);
                     return data as Tensor.DataTypeMap[Tensor.GpuBufferDataTypes];
                   },
                   dispose: () => {

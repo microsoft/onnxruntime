@@ -259,7 +259,8 @@ export class WebGpuBackend {
       requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
     };
     const adapterInfo =
-      adapter.info ?? (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
+      adapter.info ??
+      (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
         ? await adapterWithRequestInfo.requestAdapterInfo()
         : undefined);
     this.adapterInfo = new AdapterInfoImpl(adapterInfo);
@@ -270,7 +271,7 @@ export class WebGpuBackend {
     this.kernelCustomData = new Map();
 
     // set up flags for logger
-    configureLogger(env.logLevel!, !!env.debug);
+    configureLogger(env.logLevel, !!env.debug);
 
     // TODO: set up flags
 
@@ -355,13 +356,7 @@ export class WebGpuBackend {
     this.endComputePass();
     let queryReadBuffer: GPUBuffer;
     if (this.queryType !== 'none') {
-      this.commandEncoder.resolveQuerySet(
-        this.querySet!,
-        0,
-        this.pendingDispatchNumber * 2,
-        this.queryResolveBuffer!,
-        0,
-      );
+      this.commandEncoder.resolveQuerySet(this.querySet, 0, this.pendingDispatchNumber * 2, this.queryResolveBuffer, 0);
 
       queryReadBuffer = this.device.createBuffer(
         // eslint-disable-next-line no-bitwise
@@ -371,7 +366,7 @@ export class WebGpuBackend {
       this.pendingQueries.set(queryReadBuffer, this.pendingKernels);
       this.pendingKernels = [];
       this.commandEncoder.copyBufferToBuffer(
-        this.queryResolveBuffer!,
+        this.queryResolveBuffer,
         0,
         queryReadBuffer,
         0,

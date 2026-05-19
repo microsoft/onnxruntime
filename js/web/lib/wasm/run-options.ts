@@ -41,8 +41,8 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
     }
 
     runOptionsHandle = wasm._OrtCreateRunOptions(
-      runOptions.logSeverityLevel!,
-      runOptions.logVerbosityLevel!,
+      runOptions.logSeverityLevel,
+      runOptions.logVerbosityLevel,
       !!runOptions.terminate!,
       tagDataOffset,
     );

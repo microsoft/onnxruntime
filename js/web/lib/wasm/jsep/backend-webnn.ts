@@ -103,7 +103,7 @@ export class WebNNBackend {
   private mlOpSupportLimitsBySessionId = new Map<number, MLOpSupportLimits>();
 
   constructor(env: Env) {
-    configureLogger(env.logLevel!, !!env.debug);
+    configureLogger(env.logLevel, !!env.debug);
   }
 
   public get currentSessionId(): number {
