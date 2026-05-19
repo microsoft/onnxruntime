@@ -101,57 +101,156 @@ DequantInt4x8(const uint8_t* src, size_t col, bool per_channel, const float* sca
 }
 
 //
-// Dequantize one row of length `cols` from packed quantized buffer into `dst`.
-// Uses AVX2 for the bulk and scalar for the tail.
+// Fused dequant-dot: dequantize B[n,:] directly into FMA accumulators without
+// storing to an intermediate FP32 buffer. This saves one store+reload round-trip
+// per B row and keeps the dequantized values in registers.
 //
-void
-DequantRow_Avx2(
-    const void* src_raw,
-    float* dst,
-    size_t cols,
-    MLAS_KV_QUANT_TYPE qt,
+
+// Fused dot product for INT8 B row against FP32 A row.
+// Returns dot(A[0..K-1], dequant(B_row[0..K-1])).
+inline float
+FusedDotInt8(
+    const float* a_row,
+    const int8_t* b_row,
+    size_t K,
+    bool per_channel,
     const float* scales)
 {
-    const bool int4 = IsInt4Mode(qt);
-    const bool per_channel = IsPerChannelMode(qt);
+    __m256 acc0 = _mm256_setzero_ps();
+    __m256 acc1 = _mm256_setzero_ps();
 
-    size_t c = 0;
-    const size_t vec_end = (cols / 8) * 8;
+    size_t k = 0;
+    const size_t vec_end = (K / 16) * 16;
 
-    if (!int4) {
-        const auto* src = static_cast<const int8_t*>(src_raw);
-        for (; c < vec_end; c += 8) {
-            __m256 vals = DequantInt8x8(src, c, per_channel, scales);
-            _mm256_storeu_ps(dst + c, vals);
+    if (per_channel) {
+        for (; k < vec_end; k += 16) {
+            // Chunk 0
+            __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
+            __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
+            __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
+            __m256 sc0 = _mm256_loadu_ps(scales + k);
+            bf0 = _mm256_mul_ps(bf0, sc0);
+            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
+
+            // Chunk 1
+            __m128i raw1 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k + 8));
+            __m256i i32_1 = _mm256_cvtepi8_epi32(raw1);
+            __m256 bf1 = _mm256_cvtepi32_ps(i32_1);
+            __m256 sc1 = _mm256_loadu_ps(scales + k + 8);
+            bf1 = _mm256_mul_ps(bf1, sc1);
+            __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
+            acc1 = _mm256_fmadd_ps(a1, bf1, acc1);
         }
-        // Scalar tail
-        for (; c < cols; ++c) {
-            float sc = per_channel ? scales[c] : scales[0];
-            dst[c] = static_cast<float>(src[c]) * sc;
+        for (; k + 8 <= K; k += 8) {
+            __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
+            __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
+            __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
+            __m256 sc0 = _mm256_loadu_ps(scales + k);
+            bf0 = _mm256_mul_ps(bf0, sc0);
+            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
         }
     } else {
-        const auto* src = static_cast<const uint8_t*>(src_raw);
-        // INT4: 8 elements = 4 bytes, require col aligned to even boundary
-        for (; c < vec_end; c += 8) {
-            __m256 vals = DequantInt4x8(src, c, per_channel, scales);
-            _mm256_storeu_ps(dst + c, vals);
+        __m256 scale_vec = _mm256_broadcast_ss(scales);
+        for (; k < vec_end; k += 16) {
+            __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
+            __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
+            __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
+            bf0 = _mm256_mul_ps(bf0, scale_vec);
+            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
+
+            __m128i raw1 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k + 8));
+            __m256i i32_1 = _mm256_cvtepi8_epi32(raw1);
+            __m256 bf1 = _mm256_cvtepi32_ps(i32_1);
+            bf1 = _mm256_mul_ps(bf1, scale_vec);
+            __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
+            acc1 = _mm256_fmadd_ps(a1, bf1, acc1);
         }
-        // Scalar tail
-        for (; c < cols; ++c) {
-            uint8_t packed = src[c / 2];
-            int nibble = (c & 1) == 0 ? (packed & 0x0F) : ((packed >> 4) & 0x0F);
-            float sc = per_channel ? scales[c] : scales[0];
-            dst[c] = static_cast<float>(nibble - kInt4Bias) * sc;
+        for (; k + 8 <= K; k += 8) {
+            __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
+            __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
+            __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
+            bf0 = _mm256_mul_ps(bf0, scale_vec);
+            __m256 a0 = _mm256_loadu_ps(a_row + k);
+            acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
         }
     }
+
+    acc0 = _mm256_add_ps(acc0, acc1);
+    __m128 lo = _mm256_castps256_ps128(acc0);
+    __m128 hi = _mm256_extractf128_ps(acc0, 1);
+    __m128 sum4 = _mm_add_ps(lo, hi);
+    sum4 = _mm_hadd_ps(sum4, sum4);
+    sum4 = _mm_hadd_ps(sum4, sum4);
+    float dot = _mm_cvtss_f32(sum4);
+
+    // Scalar tail
+    for (; k < K; ++k) {
+        float sc = per_channel ? scales[k] : scales[0];
+        dot += a_row[k] * static_cast<float>(b_row[k]) * sc;
+    }
+    return dot;
+}
+
+// Fused dot product for INT4 B row against FP32 A row.
+inline float
+FusedDotInt4(
+    const float* a_row,
+    const uint8_t* b_row,
+    size_t K,
+    bool per_channel,
+    const float* scales)
+{
+    __m256 acc0 = _mm256_setzero_ps();
+    __m256 acc1 = _mm256_setzero_ps();
+
+    size_t k = 0;
+    const size_t vec_end = (K / 16) * 16;
+
+    for (; k < vec_end; k += 16) {
+        // Chunk 0: 8 elements from 4 packed bytes
+        __m256 bf0 = DequantInt4x8(b_row, k, per_channel, scales);
+        __m256 a0 = _mm256_loadu_ps(a_row + k);
+        acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
+
+        // Chunk 1: next 8 elements
+        __m256 bf1 = DequantInt4x8(b_row, k + 8, per_channel, scales);
+        __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
+        acc1 = _mm256_fmadd_ps(a1, bf1, acc1);
+    }
+    for (; k + 8 <= K; k += 8) {
+        __m256 bf0 = DequantInt4x8(b_row, k, per_channel, scales);
+        __m256 a0 = _mm256_loadu_ps(a_row + k);
+        acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
+    }
+
+    acc0 = _mm256_add_ps(acc0, acc1);
+    __m128 lo = _mm256_castps256_ps128(acc0);
+    __m128 hi = _mm256_extractf128_ps(acc0, 1);
+    __m128 sum4 = _mm_add_ps(lo, hi);
+    sum4 = _mm_hadd_ps(sum4, sum4);
+    sum4 = _mm_hadd_ps(sum4, sum4);
+    float dot = _mm_cvtss_f32(sum4);
+
+    // Scalar tail
+    for (; k < K; ++k) {
+        uint8_t packed = b_row[k / 2];
+        int nibble = (k & 1) == 0 ? (packed & 0x0F) : ((packed >> 4) & 0x0F);
+        float sc = per_channel ? scales[k] : scales[0];
+        dot += a_row[k] * static_cast<float>(nibble - kInt4Bias) * sc;
+    }
+    return dot;
 }
 
 //
 // QKGemm:  C[M,N] = Alpha * A[M,K] * B^T[K,N]
 // B is [N,K] packed row-major.
 //
-// Strategy: parallelize over N. For each n, dequantize B[n,:] once, then
-// compute dot product with each A[m,:] using FMA.
+// Fused approach: dequantize B directly into FMA accumulators without
+// intermediate buffer. For M>1, B row is re-dequantized per query row
+// (still faster due to no store/reload and B being in L1 cache).
 //
 void
 QKGemm_Avx2(
@@ -169,68 +268,21 @@ QKGemm_Avx2(
 {
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, K);
     const auto* B_bytes = static_cast<const uint8_t*>(B);
-
-    // Temporary buffer for one dequantized B row (K = head_size, typically <= 256).
-    // Allocate on stack for small K, heap otherwise.
-    float b_stack[256];
-    float* b_buf = b_stack;
-    std::unique_ptr<float[]> heap_buf;
-    if (K > 256) {
-        heap_buf.reset(new float[K]);
-        b_buf = heap_buf.get();
-    }
+    const bool int4 = IsInt4Mode(QuantType);
+    const bool per_channel = IsPerChannelMode(QuantType);
 
     for (size_t n = 0; n < N; ++n) {
         const uint8_t* b_row = B_bytes + n * row_bytes;
 
-        // Dequantize B[n,:] into b_buf
-        DequantRow_Avx2(b_row, b_buf, K, QuantType, Scales);
-
-        // For each query row m, compute dot(A[m,:], b_buf) * Alpha
         for (size_t m = 0; m < M; ++m) {
             const float* a_row = A + m * lda;
-
-            __m256 acc0 = _mm256_setzero_ps();
-            __m256 acc1 = _mm256_setzero_ps();
-
-            size_t k = 0;
-            const size_t vec_end = (K / 16) * 16;
-
-            // Process 16 elements per iteration (2x unroll)
-            for (; k < vec_end; k += 16) {
-                __m256 a0 = _mm256_loadu_ps(a_row + k);
-                __m256 b0 = _mm256_loadu_ps(b_buf + k);
-                acc0 = _mm256_fmadd_ps(a0, b0, acc0);
-
-                __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
-                __m256 b1 = _mm256_loadu_ps(b_buf + k + 8);
-                acc1 = _mm256_fmadd_ps(a1, b1, acc1);
+            float dot;
+            if (int4) {
+                dot = FusedDotInt4(a_row, b_row, K, per_channel, Scales);
+            } else {
+                dot = FusedDotInt8(a_row, reinterpret_cast<const int8_t*>(b_row),
+                                   K, per_channel, Scales);
             }
-
-            // Process remaining 8-element chunk
-            if (k + 8 <= K) {
-                __m256 a0 = _mm256_loadu_ps(a_row + k);
-                __m256 b0 = _mm256_loadu_ps(b_buf + k);
-                acc0 = _mm256_fmadd_ps(a0, b0, acc0);
-                k += 8;
-            }
-
-            // Combine accumulators
-            acc0 = _mm256_add_ps(acc0, acc1);
-
-            // Horizontal sum of acc0
-            __m128 lo = _mm256_castps256_ps128(acc0);
-            __m128 hi = _mm256_extractf128_ps(acc0, 1);
-            __m128 sum4 = _mm_add_ps(lo, hi);
-            sum4 = _mm_hadd_ps(sum4, sum4);
-            sum4 = _mm_hadd_ps(sum4, sum4);
-            float dot = _mm_cvtss_f32(sum4);
-
-            // Scalar tail
-            for (; k < K; ++k) {
-                dot += a_row[k] * b_buf[k];
-            }
-
             C[m * ldc + n] = Alpha * dot;
         }
     }
@@ -240,8 +292,8 @@ QKGemm_Avx2(
 // SVGemm:  C[M,N] = A[M,K] * B[K,N]
 // B is [K,N] packed row-major.
 //
-// Strategy: for each output row m, accumulate contributions from all K rows of B.
-// Each B[k,:] is dequantized, multiplied by A[m,k], and added to C[m,:].
+// Fused approach: dequantize each B[k,:] element directly into the FMA with
+// the C accumulator, eliminating the intermediate buffer entirely.
 //
 void
 SVGemm_Avx2(
@@ -258,23 +310,17 @@ SVGemm_Avx2(
 {
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
     const auto* B_bytes = static_cast<const uint8_t*>(B);
+    const bool int4 = IsInt4Mode(QuantType);
+    const bool per_channel = IsPerChannelMode(QuantType);
 
-    // Temporary buffer for one dequantized B row (N = head_size, typically <= 256).
-    float b_stack[256];
-    float* b_buf = b_stack;
-    std::unique_ptr<float[]> heap_buf;
-    if (N > 256) {
-        heap_buf.reset(new float[N]);
-        b_buf = heap_buf.get();
-    }
+    const size_t vec_end_n = (N / 8) * 8;
 
     for (size_t m = 0; m < M; ++m) {
         float* c_row = C + m * ldc;
         const float* a_row = A + m * lda;
 
-        // Zero the output row
+        // Zero output
         size_t n = 0;
-        const size_t vec_end_n = (N / 8) * 8;
         for (; n < vec_end_n; n += 8) {
             _mm256_storeu_ps(c_row + n, _mm256_setzero_ps());
         }
@@ -282,26 +328,71 @@ SVGemm_Avx2(
             c_row[n] = 0.0f;
         }
 
-        for (size_t k = 0; k < K; ++k) {
-            const uint8_t* b_row_packed = B_bytes + k * row_bytes;
+        if (!int4) {
+            // INT8 fused path
+            if (per_channel) {
+                for (size_t k = 0; k < K; ++k) {
+                    const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
+                    const float a_val = a_row[k];
+                    __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
 
-            // Dequantize B[k,:]
-            DequantRow_Avx2(b_row_packed, b_buf, N, QuantType, Scales);
+                    n = 0;
+                    for (; n < vec_end_n; n += 8) {
+                        __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + n));
+                        __m256i i32 = _mm256_cvtepi8_epi32(raw);
+                        __m256 bf = _mm256_cvtepi32_ps(i32);
+                        __m256 sc = _mm256_loadu_ps(Scales + n);
+                        bf = _mm256_mul_ps(bf, sc);
+                        __m256 c_vec = _mm256_loadu_ps(c_row + n);
+                        c_vec = _mm256_fmadd_ps(a_broadcast, bf, c_vec);
+                        _mm256_storeu_ps(c_row + n, c_vec);
+                    }
+                    for (; n < N; ++n) {
+                        c_row[n] += a_val * static_cast<float>(b_row[n]) * Scales[n];
+                    }
+                }
+            } else {
+                __m256 scale_vec = _mm256_broadcast_ss(Scales);
+                for (size_t k = 0; k < K; ++k) {
+                    const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
+                    const float a_val = a_row[k];
+                    __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
 
-            // c_row += a_val * b_buf
-            const float a_val = a_row[k];
-            __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
-
-            n = 0;
-            for (; n < vec_end_n; n += 8) {
-                __m256 c_vec = _mm256_loadu_ps(c_row + n);
-                __m256 b_vec = _mm256_loadu_ps(b_buf + n);
-                c_vec = _mm256_fmadd_ps(a_broadcast, b_vec, c_vec);
-                _mm256_storeu_ps(c_row + n, c_vec);
+                    n = 0;
+                    for (; n < vec_end_n; n += 8) {
+                        __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + n));
+                        __m256i i32 = _mm256_cvtepi8_epi32(raw);
+                        __m256 bf = _mm256_cvtepi32_ps(i32);
+                        bf = _mm256_mul_ps(bf, scale_vec);
+                        __m256 c_vec = _mm256_loadu_ps(c_row + n);
+                        c_vec = _mm256_fmadd_ps(a_broadcast, bf, c_vec);
+                        _mm256_storeu_ps(c_row + n, c_vec);
+                    }
+                    for (; n < N; ++n) {
+                        c_row[n] += a_val * static_cast<float>(b_row[n]) * Scales[0];
+                    }
+                }
             }
-            // Scalar tail
-            for (; n < N; ++n) {
-                c_row[n] += a_val * b_buf[n];
+        } else {
+            // INT4 fused path
+            for (size_t k = 0; k < K; ++k) {
+                const uint8_t* b_row = B_bytes + k * row_bytes;
+                const float a_val = a_row[k];
+                __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
+
+                n = 0;
+                for (; n < vec_end_n; n += 8) {
+                    __m256 bf = DequantInt4x8(b_row, n, per_channel, Scales);
+                    __m256 c_vec = _mm256_loadu_ps(c_row + n);
+                    c_vec = _mm256_fmadd_ps(a_broadcast, bf, c_vec);
+                    _mm256_storeu_ps(c_row + n, c_vec);
+                }
+                for (; n < N; ++n) {
+                    uint8_t packed = b_row[n / 2];
+                    int nibble = (n & 1) == 0 ? (packed & 0x0F) : ((packed >> 4) & 0x0F);
+                    float sc = per_channel ? Scales[n] : Scales[0];
+                    c_row[n] += a_val * static_cast<float>(nibble - kInt4Bias) * sc;
+                }
             }
         }
     }
