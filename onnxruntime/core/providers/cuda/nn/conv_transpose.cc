@@ -289,7 +289,9 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
   bool input_dims_changed = (s_.last_x_dims != x_dims);
   bool w_dims_changed = (s_.last_w_dims != w_dims);
-  if (input_dims_changed || w_dims_changed) {
+  // When dynamic_padding is used, Pads can change between calls even when X/W shapes
+  // stay the same, so we must always recompute the output shape and re-validate.
+  if (input_dims_changed || w_dims_changed || dynamic_padding) {
     if (input_dims_changed)
       s_.last_x_dims = gsl::make_span(x_dims);
 
@@ -360,7 +362,25 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     ConvPadVector pads;
     pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
-      for (int64_t i = 0; i < Pads->Shape().SizeFromDimension(0); ++i) {
+      if (Pads == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input is required in dynamic padding mode.");
+      }
+      if (Pads->Shape().NumDimensions() != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input must be a 1-D tensor. Got rank: ", Pads->Shape().NumDimensions());
+      }
+      const int64_t expected_pads_size = static_cast<int64_t>(kernel_shape.size()) * 2;
+      if (Pads->Shape()[0] != expected_pads_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input must have ", expected_pads_size,
+                               " elements (2 * num_spatial_dims). Got: ", Pads->Shape()[0]);
+      }
+      for (int64_t i = 0; i < Pads->Shape()[0]; ++i) {
+        if (Pads->Data<int64_t>()[i] < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Pads values must be non-negative. Got pads[", i, "] = ", Pads->Data<int64_t>()[i]);
+        }
         pads.push_back(Pads->Data<int64_t>()[i]);
       }
     } else {
@@ -376,6 +396,17 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     TensorShapeVector strides(conv_transpose_attrs_.strides);
     if (strides.empty()) {
       strides.resize(kernel_shape.size(), 1);
+    }
+
+    if (strides.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "strides size (", strides.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
+    }
+    if (dilations.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "dilations size (", dilations.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
     }
 
     // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".

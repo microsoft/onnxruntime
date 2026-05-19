@@ -490,6 +490,9 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
     if (conv_transpose_attrs_.output_padding.empty()) {
       conv_transpose_attrs_.output_padding.resize(kernel_shape_.size(), 0);
     }
+    ORT_ENFORCE(conv_transpose_attrs_.output_padding.size() == kernel_shape_.size(),
+                "output_padding size (", conv_transpose_attrs_.output_padding.size(),
+                ") does not match the number of spatial dimensions (", kernel_shape_.size(), ").");
 
     ORT_THROW_IF_ERROR(conv_transpose_attrs_.ComputePadsAndOutputShape(
         input_shape, M_, kernel_shape_,

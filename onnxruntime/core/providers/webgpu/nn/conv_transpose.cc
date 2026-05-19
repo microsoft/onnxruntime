@@ -44,6 +44,11 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   if (local_output_padding.empty()) {
     local_output_padding.resize(kernel_shape_vector.size(), 0);
   }
+  if (local_output_padding.size() != kernel_shape_vector.size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "output_padding size (", local_output_padding.size(),
+                           ") does not match the number of spatial dimensions (", kernel_shape_vector.size(), ").");
+  }
   if (local_pads.empty()) {
     local_pads.resize(kernel_shape_vector.size() * 2, 0);
   }
@@ -52,6 +57,16 @@ Status ConvTranspose<is_channels_last>::ComputeInternal(ComputeContext& context)
   }
   if (local_strides.empty()) {
     local_strides.resize(kernel_shape_vector.size(), 1);
+  }
+  // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".
+  for (size_t i = 0; i < local_output_padding.size(); ++i) {
+    int64_t limit = std::max(local_strides[i], local_dilations[i]);
+    if (local_output_padding[i] >= limit) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_padding[", i, "] (", local_output_padding[i],
+                             ") must be less than max(stride, dilation) (", limit,
+                             ") for spatial dimension ", i, ".");
+    }
   }
   auto group = conv_transpose_attrs_.group;
   auto num_output_channels = group * filter_shape[1];

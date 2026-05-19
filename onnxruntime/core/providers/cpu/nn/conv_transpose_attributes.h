@@ -143,6 +143,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
     ConvPadVector local_pads;
     local_pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
+      if (Pads->Shape().NumDimensions() != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Dynamic pads tensor must be 1-D. Got rank: ", Pads->Shape().NumDimensions());
+      }
       const int64_t expected_pads_size = static_cast<int64_t>(kernel_shape.size()) * 2;
       const int64_t actual_pads_size = Pads->Shape().SizeFromDimension(0);
       if (actual_pads_size != expected_pads_size) {
@@ -151,6 +155,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
                                ") does not match expected size (2 * spatial_dims = ", expected_pads_size, ").");
       }
       for (int64_t i = 0; i < actual_pads_size; ++i) {
+        if (Pads->Data<int64_t>()[i] < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Dynamic pads must be non-negative. Got pads[", i, "] = ", Pads->Data<int64_t>()[i]);
+        }
         local_pads.push_back(Pads->Data<int64_t>()[i]);
       }
     } else {
@@ -166,6 +174,17 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector local_strides(strides);
     if (local_strides.empty()) {
       local_strides.resize(kernel_shape.size(), 1);
+    }
+
+    if (local_strides.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "strides size (", local_strides.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
+    }
+    if (local_dilations.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "dilations size (", local_dilations.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
     }
 
     // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".
@@ -283,6 +302,20 @@ struct ConvTransposeAttributes : public ConvAttributes {
     }
 
     // Output shape is not provided - it needs to be computed along with pad values (if applicable)
+
+    // Validate that stride, kernel, and dilation are positive
+    if (stride <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Stride must be positive. Got: ", stride);
+    }
+    if (kernel <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Kernel size must be positive. Got: ", kernel);
+    }
+    if (dilation <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Dilation must be positive. Got: ", dilation);
+    }
+    if (adj < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Output padding must be non-negative. Got: ", adj);
+    }
 
     // Compute padding if the auto_pad attribute is SAME_UPPER/SAME_LOWER
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {

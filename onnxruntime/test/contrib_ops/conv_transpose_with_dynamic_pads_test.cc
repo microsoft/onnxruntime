@@ -34,7 +34,7 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank0) {
   test.AddInput<float>("W", {}, std::vector<float>{1.0f});  // scalar (rank 0)
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
   test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Weight tensor must have at least 2 dimensions",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Weight tensor must have at least 3 dimensions",
            {kTensorrtExecutionProvider});
 }
 
@@ -49,10 +49,60 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidWeightRank1) {
   test.AddInput<float>("W", {9}, std::vector<float>(9, 1.0f));  // rank 1
   test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
   test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Weight tensor must have at least 2 dimensions",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Weight tensor must have at least 3 dimensions",
+           {kTensorrtExecutionProvider});
+}
+
+// Test that a rank-2 input is rejected (requires at least 3 dims for ConvTranspose).
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidInputRank2) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  test.AddInput<float>("X", {1, 1}, std::vector<float>{1.0f});  // rank 2
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{1, 1, 1, 1});
+  test.AddOutput<float>("Y", {}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input tensor must have at least 3 dimensions",
            {kTensorrtExecutionProvider});
 }
 #endif  // !ORT_NO_EXCEPTIONS
+
+// Test that incorrectly sized dynamic pads are rejected.
+// This runs through kernel validation (not shape inference) so it works in no-exception builds.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidPadsSize) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<int64_t>("Pads", {3}, std::vector<int64_t>{0, 0, 0});  // Wrong size: should be 4
+  test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "does not match expected size",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// Test that negative pad values are rejected.
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_NegativePads) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{-1, 0, 0, 0});  // Negative pad
+  test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "non-negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
 
 }  // namespace test
 }  // namespace onnxruntime
