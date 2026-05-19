@@ -4,6 +4,7 @@
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
 
+#include <cstring>
 #include <optional>
 #include <utility>
 
@@ -2695,21 +2696,30 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     // Therefore, we need to create a new OrtTensorRTProviderOptionsV2 object and copy from tensorrt_options and use this new object to create the factory instead.
     // Note: No need to worry about new_tensorrt_options being a local variable, CreateExecutionProviderFactory() in TRT EP will
     // create a factory object that copies any provider options from tensorrt_options including "const char*" provider options.
-    OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;  // copy and assign from tensorrt_options
+    OrtTensorRTProviderOptionsV2 new_tensorrt_options = *tensorrt_options;
 
-    // Update provider options from session options. Curretnly only EPContext related session options are supported.
-    // Note: The string-based local variables will be kept accessible during the lifetime of this function,
-    // therefore the "const char*" provider options can still be accessible when calling CreateExecutionProviderFactory() in TRT EP.
+    // Update provider options from session options. Currently only EPContext related session options are supported.
+    // Preserve ownership semantics when replacing string-valued options.
     bool context_cache_enabled = false;
     std::string context_cache_path = "";
     std::string embed_mode = "";
+    auto set_string_option = [&new_tensorrt_options](const char*& option, const char* value) {
+      if (new_tensorrt_options.string_options_owned) {
+        const char* new_value = OrtTensorRTProviderOptionsV2Internal::DuplicateString(value);
+        delete[] option;
+        option = new_value;
+      } else {
+        option = value;
+      }
+    };
     if (options) {
       context_cache_enabled = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
       new_tensorrt_options.trt_dump_ep_context_model = context_cache_enabled;
       LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
 
       context_cache_path = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-      new_tensorrt_options.trt_ep_context_file_path = (context_cache_path.size() == 0) ? nullptr : context_cache_path.c_str();
+      set_string_option(new_tensorrt_options.trt_ep_context_file_path,
+                        context_cache_path.empty() ? nullptr : context_cache_path.c_str());
       LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path;
 
       embed_mode = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0");
@@ -2828,13 +2838,29 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
                     _In_ void* value) {
   API_IMPL_BEGIN
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
-  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  // Provider options that have pointer data type, excluding const char* options.
   if (strcmp(key, "user_compute_stream") == 0) {
     tensorrt_options->has_user_compute_stream = 1;
     tensorrt_options->user_compute_stream = value;
+  } else if (strcmp(key, "gpu_external_alloc") == 0) {
+    tensorrt_options->gpu_external_alloc = value;
+  } else if (strcmp(key, "gpu_external_free") == 0) {
+    tensorrt_options->gpu_external_free = value;
+  } else if (strcmp(key, "gpu_external_empty_cache") == 0) {
+    tensorrt_options->gpu_external_empty_cache = value;
+  } else if (strcmp(key, "gpu_external_mem_ptr") == 0) {
+    tensorrt_options->gpu_external_mem_ptr = value;
+  } else if (strcmp(key, "gpu_external_mem_size") == 0) {
+    if (value == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "gpu_external_mem_size value cannot be null");
+    }
+    tensorrt_options->gpu_external_mem_size = *reinterpret_cast<size_t*>(value);
   } else if (strcmp(key, "trt_onnx_bytestream") == 0) {
     tensorrt_options->trt_onnx_bytestream = value;
   } else if (strcmp(key, "trt_onnx_bytestream_size") == 0) {
+    if (value == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "trt_onnx_bytestream_size value cannot be null");
+    }
     tensorrt_options->trt_onnx_bytestream_size = *reinterpret_cast<size_t*>(value);
   }
   return nullptr;
@@ -2853,9 +2879,17 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
                     _Outptr_ void** ptr) {
   API_IMPL_BEGIN
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
-  // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
+  // Provider options that have pointer data type, excluding const char* options.
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = tensorrt_options->user_compute_stream;
+  } else if (strcmp(key, "gpu_external_alloc") == 0) {
+    *ptr = tensorrt_options->gpu_external_alloc;
+  } else if (strcmp(key, "gpu_external_free") == 0) {
+    *ptr = tensorrt_options->gpu_external_free;
+  } else if (strcmp(key, "gpu_external_empty_cache") == 0) {
+    *ptr = tensorrt_options->gpu_external_empty_cache;
+  } else if (strcmp(key, "gpu_external_mem_ptr") == 0) {
+    *ptr = tensorrt_options->gpu_external_mem_ptr;
   } else {
     *ptr = nullptr;
   }
@@ -2871,23 +2905,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
 #if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
-  if (ptr != nullptr) {
-    delete[] ptr->trt_int8_calibration_table_name;
-    delete[] ptr->trt_engine_cache_path;
-    delete[] ptr->trt_engine_cache_prefix;
-    delete[] ptr->trt_timing_cache_path;
-    delete[] ptr->trt_engine_decryption_lib_path;
-    delete[] ptr->trt_tactic_sources;
-    delete[] ptr->trt_extra_plugin_lib_paths;
-    delete[] ptr->trt_profile_min_shapes;
-    delete[] ptr->trt_profile_max_shapes;
-    delete[] ptr->trt_profile_opt_shapes;
-    delete[] ptr->trt_ep_context_file_path;
-    delete[] ptr->trt_onnx_model_folder_path;
-    delete[] ptr->trt_op_types_to_exclude;
-    delete[] ptr->trt_preview_features;
-  }
-
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);
@@ -2975,6 +2992,19 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
   if (strcmp(key, "user_compute_stream") == 0) {
     cuda_options->has_user_compute_stream = 1;
     cuda_options->user_compute_stream = value;
+  } else if (strcmp(key, "gpu_external_alloc") == 0) {
+    cuda_options->gpu_external_alloc = value;
+  } else if (strcmp(key, "gpu_external_free") == 0) {
+    cuda_options->gpu_external_free = value;
+  } else if (strcmp(key, "gpu_external_empty_cache") == 0) {
+    cuda_options->gpu_external_empty_cache = value;
+  } else if (strcmp(key, "gpu_external_mem_ptr") == 0) {
+    cuda_options->gpu_external_mem_ptr = value;
+  } else if (strcmp(key, "gpu_external_mem_size") == 0) {
+    if (value == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "gpu_external_mem_size value cannot be null");
+    }
+    cuda_options->gpu_external_mem_size = *reinterpret_cast<size_t*>(value);
   }
   return nullptr;
 #else
@@ -2994,6 +3024,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = cuda_options->user_compute_stream;
+  } else if (strcmp(key, "gpu_external_alloc") == 0) {
+    *ptr = cuda_options->gpu_external_alloc;
+  } else if (strcmp(key, "gpu_external_free") == 0) {
+    *ptr = cuda_options->gpu_external_free;
+  } else if (strcmp(key, "gpu_external_empty_cache") == 0) {
+    *ptr = cuda_options->gpu_external_empty_cache;
+  } else if (strcmp(key, "gpu_external_mem_ptr") == 0) {
+    *ptr = cuda_options->gpu_external_mem_ptr;
   } else {
     *ptr = nullptr;
   }

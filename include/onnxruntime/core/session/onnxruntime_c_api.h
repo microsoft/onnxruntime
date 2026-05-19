@@ -3521,6 +3521,7 @@ struct OrtApi {
    * Please refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#cc
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
    * and value should be its related range. Recreates the options and only sets the supplied values.
+   * For pointer options such as `gpu_external_mem_ptr`, use UpdateTensorRTProviderOptionsWithValue.
    *
    * For example, key="trt_max_workspace_size" and value="2147483648"
    *
@@ -4017,6 +4018,7 @@ struct OrtApi {
    * Please refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtCUDAProviderOptionsV2
    * and value should be its related range. Recreates the options and only sets the supplied values.
+   * For pointer options such as `gpu_external_mem_ptr`, use UpdateCUDAProviderOptionsWithValue.
    *
    * For example, key="device_id" and value="0"
    *
@@ -5043,7 +5045,13 @@ struct OrtApi {
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
 
   /**
-   * Update TensorRT EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * Update TensorRT EP provider option where its data type is pointer, for example 'user_compute_stream',
+   * 'gpu_external_alloc', 'gpu_external_free', 'gpu_external_empty_cache', or 'gpu_external_mem_ptr'.
+   * Also supports size_t values passed by pointer, for example 'gpu_external_mem_size'.
+   * If 'gpu_external_mem_ptr' and 'gpu_external_mem_size' are set, the supplied GPU buffer is used for
+   * TensorRT EP device allocations, including Reserve() allocations, and must remain valid until all
+   * sessions using this provider are destroyed. External GPU memory buffers are mutually exclusive with
+   * 'gpu_external_alloc', 'gpu_external_free', and 'gpu_external_empty_cache'.
    * If the data type of the provider option can be represented by string please use UpdateTensorRTProviderOptions.
    *
    * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
@@ -5069,7 +5077,13 @@ struct OrtApi {
   ORT_API2_STATUS(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _Outptr_ void** ptr);
 
   /**
-   * Update CUDA EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * Update CUDA EP provider option where its data type is pointer, for example 'user_compute_stream',
+   * 'gpu_external_alloc', 'gpu_external_free', 'gpu_external_empty_cache', or 'gpu_external_mem_ptr'.
+   * Also supports size_t values passed by pointer, for example 'gpu_external_mem_size'.
+   * If 'gpu_external_mem_ptr' and 'gpu_external_mem_size' are set, the supplied GPU buffer is used for
+   * CUDA EP device allocations, including Reserve() allocations, and must remain valid until all sessions
+   * using this provider are destroyed. External GPU memory buffers are mutually exclusive with
+   * 'gpu_external_alloc', 'gpu_external_free', and 'gpu_external_empty_cache'.
    * If the data type of the provider option can be represented by string please use UpdateCUDAProviderOptions.
    *
    * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.

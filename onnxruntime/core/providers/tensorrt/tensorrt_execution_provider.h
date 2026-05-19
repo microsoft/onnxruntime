@@ -15,6 +15,8 @@ typedef void* cudnnStatus_t;
 #include <mutex>
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
+#include "tensorrt_gpu_allocator.h"
+#include "tensorrt_output_allocator.h"
 
 namespace onnxruntime {
 
@@ -115,41 +117,6 @@ struct TensorrtInferDeleter {
 template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
-
-//
-// Class to allocate memory for outputs with data-dependent shapes. The sizes of those are unknown so pre-allocation is
-// not possible.
-//
-class OutputAllocator : public nvinfer1::IOutputAllocator {
- public:
-#if NV_TENSORRT_MAJOR >= 10
-  void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
-#else
-  void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
-#endif
-  void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
-
-  void* getBuffer() {
-    return outputPtr;
-  }
-
-  std::vector<int64_t>& getOutputShape() {
-    return output_shapes;
-  }
-
-  uint64_t getSize() {
-    return allocated_size;
-  }
-
-  ~OutputAllocator() override {
-    cudaFree(outputPtr);
-  }
-
- private:
-  void* outputPtr{nullptr};
-  uint64_t allocated_size = 0;
-  std::vector<int64_t> output_shapes;
-};
 
 /*
  * This map saves the dimension range of the shape of the shape tensor or execution tensor:
@@ -355,6 +322,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool layer_norm_fp32_fallback_ = false;
   size_t max_ctx_mem_size_ = 0;
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
+  AllocatorPtr device_allocator_ = nullptr;
+  std::unique_ptr<TensorRTGpuAllocator> trt_gpu_allocator_;
   mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
@@ -629,6 +598,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  void SetContextTemporaryStorageAllocator(nvinfer1::IExecutionContext* trt_context) const;
 
   /**
    *  This is the helper function for ConstantFoldingDQ graph transformer.

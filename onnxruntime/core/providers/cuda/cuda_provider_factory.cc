@@ -204,15 +204,23 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
-    // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
-    // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
-    // See the linked issue in the warning message for more info
-    {
+    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
+    const bool has_external_allocation_config =
+        params->gpu_external_alloc != nullptr ||
+        params->gpu_external_free != nullptr ||
+        params->gpu_external_empty_cache != nullptr ||
+        params->gpu_external_mem_ptr != nullptr ||
+        params->gpu_external_mem_size != 0;
+
+    if (!has_external_allocation_config) {
+      // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
+      // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
+      // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
+      // See the linked issue in the warning message for more info
       auto start_time = std::chrono::steady_clock::now();
       // Do a trivial cuda operation that will cause JIT to occur
       {
-        void** cuda_memory{};
+        void* cuda_memory{};
         ::cudaMalloc(&cuda_memory, 1);
         ::cudaFree(cuda_memory);
       }
@@ -223,8 +231,6 @@ struct CUDA_Provider : Provider {
       }
     }
 
-    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
-
     CUDAExecutionProviderInfo info{};
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
     info.gpu_mem_limit = params->gpu_mem_limit;
@@ -233,6 +239,12 @@ struct CUDA_Provider : Provider {
     info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
     info.has_user_compute_stream = params->has_user_compute_stream != 0;
     info.user_compute_stream = params->user_compute_stream;
+    info.external_allocator_info = CUDAExecutionProviderExternalAllocatorInfo{
+        params->gpu_external_alloc,
+        params->gpu_external_free,
+        params->gpu_external_empty_cache};
+    info.external_allocator_info.mem_ptr = params->gpu_external_mem_ptr;
+    info.external_allocator_info.mem_size = params->gpu_external_mem_size;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
@@ -253,8 +265,10 @@ struct CUDA_Provider : Provider {
   /**
    * This function will be called by the C API UpdateCUDAProviderOptions().
    *
-   * What this function does is equivalent to resetting the OrtCUDAProviderOptionsV2 instance with
-   * default CUDAExecutionProviderInf instance first and then set up the provided provider options.
+   * What this function does is equivalent to resetting the string-configurable parts of the
+   * OrtCUDAProviderOptionsV2 instance with a default CUDAExecutionProviderInfo instance first and then setting up
+   * the provided provider options. Pointer options set with UpdateCUDAProviderOptionsWithValue() are preserved unless
+   * the same option key is provided here.
    * See CUDAExecutionProviderInfo::FromProviderOptions() for more details.
    */
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
@@ -266,11 +280,32 @@ struct CUDA_Provider : Provider {
     cuda_options.gpu_mem_limit = internal_options.gpu_mem_limit;
     cuda_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cuda_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
-    cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;
     // The 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance can be set by C API UpdateCUDAProviderOptionsWithValue() as well.
-    // We only set the 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance if it is provided in options
+    // We only set the 'has_user_compute_stream' of the OrtCUDAProviderOptionsV2 instance if it is provided in options or user_compute_stream is provided.
     if (options.find("has_user_compute_stream") != options.end()) {
+      cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;
+      if (cuda_options.has_user_compute_stream == 0) {
+        cuda_options.user_compute_stream = nullptr;
+      }
+    }
+    if (options.find("user_compute_stream") != options.end()) {
       cuda_options.user_compute_stream = internal_options.user_compute_stream;
+      cuda_options.has_user_compute_stream = internal_options.user_compute_stream != nullptr;
+    }
+    if (options.find("gpu_external_alloc") != options.end()) {
+      cuda_options.gpu_external_alloc = internal_options.external_allocator_info.alloc;
+    }
+    if (options.find("gpu_external_free") != options.end()) {
+      cuda_options.gpu_external_free = internal_options.external_allocator_info.free;
+    }
+    if (options.find("gpu_external_empty_cache") != options.end()) {
+      cuda_options.gpu_external_empty_cache = internal_options.external_allocator_info.empty_cache;
+    }
+    if (options.find("gpu_external_mem_ptr") != options.end()) {
+      cuda_options.gpu_external_mem_ptr = internal_options.external_allocator_info.mem_ptr;
+    }
+    if (options.find("gpu_external_mem_size") != options.end()) {
+      cuda_options.gpu_external_mem_size = internal_options.external_allocator_info.mem_size;
     }
     cuda_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;

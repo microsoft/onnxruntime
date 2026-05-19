@@ -112,6 +112,10 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
           out_data,
           1));
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
+      auto ones = GetScratchBuffer<CudaT>(M, GetComputeStream(ctx));
+      if (M > 0) {
+        Fill<CudaT>(Stream(ctx), ones.get(), CudaT(1), M);
+      }
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           GetCublasHandle(ctx),
@@ -120,10 +124,14 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
           N, M, 1,
           /*alpha*/ &one,
           b_data, N,
-          GetConstOnes<CudaT>(M, Stream(ctx)), 1,
+          ones.get(), 1,
           /*beta*/ &zero,
           out_data, N, device_prop, UseTF32()));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
+      auto ones = GetScratchBuffer<CudaT>(N, GetComputeStream(ctx));
+      if (N > 0) {
+        Fill<CudaT>(Stream(ctx), ones.get(), CudaT(1), N);
+      }
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           GetCublasHandle(ctx),
@@ -131,7 +139,7 @@ Status Gemm<T>::ComputeDefault(OpKernelContext* ctx, int M, int N, int K) const 
           CUBLAS_OP_N,
           N, M, 1,
           /*alpha*/ &one,
-          GetConstOnes<CudaT>(N, Stream(ctx)), N,
+          ones.get(), N,
           b_data, 1,
           /*beta*/ &zero,
           out_data, N, device_prop, UseTF32()));

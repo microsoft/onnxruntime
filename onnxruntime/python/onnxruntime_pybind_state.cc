@@ -721,6 +721,36 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
               params.has_user_compute_stream = false;
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
             }
+          } else if (option.first == "gpu_external_alloc") {
+            if (!option.second.empty()) {
+              params.gpu_external_alloc = reinterpret_cast<void*>(std::stoull(option.second, nullptr, 0));
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'gpu_external_alloc' should be a string containing a function pointer address.\n");
+            }
+          } else if (option.first == "gpu_external_free") {
+            if (!option.second.empty()) {
+              params.gpu_external_free = reinterpret_cast<void*>(std::stoull(option.second, nullptr, 0));
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'gpu_external_free' should be a string containing a function pointer address.\n");
+            }
+          } else if (option.first == "gpu_external_empty_cache") {
+            if (!option.second.empty()) {
+              params.gpu_external_empty_cache = reinterpret_cast<void*>(std::stoull(option.second, nullptr, 0));
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'gpu_external_empty_cache' should be a string containing a function pointer address.\n");
+            }
+          } else if (option.first == "gpu_external_mem_ptr") {
+            if (!option.second.empty()) {
+              params.gpu_external_mem_ptr = reinterpret_cast<void*>(std::stoull(option.second, nullptr, 0));
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'gpu_external_mem_ptr' should be a string containing a GPU memory address.\n");
+            }
+          } else if (option.first == "gpu_external_mem_size") {
+            if (!option.second.empty()) {
+              params.gpu_external_mem_size = std::stoull(option.second, nullptr, 0);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'gpu_external_mem_size' should be a string containing a buffer size in bytes.\n");
+            }
           } else if (option.first == "trt_max_partition_iterations") {
             if (!option.second.empty()) {
               params.trt_max_partition_iterations = std::stoi(option.second);

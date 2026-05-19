@@ -148,6 +148,7 @@ Status ShardedMoE<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_ENFORCE(moe_params.tensor_shards == nccl_->Size());
 
     ORT_RETURN_IF_ERROR(FuncCustomAllReduce(nccl_,
+                                            has_external_allocation_config_,
                                             Stream(context),
                                             fc2_output.get(),
                                             fc2_output_bc.get(),

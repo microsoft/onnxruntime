@@ -5,6 +5,7 @@
 #include "contrib_ops/cuda/bert/decoder_attention_impl.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
 using namespace onnxruntime::cuda;
@@ -241,6 +242,8 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = 0, n = 0, k = 0;
   IAllocatorUniquePtr<T> gemm_query_buffer_p(nullptr);
   IAllocatorUniquePtr<T> gemm_kv_buffer_p(nullptr);
+  IAllocatorUniquePtr<CudaT> query_bias_ones(nullptr);
+  IAllocatorUniquePtr<CudaT> kv_bias_ones(nullptr);
 
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
   bool static_kv_ = *kernel_state_pinned;
@@ -271,10 +274,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO(tianleiwu): fuse bias and transpose
   // broadcast bias for query: (h2, S*B)
+  query_bias_ones = GetScratchBuffer<CudaT>(static_cast<size_t>(m), GetComputeStream(context));
+  if (m > 0) {
+    Fill<CudaT>(Stream(context), query_bias_ones.get(), one, m);
+  }
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
       reinterpret_cast<const CudaT*>(bias->Data<T>()), n,
-      GetConstOnes<CudaT>(m, Stream(context)), 1,
+      query_bias_ones.get(), 1,
       &zero, reinterpret_cast<CudaT*>(gemm_query_buffer_p.get()), n, device_prop, UseTF32()));
   // matmul: (h2, h1)*(h1, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -296,10 +303,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       k = hidden_size;
       kv_sequence_length = sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
+      kv_bias_ones = GetScratchBuffer<CudaT>(static_cast<size_t>(m), GetComputeStream(context));
+      if (m > 0) {
+        Fill<CudaT>(Stream(context), kv_bias_ones.get(), one, m);
+      }
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, Stream(context)), 1,
+          kv_bias_ones.get(), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop, UseTF32()));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -316,10 +327,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       k = hidden_size;
       kv_sequence_length = key_sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
+      kv_bias_ones = GetScratchBuffer<CudaT>(static_cast<size_t>(m), GetComputeStream(context));
+      if (m > 0) {
+        Fill<CudaT>(Stream(context), kv_bias_ones.get(), one, m);
+      }
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, Stream(context)), 1,
+          kv_bias_ones.get(), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop, UseTF32()));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -340,10 +355,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       m = sequence_length * batch_size;
       kv_sequence_length = cache_sequence_length + sequence_length;
       // broadcast bias for key and value: (2*h2, T_S*B)
+      kv_bias_ones = GetScratchBuffer<CudaT>(static_cast<size_t>(m), GetComputeStream(context));
+      if (m > 0) {
+        Fill<CudaT>(Stream(context), kv_bias_ones.get(), one, m);
+      }
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, Stream(context)), 1,
+          kv_bias_ones.get(), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop, UseTF32()));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(

@@ -245,6 +245,8 @@ NcclContext::~NcclContext() {
 NcclKernel::NcclKernel(const OpKernelInfo& info) : CudaKernel(info) {
   static NcclContext context;
   nccl_ = &context;
+  const auto* cuda_ep = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
+  has_external_allocation_config_ = cuda_ep != nullptr && cuda_ep->HasExternalAllocationConfig();
 }
 
 AllReduce::AllReduce(const OpKernelInfo& info) : NcclKernel(info) {
@@ -260,6 +262,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
   void* output_data = context->Output(0, in_shape)->MutableDataRaw();
 
   return FuncCustomAllReduce(nccl_,
+                             has_external_allocation_config_,
                              Stream(context),
                              input_data,
                              output_data,
@@ -423,6 +426,7 @@ Status FuncAllReduce(
 
 Status FuncCustomAllReduce(
     NcclContext* nccl,
+    bool has_external_allocation_config,
     cudaStream_t stream,
     const void* input_data,
     void* output_data,
@@ -435,7 +439,8 @@ Status FuncCustomAllReduce(
   onnxruntime::cuda::collective::AllReduceStrategyType runtime_strategy =
       onnxruntime::cuda::collective::SelectImplementation(input_count, rank, world_size, data_type);
 
-  if (runtime_strategy == onnxruntime::cuda::collective::AllReduceStrategyType::NCCL) {
+  if (has_external_allocation_config ||
+      runtime_strategy == onnxruntime::cuda::collective::AllReduceStrategyType::NCCL) {
     ncclDataType_t dtype = GetNcclDataType(data_type);
     NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, nccl->Comm(), stream));
 

@@ -5,6 +5,8 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
+#include "core/providers/cuda/shared_inc/gpu_external_memory_allocator.h"
+#include <cstdint>
 #include <mutex>
 
 namespace onnxruntime {
@@ -49,6 +51,8 @@ class CUDAExternalAllocator : public CUDAAllocator {
   ExternalEmptyCache empty_cache_;
   InlinedHashSet<void*> reserved_;
 };
+
+using CUDAExternalMemoryAllocator = GpuExternalMemoryAllocator;
 
 // TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {

@@ -16,10 +16,10 @@ import unittest
 
 import numpy as np
 from helper import get_name
-
-import onnxruntime as onnxrt
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
+
+import onnxruntime as onnxrt
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -335,6 +335,19 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["user_compute_stream"], "1")
             self.assertEqual(option["has_user_compute_stream"], "1")
 
+            option["gpu_external_alloc"] = "0"
+            option["gpu_external_free"] = "0"
+            option["gpu_external_empty_cache"] = "0"
+            option["gpu_external_mem_ptr"] = "0"
+            option["gpu_external_mem_size"] = "0"
+            sess.set_providers(["TensorrtExecutionProvider"], [option])
+            options = sess.get_provider_options()
+            self.assertEqual(options["TensorrtExecutionProvider"]["gpu_external_alloc"], "0")
+            self.assertEqual(options["TensorrtExecutionProvider"]["gpu_external_free"], "0")
+            self.assertEqual(options["TensorrtExecutionProvider"]["gpu_external_empty_cache"], "0")
+            self.assertEqual(options["TensorrtExecutionProvider"]["gpu_external_mem_ptr"], "0")
+            self.assertEqual(options["TensorrtExecutionProvider"]["gpu_external_mem_size"], "0")
+
             session_options = C.get_default_session_options()
 
             # TRT plugins registered as custom op domain should only be added once in session option regardless of number of session creation
@@ -454,11 +467,15 @@ class TestInferenceSession(unittest.TestCase):
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
                 option["gpu_external_empty_cache"] = "0"
+                option["gpu_external_mem_ptr"] = "0"
+                option["gpu_external_mem_size"] = "0"
                 sess.set_providers(["CUDAExecutionProvider"], [option])
                 options = sess.get_provider_options()
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_alloc"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_free"], "0")
                 self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_empty_cache"], "0")
+                self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_mem_ptr"], "0")
+                self.assertEqual(options["CUDAExecutionProvider"]["gpu_external_mem_size"], "0")
 
                 option["user_compute_stream"] = "0"
                 sess.set_providers(["CUDAExecutionProvider"], [option])

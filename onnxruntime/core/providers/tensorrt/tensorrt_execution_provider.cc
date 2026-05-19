@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <cstdint>
 #include <fstream>
+#include <limits>
 #include <list>
+#include <mutex>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
@@ -14,6 +18,7 @@
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "onnx_ctx_model_helper.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/shared_inc/gpu_external_memory_allocator.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/session/allocator_adapters.h"
@@ -21,7 +26,6 @@
 #include <gsl/gsl>
 #include <unordered_map>
 #include <utility>
-#include <limits>
 #include <map>
 #include <memory>
 #include <filesystem>
@@ -45,6 +49,107 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
+using ::onnxruntime::AllocatorCreationInfo;
+using ::onnxruntime::AllocatorPtr;
+using ::onnxruntime::CreateAllocator;
+using ::onnxruntime::CreateCUDAAllocator;
+using ::onnxruntime::GpuExternalMemoryAllocator;
+using ::onnxruntime::IAllocator;
+using ::onnxruntime::InlinedHashSet;
+using ::onnxruntime::InlinedVector;
+using ::onnxruntime::narrow;
+using ::onnxruntime::TensorrtExecutionProviderExternalAllocatorInfo;
+
+class TensorrtExternalAllocator final : public IAllocator {
+  using ExternalAlloc = void* (*)(size_t size);
+  using ExternalFree = void (*)(void* p);
+  using ExternalEmptyCache = void (*)();
+
+ public:
+  TensorrtExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free,
+                            void* empty_cache)
+      : IAllocator(
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                                    device_id),
+                          OrtMemTypeDefault)),
+        alloc_{reinterpret_cast<ExternalAlloc>(alloc)},
+        free_{reinterpret_cast<ExternalFree>(free)},
+        empty_cache_{reinterpret_cast<ExternalEmptyCache>(empty_cache)} {
+    ORT_ENFORCE(alloc_ != nullptr && free_ != nullptr);
+  }
+
+  void* Alloc(size_t size) override {
+    void* p = nullptr;
+    if (size > 0) {
+      p = alloc_(size);
+      ORT_ENFORCE(p != nullptr);
+    }
+    return p;
+  }
+
+  void Free(void* p) override {
+    free_(p);
+    std::lock_guard<std::mutex> lock(lock_);
+    auto it = reserved_.find(p);
+    if (it != reserved_.end()) {
+      reserved_.erase(it);
+      if (empty_cache_ != nullptr) {
+        empty_cache_();
+      }
+    }
+  }
+
+  void* Reserve(size_t size) override {
+    void* p = Alloc(size);
+    if (p == nullptr) {
+      return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(lock_);
+    ORT_ENFORCE(reserved_.find(p) == reserved_.end());
+    reserved_.insert(p);
+    return p;
+  }
+
+ private:
+  std::mutex lock_;
+  ExternalAlloc alloc_;
+  ExternalFree free_;
+  ExternalEmptyCache empty_cache_;
+  InlinedHashSet<void*> reserved_;
+};
+
+AllocatorPtr CreateTensorrtDeviceAllocator(
+    const TensorrtExecutionProviderExternalAllocatorInfo& external_allocator_info,
+    int device_id) {
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId allocator_device_id) {
+        return CreateCUDAAllocator(allocator_device_id, onnxruntime::CUDA);
+      },
+      narrow<OrtDevice::DeviceId>(device_id));
+
+  if (external_allocator_info.HasExternalAllocatorConfig()) {
+    default_memory_info = AllocatorCreationInfo(
+        [external_allocator_info](OrtDevice::DeviceId allocator_device_id) -> std::unique_ptr<IAllocator> {
+          return std::make_unique<TensorrtExternalAllocator>(
+              allocator_device_id, onnxruntime::CUDA, external_allocator_info.alloc, external_allocator_info.free,
+              external_allocator_info.empty_cache);
+        },
+        narrow<OrtDevice::DeviceId>(device_id),
+        false);
+  } else if (external_allocator_info.UseExternalMemory()) {
+    default_memory_info = AllocatorCreationInfo(
+        [external_allocator_info](OrtDevice::DeviceId allocator_device_id) -> std::unique_ptr<IAllocator> {
+          return std::make_unique<GpuExternalMemoryAllocator>(
+              allocator_device_id, onnxruntime::CUDA, external_allocator_info.mem_ptr, external_allocator_info.mem_size);
+        },
+        narrow<OrtDevice::DeviceId>(device_id),
+        false);
+  }
+
+  return CreateAllocator(default_memory_info);
+}
+
 // Check if cycle exists in the graph after partitioning
 bool FindCycleHelper(size_t i, gsl::span<const InlinedVector<size_t>> adjacency_map, gsl::span<bool> visited, gsl::span<bool> st,
                      InlinedVector<size_t>& cycles) {
@@ -329,51 +434,6 @@ void CudaCall<cudnnStatus_t, true>(cudnnStatus_t retCode, const char* exprString
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg, file, line);
 }
 #endif
-
-#if NV_TENSORRT_MAJOR >= 10
-void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
-                                             uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
-  // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
-  // even for empty tensors, so allocate a dummy byte.
-  size = std::max(size, static_cast<uint64_t>(1));
-  if (size > allocated_size) {
-    cudaFree(outputPtr);
-    outputPtr = nullptr;
-    allocated_size = 0;
-    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
-      allocated_size = size;
-    }
-  }
-  // if cudaMalloc fails, returns nullptr.
-  return outputPtr;
-}
-#else
-// Only override this method when TensorRT <= 8.6
-void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
-                                        uint64_t /*alignment*/) noexcept {
-  // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
-  // even for empty tensors, so allocate a dummy byte.
-  size = std::max(size, static_cast<uint64_t>(1));
-  if (size > allocated_size) {
-    cudaFree(outputPtr);
-    outputPtr = nullptr;
-    allocated_size = 0;
-    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
-      allocated_size = size;
-    }
-  }
-  // if cudaMalloc fails, returns nullptr.
-  return outputPtr;
-}
-#endif
-
-void OutputAllocator::notifyShape(char const* /*tensorName*/, nvinfer1::Dims const& dims) noexcept {
-  output_shapes.clear();
-  output_shapes.reserve(dims.nbDims);
-  for (int i = 0; i < dims.nbDims; i++) {
-    output_shapes.push_back(dims.d[i]);
-  }
-}
 
 class Memcpy final : public OpKernel {
  public:
@@ -1063,12 +1123,12 @@ Status BindContextOutput(Ort::KernelContext& ctx,
   // If the output tensor has data-dependent shape, TRT EP will provide an IOutputAllocator for enqueueV3 to dynamically allocate memory buffer.
   // Once enqueueV3 returns, TRT EP will then bind the output allocation to ORT kernel context output.
   // (Please note that we take strategy A mentioned in https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#dynamic-shaped-output,
-  //  which we defer allocation until the size is known and don't call IExecution::setTensorAddress)
+  //  which we defer allocation until the size is known and don't call IExecutionContext::setTensorAddress)
   //
   // Otherwise, if the shape of the output tensor is known prior to the runtime, ORT will pre-allocate memory buffer for the output tensor for enqueueV3.
   if (is_DDS || known_DDS) {
     if (!known_DDS) {
-      auto allocatorPtr = std::make_unique<OutputAllocator>();
+      auto allocatorPtr = std::make_unique<OutputAllocator>(alloc);
       trt_context->setOutputAllocator(output_name, allocatorPtr.get());
       dds_output_allocator_map[output_name] = std::move(allocatorPtr);
     }
@@ -1337,6 +1397,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       info_(info),
       device_id_(info.device_id) {
   InitProviderOrtApi();
+  ORT_THROW_IF_ERROR(info_.external_allocator_info.ValidateExternalAllocatorConfig());
+  if (info_.external_allocator_info.UsesExternalDeviceAllocator()) {
+    device_allocator_ = CreateTensorrtDeviceAllocator(info_.external_allocator_info, device_id_);
+    trt_gpu_allocator_ = std::make_unique<TensorRTGpuAllocator>(device_allocator_.get());
+  }
 
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
   cudaDeviceProp prop;
@@ -1649,6 +1714,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
   }
 
+  if (info_.UseUserManagedContextMemory()) {
+    // TensorRT owns execution-context device memory unless the context is created in user-managed mode.
+    // The existing context-memory path uses the ORT allocator; with external allocators this keeps context memory external too.
+    context_memory_sharing_enable_ = true;
+  }
+
   // Validate setting
   if (max_partition_iterations_ <= 0) {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_partition_iterations must be a positive integer value. Set it to 1000";
@@ -1799,6 +1870,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     auto lock = GetApiLock();
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
   }
+  if (runtime_ != nullptr && trt_gpu_allocator_ != nullptr) {
+    runtime_->setGpuAllocator(trt_gpu_allocator_.get());
+  }
 
   trt_version_ = getInferLibVersion();
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_version_));
@@ -1873,6 +1947,15 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 
+  dds_output_allocator_maps_.clear();
+  contexts_.clear();
+  engines_.clear();
+  parsers_.clear();
+  networks_.clear();
+  builders_.clear();
+  builder_.reset();
+  runtime_.reset();
+
   if (context_memory_) {
     context_memory_.reset();
   }
@@ -1922,9 +2005,20 @@ void TensorrtExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
 }
 
 std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators() {
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); },
-      narrow<OrtDevice::DeviceId>(device_id_));
+  ORT_THROW_IF_ERROR(info_.external_allocator_info.ValidateExternalAllocatorConfig());
+
+  if (device_allocator_ == nullptr) {
+    device_allocator_ = CreateTensorrtDeviceAllocator(info_.external_allocator_info, device_id_);
+    if (info_.external_allocator_info.UsesExternalDeviceAllocator()) {
+      trt_gpu_allocator_ = std::make_unique<TensorRTGpuAllocator>(device_allocator_.get());
+      if (runtime_ != nullptr) {
+        runtime_->setGpuAllocator(trt_gpu_allocator_.get());
+      }
+      if (builder_ != nullptr) {
+        builder_->setGpuAllocator(trt_gpu_allocator_.get());
+      }
+    }
+  }
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
@@ -1932,7 +2026,7 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
       },
       narrow<OrtDevice::DeviceId>(device_id_));
 
-  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
+  return std::vector<AllocatorPtr>{device_allocator_, CreateAllocator(pinned_allocator_info)};
 }
 
 std::unique_ptr<IDataTransfer> TensorrtExecutionProvider::GetDataTransfer() const {
@@ -1959,8 +2053,22 @@ nvinfer1::IBuilder* TensorrtExecutionProvider::GetBuilder(TensorrtLogger& trt_lo
       auto lock = GetApiLock();
       builder_ = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
     }
+    if (builder_ != nullptr && trt_gpu_allocator_ != nullptr) {
+      builder_->setGpuAllocator(trt_gpu_allocator_.get());
+    }
   }
   return builder_.get();
+}
+
+void TensorrtExecutionProvider::SetContextTemporaryStorageAllocator(nvinfer1::IExecutionContext* trt_context) const {
+#if NV_TENSORRT_MAJOR >= 10
+  if (trt_context != nullptr && trt_gpu_allocator_ != nullptr) {
+    ORT_ENFORCE(trt_context->setTemporaryStorageAllocator(trt_gpu_allocator_.get()),
+                "Failed to set TensorRT execution context temporary storage allocator.");
+  }
+#else
+  ORT_UNUSED_PARAMETER(trt_context);
+#endif
 }
 
 void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtCustomOpDomain*>& custom_op_domain_list) const {
@@ -3729,6 +3837,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
     }
+    SetContextTemporaryStorageAllocator(trt_context.get());
   }
 
   // Create input to index map
@@ -4221,6 +4330,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
       }
       trt_context = trt_state->context->get();
+      SetContextTemporaryStorageAllocator(trt_context);
     }
 
     // Check before using trt_engine
@@ -4464,6 +4574,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                            "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
   }
+  SetContextTemporaryStorageAllocator(trt_context.get());
 
   // Create input/output to index maps
   for (int32_t i = 0; i < trt_engine->getNbIOTensors(); ++i) {

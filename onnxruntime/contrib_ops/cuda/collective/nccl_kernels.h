@@ -64,6 +64,7 @@ class NcclKernel : public ::onnxruntime::cuda::CudaKernel {
 
  protected:
   NcclContext* nccl_ = nullptr;
+  bool has_external_allocation_config_ = false;
 };
 
 /*
@@ -107,6 +108,7 @@ Status FuncAllReduce(
 
 Status FuncCustomAllReduce(
     NcclContext* nccl,
+    bool has_external_allocation_config,
     cudaStream_t stream,
     const void* input_data,
     void* output_data,

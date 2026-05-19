@@ -7,6 +7,7 @@
 #include <functional>
 #include <limits>
 
+#include "core/common/status.h"
 #include "core/common/hash_combine.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/ortdevice.h"
@@ -19,11 +20,15 @@ struct CUDAExecutionProviderExternalAllocatorInfo {
   void* alloc{nullptr};
   void* free{nullptr};
   void* empty_cache{nullptr};
+  void* mem_ptr{nullptr};
+  size_t mem_size{0};
 
   CUDAExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;
     free = nullptr;
     empty_cache = nullptr;
+    mem_ptr = nullptr;
+    mem_size = 0;
   }
 
   CUDAExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
@@ -32,8 +37,41 @@ struct CUDAExecutionProviderExternalAllocatorInfo {
     empty_cache = e;
   }
 
+  CUDAExecutionProviderExternalAllocatorInfo(void* ptr, size_t size) {
+    mem_ptr = ptr;
+    mem_size = size;
+  }
+
   bool UseExternalAllocator() const {
     return (alloc != nullptr) && (free != nullptr);
+  }
+
+  bool HasExternalAllocatorConfig() const {
+    return (alloc != nullptr) || (free != nullptr) || (empty_cache != nullptr);
+  }
+
+  bool UseExternalMemory() const {
+    return (mem_ptr != nullptr) && (mem_size > 0);
+  }
+
+  bool HasExternalMemoryConfig() const {
+    return (mem_ptr != nullptr) || (mem_size > 0);
+  }
+
+  bool UsesExternalDeviceAllocator() const {
+    return UseExternalAllocator() || UseExternalMemory();
+  }
+
+  Status ValidateExternalAllocatorConfig(bool has_user_compute_stream) const {
+    ORT_RETURN_IF(HasExternalAllocatorConfig() && HasExternalMemoryConfig(),
+                  "External allocator callbacks and external GPU memory buffer cannot both be configured.");
+    ORT_RETURN_IF(HasExternalAllocatorConfig() && !UseExternalAllocator(),
+                  "Both gpu_external_alloc and gpu_external_free must be configured to use external allocator callbacks.");
+    ORT_RETURN_IF(!HasExternalAllocatorConfig() && HasExternalMemoryConfig() && !UseExternalMemory(),
+                  "Both gpu_external_mem_ptr and gpu_external_mem_size must be configured to use an external GPU memory buffer.");
+    ORT_RETURN_IF(has_user_compute_stream && UsesExternalDeviceAllocator(),
+                  "User compute stream cannot be used with external GPU allocators.");
+    return Status::OK();
   }
 };
 
@@ -121,6 +159,8 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.alloc), value);
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.free), value);
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.mem_ptr), value);
+    onnxruntime::HashCombine(info.external_allocator_info.mem_size, value);
 
     // The default memory arena cfg is not used in hashing right now.
     return value;

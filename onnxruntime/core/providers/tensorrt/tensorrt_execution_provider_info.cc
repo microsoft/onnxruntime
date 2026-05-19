@@ -15,6 +15,11 @@ namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
 constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
 constexpr const char* kUserComputeStream = "user_compute_stream";
+constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
+constexpr const char* kGpuExternalFree = "gpu_external_free";
+constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
+constexpr const char* kGpuExternalMemPtr = "gpu_external_mem_ptr";
+constexpr const char* kGpuExternalMemSize = "gpu_external_mem_size";
 constexpr const char* kMaxPartitionIterations = "trt_max_partition_iterations";
 constexpr const char* kMinSubgraphSize = "trt_min_subgraph_size";
 constexpr const char* kMaxWorkspaceSize = "trt_max_workspace_size";
@@ -69,6 +74,11 @@ constexpr const char* kGraphIncludeInitializer = "trt_load_user_initializer";
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
+  void* alloc = nullptr;
+  void* free = nullptr;
+  void* empty_cache = nullptr;
+  void* mem_ptr = nullptr;
+  size_t mem_size = 0;
   void* onnx_bytestream = nullptr;
   void* external_data_bytestream = nullptr;
   ORT_THROW_IF_ERROR(
@@ -95,6 +105,39 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
                 user_compute_stream = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
+          .AddValueParser(
+              tensorrt::provider_option_names::kGpuExternalAlloc,
+              [&alloc](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                alloc = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              tensorrt::provider_option_names::kGpuExternalFree,
+              [&free](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                free = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              tensorrt::provider_option_names::kGpuExternalEmptyCache,
+              [&empty_cache](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                empty_cache = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              tensorrt::provider_option_names::kGpuExternalMemPtr,
+              [&mem_ptr](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                mem_ptr = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(tensorrt::provider_option_names::kGpuExternalMemSize, mem_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMinSubgraphSize, info.min_subgraph_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kFp16Enable, info.fp16_enable)
@@ -158,6 +201,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
 
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
+  info.external_allocator_info = TensorrtExecutionProviderExternalAllocatorInfo{alloc, free, empty_cache, mem_ptr, mem_size};
   info.onnx_bytestream = onnx_bytestream;
   info.external_data_bytestream = external_data_bytestream;
   return info;
@@ -169,6 +213,11 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.max_partition_iterations)},
       {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {tensorrt::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
+      {tensorrt::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
+      {tensorrt::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
+      {tensorrt::provider_option_names::kGpuExternalEmptyCache, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache))},
+      {tensorrt::provider_option_names::kGpuExternalMemPtr, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.mem_ptr))},
+      {tensorrt::provider_option_names::kGpuExternalMemSize, MakeStringWithClassicLocale(info.external_allocator_info.mem_size)},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
       {tensorrt::provider_option_names::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
@@ -239,6 +288,11 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {tensorrt::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
+      {tensorrt::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.gpu_external_alloc))},
+      {tensorrt::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.gpu_external_free))},
+      {tensorrt::provider_option_names::kGpuExternalEmptyCache, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.gpu_external_empty_cache))},
+      {tensorrt::provider_option_names::kGpuExternalMemPtr, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.gpu_external_mem_ptr))},
+      {tensorrt::provider_option_names::kGpuExternalMemSize, MakeStringWithClassicLocale(info.gpu_external_mem_size)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.trt_max_partition_iterations)},
       {tensorrt::provider_option_names::kMinSubgraphSize, MakeStringWithClassicLocale(info.trt_min_subgraph_size)},
       {tensorrt::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.trt_max_workspace_size)},
@@ -291,8 +345,10 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensor
 /**
  * Update OrtTensorRTProviderOptionsV2 instance with ProviderOptions (map of string-based key-value pairs)
  *
- * Please note that it will reset the OrtTensorRTProviderOptionsV2 instance first and then set up the provided provider options
- * See TensorrtExecutionProviderInfo::FromProviderOptions() for more details. This function will be called by the C API UpdateTensorRTProviderOptions() also.
+ * Please note that it will reset the string-configurable parts of the OrtTensorRTProviderOptionsV2 instance first and
+ * then set up the provided provider options. Pointer options set with UpdateTensorRTProviderOptionsWithValue() are
+ * preserved unless the same option key is provided here. See TensorrtExecutionProviderInfo::FromProviderOptions() for
+ * more details. This function will be called by the C API UpdateTensorRTProviderOptions() also.
  *
  * \param provider_options - a pointer to OrtTensorRTProviderOptionsV2 instance
  * \param options - a reference to ProviderOptions instance
@@ -305,29 +361,44 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   if (provider_options == nullptr) {
     return;
   }
-  auto copy_string_if_needed = [&](std::string& s_in) {
-    if (string_copy) {
-      char* dest = nullptr;
-      auto str_size = s_in.size();
-      if (str_size == 0) {
-        return (const char*)nullptr;
-      } else {
-        dest = new char[str_size + 1];
-#ifdef _MSC_VER
-        strncpy_s(dest, str_size + 1, s_in.c_str(), str_size);
-#else
-        strncpy(dest, s_in.c_str(), str_size);
-#endif
-        dest[str_size] = '\0';
-        return (const char*)dest;
-      }
-    } else {
-      return s_in.c_str();
-    }
+  TensorrtExecutionProviderInfo internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
+  OrtTensorRTProviderOptionsV2Internal::StringCopies string_copies;
+  if (string_copy) {
+    string_copies.trt_int8_calibration_table_name =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.int8_calibration_table_name.c_str());
+    string_copies.trt_engine_cache_path =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.engine_cache_path.c_str());
+    string_copies.trt_engine_cache_prefix =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.engine_cache_prefix.c_str());
+    string_copies.trt_timing_cache_path =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.timing_cache_path.c_str());
+    string_copies.trt_engine_decryption_lib_path =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.engine_decryption_lib_path.c_str());
+    string_copies.trt_tactic_sources =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.tactic_sources.c_str());
+    string_copies.trt_extra_plugin_lib_paths =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.extra_plugin_lib_paths.c_str());
+    string_copies.trt_profile_min_shapes =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.profile_min_shapes.c_str());
+    string_copies.trt_profile_max_shapes =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.profile_max_shapes.c_str());
+    string_copies.trt_profile_opt_shapes =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.profile_opt_shapes.c_str());
+    string_copies.trt_ep_context_file_path =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.ep_context_file_path.c_str());
+    string_copies.trt_onnx_model_folder_path =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.onnx_model_folder_path.c_str());
+    string_copies.trt_op_types_to_exclude =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.op_types_to_exclude.c_str());
+    string_copies.trt_preview_features =
+        OrtTensorRTProviderOptionsV2Internal::DuplicateString(internal_options.preview_features.c_str());
+  }
+  auto get_string_option = [string_copy](const char* copied_value, const std::string& source) {
+    return string_copy ? copied_value : source.c_str();
   };
 
-  TensorrtExecutionProviderInfo internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
   auto& trt_provider_options_v2 = *reinterpret_cast<OrtTensorRTProviderOptionsV2*>(provider_options);
+  OrtTensorRTProviderOptionsV2Internal::ReleaseStrings(trt_provider_options_v2);
   trt_provider_options_v2.device_id = internal_options.device_id;
 
   // The 'has_user_compute_stream' of the OrtTensorRTProviderOptionsV2 instance can be set by C API UpdateTensorRTProviderOptionsWithValue() as well
@@ -339,6 +410,21 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
     trt_provider_options_v2.user_compute_stream = internal_options.user_compute_stream;
     trt_provider_options_v2.has_user_compute_stream = true;
   }
+  if (options.find(tensorrt::provider_option_names::kGpuExternalAlloc) != options.end()) {
+    trt_provider_options_v2.gpu_external_alloc = internal_options.external_allocator_info.alloc;
+  }
+  if (options.find(tensorrt::provider_option_names::kGpuExternalFree) != options.end()) {
+    trt_provider_options_v2.gpu_external_free = internal_options.external_allocator_info.free;
+  }
+  if (options.find(tensorrt::provider_option_names::kGpuExternalEmptyCache) != options.end()) {
+    trt_provider_options_v2.gpu_external_empty_cache = internal_options.external_allocator_info.empty_cache;
+  }
+  if (options.find(tensorrt::provider_option_names::kGpuExternalMemPtr) != options.end()) {
+    trt_provider_options_v2.gpu_external_mem_ptr = internal_options.external_allocator_info.mem_ptr;
+  }
+  if (options.find(tensorrt::provider_option_names::kGpuExternalMemSize) != options.end()) {
+    trt_provider_options_v2.gpu_external_mem_size = internal_options.external_allocator_info.mem_size;
+  }
 
   trt_provider_options_v2.trt_max_partition_iterations = internal_options.max_partition_iterations;
   trt_provider_options_v2.trt_min_subgraph_size = internal_options.min_subgraph_size;
@@ -347,7 +433,8 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_bf16_enable = internal_options.bf16_enable;
   trt_provider_options_v2.trt_int8_enable = internal_options.int8_enable;
 
-  trt_provider_options_v2.trt_int8_calibration_table_name = copy_string_if_needed(internal_options.int8_calibration_table_name);
+  trt_provider_options_v2.trt_int8_calibration_table_name = get_string_option(
+      string_copies.trt_int8_calibration_table_name, internal_options.int8_calibration_table_name);
 
   trt_provider_options_v2.trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
   trt_provider_options_v2.trt_dla_enable = internal_options.dla_enable;
@@ -355,15 +442,20 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_dump_subgraphs = internal_options.dump_subgraphs;
   trt_provider_options_v2.trt_engine_cache_enable = internal_options.engine_cache_enable;
   trt_provider_options_v2.trt_weight_stripped_engine_enable = internal_options.weight_stripped_engine_enable;
-  trt_provider_options_v2.trt_onnx_model_folder_path = copy_string_if_needed(internal_options.onnx_model_folder_path);
+  trt_provider_options_v2.trt_onnx_model_folder_path =
+      get_string_option(string_copies.trt_onnx_model_folder_path, internal_options.onnx_model_folder_path);
 
-  trt_provider_options_v2.trt_engine_cache_path = copy_string_if_needed(internal_options.engine_cache_path);
-  trt_provider_options_v2.trt_engine_cache_prefix = copy_string_if_needed(internal_options.engine_cache_prefix);
-  trt_provider_options_v2.trt_timing_cache_path = copy_string_if_needed(internal_options.timing_cache_path);
+  trt_provider_options_v2.trt_engine_cache_path =
+      get_string_option(string_copies.trt_engine_cache_path, internal_options.engine_cache_path);
+  trt_provider_options_v2.trt_engine_cache_prefix =
+      get_string_option(string_copies.trt_engine_cache_prefix, internal_options.engine_cache_prefix);
+  trt_provider_options_v2.trt_timing_cache_path =
+      get_string_option(string_copies.trt_timing_cache_path, internal_options.timing_cache_path);
 
   trt_provider_options_v2.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
 
-  trt_provider_options_v2.trt_engine_decryption_lib_path = copy_string_if_needed(internal_options.engine_decryption_lib_path);
+  trt_provider_options_v2.trt_engine_decryption_lib_path =
+      get_string_option(string_copies.trt_engine_decryption_lib_path, internal_options.engine_decryption_lib_path);
 
   trt_provider_options_v2.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
   trt_provider_options_v2.trt_context_memory_sharing_enable = internal_options.context_memory_sharing_enable;
@@ -376,23 +468,33 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_builder_optimization_level = internal_options.builder_optimization_level;
   trt_provider_options_v2.trt_auxiliary_streams = internal_options.auxiliary_streams;
 
-  trt_provider_options_v2.trt_tactic_sources = copy_string_if_needed(internal_options.tactic_sources);
-  trt_provider_options_v2.trt_extra_plugin_lib_paths = copy_string_if_needed(internal_options.extra_plugin_lib_paths);
-  trt_provider_options_v2.trt_profile_min_shapes = copy_string_if_needed(internal_options.profile_min_shapes);
-  trt_provider_options_v2.trt_profile_max_shapes = copy_string_if_needed(internal_options.profile_max_shapes);
-  trt_provider_options_v2.trt_profile_opt_shapes = copy_string_if_needed(internal_options.profile_opt_shapes);
+  trt_provider_options_v2.trt_tactic_sources =
+      get_string_option(string_copies.trt_tactic_sources, internal_options.tactic_sources);
+  trt_provider_options_v2.trt_extra_plugin_lib_paths =
+      get_string_option(string_copies.trt_extra_plugin_lib_paths, internal_options.extra_plugin_lib_paths);
+  trt_provider_options_v2.trt_profile_min_shapes =
+      get_string_option(string_copies.trt_profile_min_shapes, internal_options.profile_min_shapes);
+  trt_provider_options_v2.trt_profile_max_shapes =
+      get_string_option(string_copies.trt_profile_max_shapes, internal_options.profile_max_shapes);
+  trt_provider_options_v2.trt_profile_opt_shapes =
+      get_string_option(string_copies.trt_profile_opt_shapes, internal_options.profile_opt_shapes);
 
   trt_provider_options_v2.trt_cuda_graph_enable = internal_options.cuda_graph_enable;
   trt_provider_options_v2.trt_dump_ep_context_model = internal_options.dump_ep_context_model;
   trt_provider_options_v2.trt_ep_context_embed_mode = internal_options.ep_context_embed_mode;
-  trt_provider_options_v2.trt_ep_context_file_path = copy_string_if_needed(internal_options.ep_context_file_path);
+  trt_provider_options_v2.trt_ep_context_file_path =
+      get_string_option(string_copies.trt_ep_context_file_path, internal_options.ep_context_file_path);
   trt_provider_options_v2.trt_engine_hw_compatible = internal_options.engine_hw_compatible;
   trt_provider_options_v2.trt_onnx_bytestream = internal_options.onnx_bytestream;
   trt_provider_options_v2.trt_onnx_bytestream_size = internal_options.onnx_bytestream_size;
   trt_provider_options_v2.trt_external_data_bytestream = internal_options.external_data_bytestream;
   trt_provider_options_v2.trt_external_data_bytestream_size = internal_options.external_data_bytestream_size;
-  trt_provider_options_v2.trt_op_types_to_exclude = copy_string_if_needed(internal_options.op_types_to_exclude);
-  trt_provider_options_v2.trt_preview_features = copy_string_if_needed(internal_options.preview_features);
+  trt_provider_options_v2.trt_op_types_to_exclude =
+      get_string_option(string_copies.trt_op_types_to_exclude, internal_options.op_types_to_exclude);
+  trt_provider_options_v2.trt_preview_features =
+      get_string_option(string_copies.trt_preview_features, internal_options.preview_features);
   trt_provider_options_v2.trt_load_user_initializer = internal_options.load_user_initializer;
+  trt_provider_options_v2.string_options_owned = string_copy;
+  string_copies.committed = string_copy;
 }
 }  // namespace onnxruntime

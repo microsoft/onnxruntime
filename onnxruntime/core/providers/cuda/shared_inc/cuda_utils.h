@@ -7,7 +7,6 @@
 #pragma once
 
 #include <cuda_fp16.h>
-#include <memory>
 #include <type_traits>
 #include <vector>
 #include <limits>
@@ -32,16 +31,6 @@ enum class BroadcastIndexType : int32_t {
   Scalar = (int32_t)1,
   NeedCompute = (int32_t)2,
 };
-
-template <typename T>
-class IConstantBuffer {
- public:
-  virtual ~IConstantBuffer() {};
-  virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
-};
-
-template <typename T>
-std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
 
 template <typename T>
 void Fill(cudaStream_t stream, T* output, T value, int64_t count);

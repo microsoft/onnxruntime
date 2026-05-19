@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstring>
+
 /// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT_V2.
 /// Please note that this struct is *similar* to OrtTensorRTProviderOptions but only to be used internally.
@@ -11,7 +13,10 @@
 /// User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
 /// </summary>
 struct OrtTensorRTProviderOptionsV2 {
+  OrtTensorRTProviderOptionsV2() = default;
+  OrtTensorRTProviderOptionsV2(const OrtTensorRTProviderOptionsV2& other);             // copy constructor
   OrtTensorRTProviderOptionsV2& operator=(const OrtTensorRTProviderOptionsV2& other);  // copy assignment operator
+  ~OrtTensorRTProviderOptionsV2();
 
   int device_id{0};                                      // cuda device id.
   int has_user_compute_stream{0};                        // indicator of user specified CUDA compute stream.
@@ -97,4 +102,209 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_engine_hw_compatible{0};                    // Enable hardware compatibility. Default 0 = false, nonzero = true
   const char* trt_op_types_to_exclude{};              // Exclude specific ops from running on TRT.
   int trt_load_user_initializer{0};                   // Save initializers locally instead of to disk. Default 0 = false, nonzero = true
+  void* gpu_external_alloc{nullptr};                  // external allocator callback with signature void* (*)(size_t).
+                                                      // can be updated using: UpdateTensorRTProviderOptionsWithValue
+  void* gpu_external_free{nullptr};                   // external free callback with signature void (*)(void*).
+                                                      // can be updated using: UpdateTensorRTProviderOptionsWithValue
+  void* gpu_external_empty_cache{nullptr};            // optional external empty cache callback with signature void (*)().
+                                                      // can be updated using: UpdateTensorRTProviderOptionsWithValue
+  void* gpu_external_mem_ptr{nullptr};                // user supplied GPU memory buffer used by TensorRT EP device
+                                                      // allocations, including Reserve() allocations. The buffer must
+                                                      // remain valid until all sessions using this provider have been
+                                                      // destroyed. Mutually exclusive with gpu_external_alloc/
+                                                      // gpu_external_free/gpu_external_empty_cache. Can be updated
+                                                      // using: UpdateTensorRTProviderOptionsWithValue
+  size_t gpu_external_mem_size{0};                    // size of user supplied GPU memory buffer.
+  bool string_options_owned{false};                   // true if string option pointers must be released with delete[].
 };
+
+namespace OrtTensorRTProviderOptionsV2Internal {
+
+inline char* DuplicateString(const char* value) {
+  if (value == nullptr) {
+    return nullptr;
+  }
+
+  const size_t length = std::strlen(value);
+  char* copy = new char[length + 1];
+  std::memcpy(copy, value, length + 1);
+  return copy;
+}
+
+inline void ReleaseStrings(OrtTensorRTProviderOptionsV2& options) noexcept {
+  if (!options.string_options_owned) {
+    return;
+  }
+
+  delete[] options.trt_int8_calibration_table_name;
+  delete[] options.trt_engine_cache_path;
+  delete[] options.trt_engine_cache_prefix;
+  delete[] options.trt_timing_cache_path;
+  delete[] options.trt_engine_decryption_lib_path;
+  delete[] options.trt_tactic_sources;
+  delete[] options.trt_extra_plugin_lib_paths;
+  delete[] options.trt_profile_min_shapes;
+  delete[] options.trt_profile_max_shapes;
+  delete[] options.trt_profile_opt_shapes;
+  delete[] options.trt_ep_context_file_path;
+  delete[] options.trt_onnx_model_folder_path;
+  delete[] options.trt_op_types_to_exclude;
+  delete[] options.trt_preview_features;
+
+  options.trt_int8_calibration_table_name = nullptr;
+  options.trt_engine_cache_path = nullptr;
+  options.trt_engine_cache_prefix = nullptr;
+  options.trt_timing_cache_path = nullptr;
+  options.trt_engine_decryption_lib_path = nullptr;
+  options.trt_tactic_sources = nullptr;
+  options.trt_extra_plugin_lib_paths = nullptr;
+  options.trt_profile_min_shapes = nullptr;
+  options.trt_profile_max_shapes = nullptr;
+  options.trt_profile_opt_shapes = nullptr;
+  options.trt_ep_context_file_path = nullptr;
+  options.trt_onnx_model_folder_path = nullptr;
+  options.trt_op_types_to_exclude = nullptr;
+  options.trt_preview_features = nullptr;
+  options.string_options_owned = false;
+}
+
+struct StringCopies {
+  ~StringCopies() {
+    if (!committed) {
+      delete[] trt_int8_calibration_table_name;
+      delete[] trt_engine_cache_path;
+      delete[] trt_engine_cache_prefix;
+      delete[] trt_timing_cache_path;
+      delete[] trt_engine_decryption_lib_path;
+      delete[] trt_tactic_sources;
+      delete[] trt_extra_plugin_lib_paths;
+      delete[] trt_profile_min_shapes;
+      delete[] trt_profile_max_shapes;
+      delete[] trt_profile_opt_shapes;
+      delete[] trt_ep_context_file_path;
+      delete[] trt_onnx_model_folder_path;
+      delete[] trt_op_types_to_exclude;
+      delete[] trt_preview_features;
+    }
+  }
+
+  char* trt_int8_calibration_table_name{};
+  char* trt_engine_cache_path{};
+  char* trt_engine_cache_prefix{};
+  char* trt_timing_cache_path{};
+  char* trt_engine_decryption_lib_path{};
+  char* trt_tactic_sources{};
+  char* trt_extra_plugin_lib_paths{};
+  char* trt_profile_min_shapes{};
+  char* trt_profile_max_shapes{};
+  char* trt_profile_opt_shapes{};
+  char* trt_ep_context_file_path{};
+  char* trt_onnx_model_folder_path{};
+  char* trt_op_types_to_exclude{};
+  char* trt_preview_features{};
+  bool committed{false};
+};
+
+}  // namespace OrtTensorRTProviderOptionsV2Internal
+
+inline OrtTensorRTProviderOptionsV2::OrtTensorRTProviderOptionsV2(const OrtTensorRTProviderOptionsV2& other) {
+  *this = other;
+}
+
+inline OrtTensorRTProviderOptionsV2::~OrtTensorRTProviderOptionsV2() {
+  OrtTensorRTProviderOptionsV2Internal::ReleaseStrings(*this);
+}
+
+inline OrtTensorRTProviderOptionsV2& OrtTensorRTProviderOptionsV2::operator=(
+    const OrtTensorRTProviderOptionsV2& other) {
+  if (this == &other) {
+    return *this;
+  }
+
+  OrtTensorRTProviderOptionsV2Internal::StringCopies strings;
+  strings.trt_int8_calibration_table_name =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_int8_calibration_table_name);
+  strings.trt_engine_cache_path = OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_engine_cache_path);
+  strings.trt_engine_cache_prefix =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_engine_cache_prefix);
+  strings.trt_timing_cache_path = OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_timing_cache_path);
+  strings.trt_engine_decryption_lib_path =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_engine_decryption_lib_path);
+  strings.trt_tactic_sources = OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_tactic_sources);
+  strings.trt_extra_plugin_lib_paths =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_extra_plugin_lib_paths);
+  strings.trt_profile_min_shapes =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_profile_min_shapes);
+  strings.trt_profile_max_shapes =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_profile_max_shapes);
+  strings.trt_profile_opt_shapes =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_profile_opt_shapes);
+  strings.trt_ep_context_file_path =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_ep_context_file_path);
+  strings.trt_onnx_model_folder_path =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_onnx_model_folder_path);
+  strings.trt_op_types_to_exclude =
+      OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_op_types_to_exclude);
+  strings.trt_preview_features = OrtTensorRTProviderOptionsV2Internal::DuplicateString(other.trt_preview_features);
+
+  OrtTensorRTProviderOptionsV2Internal::ReleaseStrings(*this);
+
+  device_id = other.device_id;
+  has_user_compute_stream = other.has_user_compute_stream;
+  user_compute_stream = other.user_compute_stream;
+  trt_max_partition_iterations = other.trt_max_partition_iterations;
+  trt_min_subgraph_size = other.trt_min_subgraph_size;
+  trt_max_workspace_size = other.trt_max_workspace_size;
+  trt_fp16_enable = other.trt_fp16_enable;
+  trt_bf16_enable = other.trt_bf16_enable;
+  trt_int8_enable = other.trt_int8_enable;
+  trt_int8_calibration_table_name = strings.trt_int8_calibration_table_name;
+  trt_int8_use_native_calibration_table = other.trt_int8_use_native_calibration_table;
+  trt_dla_enable = other.trt_dla_enable;
+  trt_dla_core = other.trt_dla_core;
+  trt_dump_subgraphs = other.trt_dump_subgraphs;
+  trt_engine_cache_enable = other.trt_engine_cache_enable;
+  trt_engine_cache_path = strings.trt_engine_cache_path;
+  trt_engine_decryption_enable = other.trt_engine_decryption_enable;
+  trt_engine_decryption_lib_path = strings.trt_engine_decryption_lib_path;
+  trt_force_sequential_engine_build = other.trt_force_sequential_engine_build;
+  trt_context_memory_sharing_enable = other.trt_context_memory_sharing_enable;
+  trt_layer_norm_fp32_fallback = other.trt_layer_norm_fp32_fallback;
+  trt_timing_cache_enable = other.trt_timing_cache_enable;
+  trt_timing_cache_path = strings.trt_timing_cache_path;
+  trt_force_timing_cache = other.trt_force_timing_cache;
+  trt_detailed_build_log = other.trt_detailed_build_log;
+  trt_build_heuristics_enable = other.trt_build_heuristics_enable;
+  trt_sparsity_enable = other.trt_sparsity_enable;
+  trt_builder_optimization_level = other.trt_builder_optimization_level;
+  trt_auxiliary_streams = other.trt_auxiliary_streams;
+  trt_tactic_sources = strings.trt_tactic_sources;
+  trt_extra_plugin_lib_paths = strings.trt_extra_plugin_lib_paths;
+  trt_profile_min_shapes = strings.trt_profile_min_shapes;
+  trt_profile_max_shapes = strings.trt_profile_max_shapes;
+  trt_profile_opt_shapes = strings.trt_profile_opt_shapes;
+  trt_cuda_graph_enable = other.trt_cuda_graph_enable;
+  trt_preview_features = strings.trt_preview_features;
+  trt_dump_ep_context_model = other.trt_dump_ep_context_model;
+  trt_ep_context_file_path = strings.trt_ep_context_file_path;
+  trt_ep_context_embed_mode = other.trt_ep_context_embed_mode;
+  trt_weight_stripped_engine_enable = other.trt_weight_stripped_engine_enable;
+  trt_onnx_model_folder_path = strings.trt_onnx_model_folder_path;
+  trt_onnx_bytestream = other.trt_onnx_bytestream;
+  trt_onnx_bytestream_size = other.trt_onnx_bytestream_size;
+  trt_external_data_bytestream = other.trt_external_data_bytestream;
+  trt_external_data_bytestream_size = other.trt_external_data_bytestream_size;
+  trt_engine_cache_prefix = strings.trt_engine_cache_prefix;
+  trt_engine_hw_compatible = other.trt_engine_hw_compatible;
+  trt_op_types_to_exclude = strings.trt_op_types_to_exclude;
+  trt_load_user_initializer = other.trt_load_user_initializer;
+  gpu_external_alloc = other.gpu_external_alloc;
+  gpu_external_free = other.gpu_external_free;
+  gpu_external_empty_cache = other.gpu_external_empty_cache;
+  gpu_external_mem_ptr = other.gpu_external_mem_ptr;
+  gpu_external_mem_size = other.gpu_external_mem_size;
+  string_options_owned = true;
+
+  strings.committed = true;
+  return *this;
+}

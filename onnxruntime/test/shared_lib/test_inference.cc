@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -44,9 +45,16 @@
 #include <dlfcn.h>
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_options.h"
+#endif
+
+#ifdef USE_CUDA
 #include <cuda_runtime.h>
+#endif
+
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 
 #ifdef USE_DML
@@ -63,6 +71,19 @@ template <typename T, size_t N>
 constexpr size_t countof(T (&)[N]) { return N; }
 
 extern std::unique_ptr<Ort::Env> ort_env;
+
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_CUDA_PROVIDER_INTERFACE) || \
+    defined(USE_TENSORRT_PROVIDER_INTERFACE)
+static void* TestGpuExternalAlloc(size_t size) {
+  return std::malloc(size);
+}
+
+static void TestGpuExternalFree(void* p) {
+  std::free(p);
+}
+
+static void TestGpuExternalEmptyCache() {}
+#endif
 
 #ifdef USE_DML
 struct DmlObjects {
@@ -3916,6 +3937,128 @@ INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
                          ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2", "trt_bf16_enable=1"));
 #endif
 
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
+
+TEST(CApiTest, TestConfigureTensorRTProviderOptionsExternalAllocator) {
+  Ort::TensorRTProviderOptions trt_options;
+
+  void* external_alloc = reinterpret_cast<void*>(TestGpuExternalAlloc);
+  void* external_free = reinterpret_cast<void*>(TestGpuExternalFree);
+  void* external_empty_cache = reinterpret_cast<void*>(TestGpuExternalEmptyCache);
+
+  trt_options.UpdateWithValue("gpu_external_alloc", external_alloc);
+  trt_options.UpdateWithValue("gpu_external_free", external_free);
+  trt_options.UpdateWithValue("gpu_external_empty_cache", external_empty_cache);
+
+  ASSERT_EQ(external_alloc, trt_options.GetOptionByName("gpu_external_alloc"));
+  ASSERT_EQ(external_free, trt_options.GetOptionByName("gpu_external_free"));
+  ASSERT_EQ(external_empty_cache, trt_options.GetOptionByName("gpu_external_empty_cache"));
+
+  std::vector<char> external_memory(4096);
+  void* external_mem_ptr = external_memory.data();
+  size_t external_mem_size = external_memory.size();
+
+  Ort::TensorRTProviderOptions trt_memory_options;
+  trt_memory_options.UpdateWithValue("gpu_external_mem_ptr", external_mem_ptr);
+  trt_memory_options.UpdateWithValue("gpu_external_mem_size", &external_mem_size);
+  ASSERT_EQ(external_mem_ptr, trt_memory_options.GetOptionByName("gpu_external_mem_ptr"));
+
+  Ort::Status null_size_status{
+      Ort::GetApi().UpdateTensorRTProviderOptionsWithValue(trt_memory_options, "gpu_external_mem_size", nullptr)};
+  ASSERT_FALSE(null_size_status.IsOK());
+  ASSERT_EQ(null_size_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+
+#if defined(USE_TENSORRT)
+  std::string trt_options_str = trt_options.GetTensorRTProviderOptionsAsString();
+  const std::string external_alloc_option =
+      "gpu_external_alloc=" + std::to_string(reinterpret_cast<size_t>(external_alloc));
+  const std::string external_free_option =
+      "gpu_external_free=" + std::to_string(reinterpret_cast<size_t>(external_free));
+  const std::string external_empty_cache_option =
+      "gpu_external_empty_cache=" + std::to_string(reinterpret_cast<size_t>(external_empty_cache));
+  ASSERT_NE(trt_options_str.find(external_alloc_option), std::string::npos);
+  ASSERT_NE(trt_options_str.find(external_free_option), std::string::npos);
+  ASSERT_NE(trt_options_str.find(external_empty_cache_option), std::string::npos);
+
+  Ort::TensorRTProviderOptions trt_options_from_strings;
+  trt_options_from_strings.Update({
+      {"gpu_external_alloc", std::to_string(reinterpret_cast<size_t>(external_alloc))},
+      {"gpu_external_free", std::to_string(reinterpret_cast<size_t>(external_free))},
+      {"gpu_external_empty_cache", std::to_string(reinterpret_cast<size_t>(external_empty_cache))},
+  });
+
+  ASSERT_EQ(external_alloc, trt_options_from_strings.GetOptionByName("gpu_external_alloc"));
+  ASSERT_EQ(external_free, trt_options_from_strings.GetOptionByName("gpu_external_free"));
+  ASSERT_EQ(external_empty_cache, trt_options_from_strings.GetOptionByName("gpu_external_empty_cache"));
+
+  trt_options.Update({{"trt_min_subgraph_size", "1"}});
+  ASSERT_EQ(external_alloc, trt_options.GetOptionByName("gpu_external_alloc"));
+  ASSERT_EQ(external_free, trt_options.GetOptionByName("gpu_external_free"));
+  ASSERT_EQ(external_empty_cache, trt_options.GetOptionByName("gpu_external_empty_cache"));
+
+  std::string trt_memory_options_str = trt_memory_options.GetTensorRTProviderOptionsAsString();
+  const std::string external_mem_ptr_option =
+      "gpu_external_mem_ptr=" + std::to_string(reinterpret_cast<size_t>(external_mem_ptr));
+  const std::string external_mem_size_option = "gpu_external_mem_size=" + std::to_string(external_mem_size);
+  ASSERT_NE(trt_memory_options_str.find(external_mem_ptr_option), std::string::npos);
+  ASSERT_NE(trt_memory_options_str.find(external_mem_size_option), std::string::npos);
+
+  Ort::TensorRTProviderOptions trt_memory_options_from_strings;
+  trt_memory_options_from_strings.Update({
+      {"gpu_external_mem_ptr", std::to_string(reinterpret_cast<size_t>(external_mem_ptr))},
+      {"gpu_external_mem_size", std::to_string(external_mem_size)},
+  });
+  ASSERT_EQ(external_mem_ptr, trt_memory_options_from_strings.GetOptionByName("gpu_external_mem_ptr"));
+
+  Ort::TensorRTProviderOptions trt_memory_options_pointer_first;
+  trt_memory_options_pointer_first.UpdateWithValue("gpu_external_mem_ptr", external_mem_ptr);
+  trt_memory_options_pointer_first.Update({{"gpu_external_mem_size", std::to_string(external_mem_size)}});
+  ASSERT_EQ(external_mem_ptr, trt_memory_options_pointer_first.GetOptionByName("gpu_external_mem_ptr"));
+#endif
+
+  auto make_owned_string = [](std::string_view value) {
+    char* owned = new char[value.size() + 1];
+    std::memcpy(owned, value.data(), value.size());
+    owned[value.size()] = '\0';
+    return owned;
+  };
+
+  OrtTensorRTProviderOptionsV2 copied_memory_options{};
+  OrtTensorRTProviderOptionsV2 memory_options{};
+  memory_options.trt_engine_cache_path = make_owned_string("external_memory_engine_cache");
+  memory_options.trt_profile_min_shapes = make_owned_string("input:1x2");
+  memory_options.gpu_external_mem_ptr = external_mem_ptr;
+  memory_options.gpu_external_mem_size = external_mem_size;
+
+  OrtTensorRTProviderOptionsV2 copy_constructed_memory_options = memory_options;
+  ASSERT_STREQ(memory_options.trt_engine_cache_path, copy_constructed_memory_options.trt_engine_cache_path);
+  ASSERT_STREQ(memory_options.trt_profile_min_shapes, copy_constructed_memory_options.trt_profile_min_shapes);
+  ASSERT_NE(memory_options.trt_engine_cache_path, copy_constructed_memory_options.trt_engine_cache_path);
+  ASSERT_NE(memory_options.trt_profile_min_shapes, copy_constructed_memory_options.trt_profile_min_shapes);
+  ASSERT_EQ(external_mem_ptr, copy_constructed_memory_options.gpu_external_mem_ptr);
+  ASSERT_EQ(external_mem_size, copy_constructed_memory_options.gpu_external_mem_size);
+  ASSERT_TRUE(copy_constructed_memory_options.string_options_owned);
+
+  copied_memory_options = memory_options;
+  ASSERT_STREQ(memory_options.trt_engine_cache_path, copied_memory_options.trt_engine_cache_path);
+  ASSERT_STREQ(memory_options.trt_profile_min_shapes, copied_memory_options.trt_profile_min_shapes);
+  ASSERT_NE(memory_options.trt_engine_cache_path, copied_memory_options.trt_engine_cache_path);
+  ASSERT_NE(memory_options.trt_profile_min_shapes, copied_memory_options.trt_profile_min_shapes);
+  ASSERT_EQ(external_mem_ptr, copied_memory_options.gpu_external_mem_ptr);
+  ASSERT_EQ(external_mem_size, copied_memory_options.gpu_external_mem_size);
+  ASSERT_TRUE(copied_memory_options.string_options_owned);
+
+  OrtTensorRTProviderOptionsV2 non_owned_string_options{};
+  const char* non_owned_engine_cache_path = "non_owned_engine_cache";
+  non_owned_string_options.trt_engine_cache_path = non_owned_engine_cache_path;
+  OrtTensorRTProviderOptionsV2Internal::ReleaseStrings(non_owned_string_options);
+  ASSERT_EQ(non_owned_engine_cache_path, non_owned_string_options.trt_engine_cache_path);
+
+  delete[] memory_options.trt_engine_cache_path;
+  delete[] memory_options.trt_profile_min_shapes;
+}
+#endif  // defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
+
 #ifdef USE_CUDA
 
 // This test uses CreateCUDAProviderOptions/UpdateCUDAProviderOptions/UpdateCUDAProviderOptionsWithValue APIs to configure and create a CUDA Execution Provider instance
@@ -3959,8 +4102,100 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
   Ort::Session session(*ort_env, model_uri.c_str(), session_options);
 }
-
 #endif
+
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
+
+TEST(CApiTest, TestConfigureCUDAProviderOptionsExternalAllocator) {
+  Ort::CUDAProviderOptions cuda_options;
+
+  void* external_alloc = reinterpret_cast<void*>(TestGpuExternalAlloc);
+  void* external_free = reinterpret_cast<void*>(TestGpuExternalFree);
+  void* external_empty_cache = reinterpret_cast<void*>(TestGpuExternalEmptyCache);
+
+  cuda_options.UpdateWithValue("gpu_external_alloc", external_alloc);
+  cuda_options.UpdateWithValue("gpu_external_free", external_free);
+  cuda_options.UpdateWithValue("gpu_external_empty_cache", external_empty_cache);
+
+  ASSERT_EQ(external_alloc, cuda_options.GetOptionByName("gpu_external_alloc"));
+  ASSERT_EQ(external_free, cuda_options.GetOptionByName("gpu_external_free"));
+  ASSERT_EQ(external_empty_cache, cuda_options.GetOptionByName("gpu_external_empty_cache"));
+
+  std::vector<char> external_memory(4096);
+  void* external_mem_ptr = external_memory.data();
+  size_t external_mem_size = external_memory.size();
+
+  Ort::CUDAProviderOptions cuda_memory_options;
+  cuda_memory_options.UpdateWithValue("gpu_external_mem_ptr", external_mem_ptr);
+  cuda_memory_options.UpdateWithValue("gpu_external_mem_size", &external_mem_size);
+  ASSERT_EQ(external_mem_ptr, cuda_memory_options.GetOptionByName("gpu_external_mem_ptr"));
+
+  Ort::Status null_size_status{
+      Ort::GetApi().UpdateCUDAProviderOptionsWithValue(cuda_memory_options, "gpu_external_mem_size", nullptr)};
+  ASSERT_FALSE(null_size_status.IsOK());
+  ASSERT_EQ(null_size_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+
+#if defined(USE_CUDA)
+  std::string cuda_options_str = cuda_options.GetCUDAProviderOptionsAsString();
+  const std::string external_alloc_option =
+      "gpu_external_alloc=" + std::to_string(reinterpret_cast<size_t>(external_alloc));
+  const std::string external_free_option =
+      "gpu_external_free=" + std::to_string(reinterpret_cast<size_t>(external_free));
+  const std::string external_empty_cache_option =
+      "gpu_external_empty_cache=" + std::to_string(reinterpret_cast<size_t>(external_empty_cache));
+  ASSERT_NE(cuda_options_str.find(external_alloc_option), std::string::npos);
+  ASSERT_NE(cuda_options_str.find(external_free_option), std::string::npos);
+  ASSERT_NE(cuda_options_str.find(external_empty_cache_option), std::string::npos);
+
+  Ort::CUDAProviderOptions cuda_options_from_strings;
+  cuda_options_from_strings.Update({
+      {"gpu_external_alloc", std::to_string(reinterpret_cast<size_t>(external_alloc))},
+      {"gpu_external_free", std::to_string(reinterpret_cast<size_t>(external_free))},
+      {"gpu_external_empty_cache", std::to_string(reinterpret_cast<size_t>(external_empty_cache))},
+  });
+
+  ASSERT_EQ(external_alloc, cuda_options_from_strings.GetOptionByName("gpu_external_alloc"));
+  ASSERT_EQ(external_free, cuda_options_from_strings.GetOptionByName("gpu_external_free"));
+  ASSERT_EQ(external_empty_cache, cuda_options_from_strings.GetOptionByName("gpu_external_empty_cache"));
+
+  cuda_options.Update({{"gpu_mem_limit", "1024"}});
+  ASSERT_EQ(external_alloc, cuda_options.GetOptionByName("gpu_external_alloc"));
+  ASSERT_EQ(external_free, cuda_options.GetOptionByName("gpu_external_free"));
+  ASSERT_EQ(external_empty_cache, cuda_options.GetOptionByName("gpu_external_empty_cache"));
+
+  std::string cuda_memory_options_str = cuda_memory_options.GetCUDAProviderOptionsAsString();
+  const std::string external_mem_ptr_option =
+      "gpu_external_mem_ptr=" + std::to_string(reinterpret_cast<size_t>(external_mem_ptr));
+  const std::string external_mem_size_option = "gpu_external_mem_size=" + std::to_string(external_mem_size);
+  ASSERT_NE(cuda_memory_options_str.find(external_mem_ptr_option), std::string::npos);
+  ASSERT_NE(cuda_memory_options_str.find(external_mem_size_option), std::string::npos);
+
+  Ort::CUDAProviderOptions cuda_memory_options_from_strings;
+  cuda_memory_options_from_strings.Update({
+      {"gpu_external_mem_ptr", std::to_string(reinterpret_cast<size_t>(external_mem_ptr))},
+      {"gpu_external_mem_size", std::to_string(external_mem_size)},
+  });
+  ASSERT_EQ(external_mem_ptr, cuda_memory_options_from_strings.GetOptionByName("gpu_external_mem_ptr"));
+
+  Ort::CUDAProviderOptions cuda_memory_options_pointer_first;
+  cuda_memory_options_pointer_first.UpdateWithValue("gpu_external_mem_ptr", external_mem_ptr);
+  cuda_memory_options_pointer_first.Update({{"gpu_external_mem_size", std::to_string(external_mem_size)}});
+  ASSERT_EQ(external_mem_ptr, cuda_memory_options_pointer_first.GetOptionByName("gpu_external_mem_ptr"));
+
+  Ort::CUDAProviderOptions cuda_memory_options_with_user_stream;
+  void* user_compute_stream = reinterpret_cast<void*>(0x1234);
+  cuda_memory_options_with_user_stream.UpdateWithValue("user_compute_stream", user_compute_stream);
+  cuda_memory_options_with_user_stream.UpdateWithValue("gpu_external_mem_ptr", external_mem_ptr);
+  cuda_memory_options_with_user_stream.Update({{"gpu_external_mem_size", std::to_string(external_mem_size)}});
+  const std::string cuda_memory_options_with_user_stream_str =
+      cuda_memory_options_with_user_stream.GetCUDAProviderOptionsAsString();
+  ASSERT_NE(cuda_memory_options_with_user_stream_str.find("has_user_compute_stream=1"), std::string::npos);
+  ASSERT_EQ(user_compute_stream, cuda_memory_options_with_user_stream.GetOptionByName("user_compute_stream"));
+  ASSERT_EQ(external_mem_ptr, cuda_memory_options_with_user_stream.GetOptionByName("gpu_external_mem_ptr"));
+#endif
+}
+
+#endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 
 namespace TestPerSessionCustomThreadHooks {
 

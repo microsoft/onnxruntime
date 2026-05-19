@@ -275,11 +275,6 @@ class CudaKernel : public OpKernel {
   }
 
  protected:
-  template <typename T>
-  inline const T* GetConstOnes(size_t count, cudaStream_t stream) const {
-    return provider_->template GetConstOnes<T>(count, stream);
-  }
-
   inline int GetDeviceId() const { return provider_->GetDeviceId(); }
 
  private:

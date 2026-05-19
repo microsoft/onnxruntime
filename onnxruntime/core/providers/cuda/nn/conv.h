@@ -149,7 +149,7 @@ struct CudnnConvState {
   const void* w_data = nullptr;
   CudnnTensor b_tensor;
   const void* b_data = nullptr;
-  void* b_zero = nullptr;
+  IAllocatorUniquePtr<void> b_zero;
   CudnnTensor y_tensor;
   Tensor* Y = nullptr;
   void* y_data = nullptr;
@@ -193,12 +193,7 @@ struct CudnnConvState {
   std::mutex mutex;
   IAllocatorUniquePtr<void> memory_for_cudnn_conv_results;
 
-  ~CudnnConvState() {
-    if (b_zero) {
-      CUDA_CALL_THROW(cudaFree(b_zero));
-      b_zero = nullptr;
-    }
-  }
+  ~CudnnConvState() = default;
 };
 
 enum : size_t {

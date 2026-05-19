@@ -288,14 +288,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     } else if (bias_expected) {
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
-      auto malloc_size = b_dims[1] * sizeof(CudaT);
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      if (s_.b_zero) {
-        CUDA_CALL_THROW(cudaFree(s_.b_zero));
-        s_.b_zero = nullptr;
-      }
-      CUDA_CALL_THROW(cudaMalloc(&s_.b_zero, malloc_size));
-      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
     }
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {

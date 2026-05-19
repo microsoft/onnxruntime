@@ -161,6 +161,7 @@ static std::vector<std::unique_ptr<::testing::TestEventListener>> MakeTestEventL
 // every single unit test, which leads to excessive test execution time due to that overhead.
 // Nvidia suggests to keep a placeholder builder object around to avoid this.
 #include "NvInfer.h"
+#include <cuda_runtime_api.h>
 
 #if defined(_MSC_VER)
 #pragma warning(pop)
@@ -175,7 +176,26 @@ class DummyLogger : public nvinfer1::ILogger {
 };
 DummyLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
 
-auto const placeholder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+static bool IsCudaAvailableForTensorRtPlaceholder() {
+  int device_count = 0;
+  const cudaError_t cuda_status = cudaGetDeviceCount(&device_count);
+  if (cuda_status != cudaSuccess) {
+    cudaGetLastError();
+    return false;
+  }
+
+  return device_count > 0;
+}
+
+static std::unique_ptr<nvinfer1::IBuilder> CreateTensorRtPlaceholderBuilder() {
+  if (!IsCudaAvailableForTensorRtPlaceholder()) {
+    return nullptr;
+  }
+
+  return std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(trt_logger));
+}
+
+auto const placeholder = CreateTensorRtPlaceholderBuilder();
 
 #endif
 

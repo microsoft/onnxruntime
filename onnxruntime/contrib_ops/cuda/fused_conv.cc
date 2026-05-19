@@ -252,12 +252,8 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
         b_dims[1] = w_dims[0];
         auto malloc_size = b_dims[1] * sizeof(CudaT);
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, ::onnxruntime::cuda::CudnnTensor::GetDataType<CudaT>()));
-        if (s_.b_zero) {
-          CUDA_CALL_THROW(cudaFree(s_.b_zero));
-          s_.b_zero = nullptr;
-        }
-        CUDA_CALL_THROW(cudaMalloc(&s_.b_zero, malloc_size));
-        CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
+        s_.b_zero = GetScratchBuffer<void>(malloc_size, GetComputeStream(context));
+        CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero.get(), 0, malloc_size, Stream(context)));
       }
 
       if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
@@ -373,7 +369,7 @@ class FusedConv : public onnxruntime::cuda::CudaKernel {
                                                               has_z ? s_.z_tensor : s_.y_tensor,
                                                               has_z ? s_.z_data : s_.y_data,
                                                               s_.b_tensor,
-                                                              has_b ? s_.b_data : s_.b_zero,
+                                                              has_b ? s_.b_data : s_.b_zero.get(),
                                                               activation_desc_,
                                                               s_.y_tensor,
                                                               s_.y_data);

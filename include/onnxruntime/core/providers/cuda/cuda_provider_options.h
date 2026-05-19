@@ -40,4 +40,13 @@ struct OrtCUDAProviderOptionsV2 {
   int use_tf32 = 1;                                                                                            // use TF32
   int fuse_conv_bias = 0;                                                                                      // Enable CUDNN Frontend kernel fusing, results in JIT compiles
   int sdpa_kernel = 0;                                                                                         // Scaled Dot Product Attention kernel option
+  void* gpu_external_alloc = nullptr;                                                                          // external allocator callback with signature void* (*)(size_t).
+  void* gpu_external_free = nullptr;                                                                           // external free callback with signature void (*)(void*).
+  void* gpu_external_empty_cache = nullptr;                                                                    // optional external empty cache callback with signature void (*)().
+
+  // User supplied GPU memory buffer used by CUDA EP device allocations, including Reserve() allocations.
+  // The buffer must remain valid until all sessions using this provider have been destroyed.
+  // Mutually exclusive with gpu_external_alloc/gpu_external_free/gpu_external_empty_cache.
+  void* gpu_external_mem_ptr = nullptr;
+  size_t gpu_external_mem_size = 0;
 };

@@ -8,12 +8,19 @@
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "core/session/IOBinding.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider_info.h"
+#include "core/providers/tensorrt/tensorrt_gpu_allocator.h"
+#include "core/providers/tensorrt/tensorrt_output_allocator.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
+#include "cuda_runtime.h"
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <filesystem>
 #include <chrono>
+#include <unordered_map>
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -25,6 +32,279 @@ namespace onnxruntime {
 
 namespace test {
 class TensorrtExecutionProviderCacheTest : public testing::TestWithParam<std::string> {};
+
+namespace {
+
+struct CudaFreeDeleter {
+  void operator()(void* p) const {
+    if (p != nullptr) {
+      cudaFree(p);
+    }
+  }
+};
+
+bool IsCudaDeviceUnavailable() {
+  int device_count = 0;
+  const cudaError_t err = cudaGetDeviceCount(&device_count);
+  if (err != cudaSuccess || device_count == 0) {
+    cudaGetLastError();
+    return true;
+  }
+
+  return false;
+}
+
+struct CountingOrtAllocator : OrtAllocator {
+  CountingOrtAllocator() {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+    Reserve = nullptr;
+    GetStats = nullptr;
+    AllocOnStream = nullptr;
+    Shrink = nullptr;
+  }
+
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* allocator, size_t size) {
+    auto& self = *static_cast<CountingOrtAllocator*>(allocator);
+    ++self.alloc_count;
+    self.last_alloc_size = size;
+    self.last_returned = std::malloc(size);
+    return self.last_returned;
+  }
+
+  static void ORT_API_CALL FreeImpl(OrtAllocator* allocator, void* p) {
+    auto& self = *static_cast<CountingOrtAllocator*>(allocator);
+    ++self.free_count;
+    self.last_freed = p;
+    std::free(p);
+  }
+
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator*) {
+    return nullptr;
+  }
+
+  size_t alloc_count{0};
+  size_t free_count{0};
+  size_t last_alloc_size{0};
+  void* last_returned{nullptr};
+  void* last_freed{nullptr};
+};
+
+struct CountingDeviceAllocator : IAllocator {
+  CountingDeviceAllocator() : IAllocator(OrtMemoryInfo("Test", OrtAllocatorType::OrtDeviceAllocator)) {
+  }
+
+  void* Alloc(size_t size) override {
+    ++alloc_count;
+    last_alloc_size = size;
+
+    void* raw = std::malloc(size + kAlignment + sizeof(void*));
+    if (raw == nullptr) {
+      return nullptr;
+    }
+
+    const auto raw_address = reinterpret_cast<uintptr_t>(raw) + sizeof(void*);
+    const auto aligned_address = (raw_address + kAlignment - 1) & ~(kAlignment - 1);
+    auto* aligned = reinterpret_cast<void*>(aligned_address);
+    reinterpret_cast<void**>(aligned)[-1] = raw;
+    last_returned = aligned;
+    return aligned;
+  }
+
+  void Free(void* p) override {
+    ++free_count;
+    last_freed = p;
+    std::free(reinterpret_cast<void**>(p)[-1]);
+  }
+
+  static constexpr uintptr_t kAlignment = 64;
+
+  size_t alloc_count{0};
+  size_t free_count{0};
+  size_t last_alloc_size{0};
+  void* last_returned{nullptr};
+  void* last_freed{nullptr};
+};
+
+struct MisalignedDeviceAllocator : IAllocator {
+  MisalignedDeviceAllocator() : IAllocator(OrtMemoryInfo("Test", OrtAllocatorType::OrtDeviceAllocator)) {
+  }
+
+  ~MisalignedDeviceAllocator() override {
+    for (const auto& allocation : allocations) {
+      std::free(allocation.second);
+    }
+  }
+
+  void* Alloc(size_t size) override {
+    ++alloc_count;
+    last_alloc_size = size;
+
+    void* raw = std::malloc(size + kMisalignment);
+    if (raw == nullptr) {
+      return nullptr;
+    }
+
+    void* returned = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(raw) + kMisalignment);
+    allocations[returned] = raw;
+    last_returned = returned;
+    return returned;
+  }
+
+  void Free(void* p) override {
+    ++free_count;
+    last_freed = p;
+    auto it = allocations.find(p);
+    if (it == allocations.end()) {
+      bad_free = true;
+      return;
+    }
+
+    std::free(it->second);
+    allocations.erase(it);
+  }
+
+  static constexpr uintptr_t kMisalignment = 1;
+
+  size_t alloc_count{0};
+  size_t free_count{0};
+  size_t last_alloc_size{0};
+  void* last_returned{nullptr};
+  void* last_freed{nullptr};
+  bool bad_free{false};
+  std::unordered_map<void*, void*> allocations;
+};
+
+struct MisalignedOrtAllocator : OrtAllocator {
+  MisalignedOrtAllocator() {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+    Reserve = nullptr;
+    GetStats = nullptr;
+    AllocOnStream = nullptr;
+    Shrink = nullptr;
+  }
+
+  ~MisalignedOrtAllocator() {
+    for (const auto& allocation : allocations) {
+      std::free(allocation.second);
+    }
+  }
+
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* allocator, size_t size) {
+    auto& self = *static_cast<MisalignedOrtAllocator*>(allocator);
+    ++self.alloc_count;
+    self.last_alloc_size = size;
+    void* raw = std::malloc(size + 64);
+    if (raw == nullptr) {
+      return nullptr;
+    }
+
+    void* returned = static_cast<void*>(static_cast<char*>(raw) + 1);
+    self.allocations[returned] = raw;
+    self.last_returned = returned;
+    return returned;
+  }
+
+  static void ORT_API_CALL FreeImpl(OrtAllocator* allocator, void* p) {
+    auto& self = *static_cast<MisalignedOrtAllocator*>(allocator);
+    ++self.free_count;
+    self.last_freed = p;
+    auto it = self.allocations.find(p);
+    if (it == self.allocations.end()) {
+      self.bad_free = true;
+      return;
+    }
+
+    std::free(it->second);
+    self.allocations.erase(it);
+  }
+
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator*) {
+    return nullptr;
+  }
+
+  size_t alloc_count{0};
+  size_t free_count{0};
+  size_t last_alloc_size{0};
+  void* last_returned{nullptr};
+  void* last_freed{nullptr};
+  bool bad_free{false};
+  std::unordered_map<void*, void*> allocations;
+};
+
+struct AlignedOrtAllocator : OrtAllocator {
+  AlignedOrtAllocator() {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+    Reserve = nullptr;
+    GetStats = nullptr;
+    AllocOnStream = nullptr;
+    Shrink = nullptr;
+  }
+
+  ~AlignedOrtAllocator() {
+    for (const auto& allocation : allocations) {
+      std::free(allocation.second);
+    }
+  }
+
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* allocator, size_t size) {
+    auto& self = *static_cast<AlignedOrtAllocator*>(allocator);
+    ++self.alloc_count;
+    self.last_alloc_size = size;
+    void* raw = std::malloc(size + 64);
+    if (raw == nullptr) {
+      return nullptr;
+    }
+
+    auto address = reinterpret_cast<uintptr_t>(raw);
+    const auto misalignment = address % self.alignment;
+    if (misalignment != 0) {
+      address += self.alignment - misalignment;
+    }
+
+    void* returned = reinterpret_cast<void*>(address);
+    self.allocations[returned] = raw;
+    self.last_returned = returned;
+    return returned;
+  }
+
+  static void ORT_API_CALL FreeImpl(OrtAllocator* allocator, void* p) {
+    auto& self = *static_cast<AlignedOrtAllocator*>(allocator);
+    ++self.free_count;
+    self.last_freed = p;
+    auto it = self.allocations.find(p);
+    if (it == self.allocations.end()) {
+      self.bad_free = true;
+      return;
+    }
+
+    std::free(it->second);
+    self.allocations.erase(it);
+  }
+
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator*) {
+    return nullptr;
+  }
+
+  size_t alignment{64};
+  size_t alloc_count{0};
+  size_t free_count{0};
+  size_t last_alloc_size{0};
+  void* last_returned{nullptr};
+  void* last_freed{nullptr};
+  bool bad_free{false};
+  std::unordered_map<void*, void*> allocations;
+};
+
+}  // namespace
 
 template <typename T>
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
@@ -178,6 +458,338 @@ void RunSession2(InferenceSession& session_object,
   auto status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims, expected_values);
+}
+
+TEST(TensorrtExecutionProviderTest, ExternalAllocatorInfoRecognizesExternalMemoryConfig) {
+  std::vector<char> external_memory(1024);
+  auto* external_mem_ptr = external_memory.data();
+
+  TensorrtExecutionProviderExternalAllocatorInfo no_config{};
+  EXPECT_FALSE(no_config.UseExternalMemory());
+  EXPECT_FALSE(no_config.HasExternalMemoryConfig());
+  EXPECT_FALSE(no_config.UseExternalAllocator());
+  EXPECT_FALSE(no_config.HasExternalAllocatorConfig());
+
+  TensorrtExecutionProviderExternalAllocatorInfo pointer_only{};
+  pointer_only.mem_ptr = external_mem_ptr;
+  EXPECT_FALSE(pointer_only.UseExternalMemory());
+  EXPECT_TRUE(pointer_only.HasExternalMemoryConfig());
+
+  TensorrtExecutionProviderExternalAllocatorInfo size_only{};
+  size_only.mem_size = external_memory.size();
+  EXPECT_FALSE(size_only.UseExternalMemory());
+  EXPECT_TRUE(size_only.HasExternalMemoryConfig());
+
+  TensorrtExecutionProviderExternalAllocatorInfo memory_config{};
+  memory_config.mem_ptr = external_mem_ptr;
+  memory_config.mem_size = external_memory.size();
+  EXPECT_TRUE(memory_config.UseExternalMemory());
+  EXPECT_TRUE(memory_config.HasExternalMemoryConfig());
+  EXPECT_FALSE(memory_config.HasExternalAllocatorConfig());
+
+  memory_config.alloc = reinterpret_cast<void*>(&std::malloc);
+  memory_config.free = reinterpret_cast<void*>(&std::free);
+  EXPECT_TRUE(memory_config.UseExternalAllocator());
+  EXPECT_TRUE(memory_config.HasExternalAllocatorConfig());
+  EXPECT_TRUE(memory_config.UseExternalMemory());
+}
+
+TEST(TensorrtExecutionProviderTest, ExternalAllocatorInfoRequiresUserManagedContextMemory) {
+  std::vector<char> external_memory(1024);
+
+  TensorrtExecutionProviderInfo no_config{};
+  EXPECT_FALSE(no_config.UseUserManagedContextMemory());
+
+  TensorrtExecutionProviderInfo context_memory_config{};
+  context_memory_config.context_memory_sharing_enable = true;
+  EXPECT_TRUE(context_memory_config.UseUserManagedContextMemory());
+
+  TensorrtExecutionProviderInfo callback_config{};
+  callback_config.external_allocator_info.alloc = reinterpret_cast<void*>(&std::malloc);
+  callback_config.external_allocator_info.free = reinterpret_cast<void*>(&std::free);
+  EXPECT_TRUE(callback_config.external_allocator_info.UsesExternalDeviceAllocator());
+  EXPECT_TRUE(callback_config.UseUserManagedContextMemory());
+
+  TensorrtExecutionProviderInfo memory_config{};
+  memory_config.external_allocator_info.mem_ptr = external_memory.data();
+  memory_config.external_allocator_info.mem_size = external_memory.size();
+  EXPECT_TRUE(memory_config.external_allocator_info.UsesExternalDeviceAllocator());
+  EXPECT_TRUE(memory_config.UseUserManagedContextMemory());
+}
+
+TEST(TensorrtExecutionProviderTest, ExternalAllocatorInfoRejectsInvalidConfig) {
+  std::vector<char> external_memory(1024);
+
+  TensorrtExecutionProviderExternalAllocatorInfo no_config{};
+  EXPECT_TRUE(no_config.ValidateExternalAllocatorConfig().IsOK());
+
+  TensorrtExecutionProviderExternalAllocatorInfo pointer_only{};
+  pointer_only.mem_ptr = external_memory.data();
+  EXPECT_FALSE(pointer_only.ValidateExternalAllocatorConfig().IsOK());
+
+  TensorrtExecutionProviderExternalAllocatorInfo size_only{};
+  size_only.mem_size = external_memory.size();
+  EXPECT_FALSE(size_only.ValidateExternalAllocatorConfig().IsOK());
+
+  TensorrtExecutionProviderExternalAllocatorInfo callback_only{};
+  callback_only.alloc = reinterpret_cast<void*>(&std::malloc);
+  EXPECT_FALSE(callback_only.ValidateExternalAllocatorConfig().IsOK());
+
+  TensorrtExecutionProviderExternalAllocatorInfo mixed_config{};
+  mixed_config.alloc = reinterpret_cast<void*>(&std::malloc);
+  mixed_config.free = reinterpret_cast<void*>(&std::free);
+  mixed_config.mem_ptr = external_memory.data();
+  mixed_config.mem_size = external_memory.size();
+  EXPECT_FALSE(mixed_config.ValidateExternalAllocatorConfig().IsOK());
+}
+
+TEST(TensorrtExecutionProviderTest, ConstructorRejectsInvalidExternalAllocatorConfigBeforeCudaInit) {
+  std::vector<char> external_memory(1024);
+
+  OrtTensorRTProviderOptionsV2 params{};
+  params.gpu_external_mem_ptr = external_memory.data();
+
+  try {
+    auto execution_provider = TensorrtExecutionProviderWithOptions(&params);
+    ORT_UNUSED_PARAMETER(execution_provider);
+    FAIL() << "Expected invalid external allocator config to throw.";
+  } catch (const std::exception& ex) {
+    EXPECT_NE(std::string(ex.what()).find("Both gpu_external_mem_ptr and gpu_external_mem_size"),
+              std::string::npos)
+        << ex.what();
+  }
+}
+
+TEST(TensorrtExecutionProviderTest, OutputAllocatorUsesOrtAllocator) {
+  AlignedOrtAllocator allocator;
+  constexpr uint64_t alignment = 64;
+
+  {
+    OutputAllocator output_allocator(&allocator);
+#if NV_TENSORRT_MAJOR >= 10
+    auto reallocate_output = [&output_allocator](uint64_t size, uint64_t alignment) {
+      return output_allocator.reallocateOutputAsync("output", nullptr, size, alignment, nullptr);
+    };
+#else
+    auto reallocate_output = [&output_allocator](uint64_t size, uint64_t alignment) {
+      return output_allocator.reallocateOutput("output", nullptr, size, alignment);
+    };
+#endif
+
+    void* first_allocation = reallocate_output(128, alignment);
+    ASSERT_NE(first_allocation, nullptr);
+    void* first_raw_allocation = allocator.last_returned;
+    EXPECT_EQ(first_allocation, output_allocator.getBuffer());
+    EXPECT_EQ(128u, output_allocator.getSize());
+    EXPECT_EQ(1u, allocator.alloc_count);
+    EXPECT_EQ(128u, allocator.last_alloc_size);
+    EXPECT_EQ(0u, allocator.free_count);
+
+    void* reused_allocation = reallocate_output(64, alignment);
+    EXPECT_EQ(first_allocation, reused_allocation);
+    EXPECT_EQ(1u, allocator.alloc_count);
+    EXPECT_EQ(0u, allocator.free_count);
+
+    void* grown_allocation = reallocate_output(256, alignment);
+    ASSERT_NE(grown_allocation, nullptr);
+    EXPECT_EQ(grown_allocation, output_allocator.getBuffer());
+    EXPECT_EQ(256u, output_allocator.getSize());
+    EXPECT_EQ(2u, allocator.alloc_count);
+    EXPECT_EQ(256u, allocator.last_alloc_size);
+    EXPECT_EQ(1u, allocator.free_count);
+    EXPECT_EQ(first_raw_allocation, allocator.last_freed);
+  }
+
+  EXPECT_EQ(2u, allocator.alloc_count);
+  EXPECT_EQ(2u, allocator.free_count);
+}
+
+TEST(TensorrtExecutionProviderTest, OutputAllocatorAllocatesDummyByteForEmptyTensor) {
+  AlignedOrtAllocator allocator;
+
+  {
+    OutputAllocator output_allocator(&allocator);
+#if NV_TENSORRT_MAJOR >= 10
+    void* allocation = output_allocator.reallocateOutputAsync("output", nullptr, 0, allocator.alignment, nullptr);
+#else
+    void* allocation = output_allocator.reallocateOutput("output", nullptr, 0, allocator.alignment);
+#endif
+    ASSERT_NE(allocation, nullptr);
+    EXPECT_EQ(allocation, output_allocator.getBuffer());
+    EXPECT_EQ(1u, output_allocator.getSize());
+    EXPECT_EQ(1u, allocator.alloc_count);
+    EXPECT_EQ(1u, allocator.last_alloc_size);
+    EXPECT_EQ(0u, allocator.free_count);
+  }
+
+  EXPECT_EQ(1u, allocator.alloc_count);
+  EXPECT_EQ(1u, allocator.free_count);
+}
+
+TEST(TensorrtExecutionProviderTest, OutputAllocatorHonorsTensorRTAlignment) {
+  MisalignedOrtAllocator allocator;
+  constexpr uint64_t alignment = 64;
+
+  {
+    OutputAllocator output_allocator(&allocator);
+#if NV_TENSORRT_MAJOR >= 10
+    void* allocation = output_allocator.reallocateOutputAsync("output", nullptr, 32, alignment, nullptr);
+#else
+    void* allocation = output_allocator.reallocateOutput("output", nullptr, 32, alignment);
+#endif
+    ASSERT_NE(allocation, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(allocation) % alignment, static_cast<uintptr_t>(0));
+    EXPECT_EQ(allocation, output_allocator.getBuffer());
+    EXPECT_EQ(32u, output_allocator.getSize());
+    EXPECT_FALSE(allocator.bad_free);
+  }
+
+  EXPECT_EQ(2u, allocator.alloc_count);
+  EXPECT_EQ(2u, allocator.free_count);
+  EXPECT_EQ(allocator.last_returned, allocator.last_freed);
+  EXPECT_FALSE(allocator.bad_free);
+}
+
+TEST(TensorrtExecutionProviderTest, OutputAllocatorDoesNotPadWhenAllocatorAlreadySatisfiesAlignment) {
+  AlignedOrtAllocator allocator;
+  constexpr uint64_t size = 32;
+  constexpr uint64_t alignment = 64;
+
+  {
+    OutputAllocator output_allocator(&allocator);
+#if NV_TENSORRT_MAJOR >= 10
+    void* allocation = output_allocator.reallocateOutputAsync("output", nullptr, size, alignment, nullptr);
+#else
+    void* allocation = output_allocator.reallocateOutput("output", nullptr, size, alignment);
+#endif
+    ASSERT_NE(allocation, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(allocation) % alignment, static_cast<uintptr_t>(0));
+    EXPECT_EQ(size, output_allocator.getSize());
+    EXPECT_EQ(1u, allocator.alloc_count);
+    EXPECT_EQ(size, allocator.last_alloc_size);
+    EXPECT_FALSE(allocator.bad_free);
+  }
+
+  EXPECT_EQ(1u, allocator.free_count);
+  EXPECT_FALSE(allocator.bad_free);
+}
+
+TEST(TensorrtExecutionProviderTest, GpuAllocatorUsesOrtAllocator) {
+  CountingDeviceAllocator allocator;
+  TensorRTGpuAllocator gpu_allocator{&allocator};
+  constexpr uint64_t alignment = 64;
+
+  void* first_allocation = gpu_allocator.allocate(128, alignment, {});
+  ASSERT_NE(first_allocation, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(first_allocation) % alignment, static_cast<uintptr_t>(0));
+  EXPECT_EQ(1u, allocator.alloc_count);
+  EXPECT_EQ(128u, allocator.last_alloc_size);
+  EXPECT_TRUE(gpu_allocator.deallocate(first_allocation));
+  EXPECT_EQ(first_allocation, allocator.last_freed);
+
+#if NV_TENSORRT_MAJOR >= 10
+  void* async_allocation = gpu_allocator.allocateAsync(256, alignment, {}, nullptr);
+  ASSERT_NE(async_allocation, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(async_allocation) % alignment, static_cast<uintptr_t>(0));
+  EXPECT_EQ(2u, allocator.alloc_count);
+  EXPECT_EQ(256u, allocator.last_alloc_size);
+  EXPECT_TRUE(gpu_allocator.deallocateAsync(async_allocation, nullptr));
+  EXPECT_EQ(async_allocation, allocator.last_freed);
+  EXPECT_EQ(2u, allocator.free_count);
+#else
+  EXPECT_EQ(1u, allocator.free_count);
+#endif
+
+  EXPECT_EQ(nullptr, gpu_allocator.allocate(0, alignment, {}));
+}
+
+TEST(TensorrtExecutionProviderTest, GpuAllocatorHonorsTensorRTAlignment) {
+  MisalignedDeviceAllocator allocator;
+  TensorRTGpuAllocator gpu_allocator{&allocator};
+  constexpr uint64_t size = 32;
+  constexpr uint64_t alignment = 128;
+
+  void* allocation = gpu_allocator.allocate(size, alignment, {});
+  ASSERT_NE(allocation, nullptr);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(allocation) % alignment, static_cast<uintptr_t>(0));
+  EXPECT_NE(allocation, allocator.last_returned);
+  EXPECT_EQ(2u, allocator.alloc_count);
+  EXPECT_EQ(size + alignment - 1, allocator.last_alloc_size);
+  EXPECT_EQ(1u, allocator.free_count);
+  EXPECT_TRUE(gpu_allocator.deallocate(allocation));
+  EXPECT_EQ(2u, allocator.free_count);
+  EXPECT_FALSE(allocator.bad_free);
+}
+
+TEST(TensorrtExecutionProviderTest, ExternalMemoryBufferAllocatesBoundOutput) {
+  if (IsCudaDeviceUnavailable()) {
+    GTEST_SKIP() << "No CUDA device available.";
+  }
+
+  ASSERT_EQ(cudaSetDevice(0), cudaSuccess);
+
+  constexpr size_t external_mem_size = 64 * 1024 * 1024;
+  void* external_mem_ptr = nullptr;
+  ASSERT_EQ(cudaMalloc(&external_mem_ptr, external_mem_size), cudaSuccess);
+  std::unique_ptr<void, CudaFreeDeleter> external_memory{external_mem_ptr};
+
+  const PathString model_name = ORT_TSTR("trt_external_memory_allocator_test.onnx");
+  CreateBaseModel(model_name, "trt_external_memory_allocator_test", {1, 3, 2});
+
+  SessionOptions so;
+  so.session_logid = "TRTExternalMemoryAllocatorTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  const std::vector<int64_t> dims = {1, 3, 2};
+  const std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims, values, &ml_value_x);
+  OrtValue ml_value_y;
+  CreateMLValue<float>(cpu_allocator, dims, values, &ml_value_y);
+  OrtValue ml_value_z;
+  CreateMLValue<float>(cpu_allocator, dims, values, &ml_value_z);
+
+  OrtTensorRTProviderOptionsV2 params;
+  params.gpu_external_mem_ptr = external_mem_ptr;
+  params.gpu_external_mem_size = external_mem_size;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object.Load(model_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  std::unique_ptr<IOBinding> io_binding;
+  ASSERT_STATUS_OK(session_object.NewIOBinding(&io_binding));
+  ASSERT_STATUS_OK(io_binding->BindInput("X", ml_value_x));
+  ASSERT_STATUS_OK(io_binding->BindInput("Y", ml_value_y));
+  ASSERT_STATUS_OK(io_binding->BindInput("Z", ml_value_z));
+
+  OrtDevice output_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
+  ASSERT_STATUS_OK(io_binding->BindOutput("M", output_device));
+  ASSERT_STATUS_OK(io_binding->SynchronizeInputs());
+  ASSERT_STATUS_OK(session_object.Run(run_options, *io_binding));
+  ASSERT_STATUS_OK(io_binding->SynchronizeOutputs());
+
+  std::vector<OrtValue>& outputs = io_binding->GetOutputs();
+  ASSERT_EQ(1u, outputs.size());
+  const auto& output_tensor = outputs.front().Get<Tensor>();
+  const auto base_address = reinterpret_cast<uintptr_t>(external_mem_ptr);
+  const auto output_address = reinterpret_cast<uintptr_t>(output_tensor.DataRaw());
+  ASSERT_GE(output_address, base_address);
+  ASSERT_LT(output_address, base_address + external_mem_size);
+  ASSERT_LE(output_tensor.SizeInBytes(), base_address + external_mem_size - output_address);
+
+  Tensor cpu_tensor(output_tensor.DataType(), output_tensor.Shape(), cpu_allocator);
+  ASSERT_STATUS_OK(cuda_provider->GetDataTransfer()->CopyTensor(output_tensor, cpu_tensor));
+  OrtValue cpu_output;
+  Tensor::InitOrtValue(std::move(cpu_tensor), cpu_output);
+
+  const std::vector<float> expected_values = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+  VerifyOutputs(std::vector<OrtValue>{cpu_output}, dims, expected_values);
 }
 
 void RunWithOneSessionSingleThreadInference(PathString model_name, std::string sess_log_id) {

@@ -363,10 +363,11 @@ Status GemmFloat8::ComputeGemm(
       "index.html?highlight=cublasLtMatmulAlgoGetHeuristic#"
       "cublasltmatmulalgogetheuristic. CUDA>=11.8 is required to use float 8 types.");
 
-  void* workspace = nullptr;
+  IAllocatorUniquePtr<void> workspace_buffer;
   if (workspaceSize > 0) {
-    CUDA_RETURN_IF_ERROR(cudaMalloc(reinterpret_cast<void**>(&workspace), workspaceSize));
+    workspace_buffer = GetScratchBuffer<void>(workspaceSize, GetComputeStream(ctx));
   }
+  void* workspace = workspace_buffer.get();
   // https://docs.nvidia.com/cuda/cublas/index.html?highlight=cublasLtMatmul#cublasltmatmul
   const void* bias = has_bias ? p_input_c : p_output_y;
   cuda_status = cublasLtMatmul(
@@ -399,10 +400,6 @@ Status GemmFloat8::ComputeGemm(
       ", ldd=", ldd, ", workspaceSize=", workspaceSize,
       ", rowMajorCompute=", (row_major_compute ? 1 : 0),
       ". CUDA>=11.8 is required to use float 8 types.");
-
-  if (workspaceSize > 0) {
-    CUDA_RETURN_IF_ERROR(cudaFree(workspace));
-  }
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulPreferenceDestroy(preference));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutDestroy(Ddesc));

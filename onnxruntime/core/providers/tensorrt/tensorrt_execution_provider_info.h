@@ -14,11 +14,50 @@
 #define TRT_DEFAULT_OPTIMIZER_LEVEL 3
 
 namespace onnxruntime {
+struct TensorrtExecutionProviderExternalAllocatorInfo {
+  void* alloc{nullptr};
+  void* free{nullptr};
+  void* empty_cache{nullptr};
+  void* mem_ptr{nullptr};
+  size_t mem_size{0};
+
+  bool UseExternalAllocator() const {
+    return (alloc != nullptr) && (free != nullptr);
+  }
+
+  bool HasExternalAllocatorConfig() const {
+    return (alloc != nullptr) || (free != nullptr) || (empty_cache != nullptr);
+  }
+
+  bool UseExternalMemory() const {
+    return (mem_ptr != nullptr) && (mem_size > 0);
+  }
+
+  bool HasExternalMemoryConfig() const {
+    return (mem_ptr != nullptr) || (mem_size > 0);
+  }
+
+  bool UsesExternalDeviceAllocator() const {
+    return UseExternalAllocator() || UseExternalMemory();
+  }
+
+  Status ValidateExternalAllocatorConfig() const {
+    ORT_RETURN_IF(HasExternalAllocatorConfig() && HasExternalMemoryConfig(),
+                  "External allocator callbacks and external GPU memory buffer cannot both be configured.");
+    ORT_RETURN_IF(HasExternalAllocatorConfig() && !UseExternalAllocator(),
+                  "Both gpu_external_alloc and gpu_external_free must be configured to use external allocator callbacks.");
+    ORT_RETURN_IF(!HasExternalAllocatorConfig() && HasExternalMemoryConfig() && !UseExternalMemory(),
+                  "Both gpu_external_mem_ptr and gpu_external_mem_size must be configured to use an external GPU memory buffer.");
+    return Status::OK();
+  }
+};
+
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
   int device_id{0};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
+  TensorrtExecutionProviderExternalAllocatorInfo external_allocator_info{};
   bool has_trt_options{false};
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
@@ -66,6 +105,10 @@ struct TensorrtExecutionProviderInfo {
   std::string op_types_to_exclude{""};
   std::string preview_features{""};
   bool load_user_initializer{false};
+
+  bool UseUserManagedContextMemory() const {
+    return context_memory_sharing_enable || external_allocator_info.UsesExternalDeviceAllocator();
+  }
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

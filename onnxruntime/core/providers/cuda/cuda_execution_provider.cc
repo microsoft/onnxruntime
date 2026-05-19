@@ -141,13 +141,25 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(const CUDAAllocatorParam
   ORT_ENFORCE(cuda_allocator_params.external_alloc_info != nullptr,
               "CUDAAllocatorParams.external_alloc_info is nullptr.");
   const auto& external_allocator_info = *(cuda_allocator_params.external_alloc_info);
-  if (external_allocator_info.UseExternalAllocator()) {
+  ORT_THROW_IF_ERROR(external_allocator_info.ValidateExternalAllocatorConfig(false));
+  if (external_allocator_info.HasExternalAllocatorConfig()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
           return std::make_unique<CUDAExternalAllocator>(id, CUDA,
                                                          external_allocator_info.alloc,
                                                          external_allocator_info.free,
                                                          external_allocator_info.empty_cache);
+        },
+        cuda_allocator_params.device_id,
+        false);
+
+    return CreateAllocator(default_memory_info);
+  } else if (external_allocator_info.UseExternalMemory()) {
+    AllocatorCreationInfo default_memory_info(
+        [external_allocator_info](OrtDevice::DeviceId id) {
+          return std::make_unique<CUDAExternalMemoryAllocator>(id, CUDA,
+                                                               external_allocator_info.mem_ptr,
+                                                               external_allocator_info.mem_size);
         },
         cuda_allocator_params.device_id,
         false);
@@ -333,6 +345,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   ORT_ENFORCE(info_.prefer_nhwc == 0, "This build does not support NHWC layout");
 #endif
 
+  ORT_THROW_IF_ERROR(info.external_allocator_info.ValidateExternalAllocatorConfig(info.has_user_compute_stream));
+
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
@@ -340,14 +354,14 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, info_.device_id));
 
   // This scenario is not supported.
-  ORT_ENFORCE(!(info.has_user_compute_stream && info.external_allocator_info.UseExternalAllocator()));
+  const bool has_external_memory = info.external_allocator_info.UsesExternalDeviceAllocator();
 
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     use_ep_level_unified_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
   } else {
-    if (info.external_allocator_info.UseExternalAllocator()) {
+    if (has_external_memory) {
       use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
     } else if (info.enable_cuda_graph || info.use_ep_level_unified_stream) {
