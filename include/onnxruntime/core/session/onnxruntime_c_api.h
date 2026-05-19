@@ -7444,6 +7444,8 @@ struct OrtApi {
   ORT_API2_STATUS(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* env,
                   _In_ const OrtThreadPoolCallbacksConfig* config);
 
+  /// @}
+
   /** \brief Check if the memory pattern optimization is enabled in the session options.
    *
    * \param[in] options
@@ -7469,6 +7471,8 @@ struct OrtApi {
    * \see OrtApi::SetSessionExecutionMode
    */
   ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
+
+  /// @}
 
   /** \brief Release a previously captured graph and its associated GPU resources.
    *
