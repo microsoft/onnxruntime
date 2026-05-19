@@ -10,6 +10,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
+#include "contrib_ops/cuda/bert/group_query_attention_turboquant_impl.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -42,6 +43,21 @@ KVQuantizationType StringToKVQuantizationType(std::string s) {
   }
   return KVQuantizationType::NONE;
 }
+
+// Map string attribute to KV quantization method enum.
+//   "none"       -> NONE  (no KV cache compression)
+//   "classic"    -> CLASSIC  (existing int4/int8/fp8 path via k_scale/v_scale)
+//   "turboquant" -> TURBOQUANT  (Hadamard + Lloyd-Max keys, uniform values)
+KVQuantMethod StringToKVQuantMethod(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+  if (s == "turboquant") {
+    return KVQuantMethod::TURBOQUANT;
+  }
+  if (s == "classic") {
+    return KVQuantMethod::CLASSIC;
+  }
+  return KVQuantMethod::NONE;
+}
 }  // namespace
 
 #define REGISTER_KERNEL_TYPED(T, U)                                                   \
@@ -69,10 +85,12 @@ REGISTER_KERNEL_TYPED(BFloat16, int8_t)
 REGISTER_KERNEL_TYPED(MLFloat16, Float8E4M3FN)
 REGISTER_KERNEL_TYPED(BFloat16, Float8E4M3FN)
 #endif
-#ifdef USE_INT4_KV_CACHE
+// uint8_t cache type is used for both the existing INT4 KV path (gated by
+// USE_INT4_KV_CACHE) and the TurboQuant KV path (always available). The
+// kernel dispatch in ComputeInternal branches on `kv_quant_method` to pick
+// the correct path at runtime.
 REGISTER_KERNEL_TYPED(MLFloat16, uint8_t)
 REGISTER_KERNEL_TYPED(BFloat16, uint8_t)
-#endif
 
 constexpr const char* kDisableFlashDecode = "ORT_DISABLE_FLASH_DECODE";
 
@@ -107,6 +125,19 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+
+  // TurboQuant attributes (default to disabled — backward compatible).
+  kv_quant_method_ = StringToKVQuantMethod(info.GetAttrOrDefault<std::string>("kv_quant_method", "none"));
+  key_quant_bits_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("key_quant_bits", 4));
+  value_quant_bits_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("value_quant_bits", 4));
+  norm_correction_ = info.GetAttrOrDefault<int64_t>("norm_correction", 0) == 1;
+
+  if (kv_quant_method_ == KVQuantMethod::TURBOQUANT) {
+    ORT_ENFORCE(key_quant_bits_ == 3 || key_quant_bits_ == 4,
+                "TurboQuant key_quant_bits must be 3 or 4, got ", key_quant_bits_);
+    ORT_ENFORCE(value_quant_bits_ == 3 || value_quant_bits_ == 4,
+                "TurboQuant value_quant_bits must be 3 or 4, got ", value_quant_bits_);
+  }
 
   bool is_quantized = (k_quant_type_ != KVQuantizationType::NONE || v_quant_type_ != KVQuantizationType::NONE);
   int default_enable_xqa = is_quantized ? 1 : 0;
@@ -166,6 +197,26 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* head_sink = context->Input<Tensor>(11);
   const Tensor* k_scale = context->Input<Tensor>(12);
   const Tensor* v_scale = context->Input<Tensor>(13);
+  // TurboQuant graph initializers (optional, only used when kv_quant_method == TURBOQUANT).
+  const Tensor* k_codebook = context->Input<Tensor>(14);
+  const Tensor* hadamard = context->Input<Tensor>(15);
+
+  if (kv_quant_method_ == KVQuantMethod::TURBOQUANT) {
+    if (k_codebook == nullptr || hadamard == nullptr) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "k_codebook (input 14) and hadamard (input 15) must be provided "
+          "when kv_quant_method=='turboquant'");
+    }
+    // Codebook shape sanity check.
+    const auto& cb_shape = k_codebook->Shape();
+    if (cb_shape.NumDimensions() != 1 ||
+        cb_shape[0] != (int64_t{1} << key_quant_bits_)) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "k_codebook must be 1-D with 2^key_quant_bits entries");
+    }
+  }
 
   if (k_quant_type_ != KVQuantizationType::NONE) {
     if (k_scale == nullptr) {
@@ -206,22 +257,65 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   typedef typename onnxruntime::cuda::OrtToCudaType<U>::type CudaU;
   GroupQueryAttentionData<CudaT, CudaU> data;
 
-  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
-                                                                key,
-                                                                value,
-                                                                past_key,
-                                                                past_value,
-                                                                cos_cache,
-                                                                sin_cache,
-                                                                &parameters,
-                                                                num_heads_,
-                                                                kv_num_heads_,
-                                                                total_seq_lens_minus_one,
-                                                                total_seqlen,
-                                                                scale_,
-                                                                softcap_,
-                                                                kv_cache_bit_width_,
-                                                                device_prop.maxThreadsPerBlock));
+  // TurboQuant uses a custom cache layout. Compute parameters by hand for
+  // that path, replicating just what CheckInputs would set. For non-TQ paths
+  // we still go through the standard helper.
+  if (kv_quant_method_ == KVQuantMethod::TURBOQUANT) {
+    const auto& q_dims = query->Shape().GetDims();
+    ORT_ENFORCE(q_dims.size() == 3, "query must be 3-D for TurboQuant GQA");
+    const auto& past_dims = past_key->Shape().GetDims();
+    ORT_ENFORCE(past_dims.size() == 4, "past_key must be 4-D for TurboQuant GQA");
+
+    parameters.batch_size = static_cast<int>(q_dims[0]);
+    parameters.sequence_length = static_cast<int>(q_dims[1]);
+    parameters.hidden_size = static_cast<int>(q_dims[2]);
+    parameters.num_heads = num_heads_;
+    parameters.kv_num_heads = kv_num_heads_;
+    parameters.head_size = parameters.hidden_size / num_heads_;
+    parameters.kv_hidden_size = parameters.head_size * kv_num_heads_;
+    parameters.v_head_size = parameters.head_size;
+    parameters.past_kv_format = AttentionQkvFormat::Q_K_V_BNSH;
+    parameters.scale = (scale_ == 0.0f) ? (1.0f / std::sqrt(static_cast<float>(parameters.head_size))) : scale_;
+    parameters.softcap = softcap_;
+    parameters.qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+    parameters.is_packed_qkv = false;
+
+    // total_sequence_length = total_seq_lens_minus_one[0] + 1.
+    // Make sure all prior compute on the stream (e.g. the attn_mask subgraph that
+    // produces this tensor) has finished before we read it host-side. Without this
+    // sync the cudaMemcpy below can race the producing kernel and read garbage.
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
+    const int* total_minus_one_ptr = total_seq_lens_minus_one->Data<int>();
+    int total_minus_one = 0;
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(&total_minus_one, total_minus_one_ptr, sizeof(int), cudaMemcpyDeviceToHost));
+    parameters.total_sequence_length = total_minus_one + 1;
+    parameters.seqlen_past_kv_cache = parameters.total_sequence_length - parameters.sequence_length;
+    // For dynamic-cache models (HF ONNX exports), past_key shape is [B, H_kv, past_seq, slot_bytes]
+    // and the present_key output must be sized [B, H_kv, past_seq + new_seq, slot_bytes].
+    // past_dims[2] is the *current past* length, NOT a fixed max; if we used it as max_seq_len
+    // the present output buffer would be too small (or zero-sized at first prompt) and writes
+    // would scribble out of bounds. Use total_sequence_length so the cache layout has room.
+    parameters.seqlen_present_kv_cache = parameters.total_sequence_length;
+    parameters.is_first_prompt = (parameters.seqlen_past_kv_cache == 0);
+    parameters.is_subsequent_prompt = !parameters.is_first_prompt && parameters.sequence_length > 1;
+  } else {
+    ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
+                                                                  key,
+                                                                  value,
+                                                                  past_key,
+                                                                  past_value,
+                                                                  cos_cache,
+                                                                  sin_cache,
+                                                                  &parameters,
+                                                                  num_heads_,
+                                                                  kv_num_heads_,
+                                                                  total_seq_lens_minus_one,
+                                                                  total_seqlen,
+                                                                  scale_,
+                                                                  softcap_,
+                                                                  kv_cache_bit_width_,
+                                                                  device_prop.maxThreadsPerBlock));
+  }
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
@@ -235,6 +329,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   parameters.k_quant_type = k_quant_type_;
   parameters.v_quant_type = v_quant_type_;
   parameters.kv_cache_bit_width = kv_cache_bit_width_;
+  parameters.kv_quant_method = kv_quant_method_;
+  parameters.key_quant_bits = key_quant_bits_;
+  parameters.value_quant_bits = value_quant_bits_;
+  parameters.norm_correction = norm_correction_;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
@@ -259,6 +357,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // For 4-bit quantization, we pack two 4-bit values into one uint8 byte.
   // Therefore, the dense head size in the tensor shape is halved (rounded up).
   int dense_head_size = (parameters.kv_cache_bit_width == 4) ? (parameters.head_size + 1) / 2 : parameters.head_size;
+  if (parameters.kv_quant_method == KVQuantMethod::TURBOQUANT) {
+    // TurboQuant slot layout: packed indices + per-slot fp16 metadata appended to the last dim.
+    //   K slot: ceil(D * key_bits / 8) bytes + 2 bytes (vec_norm fp16)
+    //   V slot: ceil(D * value_bits / 8) bytes + 4 bytes (v_scale + v_zero fp16)
+    // Both K and V tensors are sized to max(K_slot, V_slot) so they share a uniform last-dim
+    // and stay MayInplace-compatible with their past tensors.
+    int k_slot_bytes = (parameters.head_size * parameters.key_quant_bits + 7) / 8 + 2;
+    int v_slot_bytes = (parameters.head_size * parameters.value_quant_bits + 7) / 8 + 4;
+    dense_head_size = std::max(k_slot_bytes, v_slot_bytes);
+  }
   std::vector<int64_t> present_dims = {
       parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache, dense_head_size};
 
@@ -294,6 +402,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
   data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
+
+  // TurboQuant graph initializers.
+  if (kv_quant_method_ == KVQuantMethod::TURBOQUANT) {
+    data.k_codebook = reinterpret_cast<const CudaT*>(k_codebook->Data<T>());
+    data.hadamard = reinterpret_cast<const CudaT*>(hadamard->Data<T>());
+  }
 
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   // This compares the final pointer values after quantization handling.
@@ -599,6 +713,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 #endif
 
   cublasHandle_t cublas = GetCublasHandle(context);
+
+  // TurboQuant dispatch: routes to LaunchTurboQuantAttention when method == TURBOQUANT.
+  // For v1 this returns NOT_IMPLEMENTED; the GQA → TQ wiring is delivered separately
+  // via LaunchTurboQuantEncodeDecodeRoundtrip exercised in gtests.
+  if constexpr (std::is_same<U, uint8_t>::value) {
+    if (parameters.kv_quant_method == KVQuantMethod::TURBOQUANT) {
+      return LaunchTurboQuantAttention<CudaT, CudaU>(
+          device_prop, ort_stream.get(), parameters, data);
+    }
+  }
 
   ORT_RETURN_IF_ERROR((QkvToContext<CudaT, CudaU>(
       device_prop, cublas, ort_stream.get(), parameters, data)));

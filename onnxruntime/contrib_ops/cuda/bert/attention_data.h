@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include <iostream>
+#include "core/framework/allocator.h"  // for AllocatorPtr
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 
@@ -213,6 +214,13 @@ struct GroupQueryAttentionData {
   T* unfused_q_bnsh = nullptr;
   T* unfused_y_bnsh = nullptr;
   void* unfused_workspace = nullptr;
+
+  // TurboQuant graph initializers (only set when parameters.kv_quant_method == TURBOQUANT).
+  //   k_codebook  : [2^key_quant_bits] static Lloyd-Max centroids (fp16/bf16 device pointer)
+  //   hadamard    : [head_size, head_size] Walsh-Hadamard rotation matrix (fp16/bf16 device pointer)
+  // Both are read-only graph initializers shipped inside the .onnx model.
+  const T* k_codebook = nullptr;
+  const T* hadamard = nullptr;
 };
 
 template <typename T>

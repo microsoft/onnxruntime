@@ -41,6 +41,15 @@ class GroupQueryAttention final : public CudaKernel {
   KVQuantizationType v_quant_type_;
   int kv_cache_bit_width_;
 
+  // TurboQuant KV cache method (mutually exclusive with k_quant_type_/v_quant_type_).
+  // When kv_quant_method_ == TURBOQUANT, the KV cache stores Lloyd-Max-coded keys
+  // (with vec_norm fp16) and uniform-quantized values (with scale + zero fp16).
+  // Codebook + Hadamard matrix come in as graph initializers via inputs 14, 15.
+  KVQuantMethod kv_quant_method_;
+  int key_quant_bits_;
+  int value_quant_bits_;
+  bool norm_correction_;
+
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
   const AttentionKernelOptions* kernel_options_;
