@@ -16,8 +16,10 @@
 
 #pragma once
 
-#include "contrib_ops/cuda/llm/common/cuda_bf16_wrapper.h"
 #include <cuda_fp16.h>
+#if ENABLE_BF16
+#include <cuda_bf16.h>
+#endif
 #include <cuda_runtime_api.h>
 
 namespace onnxruntime::llm {

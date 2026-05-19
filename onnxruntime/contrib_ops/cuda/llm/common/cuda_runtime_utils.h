@@ -18,6 +18,9 @@
 
 #include <optional>
 #include <cuda_runtime_api.h>
+#ifdef ENABLE_FP8
+#include <cuda_fp8.h>
+#endif
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime::llm::common {

@@ -50,7 +50,6 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
-#include "contrib_ops/cuda/llm/common/memory_utils.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/common/data_type.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"

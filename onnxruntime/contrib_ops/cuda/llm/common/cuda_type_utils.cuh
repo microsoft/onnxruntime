@@ -17,7 +17,6 @@
 #pragma once
 
 #include "contrib_ops/cuda/llm/common/cuda_bf16_fallbacks.cuh"
-#include "contrib_ops/cuda/llm/common/cuda_bf16_wrapper.h"
 #include "contrib_ops/cuda/llm/common/cuda_fp8_utils.h"
 
 #include <assert.h>

@@ -25,7 +25,9 @@
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/gemm/group_array_problem_shape.hpp"
 #include "cutlass/layout/layout.h"
-#include "contrib_ops/cuda/llm/common/cuda_fp8_utils.h"
+#ifdef ENABLE_FP8
+#include <cuda_fp8.h>
+#endif
 #include "contrib_ops/cuda/llm/common/workspace.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm_configs.h"
 

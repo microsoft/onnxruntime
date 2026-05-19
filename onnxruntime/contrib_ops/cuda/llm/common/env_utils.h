@@ -20,11 +20,9 @@
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::llm::common {
-// Whether PDL is enabled.
+// Whether PDL (Programmatic Dependent Launch) is enabled. Note that PDL is only available on SM90+.
 static inline bool getEnvEnablePDL() {
-  // PDL (Programmatic Dependent Launch) is only available on SM90+
-  // Always return false for now as a safe default
-  return false;
+  return ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_PDL", 0) == 1;
 }
 
 // Whether to force deterministic MOE.
