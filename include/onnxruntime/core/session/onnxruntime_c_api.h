@@ -639,6 +639,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteEpContextDataFunc)(_In_ void* state,
  * \param[out] data_size Set by the implementation to the size of the output data in bytes.
  *
  * \return OrtStatus* Read status. Return nullptr on success.
+ *                    On failure, ORT ignores callback outputs and treats buffer/data_size as unset.
  *                    Use CreateStatus to provide error info with ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */

@@ -119,9 +119,21 @@ static OrtStatus* ORT_API_CALL EpContextFailingReadCallback(void* state, const c
   return Ort::GetApi().CreateStatus(error_state->error_code, error_state->message);
 }
 
+static OrtStatus* ORT_API_CALL EpContextAllocatingFailingReadCallback(void* state, const char* /*file_name*/,
+                                                                      OrtAllocator* allocator, void** buffer,
+                                                                      size_t* data_size) {
+  const auto* error_state = static_cast<const EpContextCallbackErrorState*>(state);
+  *data_size = 4;
+  if (OrtStatus* alloc_status = Ort::GetApi().AllocatorAlloc(allocator, *data_size, buffer); alloc_status != nullptr) {
+    return alloc_status;
+  }
+
+  return Ort::GetApi().CreateStatus(error_state->error_code, error_state->message);
+}
+
 static OrtStatus* ORT_API_CALL EpContextNonEmptyNullBufferReadCallback(void* /*state*/, const char* /*file_name*/,
-                                                                       OrtAllocator* /*allocator*/, void** buffer,
-                                                                       size_t* data_size) {
+                                                                        OrtAllocator* /*allocator*/, void** buffer,
+                                                                        size_t* data_size) {
   *buffer = nullptr;
   *data_size = 4;
   return nullptr;
@@ -1813,6 +1825,27 @@ TEST(PluginExecutionProviderTest, EpContextDataCallbackErrorsArePropagated) {
   ExpectOrtStatus(ep_api.WriteEpContextData(write_config, "context.bin", nullptr, payload.data(), payload.size()),
                   ORT_EP_FAIL, "write callback failed");
 #endif  // !defined(ORT_MINIMAL_BUILD)
+}
+
+TEST(PluginExecutionProviderTest, EpContextDataReadCallbackFailureClearsOutputBuffer) {
+  const auto& ep_api = Ort::GetEpApi();
+  Ort::SessionOptions session_options;
+
+  EpContextCallbackErrorState read_error{ORT_FAIL, "read callback failed after allocation"};
+  session_options.SetEpContextDataReadFunc(EpContextAllocatingFailingReadCallback, &read_error);
+
+  OrtEpContextConfig* ep_context_config = nullptr;
+  ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(session_options, &ep_context_config));
+  auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* buffer = reinterpret_cast<void*>(0x1);
+  size_t buffer_size = 1;
+  ExpectOrtStatus(ep_api.ReadEpContextData(ep_context_config, "context.bin", nullptr, allocator,
+                                           &buffer, &buffer_size),
+                  ORT_FAIL, "read callback failed after allocation");
+  EXPECT_EQ(buffer, nullptr);
+  EXPECT_EQ(buffer_size, 0U);
 }
 
 TEST(PluginExecutionProviderTest, EpContextDataAllowsEmptyPayloads) {

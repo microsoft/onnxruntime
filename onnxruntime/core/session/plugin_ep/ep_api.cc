@@ -1274,6 +1274,11 @@ ORT_API_STATUS_IMPL(ReadEpContextData,
   if (config != nullptr && config->read_func != nullptr) {
     OrtStatus* status = config->read_func(config->read_state, file_name, allocator, buffer, buffer_size);
     if (status != nullptr) {
+      if (*buffer != nullptr) {
+        allocator->Free(allocator, *buffer);
+      }
+      *buffer = nullptr;
+      *buffer_size = 0;
       return status;
     }
 
