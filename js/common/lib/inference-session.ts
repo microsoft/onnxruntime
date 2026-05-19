@@ -311,7 +311,8 @@ export declare namespace InferenceSession {
    * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext
    */
   export interface WebNNOptionsWithMLContext
-    extends WebNNExecutionProviderName,
+    extends
+      WebNNExecutionProviderName,
       Omit<WebNNContextOptions, 'deviceType'>,
       Required<Pick<WebNNContextOptions, 'deviceType'>> {
     context: TryGetGlobalType<'MLContext'>;

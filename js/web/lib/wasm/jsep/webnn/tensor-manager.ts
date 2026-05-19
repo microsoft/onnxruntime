@@ -45,7 +45,11 @@ export const convertDataToInt32 = (data: Uint8Array, dataType: MLOperandDataType
 
   // Convert Uint8Array to original typed array.
   const numElements = data.byteLength / bytesPerElement;
-  const originalArray = new (tensorTypeToTypedArrayConstructor(dataType))(data.buffer as ArrayBuffer, data.byteOffset, numElements);
+  const originalArray = new (tensorTypeToTypedArrayConstructor(dataType))(
+    data.buffer as ArrayBuffer,
+    data.byteOffset,
+    numElements,
+  );
 
   switch (dataType) {
     case 'int64':

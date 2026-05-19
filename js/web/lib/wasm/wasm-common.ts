@@ -175,7 +175,7 @@ export const tensorTypeToTypedArrayConstructor = (
   switch (type) {
     case 'float16':
       // allow Float16Array polyfill.
-      return typeof Float16Array !== 'undefined' ? Float16Array as unknown as Uint16ArrayConstructor : Uint16Array;
+      return typeof Float16Array !== 'undefined' ? (Float16Array as unknown as Uint16ArrayConstructor) : Uint16Array;
     case 'float32':
       return Float32Array;
     case 'uint8':
