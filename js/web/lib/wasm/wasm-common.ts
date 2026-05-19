@@ -4,7 +4,21 @@
 import { Tensor } from 'onnxruntime-common';
 
 // Float16Array is natively available in TypeScript 5.6+ (lib.esnext.float16).
-// No polyfill declaration needed.
+// Keep this ambient declaration for compatibility with older TypeScript/lib settings.
+declare global {
+  interface Float16Array extends Uint16Array {}
+
+  var Float16Array: {
+    prototype: Float16Array;
+    new (length: number): Float16Array;
+    new (array: ArrayLike<number>): Float16Array;
+    new (buffer: ArrayBufferLike, byteOffset?: number, length?: number): Float16Array;
+    of(...items: number[]): Float16Array;
+    from(arrayLike: ArrayLike<number>): Float16Array;
+    from<T>(arrayLike: ArrayLike<T>, mapfn: (v: T, k: number) => number, thisArg?: unknown): Float16Array;
+    readonly BYTES_PER_ELEMENT: number;
+  };
+}
 
 // This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
 
