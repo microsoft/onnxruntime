@@ -255,7 +255,14 @@ export class WebGpuBackend {
     requireFeatureIfAvailable('subgroups');
 
     this.device = await adapter.requestDevice(deviceDescriptor);
-    this.adapterInfo = new AdapterInfoImpl(adapter.info);
+    const adapterWithRequestInfo = adapter as GPUAdapter & {
+      requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+    };
+    const adapterInfo =
+      adapter.info ?? (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
+        ? await adapterWithRequestInfo.requestAdapterInfo()
+        : undefined);
+    this.adapterInfo = new AdapterInfoImpl(adapterInfo);
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
