@@ -9,7 +9,6 @@
 #include "core/graph/model.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/IOBinding.h"
-#include "core/session/onnxruntime_run_options_config_keys.h"
 
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/providers/provider_test_utils.h"
