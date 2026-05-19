@@ -467,6 +467,14 @@ TEST(ConvFp16Test, Conv2D_KleidiAiImatmulEligibleBiasAndDisabledFallback) {
 }
 
 TEST(ConvFp16Test, NhwcFusedConv2D_KleidiAiImatmulEligibleBiasAndDisabledFallback) {
+#if !defined(__aarch64__) && !defined(_M_ARM64)
+  GTEST_SKIP() << "Native CPU fp16 Conv runtime support is only tested on Arm64.";
+#else
+  if (!MlasFp16AccelerationSupported()) {
+    GTEST_SKIP() << "Native CPU fp16 Conv runtime support is unavailable.";
+  }
+#endif
+
   auto run_test = [](bool disable_kleidiai) {
     OpTester test("NhwcFusedConv", 1, onnxruntime::kMSDomain);
     test.AddAttribute("group", static_cast<int64_t>(1));

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <exception>
+#include <type_traits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -253,6 +254,14 @@ TYPED_TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear) {
     // QNN: result diff
     // TRT: Segmentation fault in A100
     std::unordered_set<std::string> excluded_providers({kQnnExecutionProvider});
+    if constexpr (std::is_same_v<TypeParam, MLFloat16>) {
+      // These EPs do not provide this Resize(13) MLFloat16 kernel.
+      excluded_providers.insert(kNnapiExecutionProvider);
+      excluded_providers.insert(kXnnpackExecutionProvider);
+      excluded_providers.insert(kCoreMLExecutionProvider);
+      excluded_providers.insert(kTensorrtExecutionProvider);
+      excluded_providers.insert("example_ep");
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_providers));
   };
 
