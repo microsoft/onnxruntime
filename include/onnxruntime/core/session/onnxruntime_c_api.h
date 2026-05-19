@@ -7472,8 +7472,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
 
-  /// @}
-
   /** \brief Release a previously captured graph and its associated GPU resources.
    *
    * When graph capture is enabled, the EP records GPU commands during initial runs and replays them
