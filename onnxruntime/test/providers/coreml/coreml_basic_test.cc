@@ -1187,8 +1187,12 @@ ONNX_NAMESPACE::ModelProto MakeConvWithTrivialChainModel(
     tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     for (int64_t d : shape) tt->mutable_shape()->add_dim()->set_dim_value(d);
   };
+  const std::vector<int64_t> tile_reps =
+      (trivial_op == "Tile" && tile_with_repeats) ? std::vector<int64_t>{1, 1, 2, 2}
+                                                  : std::vector<int64_t>{1, 1, 1, 1};
+  const std::vector<int64_t> output_shape = {1, 3, 3 * tile_reps[2], 3 * tile_reps[3]};
   add_value(graph_proto->add_input(), "X", {1, 2, 4, 4});
-  add_value(graph_proto->add_output(), "Y", {1, 3, 3, 3});
+  add_value(graph_proto->add_output(), "Y", output_shape);
 
   // Conv weight initialiser
   auto* w = graph_proto->add_initializer();
@@ -1211,14 +1215,13 @@ ONNX_NAMESPACE::ModelProto MakeConvWithTrivialChainModel(
     auto* reps_init = graph_proto->add_initializer();
     reps_init->set_name("reps");
     reps_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-    reps_init->add_dims(4);
-    for (int64_t v : {1, 1, 1, 1}) reps_init->add_int64_data(v);
+    reps_init->add_dims(static_cast<int64_t>(tile_reps.size()));
+    for (int64_t v : tile_reps) reps_init->add_int64_data(v);
     auto* node = graph_proto->add_node();
     node->set_op_type("Tile");
     node->add_input("conv_out");
     node->add_input("reps");
     node->add_output("Y");
-    (void)tile_with_repeats;
   } else {
     auto* node = graph_proto->add_node();
     node->set_op_type(trivial_op);
@@ -1228,8 +1231,9 @@ ONNX_NAMESPACE::ModelProto MakeConvWithTrivialChainModel(
   return model_proto;
 }
 
-void RunConvChainTest(const std::string& trivial_op, std::string_view log_id) {
-  auto model_proto = MakeConvWithTrivialChainModel(trivial_op, false);
+void RunConvChainTest(const std::string& trivial_op, std::string_view log_id,
+                      bool tile_with_repeats = false) {
+  auto model_proto = MakeConvWithTrivialChainModel(trivial_op, tile_with_repeats);
   std::string model_data;
   ASSERT_TRUE(model_proto.SerializeToString(&model_data));
   gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
@@ -1270,6 +1274,13 @@ TEST(CoreMLExecutionProviderTest, TileWithConvAnchor) {
   // Conv → Tile(reps=[1,1,1,1]) → output. Validates the Tile builder claims
   // the node alongside the Conv anchor.
   RunConvChainTest("Tile", "TileWithConvAnchor_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, TileWithConvAnchorNonUnitRepeats) {
+  // Conv → Tile(reps=[1,1,2,2]) → output. Exercises the non-trivial tile path
+  // (output spatial dims doubled) end-to-end against the CPU reference.
+  RunConvChainTest("Tile", "TileWithConvAnchorNonUnitRepeats_MLProgram",
+                   /*tile_with_repeats=*/true);
 }
 
 // Helper for trivial-only chain tests. Builds a model with input X[dims] and
