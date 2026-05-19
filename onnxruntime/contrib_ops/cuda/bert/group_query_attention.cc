@@ -223,7 +223,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 kv_cache_bit_width_,
                                                                 device_prop.maxThreadsPerBlock));
 #ifndef USE_INT4_KV_CACHE
-  if (kv_cache_bit_width == 4) {
+  if (kv_cache_bit_width_ == 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
   }
 #endif
