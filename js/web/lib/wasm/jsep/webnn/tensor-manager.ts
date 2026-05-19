@@ -287,7 +287,7 @@ class TensorWrapper {
         targetBuffer.set(originalData);
         return undefined;
       } else {
-        return originalData.buffer as ArrayBuffer;
+        return new Uint8Array(originalData).buffer;
       }
     } else {
       return dstBuffer ? this.mlContext.readTensor(this.mlTensor, dstBuffer) : this.mlContext.readTensor(this.mlTensor);
