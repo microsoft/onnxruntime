@@ -1557,5 +1557,74 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionOption) 
   std::filesystem::remove_all(package_root, ec);
 }
 
+// Test that the C++ RAII wrappers (Ort::ModelPackageContext, etc.) work correctly.
+TEST(ModelPackageApiTest, CxxWrappers_PackageContextQueries) {
+  const auto package_root = CreateModelPackageApiTestPackage();
+
+  Ort::ModelPackageContext ctx(package_root.c_str());
+
+  // Component queries
+  EXPECT_EQ(ctx.GetComponentCount(), 1u);
+  auto component_names = ctx.GetComponentNames();
+  ASSERT_EQ(component_names.size(), 1u);
+  EXPECT_EQ(component_names[0], "model_1");
+
+  // Variant queries
+  EXPECT_EQ(ctx.GetVariantCount("model_1"), 2u);
+  auto variant_names = ctx.GetVariantNames("model_1");
+  ASSERT_EQ(variant_names.size(), 2u);
+  std::unordered_set<std::string> variant_set(variant_names.begin(), variant_names.end());
+  EXPECT_EQ(variant_set.count("variant_1"), 1u);
+  EXPECT_EQ(variant_set.count("variant_2"), 1u);
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageApiTest, CxxWrappers_SelectComponentAndQueryFileAccessors) {
+  const auto package_root = CreateModelPackageApiTestPackage();
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions so;
+  std::unordered_map<std::string, std::string> ep_options;
+  so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+  Ort::ModelPackageOptions pkg_opts(*ort_env, so);
+
+  Ort::ModelPackageContext ctx(package_root.c_str());
+  auto cix = ctx.SelectComponent("model_1", pkg_opts);
+
+  // Folder path should be non-empty
+  auto folder = cix.GetSelectedVariantFolderPath();
+  EXPECT_FALSE(folder.empty());
+
+  // Should have at least one file
+  size_t file_count = cix.GetSelectedVariantFileCount();
+  EXPECT_GE(file_count, 1u);
+
+  // File path should be non-empty
+  auto file_path = cix.GetSelectedVariantFilePath(0);
+  EXPECT_FALSE(file_path.empty());
+
+  // Session/provider options should not throw (may be empty)
+  const char* const* keys = nullptr;
+  const char* const* values = nullptr;
+  size_t count = 0;
+  EXPECT_NO_THROW(cix.GetSelectedVariantFileSessionOptions(0, &keys, &values, &count));
+  EXPECT_NO_THROW(cix.GetSelectedVariantFileProviderOptions(0, &keys, &values, &count));
+
+  // Consumer metadata
+  auto metadata = cix.GetSelectedVariantConsumerMetadata();
+  // May be empty but should not throw
+
+  // CreateSession via C++ wrapper
+  auto session = cix.CreateSession(*ort_env, so);
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
