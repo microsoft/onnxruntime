@@ -46,6 +46,9 @@ try:
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
         OrtSyncStream,  # noqa: F401
+        ModelPackageContext,  # noqa: F401
+        ModelPackageOptions,  # noqa: F401
+        ModelPackageComponentContext,  # noqa: F401
         RunOptions,  # noqa: F401
         SessionIOBinding,  # noqa: F401
         SessionOptions,  # noqa: F401
