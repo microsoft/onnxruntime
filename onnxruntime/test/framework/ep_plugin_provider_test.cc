@@ -1830,6 +1830,7 @@ TEST(PluginExecutionProviderTest, EpContextDataCallbackErrorsArePropagated) {
 TEST(PluginExecutionProviderTest, EpContextDataReadCallbackFailureClearsOutputBuffer) {
   const auto& ep_api = Ort::GetEpApi();
   Ort::SessionOptions session_options;
+  constexpr uintptr_t kNonNullSentinel = 0x1;
 
   EpContextCallbackErrorState read_error{ORT_FAIL, "read callback failed after allocation"};
   session_options.SetEpContextDataReadFunc(EpContextReadCallbackFailsAfterAlloc, &read_error);
@@ -1839,7 +1840,7 @@ TEST(PluginExecutionProviderTest, EpContextDataReadCallbackFailureClearsOutputBu
   auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
 
   Ort::AllocatorWithDefaultOptions allocator;
-  void* buffer = reinterpret_cast<void*>(0x1);
+  void* buffer = reinterpret_cast<void*>(kNonNullSentinel);
   size_t buffer_size = 1;
   ExpectOrtStatus(ep_api.ReadEpContextData(ep_context_config, "context.bin", nullptr, allocator,
                                            &buffer, &buffer_size),
