@@ -23,7 +23,7 @@
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 #endif
 
@@ -191,7 +191,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
 Status Conv<float>::EnsurePackedChannelsLastFilter(concurrency::ThreadPool* thread_pool,
                                                    size_t filter_count_per_group,
                                                    size_t input_channels_per_group,
@@ -329,7 +329,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
           narrow<size_t>(M / conv_attrs_.group),
           /*Beta*/ 0.0f);
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
   if (nhwc_fastpath && can_cache_packed_filter_) {
     ORT_RETURN_IF_ERROR(EnsurePackedChannelsLastFilter(thread_pool,
                                                        narrow<size_t>(M / conv_attrs_.group),
@@ -385,7 +385,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     nhwc_fastpath ? 0.0f : Beta,
                     thread_pool);
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
     if (nhwc_fastpath && packed_filter_ != nullptr) {
       Parameters.FilterIsPacked = true;
       Parameters.PackedFilter = packed_filter_.get();

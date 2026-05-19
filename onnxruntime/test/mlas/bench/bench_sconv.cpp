@@ -146,6 +146,145 @@ static MLAS_THREADPOOL* GetMlasThreadPoolForConvBenchmark(void) {
   return threadpool.get();
 }
 
+void SCONV_NHWC_KLEIDIAI(benchmark::State& state, const char* /*dummy*/) {
+  const int64_t rank = state.range(0);                       // Rank
+  const int64_t batch_size = state.range(1);                 // N
+  const int64_t groups = state.range(2);                     // G
+  const int64_t input_channels_per_group = state.range(3);   // Cpg
+  const int64_t output_channels_per_group = state.range(4);  // Fpg
+
+  if (rank <= 0) throw std::invalid_argument("Kernel rank must greater than 0!");
+  if (batch_size <= 0) throw std::invalid_argument("Batch size must greater than 0!");
+  if (groups <= 0) throw std::invalid_argument("Group count must greater than 0!");
+  if (input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must greater than 0!");
+  if (output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must greater than 0!");
+
+  size_t arg_position = 5;
+  const auto input_shape = BenchArgsVector(state, arg_position, rank);
+  const auto kernel_shape = BenchArgsVector(state, arg_position, rank);
+  const auto paddings = BenchArgsVector(state, arg_position, rank * 2);
+  const auto strides = BenchArgsVector(state, arg_position, rank);
+  const auto dilations = BenchArgsVector(state, arg_position, rank);
+
+  if (std::any_of(input_shape.begin(), input_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all input image dim must > 0");
+  }
+
+  if (std::any_of(kernel_shape.begin(), kernel_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all kernel dim must > 0");
+  }
+
+  if (std::any_of(strides.begin(), strides.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all strides dim must > 0");
+  }
+
+  if (std::any_of(dilations.begin(), dilations.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all dilations dim must > 0");
+  }
+
+  if (rank != 2 || batch_size != 1) {
+    state.SkipWithError("KleidiAI NHWC benchmark requires 2D convolution with batch size 1.");
+    return;
+  }
+
+  std::vector<size_t> input_shape_size_t(static_cast<size_t>(rank));
+  std::vector<size_t> kernel_shape_size_t(static_cast<size_t>(rank));
+  std::vector<size_t> paddings_size_t(static_cast<size_t>(rank * 2));
+  std::vector<size_t> strides_size_t(static_cast<size_t>(rank));
+  std::vector<size_t> dilations_size_t(static_cast<size_t>(rank));
+  for (int64_t i = 0; i < rank; ++i) {
+    input_shape_size_t[static_cast<size_t>(i)] = static_cast<size_t>(input_shape[static_cast<size_t>(i)]);
+    kernel_shape_size_t[static_cast<size_t>(i)] = static_cast<size_t>(kernel_shape[static_cast<size_t>(i)]);
+    strides_size_t[static_cast<size_t>(i)] = static_cast<size_t>(strides[static_cast<size_t>(i)]);
+    dilations_size_t[static_cast<size_t>(i)] = static_cast<size_t>(dilations[static_cast<size_t>(i)]);
+    paddings_size_t[static_cast<size_t>(i)] = static_cast<size_t>(paddings[static_cast<size_t>(i)]);
+    paddings_size_t[static_cast<size_t>(i + rank)] = static_cast<size_t>(paddings[static_cast<size_t>(i + rank)]);
+  }
+
+  if (!MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+          static_cast<size_t>(rank),
+          static_cast<size_t>(batch_size),
+          static_cast<size_t>(groups),
+          input_shape_size_t.data(),
+          kernel_shape_size_t.data(),
+          dilations_size_t.data(),
+          paddings_size_t.data(),
+          strides_size_t.data(),
+          static_cast<size_t>(output_channels_per_group),
+          0.0f)) {
+    state.SkipWithError("KleidiAI NHWC kernel is not supported for this benchmark shape on the current platform.");
+    return;
+  }
+
+  const int64_t GC = groups * input_channels_per_group;
+  const int64_t GF = groups * output_channels_per_group;
+  std::vector<int64_t> x_shape = {batch_size};
+  x_shape.insert(x_shape.end(), input_shape.begin(), input_shape.end());
+  x_shape.push_back(GC);
+
+  std::vector<int64_t> f_shape = {GF, input_channels_per_group};
+  f_shape.insert(f_shape.end(), kernel_shape.begin(), kernel_shape.end());
+
+  std::vector<int64_t> output_shape(static_cast<size_t>(rank));
+  for (int64_t i = 0; i < rank; ++i) {
+    auto km = 1 + dilations[static_cast<size_t>(i)] * (kernel_shape[static_cast<size_t>(i)] - 1);
+    output_shape[static_cast<size_t>(i)] =
+        (paddings[static_cast<size_t>(i)] + paddings[static_cast<size_t>(i + rank)] + input_shape[static_cast<size_t>(i)] - km) /
+            strides[static_cast<size_t>(i)] +
+        1;
+  }
+
+  std::vector<int64_t> y_shape = {batch_size};
+  y_shape.insert(y_shape.end(), output_shape.begin(), output_shape.end());
+  y_shape.push_back(GF);
+
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasIdentityActivation;
+  MLAS_CONV_PARAMETERS Parameters;
+  size_t WorkingBufferSize = 0;
+  MlasConvPrepare(&Parameters,
+                  static_cast<size_t>(rank),
+                  static_cast<size_t>(batch_size),
+                  static_cast<size_t>(groups),
+                  static_cast<size_t>(input_channels_per_group),
+                  input_shape.data(),
+                  kernel_shape.data(),
+                  dilations.data(),
+                  paddings.data(),
+                  strides.data(),
+                  output_shape.data(),
+                  static_cast<size_t>(output_channels_per_group),
+                  &activation,
+                  &WorkingBufferSize,
+                  true,
+                  0.0f,
+                  nullptr);
+
+  auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
+  auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
+  int64_t y_size = std::accumulate(y_shape.begin(), y_shape.end(), 1LL, std::multiplies<int64_t>());
+  std::vector<float> Y(static_cast<size_t>(y_size));
+  std::vector<float> working_buffer(WorkingBufferSize);
+
+  MlasConv(&Parameters,
+           X.data(),
+           F.data(),
+           nullptr,
+           working_buffer.data(),
+           Y.data(),
+           nullptr);
+
+  for (auto _ : state) {
+    MlasConv(&Parameters,
+             X.data(),
+             F.data(),
+             nullptr,
+             working_buffer.data(),
+             Y.data(),
+             nullptr);
+  }
+}
+
 void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
   MLAS_THREADPOOL* tp = GetMlasThreadPoolForConvBenchmark();
 
@@ -353,6 +492,21 @@ static void MobileClip(benchmark::internal::Benchmark* b) {
 
 BENCHMARK_CAPTURE(SCONV_NCHW, MobileClip, "")->Apply(MobileClip)->UseRealTime();
 BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, MobileClip, "")->Apply(MobileClip)->UseRealTime();
+
+static void KleidiAiNhwcComparison(benchmark::internal::Benchmark* b) {
+  b->ArgNames(ArgNamesForConv(2));
+
+  // Dense 3x3 conv shapes that fit the Arm SME / KleidiAI NHWC fast-path envelope.
+  b->Args({2, 1, 1, 64, 64, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+  b->Args({2, 1, 1, 128, 128, 28, 28, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+
+  // Classic depthwise shapes now supported by the NHWC helper gate.
+  b->Args({2, 1, 64, 1, 1, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1});
+  b->Args({2, 1, 72, 1, 1, 48, 80, 3, 3, 1, 1, 1, 1, 2, 2, 1, 1});
+}
+
+BENCHMARK_CAPTURE(SCONV_NCHW, KleidiAiNhwcComparison_NchwBaseline, "")->Apply(KleidiAiNhwcComparison)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NHWC_KLEIDIAI, KleidiAiNhwcComparison_NhwcFastPath, "")->Apply(KleidiAiNhwcComparison)->UseRealTime();
 
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
