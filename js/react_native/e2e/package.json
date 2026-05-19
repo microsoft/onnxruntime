@@ -32,7 +32,7 @@
     "jest-junit": "16.0.0",
     "prettier": "^2.8.8",
     "react-test-renderer": "18.2.0",
-    "typescript": "5.0.4"
+    "typescript": "^5.6.2"
   },
   "engines": {
     "node": ">=18"
