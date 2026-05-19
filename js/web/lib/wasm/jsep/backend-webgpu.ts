@@ -255,7 +255,7 @@ export class WebGpuBackend {
     requireFeatureIfAvailable('subgroups' as GPUFeatureName);
 
     this.device = await adapter.requestDevice(deviceDescriptor);
-    this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
+    this.adapterInfo = new AdapterInfoImpl(adapter.info);
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
@@ -826,7 +826,7 @@ export class WebGpuBackend {
   ): () => Promise<Tensor.DataType> {
     return async () => {
       const data = await downloadGpuData(this, gpuBuffer, size);
-      return createView(data.buffer, type);
+      return createView(data.buffer as ArrayBuffer, type);
     };
   }
   // #endregion
