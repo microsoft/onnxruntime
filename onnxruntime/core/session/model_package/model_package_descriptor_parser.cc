@@ -34,7 +34,7 @@ struct VariantMetadataSchema {
 struct EpCompatibilitySchema {
   std::optional<std::string> ep;  // nullable in schema
   std::optional<std::string> device;
-  std::optional<std::vector<std::string>> compatibility_strings;
+  std::optional<std::string> compatibility_string;
 };
 
 struct VariantSchema {
@@ -43,7 +43,7 @@ struct VariantSchema {
 
 // Component schema (mapping from component metadata.json)
 struct ComponentSchema {
-  std::optional<std::string> component_model_name;
+  std::optional<std::string> component_name;
   std::unordered_map<std::string, VariantSchema> variants;  // required, keys are variant names.
 };
 
@@ -85,36 +85,40 @@ std::optional<std::unordered_map<std::string, std::string>> ParseFlatOptionsObje
   return result;
 }
 
-std::optional<std::vector<std::string>> ParseCompatibilityStrings(const json& j, const char* key_name) {
+std::optional<std::string> ParseCompatibilityString(const json& j, const char* key_name) {
   if (!j.contains(key_name) || j[key_name].is_null()) {
     return std::nullopt;
   }
 
   const auto& value = j[key_name];
-  if (value.is_string()) {
-    return std::vector<std::string>{value.get<std::string>()};  // backward-compatible
+  if (!value.is_string()) {
+    throw std::invalid_argument(MakeString("\"", key_name, "\" must be a string."));
   }
-
-  if (!value.is_array()) {
-    throw std::invalid_argument(MakeString("\"", key_name, "\" must be a string or an array of strings."));
-  }
-
-  std::vector<std::string> result;
-  result.reserve(value.size());
-  for (size_t i = 0; i < value.size(); ++i) {
-    if (!value[i].is_string()) {
-      throw std::invalid_argument(MakeString("\"", key_name, "\" must contain only strings."));
-    }
-    result.push_back(value[i].get<std::string>());
-  }
-
-  return result;
+  return value.get<std::string>();
 }
 
 void from_json(const json& j, EpCompatibilitySchema& c) {
-  if (j.contains(kEpKey) && !j[kEpKey].is_null()) c.ep = j[kEpKey].get<std::string>();
+  // "ep" is required and must be a non-empty string. Every ep_compatibility entry must explicitly
+  // declare which EP it targets so that variant selection is unambiguous.
+  //
+  // We intentionally do NOT support a wildcard / "portable" entry today (omitted ep, or ep == "*").
+  // If a use case for a portable variant emerges later, the planned extension is to treat a
+  // variant with the entire "ep_compatibility" array omitted as the portable fallback (likely
+  // pinned to CPU at load time). Per-entry wildcards inside the array should stay disallowed even
+  // then, to keep each entry's target unambiguous.
+  if (!j.contains(kEpKey) || j[kEpKey].is_null()) {
+    throw std::invalid_argument(MakeString("\"", kEpKey, "\" is required in each ep_compatibility entry."));
+  }
+  if (!j[kEpKey].is_string()) {
+    throw std::invalid_argument(MakeString("\"", kEpKey, "\" must be a string."));
+  }
+  c.ep = j[kEpKey].get<std::string>();
+  if (c.ep->empty()) {
+    throw std::invalid_argument(MakeString("\"", kEpKey, "\" must be a non-empty string."));
+  }
+
   if (j.contains(kDeviceKey) && j[kDeviceKey].is_string()) c.device = j[kDeviceKey].get<std::string>();
-  c.compatibility_strings = ParseCompatibilityStrings(j, kCompatibilityStringKey);
+  c.compatibility_string = ParseCompatibilityString(j, kCompatibilityStringKey);
 }
 
 void from_json(const json& j, VariantSchema& v) {
@@ -154,8 +158,8 @@ void from_json(const json& j, ManifestSchema& m) {
 }
 
 void from_json(const json& j, ComponentSchema& m) {
-  if (j.contains(kComponentModelNameInMetadataKey) && j[kComponentModelNameInMetadataKey].is_string()) {
-    m.component_model_name = j[kComponentModelNameInMetadataKey].get<std::string>();
+  if (j.contains(kComponentNameInMetadataKey) && j[kComponentNameInMetadataKey].is_string()) {
+    m.component_name = j[kComponentNameInMetadataKey].get<std::string>();
   }
 
   m.variants = j.at(kVariantsKey).get<std::unordered_map<std::string, VariantSchema>>();
@@ -192,25 +196,9 @@ Status FindSingleOnnxFile(const std::filesystem::path& search_dir,
   return Status::OK();
 }
 
-std::string CompatibilityStringsToLogString(const std::optional<std::vector<std::string>>& v) {
-  if (!v.has_value() || v->empty()) {
-    return "";
-  }
-
+std::string BuildModelInfoLogString(const VariantInfo& variant) {
   std::ostringstream oss;
-  for (size_t i = 0; i < v->size(); ++i) {
-    if (i > 0) {
-      oss << ",";
-    }
-    oss << (*v)[i];
-  }
-
-  return oss.str();
-}
-
-std::string BuildModelInfoLogString(const ModelVariantInfo& variant) {
-  std::ostringstream oss;
-  oss << "component='" << variant.component_model_name
+  oss << "component='" << variant.component_name
       << "' variant='" << variant.variant_name
       << "' ep_compat_count=" << variant.ep_compatibility.size()
       << "' file_count=" << variant.files.size();
@@ -221,7 +209,7 @@ std::string BuildModelInfoLogString(const ModelVariantInfo& variant) {
       const auto& ec = variant.ep_compatibility[i];
       oss << "{ep='" << ec.ep.value_or("")
           << "', device='" << ec.device.value_or("")
-          << "', compatibility_strings='" << CompatibilityStringsToLogString(ec.compatibility_strings)
+          << "', compatibility_string='" << ec.compatibility_string.value_or("")
           << "'}";
       if (i + 1 < variant.ep_compatibility.size()) {
         oss << ", ";
@@ -251,7 +239,7 @@ std::string BuildModelInfoLogString(const ModelVariantInfo& variant) {
 }
 
 void LogParsedVariants(const logging::Logger& logger,
-                       const std::vector<ModelVariantInfo>& variants) {
+                       const std::vector<VariantInfo>& variants) {
   for (const auto& v : variants) {
     LOGS(logger, INFO) << "model variant: " << BuildModelInfoLogString(v);
   }
@@ -260,10 +248,10 @@ void LogParsedVariants(const logging::Logger& logger,
 }  // namespace
 
 Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem::path& package_root,
-                                                           std::vector<ModelVariantInfo>& variants) const {
+                                                           std::vector<VariantInfo>& variants) const {
   variants.clear();
 
-  const auto component_metadata_path = package_root / kComponentModelMetadataFileName;
+  const auto component_metadata_path = package_root / kComponentMetadataFileName;
   if (std::filesystem::exists(component_metadata_path) &&
       std::filesystem::is_regular_file(component_metadata_path)) {
     std::ifstream mf(component_metadata_path, std::ios::binary);
@@ -292,13 +280,13 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
                              " has invalid schema: ", ex.what());
     }
 
-    const std::string component_model_name =
-        metadata_schema.component_model_name.has_value()
-            ? *metadata_schema.component_model_name
+    const std::string component_name =
+        metadata_schema.component_name.has_value()
+            ? *metadata_schema.component_name
             : package_root.filename().string();
     const json* metadata_variants_obj = &metadata_doc.at(kVariantsKey);
 
-    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
+    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_name,
                                                    package_root,
                                                    metadata_variants_obj,
                                                    variants));
@@ -311,14 +299,14 @@ Status ModelPackageDescriptorParser::ParseVariantsFromRoot(const std::filesystem
 }
 
 Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
-    const std::string& component_model_name,
+    const std::string& component_name,
     const std::filesystem::path& component_model_root,
     const json* variants_obj,
-    std::vector<ModelVariantInfo>& variant_infos) const {
+    std::vector<VariantInfo>& variant_infos) const {
   if (variants_obj == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Missing metadata variants for component model: ",
-                           component_model_name);
+                           component_name);
   }
 
   std::unordered_map<std::string, VariantSchema> variants;
@@ -328,7 +316,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
   ORT_CATCH(const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Invalid metadata variant schema for component model '",
-                           component_model_name, "': ", ex.what());
+                           component_name, "': ", ex.what());
   }
 
   for (const auto& [variant_name, variant] : variants) {
@@ -338,7 +326,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
     if (!std::filesystem::exists(variant_descriptor_path)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Missing variant.json for variant '", variant_name,
-                             "' under component '", component_model_name,
+                             "' under component '", component_name,
                              "': ", variant_descriptor_path.string());
     }
 
@@ -368,8 +356,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
                              " has invalid schema: ", ex.what());
     }
 
-    ModelVariantInfo variant_info{};
-    variant_info.component_model_name = component_model_name;
+    VariantInfo variant_info{};
+    variant_info.component_name = component_name;
     variant_info.variant_name = variant_name;
     variant_info.consumer_metadata = variant_metadata_schema.consumer_metadata;
 
@@ -419,12 +407,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
       VariantEpCompatibilityInfo ec{};
       ec.ep = ec_schema.ep;
       ec.device = ec_schema.device;
-      ec.compatibility_strings = ec_schema.compatibility_strings;
-
-      const size_t compatibility_count = ec.compatibility_strings.has_value() ? ec.compatibility_strings->size() : 0;
-      ec.compiled_model_compatibilities.assign(
-          compatibility_count,
-          OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+      ec.compatibility_string = ec_schema.compatibility_string;
+      ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
       variant_info.ep_compatibility.push_back(std::move(ec));
     }
 
@@ -436,7 +420,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
 
 Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
     const std::filesystem::path& package_root,
-    std::vector<ModelVariantInfo>& variants) const {
+    std::vector<VariantInfo>& variants) const {
   variants.clear();
 
   const auto manifest_path = package_root / kModelPackageManifestFileName;
@@ -494,8 +478,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
         continue;
       }
 
-      const auto component_model_name = entry.path().filename().string();
-      const auto metadata_path = entry.path() / kComponentModelMetadataFileName;
+      const auto component_name = entry.path().filename().string();
+      const auto metadata_path = entry.path() / kComponentMetadataFileName;
       if (!std::filesystem::exists(metadata_path)) {
         continue;
       }
@@ -525,8 +509,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
                                " has invalid schema: ", ex.what());
       }
 
-      discovered_metadata_docs.emplace(component_model_name, std::move(metadata_doc));
-      component_model_names.push_back(component_model_name);
+      discovered_metadata_docs.emplace(component_name, std::move(metadata_doc));
+      component_model_names.push_back(component_name);
     }
 
     if (component_model_names.empty()) {
@@ -536,12 +520,12 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
     }
   }
 
-  for (const auto& component_model_name : component_model_names) {
-    const auto component_model_root = package_root / "models" / component_model_name;
+  for (const auto& component_name : component_model_names) {
+    const auto component_model_root = package_root / "models" / component_name;
 
     if (has_components &&
         (!std::filesystem::exists(component_model_root) || !std::filesystem::is_directory(component_model_root))) {
-      LOGS(logger_, WARNING) << "Component model '" << component_model_name
+      LOGS(logger_, WARNING) << "Component model '" << component_name
                              << "' is listed in manifest.json but directory does not exist: "
                              << component_model_root.string()
                              << ". Skipping this component model.";
@@ -550,10 +534,10 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
 
     json metadata_doc;
     const json* variants_obj = nullptr;
-    const auto metadata_path = component_model_root / kComponentModelMetadataFileName;
+    const auto metadata_path = component_model_root / kComponentMetadataFileName;
 
     if (!has_components) {
-      auto it_meta = discovered_metadata_docs.find(component_model_name);
+      auto it_meta = discovered_metadata_docs.find(component_name);
       if (it_meta != discovered_metadata_docs.end()) {
         metadata_doc = it_meta->second;
         variants_obj = &metadata_doc.at(kVariantsKey);
@@ -573,17 +557,17 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
     }
 
     if (!metadata_doc.is_null() &&
-        metadata_doc.contains(kComponentModelNameInMetadataKey) &&
-        metadata_doc[kComponentModelNameInMetadataKey].is_string()) {
-      const auto metadata_component_name = metadata_doc[kComponentModelNameInMetadataKey].get<std::string>();
-      if (metadata_component_name != component_model_name) {
+        metadata_doc.contains(kComponentNameInMetadataKey) &&
+        metadata_doc[kComponentNameInMetadataKey].is_string()) {
+      const auto metadata_component_name = metadata_doc[kComponentNameInMetadataKey].get<std::string>();
+      if (metadata_component_name != component_name) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "metadata.json component_model_name '", metadata_component_name,
-                               "' does not match directory/manifest component name '", component_model_name, "'.");
+                               "metadata.json component_name '", metadata_component_name,
+                               "' does not match directory/manifest component name '", component_name, "'.");
       }
     }
 
-    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_model_name,
+    ORT_RETURN_IF_ERROR(ParseVariantsFromComponent(component_name,
                                                    component_model_root,
                                                    variants_obj,
                                                    variants));

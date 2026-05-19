@@ -7490,6 +7490,57 @@ struct OrtApi {
    * \since Version 1.27.
    */
   const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
+
+  /** \brief Add a session option from a string key and string value.
+   *
+   * Convenience helper for callers that build sessions from string-keyed JSON or config files
+   * (model packages, ORT-GenAI, future tools). The value is parsed to the type expected by the
+   * matching dedicated setter:
+   *
+   * | Key                          | Type     | Underlying setter                       |
+   * |------------------------------|----------|-----------------------------------------|
+   * | `intra_op_num_threads`       | int      | SetIntraOpNumThreads                    |
+   * | `inter_op_num_threads`       | int      | SetInterOpNumThreads                    |
+   * | `enable_cpu_mem_arena`       | bool     | EnableCpuMemArena / DisableCpuMemArena  |
+   * | `enable_mem_pattern`         | bool     | EnableMemPattern / DisableMemPattern    |
+   * | `logid` (alias: `log_id`)    | string   | SetSessionLogId                         |
+   * | `log_severity_level`         | int      | SetSessionLogSeverityLevel              |
+   * | `log_verbosity_level`        | int      | SetSessionLogVerbosityLevel             |
+   * | `enable_profiling`           | string   | EnableProfiling(prefix) (empty=Disable) |
+   * | `graph_optimization_level`   | enum str | SetSessionGraphOptimizationLevel        |
+   * | `optimized_model_filepath`   | path     | SetOptimizedModelFilePath               |
+   * | `execution_mode`             | enum str | SetSessionExecutionMode                 |
+   * | `use_per_session_threads`    | bool     | DisablePerSessionThreads (one-way)      |
+   * | `use_deterministic_compute`  | bool     | SetDeterministicCompute                 |
+   *
+   * Encoding rules:
+   *   - bool: "0"/"1" or "true"/"false" (case-insensitive).
+   *   - int: base-10 string.
+   *   - graph_optimization_level: one of "disable_all", "enable_basic", "enable_extended",
+   *     "enable_layout", "enable_all" (case-insensitive).
+   *   - execution_mode: one of "sequential", "parallel" (case-insensitive).
+   *   - enable_profiling: non-empty value enables profiling with that path prefix; empty value
+   *     calls DisableProfiling.
+   *   - use_per_session_threads: "true" is a no-op (default); "false" calls
+   *     DisablePerSessionThreads. There is no public ABI to re-enable, so flipping back to
+   *     "true" after a disable returns an error.
+   *
+   * For any key not in the table above, the call falls through to ::OrtApi::AddSessionConfigEntry
+   * with the same key/value, preserving the existing reserved-key namespaces in
+   * onnxruntime_session_options_config_keys.h. Setters that require non-scalar arguments
+   * (free-dimension overrides, external initializers, user logging function, EP append,
+   * custom-op library registration) are intentionally not dispatchable through this helper.
+   *
+   * \param[in] options
+   * \param[in] config_key Null-terminated UTF-8 key.
+   * \param[in] config_value Null-terminated UTF-8 value.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(AddSessionOption, _Inout_ OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _In_z_ const char* config_value);
 };
 
 /*
@@ -8593,10 +8644,10 @@ struct OrtInteropApi {
  * 2) Load package metadata:
  *    - CreateModelPackageContext()
  * 3) Query metadata (optional):
- *    - ModelPackage_GetComponentModelCount()
- *    - ModelPackage_GetComponentModelNames()
- *    - ModelPackage_GetModelVariantCount()
- *    - ModelPackage_GetModelVariantNames()
+ *    - ModelPackage_GetComponentCount()
+ *    - ModelPackage_GetComponentNames()
+ *    - ModelPackage_GetVariantCount()
+ *    - ModelPackage_GetVariantNames()
  * 4) Select a component and resolve variant:
  *    - SelectComponent()
  * 5) Query selected files/options (optional):
@@ -8632,21 +8683,21 @@ struct OrtModelPackageApi {
 
   ORT_CLASS_RELEASE(ModelPackageContext);
 
-  ORT_API2_STATUS(ModelPackage_GetComponentModelCount,
+  ORT_API2_STATUS(ModelPackage_GetComponentCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackage_GetComponentModelNames,
+  ORT_API2_STATUS(ModelPackage_GetComponentNames,
                   _In_ const OrtModelPackageContext* ctx,
                   _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackage_GetModelVariantCount,
+  ORT_API2_STATUS(ModelPackage_GetVariantCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _Out_ size_t* out_count);
 
-  ORT_API2_STATUS(ModelPackage_GetModelVariantNames,
+  ORT_API2_STATUS(ModelPackage_GetVariantNames,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
@@ -8734,6 +8785,48 @@ struct OrtModelPackageApi {
                   _In_ OrtModelPackageComponentContext* context,
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtSession** session);
+
+  /** \brief Returns the number of ep_compatibility entries declared for a (component, variant) pair.
+   *
+   * Use together with ModelPackage_GetVariantEpCompatibility() to inspect the (ep, device, compatibility_string)
+   * tuples a package advertises support for before any EP has been selected.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantEpCompatibilityCount,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Out_ size_t* out_count);
+
+  /** \brief Get a single ep_compatibility entry from a (component, variant) pair.
+   *
+   * Each out parameter is optional. Any of `out_ep`, `out_device`, `out_compatibility_string` may be NULL if
+   * the caller doesn't need that field. When the underlying JSON omits a field, the returned pointer is NULL.
+   * String memory is owned by `ctx` and remains valid until the context is released.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantEpCompatibility,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _In_ size_t ep_idx,
+                  _Outptr_result_maybenull_ const char** out_ep,
+                  _Outptr_result_maybenull_ const char** out_device,
+                  _Outptr_result_maybenull_ const char** out_compatibility_string);
+
+  /** \brief Returns the consumer_metadata JSON object (from variant.json) of the selected variant,
+   * serialized to a string.
+   *
+   * Returns an empty string when the variant did not declare consumer_metadata. String memory is
+   * owned by `ctx` and remains valid until the context is released.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantConsumerMetadata,
+                  _In_ const OrtModelPackageComponentContext* ctx,
+                  _Outptr_ const char** out_json_str);
 
   // End of Version 1.27 - DO NOT MODIFY ABOVE
 };

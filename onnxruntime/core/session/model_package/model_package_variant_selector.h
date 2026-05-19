@@ -14,19 +14,19 @@ namespace onnxruntime {
 
 // forward declaration
 class ModelPackageComponentContext;
-struct ModelVariantInfo;
+struct VariantInfo;
 struct VariantModelInfo;
 struct VariantEpCompatibilityInfo;
 struct VariantSelectionEpInfo;
 
-class ModelVariantSelector {
+class VariantSelector {
  public:
-  ModelVariantSelector() = default;
+  VariantSelector() = default;
 
   // Select model variant (finest granularity).
   Status SelectVariant(const ModelPackageComponentContext& context,
                        gsl::span<const VariantSelectionEpInfo> ep_infos,
-                       std::optional<ModelVariantInfo>& selected_variant) const;
+                       std::optional<VariantInfo>& selected_variant) const;
 };
 
 }  // namespace onnxruntime

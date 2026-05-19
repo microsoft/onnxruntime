@@ -1360,6 +1360,136 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const Ort
   return *this;
 }
 
+// ModelPackageOptions
+inline ModelPackageOptions::ModelPackageOptions(const Env& env, const SessionOptions& session_options) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline ModelPackageOptions::ModelPackageOptions(const Env& env, ConstSessionOptions session_options) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+// ModelPackageContext
+inline ModelPackageContext::ModelPackageContext(const ORTCHAR_T* package_root) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageContext(package_root, &this->p_));
+}
+
+inline size_t ModelPackageContext::GetComponentCount() const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetComponentCount(this->p_, &count));
+  return count;
+}
+
+inline std::vector<std::string> ModelPackageContext::GetComponentNames() const {
+  const char* const* names = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetComponentNames(this->p_, &names, &count));
+  std::vector<std::string> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(names[i]);
+  }
+  return result;
+}
+
+inline size_t ModelPackageContext::GetVariantCount(const char* component_name) const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantCount(this->p_, component_name, &count));
+  return count;
+}
+
+inline std::vector<std::string> ModelPackageContext::GetVariantNames(const char* component_name) const {
+  const char* const* names = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantNames(this->p_, component_name, &names, &count));
+  std::vector<std::string> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(names[i]);
+  }
+  return result;
+}
+
+inline size_t ModelPackageContext::GetVariantEpCompatibilityCount(const char* component_name,
+                                                                  const char* variant_name) const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantEpCompatibilityCount(
+      this->p_, component_name, variant_name, &count));
+  return count;
+}
+
+inline void ModelPackageContext::GetVariantEpCompatibility(const char* component_name,
+                                                           const char* variant_name, size_t ep_idx,
+                                                           const char** out_ep, const char** out_device,
+                                                           const char** out_compatibility_string) const {
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantEpCompatibility(
+      this->p_, component_name, variant_name, ep_idx, out_ep, out_device, out_compatibility_string));
+}
+
+inline ModelPackageComponentContext ModelPackageContext::SelectComponent(
+    const char* component_name, const ModelPackageOptions& options) const {
+  OrtModelPackageComponentContext* out = nullptr;
+  ThrowOnError(GetModelPackageApi().SelectComponent(this->p_, component_name, options, &out));
+  return ModelPackageComponentContext{out};
+}
+
+// ModelPackageComponentContext
+inline std::basic_string<ORTCHAR_T> ModelPackageComponentContext::GetSelectedVariantFolderPath() const {
+  const ORTCHAR_T* path = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFolderPath(this->p_, &path));
+  return std::basic_string<ORTCHAR_T>{path};
+}
+
+inline size_t ModelPackageComponentContext::GetSelectedVariantFileCount() const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFileCount(this->p_, &count));
+  return count;
+}
+
+inline std::basic_string<ORTCHAR_T> ModelPackageComponentContext::GetSelectedVariantFilePath(size_t file_idx) const {
+  const ORTCHAR_T* path = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFilePath(this->p_, file_idx, &path));
+  return std::basic_string<ORTCHAR_T>{path};
+}
+
+inline void ModelPackageComponentContext::GetSelectedVariantFileSessionOptions(
+    size_t file_idx, const char* const** keys, const char* const** values, size_t* count) const {
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFileSessionOptions(
+      this->p_, file_idx, keys, values, count));
+}
+
+inline void ModelPackageComponentContext::GetSelectedVariantFileProviderOptions(
+    size_t file_idx, const char* const** keys, const char* const** values, size_t* count) const {
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFileProviderOptions(
+      this->p_, file_idx, keys, values, count));
+}
+
+inline std::string ModelPackageComponentContext::GetSelectedVariantConsumerMetadata() const {
+  const char* json_str = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantConsumerMetadata(this->p_, &json_str));
+  return (json_str != nullptr) ? std::string{json_str} : std::string{};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, nullptr, &out));
+  return Session{out};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env,
+                                                           const SessionOptions& session_options) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, session_options, &out));
+  return Session{out};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env,
+                                                           ConstSessionOptions session_options) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, session_options, &out));
+  return Session{out};
+}
+
 namespace detail {
 
 template <typename T>

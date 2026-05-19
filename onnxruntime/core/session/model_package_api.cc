@@ -105,7 +105,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageContext,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentModelCount,
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _Out_ size_t* out_count) {
   API_IMPL_BEGIN
@@ -113,7 +113,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentModelCount,
   if (ctx == nullptr || out_count == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_count must be non-null");
   }
-  *out_count = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentModelCount();
+  *out_count = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentCount();
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
@@ -123,7 +123,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentModelCount,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentModelNames,
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                     _Out_ size_t* out_count) {
@@ -135,7 +135,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentModelNames,
 
   gsl::span<const std::string> names;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentModelNames(names));
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentNames(names));
 
   static thread_local std::vector<const char*> name_ptrs;
   BuildCStringArray(names, name_ptrs, out_names, out_count);
@@ -149,7 +149,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentModelNames,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetModelVariantCount,
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantCount,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Out_ size_t* out_count) {
@@ -160,7 +160,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetModelVariantCount,
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetModelVariantCount(component_name, *out_count));
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantCount(component_name, *out_count));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
@@ -171,7 +171,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetModelVariantCount,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetModelVariantNames,
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantNames,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
@@ -185,7 +185,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetModelVariantNames,
 
   gsl::span<const std::string> variant_names;
   ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetModelVariantNames(component_name, variant_names));
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantNames(component_name, variant_names));
 
   static thread_local std::vector<const char*> variant_name_ptrs;
   BuildCStringArray(variant_names, variant_name_ptrs, out_variant_names, out_count);
@@ -216,9 +216,9 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::SelectComponent,
   const auto* cxx_options = reinterpret_cast<const onnxruntime::ModelPackageOptions*>(options);
 
   const auto& package_info = cxx_ctx->GetModelPackageInfo();
-  const ComponentModelInfo* component_info = nullptr;
-  for (const auto& component : package_info.component_models) {
-    if (component.component_model_name == component_name) {
+  const ComponentInfo* component_info = nullptr;
+  for (const auto& component : package_info.components) {
+    if (component.component_name == component_name) {
       component_info = &component;
       break;
     }
@@ -488,9 +488,15 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                       ORT_FAIL, "Session option keys/values size mismatch.");
 
     for (size_t i = 0; i < session_option_keys.size(); ++i) {
-      ORT_API_RETURN_IF_STATUS_NOT_OK(
-          effective_options_storage->value.config_options.AddConfigEntry(
-              session_option_keys[i].c_str(), session_option_values[i].c_str()));
+      // Dispatch through OrtApis::AddSessionOption so well-known typed keys (intra_op_num_threads,
+      // graph_optimization_level, ...) hit their dedicated setters; everything else falls through
+      // to AddSessionConfigEntry. See onnxruntime_c_api.h::AddSessionOption for the full table.
+      OrtStatus* st = OrtApis::AddSessionOption(&*effective_options_storage,
+                                                session_option_keys[i].c_str(),
+                                                session_option_values[i].c_str());
+      if (st != nullptr) {
+        return st;
+      }
     }
 
     // Merge variant/file provider options as flat key/value entries for the selected EP devices.
@@ -551,6 +557,103 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
 
 // ---------- API table ------------------------------------------------------
 
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibilityCount,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ const char* variant_name,
+                    _Out_ size_t* out_count) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr || out_count == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, variant_name, and out_count must be non-null");
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibilityCount(
+          component_name, variant_name, *out_count));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(variant_name);
+  ORT_UNUSED_PARAMETER(out_count);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibility,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_ const char* component_name,
+                    _In_ const char* variant_name,
+                    _In_ size_t ep_idx,
+                    _Outptr_result_maybenull_ const char** out_ep,
+                    _Outptr_result_maybenull_ const char** out_device,
+                    _Outptr_result_maybenull_ const char** out_compatibility_string) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "ctx, component_name, and variant_name must be non-null");
+  }
+
+  const onnxruntime::VariantEpCompatibilityInfo* info = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibilityInfo(
+          component_name, variant_name, ep_idx, info));
+
+  if (out_ep != nullptr) {
+    *out_ep = (info->ep.has_value()) ? info->ep->c_str() : nullptr;
+  }
+  if (out_device != nullptr) {
+    *out_device = (info->device.has_value()) ? info->device->c_str() : nullptr;
+  }
+  if (out_compatibility_string != nullptr) {
+    *out_compatibility_string = (info->compatibility_string.has_value())
+                                    ? info->compatibility_string->c_str()
+                                    : nullptr;
+  }
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(component_name);
+  ORT_UNUSED_PARAMETER(variant_name);
+  ORT_UNUSED_PARAMETER(ep_idx);
+  ORT_UNUSED_PARAMETER(out_ep);
+  ORT_UNUSED_PARAMETER(out_device);
+  ORT_UNUSED_PARAMETER(out_compatibility_string);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantConsumerMetadata,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _Outptr_ const char** out_json_str) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || out_json_str == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_json_str must be non-null");
+  }
+
+  const std::string* s = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)
+          ->GetSelectedVariantConsumerMetadata(s));
+  ORT_API_RETURN_IF(s == nullptr, ORT_FAIL, "Consumer metadata accessor returned null.");
+
+  *out_json_str = s->c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(out_json_str);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+// ---------- API table dispatch ---------------------------------------------
+
 static constexpr OrtModelPackageApi ort_model_package_api = {
     // Options
     &OrtModelPackageAPI::CreateModelPackageOptionsFromSessionOptions,
@@ -561,10 +664,10 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     &OrtModelPackageAPI::ReleaseModelPackageContext,
 
     // Generic metadata queries
-    &OrtModelPackageAPI::ModelPackage_GetComponentModelCount,
-    &OrtModelPackageAPI::ModelPackage_GetComponentModelNames,
-    &OrtModelPackageAPI::ModelPackage_GetModelVariantCount,
-    &OrtModelPackageAPI::ModelPackage_GetModelVariantNames,
+    &OrtModelPackageAPI::ModelPackage_GetComponentCount,
+    &OrtModelPackageAPI::ModelPackage_GetComponentNames,
+    &OrtModelPackageAPI::ModelPackage_GetVariantCount,
+    &OrtModelPackageAPI::ModelPackage_GetVariantNames,
 
     // Variant selection and queries
     &OrtModelPackageAPI::SelectComponent,
@@ -577,6 +680,14 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
 
     // Session
     &OrtModelPackageAPI::CreateSession,
+
+    // Pre-selection EP compatibility traversal (added after the initial 1.27 slots; appended to
+    // keep existing offsets stable).
+    &OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibilityCount,
+    &OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibility,
+
+    // Post-selection variant queries.
+    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantConsumerMetadata,
 
     // End of Version 1.27 - DO NOT MODIFY ABOVE
 };
