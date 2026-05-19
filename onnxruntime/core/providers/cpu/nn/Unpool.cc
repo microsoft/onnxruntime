@@ -59,7 +59,10 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   // Get pooled index tensor
   const auto* I = context->Input<Tensor>(1);
-  if (I == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
+  if (I == nullptr) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "MaxUnpool requires a pooled indices tensor as input 1, but it was not provided.");
+  }
   const TensorShape& I_shape = I->Shape();
   const auto* I_data = I->Data<int64_t>();
 
@@ -74,6 +77,8 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   // For feature dims calculate reversing the formula used for MaxPool
   for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
+    ORT_RETURN_IF_NOT(X_shape[dim + 2] >= 1,
+                      "Spatial dimension ", dim + 2, " of input X must be >= 1, got ", X_shape[dim + 2]);
     int64_t dim_value = (X_shape[dim + 2] - 1) * strides_[dim] -
                         (pads_[dim] + pads_[kernel_shape_.size() + dim]) + kernel_shape_[dim];
     ORT_RETURN_IF_NOT(dim_value > 0,

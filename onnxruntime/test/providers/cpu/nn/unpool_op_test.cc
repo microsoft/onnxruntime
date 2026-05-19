@@ -509,7 +509,7 @@ TEST(UnpoolTest, MaxUnpoolInvalidInputRank0) {
   OpTester test("MaxUnpool", 11);
 
   // Disable shape inference so we reach the kernel validation.
-  test.SetAddShapeToTensorData(false);
+  test.AddShapeToTensorData(false);
 
   test.AddAttribute("strides", std::vector<int64_t>{2});
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
@@ -539,7 +539,7 @@ TEST(UnpoolTest, MaxUnpoolInvalidInputRank2) {
   OpTester test("MaxUnpool", 11);
 
   // Disable shape inference so we reach the kernel validation.
-  test.SetAddShapeToTensorData(false);
+  test.AddShapeToTensorData(false);
 
   test.AddAttribute("strides", std::vector<int64_t>{2});
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
@@ -592,7 +592,7 @@ TEST(UnpoolTest, MaxUnpoolOutputShapeWrongElementCount) {
   OpTester test("MaxUnpool", 11);
 
   // Disable shape inference so we reach the kernel validation.
-  test.SetAddShapeToTensorData(false);
+  test.AddShapeToTensorData(false);
 
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
   test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
@@ -625,7 +625,7 @@ TEST(UnpoolTest, MaxUnpoolOutputShapeWrongElementCount) {
 TEST(UnpoolTest, MaxUnpoolInvalidPadsSize) {
   OpTester test("MaxUnpool", 11);
 
-  test.SetAddShapeToTensorData(false);
+  test.AddShapeToTensorData(false);
 
   test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
@@ -655,7 +655,7 @@ TEST(UnpoolTest, MaxUnpoolInvalidPadsSize) {
 TEST(UnpoolTest, MaxUnpoolNegativeComputedDimension) {
   OpTester test("MaxUnpool", 11);
 
-  test.SetAddShapeToTensorData(false);
+  test.AddShapeToTensorData(false);
 
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
   test.AddAttribute("strides", std::vector<int64_t>{1});
@@ -709,19 +709,17 @@ TEST(UnpoolTest, MaxUnpoolOutputShapeSmallerThanMinimum) {
            "output_shape is smaller than minimum required",
            {kDmlExecutionProvider});
 }
-}  // namespace test
-}  // namespace onnxruntime
 
 #ifdef USE_DML
-namespace onnxruntime {
-namespace test {
-
-// DML-specific tests: verify that DML rejects invalid inputs with its own error messages.
+// DML-specific tests: verify that DML rejects invalid inputs.
+// Empty expected error string is intentional — DML produces its own error messages
+// that differ from the CPU kernel, and we cannot capture them without a DML device.
+// These tests confirm that invalid inputs are rejected rather than causing undefined behavior.
 
 TEST(UnpoolTest, MaxUnpoolInvalidInputRank2_DML) {
   OpTester test("MaxUnpool", 11);
 
-  test.SetAddShapeToTensorData(false);
+  test.AddShapeToTensorData(false);
 
   test.AddAttribute("strides", std::vector<int64_t>{2});
   test.AddAttribute("kernel_shape", vector<int64_t>{2});
@@ -747,7 +745,7 @@ TEST(UnpoolTest, MaxUnpoolInvalidInputRank2_DML) {
 TEST(UnpoolTest, MaxUnpoolOutputShapeWrongElementCount_DML) {
   OpTester test("MaxUnpool", 11);
 
-  test.SetAddShapeToTensorData(false);
+  test.AddShapeToTensorData(false);
 
   test.AddAttribute("strides", std::vector<int64_t>{2, 2});
   test.AddAttribute("kernel_shape", vector<int64_t>{2, 2});
@@ -797,7 +795,7 @@ TEST(UnpoolTest, MaxUnpoolNegativeIndex_DML) {
   dml_ep.push_back(DefaultDmlExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &dml_ep);
 }
+#endif  // USE_DML
 
 }  // namespace test
 }  // namespace onnxruntime
-#endif  // USE_DML
