@@ -1109,36 +1109,6 @@ inline std::pair<int8_t, int8_t> UnpackInt4(uint8_t packed) {
   return {even, odd};
 }
 
-// Quantize float data to INT8 per-tensor. Returns scale.
-float QuantizeInt8PerTensor(const std::vector<float>& data, std::vector<int8_t>& quantized) {
-  quantized.resize(data.size());
-  float amax = 0.0f;
-  for (auto v : data) amax = std::max(amax, std::fabs(v));
-  float scale = (amax > 1e-6f) ? (amax / 127.0f) : 1.0f;
-  for (size_t i = 0; i < data.size(); i++) {
-    quantized[i] = static_cast<int8_t>(std::round(std::clamp(data[i] / scale, -128.0f, 127.0f)));
-  }
-  return scale;
-}
-
-// Dequantize INT8 per-tensor.
-void DequantizeInt8PerTensor(const std::vector<int8_t>& quantized, std::vector<float>& output, float scale) {
-  output.resize(quantized.size());
-  for (size_t i = 0; i < quantized.size(); i++) {
-    output[i] = static_cast<float>(quantized[i]) * scale;
-  }
-}
-
-// Dequantize INT4 per-tensor from packed format.
-void DequantizeInt4PerTensor(const std::vector<uint8_t>& packed, std::vector<float>& output, float scale) {
-  output.resize(packed.size() * 2);
-  for (size_t i = 0; i < packed.size(); i++) {
-    auto [even, odd] = UnpackInt4(packed[i]);
-    output[i * 2] = static_cast<float>(even) * scale;
-    output[i * 2 + 1] = static_cast<float>(odd) * scale;
-  }
-}
-
 // Reference FP32 GQA: compute attention output = softmax(Q*K^T / sqrt(d)) * V
 // This is a simplified reference for prompt-only (no past), single batch.
 // Q: [B, num_heads, seq_len, head_size]
