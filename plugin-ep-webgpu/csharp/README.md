@@ -61,29 +61,6 @@ python pack_nuget.py --version 0.1.0-dev `
 The package version is supplied to `pack_nuget.py` via `--version`. In the packaging pipeline, the release or
 pre-release version is derived from [`plugin-ep-webgpu/VERSION_NUMBER`](../VERSION_NUMBER).
 
-## Inspecting the Package
-
-The `.nupkg` is a ZIP file. To verify its contents:
-
-```powershell
-Expand-Archive nuget_output/Microsoft.ML.OnnxRuntime.EP.WebGpu.0.1.0-dev.nupkg `
-  -DestinationPath nuget_output/inspect -Force
-
-Get-ChildItem nuget_output/inspect -Recurse | Select-Object FullName
-```
-
-Expected layout inside the package:
-
-```
-lib/netstandard2.0/Microsoft.ML.OnnxRuntime.EP.WebGpu.dll
-runtimes/win-x64/native/onnxruntime_providers_webgpu.dll
-runtimes/win-x64/native/dxil.dll
-runtimes/win-x64/native/dxcompiler.dll
-runtimes/win-arm64/native/...
-runtimes/linux-x64/native/libonnxruntime_providers_webgpu.so
-runtimes/osx-arm64/native/libonnxruntime_providers_webgpu.dylib
-```
-
 ## Testing the Package
 
 The test app registers the WebGPU EP, creates a session, runs a simple Mul model, and validates the output.

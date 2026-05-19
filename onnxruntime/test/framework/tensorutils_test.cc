@@ -21,6 +21,7 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include "core/platform/windows/env.h"
 #endif
 
 using namespace ::onnxruntime::utils;
@@ -714,6 +715,125 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
+
+#if defined(_WIN32)
+// Direct tests for the Windows AppContainer fallback used by
+// WindowsEnv::GetWeaklyCanonicalPath. The AppContainer trigger itself can't be
+// reproduced in a unit test environment; see microsoft/onnxruntime#28508.
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ExistingDirectory) {
+  std::filesystem::path canonical;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, canonical));
+
+  EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
+
+  std::error_code ec;
+  EXPECT_TRUE(std::filesystem::exists(canonical, ec)) << "ec=" << ec.message();
+}
+
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ExistingFile) {
+  CreateEmptyFile(base_dir_ / "data.bin");
+
+  std::filesystem::path canonical;
+  ASSERT_TRUE(
+      onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_ / "data.bin", canonical));
+
+  EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
+
+  std::error_code ec;
+  EXPECT_TRUE(std::filesystem::exists(canonical, ec)) << "ec=" << ec.message();
+  EXPECT_TRUE(std::filesystem::is_regular_file(canonical, ec)) << "ec=" << ec.message();
+}
+
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_NonExistentLeafLexicallyAppended) {
+  const std::filesystem::path leaf{L"does_not_exist.bin"};
+  std::filesystem::path canonical;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_ / leaf, canonical));
+
+  EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
+  EXPECT_EQ(canonical.filename(), leaf);
+
+  // The canonicalized parent must be a path-component prefix of the result so that the
+  // containment check in ValidateExternalDataPath still works.
+  std::filesystem::path parent_canonical;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, parent_canonical));
+  auto [parent_end, full_it] = std::mismatch(parent_canonical.begin(), parent_canonical.end(),
+                                             canonical.begin(), canonical.end());
+  EXPECT_EQ(parent_end, parent_canonical.end())
+      << "parent: " << parent_canonical << " full: " << canonical;
+}
+
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_NonExistentMiddleAndLeaf) {
+  std::filesystem::path canonical;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(
+      base_dir_ / L"missing_dir" / L"data.bin", canonical));
+
+  EXPECT_THAT(canonical.wstring(), testing::StartsWith(L"\\\\?\\GLOBALROOT\\Device\\"));
+  EXPECT_EQ(canonical.filename(), std::filesystem::path{L"data.bin"});
+  EXPECT_EQ(canonical.parent_path().filename(), std::filesystem::path{L"missing_dir"});
+}
+
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_AllNonExistentReturnsFalse) {
+  // Synthetic absolute path on a non-existent volume. The fallback must return false so
+  // the caller surfaces the original weakly_canonical error rather than substituting an
+  // unverified path.
+  const std::filesystem::path bogus{L"\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\nope\\data.bin"};
+  std::filesystem::path canonical;
+  EXPECT_FALSE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(bogus, canonical));
+}
+
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_MatchesWeaklyCanonicalAtFile) {
+  // Compare via std::filesystem::equivalent: the fallback returns the NT form
+  // (\\?\GLOBALROOT\Device\HarddiskVolumeN\...) while weakly_canonical returns the DOS
+  // form (C:\...), but both must point at the same file.
+  CreateEmptyFile(base_dir_ / "compare.bin");
+  const auto target = base_dir_ / "compare.bin";
+
+  std::error_code ec;
+  const auto reference = std::filesystem::weakly_canonical(target, ec);
+  ASSERT_FALSE(ec) << ec.message();
+
+  std::filesystem::path fallback;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(target, fallback));
+
+  EXPECT_TRUE(std::filesystem::equivalent(reference, fallback, ec))
+      << "reference=" << reference << " fallback=" << fallback << " ec=" << ec.message();
+}
+
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ResolvesSymlinks) {
+  const auto target = base_dir_ / "symlink_target.bin";
+  const auto link = base_dir_ / "symlink_link.bin";
+  try {
+    std::ofstream{target};
+    std::filesystem::create_symlink(target, link);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Symlink creation not supported in this environment: " << e.what();
+  }
+
+  std::filesystem::path link_canonical;
+  std::filesystem::path target_canonical;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(link, link_canonical));
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(target, target_canonical));
+
+  std::error_code ec;
+  EXPECT_TRUE(std::filesystem::equivalent(link_canonical, target_canonical, ec))
+      << "link=" << link_canonical << " target=" << target_canonical << " ec=" << ec.message();
+}
+
+TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ResolvesDotDot) {
+  CreateDirectories(base_dir_ / "sub_for_dotdot");
+
+  std::filesystem::path canonical;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(
+      base_dir_ / "sub_for_dotdot" / "..", canonical));
+
+  std::filesystem::path base_canonical;
+  ASSERT_TRUE(onnxruntime::internal::WeaklyCanonicalPathNtVolumeFallbackForTesting(base_dir_, base_canonical));
+
+  std::error_code ec;
+  EXPECT_TRUE(std::filesystem::equivalent(canonical, base_canonical, ec))
+      << "canonical=" << canonical << " base=" << base_canonical << " ec=" << ec.message();
+}
+#endif  // defined(_WIN32)
 
 TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
   // Case 1: Annotation exists

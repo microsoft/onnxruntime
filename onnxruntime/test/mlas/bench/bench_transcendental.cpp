@@ -19,7 +19,9 @@ constexpr float kSiluMaxValue = 20.0f;
 constexpr float kGeluMinValue = -10.0f;
 constexpr float kGeluMaxValue = 10.0f;
 constexpr float kInvSqrt2 = 0.7071067811865475244f;
+#if defined(MLAS_TARGET_AMD64)
 constexpr int64_t kFusedBytesPerElement = 2;
+#endif
 constexpr int64_t kSiluUnfusedBytesPerElement = 5;
 constexpr int64_t kGeluUnfusedBytesPerElement = 7;
 
