@@ -124,7 +124,8 @@ static OrtStatus* ORT_API_CALL EpContextReadCallbackFailsAfterAlloc(void* state,
                                                                     size_t* data_size) {
   const auto* error_state = static_cast<const EpContextCallbackErrorState*>(state);
   *data_size = 4;
-  if (OrtStatus* alloc_status = Ort::GetApi().AllocatorAlloc(allocator, *data_size, buffer); alloc_status != nullptr) {
+  OrtStatus* alloc_status = Ort::GetApi().AllocatorAlloc(allocator, *data_size, buffer);
+  if (alloc_status != nullptr) {
     return alloc_status;
   }
 
