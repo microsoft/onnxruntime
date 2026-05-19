@@ -1377,7 +1377,7 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
         return false;
     }
 
-    if (Dimensions != 2 || BatchCount != 1 || GroupCount != 1 || Beta != 0.0f) {
+    if (Dimensions != 2 || BatchCount != 1 || Beta != 0.0f) {
         return false;
     }
 
@@ -1395,7 +1395,12 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
         return false;
     }
 
-    if (FilterCount <= 1 || KernelShape[0] < 3 || KernelShape[1] < 3) {
+    const bool is_depthwise = GroupCount > 1 && FilterCount == 1;
+    if (GroupCount > 1 && !is_depthwise) {
+        return false;
+    }
+
+    if (!is_depthwise && (FilterCount <= 1 || KernelShape[0] < 3 || KernelShape[1] < 3)) {
         return false;
     }
 

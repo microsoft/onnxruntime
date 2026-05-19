@@ -550,15 +550,38 @@ static void ConvolveSme(const size_t co, //channels out
     dim[1] = MlasDivRoundup(m, m_step);
     dim[2] = MlasDivRoundup(co, n_step);
 
+    const bool grouped_channels_last = input_is_channels_last && groups > 1;
+    const size_t input_channels_total = ci * groups;
+    const size_t output_channels_total = co * groups;
+    const float* input_base = in;
+    float* output_base = out;
+
     for (size_t g = 0; g < groups; ++g) {
+        const float* input_group = in;
+        std::vector<float> input_group_buffer;
+        if (grouped_channels_last) {
+            input_group_buffer.resize(ih * iw * ci);
+            for (size_t pixel = 0; pixel < ih * iw; ++pixel) {
+                const float* src = input_base + pixel * input_channels_total + g * ci;
+                std::copy_n(src, ci, input_group_buffer.data() + pixel * ci);
+            }
+            input_group = input_group_buffer.data();
+        }
 
         auto result = out;
         const bool need_transpose = (!input_is_channels_last) && (co > 1);
+        const bool use_temp_output = grouped_channels_last || need_transpose;
         if (need_transpose) {
             result = tmp_mlas_aligned;
         }
+        if (grouped_channels_last) {
+            result = tmp_mlas_aligned;
+        }
 
-        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, in, input_is_channels_last, ThreadPool);
+        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding,
+                                      input_group,
+                                      input_is_channels_last,
+                                      ThreadPool);
         const std::byte* rhs_data = packed_rhs ? packed_rhs + g * packed_rhs_group_stride : nullptr;
         std::unique_ptr<std::byte[]> rhs_storage;
         if (rhs_data == nullptr) {
@@ -613,13 +636,26 @@ static void ConvolveSme(const size_t co, //channels out
             );
         });
 
+        if (grouped_channels_last) {
+            for (size_t pixel = 0; pixel < m; ++pixel) {
+                float* dst = output_base + pixel * output_channels_total + g * co;
+                const float* src = result + pixel * co;
+                std::copy_n(src, co, dst);
+            }
+        }
+
         if (need_transpose) {
             //Note: this could be absorbed into post conv activation
             MlasTranspose(tmp_mlas_aligned, out, m, co, ThreadPool);
         }
 
-        in += ci * ih * iw;
-        out += m * co;
+        if (!grouped_channels_last) {
+            in += ci * ih * iw;
+            out += use_temp_output ? 0 : m * co;
+            if (need_transpose) {
+                out += m * co;
+            }
+        }
         weights += co * ci * kh * kw;
         if(bias){
             bias += co;
