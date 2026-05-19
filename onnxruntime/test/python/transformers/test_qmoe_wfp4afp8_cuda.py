@@ -280,7 +280,9 @@ class TestQMoEWFP4AFP8(unittest.TestCase):
         opts = onnxruntime.SessionOptions()
         opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         try:
-            session = onnxruntime.InferenceSession(onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")])
+            session = onnxruntime.InferenceSession(
+                onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+            )
         except Exception as e:
             msg = str(e)
             if "FP4" in msg or "ENABLE_FP4" in msg or "wfp4afp8" in msg or "SM" in msg:
