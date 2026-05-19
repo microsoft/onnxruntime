@@ -3569,7 +3569,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.NhwcFusedConv"></a><a name="com.microsoft.nhwcfusedconv">**com.microsoft.NhwcFusedConv**</a>
 
   NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
-  Only has fp16 implementation as of 2023/04/15.
 
 #### Version
 
@@ -3600,26 +3599,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd></dd>
+<dd>Input activation tensor in channels-last layout. For 2D convolution this is [N, H, W, C], where N is batch size, H/W are spatial dimensions, and C is the number of input channels.</dd>
 <dt><tt>W</tt> : T</dt>
-<dd></dd>
+<dd>Convolution weight tensor in the standard ONNX Conv filter layout [M, C/group, kH, kW], where M is the number of output channels.</dd>
 <dt><tt>B</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional 1D bias tensor of shape [M].</dd>
 <dt><tt>Z</tt> (optional) : T</dt>
-<dd>Tensor to be added to the output, must be the same shape and format as the output tensor.</dd>
+<dd>Optional residual/add tensor in the same channels-last layout and shape as the output tensor Y. For 2D convolution this is [N, out_H, out_W, M].</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd></dd>
+<dd>Output tensor in channels-last layout. For 2D convolution this is [N, out_H, out_W, M], where M is the number of output channels.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain input and output types to float tensors</dd>
 </dl>
 
@@ -4701,7 +4700,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
         The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
           dequantized_weight = (quantized_weight - zero_point) * scale
-        When zero_point is not provided, the default value is 2^(bits-1): 8 for 4 bits, 128 for 8 bits.
+        When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
   
         If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
@@ -4737,7 +4736,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). If provided, both hidden_size and inter_size must be divisible by the block size. Otherwise, there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
-<dd>Number of bits used in quantized weights. Default is 4 bits</dd>
+<dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
