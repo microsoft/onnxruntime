@@ -9,9 +9,9 @@ redirect_from: /docs/reference/execution-providers/WebGPU-ExecutionProvider
 # WebGPU Execution Provider
 {: .no_toc }
 
-The WebGPU Execution Provider enables hardware-accelerated inference of ONNX models on a wide range of GPUs by targeting the [WebGPU](https://www.w3.org/TR/webgpu/) API. On native platforms it uses [Dawn](https://dawn.googlesource.com/dawn) (Google's WebGPU implementation), which in turn dispatches to D3D12 on Windows, Vulkan on Linux/Android, and Metal on macOS/iOS. The same execution provider also powers the `webgpu` backend of [ONNX Runtime Web](../get-started/with-javascript/web.md) inside the browser.
+The WebGPU Execution Provider enables hardware-accelerated inference of ONNX models on a wide range of GPUs by targeting the [WebGPU](https://www.w3.org/TR/webgpu/) API. On native platforms it uses [Dawn](https://dawn.googlesource.com/dawn) (Google's WebGPU implementation), which in turn dispatches to D3D12, Vulkan, or Metal, depending on the platform. The same execution provider also powers the `webgpu` backend of [ONNX Runtime Web](../get-started/with-javascript/web.md) inside the browser.
 
-Compared to other GPU execution providers, WebGPU EP aims to be cross-vendor and cross-platform: a single build can run on NVIDIA, AMD, Intel, Apple, and Qualcomm GPUs through the OS's native graphics API, without requiring a vendor-specific SDK on the end user's machine.
+Compared to other GPU execution providers, WebGPU EP aims to be cross-vendor and cross-platform: a single build can target any GPU supported by the platform's native graphics API, without requiring a vendor-specific SDK on the end user's machine.
 
 {: .note }
 > If you are using ONNX Runtime Web (JavaScript/TypeScript in the browser), see the dedicated tutorial [Using the WebGPU Execution Provider](../tutorials/web/ep-webgpu.md) for browser-specific topics such as `onnxruntime-web/webgpu` imports, `Tensor.fromGpuBuffer`, and `env.webgpu` flags. The rest of this page focuses on the native (C/C++/Python/C#) WebGPU EP.
@@ -24,12 +24,11 @@ Compared to other GPU execution providers, WebGPU EP aims to be cross-vendor and
 
 ## Install
 
-Two flavors of native WebGPU EP are available:
+The native WebGPU EP is distributed as a [plugin EP](./plugin-ep-libraries/index.md): a shared library that is registered at runtime alongside a compatible core ONNX Runtime install.
 
-- **Plugin EP packages (recommended).** Distributed separately and registered at runtime alongside any compatible core ONNX Runtime install.
-  - Python: `pip install onnxruntime onnxruntime-ep-webgpu`
-  - .NET: add a reference to `Microsoft.ML.OnnxRuntime.EP.WebGpu` together with your existing `Microsoft.ML.OnnxRuntime` package.
-- **Static-library Python wheel.** A single wheel with the WebGPU EP built into ONNX Runtime: `pip install onnxruntime-webgpu` (built from source with `--use_webgpu` / `--wheel_name_suffix=webgpu`). Use this when you need a single artifact and only require basic EP registration.
+- Python: `pip install onnxruntime onnxruntime-ep-webgpu`
+- .NET: add a reference to `Microsoft.ML.OnnxRuntime.EP.WebGpu` together with your existing `Microsoft.ML.OnnxRuntime` package.
+- C/C++: consume the plugin EP shared library (`onnxruntime_providers_webgpu.{dll,so,dylib}`) directly. It ships in the runtime files of the NuGet package above and can also be built from source.
 
 For ONNX Runtime Web (browser), no separate install is required beyond the `onnxruntime-web` package — see the [JavaScript quickstart](../get-started/with-javascript/web.md).
 
@@ -45,43 +44,37 @@ The WebGPU EP requires a GPU and driver that support one of Dawn's native backen
 | macOS    | Metal |
 | iOS      | Metal |
 
-Most discrete and integrated GPUs released in the last several years meet these requirements. On Windows the GPU/driver must support D3D12 (the same baseline as the DirectML EP). In the browser, the underlying browser must implement WebGPU; see the [WebGPU support matrix](../get-started/with-javascript/web.md#supported-versions) for ORT Web specifics and [webgpu.io/status](https://webgpu.io/status/) for browser availability.
+In the browser, the underlying browser must implement WebGPU; see the [WebGPU support matrix](../get-started/with-javascript/web.md#supported-versions) for ORT Web specifics and [webgpu.io/status](https://webgpu.io/status/) for browser availability.
 
 ## Build from source
 
 Use `tools/ci_build/build.py` with the `--use_webgpu` flag. See the [BUILD page](../build/eps.md) for the general build workflow.
 
 ```bash
-# Minimal build with WebGPU EP (static-library link of Dawn, the default)
-python tools/ci_build/build.py --build_dir build/RelWithDebInfo --config RelWithDebInfo \
-    --build_shared_lib --parallel --use_webgpu
+# Build WebGPU plugin EP
+python tools/ci_build/build.py --build_dir build/webgpu_plugin_ep --config RelWithDebInfo \
+    --build_shared_lib --use_webgpu shared_lib
 ```
 
 ### Build flags
 
 | Flag | Description |
 |------|-------------|
-| `--use_webgpu [static_lib\|shared_lib]` | Enable the WebGPU EP. `static_lib` (the default if no value is given) builds the WebGPU EP into the main `onnxruntime` library. `shared_lib` builds the WebGPU EP as a separate [plugin EP library](./plugin-ep-libraries/index.md) (`onnxruntime_USE_EP_API_ADAPTERS=ON`) and is what produces the `onnxruntime_providers_webgpu.{dll,so,dylib}` shipped in the `onnxruntime-ep-webgpu` / `Microsoft.ML.OnnxRuntime.EP.WebGpu` packages. `shared_lib` is not supported for WebAssembly builds. Sets the CMake flag `onnxruntime_USE_WEBGPU=ON`. Dawn linkage is controlled separately (see `--use_external_dawn`). |
+| `--use_webgpu [static_lib\|shared_lib]` | Enable the WebGPU EP. `static_lib` (the default if no value is given) builds the WebGPU EP into the main `onnxruntime` library. `shared_lib` builds the WebGPU EP as a separate [plugin EP library](./plugin-ep-libraries/index.md) (`onnxruntime_USE_EP_API_ADAPTERS=ON`) and is what produces the `onnxruntime_providers_webgpu.{dll,so,dylib}` shipped in the `onnxruntime-ep-webgpu` / `Microsoft.ML.OnnxRuntime.EP.WebGpu` packages. `shared_lib` is not supported for WebAssembly builds. Sets the CMake flag `onnxruntime_USE_WEBGPU=ON`. |
 | `--use_external_dawn` | Link against an externally-provided Dawn instead of building Dawn from source. Requires `--use_webgpu`. Sets `onnxruntime_USE_EXTERNAL_DAWN=ON`. |
 | `--wgsl_template {static,dynamic}` | Select the WGSL shader-template generator. `static` (default) bakes shader sources in at build time; `dynamic` generates them at runtime. |
 | `--enable_pix_capture` | Windows only. Build with PIX GPU debugger support. Requires `--use_webgpu`. |
-| `--use_jsep` | Enables the JavaScript Execution Provider used by ORT Web's pre-existing WebGPU/WebNN bridge. This is a different EP from `--use_webgpu`; see [Notes](#notes) below. |
 
 {: .note }
 > Building from a fully isolated network is not currently supported for native WebGPU because Dawn must be fetched during the build. See [Dependencies](../build/dependencies.md) for context.
 
 ## Usage
 
-There are two ways to add the WebGPU EP to a session:
+The WebGPU EP is added to a session via the [plugin EP](./plugin-ep-libraries/index.md) APIs: the shared library is registered at runtime with `register_execution_provider_library` / `RegisterExecutionProviderLibrary`, and one or more `OrtEpDevice` entries are then attached to a `SessionOptions`. The `onnxruntime-ep-webgpu` (Python) and `Microsoft.ML.OnnxRuntime.EP.WebGpu` (.NET) packages bundle the shared library and provide helpers that return its path and the EP name to use.
 
-1. **Plugin EP packages (recommended).** The plugin EP shared library is registered at runtime via `register_execution_provider_library` / `RegisterExecutionProviderLibrary`. The `onnxruntime-ep-webgpu` (Python) and `Microsoft.ML.OnnxRuntime.EP.WebGpu` (.NET) packages bundle the shared library and provide helpers that return its path and the EP name to use.
-2. **Static-library build (short-name API).** When ONNX Runtime is built with `--use_webgpu` (`static_lib`) the WebGPU EP is built into the main `onnxruntime` library and can be added through the generic `AppendExecutionProvider("WebGPU", { ... })` call. Provider options are passed as a string→string map (see [Configuration options](#configuration-options) for the full list of keys).
+See [Using a Plugin Execution Provider Library](./plugin-ep-libraries/usage.md) for the full cross-EP idiom, including library lifetime and per-language API references.
 
-In both cases the underlying EP and option keys are the same. The plugin EP path is the recommended approach going forward; the short-name API is most useful for C/C++/C# applications that build ONNX Runtime themselves.
-
-### Plugin EP (recommended)
-
-#### Python
+### Python
 
 ```python
 import onnxruntime as ort
@@ -102,7 +95,7 @@ sess_options.add_provider_for_devices(webgpu_devices, {
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
 
-#### C# / .NET
+### C# / .NET
 
 ```csharp
 using Microsoft.ML.OnnxRuntime;
@@ -132,7 +125,7 @@ sessionOptions.AppendExecutionProvider(env, new[] { webGpuDevice },
 using var session = new InferenceSession("model.onnx", sessionOptions);
 ```
 
-#### C++
+### C++
 
 The C++ pattern is the generic plugin EP idiom — the host application is responsible for locating the `onnxruntime_providers_webgpu.{dll,so,dylib}` shared library (from the NuGet package's runtime files, a manual build, etc.):
 
@@ -162,62 +155,15 @@ session_options.AppendExecutionProvider_V2(env, selected, ep_options);
 Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 ```
 
-See [Using a Plugin Execution Provider Library](./plugin-ep-libraries/usage.md) for the full cross-EP idiom, including library lifetime and per-language API references.
-
-### Static-library build (short-name API)
-
-For applications using a `--use_webgpu` (static-lib) build of ONNX Runtime, the WebGPU EP can also be registered through the generic `AppendExecutionProvider` API. There is no dedicated `OrtSessionOptionsAppendExecutionProvider_WebGPU` function.
-
-#### C++
-
-```cpp
-#include "onnxruntime_cxx_api.h"
-
-Ort::SessionOptions session_options;
-
-std::unordered_map<std::string, std::string> provider_options;
-provider_options["preferredLayout"] = "NHWC";          // optional
-provider_options["enableGraphCapture"] = "1";          // optional
-
-session_options.AppendExecutionProvider("WebGPU", provider_options);
-
-Ort::Session session(env, model_path, session_options);
-```
-
-#### C
-
-```c
-const char* keys[]   = {"preferredLayout", "enableGraphCapture"};
-const char* values[] = {"NHWC", "1"};
-OrtStatus* status = g_ort->SessionOptionsAppendExecutionProvider(
-    session_options, "WebGPU", keys, values, 2);
-```
-
-#### C#
-
-```csharp
-using var sessionOptions = new SessionOptions();
-var providerOptions = new Dictionary<string, string>
-{
-    ["preferredLayout"] = "NHWC",
-    ["enableGraphCapture"] = "1",
-};
-sessionOptions.AppendExecutionProvider("WebGPU", providerOptions);
-
-using var session = new InferenceSession("model.onnx", sessionOptions);
-```
-
-For Python, use the plugin EP path shown above.
-
 ### JavaScript / TypeScript (ONNX Runtime Web)
 
 For browser usage, import `onnxruntime-web/webgpu` and list `'webgpu'` in `executionProviders`. See [Using the WebGPU Execution Provider](../tutorials/web/ep-webgpu.md) for the complete guide, including IO binding with GPU buffers.
 
 ## Configuration options
 
-Provider options are read from the session's config entries with the key prefix `ep.webgpuexecutionprovider.*`. When set via `AppendExecutionProvider("WebGPU", { ... })`, supply the short names below (the `ep.webgpuexecutionprovider.` prefix is added internally).
+Provider options are read from the session's config entries with the key prefix `ep.webgpuexecutionprovider.*`. Use the short names below (without the prefix) when passing the provider options to the plugin EP APIs shown in [Usage](#usage); the prefix is added internally.
 
-### Execution-provider options
+### General options
 
 | Option | Allowed values | Description |
 |--------|----------------|-------------|
@@ -267,7 +213,7 @@ Modes, in increasing order of caching aggressiveness:
 
 ## Graph capture
 
-When a model has fully static shapes and all kernels run on WebGPU, setting `enableGraphCapture` to `1` records the WebGPU command sequence during an early run (after a configurable warm-up period) and replays the recorded commands on subsequent runs, significantly reducing per-run CPU overhead.
+When a model has fully static shapes and all kernels run on WebGPU, setting `enableGraphCapture` to `1` records the WebGPU command sequence during an initial run and replays the recorded commands on subsequent runs, significantly reducing per-run CPU overhead.
 
 If any kernel falls back to CPU, or any input shape changes between runs, graph capture may fail or fall back to regular execution. In that case, leave `enableGraphCapture` unset or set it to `0`.
 
@@ -297,4 +243,3 @@ On Windows the WebGPU EP dispatches to D3D12 through Dawn, while the [DirectML E
 - [Dawn — Google's WebGPU implementation](https://dawn.googlesource.com/dawn)
 - [Using the WebGPU Execution Provider (ORT Web tutorial)](../tutorials/web/ep-webgpu.md)
 - [Build ONNX Runtime Web](../build/web.md)
-- [WebGPU browser support status](https://webgpu.io/status/)
