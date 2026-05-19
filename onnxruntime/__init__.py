@@ -29,6 +29,9 @@ try:
         GraphOptimizationLevel,  # noqa: F401
         LoraAdapter,  # noqa: F401
         ModelMetadata,  # noqa: F401
+        ModelPackageComponentContext,  # noqa: F401
+        ModelPackageContext,  # noqa: F401
+        ModelPackageOptions,  # noqa: F401
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
@@ -46,9 +49,6 @@ try:
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
         OrtSyncStream,  # noqa: F401
-        ModelPackageContext,  # noqa: F401
-        ModelPackageOptions,  # noqa: F401
-        ModelPackageComponentContext,  # noqa: F401
         RunOptions,  # noqa: F401
         SessionIOBinding,  # noqa: F401
         SessionOptions,  # noqa: F401
@@ -150,7 +150,7 @@ def _extract_cuda_major_version(version_str: str) -> str:
     Returns:
         Major version as string, or "12" if parsing fails
     """
-    return version_str.split(".")[0] if version_str else "12"
+    return version_str.split(".", maxsplit=1)[0] if version_str else "12"
 
 
 def _get_cufft_version(cuda_major: str) -> str:

@@ -175,8 +175,8 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
 }  // namespace
 
 Status VariantSelector::SelectVariant(const ModelPackageComponentContext& context,
-                                           gsl::span<const VariantSelectionEpInfo> ep_infos,
-                                           std::optional<VariantInfo>& selected_variant) const {
+                                      gsl::span<const VariantSelectionEpInfo> ep_infos,
+                                      std::optional<VariantInfo>& selected_variant) const {
   selected_variant.reset();
 
   std::vector<VariantInfo> variants = context.GetVariantInfos();

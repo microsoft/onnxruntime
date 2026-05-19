@@ -1817,8 +1817,8 @@ struct ModelPackageOptions : detail::Base<OrtModelPackageOptions> {
 
   explicit ModelPackageOptions(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used.
 
-  ModelPackageOptions(const Env& env, const SessionOptions& session_options);       ///< Wraps OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions
-  ModelPackageOptions(const Env& env, ConstSessionOptions session_options);         ///< Wraps OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions
+  ModelPackageOptions(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions
+  ModelPackageOptions(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtModelPackageApi::CreateModelPackageOptionsFromSessionOptions
 };
 
 /** \brief Context for inspecting and selecting components from a model package.
@@ -1834,9 +1834,9 @@ struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
 
   explicit ModelPackageContext(const ORTCHAR_T* package_root);  ///< Wraps OrtModelPackageApi::CreateModelPackageContext
 
-  size_t GetComponentCount() const;                                       ///< Wraps OrtModelPackageApi::ModelPackage_GetComponentCount
-  std::vector<std::string> GetComponentNames() const;                     ///< Wraps OrtModelPackageApi::ModelPackage_GetComponentNames
-  size_t GetVariantCount(const char* component_name) const;               ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantCount
+  size_t GetComponentCount() const;                                            ///< Wraps OrtModelPackageApi::ModelPackage_GetComponentCount
+  std::vector<std::string> GetComponentNames() const;                          ///< Wraps OrtModelPackageApi::ModelPackage_GetComponentNames
+  size_t GetVariantCount(const char* component_name) const;                    ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantCount
   std::vector<std::string> GetVariantNames(const char* component_name) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantNames
 
   size_t GetVariantEpCompatibilityCount(const char* component_name,
@@ -1863,25 +1863,25 @@ struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentConte
 
   explicit ModelPackageComponentContext(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used.
 
-  std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;      ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFolderPath
-  size_t GetSelectedVariantFileCount() const;                             ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileCount
+  std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;               ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFolderPath
+  size_t GetSelectedVariantFileCount() const;                                      ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileCount
   std::basic_string<ORTCHAR_T> GetSelectedVariantFilePath(size_t file_idx) const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFilePath
 
   /// Get session options for a file as key/value arrays. Memory is owned by this context.
   void GetSelectedVariantFileSessionOptions(size_t file_idx,
                                             const char* const** keys, const char* const** values,
-                                            size_t* count) const;         ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileSessionOptions
+                                            size_t* count) const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileSessionOptions
 
   /// Get provider options for a file as key/value arrays. Memory is owned by this context.
   void GetSelectedVariantFileProviderOptions(size_t file_idx,
                                              const char* const** keys, const char* const** values,
-                                             size_t* count) const;        ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileProviderOptions
+                                             size_t* count) const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileProviderOptions
 
-  std::string GetSelectedVariantConsumerMetadata() const;                 ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantConsumerMetadata
+  std::string GetSelectedVariantConsumerMetadata() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantConsumerMetadata
 
-  Session CreateSession(const Env& env);                                     ///< Wraps OrtModelPackageApi::CreateSession (default path, NULL session_options)
-  Session CreateSession(const Env& env, const SessionOptions& session_options); ///< Wraps OrtModelPackageApi::CreateSession (advanced path)
-  Session CreateSession(const Env& env, ConstSessionOptions session_options); ///< Wraps OrtModelPackageApi::CreateSession (advanced path)
+  Session CreateSession(const Env& env);                                         ///< Wraps OrtModelPackageApi::CreateSession (default path, NULL session_options)
+  Session CreateSession(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtModelPackageApi::CreateSession (advanced path)
+  Session CreateSession(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtModelPackageApi::CreateSession (advanced path)
 };
 
 /** \brief Wrapper around ::OrtModelMetadata

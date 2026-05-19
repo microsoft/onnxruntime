@@ -161,7 +161,7 @@ class ModelPackageContext {
 
   Status GetVariantCount(const std::string& component_name, size_t& out_count) const;
   Status GetVariantNames(const std::string& component_name,
-                              gsl::span<const std::string>& out_variant_names) const;
+                         gsl::span<const std::string>& out_variant_names) const;
 
   // Pre-selection traversal of the (ep, device, compatibility_string) tuples declared on a variant.
   // Lets callers (e.g. GenAI defaulting logic) inspect what EPs a package advertises support for

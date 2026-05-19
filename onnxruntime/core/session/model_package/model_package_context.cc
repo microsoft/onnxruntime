@@ -363,7 +363,7 @@ Status ModelPackageContext::GetVariantCount(const std::string& component_name, s
 }
 
 Status ModelPackageContext::GetVariantNames(const std::string& component_name,
-                                                 gsl::span<const std::string>& out_variant_names) const {
+                                            gsl::span<const std::string>& out_variant_names) const {
   out_variant_names = gsl::span<const std::string>{};
 
   auto it = component_name_to_index_.find(component_name);

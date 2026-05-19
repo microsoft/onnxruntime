@@ -3313,7 +3313,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
   };
 
   py::class_<PyModelPackageContext>(m, "ModelPackageContext",
-      R"pbdoc(Represents an opened model package for inspection and component selection.)pbdoc")
+                                    R"pbdoc(Represents an opened model package for inspection and component selection.)pbdoc")
       .def(py::init<const std::string&>(), py::arg("package_path"),
            R"pbdoc(Open a model package from the given directory path.)pbdoc")
       .def(
@@ -3391,7 +3391,7 @@ Returns a list of dicts with keys 'ep', 'device', 'compatibility_string'.)pbdoc"
 Returns a ModelPackageComponentContext for inspecting the selected variant.)pbdoc");
 
   py::class_<PyModelPackageOptions>(m, "ModelPackageOptions",
-      R"pbdoc(Options used for variant selection in a model package.
+                                    R"pbdoc(Options used for variant selection in a model package.
 Created from a SessionOptions to capture EP configuration for variant matching.)pbdoc")
       .def(py::init([](PySessionOptions& session_options) {
              const auto* api = Ort::GetApi().GetModelPackageApi();
@@ -3405,7 +3405,7 @@ Created from a SessionOptions to capture EP configuration for variant matching.)
 The EP configured on the session options is used for variant selection.)pbdoc");
 
   py::class_<PyModelPackageComponentContext>(m, "ModelPackageComponentContext",
-      R"pbdoc(Represents a selected component within a model package.
+                                             R"pbdoc(Represents a selected component within a model package.
 Provides access to the resolved variant's files, session options, and metadata.)pbdoc")
       .def(
           "get_selected_variant_folder_path",
