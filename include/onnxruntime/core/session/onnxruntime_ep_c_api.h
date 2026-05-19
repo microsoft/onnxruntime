@@ -2514,20 +2514,6 @@ struct OrtEp {
    */
   ORT_API2_STATUS(ReplayGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
 
-  /** \brief Release a previously captured graph and its associated resources.
-   *
-   * Called when the caller no longer needs the captured graph for the given annotation ID.
-   * This allows the EP to free GPU buffers and other resources tied to this graph.
-   *
-   * \param[in] this_ptr The EP instance.
-   * \param[in] graph_annotation_id The annotation ID of the graph to release.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
-
   /** \brief Get the node assignment validation policy for graph capture.
    *
    * When graph capture is enabled, ORT validates that nodes are assigned to EPs in a way that is
@@ -2581,6 +2567,20 @@ struct OrtEp {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(OnSessionInitializationEnd, _In_ OrtEp* this_ptr);
+
+  /** \brief Release a previously captured graph and its associated resources.
+   *
+   * Called when the caller no longer needs the captured graph for the given annotation ID.
+   * This allows the EP to free GPU buffers and other resources tied to this graph.
+   *
+   * \param[in] this_ptr The EP instance.
+   * \param[in] graph_annotation_id The annotation ID of the graph to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

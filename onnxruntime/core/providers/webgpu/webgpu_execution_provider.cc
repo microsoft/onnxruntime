@@ -774,6 +774,8 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
                   *graph_annotation_str);
     }
 
+    m_current_graph_annotation_id = graph_annotation_id;
+
     // Create a per-graph buffer manager on first encounter of each annotation ID
     if (graph_annotation_id != -1) {
       if (per_graph_buffer_mgrs_.find(graph_annotation_id) == per_graph_buffer_mgrs_.end()) {
@@ -793,7 +795,6 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       auto& commands = captured_graphs_[graph_annotation_id];
       context_.CaptureBegin(&commands, *per_graph_buffer_mgrs_[graph_annotation_id]);
     }
-    m_current_graph_annotation_id = graph_annotation_id;
   }
 
   return Status::OK();
