@@ -7,6 +7,7 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/graph/constants.h"
 #include "core/providers/providers.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
@@ -43,6 +44,14 @@ void ModelPackageOptions::ResolveEpSelection(const Environment& env) {
   }
 
   ORT_THROW_IF_ERROR(GetVariantSelectionEpInfo(provider_list_, ep_infos_));
+
+  // If no EPs were captured (no explicit providers and no policy), default to CPU.
+  // This allows model packages with CPUExecutionProvider variants to be selected.
+  if (ep_infos_.empty()) {
+    ep_infos_.push_back(VariantSelectionEpInfo{});
+    ep_infos_.back().ep_name = kCpuExecutionProvider;
+  }
+
   ORT_THROW_IF_ERROR(PrintAvailableAndSelectedEpInfos(env, ep_infos_));
 }
 
