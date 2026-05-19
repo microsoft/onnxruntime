@@ -369,19 +369,19 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
       }
       if (Pads->Shape().NumDimensions() != 1) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Pads input must be a 1-D tensor. Got rank: ", Pads->Shape().NumDimensions());
+                               "Dynamic pads tensor must be 1-D. Got rank: ", Pads->Shape().NumDimensions());
       }
       const int64_t expected_pads_size = static_cast<int64_t>(kernel_shape.size()) * 2;
       if (Pads->Shape()[0] != expected_pads_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Pads input must have ", expected_pads_size,
-                               " elements (2 * num_spatial_dims). Got: ", Pads->Shape()[0]);
+                               "Dynamic pads tensor size (", Pads->Shape()[0],
+                               ") does not match expected size (2 * spatial_dims = ", expected_pads_size, ").");
       }
       const auto* pads_data = Pads->Data<int64_t>();
       for (int64_t i = 0; i < Pads->Shape()[0]; ++i) {
         if (pads_data[i] < 0) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Pads values must be non-negative. Got pads[", i, "] = ", pads_data[i]);
+                                 "Dynamic pads must be non-negative. Got pads[", i, "] = ", pads_data[i]);
         }
         pads.push_back(pads_data[i]);
       }

@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -84,7 +85,7 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidPadsSize) {
   test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "does not match expected size",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
 // Test that negative pad values are rejected.
@@ -101,8 +102,50 @@ TEST(ContribOpTest, ConvTransposeWithDynamicPads_NegativePads) {
   test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "non-negative",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
+
+// DML-specific tests for invalid dynamic pads.
+// DML validates operator parameters internally before ORT kernel code runs. When inputs are
+// invalid, DML's COM/HRESULT boundary strips the descriptive message and re-throws with just
+// E_INVALIDARG (0x80070057), surfacing as "The parameter is incorrect." on Windows.
+// We still want to verify DML rejects these inputs rather than crashing, so we test separately
+// with the DML-specific error text.
+#ifdef USE_DML
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_InvalidPadsSize_Dml) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<int64_t>("Pads", {3}, std::vector<int64_t>{0, 0, 0});  // Wrong size: should be 4
+  test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
+
+  test.ConfigEp(DefaultDmlExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure, "The parameter is incorrect")
+      .RunWithConfig();
+}
+
+TEST(ContribOpTest, ConvTransposeWithDynamicPads_NegativePads_Dml) {
+  OpTester test("ConvTransposeWithDynamicPads", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<int64_t>("Pads", {4}, std::vector<int64_t>{-1, 0, 0, 0});  // Negative pad
+  test.AddOutput<float>("Y", {1, 1, 5, 5}, std::vector<float>(25, 0.0f));
+
+  test.ConfigEp(DefaultDmlExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure, "The parameter is incorrect")
+      .RunWithConfig();
+}
+#endif  // USE_DML
 
 }  // namespace test
 }  // namespace onnxruntime
