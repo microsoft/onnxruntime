@@ -1,19 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
 #include <vector>
 
+#include "core/common/common.h"
+
 #if !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 #include <dlfcn.h>
 #include <fcntl.h>
-#include <sstream>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sstream>
 #include <unordered_map>
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
