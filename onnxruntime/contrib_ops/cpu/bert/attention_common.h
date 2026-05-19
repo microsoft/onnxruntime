@@ -4,6 +4,10 @@
 #pragma once
 #include <gsl/gsl>
 
+#include <algorithm>
+#include <cctype>
+#include <string>
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -65,6 +69,17 @@ enum class KVQuantizationType : int {
   PER_TENSOR = 1,
   PER_CHANNEL = 2,
 };
+
+inline KVQuantizationType StringToKVQuantizationType(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
+  if (s == "PER_TENSOR") {
+    return KVQuantizationType::PER_TENSOR;
+  }
+  if (s == "PER_CHANNEL") {
+    return KVQuantizationType::PER_CHANNEL;
+  }
+  return KVQuantizationType::NONE;
+}
 
 constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
