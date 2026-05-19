@@ -89,7 +89,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     } else {
       // gather output here has the data's rank (one more than ONNX scalar-gather output);
       // squeeze the inserted axis to recover the original output shape.
-      std::vector<int64_t> gather_shape = data_shape;
+      TensorShapeVector gather_shape{data_shape.begin(), data_shape.end()};
       gather_shape[pos_axis] = 1;
       const std::string& gather_out_name = model_builder.GetUniqueName(node, "gather_out");
       AddIntermediateOperationOutput(*gather, gather_out_name, output_dtype, gather_shape);
