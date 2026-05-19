@@ -80,6 +80,13 @@
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
+  else()
+    # The CUDA Attention kernel implementation depends on contrib ops (flash attention,
+    # memory efficient attention, unfused attention helpers). Remove it when contrib ops are disabled.
+    list(REMOVE_ITEM onnxruntime_providers_cuda_src
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/llm/attention.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/llm/attention.cc"
+    )
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_OPS)
