@@ -17,7 +17,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_template_dispatch.h"
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
-#ifdef ENABLE_FP8
+#if defined(ENABLE_FP8) && defined(ENABLE_CUDA_FP8_QMOE)
 template class MoeGemmRunner<half, __nv_fp8_e4m3, half>;
 #endif
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels

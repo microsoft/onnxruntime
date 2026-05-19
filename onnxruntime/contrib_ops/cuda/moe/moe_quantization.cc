@@ -159,7 +159,6 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
     }
   } else {
     // Integer quantization (INT4/INT8)
-#if QUICK_BUILD
     if (is_fp16) {
       if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
@@ -169,16 +168,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
     }
-#else
-    if (is_fp16) {
-      if (expert_weight_bits_ == 4) {
-        m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, cutlass::uint4b_t, half>>(
-            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
-      } else {  // expert_weight_bits_ == 8
-        m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, uint8_t, half>>(
-            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
-      }
-    } else {  // BFloat16
+#if !defined(ORT_QUICK_BUILD) && defined(ENABLE_BF16)
+    else {  // BFloat16
       if (expert_weight_bits_ == 4) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, cutlass::uint4b_t, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);

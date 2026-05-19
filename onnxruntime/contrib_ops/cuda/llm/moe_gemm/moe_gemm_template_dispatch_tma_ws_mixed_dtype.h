@@ -195,6 +195,9 @@ void sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass(
   constexpr int Ktile = is_wfp4a16 ? (PackedScalesNum == 2 ? 128 : 256) : 128 * PackedScalesNum / sizeof(T);
   ORT_ENFORCE(sizeof(T) == (is_wfp4a16 ? 2 : 1));
 
+  // For wfp4a16, no generated kernels for m64_n128 FP4 tiles; cap N at 64 for 64-row shapes.
+  constexpr int Ntile = is_wfp4a16 ? 64 : 128;
+  using _Ntile = Int<Ntile>;
   using _Ktile = Int<Ktile>;
   switch (inputs.gemm_config.tile_config_sm90) {
 #ifndef ORT_QUICK_BUILD
@@ -211,7 +214,7 @@ void sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass(
           inputs, hopper_inputs, sm_count_, workspace_size);
       break;
     case tkc::CutlassTileConfigSM90::CtaShape64x128x128B:
-      sm90_dispatch_moe_mixed_dtype_gemm_config<T, WeightType, GemmOutputType, EpilogueTag, FUSION, Shape<_64, _128, _Ktile>>(
+      sm90_dispatch_moe_mixed_dtype_gemm_config<T, WeightType, GemmOutputType, EpilogueTag, FUSION, Shape<_64, _Ntile, _Ktile>>(
           inputs, hopper_inputs, sm_count_, workspace_size);
       break;
 #endif  // !ORT_QUICK_BUILD
@@ -257,19 +260,13 @@ size_t calcMaxWorkspaceSizeTmaWarpSpecializedMixedInput(int num_experts, int sm_
       (std::is_same_v<WeightType, __nv_fp4_e2m1>) ? 256 :
 #endif
                                                   512;
-  constexpr int Ntile =
-#if defined(ENABLE_FP4)
-      (std::is_same_v<WeightType, __nv_fp4_e2m1>) ? 128 :
-#endif
-                                                  64;
   using _Ktile = Int<Ktile>;
-  using _Ntile = Int<Ntile>;
   GroupedGemmInput<T, WeightType, OutputType, OutputType> inputs{};
   inputs.num_experts = num_experts;
-  // Use the largest tile shape for workspace calculation to get the max workspace size
+  // Use cooperative kernel with m128_n64 tile for workspace calculation (launchers exist for all weight types).
   sm90_generic_mixed_moe_gemm_kernelLauncher<T, WeightType, OutputType,
                                              onnxruntime::llm::cutlass_extensions::EpilogueOpDefault, EpilogueFusion::NONE,
-                                             Shape<_128, _Ntile, _Ktile>, Shape<_1, _1, _1>,
+                                             Shape<_128, _64, _Ktile>, Shape<_1, _1, _1>,
                                              cutlass::gemm::KernelTmaWarpSpecializedCooperative, cutlass::epilogue::TmaWarpSpecializedCooperative,
                                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>(
       inputs, TmaWarpSpecializedGroupedGemmInput{}, sm_count_, &count);
