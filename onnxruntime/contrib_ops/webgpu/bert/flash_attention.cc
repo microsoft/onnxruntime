@@ -437,10 +437,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
-  // Route between prefill path (FlashAttentionProgram, single kernel, requires subgroups)
-  // and fused decode path (QKV + VxReduce, 2 kernels, no subgroups needed).
+  // Route between prefill path (FlashAttentionProgram, single kernel)
+  // and fused decode path (QKV + VxReduce, 2 kernels).
   const bool use_split_reduce = (parameters.sequence_length_ <= 4) ||
-                                !context.HasFeature(wgpu::FeatureName::Subgroups) ||
                                 (parameters.sequence_length_ < 64 &&
                                  static_cast<uint32_t>(parameters.total_sequence_length_) > 1000);
 
