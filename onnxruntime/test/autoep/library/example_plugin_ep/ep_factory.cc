@@ -236,7 +236,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   ep_context_config.reset(ep_context_config_raw);
 
   auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger,
-                                             ep_context_config.release());
+                                              ep_context_config.release());
 
   *ep = dummy_ep.release();
   return nullptr;

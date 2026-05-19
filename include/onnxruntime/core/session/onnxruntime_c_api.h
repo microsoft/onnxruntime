@@ -7531,10 +7531,10 @@ struct OrtApi {
    *
    * When loading a compiled model with external (non-embedded) EPContext binary data, an execution provider can use
    * OrtEpApi::ReadEpContextData to call this callback instead of reading the binary data from disk.
-    *
-    * The state pointer is stored as-is and is not owned by ORT. It must remain valid while any session or EP created
-    * from these options may call the callback. If the same state may be used by multiple EPs or threads, the application
-    * is responsible for synchronization.
+   *
+   * The state pointer is stored as-is and is not owned by ORT. It must remain valid while any session or EP created
+   * from these options may call the callback. If the same state may be used by multiple EPs or threads, the application
+   * is responsible for synchronization.
    *
    * \param[in] options The OrtSessionOptions instance.
    * \param[in] read_func The OrtReadEpContextDataFunc callback.
@@ -8372,13 +8372,13 @@ struct OrtCompileApi {
    *
    * When EPContext embed mode is disabled, execution providers can use OrtEpApi::WriteEpContextData to call this
    * callback instead of writing EPContext binary data directly to disk.
-    *
-    * The state pointer is stored as-is and is not owned by ORT. It must remain valid for the duration of the compile
-    * operation that may call the callback. If the same state may be used by multiple EPs or threads, the application is
-    * responsible for synchronization.
+   *
+   * The state pointer is stored as-is and is not owned by ORT. It must remain valid for the duration of the compile
+   * operation that may call the callback. If the same state may be used by multiple EPs or threads, the application is
+   * responsible for synchronization.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-    * \param[in] write_func The OrtWriteEpContextDataFunc called to write EPContext bytes.
+   * \param[in] write_func The OrtWriteEpContextDataFunc called to write EPContext bytes.
    * \param[in] state Opaque state passed to write_func. Can be NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
