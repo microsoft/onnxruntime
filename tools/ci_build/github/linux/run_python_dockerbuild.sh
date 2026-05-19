@@ -28,6 +28,20 @@ if [ "${BUILD_EXTR_PAR}" != "" ] ; then
 fi
 
 # HACK: `ADDITIONAL_DOCKER_PARAMETER` is passed in via env in some pipelines
+
+# Extract cargo registry token so it can be passed as an env var.
+# Puccinialin (maturin's Rust installer) overrides CARGO_HOME, so credentials.toml
+# at our mount point won't be found. The env var works regardless.
+set +x
+CARGO_REGISTRIES_ONNXRUNTIME_TOKEN=""
+if [ -n "${SYSTEM_ACCESSTOKEN:-}" ]; then
+    CARGO_REGISTRIES_ONNXRUNTIME_TOKEN="Basic $(printf ':%s' "${SYSTEM_ACCESSTOKEN}" | base64 -w0)"
+else
+    echo "WARNING: SYSTEM_ACCESSTOKEN not set. Cargo registry auth will not be available." >&2
+fi
+export CARGO_REGISTRIES_ONNXRUNTIME_TOKEN
+set -x
+
 docker run -e SYSTEM_COLLECTIONURI --rm \
     --volume /data/onnx:/data/onnx:ro \
     --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
@@ -39,6 +53,8 @@ docker run -e SYSTEM_COLLECTIONURI --rm \
     --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
     --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
     --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
+    --volume "$HOME/.cargo/config.toml:/.cargo/config.toml:ro" \
+    -e CARGO_REGISTRIES_ONNXRUNTIME_TOKEN \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
