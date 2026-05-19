@@ -2102,7 +2102,7 @@ struct OrtEpApi {
 
   /** \brief Release an OrtEpContextConfig instance.
    *
-   * \param[in] config The OrtEpContextConfig instance to release. May be NULL.
+   * \param[in] input The OrtEpContextConfig instance to release. May be NULL.
    *
    * \since Version 1.27.
    */
