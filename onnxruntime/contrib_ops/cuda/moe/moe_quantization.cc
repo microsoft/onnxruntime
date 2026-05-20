@@ -940,197 +940,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
 Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                      bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
 
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
-
-  // Scale/Bias layout is [Experts, Blocks, N] in cutlass kernel
-  // But passed from Python as [Experts, N, Blocks] for block-wise (3D)
-  // For per-column (2D), it is [Experts, N], which is effectively [Experts, 1, N] (compatible with [Experts, Blocks, N] where Blocks=1)
-  // So we only transpose if 3D.
-
-  auto TransposeAndPack = [&](IAllocatorUniquePtr<void>& packed_buf) {
-    auto shape = tensor.Shape();
-    size_t bytes = tensor.SizeInBytes();
-    packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-
-    const void* p_src = tensor.DataRaw();
-    IAllocatorUniquePtr<void> temp_src_gpu;
-    if (tensor.Location().device.Type() == OrtDevice::CPU) {
-      temp_src_gpu = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-      // Bare cudaMemcpyAsync would silently drop errors and still set is_packed = true below.
-      CUDA_CALL_THROW(cudaMemcpyAsync(temp_src_gpu.get(), p_src, bytes, cudaMemcpyDefault, stream));
-      p_src = temp_src_gpu.get();
-    }
-
-    if (shape.NumDimensions() == 3 && shape[2] > 1) {
-      size_t rows = shape[1];   // N
-      size_t cols = shape[2];   // Blocks
-      size_t batch = shape[0];  // Experts
-      auto type = tensor.DataType();
-      if (type == DataTypeImpl::GetType<MLFloat16>()) {
-        LaunchQMoETranspose2D(static_cast<const half*>(p_src), static_cast<half*>(packed_buf.get()), batch, rows, cols, stream);
-      } else if (type == DataTypeImpl::GetType<BFloat16>()) {
-        LaunchQMoETranspose2D(static_cast<const __nv_bfloat16*>(p_src), static_cast<__nv_bfloat16*>(packed_buf.get()), batch, rows, cols, stream);
-      } else if (type == DataTypeImpl::GetType<float>()) {
-        LaunchQMoETranspose2D(static_cast<const float*>(p_src), static_cast<float*>(packed_buf.get()), batch, rows, cols, stream);
-      } else if (type == DataTypeImpl::GetType<uint8_t>()) {
-        LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src), static_cast<uint8_t*>(packed_buf.get()), batch, rows, cols, stream);
-      } else if (type == DataTypeImpl::GetType<Float8E8M0>()) {
-        // Float8E8M0 is 1 byte, same layout as uint8_t — reuse the uint8_t transpose kernel.
-        LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src), static_cast<uint8_t*>(packed_buf.get()), batch, rows, cols, stream);
-      } else {
-        ORT_THROW("Unsupported data type for scale transposition");
-      }
-    } else {
-      // 2D case or others: Direct Copy
-      CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDefault, stream));
-    }
-
-    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    is_packed = true;
-  };
-
-  auto compute_bias = [&](const IAllocatorUniquePtr<void>& packed_scale, IAllocatorUniquePtr<void>& packed_bias) {
-    // If not computing bias (e.g. 8-bit ZP), we might not need scales at all, but we check anyway.
-    if ((expert_weight_bits_ == 4) && !packed_scale) {
-      return;
-    }
-
-    size_t num_elements = tensor.Shape().Size();
-    auto shape = tensor.Shape();
-
-    // For 8-bit: packed_bias holds the ZP (uint8) for column-wise, OR pre-computed bias (float/half) for block-wise.
-    // If block_size > 0, we need to compute bias = -ZP * Scale, similar to 4-bit case.
-
-    if (expert_weight_bits_ == 8) {
-      // For 8-bit: packed_bias holds the ZP (uint8) for column-wise, OR pre-computed bias (float/half) for block-wise.
-      // If block_size > 0, we need to compute bias = -ZP * Scale, similar to 4-bit case.
-
-      if (block_size_ > 0) {
-        // Block-wise: Compute bias = -ZP * Scale
-        bool is_fp16 = is_fp16_;
-        bool is_bf16 = !is_fp16_;
-        size_t bytes = num_elements * (is_fp16 || is_bf16 ? 2 : 4);
-        packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-
-        const void* p_src_zp = tensor.DataRaw();
-        IAllocatorUniquePtr<void> temp_zp_gpu;
-        if (tensor.Location().device.Type() == OrtDevice::CPU) {
-          temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
-          CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
-          p_src_zp = temp_zp_gpu.get();
-        }
-
-        const void* p_zp_for_calc = p_src_zp;
-        IAllocatorUniquePtr<void> temp_zp_transposed;
-
-        if (shape.NumDimensions() == 3 && shape[2] > 1) {
-          size_t rows = shape[1];   // N
-          size_t cols = shape[2];   // Blocks
-          size_t batch = shape[0];  // Experts
-
-          // Transpose ZP to match Scale layout [Experts, Blocks, N]
-          temp_zp_transposed = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
-          LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src_zp), static_cast<uint8_t*>(temp_zp_transposed.get()), batch, rows, cols, stream);
-          p_zp_for_calc = temp_zp_transposed.get();
-        }
-
-        if (is_fp16) {
-          LaunchQMoEPrePackOffsetBias(static_cast<const uint8_t*>(p_zp_for_calc), static_cast<const half*>(packed_scale.get()), static_cast<half*>(packed_bias.get()), num_elements, 128.0f, stream);
-        } else if (is_bf16) {
-          LaunchQMoEPrePackOffsetBias(static_cast<const uint8_t*>(p_zp_for_calc), static_cast<const __nv_bfloat16*>(packed_scale.get()), static_cast<__nv_bfloat16*>(packed_bias.get()), num_elements, 128.0f, stream);
-        } else {
-          LaunchQMoEPrePackOffsetBias(static_cast<const uint8_t*>(p_zp_for_calc), static_cast<const float*>(packed_scale.get()), static_cast<float*>(packed_bias.get()), num_elements, 128.0f, stream);
-        }
-      } else {
-        // For 8-bit per-column: packed_bias holds the ZP (uint8), possibly transposed.
-        // Current QuantParams::Int takes scales and ignores ZP for per-column usually,
-        // but let's keep it consistent with previous logic just in case.
-        size_t bytes = num_elements * sizeof(uint8_t);
-        packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-
-        const void* p_src_zp = tensor.DataRaw();
-        IAllocatorUniquePtr<void> temp_zp_gpu;
-        if (tensor.Location().device.Type() == OrtDevice::CPU) {
-          temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
-          CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
-          p_src_zp = temp_zp_gpu.get();
-        }
-
-        if (shape.NumDimensions() == 3 && shape[2] > 1) {
-          size_t rows = shape[1];   // N
-          size_t cols = shape[2];   // Blocks
-          size_t batch = shape[0];  // Experts
-          LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src_zp), static_cast<uint8_t*>(packed_bias.get()), batch, rows, cols, stream);
-        } else {
-          CUDA_CALL_THROW(cudaMemcpyAsync(packed_bias.get(), p_src_zp, bytes, cudaMemcpyDefault, stream));
-        }
-      }
-    } else {
-      // For 4-bit: packed_bias holds floating point bias.
-      // Row-wise quantization (block_size_ <= 0) does not support asymmetric ZP in QMoE:
-      // QuantParams::Int only takes scales (no zeros). Keep a zero bias buffer for compatibility.
-      if (block_size_ <= 0) {
-        // Row-wise asymmetric 4-bit is not wired through QuantParams::Int.
-        // Leave this input unpacked and let runtime path handle/ignore it.
-        return;
-      }
-
-      // Block-wise 4-bit: packed_bias holds floating-point bias = (8 - ZP) * Scale.
-      bool is_fp16 = is_fp16_;
-      bool is_bf16 = !is_fp16_;
-
-      // zeros shape for block-wise 4-bit is [E, N, ceil(B/2)] in packed uint4.
-      // scales are prepacked to [E, B, N]. We convert zeros to scaled bias [E, B, N].
-      ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D zeros for block-wise 4-bit");
-      const int experts = static_cast<int>(shape[0]);
-      const int n = static_cast<int>(shape[1]);
-      const int packed_k_blocks = static_cast<int>(shape[2]);
-      const int k_blocks = packed_k_blocks * 2;
-      size_t output_count = static_cast<size_t>(experts) * static_cast<size_t>(k_blocks) * static_cast<size_t>(n);
-      size_t bytes = output_count * (is_fp16 || is_bf16 ? 2 : 4);
-      packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-
-      const void* p_src_zp = tensor.DataRaw();
-      IAllocatorUniquePtr<void> temp_zp_gpu;
-      if (tensor.Location().device.Type() == OrtDevice::CPU) {
-        temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
-        CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
-        p_src_zp = temp_zp_gpu.get();
-      }
-
-      const uint8_t* zp_ptr = static_cast<const uint8_t*>(p_src_zp);
-      constexpr float kDefaultZeroPoint4Bit = 8.0f;
-      for (int e = 0; e < experts; ++e) {
-        const uint8_t* zp_e = zp_ptr + static_cast<size_t>(e) * static_cast<size_t>(n) * static_cast<size_t>(packed_k_blocks);
-        size_t scale_off = static_cast<size_t>(e) * static_cast<size_t>(k_blocks) * static_cast<size_t>(n);
-        if (is_fp16) {
-          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, half, uint8_t>(
-              stream,
-              zp_e,
-              static_cast<const half*>(packed_scale.get()) + scale_off,
-              static_cast<half*>(packed_bias.get()) + scale_off,
-              n,
-              k_blocks,
-              kDefaultZeroPoint4Bit);
-        } else if (is_bf16) {
-          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, __nv_bfloat16, uint8_t>(
-              stream,
-              zp_e,
-              static_cast<const __nv_bfloat16*>(packed_scale.get()) + scale_off,
-              static_cast<__nv_bfloat16*>(packed_bias.get()) + scale_off,
-              n,
-              k_blocks,
-              kDefaultZeroPoint4Bit);
-        } else {
-          ORT_THROW("Unsupported type for 4-bit block-wise ZP prepack. Expected FP16/BF16.");
-        }
-      }
-    }
-    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    is_packed = true;
-  };
 
   DUMP_TENSOR_INIT();
 
@@ -1138,9 +951,9 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   auto dump_tensor = [&](const char* name, const IAllocatorUniquePtr<void>& packed_scales, const Tensor& scales) {
     auto shape = scales.Shape();
     if (shape.NumDimensions() == 3 && is_fp16_) {
-      size_t rows = shape[1];   // N
-      size_t cols = shape[2];   // Blocks
-      size_t batch = shape[0];  // Experts
+      size_t rows = shape[1];
+      size_t cols = shape[2];
+      size_t batch = shape[0];
       if (expert_weight_bits_ == 8 && block_size_ <= 0 && strstr(name, "bias") != nullptr) {
         DUMP_TENSOR(name, static_cast<const uint8_t*>(packed_scales.get()), int(batch), int(cols), int(rows));
       } else {
@@ -1153,161 +966,320 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #define DUMP_PACK_TENSOR(name, packed_scales, scales)
 #endif
 
-  auto CopyToGpu = [&](IAllocatorUniquePtr<void>& packed_buf) {
-    size_t bytes = tensor.SizeInBytes();
-    packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-    const void* p_src = tensor.DataRaw();
-    if (tensor.Location().device.Type() == OrtDevice::CPU) {
-      CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyHostToDevice, stream));
-    } else {
-      CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDeviceToDevice, stream));
-    }
-    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    is_packed = true;
-  };
-
-  auto SwizzleMXFPXBlockScalesToGpu = [&](IAllocatorUniquePtr<void>& packed_buf) {
-    auto shape = tensor.Shape();
-    ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D FP4 block scales for WFP4AFP8 native prepack");
-
-    const int64_t experts = shape[0];
-    const int64_t rows = shape[1];
-    const int64_t scale_cols = shape[2];
-    const int64_t padded_rows = ((rows + 127) / 128) * 128;
-    const int64_t padded_scale_cols = ((scale_cols + 3) / 4) * 4;
-    const size_t src_bytes = tensor.SizeInBytes();
-    const size_t dst_bytes = SafeInt<size_t>(experts) * SafeInt<size_t>(padded_rows) *
-                             SafeInt<size_t>(padded_scale_cols) * sizeof(uint8_t);
-
-    std::vector<uint8_t> src(src_bytes);
-    if (tensor.Location().device.Type() == OrtDevice::CPU) {
-      std::memcpy(src.data(), tensor.DataRaw(), src_bytes);
-    } else {
-      CUDA_CALL_THROW(cudaMemcpyAsync(src.data(), tensor.DataRaw(), src_bytes, cudaMemcpyDeviceToHost, stream));
-      CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    }
-
-    std::vector<uint8_t> dst(dst_bytes, 0);
-    const int64_t num_k_tiles = (scale_cols + 3) / 4;
-    for (int64_t expert = 0; expert < experts; ++expert) {
-      const size_t src_expert_offset = SafeInt<size_t>(expert) * SafeInt<size_t>(rows) * SafeInt<size_t>(scale_cols);
-      const size_t dst_expert_offset = SafeInt<size_t>(expert) * SafeInt<size_t>(padded_rows) *
-                                       SafeInt<size_t>(padded_scale_cols);
-      for (int64_t row = 0; row < rows; ++row) {
-        for (int64_t scale_col = 0; scale_col < scale_cols; ++scale_col) {
-          const int64_t inner_k = scale_col % 4;
-          const int64_t inner_m = (row % 128) / 32;
-          const int64_t outer_m = row % 32;
-          const int64_t k_tile = scale_col / 4;
-          const int64_t m_tile = row / 128;
-          const int64_t swizzled_offset = m_tile * num_k_tiles * 512 + k_tile * 512 +
-                                          outer_m * 16 + inner_m * 4 + inner_k;
-          dst[dst_expert_offset + swizzled_offset] = src[src_expert_offset + row * scale_cols + scale_col];
-        }
-      }
-    }
-
-    packed_buf = IAllocator::MakeUniquePtr<void>(alloc, dst_bytes, true);
-    CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), dst.data(), dst_bytes, cudaMemcpyHostToDevice, stream));
-    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    is_packed = true;
-  };
-
-  auto RepackColumnMajorFP4WeightsToRowMajorGpu = [&](IAllocatorUniquePtr<void>& packed_buf) {
-    auto shape = tensor.Shape();
-    ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D FP4 weights for WFP4AFP8 native prepack");
-
-    const int64_t experts = shape[0];
-    const int64_t k = shape[1];
-    const int64_t n = shape[2] * 2;
-    const size_t bytes = tensor.SizeInBytes();
-
-    std::vector<uint8_t> src(bytes);
-    if (tensor.Location().device.Type() == OrtDevice::CPU) {
-      std::memcpy(src.data(), tensor.DataRaw(), bytes);
-    } else {
-      CUDA_CALL_THROW(cudaMemcpyAsync(src.data(), tensor.DataRaw(), bytes, cudaMemcpyDeviceToHost, stream));
-      CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    }
-
-    std::vector<uint8_t> dst(bytes, 0);
-    const size_t src_expert_stride = SafeInt<size_t>(k) * SafeInt<size_t>(n / 2);
-    const size_t dst_expert_stride = SafeInt<size_t>(n) * SafeInt<size_t>(k / 2);
-    for (int64_t expert = 0; expert < experts; ++expert) {
-      const size_t src_expert_offset = SafeInt<size_t>(expert) * src_expert_stride;
-      const size_t dst_expert_offset = SafeInt<size_t>(expert) * dst_expert_stride;
-      for (int64_t row = 0; row < n; ++row) {
-        for (int64_t col = 0; col < k; ++col) {
-          const uint8_t packed_col_major = src[src_expert_offset + col * (n / 2) + row / 2];
-          const uint8_t code = (row % 2 == 0) ? (packed_col_major & 0x0F) : ((packed_col_major >> 4) & 0x0F);
-          uint8_t& packed_row_major = dst[dst_expert_offset + row * (k / 2) + col / 2];
-          if (col % 2 == 0) {
-            packed_row_major = static_cast<uint8_t>((packed_row_major & 0xF0) | code);
-          } else {
-            packed_row_major = static_cast<uint8_t>((packed_row_major & 0x0F) | (code << 4));
-          }
-        }
-      }
-    }
-
-    packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
-    CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), dst.data(), bytes, cudaMemcpyHostToDevice, stream));
-    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-    is_packed = true;
-  };
-
   if (input_idx == 2 && quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
-    RepackColumnMajorFP4WeightsToRowMajorGpu(packed_fp4_fc1_weights_);
+    PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc1_weights_, is_packed);
     is_packed = false;
   } else if (input_idx == 5 && quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
-    RepackColumnMajorFP4WeightsToRowMajorGpu(packed_fp4_fc2_weights_);
+    PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc2_weights_, is_packed);
     is_packed = false;
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
-      SwizzleMXFPXBlockScalesToGpu(packed_fp4_fc1_block_scales_);
+      PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
-      CopyToGpu(packed_fp4_fc1_block_scales_);
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "int") {
-      TransposeAndPack(packed_fc1_scales_);
+      PrePackTransposeAndPack(tensor, stream, alloc, packed_fc1_scales_, is_packed);
       DUMP_PACK_TENSOR("packed_fc1_scales", packed_fc1_scales_, tensor);
     }
   } else if (input_idx == 6) {  // fc2_scales
     DUMP_TENSOR("fc2_scales", tensor);
     if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
-      SwizzleMXFPXBlockScalesToGpu(packed_fp4_fc2_block_scales_);
+      PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
-      CopyToGpu(packed_fp4_fc2_block_scales_);
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "int") {
-      TransposeAndPack(packed_fc2_scales_);
+      PrePackTransposeAndPack(tensor, stream, alloc, packed_fc2_scales_, is_packed);
       DUMP_PACK_TENSOR("packed_fc2_scales", packed_fc2_scales_, tensor);
     }
   } else if (input_idx == 11) {  // fc1_zeros
     DUMP_TENSOR("fc1_zeros", tensor);
-    compute_bias(packed_fc1_scales_, packed_fc1_bias_);
+    PrePackComputeBias(tensor, stream, alloc, packed_fc1_scales_, packed_fc1_bias_, is_packed);
     DUMP_PACK_TENSOR("packed_fc1_bias", packed_fc1_bias_, tensor);
   } else if (input_idx == 12) {  // fc2_zeros
     DUMP_TENSOR("fc2_zeros", tensor);
-    compute_bias(packed_fc2_scales_, packed_fc2_bias_);
+    PrePackComputeBias(tensor, stream, alloc, packed_fc2_scales_, packed_fc2_bias_, is_packed);
     DUMP_PACK_TENSOR("packed_fc2_bias", packed_fc2_bias_, tensor);
   } else if ((input_idx == 15 || input_idx == 16) &&
              (quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8")) {
-    // FP4/FP8/WFP4AFP8 per-expert global weight scales.
     if (input_idx == 15) {
-      CopyToGpu(packed_fc1_global_scale_);
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fc1_global_scale_, is_packed);
     } else {
-      CopyToGpu(packed_fc2_global_scale_);
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fc2_global_scale_, is_packed);
     }
   } else if ((input_idx == 17 || input_idx == 18) && quant_type_ == "wfp4afp8") {
-    // W4A8 (WFP4AFP8) Variant A FP8 activation global scales.
     if (input_idx == 17) {
-      CopyToGpu(packed_fc1_act_scale_);
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fc1_act_scale_, is_packed);
     } else {
-      CopyToGpu(packed_fc2_act_scale_);
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fc2_act_scale_, is_packed);
     }
   }
 
   return Status::OK();
+}
+
+// ---------------------------------------------------------------------------
+// PrePack helper: Transpose [E, N, Blocks] -> [E, Blocks, N] and copy to GPU.
+// ---------------------------------------------------------------------------
+void QMoE::PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                                   IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
+  auto shape = tensor.Shape();
+  size_t bytes = tensor.SizeInBytes();
+  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+
+  const void* p_src = tensor.DataRaw();
+  IAllocatorUniquePtr<void> temp_src_gpu;
+  if (tensor.Location().device.Type() == OrtDevice::CPU) {
+    temp_src_gpu = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+    CUDA_CALL_THROW(cudaMemcpyAsync(temp_src_gpu.get(), p_src, bytes, cudaMemcpyDefault, stream));
+    p_src = temp_src_gpu.get();
+  }
+
+  if (shape.NumDimensions() == 3 && shape[2] > 1) {
+    size_t rows = shape[1];   // N
+    size_t cols = shape[2];   // Blocks
+    size_t batch = shape[0];  // Experts
+    auto type = tensor.DataType();
+    if (type == DataTypeImpl::GetType<MLFloat16>()) {
+      LaunchQMoETranspose2D(static_cast<const half*>(p_src), static_cast<half*>(packed_buf.get()), batch, rows, cols, stream);
+    } else if (type == DataTypeImpl::GetType<BFloat16>()) {
+      LaunchQMoETranspose2D(static_cast<const __nv_bfloat16*>(p_src), static_cast<__nv_bfloat16*>(packed_buf.get()), batch, rows, cols, stream);
+    } else if (type == DataTypeImpl::GetType<float>()) {
+      LaunchQMoETranspose2D(static_cast<const float*>(p_src), static_cast<float*>(packed_buf.get()), batch, rows, cols, stream);
+    } else if (type == DataTypeImpl::GetType<uint8_t>()) {
+      LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src), static_cast<uint8_t*>(packed_buf.get()), batch, rows, cols, stream);
+    } else if (type == DataTypeImpl::GetType<Float8E8M0>()) {
+      LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src), static_cast<uint8_t*>(packed_buf.get()), batch, rows, cols, stream);
+    } else {
+      ORT_THROW("Unsupported data type for scale transposition");
+    }
+  } else {
+    CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDefault, stream));
+  }
+
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  is_packed = true;
+}
+
+// ---------------------------------------------------------------------------
+// PrePack helper: Copy tensor to GPU without transformation.
+// ---------------------------------------------------------------------------
+void QMoE::PrePackCopyToGpu(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                            IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
+  size_t bytes = tensor.SizeInBytes();
+  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+  const void* p_src = tensor.DataRaw();
+  if (tensor.Location().device.Type() == OrtDevice::CPU) {
+    CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyHostToDevice, stream));
+  } else {
+    CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDeviceToDevice, stream));
+  }
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  is_packed = true;
+}
+
+// ---------------------------------------------------------------------------
+// PrePack helper: Swizzle MXFP block scales for SM120 TMA layout using GPU kernel.
+// ---------------------------------------------------------------------------
+void QMoE::PrePackSwizzleBlockScales(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                                     IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
+  auto shape = tensor.Shape();
+  ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D FP4 block scales for WFP4AFP8 native prepack");
+
+  const int64_t experts = shape[0];
+  const int64_t rows = shape[1];
+  const int64_t scale_cols = shape[2];
+  const int rows_padded = static_cast<int>(((rows + 127) / 128) * 128);
+  const int cols_padded = static_cast<int>(((scale_cols + 3) / 4) * 4);
+  const size_t dst_bytes = SafeInt<size_t>(experts) * SafeInt<size_t>(rows_padded) *
+                           SafeInt<size_t>(cols_padded) * sizeof(uint8_t);
+
+  // Ensure input is on GPU
+  const void* p_src = tensor.DataRaw();
+  IAllocatorUniquePtr<void> temp_src_gpu;
+  if (tensor.Location().device.Type() == OrtDevice::CPU) {
+    temp_src_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
+    CUDA_CALL_THROW(cudaMemcpyAsync(temp_src_gpu.get(), p_src, tensor.SizeInBytes(), cudaMemcpyHostToDevice, stream));
+    p_src = temp_src_gpu.get();
+  }
+
+  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, dst_bytes, true);
+  // Zero-fill for padding regions (kernel only writes within bounds)
+  CUDA_CALL_THROW(cudaMemsetAsync(packed_buf.get(), 0, dst_bytes, stream));
+
+  int multi_processor_count = 0;
+  int device_id = 0;
+  CUDA_CALL_THROW(cudaGetDevice(&device_id));
+  CUDA_CALL_THROW(cudaDeviceGetAttribute(&multi_processor_count, cudaDevAttrMultiProcessorCount, device_id));
+
+  LaunchQMoEBlockScaleInterleave(
+      static_cast<const uint8_t*>(p_src),
+      static_cast<uint8_t*>(packed_buf.get()),
+      static_cast<int>(experts),
+      static_cast<int>(rows),
+      static_cast<int>(scale_cols),
+      rows_padded,
+      cols_padded,
+      multi_processor_count,
+      stream);
+
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  is_packed = true;
+}
+
+// ---------------------------------------------------------------------------
+// PrePack helper: Repack column-major FP4 weights to row-major using GPU kernel.
+// ---------------------------------------------------------------------------
+void QMoE::PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                                   IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
+  auto shape = tensor.Shape();
+  ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D FP4 weights for WFP4AFP8 native prepack");
+
+  const int64_t experts = shape[0];
+  const int64_t k = shape[1];
+  const int64_t n = shape[2] * 2;  // Packed: n/2 bytes per row in source
+  const size_t bytes = tensor.SizeInBytes();
+
+  // Ensure input is on GPU
+  const void* p_src = tensor.DataRaw();
+  IAllocatorUniquePtr<void> temp_src_gpu;
+  if (tensor.Location().device.Type() == OrtDevice::CPU) {
+    temp_src_gpu = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+    CUDA_CALL_THROW(cudaMemcpyAsync(temp_src_gpu.get(), p_src, bytes, cudaMemcpyHostToDevice, stream));
+    p_src = temp_src_gpu.get();
+  }
+
+  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+
+  LaunchQMoERepackFP4ColToRow(
+      static_cast<const uint8_t*>(p_src),
+      static_cast<uint8_t*>(packed_buf.get()),
+      static_cast<int>(experts),
+      k, n, stream);
+
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  is_packed = true;
+}
+
+// ---------------------------------------------------------------------------
+// PrePack helper: Compute bias from zero-points and scales.
+// ---------------------------------------------------------------------------
+void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                              const IAllocatorUniquePtr<void>& packed_scale,
+                              IAllocatorUniquePtr<void>& packed_bias, bool& is_packed) {
+  if ((expert_weight_bits_ == 4) && !packed_scale) {
+    return;
+  }
+
+  size_t num_elements = tensor.Shape().Size();
+  auto shape = tensor.Shape();
+
+  if (expert_weight_bits_ == 8) {
+    if (block_size_ > 0) {
+      bool is_fp16 = is_fp16_;
+      bool is_bf16 = !is_fp16_;
+      size_t bytes = num_elements * (is_fp16 || is_bf16 ? 2 : 4);
+      packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+
+      const void* p_src_zp = tensor.DataRaw();
+      IAllocatorUniquePtr<void> temp_zp_gpu;
+      if (tensor.Location().device.Type() == OrtDevice::CPU) {
+        temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
+        CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
+        p_src_zp = temp_zp_gpu.get();
+      }
+
+      const void* p_zp_for_calc = p_src_zp;
+      IAllocatorUniquePtr<void> temp_zp_transposed;
+
+      if (shape.NumDimensions() == 3 && shape[2] > 1) {
+        size_t rows = shape[1];
+        size_t cols = shape[2];
+        size_t batch = shape[0];
+        temp_zp_transposed = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
+        LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src_zp), static_cast<uint8_t*>(temp_zp_transposed.get()), batch, rows, cols, stream);
+        p_zp_for_calc = temp_zp_transposed.get();
+      }
+
+      if (is_fp16) {
+        LaunchQMoEPrePackOffsetBias(static_cast<const uint8_t*>(p_zp_for_calc), static_cast<const half*>(packed_scale.get()), static_cast<half*>(packed_bias.get()), num_elements, 128.0f, stream);
+      } else if (is_bf16) {
+        LaunchQMoEPrePackOffsetBias(static_cast<const uint8_t*>(p_zp_for_calc), static_cast<const __nv_bfloat16*>(packed_scale.get()), static_cast<__nv_bfloat16*>(packed_bias.get()), num_elements, 128.0f, stream);
+      } else {
+        LaunchQMoEPrePackOffsetBias(static_cast<const uint8_t*>(p_zp_for_calc), static_cast<const float*>(packed_scale.get()), static_cast<float*>(packed_bias.get()), num_elements, 128.0f, stream);
+      }
+    } else {
+      size_t bytes = num_elements * sizeof(uint8_t);
+      packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+
+      const void* p_src_zp = tensor.DataRaw();
+      IAllocatorUniquePtr<void> temp_zp_gpu;
+      if (tensor.Location().device.Type() == OrtDevice::CPU) {
+        temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
+        CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
+        p_src_zp = temp_zp_gpu.get();
+      }
+
+      if (shape.NumDimensions() == 3 && shape[2] > 1) {
+        size_t rows = shape[1];
+        size_t cols = shape[2];
+        size_t batch = shape[0];
+        LaunchQMoETranspose2D(static_cast<const uint8_t*>(p_src_zp), static_cast<uint8_t*>(packed_bias.get()), batch, rows, cols, stream);
+      } else {
+        CUDA_CALL_THROW(cudaMemcpyAsync(packed_bias.get(), p_src_zp, bytes, cudaMemcpyDefault, stream));
+      }
+    }
+  } else {
+    if (block_size_ <= 0) {
+      return;
+    }
+
+    bool is_fp16 = is_fp16_;
+    bool is_bf16 = !is_fp16_;
+
+    ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D zeros for block-wise 4-bit");
+    const int experts = static_cast<int>(shape[0]);
+    const int n = static_cast<int>(shape[1]);
+    const int packed_k_blocks = static_cast<int>(shape[2]);
+    const int k_blocks = packed_k_blocks * 2;
+    size_t output_count = static_cast<size_t>(experts) * static_cast<size_t>(k_blocks) * static_cast<size_t>(n);
+    size_t bytes = output_count * (is_fp16 || is_bf16 ? 2 : 4);
+    packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+
+    const void* p_src_zp = tensor.DataRaw();
+    IAllocatorUniquePtr<void> temp_zp_gpu;
+    if (tensor.Location().device.Type() == OrtDevice::CPU) {
+      temp_zp_gpu = IAllocator::MakeUniquePtr<void>(alloc, tensor.SizeInBytes(), true);
+      CUDA_CALL_THROW(cudaMemcpyAsync(temp_zp_gpu.get(), p_src_zp, tensor.SizeInBytes(), cudaMemcpyDefault, stream));
+      p_src_zp = temp_zp_gpu.get();
+    }
+
+    const uint8_t* zp_ptr = static_cast<const uint8_t*>(p_src_zp);
+    constexpr float kDefaultZeroPoint4Bit = 8.0f;
+    for (int e = 0; e < experts; ++e) {
+      const uint8_t* zp_e = zp_ptr + static_cast<size_t>(e) * static_cast<size_t>(n) * static_cast<size_t>(packed_k_blocks);
+      size_t scale_off = static_cast<size_t>(e) * static_cast<size_t>(k_blocks) * static_cast<size_t>(n);
+      if (is_fp16) {
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, half, uint8_t>(
+            stream,
+            zp_e,
+            static_cast<const half*>(packed_scale.get()) + scale_off,
+            static_cast<half*>(packed_bias.get()) + scale_off,
+            n, k_blocks, kDefaultZeroPoint4Bit);
+      } else if (is_bf16) {
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, __nv_bfloat16, uint8_t>(
+            stream,
+            zp_e,
+            static_cast<const __nv_bfloat16*>(packed_scale.get()) + scale_off,
+            static_cast<__nv_bfloat16*>(packed_bias.get()) + scale_off,
+            n, k_blocks, kDefaultZeroPoint4Bit);
+      } else {
+        ORT_THROW("Unsupported type for 4-bit block-wise ZP prepack. Expected FP16/BF16.");
+      }
+    }
+  }
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  is_packed = true;
 }
 
 }  // namespace cuda

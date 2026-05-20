@@ -746,6 +746,61 @@ void LaunchQMoEDequantizeFp8Weights(
   LaunchQMoEDequantizeFp8WeightsImpl(weights, global_scales, output, num_experts, n, k, stream);
 }
 
+// Repack column-major FP4 packed weights to row-major layout.
+// Input: [experts, k, n/2] packed col-major (each byte holds 2 values along n).
+// Output: [experts, n, k/2] packed row-major (each byte holds 2 values along k).
+// One thread per output byte.
+__global__ void QMoERepackFP4ColToRowKernel(
+    const uint8_t* __restrict__ input,
+    uint8_t* __restrict__ output,
+    int experts,
+    int64_t k,
+    int64_t n) {
+  const int64_t k_half = k / 2;
+  const int64_t n_half = n / 2;
+  const int64_t out_expert_stride = n * k_half;
+  const int64_t in_expert_stride = k * n_half;
+  const int64_t total = static_cast<int64_t>(experts) * out_expert_stride;
+
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= total) return;
+
+  int64_t expert = idx / out_expert_stride;
+  int64_t rem = idx - expert * out_expert_stride;
+  int64_t row = rem / k_half;       // output row index [0, n)
+  int64_t col_byte = rem % k_half;  // output byte index [0, k/2)
+
+  int64_t col_even = col_byte * 2;
+  int64_t col_odd = col_even + 1;
+
+  // Source byte addresses: src[expert][col][row/2]
+  int64_t in_base = expert * in_expert_stride;
+  uint8_t src_even = input[in_base + col_even * n_half + row / 2];
+  uint8_t src_odd = input[in_base + col_odd * n_half + row / 2];
+
+  // Extract nibble based on row parity
+  uint8_t low_code = (row % 2 == 0) ? (src_even & 0x0F) : ((src_even >> 4) & 0x0F);
+  uint8_t high_code = (row % 2 == 0) ? (src_odd & 0x0F) : ((src_odd >> 4) & 0x0F);
+
+  output[idx] = low_code | static_cast<uint8_t>(high_code << 4);
+}
+
+void LaunchQMoERepackFP4ColToRow(
+    const uint8_t* input,
+    uint8_t* output,
+    int experts,
+    int64_t k,
+    int64_t n,
+    cudaStream_t stream) {
+  const int64_t total = static_cast<int64_t>(experts) * n * (k / 2);
+  constexpr int kThreads = 256;
+  int64_t blocks = (total + kThreads - 1) / kThreads;
+  ORT_ENFORCE(blocks <= static_cast<int64_t>(std::numeric_limits<int>::max()),
+              "LaunchQMoERepackFP4ColToRow grid size exceeds int range");
+  QMoERepackFP4ColToRowKernel<<<static_cast<int>(blocks), kThreads, 0, stream>>>(
+      input, output, experts, k, n);
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
