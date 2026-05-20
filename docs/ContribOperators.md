@@ -1496,7 +1496,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.DynamicQuantMatMulFp8"></a><a name="com.microsoft.dynamicquantmatmulfp8">**com.microsoft.DynamicQuantMatMulFp8**</a>
 
-  Symmetric quantized MatMul for fp8 weights (with optional prepack conversion from float16/bfloat16/float) and runtime casting of activations to fp8 using block-wise scales. All zero-point inputs, when provided, must encode 0.0.
+  Symmetric quantized MatMul for fp8 weights (with optional prepack conversion from float16/bfloat16/float) and dynamic runtime quantization of activations to fp8 using internally computed block-wise scales. All zero-point inputs, when provided, must encode 0.0.
 
 #### Version
 
@@ -1505,28 +1505,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>block_size_k</tt> : int</dt>
+<dt><tt>block_size_k</tt> : int (default is 128)</dt>
 <dd>Block size along K for A and B block-wise scales.</dd>
-<dt><tt>block_size_m</tt> : int</dt>
-<dd>Block size along M for A block-wise scales.</dd>
-<dt><tt>block_size_n</tt> : int</dt>
+<dt><tt>block_size_m</tt> : int (default is 1)</dt>
+<dd>Block size along M for A block-wise scales. Must be 1.</dd>
+<dt><tt>block_size_n</tt> : int (default is 128)</dt>
 <dd>Block size along N for B block-wise scales.</dd>
+<dt><tt>fp8_type</tt> : int (default is 17)</dt>
+<dd>FP8 TensorProto data type used when non-FP8 constant B is dynamically quantized during prepack. Defaults to FLOAT8E4M3FN.</dd>
 </dl>
 
-#### Inputs (6 - 8)
+#### Inputs (2 - 6)
 
 <dl>
 <dt><tt>A</tt> : TA</dt>
 <dd>Input tensor A.</dd>
-<dt><tt>A_scale</tt> : TS</dt>
-<dd>Scale of quantized input 'A'. Must be a block-wise tensor with shape (ceil(M / block_size_m), K / block_size_k), or the same shape with A batch dimensions prefixed.</dd>
-<dt><tt>A_zero_point</tt> : TZ</dt>
-<dd>Zero point tensor for input 'A'. Must have the same shape as A_scale and all values must encode 0.0.</dd>
 <dt><tt>B</tt> : TB</dt>
 <dd>Input tensor B. FP8 B may be provided at runtime. Float, float16, and bfloat16 B are only supported when B is a constant initializer that can be quantized during prepack.</dd>
-<dt><tt>B_scale</tt> : TS</dt>
-<dd>Scale of input 'B'. Must be a block-wise tensor with shape (K / block_size_k, N / block_size_n).</dd>
-<dt><tt>B_zero_point</tt> : TZ</dt>
+<dt><tt>B_scale</tt> (optional) : TS</dt>
+<dd>Scale of FP8 input 'B'. Must be a block-wise tensor with shape (N / block_size_n, K / block_size_k). Required when B is already FP8. Ignored for non-FP8 constant B, where scales are computed during prepack.</dd>
+<dt><tt>B_zero_point</tt> (optional) : TZ</dt>
 <dd>Zero point tensor for input 'B'. Must have the same shape as B_scale and all values must encode 0.0.</dd>
 <dt><tt>Y_scale</tt> (optional) : TS</dt>
 <dd>Scale of output 'Y'. Must be a scalar when provided.</dd>

@@ -24,13 +24,11 @@ class DynamicQuantMatMulFp8 final : public OpKernel {
 
   enum InputTensors : int {
     IN_A = 0,
-    IN_A_SCALE = 1,
-    IN_A_ZERO_POINT = 2,
-    IN_B = 3,
-    IN_B_SCALE = 4,
-    IN_B_ZERO_POINT = 5,
-    IN_Y_SCALE = 6,
-    IN_Y_ZERO_POINT = 7
+    IN_B = 1,
+    IN_B_SCALE = 2,
+    IN_B_ZERO_POINT = 3,
+    IN_Y_SCALE = 4,
+    IN_Y_ZERO_POINT = 5
   };
 
   enum OutputTensors : int { OUT_Y = 0 };
@@ -47,10 +45,12 @@ class DynamicQuantMatMulFp8 final : public OpKernel {
   static constexpr int GetBIdx() { return IN_B; }
   IAllocatorUniquePtr<void> quantized_b_;
   size_t quantized_b_size_{0};
+  IAllocatorUniquePtr<float> b_scales_;
+  size_t b_scale_count_{0};
   TensorShape b_shape_;
   mlas_fp8_mode b_type_{static_cast<mlas_fp8_mode>(0)};
   bool has_b_type_{false};
-  size_t block_size_m_{128};
+  mlas_fp8_mode fp8_type_{MLAS_FP8_MODE_E4M3_INF};
   size_t block_size_k_{128};
   size_t block_size_n_{128};
 };

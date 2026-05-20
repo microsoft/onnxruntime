@@ -952,39 +952,38 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     DynamicQuantMatMulFp8, 1,
     OpSchema()
         .SetDoc("Symmetric quantized MatMul for fp8 weights (with optional prepack conversion from "
-                "float16/bfloat16/float) and runtime casting of activations to fp8 using block-wise scales. "
-                "All zero-point inputs, when provided, must encode 0.0.")
+                "float16/bfloat16/float) and dynamic runtime quantization of activations to fp8 using "
+                "internally computed block-wise scales. All zero-point inputs, when provided, must encode 0.0.")
         .Input(0, "A", "Input tensor A.", "TA")
-        .Input(1, "A_scale",
-               "Scale of quantized input 'A'. Must be a block-wise tensor with shape "
-               "(ceil(M / block_size_m), K / block_size_k), or the same shape with A batch dimensions prefixed.",
-               "TS")
-        .Input(2, "A_zero_point",
-               "Zero point tensor for input 'A'. Must have the same shape as A_scale and all values must encode 0.0.",
-               "TZ")
-        .Input(3, "B",
+        .Input(1, "B",
                "Input tensor B. FP8 B may be provided at runtime. Float, float16, and bfloat16 B are only "
                "supported when B is a constant initializer that can be quantized during prepack.",
                "TB")
-        .Input(4, "B_scale",
-               "Scale of input 'B'. Must be a block-wise tensor with shape "
-               "(K / block_size_k, N / block_size_n).",
-               "TS")
-        .Input(5, "B_zero_point",
+        .Input(2, "B_scale",
+               "Scale of FP8 input 'B'. Must be a block-wise tensor with shape "
+               "(N / block_size_n, K / block_size_k). Required when B is already FP8. Ignored for non-FP8 "
+               "constant B, where scales are computed during prepack.",
+               "TS", OpSchema::Optional)
+        .Input(3, "B_zero_point",
                "Zero point tensor for input 'B'. Must have the same shape as B_scale and all values must encode 0.0.",
-               "TZ")
-        .Input(6, "Y_scale", "Scale of output 'Y'. Must be a scalar when provided.", "TS",
+               "TZ", OpSchema::Optional)
+        .Input(4, "Y_scale", "Scale of output 'Y'. Must be a scalar when provided.", "TS",
                OpSchema::Optional)
-        .Input(7, "Y_zero_point",
+        .Input(5, "Y_zero_point",
                "Zero point tensor for output 'Y'. Must be a scalar encoding 0.0 when provided.", "TZ",
                OpSchema::Optional)
         .Output(0, "Y", "Output tensor of shape (..., M, N).", "TY")
-        .Attr("block_size_m", "Block size along M for A block-wise scales.", AttributeProto::INT,
-              static_cast<int64_t>(128))
+        .Attr("block_size_m", "Block size along M for A block-wise scales. Must be 1.",
+              AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("block_size_k", "Block size along K for A and B block-wise scales.", AttributeProto::INT,
               static_cast<int64_t>(128))
         .Attr("block_size_n", "Block size along N for B block-wise scales.", AttributeProto::INT,
               static_cast<int64_t>(128))
+        .Attr("fp8_type",
+              "FP8 TensorProto data type used when non-FP8 constant B is dynamically quantized during prepack. "
+              "Defaults to FLOAT8E4M3FN.",
+              AttributeProto::INT,
+              static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN))
         .TypeConstraint("TA", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                         "Constrain input A type to float16, bfloat16, or float.")
         .TypeConstraint("TB",
@@ -1000,144 +999,71 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("TY", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
                         "Constrain output type to float16, bfloat16, or float.")
         .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const int64_t block_size_m = getAttribute(ctx, "block_size_m", static_cast<int64_t>(128));
+          const int64_t block_size_m = getAttribute(ctx, "block_size_m", static_cast<int64_t>(1));
           const int64_t block_size_k = getAttribute(ctx, "block_size_k", static_cast<int64_t>(128));
           const int64_t block_size_n = getAttribute(ctx, "block_size_n", static_cast<int64_t>(128));
-          if (block_size_m <= 0 || block_size_k <= 0 || block_size_n <= 0) {
-            fail_type_inference("block_size_m, block_size_k, and block_size_n must be greater than zero.");
+          if (block_size_m != 1) {
+            fail_type_inference("block_size_m must be 1.");
           }
-          const auto ceil_div = [](int64_t value, int64_t divisor) {
-            return value == 0 ? int64_t{0} : ((value - 1) / divisor) + 1;
-          };
-
-          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3)) {
-            ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 3);
+          if (block_size_k <= 0 || block_size_n <= 0) {
+            fail_type_inference("block_size_k and block_size_n must be greater than zero.");
           }
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
-            auto& a_shape = getInputShape(ctx, 0);
-            auto& a_scale_shape = getInputShape(ctx, 1);
-            const int a_rank = a_shape.dim_size();
-            if (a_rank < 2) {
-              fail_type_inference("A must be at least 2D.");
-            }
-            const int a_scale_rank = a_scale_shape.dim_size();
-            if (a_scale_rank < 2) {
-              fail_type_inference("A scale must have rank 2 or the same rank as A.");
-            }
-            if (a_scale_rank != 2) {
-              if (a_scale_rank != a_rank) {
-                fail_type_inference("A scale must have rank 2 or the same rank as A.");
-              }
-              for (int i = 0; i < a_rank - 2; ++i) {
-                if (a_shape.dim(i).has_dim_value() && a_scale_shape.dim(i).has_dim_value() &&
-                    a_shape.dim(i).dim_value() != a_scale_shape.dim(i).dim_value()) {
-                  fail_type_inference("A scale batch dimensions must match A.");
-                }
-              }
-            }
-            if (a_shape.dim(a_rank - 2).has_dim_value() && a_scale_shape.dim(a_scale_rank - 2).has_dim_value() &&
-                a_shape.dim(a_rank - 1).has_dim_value() && a_scale_shape.dim(a_scale_rank - 1).has_dim_value()) {
-              const auto m = a_shape.dim(a_rank - 2).dim_value();
-              const auto k = a_shape.dim(a_rank - 1).dim_value();
-              const auto m_blocks = ceil_div(m, block_size_m);
-              if (a_scale_shape.dim(a_scale_rank - 2).dim_value() != m_blocks) {
-                fail_type_inference("A scale second-to-last dimension must be ceil(M / block_size_m).");
-              }
-              if ((k % block_size_k) != 0 ||
-                  a_scale_shape.dim(a_scale_rank - 1).dim_value() != (k / block_size_k)) {
-                fail_type_inference("A scale last dimension must be K / block_size_k.");
-              }
-            }
+            ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
           }
-          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
-            auto& a_shape = getInputShape(ctx, 0);
-            auto& a_zp_shape = getInputShape(ctx, 2);
-            const int a_rank = a_shape.dim_size();
-            if (a_rank < 2) {
-              fail_type_inference("A must be at least 2D.");
-            }
-            const int a_zp_rank = a_zp_shape.dim_size();
-            if (a_zp_rank < 2) {
-              fail_type_inference("A zero point must have rank 2 or the same rank as A.");
-            }
-            if (a_zp_rank != 2) {
-              if (a_zp_rank != a_rank) {
-                fail_type_inference("A zero point must have rank 2 or the same rank as A.");
-              }
-              for (int i = 0; i < a_rank - 2; ++i) {
-                if (a_shape.dim(i).has_dim_value() && a_zp_shape.dim(i).has_dim_value() &&
-                    a_shape.dim(i).dim_value() != a_zp_shape.dim(i).dim_value()) {
-                  fail_type_inference("A zero point batch dimensions must match A.");
-                }
-              }
-            }
-            if (a_shape.dim(a_rank - 2).has_dim_value() && a_zp_shape.dim(a_zp_rank - 2).has_dim_value() &&
-                a_shape.dim(a_rank - 1).has_dim_value() && a_zp_shape.dim(a_zp_rank - 1).has_dim_value()) {
-              const auto m = a_shape.dim(a_rank - 2).dim_value();
-              const auto k = a_shape.dim(a_rank - 1).dim_value();
-              const auto m_blocks = ceil_div(m, block_size_m);
-              if (a_zp_shape.dim(a_zp_rank - 2).dim_value() != m_blocks) {
-                fail_type_inference("A zero point second-to-last dimension must be ceil(M / block_size_m).");
-              }
-              if ((k % block_size_k) != 0 ||
-                  a_zp_shape.dim(a_zp_rank - 1).dim_value() != (k / block_size_k)) {
-                fail_type_inference("A zero point last dimension must be K / block_size_k.");
-              }
-            }
-          }
-          if (hasInputShape(ctx, 6)) {
-            auto shape = ctx.getInputType(6)->tensor_type().shape();
+          if (hasInputShape(ctx, 4)) {
+            auto shape = ctx.getInputType(4)->tensor_type().shape();
             if (shape.dim_size() != 0) {
               fail_type_inference("Y scale input must be a scalar.");
             }
           }
-          if (hasInputShape(ctx, 7)) {
-            auto shape = ctx.getInputType(7)->tensor_type().shape();
+          if (hasInputShape(ctx, 5)) {
+            auto shape = ctx.getInputType(5)->tensor_type().shape();
             if (shape.dim_size() != 0) {
               fail_type_inference("Y zero point input must be a scalar.");
             }
           }
-          if (hasInputShape(ctx, 3) && hasInputShape(ctx, 4)) {
-            auto& b_shape = getInputShape(ctx, 3);
-            auto& b_scale_shape = getInputShape(ctx, 4);
+          if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+            auto& b_shape = getInputShape(ctx, 1);
+            auto& b_scale_shape = getInputShape(ctx, 2);
             if (b_shape.dim_size() != 2) {
               fail_type_inference("B must be 2D.");
             }
             if (b_scale_shape.dim_size() != 2) {
               fail_type_inference("B scale must be 2D.");
             }
-            if (b_shape.dim(1).has_dim_value() && b_scale_shape.dim(1).has_dim_value()) {
+            if (b_shape.dim(1).has_dim_value() && b_scale_shape.dim(0).has_dim_value()) {
               const auto n = b_shape.dim(1).dim_value();
-              if ((n % block_size_n) != 0 || b_scale_shape.dim(1).dim_value() != (n / block_size_n)) {
-                fail_type_inference("B scale last dimension must be N / block_size_n.");
+              if ((n % block_size_n) != 0 || b_scale_shape.dim(0).dim_value() != (n / block_size_n)) {
+                fail_type_inference("B scale first dimension must be N / block_size_n.");
               }
             }
-            if (b_shape.dim(0).has_dim_value() && b_scale_shape.dim(0).has_dim_value()) {
+            if (b_shape.dim(0).has_dim_value() && b_scale_shape.dim(1).has_dim_value()) {
               const auto k = b_shape.dim(0).dim_value();
-              if ((k % block_size_k) != 0 || b_scale_shape.dim(0).dim_value() != (k / block_size_k)) {
-                fail_type_inference("B scale first dimension must be K / block_size_k.");
+              if ((k % block_size_k) != 0 || b_scale_shape.dim(1).dim_value() != (k / block_size_k)) {
+                fail_type_inference("B scale last dimension must be K / block_size_k.");
               }
             }
           }
-          if (hasInputShape(ctx, 3) && hasInputShape(ctx, 5)) {
-            auto& b_shape = getInputShape(ctx, 3);
-            auto& b_zp_shape = getInputShape(ctx, 5);
+          if (hasInputShape(ctx, 1) && hasInputShape(ctx, 3)) {
+            auto& b_shape = getInputShape(ctx, 1);
+            auto& b_zp_shape = getInputShape(ctx, 3);
             if (b_shape.dim_size() != 2) {
               fail_type_inference("B must be 2D.");
             }
             if (b_zp_shape.dim_size() != 2) {
               fail_type_inference("B zero point must be 2D.");
             }
-            if (b_shape.dim(1).has_dim_value() && b_zp_shape.dim(1).has_dim_value()) {
+            if (b_shape.dim(1).has_dim_value() && b_zp_shape.dim(0).has_dim_value()) {
               const auto n = b_shape.dim(1).dim_value();
-              if ((n % block_size_n) != 0 || b_zp_shape.dim(1).dim_value() != (n / block_size_n)) {
-                fail_type_inference("B zero point last dimension must be N / block_size_n.");
+              if ((n % block_size_n) != 0 || b_zp_shape.dim(0).dim_value() != (n / block_size_n)) {
+                fail_type_inference("B zero point first dimension must be N / block_size_n.");
               }
             }
-            if (b_shape.dim(0).has_dim_value() && b_zp_shape.dim(0).has_dim_value()) {
+            if (b_shape.dim(0).has_dim_value() && b_zp_shape.dim(1).has_dim_value()) {
               const auto k = b_shape.dim(0).dim_value();
-              if ((k % block_size_k) != 0 || b_zp_shape.dim(0).dim_value() != (k / block_size_k)) {
-                fail_type_inference("B zero point first dimension must be K / block_size_k.");
+              if ((k % block_size_k) != 0 || b_zp_shape.dim(1).dim_value() != (k / block_size_k)) {
+                fail_type_inference("B zero point last dimension must be K / block_size_k.");
               }
             }
           }
