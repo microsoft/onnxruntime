@@ -328,7 +328,7 @@ Status DynamicQuantMatMulFp8::PrePack(const Tensor& tensor, int input_idx, Alloc
 
   const size_t K = static_cast<size_t>(b_shape_[0]);
   const size_t N = static_cast<size_t>(b_shape_[1]);
-  if (K == 0 || N == 0) {
+  if (K == 0) {
     return Status::OK();
   }
 
@@ -356,6 +356,10 @@ Status DynamicQuantMatMulFp8::PrePack(const Tensor& tensor, int input_idx, Alloc
   }
   b_type_ = b_type;
   has_b_type_ = true;
+
+  if (N == 0) {
+    return Status::OK();
+  }
 
   ORT_RETURN_IF_NOT(b_scale.IsDataType<float>() || b_scale.IsDataType<MLFloat16>() || b_scale.IsDataType<BFloat16>(),
                     "DynamicQuantMatMulFp8 requires B scale input to be float, float16, or bfloat16.");
@@ -555,18 +559,6 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(b_zero_point->GetElementType());
   const bool b_is_fp8 = IsFp8DataType(b_elem_type);
 
-  // Select the FP8 B buffer: prefer pre-quantized B from PrePack, otherwise accept FP8-typed B input.
-  const uint8_t* b_fp8 = nullptr;
-  if (quantized_b_) {
-    b_fp8 = static_cast<const uint8_t*>(quantized_b_.get());
-  } else if (b_is_fp8) {
-    b_fp8 = static_cast<const uint8_t*>(b->DataRaw());
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "DynamicQuantMatMulFp8 requires runtime B input to be FP8. Non-FP8 B is only supported "
-                           "when B is a constant initializer that can be quantized during prepack.");
-  }
-
   mlas_fp8_mode a_type{};
   ORT_RETURN_IF(a_zero_point == nullptr,
                 "DynamicQuantMatMulFp8 requires FP8 zero point for A.");
@@ -590,6 +582,18 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
 
   if (y_size == 0) {
     return Status::OK();
+  }
+
+  // Select the FP8 B buffer: prefer pre-quantized B from PrePack, otherwise accept FP8-typed B input.
+  const uint8_t* b_fp8 = nullptr;
+  if (quantized_b_) {
+    b_fp8 = static_cast<const uint8_t*>(quantized_b_.get());
+  } else if (b_is_fp8) {
+    b_fp8 = static_cast<const uint8_t*>(b->DataRaw());
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "DynamicQuantMatMulFp8 requires runtime B input to be FP8. Non-FP8 B is only supported "
+                           "when B is a constant initializer that can be quantized during prepack.");
   }
 
   const size_t num_gemms = helper.OutputOffsets().size();
