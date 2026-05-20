@@ -117,7 +117,12 @@ void from_json(const json& j, EpCompatibilitySchema& c) {
     throw std::invalid_argument(MakeString("\"", kEpKey, "\" must be a non-empty string."));
   }
 
-  if (j.contains(kDeviceKey) && j[kDeviceKey].is_string()) c.device = j[kDeviceKey].get<std::string>();
+  if (j.contains(kDeviceKey) && !j[kDeviceKey].is_null()) {
+    if (!j[kDeviceKey].is_string()) {
+      throw std::invalid_argument(MakeString("\"", kDeviceKey, "\" must be a string when present."));
+    }
+    c.device = j[kDeviceKey].get<std::string>();
+  }
   c.compatibility_string = ParseCompatibilityString(j, kCompatibilityStringKey);
 }
 
@@ -163,6 +168,16 @@ void from_json(const json& j, ComponentSchema& m) {
   }
 
   m.variants = j.at(kVariantsKey).get<std::unordered_map<std::string, VariantSchema>>();
+}
+
+// Parse variants while preserving JSON declaration order for deterministic tie-breaking.
+std::vector<std::pair<std::string, VariantSchema>> ParseVariantsInOrder(const json& variants_obj) {
+  std::vector<std::pair<std::string, VariantSchema>> result;
+  result.reserve(variants_obj.size());
+  for (auto it = variants_obj.begin(); it != variants_obj.end(); ++it) {
+    result.emplace_back(it.key(), it.value().get<VariantSchema>());
+  }
+  return result;
 }
 
 Status FindSingleOnnxFile(const std::filesystem::path& search_dir,
@@ -238,6 +253,59 @@ std::string BuildModelInfoLogString(const VariantInfo& variant) {
   return oss.str();
 }
 
+// Validate that a path segment (component name, variant name, filename) does not contain
+// path traversal sequences or represent an absolute path.
+Status ValidatePathSegment(const std::string& segment, const char* segment_type) {
+  if (segment.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           segment_type, " must not be empty.");
+  }
+
+  // Reject absolute paths
+  if (std::filesystem::path(segment).is_absolute()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           segment_type, " must not be an absolute path: '", segment, "'.");
+  }
+
+  // Reject .. components
+  for (const auto& part : std::filesystem::path(segment)) {
+    if (part == "..") {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             segment_type, " must not contain '..' path components: '", segment, "'.");
+    }
+  }
+
+  return Status::OK();
+}
+
+// Validate that a resolved path is confined to the expected root directory.
+Status ValidatePathConfinement(const std::filesystem::path& resolved_path,
+                               const std::filesystem::path& root,
+                               const char* description) {
+  // Use lexical normalization to collapse ".." without resolving symlinks.
+  // This catches path-traversal attacks while allowing symlinked files inside the tree.
+  auto normal_root = root.lexically_normal();
+  auto normal_path = resolved_path.lexically_normal();
+
+  auto root_str = normal_root.string();
+  auto path_str = normal_path.string();
+
+  // Ensure the resolved path starts with the root path.
+  if (path_str.size() < root_str.size() ||
+      path_str.compare(0, root_str.size(), root_str) != 0 ||
+      (path_str.size() > root_str.size() && path_str[root_str.size()] != std::filesystem::path::preferred_separator
+#ifndef _WIN32
+       && path_str[root_str.size()] != '/'
+#endif
+       )) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           description, " resolves outside the package root. Path: '",
+                           resolved_path.string(), "', Root: '", root.string(), "'.");
+  }
+
+  return Status::OK();
+}
+
 void LogParsedVariants(const logging::Logger& logger,
                        const std::vector<VariantInfo>& variants) {
   for (const auto& v : variants) {
@@ -309,9 +377,9 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
                            component_name);
   }
 
-  std::unordered_map<std::string, VariantSchema> variants;
+  std::vector<std::pair<std::string, VariantSchema>> variants;
   ORT_TRY {
-    variants = variants_obj->get<std::unordered_map<std::string, VariantSchema>>();
+    variants = ParseVariantsInOrder(*variants_obj);
   }
   ORT_CATCH(const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -320,7 +388,9 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
   }
 
   for (const auto& [variant_name, variant] : variants) {
+    ORT_RETURN_IF_ERROR(ValidatePathSegment(variant_name, "Variant name"));
     const std::filesystem::path variant_root = component_model_root / variant_name;
+    ORT_RETURN_IF_ERROR(ValidatePathConfinement(variant_root, component_model_root, "Variant directory"));
     const std::filesystem::path variant_descriptor_path = variant_root / kVariantDescriptorFileName;
 
     if (!std::filesystem::exists(variant_descriptor_path)) {
@@ -365,6 +435,8 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
 
     for (const auto& file_schema : variant_metadata_schema.files) {
       const std::string identifier = file_schema.filename;  // deterministic identifier in v2 schema
+      ORT_RETURN_IF_ERROR(ValidatePathSegment(identifier, "File name"));
+
       if (!identifiers_seen.insert(identifier).second) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Duplicate file identifier '", identifier,
@@ -372,6 +444,7 @@ Status ModelPackageDescriptorParser::ParseVariantsFromComponent(
       }
 
       const std::filesystem::path candidate_path = variant_root / file_schema.filename;
+      ORT_RETURN_IF_ERROR(ValidatePathConfinement(candidate_path, variant_root, "Variant file path"));
       if (!std::filesystem::exists(candidate_path)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Variant '", variant_name, "', file '", file_schema.filename,
@@ -521,7 +594,9 @@ Status ModelPackageDescriptorParser::ParseVariantsFromPackageRoot(
   }
 
   for (const auto& component_name : component_model_names) {
+    ORT_RETURN_IF_ERROR(ValidatePathSegment(component_name, "Component name"));
     const auto component_model_root = package_root / "models" / component_name;
+    ORT_RETURN_IF_ERROR(ValidatePathConfinement(component_model_root, package_root, "Component directory"));
 
     if (has_components &&
         (!std::filesystem::exists(component_model_root) || !std::filesystem::is_directory(component_model_root))) {

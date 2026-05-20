@@ -19,9 +19,8 @@ class ModelPackageOptions {
  public:
   ModelPackageOptions(const Environment& env, const OrtSessionOptions& session_options);
 
-  const OrtSessionOptions& SessionOptions() const noexcept { return session_options_; }
-
-  Status RebuildProviderListForSession(const Environment& env) const;
+  Status RebuildProviderListForSession(const Environment& env,
+                                        const OrtSessionOptions& effective_options) const;
 
   // Resolved state accessors
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() const noexcept { return provider_list_; }
@@ -32,9 +31,7 @@ class ModelPackageOptions {
   bool FromPolicy() const noexcept { return from_policy_; }
 
  private:
-  void ResolveEpSelection(const Environment& env);
-
-  OrtSessionOptions session_options_;
+  void ResolveEpSelection(const Environment& env, const OrtSessionOptions& session_options);
 
   // might needs to be rebuilt per session creation, as it becomes empty
   // after consumed by RegisterExecutionProvider(std::move(...)).

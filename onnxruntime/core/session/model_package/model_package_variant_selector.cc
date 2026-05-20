@@ -125,9 +125,12 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
     bool device_ok = !ec.device.has_value() || ec.device->empty();
     std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
 
-    if (ep_info.hardware_devices.empty()) {
-      device_ok = true;
-    } else if (!device_ok) {
+    if (!device_ok) {
+      // If the EP exposes no hardware devices but the variant declares a device constraint,
+      // we cannot verify the constraint, so treat it as non-matching.
+      if (ep_info.hardware_devices.empty()) {
+        continue;
+      }
       if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
         device_ok = true;
         constraint_devices = {matched_hd};
@@ -246,6 +249,7 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
     if (best_index.has_value()) {
       selected_variant = std::move(variants[*best_index]);
       selected_variant->selected_ep_compatibility_index = best_ec_index;
+      return Status::OK();
     }
   }
 

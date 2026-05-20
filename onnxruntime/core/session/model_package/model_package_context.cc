@@ -13,6 +13,8 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
+#include "core/graph/constants.h"
+#include "core/providers/providers.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_descriptor_parser.h"
 #include "core/session/model_package/model_package_options.h"
@@ -57,10 +59,21 @@ Status FillOptionCachesFromMap(
 
 ModelPackageComponentContext::ModelPackageComponentContext(const std::string& component_name,
                                                            const ComponentInfo& component_model_info,
-                                                           const ModelPackageOptions* options)
+                                                           const ModelPackageOptions& options)
     : component_model_name_(component_name),
       component_model_info_(component_model_info),
-      options_(options) {
+      owned_ep_infos_(options.EpInfos()),
+      execution_devices_(options.ExecutionDevices()),
+      devices_selected_(options.DevicesSelected()),
+      from_policy_(options.FromPolicy()) {
+  // Move providers from options so we own them for the first session creation.
+  auto& src_providers = options.MutableProviderList();
+  provider_list_.reserve(src_providers.size());
+  for (auto& p : src_providers) {
+    provider_list_.push_back(std::move(p));
+  }
+  // Point the span at our owned copy.
+  ep_infos_ = gsl::span<const VariantSelectionEpInfo>(owned_ep_infos_);
 }
 
 ModelPackageComponentContext::ModelPackageComponentContext(const std::string& component_name,
@@ -72,20 +85,11 @@ ModelPackageComponentContext::ModelPackageComponentContext(const std::string& co
 }
 
 Status ModelPackageComponentContext::ResolveVariant() {
-  if (!ep_infos_.empty()) {
-    return ResolveVariantImpl(ep_infos_);
-  }
+  ORT_RETURN_IF(ep_infos_.empty(),
+                "ModelPackageComponentContext::ResolveVariant requires non-empty ep_infos "
+                "(from ModelPackageOptions or explicit span).");
 
-  ORT_RETURN_IF(options_ == nullptr,
-                "ModelPackageComponentContext::ResolveVariant requires non-null ModelPackageOptions "
-                "or non-empty ep_infos.");
-
-  // Mirror resolved EP runtime state from options.
-  execution_devices_ = options_->ExecutionDevices();
-  devices_selected_ = options_->DevicesSelected();
-  from_policy_ = options_->FromPolicy();
-
-  return ResolveVariantImpl(options_->EpInfos());
+  return ResolveVariantImpl(ep_infos_);
 }
 
 Status ModelPackageComponentContext::ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos) {
@@ -262,9 +266,84 @@ Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptions(size_
                                  out_values);
 }
 
-std::vector<std::unique_ptr<IExecutionProvider>>& ModelPackageComponentContext::MutableProviderList() {
-  ORT_ENFORCE(options_ != nullptr, "ModelPackageComponentContext has no associated ModelPackageOptions.");
-  return options_->MutableProviderList();
+namespace {
+void BuildPtrCache(gsl::span<const std::string> strings,
+                   std::vector<const char*>& ptrs_cache,
+                   const char* const*& out_ptrs, size_t& out_count) {
+  ptrs_cache.clear();
+  ptrs_cache.reserve(strings.size());
+  for (const auto& s : strings) {
+    ptrs_cache.push_back(s.c_str());
+  }
+  out_count = ptrs_cache.size();
+  out_ptrs = ptrs_cache.empty() ? nullptr : ptrs_cache.data();
+}
+}  // namespace
+
+Status ModelPackageComponentContext::GetSelectedVariantFileSessionOptionPtrs(
+    size_t file_idx,
+    const char* const*& out_keys,
+    const char* const*& out_values,
+    size_t& out_count) const {
+  out_keys = nullptr;
+  out_values = nullptr;
+  out_count = 0;
+
+  gsl::span<const std::string> keys;
+  gsl::span<const std::string> values;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantFileSessionOptions(file_idx, keys, values));
+  ORT_RETURN_IF(keys.size() != values.size(), "Session options keys/values size mismatch.");
+
+  BuildPtrCache(keys, file_session_option_key_ptrs_cache_[file_idx], out_keys, out_count);
+  size_t dummy;
+  BuildPtrCache(values, file_session_option_value_ptrs_cache_[file_idx], out_values, dummy);
+  return Status::OK();
+}
+
+Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptionPtrs(
+    size_t file_idx,
+    const char* const*& out_keys,
+    const char* const*& out_values,
+    size_t& out_count) const {
+  out_keys = nullptr;
+  out_values = nullptr;
+  out_count = 0;
+
+  gsl::span<const std::string> keys;
+  gsl::span<const std::string> values;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantFileProviderOptions(file_idx, keys, values));
+  ORT_RETURN_IF(keys.size() != values.size(), "Provider options keys/values size mismatch.");
+
+  BuildPtrCache(keys, file_provider_option_key_ptrs_cache_[file_idx], out_keys, out_count);
+  size_t dummy;
+  BuildPtrCache(values, file_provider_option_value_ptrs_cache_[file_idx], out_values, dummy);
+  return Status::OK();
+}
+
+Status ModelPackageComponentContext::RebuildProviderListForSession(
+    const Environment& env, const OrtSessionOptions& effective_options) {
+  provider_list_.clear();
+
+  if (owned_ep_infos_.empty()) {
+    return Status::OK();
+  }
+
+  const auto& ep_info = owned_ep_infos_[0];
+  if (ep_info.ep_name == kCpuExecutionProvider || ep_info.ep_devices.empty()) {
+    // CPU is built-in; no provider to register.
+    return Status::OK();
+  }
+
+  std::unique_ptr<IExecutionProviderFactory> provider_factory;
+  ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(
+      env,
+      gsl::span<const OrtEpDevice* const>(ep_info.ep_devices.data(), ep_info.ep_devices.size()),
+      provider_factory));
+
+  const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
+  provider_list_.push_back(provider_factory->CreateProvider(effective_options, logger));
+
+  return Status::OK();
 }
 
 Status ModelPackageComponentContext::GetSelectedVariantConsumerMetadata(const std::string*& out_json_str) const {
@@ -286,21 +365,6 @@ Status ModelPackageComponentContext::GetSelectedVariantConsumerMetadata(const st
 
   out_json_str = &consumer_metadata_cache_;
   return Status::OK();
-}
-
-const std::vector<const OrtEpDevice*>& ModelPackageComponentContext::ExecutionDevices() const {
-  ORT_ENFORCE(options_ != nullptr, "ModelPackageComponentContext has no associated ModelPackageOptions.");
-  return options_->ExecutionDevices();
-}
-
-const std::vector<const OrtEpDevice*>& ModelPackageComponentContext::DevicesSelected() const {
-  ORT_ENFORCE(options_ != nullptr, "ModelPackageComponentContext has no associated ModelPackageOptions.");
-  return options_->DevicesSelected();
-}
-
-bool ModelPackageComponentContext::IsFromPolicy() const {
-  ORT_ENFORCE(options_ != nullptr, "ModelPackageComponentContext has no associated ModelPackageOptions.");
-  return options_->FromPolicy();
 }
 
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
@@ -348,6 +412,33 @@ Status ModelPackageContext::GetComponentNames(gsl::span<const std::string>& out_
   out_names = gsl::span<const std::string>(component_names_cache_.data(),
                                            component_names_cache_.size());
   return Status::OK();
+}
+
+void ModelPackageContext::GetComponentNamePtrs(const char* const*& out_ptrs, size_t& out_count) const {
+  if (component_name_ptrs_cache_.empty() && !component_names_cache_.empty()) {
+    component_name_ptrs_cache_.reserve(component_names_cache_.size());
+    for (const auto& s : component_names_cache_) {
+      component_name_ptrs_cache_.push_back(s.c_str());
+    }
+  }
+  out_count = component_name_ptrs_cache_.size();
+  out_ptrs = component_name_ptrs_cache_.empty() ? nullptr : component_name_ptrs_cache_.data();
+}
+
+void ModelPackageContext::GetVariantNamePtrs(const std::string& component_name,
+                                             const char* const*& out_ptrs, size_t& out_count) const {
+  // Ensure variant name strings are cached first.
+  gsl::span<const std::string> variant_names;
+  (void)GetVariantNames(component_name, variant_names);
+
+  auto& ptrs = variant_name_ptrs_cache_[component_name];
+  ptrs.clear();
+  ptrs.reserve(variant_names.size());
+  for (const auto& s : variant_names) {
+    ptrs.push_back(s.c_str());
+  }
+  out_count = ptrs.size();
+  out_ptrs = ptrs.empty() ? nullptr : ptrs.data();
 }
 
 Status ModelPackageContext::GetVariantCount(const std::string& component_name, size_t& out_count) const {
