@@ -86,6 +86,69 @@ CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int d
 }
 
 // ---------------------------------------------------------------------------
+// CudaExternalDeviceAllocator — delegates to user-provided function pointers.
+// ---------------------------------------------------------------------------
+
+CudaExternalDeviceAllocator::CudaExternalDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id,
+                                                         void* alloc_fn, void* free_fn, void* empty_cache_fn)
+    : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info),
+      device_id_(device_id),
+      alloc_fn_(reinterpret_cast<ExternalAlloc>(alloc_fn)),
+      free_fn_(reinterpret_cast<ExternalFree>(free_fn)),
+      empty_cache_fn_(reinterpret_cast<ExternalEmptyCache>(empty_cache_fn)) {
+  version = kCudaPluginEpMinOrtApiVersion;
+  Alloc = AllocImpl;
+  Free = FreeImpl;
+  Info = InfoImpl;
+  Reserve = ReserveImpl;
+  GetStats = nullptr;
+  AllocOnStream = nullptr;
+}
+
+/*static*/ void* ORT_API_CALL CudaExternalDeviceAllocator::AllocImpl(OrtAllocator* this_ptr, size_t size) noexcept {
+  auto* alloc = static_cast<CudaExternalDeviceAllocator*>(this_ptr);
+  if (size == 0) return nullptr;
+  if (alloc->alloc_fn_ == nullptr) return nullptr;
+
+  int prev_device = -1;
+  const bool restore_prev_device = cudaGetDevice(&prev_device) == cudaSuccess;
+  if (cudaSetDevice(alloc->device_id_) != cudaSuccess) {
+    RestoreDeviceIfKnown(restore_prev_device, prev_device);
+    return nullptr;
+  }
+
+  void* p = alloc->alloc_fn_(size);
+  RestoreDeviceIfKnown(restore_prev_device, prev_device);
+  return p;
+}
+
+/*static*/ void ORT_API_CALL CudaExternalDeviceAllocator::FreeImpl(OrtAllocator* this_ptr, void* p) noexcept {
+  auto* alloc = static_cast<CudaExternalDeviceAllocator*>(this_ptr);
+  if (p != nullptr && alloc->free_fn_ != nullptr) {
+    int prev_device = -1;
+    const bool restore_prev_device = cudaGetDevice(&prev_device) == cudaSuccess;
+    if (cudaSetDevice(alloc->device_id_) != cudaSuccess) {
+      RestoreDeviceIfKnown(restore_prev_device, prev_device);
+      return;
+    }
+
+    alloc->free_fn_(p);
+    RestoreDeviceIfKnown(restore_prev_device, prev_device);
+  }
+}
+
+/*static*/ const OrtMemoryInfo* ORT_API_CALL CudaExternalDeviceAllocator::InfoImpl(
+    const OrtAllocator* this_ptr) noexcept {
+  const auto* alloc = static_cast<const CudaExternalDeviceAllocator*>(this_ptr);
+  return alloc->GetMemoryInfo();
+}
+
+/*static*/ void* ORT_API_CALL CudaExternalDeviceAllocator::ReserveImpl(OrtAllocator* this_ptr, size_t size) noexcept {
+  // Reserve delegates to Alloc — no separate reservation pool for external allocators.
+  return AllocImpl(this_ptr, size);
+}
+
+// ---------------------------------------------------------------------------
 // CudaPinnedAllocator — uses cudaHostAlloc/cudaFreeHost for page-locked
 // host memory visible to the GPU.
 // ---------------------------------------------------------------------------
