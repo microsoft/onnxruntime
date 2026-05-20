@@ -72,7 +72,7 @@ python tools/ci_build/build.py --build_dir build/webgpu_plugin_ep --config RelWi
 
 The WebGPU EP is added to a session via the [plugin EP](./plugin-ep-libraries/index.md) APIs: the shared library is registered at runtime with `register_execution_provider_library` / `RegisterExecutionProviderLibrary`, and one or more `OrtEpDevice` entries are then attached to a `SessionOptions`. The `onnxruntime-ep-webgpu` (Python) and `Microsoft.ML.OnnxRuntime.EP.WebGpu` (.NET) packages bundle the shared library and provide helpers that return its path and the EP name to use.
 
-See [Using a Plugin Execution Provider Library](./plugin-ep-libraries/usage.md) for the full cross-EP idiom, including library lifetime and per-language API references.
+See [Using a Plugin Execution Provider Library](./plugin-ep-libraries/usage.md) for the general plugin EP workflow.
 
 ### Python
 
