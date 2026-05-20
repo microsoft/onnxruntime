@@ -214,7 +214,21 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
   inline ReduceAggregatorSum(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
   inline void update(const T& v) { this->accumulator_ += v; }
   static T aggall(const T* from_data, int64_t size) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).sum();
+    if constexpr (std::is_same_v<T, float>) {
+      // Improve numerical stability for large float reductions.
+      double sum = 0.0;
+      double compensation = 0.0;
+      for (int64_t i = 0; i < size; ++i) {
+        const double value = static_cast<double>(from_data[i]) - compensation;
+        const double next_sum = sum + value;
+        compensation = (next_sum - sum) - value;
+        sum = next_sum;
+      }
+
+      return static_cast<float>(sum);
+    } else {
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).sum();
+    }
   }
   inline T aggall(const T* from_data) {
     return aggall(from_data, this->N_);

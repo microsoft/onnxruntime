@@ -2684,6 +2684,26 @@ TEST(ReductionOpTest, ReduceSum_default_axes_do_not_keep_dims) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }
 
+TEST(ReductionOpTest, ReduceSum_default_axes_do_not_keep_dims_large_float32_constant_input) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+
+  constexpr int64_t d0 = 5;
+  constexpr int64_t d1 = 68;
+  constexpr int64_t d2 = 64;
+  constexpr int64_t d3 = 64;
+  constexpr int64_t numel = d0 * d1 * d2 * d3;
+  constexpr float input_value = 0.1f;
+  const std::vector<float> input(onnxruntime::narrow<size_t>(numel), input_value);
+  const float expected = static_cast<float>(static_cast<double>(numel) * static_cast<double>(input_value));
+
+  test.AddInput<float>("data", {d0, d1, d2, d3}, input);
+  test.AddOutput<float>("reduced", {}, {expected});
+  test.SetOutputAbsErr("reduced", 0.1f);
+  test.SetOutputRelErr("reduced", 1e-6f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
 TEST(ReductionOpTest, ReduceSum_do_not_keepdims) {
   OpTester test("ReduceSum");
   test.AddAttribute("axes", std::vector<int64_t>{1});
