@@ -318,6 +318,20 @@ __global__ void QMoEScaledZP4BitBatchedKernel(
   }
 }
 
+namespace {
+// gridDim.z is limited to 65535 on all CUDA compute capabilities (>= 3.0).
+constexpr int kMaxGridDimZ = 65535;
+
+inline void ValidateScaledZP4BitBatchedArgs(int experts, int n, int k_blocks) {
+  ORT_ENFORCE(experts > 0 && n > 0 && k_blocks > 0,
+              "LaunchQMoEScaledZP4BitBatched requires positive experts/n/k_blocks, got experts=",
+              experts, ", n=", n, ", k_blocks=", k_blocks);
+  ORT_ENFORCE(experts <= kMaxGridDimZ,
+              "LaunchQMoEScaledZP4BitBatched expert count exceeds gridDim.z limit (", kMaxGridDimZ,
+              "), got ", experts);
+}
+}  // namespace
+
 void LaunchQMoEScaledZP4BitBatched(
     const uint8_t* packed_zp,
     const half* transposed_scale,
@@ -325,6 +339,7 @@ void LaunchQMoEScaledZP4BitBatched(
     int experts, int n, int k_blocks,
     float default_zero_point,
     cudaStream_t stream) {
+  ValidateScaledZP4BitBatchedArgs(experts, n, k_blocks);
   constexpr int BLOCK_SIZE = 16;
   dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
   dim3 gridDim(
@@ -342,6 +357,7 @@ void LaunchQMoEScaledZP4BitBatched(
     int experts, int n, int k_blocks,
     float default_zero_point,
     cudaStream_t stream) {
+  ValidateScaledZP4BitBatchedArgs(experts, n, k_blocks);
   constexpr int BLOCK_SIZE = 16;
   dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
   dim3 gridDim(
