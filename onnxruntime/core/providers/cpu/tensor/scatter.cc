@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
+#include <atomic>
 #include <type_traits>
 #include <core/common/safeint.h>
 
@@ -246,11 +247,14 @@ Status GetIndices(
 
   indices_data.resize(narrow<size_t>(num_indices));
 
+  // When multiple indices are out-of-bounds, the reported index is nondeterministic
+  // (whichever thread wins the CAS). This is acceptable—we only need to report that
+  // validation failed and provide one example of a bad index.
   std::atomic<bool> found_error{false};
   std::atomic<int64_t> first_bad_idx{0};
 
   concurrency::ThreadPool::TryParallelFor(
-      tp, static_cast<std::ptrdiff_t>(num_indices), 1.0,
+      tp, narrow<std::ptrdiff_t>(num_indices), 1.0,
       [&](std::ptrdiff_t first, std::ptrdiff_t last) {
         for (std::ptrdiff_t i = first; i < last; ++i) {
           const int64_t idx = static_cast<int64_t>(indices_data_raw[i]);
@@ -358,7 +362,7 @@ Status ScatterData(
   // Each work unit processes axis_size elements along the scatter axis.
   // Cost per unit is proportional to axis_size (number of scatter ops per work unit).
   concurrency::ThreadPool::TryParallelFor(
-      tp, static_cast<std::ptrdiff_t>(total_work_units), static_cast<double>(axis_size),
+      tp, narrow<std::ptrdiff_t>(total_work_units), static_cast<double>(axis_size),
       [&](std::ptrdiff_t first, std::ptrdiff_t last) {
         for (std::ptrdiff_t work_idx = first; work_idx < last; ++work_idx) {
           // Decompose work_idx into outer_idx and inner_idx
