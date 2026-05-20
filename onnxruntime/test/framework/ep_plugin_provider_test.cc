@@ -296,7 +296,7 @@ TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderAcceptsHig
   test_plugin_ep::CreateProviderTestContext context;
 
   auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
-  ort_ep->ort_version_supported = 999;
+  ort_ep->ort_version_supported = ORT_API_VERSION + 1;
   context.ep_factory.SetNextEp(std::move(ort_ep));
 
   std::unique_ptr<PluginExecutionProvider> plugin_ep;
