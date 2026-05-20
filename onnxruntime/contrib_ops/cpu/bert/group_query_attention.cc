@@ -22,16 +22,20 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      GroupQueryAttention,                                              \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCpuExecutionProvider,                                            \
-      KernelDefBuilder()                                                \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()), \
+#define REGISTER_KERNEL_TYPED(T)                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
+      GroupQueryAttention,                                                    \
+      kMSDomain,                                                              \
+      1,                                                                      \
+      T,                                                                      \
+      kCpuExecutionProvider,                                                  \
+      KernelDefBuilder()                                                      \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
+          .TypeConstraint("T_CACHE", {DataTypeImpl::GetTensorType<T>(),       \
+                                      DataTypeImpl::GetTensorType<uint8_t>(), \
+                                      DataTypeImpl::GetTensorType<int8_t>()}) \
+          .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),       \
       GroupQueryAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -55,6 +59,27 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* position_ids = context->Input<Tensor>(9);
   const Tensor* attention_bias = context->Input<Tensor>(10);
   const Tensor* head_sink = context->Input<Tensor>(11);
+  const Tensor* k_scale = context->Input<Tensor>(12);
+  const Tensor* v_scale = context->Input<Tensor>(13);
+
+  // Validate quantization configuration.
+  if (kv_quant_enabled_) {
+    ORT_RETURN_IF(k_quant_type_ != v_quant_type_,
+                  "CPU GroupQueryAttention requires k_quant_type == v_quant_type, got different types");
+    ORT_RETURN_IF(kv_cache_bit_width_ != 4 && kv_cache_bit_width_ != 8,
+                  "kv_cache_bit_width must be 4 or 8 when quantization is enabled, got ", kv_cache_bit_width_);
+    constexpr bool is_float = std::is_same_v<T, float>;
+    ORT_RETURN_IF(!is_float,
+                  "CPU GroupQueryAttention only supports float Q dtype with quantized KV cache");
+    ORT_RETURN_IF(k_scale == nullptr,
+                  "k_scale must be provided when k_quant_type is not NONE");
+    ORT_RETURN_IF(v_scale == nullptr,
+                  "v_scale must be provided when v_quant_type is not NONE");
+    ORT_RETURN_IF(k_scale->DataType() != DataTypeImpl::GetType<float>(),
+                  "k_scale must be float tensor");
+    ORT_RETURN_IF(v_scale->DataType() != DataTypeImpl::GetType<float>(),
+                  "v_scale must be float tensor");
+  }
 
   GroupQueryAttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -71,12 +96,17 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_,
-                                                                0));
+                                                                kv_cache_bit_width_));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
+
+  // Populate quantization fields in parameters.
+  parameters.k_quant_type = k_quant_type_;
+  parameters.v_quant_type = v_quant_type_;
+  parameters.kv_cache_bit_width = kv_cache_bit_width_;
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
@@ -108,8 +138,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(q_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(head_size)});
-  std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(head_size)});
+  const int packed_head_size = (kv_cache_bit_width_ == 4) ? ((head_size + 1) / 2) : head_size;
+  std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)});
+  std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(kv_num_heads_), static_cast<int64_t>(present_kv_seqlen), static_cast<int64_t>(packed_head_size)});
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
 
@@ -236,6 +267,24 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
   const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
+
+  // Quantized KV cache path: quantize-on-write + MlasQKGemm / MlasSVGemm.
+  if (kv_quant_enabled_) {
+    if constexpr (std::is_same_v<T, float>) {
+      const float* k_data_q = packed_qkv ? nullptr : k_rotary;
+      const float* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<float>();
+      return ApplyAttentionQuantized(
+          q_rotary, k_data_q, v_data_q, head_sink_data,
+          attention_bias, past_key, past_value,
+          output, present_k, present_v, output_qk, seqlens_k,
+          k_scale->Data<float>(), v_scale->Data<float>(),
+          ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_),
+          parameters, allocator, context);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Quantized KV cache requires float Q dtype");
+    }
+  }
 
   // Compute the attention score and apply the score to V
   const T* k_data = packed_qkv ? nullptr : k_rotary;

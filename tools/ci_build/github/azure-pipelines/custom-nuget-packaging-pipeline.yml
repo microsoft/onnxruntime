@@ -132,8 +132,20 @@ extends:
           AdditionalBuildFlags: '--skip_tests'
           DoEsrp: true
 
+      - stage: Linux_C_API_Packaging_CPU_aarch64
+        dependsOn: []
+        jobs:
+        - template: tools/ci_build/github/azure-pipelines/templates/c-api-linux-cpu.yml@self
+          parameters:
+            AdditionalBuildFlags: '--skip_tests'
+            OnnxruntimeArch: 'aarch64'
+            OnnxruntimeNodejsBindingArch: 'arm64'
+            PoolName: 'onnxruntime-linux-ARM64-CPU-2019'
+            PackageJava: false
+            PackageNodejs: false
+
       - template: templates/foundry-local-nuget-packaging.yml
         parameters:
-          DependsOn: [Setup, Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish]
+          DependsOn: [Setup, Windows_Packaging_CUDA, Windows_Packaging_CPU_arm64, ManagedNugetPackaging, MacOS_C_API_Package_Publish, Linux_C_API_Packaging_CPU_aarch64]
           DoEsrp: true
           PackageName: 'Microsoft.ML.OnnxRuntime.Foundry'
