@@ -194,6 +194,9 @@ void DequantizeBlockwise2Bits(
     onnxruntime::concurrency::ThreadPool* pool) {
   auto ceildiv = [](int a, int b) { return (a + b - 1) / b; };
   constexpr int elements_per_thread = 16;
+  ORT_ENFORCE(block_size > 0 && block_size <= 256 * elements_per_thread && block_size % elements_per_thread == 0,
+              "block_size must be positive, at most ", 256 * elements_per_thread,
+              ", and a multiple of ", elements_per_thread, ", got: ", block_size);
   int groups_per_threadblock = 256 * elements_per_thread / block_size;
   int groups_per_K = ceildiv(K, block_size);
   int total_groups = N * groups_per_K;

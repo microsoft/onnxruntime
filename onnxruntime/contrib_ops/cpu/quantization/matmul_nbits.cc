@@ -1084,7 +1084,6 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                 "Only 2b and 4b quantization is supported for unpacked compute using "
                 "non-MLAS de-quantization for now");
 
-    // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
     // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
     // MatMulNBits<MLFloat16> only MLFloat16 (not float) ZP can reach this branch.
     if (zero_points && zero_points->IsDataType<MLFloat16>()) {
