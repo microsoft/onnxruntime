@@ -228,7 +228,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   // as the input_shape uniform. The buffer remains the original uint8 storage with Flatten=4, and
   // the shader does explicit byte+bit-position extraction.
   TensorShape x_shape;
-  if (bits_ == 2 && is_int8) {
+  if (bits_ == 2 && is_uint8) {
     TensorShapeVector v = x_shape_intrinsic.AsShapeVector();
     v.back() *= 4;
     x_shape = TensorShape(std::move(v));
@@ -284,7 +284,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
       .CacheHint(std::to_string(bits_), std::to_string(gather_axis), std::to_string(quantize_axis), std::to_string(block_size_));
 
   if (zero_points != nullptr) {
-    if (bits_ == 2 && is_int8) {
+    if (bits_ == 2 && is_uint8) {
       // 2-bit zero points are packed 4 per byte along the quantize axis.
       const auto& zp_shape = zero_points->Shape();
       ORT_RETURN_IF_NOT(zp_shape.NumDimensions() == scales_shape.NumDimensions(),

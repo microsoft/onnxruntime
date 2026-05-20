@@ -677,6 +677,40 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_2Bits_Uint8) {
                                            zero_points, /*gather_axis=*/0, /*quantize_axis=*/2,
                                            /*block_size=*/16, /*bits=*/2, output, output_shape, true);
 }
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4) {
+  // Exercises the 2-bit zero-point row-boundary logic: scale_qaxis_dim = 5 is NOT a multiple
+  // of the 2-bit packing factor (4), so each zero_points row occupies (5+3)/4 = 2 bytes and
+  // the within-row qaxis index spans both bytes (lanes 0..3 in byte 0, lane 0 in byte 1).
+  // The kernel must address the packed byte using (scale_row, q_in_row), not a flat scales
+  // offset which would cross row boundaries.
+  //
+  // Logical layout: data {2, 80}, quantize_axis = 1 (last), block_size = 16, bits = 2.
+  // scales {2, 5}; zero_points logical {2, 5} -> packs to {2, 2}.
+  std::vector<int> data(2 * 80, 0);  // all zeros; dequant simplifies to (0 - zp) * scale
+  std::vector<int64_t> data_shape = {2, 80};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  // All scales = 1 so dequant value equals -zp directly.
+  std::vector<float> scales(2 * 5, 1.0f);
+  std::vector<int64_t> scales_shape = {2, 5};
+  // Logical 2-bit zero points in {-2,-1,0,1}; helper packs along last dim (5 -> 2 bytes).
+  // Row 0: [-2, 1, 0, -1, 1] ; Row 1: [1, 0, -1, -2, 0]
+  std::vector<int> zero_points = {-2, 1, 0, -1, 1, 1, 0, -1, -2, 0};
+
+  // indices = [1] -> pick row 1: zp = [1, 0, -1, -2, 0]
+  // dequant per block = (0 - zp) * 1 = [-1, 0, 1, 2, 0]
+  std::vector<float> output;
+  output.reserve(80);
+  for (float v : {-1.f, 0.f, 1.f, 2.f, 0.f}) {
+    output.insert(output.end(), 16, v);
+  }
+  std::vector<int64_t> output_shape = {1, 80};
+
+  RunUnpackedData<uint8_t, float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                           zero_points, /*gather_axis=*/0, /*quantize_axis=*/1,
+                                           /*block_size=*/16, /*bits=*/2, output, output_shape, true);
+}
 #endif
 
 #ifdef USE_WEBGPU
@@ -722,6 +756,47 @@ TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0NoZeroPoints_2Bits_Uint8) {
   RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
                                                 zero_points, zero_points_shape,
                                                 /*gather_axis=*/0, /*quantize_axis=*/2,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+}
+
+TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4) {
+  // WebGPU companion to GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4.
+  // scale_qaxis_dim = 5 (not a multiple of 4); packed zero_points last dim = (5+3)/4 = 2 bytes.
+  // The within-row qaxis index spans both bytes, validating the packed-byte addressing path
+  // (scale_row * zp_packed_qaxis_dim + q_idx/4, shift (q_idx%4)*2) in the WebGPU shader.
+  auto pack4 = [](int v0, int v1, int v2, int v3) -> uint8_t {
+    auto enc = [](int v) { return static_cast<uint8_t>((v + 2) & 0x3); };
+    return static_cast<uint8_t>(enc(v0) | (enc(v1) << 2) | (enc(v2) << 4) | (enc(v3) << 6));
+  };
+
+  // Packed data: each logical row = 80 zeros -> 20 bytes of pack4(0,0,0,0) = 0xAA. data_shape {2, 20}.
+  std::vector<uint8_t> data(2 * 20, pack4(0, 0, 0, 0));
+  std::vector<int64_t> data_shape = {2, 20};
+
+  std::vector<int32_t> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales(2 * 5, 1.0f);
+  std::vector<int64_t> scales_shape = {2, 5};
+
+  // Packed zero_points: shape {2, 2} (5 logical -> 2 bytes per row).
+  //   Row 0 logical [-2, 1, 0, -1, 1] -> byte0 = pack4(-2, 1, 0, -1) = 0x6C; byte1 lane0=1, rest dont-care.
+  //   Row 1 logical [ 1, 0,-1,-2, 0] -> byte0 = pack4( 1, 0,-1,-2) = 0x1B; byte1 lane0=0, rest dont-care.
+  std::vector<uint8_t> zero_points = {
+      pack4(-2, 1, 0, -1), pack4(1, -2, -2, -2),
+      pack4(1, 0, -1, -2), pack4(0, -2, -2, -2)};
+  std::vector<int64_t> zero_points_shape = {2, 2};
+
+  // Picking row 1 via indices=[1]: dequant per block = (0 - zp) * 1 = [-1, 0, 1, 2, 0].
+  std::vector<float> output;
+  output.reserve(80);
+  for (float v : {-1.f, 0.f, 1.f, 2.f, 0.f}) {
+    output.insert(output.end(), 16, v);
+  }
+  std::vector<int64_t> output_shape = {1, 80};
+
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/1,
                                                 /*block_size=*/16, /*bits=*/2, output, output_shape);
 }
 #endif  // USE_WEBGPU
