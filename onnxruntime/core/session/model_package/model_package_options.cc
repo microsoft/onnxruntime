@@ -34,6 +34,7 @@ void ModelPackageOptions::ResolveEpSelection(const Environment& env,
     for (auto& factory : session_options.provider_factories) {
       provider_list_.push_back(factory->CreateProvider(session_options, logger));
     }
+    ORT_THROW_IF_ERROR(GetVariantSelectionEpInfo(provider_list_, ep_infos_));
   } else if (from_policy_) {
     OrtKeyValuePairs model_metadata;
     ProviderPolicyContext provider_policy_context;
@@ -41,9 +42,12 @@ void ModelPackageOptions::ResolveEpSelection(const Environment& env,
     ORT_THROW_IF_ERROR(provider_policy_context.SelectEpsForModelPackage(
         env, mutable_session_options, model_metadata,
         execution_devices_, devices_selected_, provider_list_));
+    ORT_THROW_IF_ERROR(GetVariantSelectionEpInfo(provider_list_, ep_infos_));
+  } else {
+    // No explicit providers and no policy: default to CPU for variant selection.
+    ep_infos_.push_back(VariantSelectionEpInfo{});
+    ep_infos_.back().ep_name = kCpuExecutionProvider;
   }
-
-  ORT_THROW_IF_ERROR(GetVariantSelectionEpInfo(provider_list_, ep_infos_));
 
   ORT_THROW_IF_ERROR(PrintAvailableAndSelectedEpInfos(env, ep_infos_));
 }
