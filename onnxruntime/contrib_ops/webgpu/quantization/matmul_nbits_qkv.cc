@@ -23,76 +23,6 @@ namespace webgpu {
 
 namespace {
 
-Status ApplyUnfusedQKVSimplifiedLayerNorm(const Tensor* a,
-                                          const Tensor* norm_scale,
-                                          const Tensor* q_b,
-                                          const Tensor* q_scales,
-                                          const Tensor* k_b,
-                                          const Tensor* k_scales,
-                                          const Tensor* v_b,
-                                          const Tensor* v_scales,
-                                          int64_t K,
-                                          int64_t Nq,
-                                          int64_t Nkv,
-                                          int64_t block_size,
-                                          int64_t accuracy_level,
-                                          int64_t bits,
-                                          float epsilon,
-                                          onnxruntime::webgpu::ComputeContext& context,
-                                          Tensor* q_output,
-                                          Tensor* k_output,
-                                          Tensor* v_output) {
-  Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
-  const auto& a_shape = a->Shape();
-  const int64_t norm_size = a_shape[a_shape.NumDimensions() - 1];
-  const uint32_t norm_count = onnxruntime::narrow<uint32_t>(a_shape.Size() / norm_size);
-  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
-      context, a, norm_scale, /*bias=*/nullptr, epsilon, norm_count, norm_size,
-      /*simplified=*/true, &normalized_a, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
-  ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, q_b, q_scales, nullptr, nullptr,
-                                       K, Nq, block_size, accuracy_level, bits, context, q_output));
-  ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, k_b, k_scales, nullptr, nullptr,
-                                       K, Nkv, block_size, accuracy_level, bits, context, k_output));
-  ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, v_b, v_scales, nullptr, nullptr,
-                                       K, Nkv, block_size, accuracy_level, bits, context, v_output));
-  return Status::OK();
-}
-
-Status ApplyUnfusedQKVSkipSimplifiedLayerNorm(const Tensor* a,
-                                              const Tensor* skip,
-                                              const Tensor* norm_scale,
-                                              const Tensor* q_b,
-                                              const Tensor* q_scales,
-                                              const Tensor* k_b,
-                                              const Tensor* k_scales,
-                                              const Tensor* v_b,
-                                              const Tensor* v_scales,
-                                              int64_t K,
-                                              int64_t Nq,
-                                              int64_t Nkv,
-                                              int64_t block_size,
-                                              int64_t accuracy_level,
-                                              int64_t bits,
-                                              float epsilon,
-                                              onnxruntime::webgpu::ComputeContext& context,
-                                              Tensor* q_output,
-                                              Tensor* k_output,
-                                              Tensor* v_output,
-                                              Tensor* input_skip_bias_sum) {
-  Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
-  ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
-                                              /*beta=*/nullptr, /*bias=*/nullptr,
-                                              epsilon, /*simplified=*/true,
-                                              &normalized_a, input_skip_bias_sum));
-  ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, q_b, q_scales, nullptr, nullptr,
-                                       K, Nq, block_size, accuracy_level, bits, context, q_output));
-  ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, k_b, k_scales, nullptr, nullptr,
-                                       K, Nkv, block_size, accuracy_level, bits, context, k_output));
-  ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, v_b, v_scales, nullptr, nullptr,
-                                       K, Nkv, block_size, accuracy_level, bits, context, v_output));
-  return Status::OK();
-}
-
 class MatMulNBitsQkvDecodeProgram final
     : public Program<MatMulNBitsQkvDecodeProgram> {
  public:
@@ -254,32 +184,33 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   ORT_ENFORCE(norm_scale->Shape().Size() == K_, "norm_scale must have shape [K].");
 
   const uint32_t block_size = onnxruntime::narrow<uint32_t>(block_size_);
+#if !defined(__wasm__)
+  int32_t subgroup_matrix_config_index = -1;
   const bool would_use_subgroup_unfused =
-      WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(M,
-                                                           Nq,
-                                                           K,
-                                                           batch_count,
-                                                           block_size,
-                                                           accuracy_level_,
-                                                           bits_,
-                                                           context,
-                                                           q_output);
+      CanApplySubgroupMatrixMatMulNBits(context,
+                                        accuracy_level_,
+                                        block_size,
+                                        batch_count,
+                                        Nq,
+                                        K,
+                                        static_cast<uint32_t>(bits_),
+                                        q_output->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                        subgroup_matrix_config_index,
+                                        M);
+#else
+  const bool would_use_subgroup_unfused = false;
+#endif
   const bool would_use_dp4a_unfused =
       !would_use_subgroup_unfused &&
-      WouldApplyDP4AMatMulNBitsInCurrentDispatch(M,
-                                                 Nq,
-                                                 K,
-                                                 block_size,
-                                                 accuracy_level_,
-                                                 context,
-                                                 q_output);
+      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, Nq, K, GetMaxComponents(K),
+                                    M, /*has_weight_idx_indirect=*/false, q_output);
   const bool would_use_wide_tile_unfused =
       !would_use_subgroup_unfused &&
       !would_use_dp4a_unfused &&
-      WouldApplyWideTileMatMulNBitsInCurrentDispatch(M,
-                                                     K,
-                                                     block_size,
-                                                     bits_);
+      CanApplyWideTileMatMulNBits(M,
+                                  K,
+                                  block_size,
+                                  bits_);
 
   // The fused MatMulNBitsQkv shader binds every Q/K/V weight + scales tensor and the
   // norm/skip tensors as storage buffers. Devices with a tight maxStorageBuffersPerShaderStage
@@ -302,48 +233,29 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
 
   if (would_use_subgroup_unfused || would_use_dp4a_unfused || would_use_wide_tile_unfused ||
       M != 1) {
+    Tensor normalized_a = context.CreateGPUTensor(a->DataType(), a->Shape());
+
     if (skip != nullptr) {
-      return ApplyUnfusedQKVSkipSimplifiedLayerNorm(a,
-                                                    skip,
-                                                    norm_scale,
-                                                    q_b,
-                                                    q_scales,
-                                                    k_b,
-                                                    k_scales,
-                                                    v_b,
-                                                    v_scales,
-                                                    K_,
-                                                    Nq_,
-                                                    Nkv_,
-                                                    block_size_,
-                                                    accuracy_level_,
-                                                    bits_,
-                                                    epsilon_,
-                                                    context,
-                                                    q_output,
-                                                    k_output,
-                                                    v_output,
-                                                    input_skip_bias_sum);
+      ORT_RETURN_IF_ERROR(RunSkipLayerNormProgram(context, a, skip, norm_scale,
+                                                  /*beta=*/nullptr, /*bias=*/nullptr,
+                                                  epsilon_, /*simplified=*/true,
+                                                  &normalized_a, input_skip_bias_sum));
+    } else {
+      const auto& a_shape = a->Shape();
+      const int64_t norm_size = a_shape[a_shape.NumDimensions() - 1];
+      const uint32_t norm_count = onnxruntime::narrow<uint32_t>(a_shape.Size() / norm_size);
+      ORT_RETURN_IF_ERROR(onnxruntime::webgpu::RunLayerNormProgram(
+          context, a, norm_scale, /*bias=*/nullptr, epsilon_, norm_count, norm_size,
+          /*simplified=*/true, &normalized_a, /*mean=*/nullptr, /*inv_std_dev=*/nullptr));
     }
-    return ApplyUnfusedQKVSimplifiedLayerNorm(a,
-                                              norm_scale,
-                                              q_b,
-                                              q_scales,
-                                              k_b,
-                                              k_scales,
-                                              v_b,
-                                              v_scales,
-                                              K_,
-                                              Nq_,
-                                              Nkv_,
-                                              block_size_,
-                                              accuracy_level_,
-                                              bits_,
-                                              epsilon_,
-                                              context,
-                                              q_output,
-                                              k_output,
-                                              v_output);
+
+    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, q_b, q_scales, nullptr, nullptr,
+                                         K_, Nq_, block_size_, accuracy_level_, bits_, context, q_output));
+    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, k_b, k_scales, nullptr, nullptr,
+                                         K_, Nkv_, block_size_, accuracy_level_, bits_, context, k_output));
+    ORT_RETURN_IF_ERROR(ApplyMatMulNBits(&normalized_a, v_b, v_scales, nullptr, nullptr,
+                                         K_, Nkv_, block_size_, accuracy_level_, bits_, context, v_output));
+    return Status::OK();
   }
 
   // For the partial-fuse path, run [Skip]SimplifiedLayerNormalization into a scratch tensor

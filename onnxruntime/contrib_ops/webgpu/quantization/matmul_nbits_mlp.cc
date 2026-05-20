@@ -297,29 +297,30 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       block_size == kFusedDecodeFastPathBlockSize;
   const bool has_norm_input = norm_scale != nullptr;
 
+#if !defined(__wasm__)
+  int32_t subgroup_matrix_config_index = -1;
   const bool would_use_subgroup_unfused =
-      WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(M,
-                                                           N,
-                                                           K,
-                                                           batch_count,
-                                                           block_size,
-                                                           accuracy_level_,
-                                                           bits_,
-                                                           context,
-                                                           y);
+      CanApplySubgroupMatrixMatMulNBits(context,
+                                        accuracy_level_,
+                                        block_size,
+                                        batch_count,
+                                        N,
+                                        K,
+                                        static_cast<uint32_t>(bits_),
+                                        y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                        subgroup_matrix_config_index,
+                                        M);
+#else
+  const bool would_use_subgroup_unfused = false;
+#endif
   const bool would_use_dp4a_unfused =
-      WouldApplyDP4AMatMulNBitsInCurrentDispatch(M,
-                                                 N,
-                                                 K,
-                                                 block_size,
-                                                 accuracy_level_,
-                                                 context,
-                                                 y);
+      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, N, K, components_a,
+                                    M, /*has_weight_idx_indirect=*/false, y);
   const bool would_use_wide_tile_unfused =
-      WouldApplyWideTileMatMulNBitsInCurrentDispatch(M,
-                                                     K,
-                                                     block_size,
-                                                     bits_);
+      CanApplyWideTileMatMulNBits(M,
+                                  K,
+                                  block_size,
+                                  bits_);
 
   const bool can_use_decode_fast_path =
       is_decode_fast_path_candidate &&

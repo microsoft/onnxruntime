@@ -9,30 +9,22 @@
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/matmul_nbits_fusion_utils.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
 namespace {
 
-bool HasInput(const Node& node, size_t index) {
-  return index < node.InputDefs().size() && node.InputDefs()[index] != nullptr && !node.InputDefs()[index]->Name().empty();
-}
-
-bool IsSupportedSimplifiedLayerNormalization(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SimplifiedLayerNormalization", {1});
-}
-
-bool IsSupportedSkipSimplifiedLayerNormalization(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SkipSimplifiedLayerNormalization", {1}, kMSDomain);
-}
+using matmul_nbits_fusion_utils::GetFloatAttr;
+using matmul_nbits_fusion_utils::GetIntAttr;
+using matmul_nbits_fusion_utils::HasInput;
+using matmul_nbits_fusion_utils::HasProducedOutput;
+using matmul_nbits_fusion_utils::IsSupportedSimplifiedLayerNormalization;
+using matmul_nbits_fusion_utils::IsSupportedSkipSimplifiedLayerNormalization;
 
 bool IsSupportedNormForFusion(const Node& node) {
   return IsSupportedSimplifiedLayerNormalization(node) || IsSupportedSkipSimplifiedLayerNormalization(node);
-}
-
-bool HasProducedOutput(const Node& node, size_t index) {
-  return index < node.OutputDefs().size() && node.OutputDefs()[index] != nullptr && !node.OutputDefs()[index]->Name().empty();
 }
 
 bool IsMatMulNBitsWithoutOptionalInputs(const Node& node) {
@@ -40,39 +32,11 @@ bool IsMatMulNBitsWithoutOptionalInputs(const Node& node) {
          !HasInput(node, 3) && !HasInput(node, 4) && !HasInput(node, 5);
 }
 
-int64_t GetIntAttr(const Node& node, const char* name, int64_t default_value, bool required = false) {
-  const auto* attr = graph_utils::GetNodeAttribute(node, name);
-  if (attr == nullptr) {
-    ORT_ENFORCE(!required, "Missing required attribute ", name, " on node ", node.Name());
-    return default_value;
-  }
-
-  return attr->i();
-}
-
-float GetFloatAttr(const Node& node, const char* name, float default_value) {
-  const auto* attr = graph_utils::GetNodeAttribute(node, name);
-  return attr == nullptr ? default_value : attr->f();
-}
-
 struct QkvNodes {
   const Node* q = nullptr;
   const Node* k = nullptr;
   const Node* v = nullptr;
 };
-
-bool IsGraphOutput(const Graph& graph, const Node& node, size_t index) {
-  if (!HasProducedOutput(node, index)) {
-    return false;
-  }
-  const auto& output_name = node.OutputDefs()[index]->Name();
-  for (const auto* graph_output : graph.GetOutputs()) {
-    if (graph_output != nullptr && graph_output->Name() == output_name) {
-      return true;
-    }
-  }
-  return false;
-}
 
 bool HasOutputConsumers(const Node& node, size_t index) {
   if (!HasProducedOutput(node, index)) {
@@ -92,20 +56,22 @@ bool HasOutputConsumers(const Node& node, size_t index) {
 // Outputs 1 and 2 (mean / inv_std_var) are not exposed by the fused op and must not
 // be graph outputs or feed any downstream nodes.
 bool IsSupportedNormGraphOutputsForFusion(const Graph& graph, const Node& norm) {
-  if (IsGraphOutput(graph, norm, 0)) {
-    return false;
+  const auto graph_output_indices = graph.GetNodeOutputsInGraphOutputs(norm);
+  const bool is_skip_sln = IsSupportedSkipSimplifiedLayerNormalization(norm);
+  for (int idx : graph_output_indices) {
+    if (idx == 0) {
+      return false;
+    }
+    if (idx == 1 || idx == 2) {
+      return false;
+    }
+    if (idx == 3 && !is_skip_sln) {
+      return false;
+    }
   }
-  for (size_t i = 1; i < norm.OutputDefs().size(); ++i) {
-    if (i == 1 || i == 2) {
-      if (IsGraphOutput(graph, norm, i) || HasOutputConsumers(norm, i)) {
-        return false;
-      }
-      continue;
-    }
-    if (!IsGraphOutput(graph, norm, i)) {
-      continue;
-    }
-    if (!(IsSupportedSkipSimplifiedLayerNormalization(norm) && i == 3)) {
+  // Mean / inv_std_var (outputs 1 and 2) must not feed downstream nodes either.
+  for (size_t i = 1; i <= 2 && i < norm.OutputDefs().size(); ++i) {
+    if (HasOutputConsumers(norm, i)) {
       return false;
     }
   }
@@ -148,6 +114,14 @@ std::optional<QkvNodes> GetQkvNodes(const Graph& graph, const Node& norm) {
   const int64_t n1 = GetIntAttr(*consumers[1], "N", -1, true);
   const int64_t n2 = GetIntAttr(*consumers[2], "N", -1, true);
 
+  // Identify Q vs K/V by the `N` attribute: in GQA/MQA models (Qwen3, Llama3,
+  // Mistral, ...) Q projects to a different hidden dim than K/V which share
+  // N_kv. This is the only pattern the fused MatMulNBitsQkv kernel currently
+  // targets. Classic MHA models (GPT-2, BERT) where N_q == N_kv don't match
+  // any of the n_q != n_kv branches below and fall through to nullopt — safe
+  // but a missed optimization. Supporting equal-N MHA would require a
+  // disambiguator (e.g. attention-graph topology) and is left for a future
+  // change.
   QkvNodes qkv;
   if (n0 != n1 && n1 == n2) {
     qkv = {consumers[0], consumers[1], consumers[2]};
@@ -200,6 +174,13 @@ bool IsFuseCandidate(const Node& norm, const QkvNodes& qkv) {
   const int64_t k_accuracy_level = GetIntAttr(*qkv.k, "accuracy_level", 0);
   const int64_t v_accuracy_level = GetIntAttr(*qkv.v, "accuracy_level", 0);
 
+  // Fusion intentionally narrower than the kernel: although MatMulNBits
+  // accepts {2, 4, 8} bits and any block_size, the MatMulNBitsQkv fused
+  // decode fast path is only specialized for 4-bit / block_size=32 (see
+  // contrib_ops/webgpu/quantization/matmul_nbits_qkv.cc). Rewriting the graph
+  // for other configs would force a kernel-side fallback to the unfused path
+  // while losing the ability to run the original Q/K/V projections with their
+  // own preferred kernels, so we skip fusion for them.
   return q_k == k_k && q_k == v_k &&
          q_bits == k_bits && q_bits == v_bits && q_bits == 4 &&
          q_block_size == k_block_size && q_block_size == v_block_size && q_block_size == 32 &&

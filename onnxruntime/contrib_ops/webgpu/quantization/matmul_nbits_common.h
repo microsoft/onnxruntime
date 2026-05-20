@@ -36,64 +36,14 @@ std::string GenerateZeroPointReadingCode(uint32_t nbits, bool has_zero_points,
 /// \p context_id is the WebGpuContext slot (0 for the default context).
 bool HasDP4ADeviceSupport(int context_id = 0);
 
-bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(const Tensor* a,
-                                                          int64_t K_op,
-                                                          int64_t N_op,
-                                                          int64_t block_size_op,
-                                                          int64_t accuracy_level,
-                                                          int64_t nbits,
-                                                          onnxruntime::webgpu::ComputeContext& context,
-                                                          Tensor* y,
-                                                          bool has_weight_idx_indirect = false,
-                                                          int32_t* subgroup_matrix_config_index = nullptr,
-                                                          uint32_t override_M = 0);
-
-// Precomputed-dims overload for callers (e.g., ApplyMatMulNBits, MatMulNBitsMlp,
-// MatMulNBitsQkv) that have already run MatMulComputeHelper and have M/N/K and
-// batch_count in scope. Avoids re-running shape inference per dispatch decision.
-bool WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(uint32_t M,
-                                                          uint32_t N,
-                                                          uint32_t K,
-                                                          uint32_t batch_count,
-                                                          uint32_t block_size,
-                                                          int64_t accuracy_level,
-                                                          int64_t nbits,
-                                                          onnxruntime::webgpu::ComputeContext& context,
-                                                          Tensor* y,
-                                                          bool has_weight_idx_indirect = false,
-                                                          int32_t* subgroup_matrix_config_index = nullptr,
-                                                          uint32_t override_M = 0);
-
-bool WouldApplyDP4AMatMulNBitsInCurrentDispatch(const Tensor* a,
-                                                int64_t K_op,
-                                                int64_t N_op,
-                                                int64_t block_size_op,
-                                                int64_t accuracy_level,
-                                                onnxruntime::webgpu::ComputeContext& context,
-                                                Tensor* y,
-                                                bool has_weight_idx_indirect = false);
-
-bool WouldApplyDP4AMatMulNBitsInCurrentDispatch(uint32_t M,
-                                                uint32_t N,
-                                                uint32_t K,
-                                                uint32_t block_size,
-                                                int64_t accuracy_level,
-                                                onnxruntime::webgpu::ComputeContext& context,
-                                                Tensor* y,
-                                                bool has_weight_idx_indirect = false);
-
-bool WouldApplyWideTileMatMulNBitsInCurrentDispatch(const Tensor* a,
-                                                    int64_t K_op,
-                                                    int64_t N_op,
-                                                    int64_t block_size_op,
-                                                    int64_t nbits,
-                                                    bool has_weight_idx_indirect = false);
-
-bool WouldApplyWideTileMatMulNBitsInCurrentDispatch(uint32_t M,
-                                                    uint32_t K,
-                                                    uint32_t block_size,
-                                                    int64_t nbits,
-                                                    bool has_weight_idx_indirect = false);
+// Feasibility + dispatch-precondition check for the wide-tile MatMulNBits
+// kernel (Block32 / fp16 a4-component prefill). Returns true when the kernel
+// is supported for the given dims and the M-threshold is met.
+bool CanApplyWideTileMatMulNBits(uint32_t M,
+                                 uint32_t K,
+                                 uint32_t block_size,
+                                 int64_t nbits,
+                                 bool has_weight_idx_indirect = false);
 
 }  // namespace webgpu
 }  // namespace contrib
