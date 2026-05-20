@@ -4,6 +4,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |Operator|Note|
 |--------|------|
 |ai.onnx:Add||
+|ai.onnx:And|Both inputs must be bool.|
 |ai.onnx:Argmax||
 |ai.onnx:AveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Cast||
@@ -52,5 +53,6 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
 |ai.onnx:Unsqueeze||
+|ai.onnx:Where|`X`/`Y` branches must be float or float16.|
 |com.microsoft:QuickGelu|Produced by ORT's `QuickGeluFusion` optimizer pass. Decomposed into `mul` / `sigmoid` / `mul`.|
 |com.microsoft:FusedConv|Produced by ORT's `ConvActivationFusion` pass. Decomposed into `conv` + the fused activation (`Relu`, `Sigmoid`, `Tanh`, `LeakyRelu`, `Clip`, `HardSigmoid`).|
