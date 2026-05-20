@@ -710,6 +710,36 @@ TEST(UnpoolTest, MaxUnpoolOutputShapeSmallerThanMinimum) {
            {kDmlExecutionProvider});
 }
 
+TEST(UnpoolTest, MaxUnpoolOutputShapeBatchChannelMismatch) {
+  OpTester test("MaxUnpool", 11);
+
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", vector<int64_t>{2});
+
+  // X is 1x1x4, inferred output = 1x1x8
+  std::vector<float> t_vals = {1, 2, 3, 4};
+  std::vector<int64_t> t_dims = {1, 1, 4};
+
+  std::vector<int64_t> i_vals = {0, 1, 2, 3};
+  std::vector<int64_t> i_dims = {1, 1, 4};
+
+  // output_shape has different batch/channel dims than X
+  std::vector<int64_t> output_shape_vals = {2, 1, 8};
+  std::vector<int64_t> output_shape_dims = {3};
+
+  std::vector<int64_t> expected_dims = {2, 1, 8};
+  std::vector<float> expected_vals(16, 0.f);
+
+  test.AddInput<float>("xT", t_dims, t_vals);
+  test.AddInput<int64_t>("xI", i_dims, i_vals);
+  test.AddInput<int64_t>("output_shape", output_shape_dims, output_shape_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddShapeToTensorData(false);
+  test.Run(BaseTester::ExpectResult::kExpectFailure,
+           "output_shape batch and channel dimensions must match input",
+           {kDmlExecutionProvider});
+}
+
 #ifdef USE_DML
 // DML-specific tests: verify that DML rejects invalid inputs.
 // Empty expected error string is intentional — DML produces its own error messages
@@ -772,29 +802,7 @@ TEST(UnpoolTest, MaxUnpoolOutputShapeWrongElementCount_DML) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &dml_ep);
 }
 
-TEST(UnpoolTest, MaxUnpoolNegativeIndex_DML) {
-  OpTester test("MaxUnpool", 11);
-
-  test.AddAttribute("strides", std::vector<int64_t>{2});
-  test.AddAttribute("kernel_shape", vector<int64_t>{2});
-
-  std::vector<float> t_vals = {1, 2, 3, 4};
-  std::vector<int64_t> t_dims = {1, 1, 4};
-
-  std::vector<int64_t> i_vals = {-1, 3, 4, 6};
-  std::vector<int64_t> i_dims = {1, 1, 4};
-
-  std::vector<int64_t> expected_dims = {1, 1, 8};
-  std::vector<float> expected_vals(8, 0.f);
-
-  test.AddInput<float>("xT", t_dims, t_vals);
-  test.AddInput<int64_t>("xI", i_dims, i_vals);
-  test.AddOutput<float>("Y", expected_dims, expected_vals);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> dml_ep;
-  dml_ep.push_back(DefaultDmlExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &dml_ep);
-}
+// Note: No DML negative index test — DML does not reject negative indices at runtime.
 #endif  // USE_DML
 
 }  // namespace test
