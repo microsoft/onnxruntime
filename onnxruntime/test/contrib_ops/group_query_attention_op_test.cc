@@ -1383,18 +1383,12 @@ void RunQuantizedGQAPromptTest(const QuantGQAConfig& cfg) {
       }
       // Dequantize using per-element scale (unpack nibbles back).
       for (size_t i = 0; i < K_bnsh.size(); i += 2) {
-        int8_t q0 = static_cast<int8_t>((k_p[i / 2] & 0x0F) >= 8 ? (k_p[i / 2] & 0x0F) - 16
-                                                                 : (k_p[i / 2] & 0x0F));
-        int8_t q1 = static_cast<int8_t>((k_p[i / 2] >> 4) >= 8 ? (k_p[i / 2] >> 4) - 16
-                                                               : (k_p[i / 2] >> 4));
+        auto [q0, q1] = UnpackInt4(k_p[i / 2]);
         K_deq[i] = q0 * get_k_scale(i);
         K_deq[i + 1] = q1 * get_k_scale(i + 1);
       }
       for (size_t i = 0; i < V_bnsh.size(); i += 2) {
-        int8_t q0 = static_cast<int8_t>((v_p[i / 2] & 0x0F) >= 8 ? (v_p[i / 2] & 0x0F) - 16
-                                                                 : (v_p[i / 2] & 0x0F));
-        int8_t q1 = static_cast<int8_t>((v_p[i / 2] >> 4) >= 8 ? (v_p[i / 2] >> 4) - 16
-                                                               : (v_p[i / 2] >> 4));
+        auto [q0, q1] = UnpackInt4(v_p[i / 2]);
         V_deq[i] = q0 * get_v_scale(i);
         V_deq[i + 1] = q1 * get_v_scale(i + 1);
       }
