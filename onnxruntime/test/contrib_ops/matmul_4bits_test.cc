@@ -999,9 +999,10 @@ TEST(MatMulNBits, UnsupportedBlockSize_512) {
   std::vector<float> y_data(M * N, 0.0f);
   test.AddOutput<float>("Y", {M, N}, y_data);
 
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, "Only block sizes 16, 32, 64, 128, and 256 are supported",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
-            kOpenVINOExecutionProvider});
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test
