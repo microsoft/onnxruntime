@@ -55,13 +55,14 @@ NodeAttributes MakeQAttrsFromDQ(const Node& dq_node) {
 
 // Makes matching attributes for new DequantizeLinear nodes from an existing QuantizeLinear node.
 NodeAttributes MakeDQAttrsFromQ(const Node& q_node) {
-  assert(q_node.SinceVersion() <= 21);  // Checked by previous call to QDQ::MatchQNode().
+  // QDQ::MatchQNode() accepts opsets 10–25; the assert below would abort debug builds for
+  // opset 23/24/25 models, so it is intentionally omitted.
   const NodeAttributes& q_attrs = q_node.GetAttributes();
   if (q_attrs.empty()) {
     return {};
   }
 
-  // In opset <= 21, only the "axis" and "block_size" attributes for Q are also DQ attributes.
+  // Only the "axis" and "block_size" attributes for Q are also valid DQ attributes.
   NodeAttributes dq_attrs;
 
   auto axis_attr_it = q_attrs.find("axis");
