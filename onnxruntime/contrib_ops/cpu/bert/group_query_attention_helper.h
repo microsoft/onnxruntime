@@ -142,16 +142,20 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
 
   // For 4-bit quantized KV cache, actual dimension is head_size / 2 because 2 nibbles are packed into one byte.
   // Note that we have checked that head_size is a multiple of 8 in Check_QKV.
-  int packed_head_size = (kv_cache_bit_width == 4) ? (head_size / 2) : head_size;
-  if (past_key_dims[3] != packed_head_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' dimension 3 should be same as head_size, got ",
-                           past_key_dims[3], " expected ", packed_head_size);
-  }
-  if (past_value_dims[3] != packed_head_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
-                           past_value_dims[3], " expected ", packed_head_size);
+  // Sentinel: kv_cache_bit_width == -1 means "TurboQuant slot layout, skip last-dim check"
+  // (TQ packs differently and the last dim is bytes-per-slot, not head_size or head_size/2).
+  if (kv_cache_bit_width != -1) {
+    int packed_head_size = (kv_cache_bit_width == 4) ? (head_size / 2) : head_size;
+    if (past_key_dims[3] != packed_head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' dimension 3 should be same as head_size, got ",
+                             past_key_dims[3], " expected ", packed_head_size);
+    }
+    if (past_value_dims[3] != packed_head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' dimension 3 should be same as head_size, got ",
+                             past_value_dims[3], " expected ", packed_head_size);
+    }
   }
   return Status::OK();
 }

@@ -102,6 +102,14 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   KVQuantizationType k_quant_type = KVQuantizationType::NONE;
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
   int kv_cache_bit_width = 0;
+
+  // TurboQuant KV cache parameters (mutually exclusive with k_quant_type/v_quant_type
+  // when kv_quant_method == TURBOQUANT). The codebook + Hadamard pointers live in
+  // the GroupQueryAttentionData struct (CUDA-side) since they're device pointers.
+  KVQuantMethod kv_quant_method = KVQuantMethod::NONE;
+  int key_quant_bits = 0;     // 3 or 4 when kv_quant_method == TURBOQUANT
+  int value_quant_bits = 0;   // 3 or 4 when kv_quant_method == TURBOQUANT
+  bool norm_correction = false;
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
