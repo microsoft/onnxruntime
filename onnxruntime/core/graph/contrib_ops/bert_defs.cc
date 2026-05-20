@@ -1250,6 +1250,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k_quant_type", "Quantization type for K cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
         .Attr("v_quant_type", "Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.", AttributeProto::STRING, std::string("NONE"))
         .Attr("kv_cache_bit_width", "Bit width of quantized KV cache. Supported values are 8 and 4.", AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("kv_quant_method",
+              "KV cache compression method. One of 'none' (default), 'classic' (existing int4/int8/fp8 path "
+              "via k_scale/v_scale), 'turboquant' (Hadamard rotation + Lloyd-Max keys + uniform values; "
+              "requires k_codebook + hadamard inputs).",
+              AttributeProto::STRING, std::string("none"))
+        .Attr("key_quant_bits", "TurboQuant key quantization bits. 3 or 4. Default 4.", AttributeProto::INT, static_cast<int64_t>(4))
+        .Attr("value_quant_bits", "TurboQuant value quantization bits. 3 or 4. Default 4.", AttributeProto::INT, static_cast<int64_t>(4))
+        .Attr("norm_correction", "TurboQuant: re-normalize centroid vectors to unit length during decode (1 = on, 0 = off).", AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1314,6 +1322,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(12, "k_scale", "Scale tensor for past_key.", "T_KV_SCALE", OpSchema::Optional)
         .Input(13, "v_scale", "Scale tensor for past_value.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(14,
+               "k_codebook",
+               "TurboQuant: 1D static Lloyd-Max centroid table with shape (2^key_quant_bits,). "
+               "Required when kv_quant_method == 'turboquant'.",
+               "T",
+               OpSchema::Optional)
+        .Input(15,
+               "hadamard",
+               "TurboQuant: 2D Walsh-Hadamard rotation matrix with shape (head_size, head_size). "
+               "Required when kv_quant_method == 'turboquant'. Implementations may compute the FWHT "
+               "directly instead of consuming this matrix; both shapes pass schema validation.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",

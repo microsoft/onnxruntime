@@ -66,6 +66,28 @@ enum class KVQuantizationType : int {
   PER_CHANNEL = 2,
 };
 
+// Enum to select KV-cache compression method.
+//
+// CLASSIC modes use a single global scale per K/V tensor (PER_TENSOR) or one
+// scale per channel (PER_CHANNEL) and store linearly-quantized integers. The
+// scale tensors are passed via inputs `k_scale` and `v_scale`.
+//
+// TURBOQUANT applies a Walsh-Hadamard rotation to keys before scalar
+// quantization with a static Lloyd-Max codebook (3- or 4-bit), and uses
+// uniform asymmetric quantization for values. Codebook + Hadamard are graph
+// initializers; per-token vec_norm + per-token v_scale/v_zero live alongside
+// the packed bytes in the cache. See:
+//   onnxruntime/contrib_ops/cuda/bert/group_query_attention_turboquant.cuh
+//   onnxruntime/contrib_ops/webgpu/bert/flash_attention_*_turboquant.wgsl.template
+//
+// TURBOQUANT preserves attention semantics: scoring runs in the rotated space
+// because Hadamard is orthogonal, so Q.K = (Q@H).(k_hat@H) * ||k||.
+enum class KVQuantMethod : int {
+  NONE = 0,
+  CLASSIC = 1,     // existing int4/int8/fp8 path via KVQuantizationType + k_scale/v_scale
+  TURBOQUANT = 2,  // Hadamard + Lloyd-Max keys, uniform asymmetric values
+};
+
 constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
 

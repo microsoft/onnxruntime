@@ -49,6 +49,7 @@
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/group_query_attention_fusion.h"
+#include "core/optimizer/turboquant_kv_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/label_encoder_fusion.h"
@@ -405,6 +406,29 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
+
+      // TurboQuantKVFusion: rewrites GroupQueryAttention nodes to use TurboQuant
+      // KV-cache compression at session-create time, so users can load a stock
+      // q4f16 .onnx from HuggingFace and opt-in via session option alone.
+      // Disabled by default; enabled when kOrtSessionOptionsTurboQuantKVMethod
+      // is set to a non-empty preset string.  Runs only on the CUDA EP.
+      {
+        const std::string tq_preset = session_options.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsTurboQuantKVMethod, "");
+        if (!tq_preset.empty() && tq_preset != "none" && tq_preset != "off") {
+          const int tq_boundary = ParseStringWithClassicLocale<int>(
+              session_options.config_options.GetConfigOrDefault(
+                  kOrtSessionOptionsTurboQuantKVBoundary, "2"));
+          // Allow on CUDA AND WebGPU EPs.  Both have TurboQuant kernels.
+          const InlinedHashSet<std::string_view> tq_eps = {
+              onnxruntime::kCudaExecutionProvider,
+              onnxruntime::kWebGpuExecutionProvider,
+          };
+          transformers.emplace_back(std::make_unique<TurboQuantKVFusion>(
+              tq_preset, tq_boundary, tq_eps));
+        }
+      }
+
       // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
       // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
