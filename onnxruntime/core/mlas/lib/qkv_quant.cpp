@@ -11,9 +11,9 @@ Module Name:
 Abstract:
 
     Portable scalar reference implementation of the symmetric INT4 / INT8
-    quantized KV-cache GEMM API declared in mlas_qkv_quant.h. SIMD-optimized
-    backends will be added in a separate change; this file always provides a
-    correct fallback.
+    quantized KV-cache GEMM API declared in mlas_qkv_quant.h. This file provides
+    a correct scalar fallback; SIMD-optimized backends (AVX2, AVX512-VNNI, NEON)
+    are dispatched at runtime via the platform dispatch table.
 
     See mlas_qkv_quant.h for the packing, scaling, and layout contract.
 

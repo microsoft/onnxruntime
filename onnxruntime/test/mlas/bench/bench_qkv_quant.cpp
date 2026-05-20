@@ -248,6 +248,7 @@ static void ScalarArgs(benchmark::internal::Benchmark* b) {
 BENCHMARK(BM_QKGemm_Scalar)->Apply(ScalarArgs)->UseRealTime();
 BENCHMARK(BM_SVGemm_Scalar)->Apply(ScalarArgs)->UseRealTime();
 
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
 //
 // AVX2-only benchmarks: force the AVX2 dispatch to compare against AVX512-VNNI.
 //
@@ -319,3 +320,5 @@ static void BM_SVGemm_Avx2(benchmark::State& state) {
 
 BENCHMARK(BM_QKGemm_Avx2)->Apply(ScalarArgs)->UseRealTime();
 BENCHMARK(BM_SVGemm_Avx2)->Apply(ScalarArgs)->UseRealTime();
+
+#endif  // MLAS_TARGET_AMD64 || MLAS_TARGET_IX86

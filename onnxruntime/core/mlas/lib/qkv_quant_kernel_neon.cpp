@@ -21,6 +21,7 @@ Abstract:
 
 #include <arm_neon.h>
 #include <cstring>
+#include <memory>
 
 namespace {
 

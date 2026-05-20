@@ -27,8 +27,10 @@ Abstract:
 #include "mlas_qkv_quant.h"
 
 #include <immintrin.h>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <vector>
 
 namespace {
 

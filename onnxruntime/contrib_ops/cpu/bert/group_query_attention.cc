@@ -79,6 +79,25 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "k_scale must be float tensor");
     ORT_RETURN_IF(v_scale->DataType() != DataTypeImpl::GetType<float>(),
                   "v_scale must be float tensor");
+
+    // Validate scale tensor shapes to prevent out-of-bounds reads.
+    const bool per_channel = (k_quant_type_ == KVQuantizationType::PER_CHANNEL);
+    const bool packed_qkv = (key == nullptr);
+    const int64_t head_size_val = packed_qkv
+                                      ? query->Shape().GetDims()[2] / (num_heads_ + 2 * kv_num_heads_)
+                                      : query->Shape().GetDims()[2] / num_heads_;
+    const int64_t expected_scale_size = per_channel
+                                            ? static_cast<int64_t>(kv_num_heads_) * head_size_val
+                                            : 1;
+    ORT_RETURN_IF(k_scale->Shape().Size() != expected_scale_size,
+                  "k_scale shape mismatch: expected ", expected_scale_size,
+                  " elements, got ", k_scale->Shape().Size());
+    ORT_RETURN_IF(v_scale->Shape().Size() != expected_scale_size,
+                  "v_scale shape mismatch: expected ", expected_scale_size,
+                  " elements, got ", v_scale->Shape().Size());
+  } else {
+    ORT_RETURN_IF(kv_cache_bit_width_ != 0,
+                  "kv_cache_bit_width must be 0 when quantization is disabled, got ", kv_cache_bit_width_);
   }
 
   GroupQueryAttentionParameters parameters = {};
