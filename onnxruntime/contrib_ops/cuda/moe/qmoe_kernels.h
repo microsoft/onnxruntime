@@ -138,6 +138,26 @@ void LaunchQMoEPrePackOffsetBias(
     float offset,
     cudaStream_t stream);
 
+// Batched 4-bit packed zero-point scaled bias computation.
+// ZP layout: [experts, n, packed_k_blocks] (packed_k_blocks = (k_blocks+1)/2)
+// Scale/Output layout: [experts, k_blocks, n]
+// Computes: output[e][row][col] = scale[e][row][col] * (-unpack4(zp[e][col][row/2]) + default_zp)
+void LaunchQMoEScaledZP4BitBatched(
+    const uint8_t* packed_zp,
+    const half* transposed_scale,
+    half* scaled_zero_point,
+    int experts, int n, int k_blocks,
+    float default_zero_point,
+    cudaStream_t stream);
+
+void LaunchQMoEScaledZP4BitBatched(
+    const uint8_t* packed_zp,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int experts, int n, int k_blocks,
+    float default_zero_point,
+    cudaStream_t stream);
+
 void LaunchQMoEShiftWeights(
     const uint8_t* input,
     uint8_t* output,

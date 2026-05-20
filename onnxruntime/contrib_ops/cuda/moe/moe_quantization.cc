@@ -15,7 +15,6 @@
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
-#include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
@@ -1273,26 +1272,20 @@ void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, Allocat
 
     const uint8_t* zp_ptr = static_cast<const uint8_t*>(p_src_zp);
     constexpr float kDefaultZeroPoint4Bit = 8.0f;
-    for (int e = 0; e < experts; ++e) {
-      const uint8_t* zp_e = zp_ptr + static_cast<size_t>(e) * static_cast<size_t>(n) * static_cast<size_t>(packed_k_blocks);
-      size_t scale_off = static_cast<size_t>(e) * static_cast<size_t>(k_blocks) * static_cast<size_t>(n);
-      if (is_fp16) {
-        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, half, uint8_t>(
-            stream,
-            zp_e,
-            static_cast<const half*>(packed_scale.get()) + scale_off,
-            static_cast<half*>(packed_bias.get()) + scale_off,
-            n, k_blocks, kDefaultZeroPoint4Bit);
-      } else if (is_bf16) {
-        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, __nv_bfloat16, uint8_t>(
-            stream,
-            zp_e,
-            static_cast<const __nv_bfloat16*>(packed_scale.get()) + scale_off,
-            static_cast<__nv_bfloat16*>(packed_bias.get()) + scale_off,
-            n, k_blocks, kDefaultZeroPoint4Bit);
-      } else {
-        ORT_THROW("Unsupported type for 4-bit block-wise ZP prepack. Expected FP16/BF16.");
-      }
+    if (is_fp16) {
+      LaunchQMoEScaledZP4BitBatched(
+          zp_ptr,
+          static_cast<const half*>(packed_scale.get()),
+          static_cast<half*>(packed_bias.get()),
+          experts, n, k_blocks, kDefaultZeroPoint4Bit, stream);
+    } else if (is_bf16) {
+      LaunchQMoEScaledZP4BitBatched(
+          zp_ptr,
+          static_cast<const __nv_bfloat16*>(packed_scale.get()),
+          static_cast<__nv_bfloat16*>(packed_bias.get()),
+          experts, n, k_blocks, kDefaultZeroPoint4Bit, stream);
+    } else {
+      ORT_THROW("Unsupported type for 4-bit block-wise ZP prepack. Expected FP16/BF16.");
     }
   }
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));

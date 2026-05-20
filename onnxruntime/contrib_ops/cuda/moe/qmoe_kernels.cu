@@ -282,6 +282,76 @@ void LaunchQMoEPrePackOffsetBias(
   QMoEPrePackZPKernel<__nv_bfloat16><<<grid, block, 0, stream>>>(zp, scales, output, num_elements, offset);
 }
 
+// Batched 4-bit packed ZP scaled bias kernel.
+// Grid: (ceil(n/16), ceil(k_blocks/16), experts)
+// Each thread computes one output element: output[e][out_row][out_col]
+// where out_row in [0, k_blocks), out_col in [0, n).
+// ZP layout: [experts, n, packed_k_blocks] with packed_k_blocks = (k_blocks+1)/2
+// Scale/Output layout: [experts, k_blocks, n]
+template <typename T>
+__global__ void QMoEScaledZP4BitBatchedKernel(
+    const uint8_t* packed_zp,
+    const T* transposed_scale,
+    T* scaled_zero_point,
+    int n, int k_blocks,
+    float default_zero_point) {
+  int out_col = blockIdx.x * blockDim.x + threadIdx.x;
+  int out_row = blockIdx.y * blockDim.y + threadIdx.y;
+  int expert = blockIdx.z;
+
+  if (out_col < n && out_row < k_blocks) {
+    int packed_k_blocks = (k_blocks + 1) / 2;
+    int64_t expert_zp_offset = static_cast<int64_t>(expert) * n * packed_k_blocks;
+    int64_t expert_scale_offset = static_cast<int64_t>(expert) * k_blocks * n;
+
+    // ZP is [n, packed_k_blocks] per expert; in_row = out_col, in_col = out_row
+    int in_row = out_col;
+    int in_col = out_row;
+    int64_t packed_zp_offset = expert_zp_offset + static_cast<int64_t>(in_row) * packed_k_blocks + in_col / 2;
+    uint8_t packed_byte = packed_zp[packed_zp_offset];
+    float zero_point_val = static_cast<float>((in_col & 0x01) ? (packed_byte >> 4) : (packed_byte & 0x0f));
+
+    int64_t output_offset = expert_scale_offset + static_cast<int64_t>(out_row) * n + out_col;
+    T scale_val = transposed_scale[output_offset];
+    float result = static_cast<float>(scale_val) * (-zero_point_val + default_zero_point);
+    scaled_zero_point[output_offset] = static_cast<T>(result);
+  }
+}
+
+void LaunchQMoEScaledZP4BitBatched(
+    const uint8_t* packed_zp,
+    const half* transposed_scale,
+    half* scaled_zero_point,
+    int experts, int n, int k_blocks,
+    float default_zero_point,
+    cudaStream_t stream) {
+  constexpr int BLOCK_SIZE = 16;
+  dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
+  dim3 gridDim(
+      (n + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      (k_blocks + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      experts);
+  QMoEScaledZP4BitBatchedKernel<half><<<gridDim, blockDim, 0, stream>>>(
+      packed_zp, transposed_scale, scaled_zero_point, n, k_blocks, default_zero_point);
+}
+
+void LaunchQMoEScaledZP4BitBatched(
+    const uint8_t* packed_zp,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int experts, int n, int k_blocks,
+    float default_zero_point,
+    cudaStream_t stream) {
+  constexpr int BLOCK_SIZE = 16;
+  dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
+  dim3 gridDim(
+      (n + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      (k_blocks + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      experts);
+  QMoEScaledZP4BitBatchedKernel<__nv_bfloat16><<<gridDim, blockDim, 0, stream>>>(
+      packed_zp, transposed_scale, scaled_zero_point, n, k_blocks, default_zero_point);
+}
+
 __global__ void QMoEShiftWeightsKernel(const uint8_t* input, uint8_t* output, int num_elements) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_elements) {
