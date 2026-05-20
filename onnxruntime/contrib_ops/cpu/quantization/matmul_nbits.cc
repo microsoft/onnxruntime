@@ -127,6 +127,10 @@ class MatMulNBits final : public OpKernel {
 
     ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
                 "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(block_size_ == 16 || block_size_ == 32 || block_size_ == 64 ||
+                    block_size_ == 128 || block_size_ == 256,
+                "Only block sizes 16, 32, 64, 128, and 256 are supported for MatMulNBits op, got: ",
+                block_size_);
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }
