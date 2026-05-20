@@ -4,10 +4,12 @@
             "arm64"
         ],
         "iphonesimulator": [
-            "arm64"
+            "arm64",
+            "x86_64"
         ],
         "macabi": [
-            "arm64"
+            "arm64",
+            "x86_64"
         ]
     },
     "build_params": {

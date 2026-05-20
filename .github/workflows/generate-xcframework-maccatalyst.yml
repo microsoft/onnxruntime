@@ -67,7 +67,7 @@ jobs:
       #       --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
       #       --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
 
-      - name: create releae build
+      - name: create release build
         run: |
           export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
           pip install -r ${{ github.workspace }}/requirements-dev.txt
@@ -75,35 +75,22 @@ jobs:
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
             ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
 
-      #     python ./tools/ci_build/build.py \
-      #       --build_dir $HOME/onnxlibrary/macabi_release_v20230327_2320 \
-      #       --update \
-      #       --build --parallel \
-      #       --test \
-      #       --build_shared_lib \
-      #       --build_objc \
-      #       --use_coreml \
-      #       --use_xnnpack \
-      #       --use_binskim_compliant_compile_flags \
-      #       --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/default_full_macabi_framework_build_settings.json
-
-
-      - name: create release build 2
+      - name: verify expected slices
         run: |
-          python ./tools/ci_build/build.py \
-            --build_dir $HOME/onnxlibrary/macabi_release_v20230327_2320 \
-            --update \
-            --build --parallel \
-            --skip_tests \
-            --build_apple_framework \
-            --use_xcode \
-            --use_coreml \
-            --use_xnnpack \
-            --use_binskim_compliant_compile_flags \
-            --ios \
-            --apple_deploy_target=16.0 \
-            --apple_sysroot=iphonesimulator \
-            --osx_arch=x86_64 \
-            --cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF \
-            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
+          set -euo pipefail
+          XCF=$HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out/onnxruntime.xcframework
+          lipo -verify_arch arm64 "$XCF/ios-arm64/onnxruntime.framework/onnxruntime"
+          lipo -verify_arch arm64 x86_64 "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime"
+          lipo -verify_arch arm64 x86_64 "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime"
 
+      - name: archive xcframework
+        run: |
+          cd $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out
+          zip -r -y "${{ github.workspace }}/onnxruntime.xcframework.zip" onnxruntime.xcframework
+
+      - name: upload xcframework artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime.xcframework
+          path: onnxruntime.xcframework.zip
+          if-no-files-found: error
