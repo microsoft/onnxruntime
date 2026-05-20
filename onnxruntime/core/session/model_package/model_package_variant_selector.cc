@@ -125,9 +125,12 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
     bool device_ok = !ec.device.has_value() || ec.device->empty();
     std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
 
-    if (ep_info.hardware_devices.empty()) {
-      device_ok = true;
-    } else if (!device_ok) {
+    if (!device_ok) {
+      // If the EP exposes no hardware devices but the variant declares a device constraint,
+      // we cannot verify the constraint, so treat it as non-matching.
+      if (ep_info.hardware_devices.empty()) {
+        continue;
+      }
       if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
         device_ok = true;
         constraint_devices = {matched_hd};
@@ -246,6 +249,34 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
     if (best_index.has_value()) {
       selected_variant = std::move(variants[*best_index]);
       selected_variant->selected_ep_compatibility_index = best_ec_index;
+      return Status::OK();
+    }
+
+    // CPU fallback: if the primary EP didn't match any variant, try the remaining EPs in order.
+    // This handles common fallback chains like [CUDA, CPU] where no CUDA variant exists.
+    for (size_t ep_idx = 1; ep_idx < ep_infos.size(); ++ep_idx) {
+      best_score = std::numeric_limits<int>::min();
+      best_index.reset();
+      best_ec_index.reset();
+
+      for (size_t i = 0, end = variants.size(); i < end; ++i) {
+        VariantMatchResult m = MatchVariantForEp(variants[i], ep_infos[ep_idx]);
+        if (!m.matched) continue;
+        if (!best_index.has_value() || m.score > best_score) {
+          best_score = m.score;
+          best_index = i;
+          best_ec_index = m.selected_ep_compatibility_index;
+        }
+      }
+
+      if (best_index.has_value()) {
+        LOGS_DEFAULT(INFO) << "Primary EP '" << ep_infos[0].ep_name
+                           << "' did not match any variant; fell back to EP '"
+                           << ep_infos[ep_idx].ep_name << "'.";
+        selected_variant = std::move(variants[*best_index]);
+        selected_variant->selected_ep_compatibility_index = best_ec_index;
+        return Status::OK();
+      }
     }
   }
 

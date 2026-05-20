@@ -15,22 +15,6 @@
 #include "core/session/model_package/model_package_options.h"
 #include "core/session/utils.h"
 
-namespace {
-void BuildCStringArray(gsl::span<const std::string> in,
-                       std::vector<const char*>& cache,
-                       const char* const** out,
-                       size_t* out_count) {
-  cache.clear();
-  cache.reserve(in.size());
-  for (const auto& s : in) {
-    cache.push_back(s.c_str());
-  }
-
-  *out_count = in.size();
-  *out = cache.empty() ? nullptr : cache.data();
-}
-
-}  // namespace
 #endif
 
 using namespace onnxruntime;
@@ -137,8 +121,11 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentNames,
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentNames(names));
 
-  static thread_local std::vector<const char*> name_ptrs;
-  BuildCStringArray(names, name_ptrs, out_names, out_count);
+  const char* const* ptrs = nullptr;
+  size_t count = 0;
+  reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetComponentNamePtrs(ptrs, count);
+  *out_names = ptrs;
+  *out_count = count;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
@@ -187,8 +174,11 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantNames,
   ORT_API_RETURN_IF_STATUS_NOT_OK(
       reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantNames(component_name, variant_names));
 
-  static thread_local std::vector<const char*> variant_name_ptrs;
-  BuildCStringArray(variant_names, variant_name_ptrs, out_variant_names, out_count);
+  const char* const* ptrs = nullptr;
+  size_t count = 0;
+  reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantNamePtrs(component_name, ptrs, count);
+  *out_variant_names = ptrs;
+  *out_count = count;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
@@ -229,7 +219,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::SelectComponent,
   }
 
   auto cix = std::make_unique<onnxruntime::ModelPackageComponentContext>(
-      component_name, *component_info, cxx_options);
+      component_name, *component_info, *cxx_options);
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(cix->ResolveVariant());
 
@@ -353,28 +343,17 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariant
           file_idx, keys, values));
 
   ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Session options keys/values size mismatch.");
-  *num_entries = keys.size();
 
-  if (*num_entries == 0) {
-    *option_keys = nullptr;
-    *option_values = nullptr;
-  } else {
-    static thread_local std::vector<const char*> key_ptrs;
-    static thread_local std::vector<const char*> value_ptrs;
+  const char* const* key_ptrs_out = nullptr;
+  const char* const* value_ptrs_out = nullptr;
+  size_t count = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileSessionOptionPtrs(
+          file_idx, key_ptrs_out, value_ptrs_out, count));
 
-    key_ptrs.clear();
-    value_ptrs.clear();
-    key_ptrs.reserve(keys.size());
-    value_ptrs.reserve(values.size());
-
-    for (size_t i = 0; i < keys.size(); ++i) {
-      key_ptrs.push_back(keys[i].c_str());
-      value_ptrs.push_back(values[i].c_str());
-    }
-
-    *option_keys = key_ptrs.data();
-    *option_values = value_ptrs.data();
-  }
+  *option_keys = key_ptrs_out;
+  *option_values = value_ptrs_out;
+  *num_entries = count;
 
   return nullptr;
 #else
@@ -407,28 +386,17 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariant
           file_idx, keys, values));
 
   ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Provider options keys/values size mismatch.");
-  *num_entries = keys.size();
 
-  if (*num_entries == 0) {
-    *option_keys = nullptr;
-    *option_values = nullptr;
-  } else {
-    static thread_local std::vector<const char*> key_ptrs;
-    static thread_local std::vector<const char*> value_ptrs;
+  const char* const* key_ptrs_out = nullptr;
+  const char* const* value_ptrs_out = nullptr;
+  size_t count = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileProviderOptionPtrs(
+          file_idx, key_ptrs_out, value_ptrs_out, count));
 
-    key_ptrs.clear();
-    value_ptrs.clear();
-    key_ptrs.reserve(keys.size());
-    value_ptrs.reserve(values.size());
-
-    for (size_t i = 0; i < keys.size(); ++i) {
-      key_ptrs.push_back(keys[i].c_str());
-      value_ptrs.push_back(values[i].c_str());
-    }
-
-    *option_keys = key_ptrs.data();
-    *option_values = value_ptrs.data();
-  }
+  *option_keys = key_ptrs_out;
+  *option_values = value_ptrs_out;
+  *num_entries = count;
 
   return nullptr;
 #else
@@ -455,8 +423,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
   }
 
   auto& mp_ctx = *reinterpret_cast<onnxruntime::ModelPackageComponentContext*>(ctx);
-  const auto* mp_ctx_options = mp_ctx.Options();
-  if (mp_ctx_options == nullptr) {
+  if (!mp_ctx.HasOptions()) {
     return OrtApis::CreateStatus(ORT_FAIL, "ModelPackageContext has no associated options.");
   }
 
@@ -476,7 +443,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
 
   if (session_options == nullptr) {
     // Important: use copy-constructor, not assignment (operator= is not implemented).
-    effective_options_storage.emplace(mp_ctx_options->SessionOptions());
+    effective_options_storage.emplace(*mp_ctx.SessionOptions());
 
     // Merge variant/file session options into config options.
     gsl::span<const std::string> session_option_keys;

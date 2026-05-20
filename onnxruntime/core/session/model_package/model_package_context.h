@@ -84,7 +84,7 @@ class ModelPackageComponentContext {
  public:
   explicit ModelPackageComponentContext(const std::string& component_name,
                                         const ComponentInfo& component_model_info,
-                                        const ModelPackageOptions* options);
+                                        const ModelPackageOptions& options);
 
   explicit ModelPackageComponentContext(const std::string& component_name,
                                         const ComponentInfo& component_model_info,
@@ -96,9 +96,13 @@ class ModelPackageComponentContext {
     return component_model_info_.variants;
   }
 
-  const ModelPackageOptions* Options() const noexcept {
-    return options_;
+  // Returns the session options snapshot used for this component.
+  // Only valid after construction with ModelPackageOptions (not ep_infos span).
+  const OrtSessionOptions* SessionOptions() const noexcept {
+    return session_options_ ? &*session_options_ : nullptr;
   }
+
+  bool HasOptions() const noexcept { return session_options_.has_value(); }
 
   Status GetSelectedVariantFilePaths(gsl::span<const std::filesystem::path>& out_file_paths) const;
 
@@ -118,19 +122,38 @@ class ModelPackageComponentContext {
   // Returns the consumer_metadata JSON object (from variant.json) serialized to a string for the
   // selected variant. Returns an empty string if the variant did not declare consumer_metadata.
   // Pointer lifetime is owned by this context.
+
+  // C API helpers: return const char* pointer arrays with context-owned lifetime.
+  Status GetSelectedVariantFileSessionOptionPtrs(size_t file_idx,
+                                                  const char* const*& out_keys,
+                                                  const char* const*& out_values,
+                                                  size_t& out_count) const;
+  Status GetSelectedVariantFileProviderOptionPtrs(size_t file_idx,
+                                                   const char* const*& out_keys,
+                                                   const char* const*& out_values,
+                                                   size_t& out_count) const;
+
   Status GetSelectedVariantConsumerMetadata(const std::string*& out_json_str) const;
 
-  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList();
-  const std::vector<const OrtEpDevice*>& ExecutionDevices() const;
-  const std::vector<const OrtEpDevice*>& DevicesSelected() const;
-  bool IsFromPolicy() const;
+  std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
+  const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }
+  const std::vector<const OrtEpDevice*>& DevicesSelected() const { return devices_selected_; }
+  bool IsFromPolicy() const { return from_policy_; }
+
+  // Rebuild the provider list for a new session creation call (providers are consumed/moved
+  // when registered, so they must be rebuilt for each session).
+  // Uses the provided session options for provider creation (should include merged provider options).
+  Status RebuildProviderListForSession(const Environment& env, const OrtSessionOptions& effective_options);
 
  private:
   std::string component_model_name_;
   ComponentInfo component_model_info_{};
 
-  const ModelPackageOptions* options_{};                // non-owning, immutable config source for EP intent
-  gsl::span<const VariantSelectionEpInfo> ep_infos_{};  // non-owning EP intent when options_ is not used
+  // Owned snapshot of the options state, copied during construction to avoid
+  // lifetime coupling with the external ModelPackageOptions handle.
+  std::optional<OrtSessionOptions> session_options_{};
+  gsl::span<const VariantSelectionEpInfo> ep_infos_{};  // non-owning EP intent when options are not used
+  std::vector<VariantSelectionEpInfo> owned_ep_infos_{};  // owned copy when constructed from ModelPackageOptions
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
 
   // optional runtime state mirrors (if needed by callers)
@@ -148,6 +171,12 @@ class ModelPackageComponentContext {
   mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_provider_option_keys_cache_{};
   mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_provider_option_values_cache_{};
 
+  // C API pointer caches for session/provider options, owned by context for stable lifetime.
+  mutable std::unordered_map<size_t, std::vector<const char*>> file_session_option_key_ptrs_cache_{};
+  mutable std::unordered_map<size_t, std::vector<const char*>> file_session_option_value_ptrs_cache_{};
+  mutable std::unordered_map<size_t, std::vector<const char*>> file_provider_option_key_ptrs_cache_{};
+  mutable std::unordered_map<size_t, std::vector<const char*>> file_provider_option_value_ptrs_cache_{};
+
   Status ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos);
   Status GetSelectedVariantInfo(const VariantInfo*& out_variant) const;
 };
@@ -158,6 +187,11 @@ class ModelPackageContext {
 
   size_t GetComponentCount() const noexcept;
   Status GetComponentNames(gsl::span<const std::string>& out_names) const;
+
+  // C API helpers: return const char* pointer arrays with context-owned lifetime.
+  void GetComponentNamePtrs(const char* const*& out_ptrs, size_t& out_count) const;
+  void GetVariantNamePtrs(const std::string& component_name,
+                          const char* const*& out_ptrs, size_t& out_count) const;
 
   Status GetVariantCount(const std::string& component_name, size_t& out_count) const;
   Status GetVariantNames(const std::string& component_name,
@@ -190,6 +224,10 @@ class ModelPackageContext {
   std::vector<std::string> component_names_cache_{};
   mutable std::unordered_map<std::string, std::vector<std::string>> component_to_variant_names_cache_{};
   mutable std::unordered_map<std::string, std::vector<std::string>> variant_to_file_identifiers_cache_{};
+
+  // C API pointer caches: owned by the context so their lifetime matches the documented contract.
+  mutable std::vector<const char*> component_name_ptrs_cache_{};
+  mutable std::unordered_map<std::string, std::vector<const char*>> variant_name_ptrs_cache_{};
 };
 
 }  // namespace onnxruntime

@@ -992,8 +992,7 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                                               /*model_data_length*/ 0,
                                                               sess));
 
-  const auto* mp_options = model_package_context.Options();
-  if (mp_options == nullptr) {
+  if (!model_package_context.HasOptions()) {
     return OrtApis::CreateStatus(ORT_FAIL, "ModelPackageContext has no associated ModelPackageOptions.");
   }
 
@@ -1008,7 +1007,7 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                   });
 
   if (!has_all_live_providers) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(mp_options->RebuildProviderListForSession(env));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.RebuildProviderListForSession(env, *options));
   }
 
   for (auto& provider : provider_list) {
