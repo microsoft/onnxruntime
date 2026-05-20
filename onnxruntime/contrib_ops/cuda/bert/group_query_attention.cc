@@ -222,6 +222,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 softcap_,
                                                                 kv_cache_bit_width_,
                                                                 device_prop.maxThreadsPerBlock));
+#ifndef USE_INT4_KV_CACHE
+  if (kv_cache_bit_width_ == 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
+  }
+#endif
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,

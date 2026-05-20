@@ -3,18 +3,64 @@
 
 #pragma once
 
+#include <string>
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_helper.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
-
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas_qkv_quant.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
+
+// Convert operator-level quantization attributes to the MLAS enum.
+inline MLAS_KV_QUANT_TYPE ToMlasKVQuantType(KVQuantizationType quant_type, int bit_width) {
+  if (bit_width == 8) {
+    return quant_type == KVQuantizationType::PER_CHANNEL
+               ? MLAS_KV_QUANT_TYPE::S8_PerChannel
+               : MLAS_KV_QUANT_TYPE::S8_PerTensor;
+  }
+  return quant_type == KVQuantizationType::PER_CHANNEL
+             ? MLAS_KV_QUANT_TYPE::S4_PerChannel
+             : MLAS_KV_QUANT_TYPE::S4_PerTensor;
+}
+
+// GQA ConcatStateChunk variant for quantized KV cache.
+// Copies past quantized bytes and quantizes new FP32 rows into the present buffer.
+// Returns pointer to start of this head's slice in the present buffer.
+inline const uint8_t* ConcatQuantStateChunkGQA(
+    const uint8_t* past,
+    const float* new_chunk,
+    uint8_t* present,
+    size_t present_buff_chunk_bytes,
+    size_t past_buff_chunk_bytes,
+    size_t past_chunk_bytes,
+    size_t new_rows,
+    size_t cols,
+    size_t src_ld,
+    MLAS_KV_QUANT_TYPE quant_type,
+    const float* scales,
+    bool past_present_share_buffer,
+    std::ptrdiff_t kv_head_idx) {
+  uint8_t* start = present + kv_head_idx * present_buff_chunk_bytes;
+  uint8_t* p = start;
+
+  if (!past_present_share_buffer && past_chunk_bytes > 0) {
+    const uint8_t* src_past = past + kv_head_idx * past_buff_chunk_bytes;
+    memcpy(p, src_past, past_chunk_bytes);
+  }
+  p += past_chunk_bytes;
+
+  if (new_rows > 0) {
+    MlasKVQuantize(new_chunk, p, new_rows, cols, src_ld, quant_type, scales, nullptr);
+  }
+
+  return start;
+}
 
 class GQAAttentionBase {
  protected:
@@ -41,6 +87,11 @@ class GQAAttentionBase {
 
     qk_output_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)));
 
+    k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
+    v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
+    kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
+    kv_quant_enabled_ = (k_quant_type_ != KVQuantizationType::NONE);
+
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
@@ -54,6 +105,11 @@ class GQAAttentionBase {
   int qk_output_;
 
   bool use_smooth_softmax_;
+
+  KVQuantizationType k_quant_type_;
+  KVQuantizationType v_quant_type_;
+  int kv_cache_bit_width_;
+  bool kv_quant_enabled_;
 
   template <typename T>
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
@@ -144,6 +200,344 @@ class GQAAttentionBase {
                               batch_size, sequence_length, kv_sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                               hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
                               is_prompt, tp, allocator);
+    }
+
+    return Status::OK();
+  }
+
+  // Quantized KV cache attention path. Only supports T = float.
+  // Uses MlasQKGemm / MlasSVGemm with quantized present K/V (uint8_t storage).
+  Status ApplyAttentionQuantized(
+      const float* Q,                // Q data [B, N, S, H] BNSH
+      const float* K,                // K data [B, N_kv, L, H] or nullptr for packed_qkv
+      const float* V,                // V data [B, N_kv, L, H] or nullptr for packed_qkv
+      const float* head_sink,        // smooth softmax sink per head, or nullptr
+      const Tensor* attention_bias,  // additive bias or nullptr
+      const Tensor* past_key,        // past K (uint8_t)
+      const Tensor* past_value,      // past V (uint8_t)
+      Tensor* output,                // output [B, S, N*H] float
+      Tensor* present_key,           // present K (uint8_t)
+      Tensor* present_value,         // present V (uint8_t)
+      Tensor* output_qk,
+      const Tensor* seqlens_k,
+      const float* k_scale,
+      const float* v_scale,
+      MLAS_KV_QUANT_TYPE quant_type,
+      GroupQueryAttentionParameters& parameters,
+      AllocatorPtr allocator,
+      OpKernelContext* context) const {
+    const bool is_prompt = parameters.is_first_prompt;
+    const int batch_size = parameters.batch_size;
+    const int sequence_length = parameters.sequence_length;
+    const int kv_sequence_length = parameters.kv_sequence_length;
+    const int total_sequence_length = parameters.total_sequence_length;
+    const int head_size = parameters.head_size;
+    const int hidden_size = parameters.hidden_size;
+    const bool packed_qkv = parameters.is_packed_qkv;
+
+    auto* tp = context->GetOperatorThreadPool();
+    const size_t packed_row_bytes = MlasKVQuantPackedRowBytes(quant_type, head_size);
+
+    int seqlen_past_kv_cache = 0;
+    if (past_key != nullptr && past_value != nullptr) {
+      seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
+    }
+    int seqlen_present_kv_cache = present_key != nullptr
+                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
+                                      : parameters.total_sequence_length;
+
+    if (kv_sequence_length == 0) {
+      ORT_ENFORCE(total_sequence_length <= seqlen_past_kv_cache,
+                  "total_seqlen (", total_sequence_length, ") exceeds past buffer size (",
+                  seqlen_past_kv_cache, ") in shared KV mode");
+    }
+
+    // Allocate attention probs buffer (always float)
+    size_t probs_bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length *
+                         seqlen_present_kv_cache * sizeof(float);
+    auto attention_probs_alloc = allocator->Alloc(probs_bytes);
+    BufferUniquePtr probs_buffer(attention_probs_alloc, BufferDeleter(allocator));
+    float* attention_probs = static_cast<float*>(attention_probs_alloc);
+
+    ORT_RETURN_IF(present_key == nullptr || present_value == nullptr,
+                  "present_key and present_value must be provided for quantized KV cache");
+
+    // Access cache data as raw bytes — INT4 uses uint8_t (packed nibbles),
+    // INT8 uses int8_t. Both are accessed via uint8_t* for the MLAS quantize API.
+    const uint8_t* past_key_data = nullptr;
+    uint8_t* present_key_data = nullptr;
+    const uint8_t* past_value_data = nullptr;
+    uint8_t* present_value_data = nullptr;
+    if (kv_cache_bit_width_ == 4) {
+      past_key_data = past_key != nullptr ? past_key->Data<uint8_t>() : nullptr;
+      present_key_data = present_key->MutableData<uint8_t>();
+      past_value_data = past_value != nullptr ? past_value->Data<uint8_t>() : nullptr;
+      present_value_data = present_value->MutableData<uint8_t>();
+    } else {
+      past_key_data = past_key != nullptr ? reinterpret_cast<const uint8_t*>(past_key->Data<int8_t>()) : nullptr;
+      present_key_data = reinterpret_cast<uint8_t*>(present_key->MutableData<int8_t>());
+      past_value_data = past_value != nullptr ? reinterpret_cast<const uint8_t*>(past_value->Data<int8_t>()) : nullptr;
+      present_value_data = reinterpret_cast<uint8_t*>(present_value->MutableData<int8_t>());
+    }
+
+    const float* attention_bias_data = attention_bias != nullptr ? attention_bias->Data<float>() : nullptr;
+    auto attention_bias_shape = attention_bias != nullptr
+                                    ? attention_bias->Shape().GetDims()
+                                    : gsl::span<const int64_t>{};
+
+    bool past_present_share_buffer = (past_key_data == present_key_data) &&
+                                     (past_value_data == present_value_data);
+
+    const bool per_channel = (quant_type == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
+                              quant_type == MLAS_KV_QUANT_TYPE::S4_PerChannel);
+
+    const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+    float* output_data = output->MutableData<float>();
+    float* output_qk_buffer = output_qk != nullptr ? output_qk->MutableData<float>() : nullptr;
+
+    // K/V base pointers (FP32, new tokens post-RoPE / from input)
+    const float* k_base = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
+    const float* v_base = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
+
+    // Common loop parameters
+    const ptrdiff_t packed_batch_stride =
+        packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
+                   : SafeInt<ptrdiff_t>(0);
+    const size_t kv_num_heads_factor = num_heads_ / kv_num_heads_;
+    const size_t q_input_chunk_length = sequence_length * head_size;
+    const size_t kv_input_chunk_length = kv_sequence_length * head_size;
+    const size_t past_buff_chunk_bytes = SafeInt<size_t>(seqlen_past_kv_cache) * packed_row_bytes;
+    const size_t present_buff_chunk_bytes = SafeInt<size_t>(seqlen_present_kv_cache) * packed_row_bytes;
+
+    const size_t loop_len = batch_size * num_heads_;
+    const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
+
+    // ---- Concat K + QK^T + Softmax ----
+    if (present_key_data && !past_present_share_buffer) {
+      memset(present_key_data, 0,
+             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
+    }
+
+    {
+      TensorOpCost unit_cost;
+      unit_cost.compute_cycles =
+          static_cast<double>(SafeInt<ptrdiff_t>(2) * sequence_length * head_size * seqlen_present_kv_cache);
+      // Q is FP32; K cache is packed (INT8 or INT4) bytes.
+      unit_cost.bytes_loaded =
+          static_cast<double>(sequence_length * head_size * sizeof(float) +
+                              seqlen_present_kv_cache * packed_row_bytes);
+      unit_cost.bytes_stored =
+          static_cast<double>(SafeInt<ptrdiff_t>(sequence_length) * seqlen_present_kv_cache * sizeof(float));
+
+      ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const size_t batch_index = i / num_heads_;
+          const size_t head_index = i % num_heads_;
+          const size_t total_seqlen = SafeInt<size_t>(seqlens_k_data[batch_index]) + 1;
+
+          size_t past_seqlen, causal_past_seqlen;
+          if (past_key == nullptr) {
+            past_seqlen = 0;
+            causal_past_seqlen = 0;
+          } else if (kv_sequence_length == 0) {
+            past_seqlen = total_seqlen;
+            causal_past_seqlen = is_prompt ? 0 : total_seqlen - sequence_length;
+          } else if (is_prompt) {
+            past_seqlen = 0;
+            causal_past_seqlen = 0;
+          } else {
+            past_seqlen = total_seqlen - sequence_length;
+            causal_past_seqlen = past_seqlen;
+          }
+
+          const size_t kv_head_within_batch = head_index / kv_num_heads_factor;
+          const std::ptrdiff_t kv_head_flat = static_cast<std::ptrdiff_t>(i / kv_num_heads_factor);
+          const size_t past_chunk_bytes = past_seqlen * packed_row_bytes;
+
+          // Concat quantized past K + quantize new K
+          const float* k_new;
+          if (packed_qkv) {
+            k_new = k_base + packed_batch_stride * batch_index +
+                    kv_input_chunk_length * kv_head_within_batch;
+          } else {
+            k_new = k_base + kv_input_chunk_length * kv_head_flat;
+          }
+          const float* head_k_scale = per_channel
+                                          ? k_scale + kv_head_within_batch * head_size
+                                          : k_scale;
+
+          const uint8_t* k_quantized = ConcatQuantStateChunkGQA(
+              past_key_data, k_new, present_key_data,
+              present_buff_chunk_bytes, past_buff_chunk_bytes,
+              past_chunk_bytes, kv_sequence_length, head_size, head_size,
+              quant_type, head_k_scale, past_present_share_buffer, kv_head_flat);
+
+          // Q pointer
+          const float* q;
+          if (packed_qkv) {
+            q = Q + packed_batch_stride * batch_index + q_input_chunk_length * head_index;
+          } else {
+            q = Q + q_input_chunk_length * i;
+          }
+
+          // QK^T GEMM with quantized K cache
+          const ptrdiff_t probs_offset =
+              SafeInt<ptrdiff_t>(i) * sequence_length * seqlen_present_kv_cache;
+          float* probs = attention_probs + probs_offset;
+
+          MlasQKGemm(sequence_length, total_seqlen, head_size, alpha,
+                     q, head_size, k_quantized, quant_type, head_k_scale,
+                     probs, seqlen_present_kv_cache, nullptr);
+
+          // Output QK buffer
+          float* output_qk_thread = nullptr;
+          if (output_qk_buffer != nullptr) {
+            const ptrdiff_t output_qk_offset =
+                SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length *
+                (batch_index * num_heads_ + head_index);
+            output_qk_thread = output_qk_buffer + output_qk_offset;
+          }
+
+          // Attention bias
+          const float* attn_bias = nullptr;
+          ptrdiff_t attn_bias_total_seqlen = 0;
+          if (attention_bias_data != nullptr) {
+            attn_bias_total_seqlen = static_cast<ptrdiff_t>(attention_bias_shape[3]);
+            ptrdiff_t bias_offset = 0;
+            const ptrdiff_t bias_matrix_size = sequence_length * attn_bias_total_seqlen;
+            if (attention_bias_shape[0] != 1) {
+              bias_offset += static_cast<ptrdiff_t>(
+                  SafeInt<ptrdiff_t>(batch_index) * attention_bias_shape[1] *
+                  bias_matrix_size);
+            }
+            if (attention_bias_shape[1] != 1) {
+              bias_offset += SafeInt<ptrdiff_t>(head_index) * bias_matrix_size;
+            }
+            attn_bias = attention_bias_data + bias_offset;
+          }
+
+          // Softmax + masking (same as non-quantized path)
+          float* sm = probs;
+          for (size_t seq = 0; seq < static_cast<size_t>(sequence_length); seq++) {
+            size_t seq_causal_length = causal_past_seqlen + seq + 1;
+
+            const bool apply_local = local_window_size_ >= 0 &&
+                                     seq_causal_length > static_cast<size_t>(local_window_size_);
+            const size_t start_off = apply_local ? seq_causal_length - local_window_size_ : 0;
+            const size_t win_size = apply_local ? local_window_size_ : seq_causal_length;
+
+            if (apply_local) {
+              for (size_t t = 0; t < seq_causal_length - local_window_size_; t++) {
+                sm[t] = 0.f;
+              }
+            }
+
+            if (softcap_ > 0.f) {
+              ComputeAttentionSoftcapInplace(sm + start_off, static_cast<int>(win_size), softcap_);
+            }
+
+            if (attn_bias != nullptr) {
+              ApplyAttentionBias(sm + start_off, attn_bias + start_off, static_cast<int>(win_size));
+            }
+
+            for (size_t t = seq_causal_length; t < total_seqlen; t++) {
+              sm[t] = 0.f;
+            }
+
+            if (qk_output_ == static_cast<int>(QKOutputType::BEFORE_SOFTMAX)) {
+              WriteOutputQKHeadChunk<float, float>(output_qk_thread, sm, total_sequence_length);
+            }
+
+            if (use_smooth_softmax_ || head_sink != nullptr) {
+              float sink = (head_sink != nullptr) ? head_sink[head_index] : 0.0f;
+              ComputeSmoothSoftmaxInplace(sm + start_off, static_cast<int>(win_size), sink, nullptr);
+            } else {
+              ComputeAttentionSoftmaxInplace(sm + start_off, 1, static_cast<int>(win_size), nullptr);
+            }
+
+            if (qk_output_ == static_cast<int>(QKOutputType::AFTER_SOFTMAX)) {
+              WriteOutputQKHeadChunk<float, float>(output_qk_thread, sm, total_sequence_length);
+            }
+
+            sm += seqlen_present_kv_cache;
+            if (attn_bias != nullptr) {
+              attn_bias += attn_bias_total_seqlen;
+            }
+            if (output_qk_thread != nullptr) {
+              output_qk_thread += total_sequence_length;
+            }
+          }
+        }
+      });
+    }
+
+    // ---- Concat V + S*V ----
+    if (!past_present_share_buffer) {
+      memset(present_value_data, 0,
+             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_bytes);
+    }
+
+    {
+      TensorOpCost unit_cost;
+      unit_cost.compute_cycles =
+          static_cast<double>(SafeInt<ptrdiff_t>(2) * sequence_length * head_size * seqlen_present_kv_cache);
+      // Probs (softmax output) are FP32; V cache is packed (INT8 or INT4) bytes.
+      unit_cost.bytes_loaded =
+          static_cast<double>(SafeInt<ptrdiff_t>(sequence_length) * seqlen_present_kv_cache * sizeof(float) +
+                              seqlen_present_kv_cache * packed_row_bytes);
+      unit_cost.bytes_stored = static_cast<double>(sequence_length * head_size * sizeof(float));
+
+      ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t i = begin; i != end; ++i) {
+          const size_t batch_index = i / num_heads_;
+          const size_t head_index = i % num_heads_;
+          const size_t total_seqlen = SafeInt<size_t>(seqlens_k_data[batch_index]) + 1;
+
+          size_t past_seqlen;
+          if (past_value == nullptr) {
+            past_seqlen = 0;
+          } else if (kv_sequence_length == 0) {
+            past_seqlen = total_seqlen;
+          } else if (is_prompt) {
+            past_seqlen = 0;
+          } else {
+            past_seqlen = total_seqlen - sequence_length;
+          }
+
+          const size_t kv_head_within_batch = head_index / kv_num_heads_factor;
+          const std::ptrdiff_t kv_head_flat = static_cast<std::ptrdiff_t>(i / kv_num_heads_factor);
+          const size_t past_chunk_bytes = past_seqlen * packed_row_bytes;
+
+          // Concat quantized past V + quantize new V
+          const float* v_new;
+          if (packed_qkv) {
+            v_new = v_base + packed_batch_stride * batch_index +
+                    kv_input_chunk_length * kv_head_within_batch;
+          } else {
+            v_new = v_base + kv_input_chunk_length * kv_head_flat;
+          }
+          const float* head_v_scale = per_channel
+                                          ? v_scale + kv_head_within_batch * head_size
+                                          : v_scale;
+
+          const uint8_t* v_quantized = ConcatQuantStateChunkGQA(
+              past_value_data, v_new, present_value_data,
+              present_buff_chunk_bytes, past_buff_chunk_bytes,
+              past_chunk_bytes, kv_sequence_length, head_size, head_size,
+              quant_type, head_v_scale, past_present_share_buffer, kv_head_flat);
+
+          // S*V GEMM with quantized V cache
+          ptrdiff_t probs_offset =
+              SafeInt<ptrdiff_t>(sequence_length) * seqlen_present_kv_cache * i;
+          float* output_current = output_data +
+                                  (batch_index * sequence_length * num_heads_ + head_index) * head_size;
+
+          MlasSVGemm(sequence_length, head_size, total_seqlen,
+                     attention_probs + probs_offset, seqlen_present_kv_cache,
+                     v_quantized, quant_type, head_v_scale,
+                     output_current, hidden_size, nullptr);
+        }
+      });
     }
 
     return Status::OK();
