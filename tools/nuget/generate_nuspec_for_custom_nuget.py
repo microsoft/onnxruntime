@@ -16,6 +16,7 @@ def generate_files(lines, args):
         "win-arm64": args.win_arm64,
         "win-x64": args.win_x64,
         "osx-arm64": args.osx_arm64,
+        "linux-arm64": args.linux_arm64,
     }
 
     avoid_keywords = {"pdb", "onnxruntime_providers_cuda"}
@@ -23,6 +24,11 @@ def generate_files(lines, args):
     # duplicate like libonnxruntime.1.version_minor.version_patch.dylib (identical contents).
     # Skip the versioned dylib to avoid bloating the NuGet package with duplicate binaries.
     versioned_dylib_re = re.compile(r"^lib.+\.\d+(\.\d+)*\.dylib$")
+    # Linux produces libonnxruntime.so as a symlink to libonnxruntime.so.<version>. When extracted
+    # from the .tgz on Windows (where 'nuget pack' runs) the symlink is typically materialized as a
+    # copy of the target file. Skip the versioned .so.<version> to avoid bloating the NuGet package
+    # with duplicate binaries; consumers load libonnxruntime.so via the runtimes/linux-arm64/native folder.
+    versioned_so_re = re.compile(r"^lib.+\.so\.\d+(\.\d+)*$")
     processed_includes = set()
     for platform, platform_dir in platform_map.items():
         for file in glob.glob(os.path.join(platform_dir, "lib", "*")):
@@ -34,6 +40,9 @@ def generate_files(lines, args):
                 continue
 
             if platform.startswith("osx-") and versioned_dylib_re.match(file_name):
+                continue
+
+            if platform.startswith("linux-") and versioned_so_re.match(file_name):
                 continue
 
             files_list.append(f'<file src="{file}" target="runtimes/{platform}/native/{file_name}" />')
@@ -123,6 +132,7 @@ def parse_arguments():
     parser.add_argument("--win_arm64", required=True, help="Ort win-arm64 directory")
     parser.add_argument("--win_x64", required=True, help="Ort win-x64 directory")
     parser.add_argument("--osx_arm64", required=True, help="Ort osx-arm64 directory")
+    parser.add_argument("--linux_arm64", required=True, help="Ort linux-arm64 (aarch64) directory")
     parser.add_argument("--package_version", required=True, help="Version of the package")
     parser.add_argument("--package_name", required=True, help="Name of the package")
 

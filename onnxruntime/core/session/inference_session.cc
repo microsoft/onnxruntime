@@ -1732,7 +1732,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
           "CastFloat16Transformer", kernel_regs,
           /*enable_cpu_fp16*/ enable_cpu_fp16,
           /*force_cpu_fp32*/ force_cpu_fp32,
-          &mlas_backend_kernel_selector_config};
+          &mlas_backend_kernel_selector_config,
+          on_partition_assignment_fn};
       ORT_RETURN_IF_ERROR_SESSIONID_(
           apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
                                  ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));

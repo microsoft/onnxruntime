@@ -3,7 +3,9 @@
 
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/data_types.h"
+#include "core/framework/compute_capability.h"
 #include "core/graph/graph_utils.h"
+#include "core/graph/indexed_sub_graph.h"
 #include "core/mlas/inc/mlas.h"
 
 #include <algorithm>
@@ -13,6 +15,19 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
+void InsertCastTransformer::RecordPartitionAssignment(const onnxruntime::Graph& graph,
+                                                      const onnxruntime::Node& node,
+                                                      const std::string& ep_type) const {
+  if (!on_partition_assignment_fn_) {
+    return;
+  }
+
+  auto indexed_subgraph = std::make_unique<IndexedSubGraph>();
+  indexed_subgraph->nodes.push_back(node.Index());
+  const ComputeCapability compute_capability{std::move(indexed_subgraph)};
+  on_partition_assignment_fn_(graph, compute_capability, ep_type);
+}
+
 template <typename T>
 static bool IsTensorOfType(const NodeArg& node_arg) {
   const auto* type_proto = node_arg.TypeAsProto();
@@ -604,12 +619,16 @@ static Status ForceSingleNodeCPUFloat16ToFloat32(
     onnxruntime::Graph& graph,
     const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
     const logging::Logger& logger,
-    InlinedHashSet<NodeIndex>& forced_fp32_nodes) {
+    InlinedHashSet<NodeIndex>& forced_fp32_nodes,
+    InlinedHashSet<NodeIndex>& nodes_with_recorded_cpu_assignment) {
   for (auto& node : graph.Nodes()) {
     if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registries, logger)) {
-      // Unassign the node so that NeedInsertCast will return true for it, forcing it to fp32.
+      // These nodes have an fp16 CPU kernel and were therefore assigned to CPU EP by the partitioner;
+      // that assignment has already been recorded. Clearing the EP is the mechanism that makes
+      // NeedInsertCast return true so they get wrapped with fp32 casts like any other unassigned node.
       // Track the node index as well so the later broad fp16-preservation logic does not
       // immediately assign it back to CPU and undo the heuristic.
+      nodes_with_recorded_cpu_assignment.insert(node.Index());
       node.SetExecutionProviderType("");
       forced_fp32_nodes.insert(node.Index());
     }
@@ -888,10 +907,19 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
 Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const {
+  // This transformer implements a targeted fallback policy: any unassigned node with an fp16 input
+  // is rewritten to consume fp32 (via inserted casts) and given a CPU EP assignment.
+  // on_partition_assignment_fn_ is fired to record each such new CPU EP assignment.
+  //
+  // Exception: some CPU EP assignments may be cleared by this transformer to route isolated or
+  // unprofitable fp16 islands through fp32 casts. Those assignments were already recorded by the
+  // partitioner, so track them and skip the callback when they are assigned back to CPU.
   InlinedHashSet<NodeIndex> forced_fp32_nodes;
+  InlinedHashSet<NodeIndex> nodes_with_recorded_cpu_assignment;
   if (force_cpu_fp32_ && !cpu_kernel_registries_.empty()) {
     ORT_RETURN_IF_ERROR(
-        ForceSingleNodeCPUFloat16ToFloat32(graph, cpu_kernel_registries_, logger, forced_fp32_nodes));
+        ForceSingleNodeCPUFloat16ToFloat32(graph, cpu_kernel_registries_, logger,
+                                           forced_fp32_nodes, nodes_with_recorded_cpu_assignment));
   }
 
   GraphViewer graph_viewer(graph);
@@ -931,6 +959,9 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       // Current Arm fp16 paths are profitable for constant-RHS MatMul once native
       // packed-B is available, and for large GEMV-like shapes. Keep Gemm conservative
       // until MLAS native fp16 is consistently faster across its common shapes.
+      if (node->GetExecutionProviderType() == kCpuExecutionProvider) {
+        nodes_with_recorded_cpu_assignment.insert(node->Index());
+      }
       node->SetExecutionProviderType("");
       forced_fp32_nodes.insert(node->Index());
     }
@@ -946,6 +977,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       // When CPU fp16 is enabled, assign any currently-unassigned fp16-capable node to CPU
       // so it is preserved in fp16 instead of being routed through the fp32 cast fallback.
       node->SetExecutionProviderType(kCpuExecutionProvider);
+      RecordPartitionAssignment(graph, *node, kCpuExecutionProvider);
     }
 
     auto& inputs = node->MutableInputDefs();
@@ -976,6 +1008,9 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       // Set current node to run on the CPU execution provider
       // Keep in mind that the EP will be empty because NeedInsertCast() already ensures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
+      if (nodes_with_recorded_cpu_assignment.find(node->Index()) == nodes_with_recorded_cpu_assignment.end()) {
+        RecordPartitionAssignment(graph, *node, kCpuExecutionProvider);
+      }
 
       // Some ONNX operators have an attribute `dtype` which define the output type for these operators
       // (mostly Generator ops like RandomNormal, RandomNormalLike, EyeLike, etc.).

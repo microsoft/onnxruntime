@@ -6,6 +6,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/graph_partitioner.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
@@ -32,10 +33,13 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
    *                                active MLAS backend selector config. Used by the CPU fp16 heuristic to avoid
    *                                preserving native fp16 paths that rely on backend-specific support, such as
    *                                native packed-B, when that backend is disabled or unavailable.
+   * @param on_partition_assignment_fn
+   *                                optional callback for recording nodes manually assigned by this transformer.
    */
   InsertCastTransformer(const std::string& name, const KernelRegistry* cpu_kernel_registry,
                         bool enable_cpu_fp16 = false, bool force_cpu_fp32 = true,
-                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config = nullptr)
+                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config = nullptr,
+                        OnPartitionAssignmentFunction on_partition_assignment_fn = {})
       : onnxruntime::GraphTransformer(name),
         cpu_kernel_registries_(cpu_kernel_registry != nullptr ? InlinedVector<gsl::not_null<const KernelRegistry*>>{cpu_kernel_registry}
                                                               : InlinedVector<gsl::not_null<const KernelRegistry*>>{}),
@@ -43,24 +47,37 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
         force_cpu_fp32_(!cpu_kernel_registries_.empty() && force_cpu_fp32),
         mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config != nullptr
                                                  ? *mlas_backend_kernel_selector_config
-                                                 : MLAS_BACKEND_KERNEL_SELECTOR_CONFIG{}) {}
+                                                 : MLAS_BACKEND_KERNEL_SELECTOR_CONFIG{}),
+        on_partition_assignment_fn_(std::move(on_partition_assignment_fn)) {}
+
+  InsertCastTransformer(const std::string& name, const KernelRegistry* cpu_kernel_registry,
+                        OnPartitionAssignmentFunction on_partition_assignment_fn)
+      : InsertCastTransformer(name, cpu_kernel_registry,
+                              /*enable_cpu_fp16*/ false,
+                              /*force_cpu_fp32*/ true,
+                              /*mlas_backend_kernel_selector_config*/ nullptr,
+                              std::move(on_partition_assignment_fn)) {}
 
   InsertCastTransformer(const std::string& name,
                         InlinedVector<gsl::not_null<const KernelRegistry*>> cpu_kernel_registries,
                         bool enable_cpu_fp16 = false, bool force_cpu_fp32 = true,
-                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config = nullptr)
+                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config = nullptr,
+                        OnPartitionAssignmentFunction on_partition_assignment_fn = {})
       : onnxruntime::GraphTransformer(name),
         cpu_kernel_registries_(std::move(cpu_kernel_registries)),
         enable_cpu_fp16_(enable_cpu_fp16),
         force_cpu_fp32_(!cpu_kernel_registries_.empty() && force_cpu_fp32),
         mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config != nullptr
                                                  ? *mlas_backend_kernel_selector_config
-                                                 : MLAS_BACKEND_KERNEL_SELECTOR_CONFIG{}) {}
+                                                 : MLAS_BACKEND_KERNEL_SELECTOR_CONFIG{}),
+        on_partition_assignment_fn_(std::move(on_partition_assignment_fn)) {}
 
  private:
   Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
   bool NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input,
                       const logging::Logger& logger) const;
+  void RecordPartitionAssignment(const onnxruntime::Graph& graph, const onnxruntime::Node& node,
+                                 const std::string& ep_type) const;
 
   const InlinedVector<gsl::not_null<const KernelRegistry*>> cpu_kernel_registries_;
 
@@ -72,5 +89,9 @@ class InsertCastTransformer : public onnxruntime::GraphTransformer {
 
   // Copied from session options so graph optimization makes the same backend-capability decisions that execution will.
   const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+
+  // Optional callback to record when nodes are assigned to CPU EP by this transformer.
+  // Reuses the same callback type as GraphPartitioner to maintain consistent EP assignment tracking.
+  const OnPartitionAssignmentFunction on_partition_assignment_fn_;
 };
 }  // namespace onnxruntime
