@@ -4,14 +4,23 @@
 #include "core/optimizer/matmul_nbits_mlp_fusion.h"
 
 #include <algorithm>
+#include <string_view>
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/optimizer/matmul_nbits_fusion_utils.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
 namespace {
+
+using matmul_nbits_fusion_utils::GetFloatAttr;
+using matmul_nbits_fusion_utils::GetIntAttr;
+using matmul_nbits_fusion_utils::HasInput;
+using matmul_nbits_fusion_utils::HasProducedOutput;
+using matmul_nbits_fusion_utils::IsSupportedSimplifiedLayerNormalization;
+using matmul_nbits_fusion_utils::IsSupportedSkipSimplifiedLayerNormalization;
 
 constexpr const char* kActivationAttrName = "activation";
 // The transformer name is generic for future expansion, but the current fused
@@ -22,10 +31,6 @@ constexpr const char* kActivationAttrName = "activation";
 // `EmitGateActivationExpr` plus the `#if activation_kind` block in the WGSL
 // template.
 constexpr const char* kSupportedActivation = "silu";
-
-bool HasInput(const Node& node, size_t index) {
-  return index < node.InputDefs().size() && node.InputDefs()[index] != nullptr && !node.InputDefs()[index]->Name().empty();
-}
 
 const Node* GetInputNode(const Graph& graph, const Node& node, size_t input_index) {
   const auto* edge = graph_utils::GetInputEdge(node, static_cast<int>(input_index));
@@ -40,20 +45,8 @@ bool IsSupportedSigmoid(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13});
 }
 
-bool IsSupportedSimplifiedLayerNormalization(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SimplifiedLayerNormalization", {1});
-}
-
-bool IsSupportedSkipSimplifiedLayerNormalization(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SkipSimplifiedLayerNormalization", {1}, kMSDomain);
-}
-
 bool IsSupportedMlpNormAnchor(const Node& node) {
   return IsSupportedSimplifiedLayerNormalization(node) || IsSupportedSkipSimplifiedLayerNormalization(node);
-}
-
-bool HasProducedOutput(const Node& node, size_t index) {
-  return index < node.OutputDefs().size() && node.OutputDefs()[index] != nullptr && !node.OutputDefs()[index]->Name().empty();
 }
 
 bool ProducesOnlyOptionalSkipOutputAsGraphOutput(const Graph& graph, const Node& node) {
@@ -87,21 +80,6 @@ bool HasExpectedNormConsumers(const Graph& graph, const Node& node) {
 bool IsMatMulNBitsWithoutZeroPointOrGroupIdx(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMulNBits", {1}, kMSDomain) &&
          !HasInput(node, 3) && !HasInput(node, 4);
-}
-
-int64_t GetIntAttr(const Node& node, const char* name, int64_t default_value, bool required = false) {
-  const auto* attr = graph_utils::GetNodeAttribute(node, name);
-  if (attr == nullptr) {
-    ORT_ENFORCE(!required, "Missing required attribute ", name, " on node ", node.Name());
-    return default_value;
-  }
-
-  return attr->i();
-}
-
-float GetFloatAttr(const Node& node, const char* name, float default_value) {
-  const auto* attr = graph_utils::GetNodeAttribute(node, name);
-  return attr == nullptr ? default_value : attr->f();
 }
 
 bool IsSupportedQuickGelu(const Node& node) {
@@ -184,6 +162,14 @@ bool ValidateMatMulNBitsPair(const Graph& graph,
   const int64_t gate_accuracy_level = GetIntAttr(gate_matmul, "accuracy_level", 0);
   const int64_t up_accuracy_level = GetIntAttr(up_matmul, "accuracy_level", 0);
 
+  // Fusion intentionally narrower than the kernel: although the MatMulNBitsMlp
+  // kernel itself accepts {2, 4, 8} bits and any block_size, the fused decode
+  // fast path is only specialized for 4-bit / block_size=32 today (see
+  // kFusedDecodeFastPathBits / kFusedDecodeFastPathBlockSize in
+  // contrib_ops/webgpu/quantization/matmul_nbits_mlp.cc and the WGSL template).
+  // Other configs would fall back to the unfused path inside the kernel anyway,
+  // so we don't rewrite the graph for them — that lets the original
+  // MatMul-based subgraph keep using its own preferred kernels.
   return gate_k == up_k && gate_n == up_n &&
          gate_bits == up_bits && gate_bits == 4 &&
          gate_block_size == up_block_size && gate_block_size == 32 &&
@@ -311,7 +297,7 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     //      `activation_root` is the QuickGelu node; 1 intermediate.
     const Node* gate_matmul = nullptr;
     InlinedVector<const Node*> activation_intermediates;
-    const char* matched_shape = nullptr;
+    std::string_view matched_shape;
 
     if (IsSupportedQuickGelu(*activation_root)) {
       const Node* qg_input = GetInputNode(graph, *activation_root, 0);
@@ -394,7 +380,9 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     utils::SetNodeAttribute(utils::MakeAttribute("epsilon", GetFloatAttr(*norm, "epsilon", 1e-5f)), attrs);
 
     NodeArg& empty_arg = graph.GetOrCreateNodeArg("", nullptr);
-    const bool is_skip_sln = norm != nullptr && IsSupportedSkipSimplifiedLayerNormalization(*norm);
+    // `norm` is guaranteed non-null here: the GetNormProducer() / continue guard
+    // above bails out before this point if it would have been null.
+    const bool is_skip_sln = IsSupportedSkipSimplifiedLayerNormalization(*norm);
 
     InlinedVector<NodeArg*> fused_inputs{
         const_cast<NodeArg*>(norm->InputDefs()[0]),
@@ -409,7 +397,7 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     };
 
     InlinedVector<NodeArg*> fused_outputs{const_cast<NodeArg*>(node.OutputDefs()[0])};
-    const bool preserve_skip_output = is_skip_sln && norm != nullptr && HasProducedOutput(*norm, 3);
+    const bool preserve_skip_output = is_skip_sln && HasProducedOutput(*norm, 3);
     if (preserve_skip_output) {
       fused_outputs.push_back(const_cast<NodeArg*>(norm->OutputDefs()[3]));
     }

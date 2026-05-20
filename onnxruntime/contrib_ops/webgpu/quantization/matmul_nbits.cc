@@ -224,42 +224,36 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
 #if !defined(__wasm__)
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   int32_t subgroup_matrix_config_index = -1;
-  if (WouldApplySubgroupMatrixMatMulNBitsInCurrentDispatch(M,
-                                                           N,
-                                                           K,
-                                                           batch_count,
-                                                           block_size,
-                                                           accuracy_level,
-                                                           nbits,
-                                                           context,
-                                                           y,
-                                                           has_weight_idx_indirect,
-                                                           &subgroup_matrix_config_index,
-                                                           override_M)) {
+  if (CanApplySubgroupMatrixMatMulNBits(context,
+                                        accuracy_level,
+                                        block_size,
+                                        batch_count,
+                                        N,
+                                        K,
+                                        static_cast<uint32_t>(nbits),
+                                        y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
+                                        subgroup_matrix_config_index,
+                                        M,
+                                        has_weight_idx_indirect,
+                                        override_M)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
   }
 #endif
 
   // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   // DP4A Q2 path now supports custom zero points via a 1024-entry LUT (4 zero-point sections × 256 byte values).
-  if (WouldApplyDP4AMatMulNBitsInCurrentDispatch(M,
-                                                 N,
-                                                 K,
-                                                 block_size,
-                                                 accuracy_level,
-                                                 context,
-                                                 y,
-                                                 has_weight_idx_indirect)) {
+  if (CanApplyDP4AMatrixMatMulNBits(context, accuracy_level, block_size, N, K, components_a,
+                                    M, has_weight_idx_indirect, y)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, bias, batch_count, M, dispatch_M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, static_cast<uint32_t>(nbits), context, y, weight_index, weight_index_indirect);
   }
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  const bool use_wide_tile_program = WouldApplyWideTileMatMulNBitsInCurrentDispatch(M,
-                                                                                    K,
-                                                                                    block_size,
-                                                                                    nbits,
-                                                                                    has_weight_idx_indirect);
+  const bool use_wide_tile_program = CanApplyWideTileMatMulNBits(M,
+                                                                 K,
+                                                                 block_size,
+                                                                 nbits,
+                                                                 has_weight_idx_indirect);
 
   if (use_wide_tile_program) {
     // Enforce output components to 1.
