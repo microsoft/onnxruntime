@@ -3,7 +3,9 @@
 
 #include "test_util.h"
 #include "mlas_qkv_quant.h"
+#include "core/platform/env_var.h"
 
+#include <algorithm>
 #include <cmath>
 #include <random>
 #include <string>
@@ -165,6 +167,48 @@ class MlasKVQuantTest : public MlasTestBase {
     }
   }
 
+  void TestQKGemmS8PerTensorPreservesFp32Query() {
+    if (onnxruntime::detail::GetEnvironmentVar("ORT_MLAS_QKGEMM_S8_APPROX_VNNI") == "1") {
+      return;
+    }
+
+    constexpr size_t M = 1;
+    constexpr size_t N = 3;
+    constexpr size_t K = 128;
+    constexpr MLAS_KV_QUANT_TYPE QuantType = MLAS_KV_QUANT_TYPE::S8_PerTensor;
+
+    float* A = BufferA.GetBuffer(M * K);
+    float* B = BufferB.GetBuffer(N * K);
+    float* scales = BufferScales.GetBuffer(1);
+    float* C = BufferC.GetBuffer(M * N);
+    float* CRef = BufferCRef.GetBuffer(M * N);
+    float* BDequant = BufferBDequant.GetBuffer(N * K);
+
+    A[0] = 1024.0f;
+    for (size_t k = 1; k < K; ++k) {
+      A[k] = 3.0f;
+    }
+
+    for (size_t i = 0; i < N * K; ++i) {
+      B[i] = 1.0f;
+    }
+    ComputeScales(B, N, K, QuantType, scales);
+
+    size_t packed_bytes = N * MlasKVQuantPackedRowBytes(QuantType, K);
+    uint8_t* BQuant = BufferQuantized.GetBuffer(packed_bytes);
+    MlasKVQuantize(B, BQuant, N, K, K, QuantType, scales, nullptr);
+    MlasKVDequantize(BQuant, BDequant, N, K, K, QuantType, scales, nullptr);
+
+    float alpha = 1.0f / std::sqrt(static_cast<float>(K));
+    RefQKGemm(A, BDequant, CRef, M, N, K, alpha, K, N);
+    MlasQKGemm(M, N, K, alpha, A, K, BQuant, QuantType, scales, C, N, nullptr);
+
+    for (size_t i = 0; i < M * N; i++) {
+      ASSERT_NEAR(C[i], CRef[i], 1e-3f)
+          << "QKGemm S8 per-tensor must preserve FP32 query values at output " << i;
+    }
+  }
+
   //
   // Test: MlasSVGemm correctness vs FP32 SGEMM oracle.
   //
@@ -247,6 +291,7 @@ class MlasKVQuantTest : public MlasTestBase {
     }
 
     // QKGemm tests: C[M,N] = alpha * A[M,K] * B^T[K,N]
+    TestQKGemmS8PerTensorPreservesFp32Query();
     for (auto qt : AllQuantTypes) {
       for (size_t M : {size_t{1}, size_t{4}, size_t{16}}) {                                // seq_length
         for (size_t N : {size_t{1}, size_t{8}, size_t{32}, size_t{128}}) {                 // total_seqlen

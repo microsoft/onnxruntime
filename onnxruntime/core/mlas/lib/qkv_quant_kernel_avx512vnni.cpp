@@ -12,19 +12,19 @@ Abstract:
 
     AVX512-VNNI optimized implementation of quantized KV-cache GEMM kernels.
 
-    For INT8 per-tensor quantization, uses _mm512_dpbusd_epi32 to accumulate
-    4 int8×int8 products per 32-bit lane per instruction (64 products/cycle
-    across 16 lanes). The FP32 query row A is quantized to uint8 on-the-fly
-    with a per-row scale, then the integer accumulator is converted to FP32
-    and scaled once at the end.
+    By default, uses 512-bit wide FP32 FMA (16 floats/cycle, 2x over AVX2's 8)
+    to dequantize the quantized KV cache on the fly while preserving FP32 query
+    and attention-weight inputs.
 
-    For INT8 per-channel and all INT4 modes, uses 512-bit wide FP32 FMA
-    (16 floats/cycle, 2x over AVX2's 8).
+    The INT8 per-tensor QKGemm path can optionally use _mm512_dpbusd_epi32 when
+    ORT_MLAS_QKGEMM_S8_APPROX_VNNI=1. That path quantizes the FP32 query row on
+    the fly and is intentionally opt-in because it changes the numeric contract.
 
 --*/
 
 #include "qkv_quant_kernel.h"
 #include "mlas_qkv_quant.h"
+#include "core/platform/env_var.h"
 
 #include <immintrin.h>
 #include <algorithm>
@@ -48,6 +48,14 @@ IsPerChannelMode(MLAS_KV_QUANT_TYPE qt)
 {
     return qt == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
            qt == MLAS_KV_QUANT_TYPE::S4_PerChannel;
+}
+
+inline bool
+UseApproximateVnniQKGemm()
+{
+    static const bool enabled =
+        onnxruntime::detail::GetEnvironmentVar("ORT_MLAS_QKGEMM_S8_APPROX_VNNI") == "1";
+    return enabled;
 }
 
 //
@@ -180,8 +188,7 @@ VnniDotInt8PerTensor(
 }
 
 //
-// 512-bit wide FP32 fused dequant-dot for INT8 per-channel (and fallback for
-// per-tensor when VNNI path is not optimal). Processes 16 floats per iteration.
+// 512-bit wide FP32 fused dequant-dot for INT8. Processes 16 floats per iteration.
 //
 inline float
 FusedDotInt8_Avx512(
@@ -439,8 +446,8 @@ QKGemm_Avx512Vnni(
     const bool int4 = IsInt4Mode(QuantType);
     const bool per_channel = IsPerChannelMode(QuantType);
 
-    if (!int4 && !per_channel) {
-        // INT8 per-tensor: use VNNI integer dot product path
+    if (!int4 && !per_channel && UseApproximateVnniQKGemm()) {
+        // INT8 per-tensor approximate path: opt-in only because it quantizes A.
         const float scale_b = Scales[0];
 
         // Temp buffer for quantized A row (64-byte aligned for AVX-512)
@@ -482,8 +489,11 @@ QKGemm_Avx512Vnni(
                 C[m * ldc + n] = Alpha * dot;
             }
         }
-    } else if (!int4) {
-        // INT8 per-channel: use 512-bit FP32 FMA path
+        return;
+    }
+
+    if (!int4) {
+        // INT8 per-tensor and per-channel: use 512-bit FP32 FMA path.
         for (size_t n = 0; n < N; ++n) {
             const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + n * row_bytes);
             for (size_t m = 0; m < M; ++m) {
