@@ -405,6 +405,526 @@ TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_Batch32_256x256) {
   TestMatMul2BitsLutGemm<float>(32, 256, 256, 32, true);
 }
 
+// Float zero point tests — directed QAD scenario (zp=1.5)
+void RunTest2BitsFloatZP(int64_t M, int64_t N, int64_t K, int64_t block_size, float zp_value) {
+  RandomValueGenerator random{1234};
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  // Quantize symmetrically
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), nullptr,
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  // Create float ZP: one per quantization group
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  std::vector<float> float_zp(N * k_blocks, zp_value);
+
+  // Dequantize with float ZP for reference
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t k = 0; k < K; k++) {
+      int64_t blk = k / block_size;
+      float scale = scales[n * k_blocks + blk];
+      int64_t packed_idx = n * bytes_per_col + k / 4;
+      int bit_offset = static_cast<int>((k % 4) * 2);
+      uint8_t q = (input1_vals[packed_idx] >> bit_offset) & 0x3;
+      input1_fp32_vals[n * K + k] = (static_cast<float>(q) - zp_value) * scale;
+    }
+  }
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<float>("A", {M, K}, input0_fp32_vals, false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+  test.AddInput<float>("zero_points", {N, k_blocks}, float_zp, true);
+
+  test.AddOutput<float>("Y", {M, N}, expected_vals);
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+
+  test.Config(so)
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+TEST(MatMul2Bits, Float32_2b_FloatZP_QAD) {
+  if (!MlasIsLutGemmAvailable(128, 128, 2, 32)) {
+    GTEST_SKIP() << "LUT GEMM not available on this platform";
+  }
+  // QAD scenario: zp=1.5 maps {0,1,2,3} to {-1, -1/3, 1/3, 1} * scale
+  RunTest2BitsFloatZP(1, 128, 128, 32, 1.5f);
+  RunTest2BitsFloatZP(1, 256, 256, 64, 1.5f);
+  RunTest2BitsFloatZP(1, 128, 128, 32, 0.0f);
+  RunTest2BitsFloatZP(1, 128, 128, 32, 2.0f);
+  RunTest2BitsFloatZP(1, 128, 128, 32, 3.0f);
+}
+
+// Varying per-block float ZP — uses a unique ZP per (N, k_blocks) element so that
+// packer layout/stride bugs in PackScalesAndZeroPoints become observable.
+TEST(MatMul2Bits, Float32_2b_FloatZP_VaryingPerBlock) {
+  const int64_t M = 1, N = 128, K = 128, block_size = 32;
+  if (!MlasIsLutGemmAvailable(static_cast<size_t>(N), static_cast<size_t>(K), 2,
+                              static_cast<size_t>(block_size))) {
+    GTEST_SKIP() << "LUT GEMM not available on this platform";
+  }
+
+  RandomValueGenerator random{1234};
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), nullptr,
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  std::vector<float> float_zp(static_cast<size_t>(N * k_blocks));
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t blk = 0; blk < k_blocks; blk++) {
+      // Strong variation in both dimensions so stride/transpose bugs are observable
+      float_zp[static_cast<size_t>(n * k_blocks + blk)] =
+          0.25f + 0.5f * static_cast<float>(blk) + 0.01f * static_cast<float>(n % 17);
+    }
+  }
+
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t k = 0; k < K; k++) {
+      int64_t blk = k / block_size;
+      float scale = scales[static_cast<size_t>(n * k_blocks + blk)];
+      float zp = float_zp[static_cast<size_t>(n * k_blocks + blk)];
+      int64_t packed_idx = n * bytes_per_col + k / 4;
+      int bit_offset = static_cast<int>((k % 4) * 2);
+      uint8_t q = (input1_vals[static_cast<size_t>(packed_idx)] >> bit_offset) & 0x3;
+      input1_fp32_vals[static_cast<size_t>(n * K + k)] =
+          (static_cast<float>(q) - zp) * scale;
+    }
+  }
+
+  std::vector<float> expected_vals(static_cast<size_t>(M * N));
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[static_cast<size_t>(m * K + k)] *
+               input1_fp32_vals[static_cast<size_t>(n * K + k)];
+      }
+      expected_vals[static_cast<size_t>(m * N + n)] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<float>("A", {M, K}, input0_fp32_vals, false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+  test.AddInput<float>("zero_points", {N, k_blocks}, float_zp, true);
+
+  test.AddOutput<float>("Y", {M, N}, expected_vals);
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+
+  test.Config(so)
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+// Dynamic (non-constant) ZP test — verifies that the PrePack dynamic-ZP guard
+// (prefer_lut_gemm_ && has_zp_arg_ && !has_zp_input_) correctly falls back to
+// the unpacked dequant path instead of silently ignoring the zero points.
+TEST(MatMul2Bits, Float32_2b_FloatZP_DynamicZP) {
+  const int64_t M = 1, N = 128, K = 128, block_size = 32;
+  if (!MlasIsLutGemmAvailable(static_cast<size_t>(N), static_cast<size_t>(K), 2,
+                              static_cast<size_t>(block_size))) {
+    GTEST_SKIP() << "LUT GEMM not available on this platform";
+  }
+
+  RandomValueGenerator random{1234};
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), nullptr,
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  std::vector<float> float_zp(static_cast<size_t>(N * k_blocks));
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t blk = 0; blk < k_blocks; blk++) {
+      float_zp[static_cast<size_t>(n * k_blocks + blk)] =
+          0.25f + 0.5f * static_cast<float>(blk) + 0.01f * static_cast<float>(n % 17);
+    }
+  }
+
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t k = 0; k < K; k++) {
+      int64_t blk = k / block_size;
+      float scale = scales[static_cast<size_t>(n * k_blocks + blk)];
+      float zp = float_zp[static_cast<size_t>(n * k_blocks + blk)];
+      int64_t packed_idx = n * bytes_per_col + k / 4;
+      int bit_offset = static_cast<int>((k % 4) * 2);
+      uint8_t q = (input1_vals[static_cast<size_t>(packed_idx)] >> bit_offset) & 0x3;
+      input1_fp32_vals[static_cast<size_t>(n * K + k)] =
+          (static_cast<float>(q) - zp) * scale;
+    }
+  }
+
+  std::vector<float> expected_vals(static_cast<size_t>(M * N));
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[static_cast<size_t>(m * K + k)] *
+               input1_fp32_vals[static_cast<size_t>(n * K + k)];
+      }
+      expected_vals[static_cast<size_t>(m * N + n)] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<float>("A", {M, K}, input0_fp32_vals, false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+  // is_initializer=false: ZP is a dynamic runtime input, not a constant
+  test.AddInput<float>("zero_points", {N, k_blocks}, float_zp, false);
+
+  test.AddOutput<float>("Y", {M, N}, expected_vals);
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
+  // LUT GEMM enabled, but ZP is dynamic — PrePack should skip LUT packing
+  // and fall through to the unpacked dequant path at Compute() time.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
+
+  test.Config(so)
+      .ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+// Float ZP fallback test — exercises the non-LUT dequant path by NOT enabling the LUT session option
+TEST(MatMul2Bits, Float32_2b_FloatZP_Fallback) {
+  RandomValueGenerator random{1234};
+  const int64_t M = 1, N = 32, K = 32, block_size = 16;
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), nullptr,
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  const float zp_value = 1.5f;
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  std::vector<float> float_zp(N * k_blocks, zp_value);
+
+  // Reference dequant with correct packed stride
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t k = 0; k < K; k++) {
+      int64_t blk = k / block_size;
+      float scale = scales[n * k_blocks + blk];
+      int64_t packed_idx = n * bytes_per_col + k / 4;
+      int bit_offset = static_cast<int>((k % 4) * 2);
+      uint8_t q = (input1_vals[packed_idx] >> bit_offset) & 0x3;
+      input1_fp32_vals[n * K + k] = (static_cast<float>(q) - zp_value) * scale;
+    }
+  }
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<float>("A", {M, K}, input0_fp32_vals, false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+  test.AddInput<float>("zero_points", {N, k_blocks}, float_zp, true);
+
+  test.AddOutput<float>("Y", {M, N}, expected_vals);
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
+  // No LUT session option — forces fallback dequant path
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+// Non-aligned K fallback test — K=48 is not a multiple of block_size=32, exercises padded stride
+TEST(MatMul2Bits, Float32_2b_FloatZP_Fallback_NonAlignedK) {
+  RandomValueGenerator random{1234};
+  const int64_t M = 1, N = 32, K = 48, block_size = 32;
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), nullptr,
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  const float zp_value = 1.5f;
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  std::vector<float> float_zp(N * k_blocks, zp_value);
+
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t k = 0; k < K; k++) {
+      int64_t blk = k / block_size;
+      float scale = scales[n * k_blocks + blk];
+      int64_t packed_idx = n * bytes_per_col + k / 4;
+      int bit_offset = static_cast<int>((k % 4) * 2);
+      uint8_t q = (input1_vals[packed_idx] >> bit_offset) & 0x3;
+      input1_fp32_vals[n * K + k] = (static_cast<float>(q) - zp_value) * scale;
+    }
+  }
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<float>("A", {M, K}, input0_fp32_vals, false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+  test.AddInput<float>("zero_points", {N, k_blocks}, float_zp, true);
+
+  test.AddOutput<float>("Y", {M, N}, expected_vals);
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
+// MLFloat16 activation + MLFloat16 zero point fallback test
+// Exercises ComputeBUnpacked<MLFloat16> 2-bit fp16-ZP dequant path
+TEST(MatMul2Bits, MLFloat16_2b_MLFloat16ZP_Fallback) {
+  RandomValueGenerator random{1234};
+  const int64_t M = 1, N = 32, K = 32, block_size = 16;
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), nullptr,
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  const float zp_value = 1.5f;
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+  std::vector<float> float_zp(N * k_blocks, zp_value);
+
+  // Reference dequant with float ZP
+  int64_t packed_k = k_blocks * block_size;
+  int64_t bytes_per_col = packed_k / 4;
+  for (int64_t n = 0; n < N; n++) {
+    for (int64_t k = 0; k < K; k++) {
+      int64_t blk = k / block_size;
+      float scale = scales[n * k_blocks + blk];
+      int64_t packed_idx = n * bytes_per_col + k / 4;
+      int bit_offset = static_cast<int>((k % 4) * 2);
+      uint8_t q = (input1_vals[packed_idx] >> bit_offset) & 0x3;
+      input1_fp32_vals[n * K + k] = (static_cast<float>(q) - zp_value) * scale;
+    }
+  }
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<MLFloat16>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks}, FloatsToMLFloat16s(scales), true);
+  test.AddInput<MLFloat16>("zero_points", {N, k_blocks}, FloatsToMLFloat16s(float_zp), true);
+
+  test.AddOutput<MLFloat16>("Y", {M, N}, FloatsToMLFloat16s(expected_vals));
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
+  // No LUT session option — forces fallback dequant path
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
 TEST(MatMul2Bits, Float32_2b_Accuracy0) {
   TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
   TestMatMul2BitsTyped<float, 1, 2, 16, 16, 0>();

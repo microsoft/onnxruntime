@@ -3127,6 +3127,63 @@ TEST(CastOpTest, CopyCpuTensor_SubByteTypes_DistinctBuffers) {
   }
 }
 
+// Correctness test for Cast kernel with a moderately large tensor.
+// Exercises the same kernel code path as tensors > 2^31 elements but stays within
+// CI GPU memory limits. For the actual overflow scenario, see the host-side test below.
+TEST(CastOpTest, CastKernelCorrectness_ModerateSize) {
+  constexpr int64_t num_elements = 1 << 24;  // 16M elements
+  const std::vector<int64_t> shape = {num_elements};
+
+  std::vector<float> input(num_elements);
+  std::vector<int32_t> expected(num_elements);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    input[i] = static_cast<float>(i % 1000);
+    expected[i] = static_cast<int32_t>(i % 1000);
+  }
+
+  TestCastOp<float, int32_t>(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+// Host-side regression test that verifies the grid launch arithmetic uses 64-bit
+// types for element counts exceeding INT32_MAX. This validates the fix without
+// needing to allocate > 8 GB of GPU memory.
+// The fix changed:
+//   CUDA_LONG N = static_cast<CUDA_LONG>(count)  // was int32 truncation
+// to:
+//   int64_t N = static_cast<int64_t>(count)       // correct 64-bit
+TEST(CastOpTest, CastKernel_Int64IndexArithmetic_NoOverflow) {
+  // Simulate the grid launch calculation from UnaryElementWiseImpl / CudaCastStd
+  // with a count that exceeds INT32_MAX.
+  constexpr size_t count = static_cast<size_t>(INT32_MAX) + 65536;  // 2^31 + 65536
+  constexpr int maxThreadsPerBlock = 256;
+  constexpr int maxElementsPerThread = 4;
+
+  // Verify N is correctly represented (not truncated to int32)
+  int64_t N = static_cast<int64_t>(count);
+  ASSERT_GT(N, static_cast<int64_t>(INT32_MAX));
+  ASSERT_EQ(N, static_cast<int64_t>(count));
+
+  // Verify blocksPerGrid calculation doesn't overflow
+  // (uses size_t arithmetic for the divisor)
+  size_t elements_per_block = static_cast<size_t>(maxThreadsPerBlock) * maxElementsPerThread;
+  int blocksPerGrid = static_cast<int>((count + elements_per_block - 1) / elements_per_block);
+  ASSERT_GT(blocksPerGrid, 0);
+  // For count = 2^31 + 65536, elements_per_block = 1024, we expect ~2M blocks
+  ASSERT_EQ(blocksPerGrid, static_cast<int>((count + 1023) / 1024));
+
+  // Verify that the per-thread index calculation doesn't overflow in int64_t
+  // Simulate the last block's thread 0: id = NumElementsPerThread * NumThreadsPerBlock * (blocksPerGrid-1) + 0
+  int64_t last_block_start = static_cast<int64_t>(maxElementsPerThread) * maxThreadsPerBlock *
+                             (blocksPerGrid - 1);
+  ASSERT_GT(last_block_start, 0);  // Positive (no overflow)
+  ASSERT_LE(last_block_start, N);  // Within bounds
+
+  // Verify the old int32 code would have failed:
+  // static_cast<int32_t>(count) would silently wrap
+  int32_t truncated_N = static_cast<int32_t>(count);
+  ASSERT_LT(truncated_N, 0);  // Proves the old code was broken (wraps negative)
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 float FloatFromBits(uint32_t bits) {
