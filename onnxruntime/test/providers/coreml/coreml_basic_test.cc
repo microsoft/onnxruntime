@@ -1911,6 +1911,75 @@ TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+namespace {
+// int64 -> Cast(bool) -> Cast(float) round-trip. The bool tensor stays
+// internal to the CoreML partition (a partition cannot have bool I/O), and
+// the first Cast is fed directly by a graph input -- so this exercises both
+// the new bool dtype support and acceptance of a Cast with no preceding node.
+std::string MakeCastBoolModelData() {
+  onnxruntime::Model model("cast_bool_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto int64_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  const auto float_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &int64_type);
+  auto& b = graph.GetOrCreateNodeArg("B", &bool_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &float_type);
+
+  auto& to_bool = graph.AddNode("cast_to_bool", "Cast", "int64 -> bool", {&x}, {&b});
+  to_bool.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  auto& to_float = graph.AddNode("cast_to_float", "Cast", "bool -> float", {&b}, {&y});
+  to_float.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// ML Program Cast supports bool as both a source and a target dtype.
+TEST(CoreMLExecutionProviderTest, CastBoolRoundTrip_MLProgram) {
+  const std::string model_data = MakeCastBoolModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  std::vector<int64_t> values = {0, 5, 0, -3};  // -> bool {F,T,F,T} -> float {0,1,0,1}
+  OrtValue x_val;
+  CreateMLValue<int64_t>(CPUAllocator::DefaultInstance(), dims, values, &x_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// On the NeuralNetwork format the Cast builder only supports a Cast that
+// consumes an ArgMax, so these graph-input / Cast-fed Casts must fall back to
+// CPU. Guards the IsOpSupportedImpl reordering that moved the preceding-node
+// check into the NeuralNetwork branch.
+TEST(CoreMLExecutionProviderTest, CastNonArgMaxNeuralNetworkNotSupported) {
+  const std::string model_data = MakeCastBoolModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
