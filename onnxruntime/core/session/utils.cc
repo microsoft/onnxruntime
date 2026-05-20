@@ -987,19 +987,12 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                                               /*model_data_length*/ 0,
                                                               sess));
 
+  // Always rebuild providers from the effective session options (which include merged variant
+  // provider options). Providers created during EP selection used the original session options
+  // and would not reflect variant-specific provider options.
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.RebuildProviderListForSession(env, *options));
+
   auto& provider_list = model_package_context.MutableProviderList();
-
-  // Rebuild providers if the list is empty or contains any null entries.
-  const bool has_all_live_providers =
-      !provider_list.empty() &&
-      std::all_of(provider_list.begin(), provider_list.end(),
-                  [](const std::unique_ptr<onnxruntime::IExecutionProvider>& provider) {
-                    return provider != nullptr;
-                  });
-
-  if (!has_all_live_providers) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(model_package_context.RebuildProviderListForSession(env, *options));
-  }
 
   for (auto& provider : provider_list) {
     if (provider) {

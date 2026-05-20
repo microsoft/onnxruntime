@@ -130,6 +130,7 @@ class ModelPackageComponentContext {
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }
   const std::vector<const OrtEpDevice*>& DevicesSelected() const { return devices_selected_; }
+  gsl::span<const VariantSelectionEpInfo> EpInfos() const { return ep_infos_; }
   bool IsFromPolicy() const { return from_policy_; }
 
   // Rebuild the provider list for a new session creation call (providers are consumed/moved

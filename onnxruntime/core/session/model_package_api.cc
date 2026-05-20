@@ -472,21 +472,27 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                       ORT_FAIL, "Provider option keys/values size mismatch.");
 
     if (!provider_option_keys.empty()) {
-      std::vector<const char*> provider_option_key_ptrs;
-      std::vector<const char*> provider_option_value_ptrs;
-      provider_option_key_ptrs.reserve(provider_option_keys.size());
-      provider_option_value_ptrs.reserve(provider_option_values.size());
+      // Use ep_devices from the captured EP info for applying provider options.
+      // DevicesSelected() is only populated for the policy path, but ep_infos[0].ep_devices
+      // is populated for both factory and policy paths.
+      const auto& ep_infos = mp_ctx.EpInfos();
+      if (!ep_infos.empty() && !ep_infos[0].ep_devices.empty()) {
+        std::vector<const char*> provider_option_key_ptrs;
+        std::vector<const char*> provider_option_value_ptrs;
+        provider_option_key_ptrs.reserve(provider_option_keys.size());
+        provider_option_value_ptrs.reserve(provider_option_values.size());
 
-      for (size_t i = 0; i < provider_option_keys.size(); ++i) {
-        provider_option_key_ptrs.push_back(provider_option_keys[i].c_str());
-        provider_option_value_ptrs.push_back(provider_option_values[i].c_str());
+        for (size_t i = 0; i < provider_option_keys.size(); ++i) {
+          provider_option_key_ptrs.push_back(provider_option_keys[i].c_str());
+          provider_option_value_ptrs.push_back(provider_option_values[i].c_str());
+        }
+
+        ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::AddEpOptionsToSessionOptions(
+            gsl::span<const OrtEpDevice* const>(ep_infos[0].ep_devices.data(), ep_infos[0].ep_devices.size()),
+            gsl::span<const char* const>(provider_option_key_ptrs.data(), provider_option_key_ptrs.size()),
+            gsl::span<const char* const>(provider_option_value_ptrs.data(), provider_option_value_ptrs.size()),
+            effective_options_storage->value));
       }
-
-      ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::AddEpOptionsToSessionOptions(
-          gsl::span<const OrtEpDevice* const>(mp_ctx.DevicesSelected().data(), mp_ctx.DevicesSelected().size()),
-          gsl::span<const char* const>(provider_option_key_ptrs.data(), provider_option_key_ptrs.size()),
-          gsl::span<const char* const>(provider_option_value_ptrs.data(), provider_option_value_ptrs.size()),
-          effective_options_storage->value));
     }
 
     effective_options = &*effective_options_storage;

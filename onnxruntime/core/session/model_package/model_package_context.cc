@@ -66,12 +66,6 @@ ModelPackageComponentContext::ModelPackageComponentContext(const std::string& co
       execution_devices_(options.ExecutionDevices()),
       devices_selected_(options.DevicesSelected()),
       from_policy_(options.FromPolicy()) {
-  // Move providers from options so we own them for the first session creation.
-  auto& src_providers = options.MutableProviderList();
-  provider_list_.reserve(src_providers.size());
-  for (auto& p : src_providers) {
-    provider_list_.push_back(std::move(p));
-  }
   // Point the span at our owned copy.
   ep_infos_ = gsl::span<const VariantSelectionEpInfo>(owned_ep_infos_);
 }
