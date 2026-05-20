@@ -81,7 +81,7 @@ import onnxruntime as ort
 import onnxruntime_ep_webgpu as webgpu_ep
 
 # Register the plugin EP library with ONNX Runtime
-ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
+ort.register_execution_provider_library("webgpu_ep_registration", webgpu_ep.get_library_path())
 
 # Discover WebGPU devices
 webgpu_devices = [d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()]
@@ -102,7 +102,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.EP.WebGpu;
 
 var env = OrtEnv.Instance();
-env.RegisterExecutionProviderLibrary("webgpu_ep", WebGpuEp.GetLibraryPath());
+env.RegisterExecutionProviderLibrary("webgpu_ep_registration", WebGpuEp.GetLibraryPath());
 
 OrtEpDevice? webGpuDevice = null;
 foreach (var d in env.GetEpDevices())
@@ -133,7 +133,7 @@ The C++ pattern is the generic plugin EP idiom — the host application is respo
 #include "onnxruntime_cxx_api.h"
 
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "webgpu_sample");
-env.RegisterExecutionProviderLibrary("webgpu_ep",
+env.RegisterExecutionProviderLibrary("webgpu_ep_registration",
     ORT_TSTR("onnxruntime_providers_webgpu.dll"));
 
 std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
