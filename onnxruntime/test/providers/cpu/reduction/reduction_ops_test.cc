@@ -2694,12 +2694,17 @@ TEST(ReductionOpTest, ReduceSum_default_axes_do_not_keep_dims_large_float32_cons
   constexpr int64_t d3 = 64;
   constexpr int64_t numel = d0 * d1 * d2 * d3;
   constexpr float input_value = 0.1f;
+  // narrow ensures the int64_t->size_t conversion is checked.
   const std::vector<float> input(onnxruntime::narrow<size_t>(numel), input_value);
+  // Compute the expected scalar using higher precision so the reference itself
+  // is not affected by large float32 accumulation error.
   const float expected = static_cast<float>(static_cast<double>(numel) * static_cast<double>(input_value));
 
   test.AddInput<float>("data", {d0, d1, d2, d3}, input);
   test.AddOutput<float>("reduced", {}, {expected});
-  test.SetOutputAbsErr("reduced", 0.1f);
+  // Allow small architecture-dependent float order differences while still
+  // catching the large (~1e2) discrepancy reported in the issue.
+  test.SetOutputAbsErr("reduced", 0.05f);
   test.SetOutputRelErr("reduced", 1e-6f);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
 }

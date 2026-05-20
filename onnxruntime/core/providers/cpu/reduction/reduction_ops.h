@@ -215,10 +215,12 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
   inline void update(const T& v) { this->accumulator_ += v; }
   static T aggall(const T* from_data, int64_t size) {
     if constexpr (std::is_same_v<T, float>) {
-      // Improve numerical stability for large float reductions.
+      // Kahan compensated summation to reduce float round-off error on large reductions.
+      // https://en.wikipedia.org/wiki/Kahan_summation_algorithm
       double sum = 0.0;
       double compensation = 0.0;
       for (int64_t i = 0; i < size; ++i) {
+        // compensation stores the previous step's rounding error that is corrected in this step.
         const double value = static_cast<double>(from_data[i]) - compensation;
         const double next_sum = sum + value;
         compensation = (next_sum - sum) - value;
