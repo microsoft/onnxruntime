@@ -75,6 +75,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
   CreateFlattenOpBuilder("Flatten", op_registrations);
   CreateGatherOpBuilder("Gather", op_registrations);
+  CreateGatherNDOpBuilder("GatherND", op_registrations);
   CreateGemmOpBuilder("Gemm", op_registrations);
   CreateGridSampleOpBuilder("GridSample", op_registrations);
   CreateLRNOpBuilder("LRN", op_registrations);
