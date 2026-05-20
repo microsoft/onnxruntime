@@ -1168,7 +1168,8 @@ class SparseMoeBlockORTHelper(nn.Module):
                     expert_out = expert_layer(token_vec.cpu())
                     contrib = expert_out[0, k].item() * topk_soft[0, idx_e].item()
                     print(f"Expert {e} contrib at hidden {k}: {contrib}")
-            except Exception as e:
+            except Exception:
+                # Diagnostic dump is best-effort; ignore failures (e.g., unsupported dtype).
                 pass
 
         ort_dtype_quant_bits_tolerance_map = {

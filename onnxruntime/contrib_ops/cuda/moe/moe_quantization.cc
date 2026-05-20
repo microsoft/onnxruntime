@@ -60,14 +60,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
-#if !defined(ENABLE_FP4) || !defined(ENABLE_CUDA_FP4_QMOE)
-  ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires ENABLE_CUDA_FP4_QMOE with CUDA 12.8 or newer.");
+#if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
+  ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8",
-              "QMoE quant_type='wfp4afp8' requires ENABLE_CUDA_FP4_QMOE with CUDA 12.8 or newer.");
+              "QMoE quant_type='wfp4afp8' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
 #endif
-#if !defined(ENABLE_FP8) || !defined(ENABLE_CUDA_FP8_QMOE)
-  ORT_ENFORCE(quant_type_ != "fp8", "QMoE quant_type='fp8' requires ENABLE_CUDA_FP8_QMOE with CUDA 11.8 or newer.");
-  ORT_ENFORCE(quant_type_ != "wfp4afp8", "QMoE quant_type='wfp4afp8' requires ENABLE_CUDA_FP8_QMOE with CUDA 11.8 or newer.");
+#if !defined(ENABLE_FP8) || !defined(USE_FP8_QMOE)
+  ORT_ENFORCE(quant_type_ != "fp8", "QMoE quant_type='fp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
+  ORT_ENFORCE(quant_type_ != "wfp4afp8", "QMoE quant_type='wfp4afp8' requires USE_FP8_QMOE with CUDA 11.8 or newer.");
 #endif
 
   using namespace onnxruntime::llm::kernels::cutlass_kernels;
@@ -84,14 +84,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   if (quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8") {
     if (quant_type_ == "fp4") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "FP4 quantization requires expert_weight_bits=4");
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
       use_fp4_dequant_fallback_ = sm_ < 120;
 #else
       use_fp4_dequant_fallback_ = true;
 #endif
     } else if (quant_type_ == "wfp4afp8") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "WFP4AFP8 (W4A8) quantization requires expert_weight_bits=4");
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE) && defined(ENABLE_FP8)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE) && defined(ENABLE_FP8)
       // The native FP8 x MXFP4 path uses CUTLASS block-scaled tensor ops which require SM100+ (Blackwell).
       // The activation BF16/FP16 -> FP8 quantization is performed inside the runner's
       // expandInputRowsKernel using the MXFP8 branch: the runner is constructed with T=__nv_fp8_e4m3,
@@ -112,7 +112,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
     }
     if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp4_e2m1, half>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
@@ -122,7 +122,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
 #endif
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE) && defined(ENABLE_FP8) && defined(ENABLE_CUDA_FP8_QMOE)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE) && defined(ENABLE_FP8) && defined(USE_FP8_QMOE)
       // Native W4A8: FP8 e4m3 activations + MXFP4 weights, BF16/FP16 input/output.
       // Template parameters: <T=fp8, WeightType=fp4, OutputType=BF16/FP16, InputType=BF16/FP16>.
       // CUTLASS routes this through the SM100+ block-scaled tensor op path. The runner accepts
@@ -137,7 +137,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
 #endif
     } else if (quant_type_ == "fp8" && !use_fp8_dequant_fallback_) {
-#if defined(ENABLE_FP8) && defined(ENABLE_CUDA_FP8_QMOE)
+#if defined(ENABLE_FP8) && defined(USE_FP8_QMOE)
       // Native W8A16-FP8: activations are half/bf16, weights are __nv_fp8_e4m3
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp8_e4m3, half>>(

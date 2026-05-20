@@ -7,7 +7,7 @@
 
 #ifndef EXCLUDE_SM_120
 #ifdef COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS
-#if defined(ENABLE_FP8) && defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
+#if defined(ENABLE_FP8) && defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 
 #include "contrib_ops/cuda/llm/moe_gemm/launchers/moe_gemm_tma_ws_launcher.inl"
 
@@ -21,6 +21,6 @@ INSTANTIATE_TMA_WARP_SPECIALIZED_MOE_GEMM(Sm120, SafeFP8, SafeFP4, SafeBF16, Epi
 
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels
 
-#endif  // ENABLE_FP8 && ENABLE_FP4 && ENABLE_CUDA_FP4_QMOE
+#endif  // ENABLE_FP8 && ENABLE_FP4 && USE_FP4_QMOE
 #endif  // COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS
 #endif  // EXCLUDE_SM_120
