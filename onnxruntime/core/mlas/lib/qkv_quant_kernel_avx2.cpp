@@ -40,30 +40,6 @@ IsPerChannelMode(MLAS_KV_QUANT_TYPE qt)
 }
 
 //
-// Dequantize 8 INT8 values from `src` starting at column `col` and multiply
-// by scale(s).  Returns an __m256 of 8 FP32 values.
-//
-inline __m256
-DequantInt8x8(const int8_t* src, size_t col, bool per_channel, const float* scales)
-{
-    // Load 8 int8 values
-    __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(src + col));
-    // Sign-extend to 32-bit
-    __m256i i32 = _mm256_cvtepi8_epi32(raw);
-    // Convert to float
-    __m256 f32 = _mm256_cvtepi32_ps(i32);
-    // Multiply by scale
-    if (per_channel) {
-        __m256 sc = _mm256_loadu_ps(scales + col);
-        f32 = _mm256_mul_ps(f32, sc);
-    } else {
-        __m256 sc = _mm256_broadcast_ss(scales);
-        f32 = _mm256_mul_ps(f32, sc);
-    }
-    return f32;
-}
-
-//
 // Dequantize 8 INT4 values (4 packed bytes) starting at even column `col`.
 // The +8-biased nibble packing is: byte = ((q0+8)&0xF) | (((q1+8)&0xF)<<4).
 // We extract low/high nibbles, subtract 8, convert to FP32, and scale.
