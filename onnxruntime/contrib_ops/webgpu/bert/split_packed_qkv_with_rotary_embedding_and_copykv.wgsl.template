@@ -1,6 +1,5 @@
 #param interleaved
 #param multi_rotary_cache_concat_offset
-#param prepare_indirect_dispatch
 #param use_multi_rotary_cache_concat
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
@@ -38,16 +37,6 @@ $MAIN {
   let base_position = select(0u, multi_rotary_cache_concat_offset, total_seqlen > multi_rotary_cache_concat_offset);
 #else
   let base_position = 0u;
-#endif
-
-#if prepare_indirect_dispatch
-  // Prepare indirect dispatch buffer for thread 0
-  if (global_idx == 0u) {
-    let num_total_seq_length_tile = (total_seqlen + uniforms.tile_size - 1u) / uniforms.tile_size;
-    indirect_buffer[0] = num_total_seq_length_tile;
-    indirect_buffer[1] = uniforms.num_heads;
-    indirect_buffer[2] = 1u;
-  }
 #endif
 
   if (in_head_idx < uniforms.half_rotary_dim) {
