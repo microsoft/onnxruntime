@@ -2578,6 +2578,9 @@ struct OrtEp {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes
+   *       no captured graph release is needed and treats it as a no-op success.
+   *
    * \since Version 1.27.
    */
   ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);

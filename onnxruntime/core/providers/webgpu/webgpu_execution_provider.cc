@@ -735,7 +735,10 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
     graph_ids.push_back(id);
   }
   for (int id : graph_ids) {
-    (void)ReleaseCapturedGraph(id);
+    auto status = ReleaseCapturedGraph(id);
+    if (!status.IsOK()) {
+      LOGS(*GetLogger(), WARNING) << "Failed to release captured graph " << id << ": " << status.ErrorMessage();
+    }
   }
   // Release any per-graph buffer managers for graphs that had buffer managers created
   // but no entries in captured_graphs_ (edge case cleanup)

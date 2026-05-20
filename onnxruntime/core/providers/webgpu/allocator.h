@@ -34,7 +34,13 @@ class GpuBufferAllocator : public IAllocator {
  private:
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;  // may be empty
-  const BufferManager* buffer_manager_;                          // cached from getter, or direct pointer
+  // Cached pointer to the active BufferManager, updated by RefreshBufferManager().
+  // Lifetime guarantee: the referenced BufferManager is either the context's default
+  // (which outlives the EP) or a per-graph buffer manager owned by the EP's
+  // per_graph_buffer_mgrs_ map. Both outlive this allocator since the EP owns it.
+  // RefreshBufferManager() must be called when the active buffer manager changes
+  // (e.g., in OnRunStart/OnRunEnd).
+  const BufferManager* buffer_manager_;
   bool mapped_at_creation_;
 };
 
