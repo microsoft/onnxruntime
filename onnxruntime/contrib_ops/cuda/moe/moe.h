@@ -3,10 +3,12 @@
 
 #pragma once
 
-#include "contrib_ops/cuda/moe/ft_moe/moe_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
+
+#include <mutex>
 
 namespace onnxruntime {
 namespace contrib {
@@ -19,6 +21,12 @@ class MoE final : public CudaKernel, public MoEBase {
  public:
   explicit MoE(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+
+ private:
+  mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
+  mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId mGemmId1;
+  mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId mGemmId2;
+  mutable std::mutex mGemmProfilerMutex;
 };
 
 }  // namespace cuda

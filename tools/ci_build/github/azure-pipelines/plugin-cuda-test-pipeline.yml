@@ -15,6 +15,10 @@ variables:
   value: true
 - name: Codeql.SkipTaskAutoInjection
   value: true
+# Verbose-output flag for tests. Resolves to System.Debug when set
+# (e.g. queue-time "Enable system diagnostics"), else 'false'.
+- name: OrtTestVerbose
+  value: $[ coalesce(variables['System.Debug'], 'false') ]
 
 resources:
   pipelines:
