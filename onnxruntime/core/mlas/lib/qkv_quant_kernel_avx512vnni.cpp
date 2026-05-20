@@ -23,6 +23,7 @@ Abstract:
 --*/
 
 #include "qkv_quant_kernel.h"
+#include "qkv_quant_common.h"
 #include "mlas_qkv_quant.h"
 #include "core/platform/env_var.h"
 
@@ -32,23 +33,9 @@ Abstract:
 #include <cstring>
 #include <vector>
 
+using namespace MlasKVQuantInternal;
+
 namespace {
-
-constexpr int kInt4Bias = 8;
-
-inline bool
-IsInt4Mode(MLAS_KV_QUANT_TYPE qt)
-{
-    return qt == MLAS_KV_QUANT_TYPE::S4_PerTensor ||
-           qt == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
-
-inline bool
-IsPerChannelMode(MLAS_KV_QUANT_TYPE qt)
-{
-    return qt == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
-           qt == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
 
 inline bool
 UseApproximateVnniQKGemm()

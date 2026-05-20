@@ -17,32 +17,20 @@ Abstract:
 --*/
 
 #include "qkv_quant_kernel.h"
+#include "qkv_quant_common.h"
 #include "mlas_qkv_quant.h"
 
 #include <immintrin.h>
 
+using namespace MlasKVQuantInternal;
+
 namespace {
-
-constexpr int kInt4Bias = 8;
-
-inline bool
-IsInt4Mode(MLAS_KV_QUANT_TYPE qt)
-{
-    return qt == MLAS_KV_QUANT_TYPE::S4_PerTensor ||
-           qt == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
-
-inline bool
-IsPerChannelMode(MLAS_KV_QUANT_TYPE qt)
-{
-    return qt == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
-           qt == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
 
 //
 // Dequantize 8 INT4 values (4 packed bytes) starting at even column `col`.
 // The +8-biased nibble packing is: byte = ((q0+8)&0xF) | (((q1+8)&0xF)<<4).
-// We extract low/high nibbles, subtract 8, convert to FP32, and scale.
+// Uses SSE bitwise ops to extract nibbles entirely in-register (no scalar
+// store+reload), then converts to FP32 and scales.
 //
 inline __m256
 DequantInt4x8(const uint8_t* src, size_t col, bool per_channel, const float* scales)
@@ -51,19 +39,24 @@ DequantInt4x8(const uint8_t* src, size_t col, bool per_channel, const float* sca
     // For 8 elements starting at `col`, we need 4 bytes (cols col..col+7 → bytes col/2..col/2+3).
     const uint8_t* base = src + col / 2;
 
-    // Extract 8 nibbles from 4 bytes, subtract bias, and convert to FP32.
-    alignas(16) int8_t nibbles[8];
-    nibbles[0] = static_cast<int8_t>((base[0] & 0x0F) - kInt4Bias);
-    nibbles[1] = static_cast<int8_t>(((base[0] >> 4) & 0x0F) - kInt4Bias);
-    nibbles[2] = static_cast<int8_t>((base[1] & 0x0F) - kInt4Bias);
-    nibbles[3] = static_cast<int8_t>(((base[1] >> 4) & 0x0F) - kInt4Bias);
-    nibbles[4] = static_cast<int8_t>((base[2] & 0x0F) - kInt4Bias);
-    nibbles[5] = static_cast<int8_t>(((base[2] >> 4) & 0x0F) - kInt4Bias);
-    nibbles[6] = static_cast<int8_t>((base[3] & 0x0F) - kInt4Bias);
-    nibbles[7] = static_cast<int8_t>(((base[3] >> 4) & 0x0F) - kInt4Bias);
+    // Load 4 packed bytes into SSE register and extract 8 nibbles in-register.
+    __m128i packed = _mm_cvtsi32_si128(*reinterpret_cast<const int*>(base));
 
-    __m128i nib128 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(nibbles));
-    __m256i i32 = _mm256_cvtepi8_epi32(nib128);
+    // Low nibbles (even columns): AND with 0x0F
+    __m128i lo_mask = _mm_set1_epi8(0x0F);
+    __m128i lo = _mm_and_si128(packed, lo_mask);
+
+    // High nibbles (odd columns): shift right 4, AND with 0x0F
+    __m128i hi = _mm_and_si128(_mm_srli_epi16(packed, 4), lo_mask);
+
+    // Interleave low and high nibbles: [lo0,hi0, lo1,hi1, lo2,hi2, lo3,hi3]
+    __m128i interleaved = _mm_unpacklo_epi8(lo, hi);
+
+    // Subtract INT4 bias (8) to get signed values, then sign-extend to int32.
+    __m128i bias = _mm_set1_epi8(static_cast<char>(kInt4Bias));
+    __m128i biased = _mm_sub_epi8(interleaved, bias);
+
+    __m256i i32 = _mm256_cvtepi8_epi32(biased);
     __m256 f32 = _mm256_cvtepi32_ps(i32);
 
     if (per_channel) {

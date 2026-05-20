@@ -22,6 +22,7 @@ Abstract:
 #include "mlas_qkv_quant.h"
 #include "mlasi.h"
 #include "qkv_quant_kernel.h"
+#include "qkv_quant_common.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,27 +30,14 @@ Abstract:
 #include <cstring>
 #include <memory>
 
+using namespace MlasKVQuantInternal;
+
 namespace {
 
 constexpr int kInt4Min = -8;
 constexpr int kInt4Max = 7;
-constexpr int kInt4Bias = 8;
 constexpr int kInt8Min = -128;
 constexpr int kInt8Max = 127;
-
-inline bool
-IsInt4Mode(MLAS_KV_QUANT_TYPE QuantType)
-{
-    return QuantType == MLAS_KV_QUANT_TYPE::S4_PerTensor ||
-           QuantType == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
-
-inline bool
-IsPerChannelMode(MLAS_KV_QUANT_TYPE QuantType)
-{
-    return QuantType == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
-           QuantType == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
 
 // Round-to-nearest-even via rintf, matching the CUDA QDQ implementation.
 inline int8_t

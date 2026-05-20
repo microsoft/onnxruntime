@@ -116,6 +116,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+        ${MLAS_SRC_DIR}/qkv_quant_common.h
         ${MLAS_SRC_DIR}/qkv_quant_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
@@ -228,6 +229,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+      ${MLAS_SRC_DIR}/qkv_quant_common.h
       ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
@@ -510,6 +512,7 @@ else()
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+          ${MLAS_SRC_DIR}/qkv_quant_common.h
           ${MLAS_SRC_DIR}/qkv_quant_kernel_neon.cpp
           ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/softmax_kernel_neon.h
@@ -792,6 +795,7 @@ else()
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+          ${MLAS_SRC_DIR}/qkv_quant_common.h
           ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
