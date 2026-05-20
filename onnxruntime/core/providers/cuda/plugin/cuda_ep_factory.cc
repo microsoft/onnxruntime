@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <climits>
 #include <cstdlib>
@@ -553,9 +554,13 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
 
       ORT_TRY {
         size_t pos = 0;
-        size_t address = std::stoull(*raw_value, &pos, 0);
+        unsigned long long address = std::stoull(*raw_value, &pos, 0);
         if (pos == raw_value->size()) {
-          value = reinterpret_cast<void*>(address);
+          if (address > std::numeric_limits<std::uintptr_t>::max()) {
+            log_invalid_session_config(key, "a pointer-sized integer (value exceeds address space)");
+            return;
+          }
+          value = reinterpret_cast<void*>(static_cast<std::uintptr_t>(address));
           return;
         }
       }

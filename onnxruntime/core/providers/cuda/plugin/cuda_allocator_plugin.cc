@@ -134,6 +134,17 @@ CudaExternalDeviceAllocator::CudaExternalDeviceAllocator(const OrtMemoryInfo* me
 
     alloc->free_fn_(p);
     RestoreDeviceIfKnown(restore_prev_device, prev_device);
+
+    // If this was a reserved allocation, invoke empty_cache to release cached memory
+    // (matching bundled CUDA EP behavior).
+    std::lock_guard<std::mutex> lock(alloc->lock_);
+    auto it = alloc->reserved_.find(p);
+    if (it != alloc->reserved_.end()) {
+      alloc->reserved_.erase(it);
+      if (alloc->empty_cache_fn_) {
+        alloc->empty_cache_fn_();
+      }
+    }
   }
 }
 
@@ -144,8 +155,13 @@ CudaExternalDeviceAllocator::CudaExternalDeviceAllocator(const OrtMemoryInfo* me
 }
 
 /*static*/ void* ORT_API_CALL CudaExternalDeviceAllocator::ReserveImpl(OrtAllocator* this_ptr, size_t size) noexcept {
-  // Reserve delegates to Alloc — no separate reservation pool for external allocators.
-  return AllocImpl(this_ptr, size);
+  void* p = AllocImpl(this_ptr, size);
+  if (p != nullptr) {
+    auto* alloc = static_cast<CudaExternalDeviceAllocator*>(this_ptr);
+    std::lock_guard<std::mutex> lock(alloc->lock_);
+    alloc->reserved_.insert(p);
+  }
+  return p;
 }
 
 // ---------------------------------------------------------------------------

@@ -11,9 +11,11 @@
 #include "cuda_plugin_utils.h"
 
 #include <algorithm>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -125,6 +127,8 @@ class CudaExternalDeviceAllocator final : public CudaAllocatorBase {
   ExternalAlloc alloc_fn_;
   ExternalFree free_fn_;
   ExternalEmptyCache empty_cache_fn_;
+  mutable std::mutex lock_;
+  std::unordered_set<void*> reserved_;
 };
 
 /// CUDA pinned (host) memory allocator using cudaHostAlloc/cudaFreeHost.
