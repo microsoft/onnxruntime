@@ -120,16 +120,25 @@ new_node.SetExecutionProviderType(original_node.GetExecutionProviderType());
 
 ---
 
-## Direction 2: Static Shape Pre-allocation (ollama/llama.cpp Style)
+## Direction 2: Minimize Allocations for Static-Shape Models
 
-### What ollama Does
+### Goal
 
-llama.cpp (and by extension ollama) exploits that transformer inference has **fully deterministic memory usage**:
+For models with fully static shapes (common in transformer inference with fixed batch/sequence dimensions), ORT should minimize or eliminate runtime memory allocations. When all tensor shapes are known at `Initialize()` time, the runtime can pre-compute exact memory requirements and pre-allocate everything upfront — no arena overhead, no per-`Run()` allocation calls, deterministic memory usage.
+
+Additionally, by knowing exact memory requirements before execution begins, ORT can **minimize the chance of running into OOM** — if the total memory needed exceeds device capacity, the session can fail at `Initialize()` time with a clear error rather than crashing mid-inference with an opaque allocation failure.
+
+This brings ORT's allocation efficiency on par with specialized runtimes like llama.cpp, while retaining ORT's generality for arbitrary model architectures.
+
+### Reference: What llama.cpp Does
+
+llama.cpp exploits that transformer inference has **fully deterministic memory usage**:
 - All weight tensors are known at load time
 - KV cache is pre-allocated for max sequence length
 - Intermediate activation buffers have shapes determined by `(batch, seq_len, hidden_dim)` — all known in advance
+- Workspace/temp buffers are known per-op and pre-planned
 
-This means the runtime can compute **exactly** how much memory each layer needs before running, enabling precise layer-by-layer offloading decisions.
+This means the runtime computes **exactly** how much memory is needed before running — zero allocation calls during inference.
 
 ### What ORT Already Does
 
@@ -166,7 +175,7 @@ This provides stream-aware pooling managed by the CUDA driver, with less memory 
 
 **Note on actual memory consumption:** While these give exact logical tensor sizes, actual device memory will be rounded up to page/alignment boundaries — either per allocation or for a single large buffer. The reported sizes are a lower bound; real usage includes alignment overhead.
 
-It applies a **1.5x safety multiplier** to account for unknowable temp/workspace allocations. This multiplier exists because temp buffer sizes are discovered only at runtime — no kernel declares its workspace needs in advance.
+It applies a **1.5x safety multiplier** to account for unknowable temp/workspace allocations. This multiplier exists because temp buffer sizes are discovered only at runtime — no kernel declares its workspace needs in advance. **For static-shape models where `DeclareWorkspaceRequirements` (Phase A below) has been implemented for all relevant kernels, this multiplier becomes unnecessary and should be bypassed** — exact workspace sizes are known at planning time, eliminating the need for a safety margin.
 
 **Per-node accounting (not per-layer)**: `IResourceAccountant` tracks costs at the node/subgraph level — `nodes_costs` in `IndexedSubGraph` is for accounting after an EP claims nodes (single nodes or fused groups), not for layering. It has no concept of "layer" as defined by the layering index.
 
@@ -201,9 +210,19 @@ To eliminate both the multiplier and arena waste for temp buffers, two problems 
 | Pre-allocated activation buffers | Yes — fixed slots | Yes — memory patterns with liveness reuse | ✓ Already exists for static shapes |
 | Workspace pre-computation | Yes — known per op | No — kernels discover at runtime | Need `DeclareWorkspaceRequirements()` on kernels |
 | Workspace outside arena | Yes — part of static plan | No — `GetScratchBuffer()` uses arena | Need to include workspace in memory pattern plan |
-| Zero-copy weight transfer | mmap + `cudaMemcpy` per layer | EP-managed transfers during initialization | Relevant only for Phase D (prefetch/offload pipeline) — see below |
+| Zero-copy weight transfer | mmap + `cudaMemcpy` at load per layer | mmap + `cudaMemcpy` at load per partition | ✓ Same model — not a gap |
 
-**Note on "zero-copy device transfer":** In llama.cpp, model weights are memory-mapped (`mmap`) from disk, and individual layers are streamed to GPU via `cudaMemcpy`/`cudaMemcpyAsync` on demand — the CPU never allocates a separate copy, it reads directly from the mmap'd file into GPU memory. In ORT today, initializers are deserialized from protobuf into host memory, then copied to device during session state finalization — all upfront, not on-demand per layer. "Zero-copy" here refers to eliminating the intermediate host allocation: mapping weights directly from file to device. This is primarily relevant for the prefetch/offload pipeline (Phase D) where layers are streamed to GPU during execution rather than all loaded at once.
+**Note on weight transfer:** Both llama.cpp and ORT use the same approach: **static partitioning at load time, no dynamic weight swapping during inference.**
+
+- **llama.cpp**: User sets `-ngl N` (number of GPU layers). At load time, those N layers' weights are `cudaMemcpy`'d from mmap'd file to GPU. Remaining layers stay in host memory. No runtime swapping — this is performant because there is zero weight transfer overhead during token generation.
+- **ORT (with constrained partitioning)**: The layering index + `IResourceAccountant` determines which nodes run on GPU. At `Initialize()` time, only those nodes' initializers are copied to device from mmap'd external data. Remaining weights stay in host memory.
+
+**Best practice for constrained environments:** Model weights should be stored as **external data on disk** (not embedded in protobuf). This ensures:
+1. ORT memory-maps the file — minimal host memory overhead during loading.
+2. Only GPU-partitioned nodes' weights are copied to device — no OOM as long as partitioning respects the budget.
+3. CPU-partitioned nodes' weights remain accessible via mmap without requiring a separate host allocation.
+
+Since partitioning is decided once at `Initialize()` time and all required device weights are resident before `Run()`, there is no need for dynamic layer loading/offloading during inference.
 
 ### How to Approach
 
@@ -317,6 +336,102 @@ Pro: Clear separation, no ambiguity about ownership. Con: Kernels need explicit 
 
 **Buffer strategy:** Workspace offsets can share the activation buffer (liveness doesn't overlap — workspace is live only during its step, activations may span steps). Alternatively, a separate workspace buffer is simpler initially and easier to account for in memory limits.
 
+##### EP Plugin C ABI Surface for Workspace Pre-declaration
+
+In the plugin architecture, `DeclareWorkspaceRequirements` crosses the C ABI boundary. This section defines the concrete API additions.
+
+**Declaration side — new optional function pointer on `OrtKernelImpl`:**
+
+```c
+// Added to OrtKernelImpl (optional, like PrePackWeight):
+ORT_API2_STATUS(DeclareWorkspaceRequirements,
+    _In_ OrtKernelImpl* this_ptr,
+    _In_reads_(num_inputs) const int64_t* const* input_shapes,   // shape per input
+    _In_reads_(num_inputs) const size_t* input_shape_ranks,      // rank per input
+    _In_ size_t num_inputs,
+    _Out_writes_all_(max_slots) OrtWorkspaceSlot* slots,         // pre-allocated by ORT
+    _In_ size_t max_slots,                                        // capacity (e.g., 8)
+    _Out_ size_t* num_slots);                                     // actual count filled
+
+// Slot descriptor (C struct, no inheritance):
+typedef struct OrtWorkspaceSlot {
+  int slot_id;          // Kernel-defined, stable identifier (0, 1, 2, ...)
+  size_t size_bytes;    // Required size for this slot
+} OrtWorkspaceSlot;
+```
+
+If `DeclareWorkspaceRequirements` is NULL on the `OrtKernelImpl`, ORT skips the kernel during workspace planning (falls back to arena at runtime).
+
+**Retrieval side — new function in `OrtEpApi`:**
+
+```c
+// Added to OrtEpApi (called by plugin kernels during Compute):
+ORT_API2_STATUS(KernelContext_GetPreallocatedWorkspace,
+    _In_ const OrtKernelContext* context,
+    _In_ int slot_id,
+    _Outptr_result_maybenull_ void** buffer);   // NULL if not pre-planned
+```
+
+Returns a pointer into the pre-allocated workspace buffer at the offset computed during planning. Returns NULL if no workspace was pre-planned for this kernel+slot (dynamic shapes, or kernel didn't declare). The pointer is valid for the duration of the `Compute()` call.
+
+**Slot ID provisioning — how kernels define unique slot_ids:**
+
+Slot IDs are **kernel-author-defined constants**, not dynamically allocated. Each kernel class defines its slots as an enum or set of constants in its implementation:
+
+```cpp
+// Example: CUDA Attention kernel (inside the plugin DLL)
+namespace cuda {
+class AttentionKernel : public OrtKernelImplBase {
+  // Slot IDs are private constants — stable across versions, used as array indices
+  static constexpr size_t kSlotQTranspose = 0;
+  static constexpr size_t kSlotKTranspose = 1;
+  static constexpr size_t kSlotVTranspose = 2;
+  static constexpr size_t kSlotSoftmaxWorkspace = 3;
+  static constexpr size_t kNumSlots = 4;
+
+  OrtStatus* DeclareWorkspaceRequirements(...) override {
+    slots[kSlotQTranspose] = {kSlotQTranspose, batch * heads * seq * head_dim * sizeof(half)};
+    slots[kSlotKTranspose] = {kSlotKTranspose, batch * heads * seq * head_dim * sizeof(half)};
+    slots[kSlotVTranspose] = {kSlotVTranspose, batch * heads * seq * head_dim * sizeof(half)};
+    slots[kSlotSoftmaxWorkspace] = {kSlotSoftmaxWorkspace, cudnn_workspace_size};
+    *num_slots = kNumSlots;
+    return nullptr;
+  }
+
+  OrtStatus* Compute(OrtKernelContext* ctx) override {
+    void* q_buf = nullptr;
+    // Uses pre-planned workspace if available, falls back to arena otherwise
+    api_->KernelContext_GetScratchBuffer(ctx, kSlotQTranspose, q_transpose_size, &q_buf);
+    // ... use q_buf ...
+  }
+};
+}  // namespace cuda
+```
+
+**Key design properties:**
+
+| Property | Design Choice | Rationale |
+|----------|--------------|-----------|
+| Slot ID scope | Per kernel *instance* (node) | Same kernel class on different nodes gets separate buffers; ORT disambiguates via `(NodeIndex, slot_id)` |
+| Slot ID assignment | Static constants in kernel code | No registry, no runtime allocation, no cross-kernel coordination needed |
+| Slot ID range | `[0, max_slots)` — small integers | Simple array indexing in the offset plan; `max_slots` = 8 is generous for any single kernel |
+| Uniqueness guarantee | Kernel author's responsibility | Same convention as `input_index` in `PrePackWeight` — the kernel knows its own buffer layout |
+| Stability across versions | Expected (like enum values) | Slot IDs are internal to the kernel; not exposed to users or other kernels |
+
+**Where state lives:**
+
+| State | Location | Lifetime |
+|-------|----------|----------|
+| Slot definitions (id + size) | Returned by `DeclareWorkspaceRequirements` → stored in `ExecutionPlan` | Session lifetime (computed once at `Initialize()`) |
+| Offset map `{(NodeIndex, slot_id) → offset}` | `SessionState::workspace_pattern_` (new field, analogous to `mem_patterns_`) | Session lifetime (shared, read-only) |
+| Peak workspace size per EP/device | `SessionState::workspace_pattern_` | Session lifetime |
+| Actual workspace buffer | `ExecutionFrame` (allocated per-`Run()` via `Reserve()`) | Single `Run()` invocation |
+
+**No global slot registry needed.** Unlike input indices which are defined by the ONNX op schema, slot IDs are entirely internal to the kernel implementation. Two different kernel classes can both use `slot_id=0` without conflict — the framework always qualifies with `NodeIndex`. This means:
+- No coordination between kernel authors
+- No registration step during plugin initialization
+- No versioning concerns (IDs never cross the plugin boundary as semantic values)
+
 #### Phase B: Eliminate Arena for Static-Shape Models
 
 Once workspace is pre-declared, **all** allocations for a static-shape model are known at `Initialize()` time:
@@ -331,45 +446,39 @@ At this point, the BFC arena serves no purpose for the main execution path. The 
 
 Runtime temp buffers from ops that don't implement `DeclareWorkspaceRequirements()` can still fall back to a small arena.
 
-#### Phase C: Automatic Partitioning with Memory Budget
+### Custom Executable: Purpose and Scope
 
-Combine Phase A + Direction 1:
+A minimal custom executable (CLI tool) serves three purposes:
 
-```
-# User specifies only the budget, ORT figures out the split:
-session.resource_cuda_partitioning_settings = "memory_limit=6GB"
-```
+1. **Code example and test bed.** Demonstrates how to configure and exercise the constrained-environment features (name-based partitioning, memory budgets, static allocation mode) end-to-end using the ORT C/C++ API. Acts as a living integration test that exercises the full pipeline without depending on GenAI or external frameworks.
 
-Flow:
-1. Load model, run shape inference for target input shapes
-2. Compute per-layer memory requirements
-3. Greedily assign layers to GPU until budget exhausted
-4. Remaining layers → CPU
-5. Optionally: overlap CPU compute with GPU→CPU transfers (pipeline)
+2. **Interactive LLM demo (llama.cpp-style UX).** Loads a transformer ONNX model, manages the decode loop (prompt → KV cache → token sampling → output), and interacts with the user via stdin/stdout. This showcases ORT's ability to run large models on constrained hardware with the same user experience as llama.cpp — but backed by ORT's general-purpose runtime.
 
-#### Phase D: Layer Prefetch/Offload Pipeline
+3. **Primitive GenAI replacement for testing.** For the narrow case of single-model, single-user, greedy/top-k text generation, the executable can replace GenAI as a simpler alternative that doesn't pull in the full GenAI dependency. It is **not** a production replacement for GenAI (no batching, no beam search, no speculative decoding) — it is a minimal harness for validating that the partitioning and memory features work correctly on real models.
 
-For models that don't fit in GPU at all, but where layer-sequential execution allows streaming:
+**What the executable handles (application-level):**
+- Token encode/decode (via sentencepiece or tokenizers library)
+- KV cache allocation and rotation (fixed max sequence length)
+- Autoregressive decode loop (feed output token back as next input)
+- Session configuration: name-based layer assignment, memory budget, static shapes
 
-1. While GPU executes layer N, prefetch layer N+1 weights from CPU→GPU
-2. After layer N completes, offload its weights back (or discard if not needed for backward)
-3. This requires explicit memory management and CUDA stream orchestration
+**What ORT handles (session-level, no executable changes needed):**
+- Graph partitioning across devices (Direction 1 + `IResourceAccountant`)
+- Static memory pre-allocation (Phase A + B)
+- Kernel execution, data transfers, stream synchronization
 
-ORT's existing `Stream` infrastructure in the framework could support this, but would need:
-- A "layer executor" that knows the sequential dependency chain
-- Explicit prefetch scheduling (similar to how `MemoryOptimizer` in training handles activation offload)
+**Feasibility: no fundamental ORT blockers.** The existing session API (`CreateSession` → `Run` with named I/O) is sufficient for an autoregressive decode loop. KV cache management is feeding output tensors back as inputs — the same pattern GenAI uses over the same C API.
 
-### What's Achievable Without a Custom Executable
+| Concern | Status | Notes |
+|---------|--------|-------|
+| Tokenizer | External dependency | ORT core has no tokenizer. Options: link sentencepiece, use onnxruntime-extensions, or bundle minimal BPE |
+| KV cache rotation | Straightforward | Pre-allocate `(batch, heads, max_seq, head_dim)`, feed `past_key_values` outputs back as inputs each step |
+| Decode loop | Trivial | Run session → extract logits → sample token → repeat |
+| Model format | Constraint | Requires decoder-style ONNX export with explicit KV cache I/O (HuggingFace optimum exports provide this) |
+| Partitioning | This design | Direction 1 + `IResourceAccountant` |
+| Static allocation | Phase A+B | Fixed `max_seq_len` makes all decode-phase shapes static |
 
-Unlike llama.cpp which is a monolithic binary, ORT can achieve most of this within the existing session API:
-
-- **Static buffer pre-allocation**: Extend `SessionOptions` with a "static allocation mode" flag + input shape hints
-- **Automatic layer splitting**: Combine name-based matching + memory planning in `Initialize()`
-- **Prefetch pipeline**: Implement as an execution strategy in `SequentialExecutor` when model is detected as layer-sequential
-
-What you **cannot** easily do without a custom executable:
-- Continuous batching / speculative decoding (requires application-level scheduling)
-- Dynamic KV cache management (though GenAI already handles this)
+The executable would be ~500–1000 LOC (excluding tokenizer): configure session options, set up KV cache tensors, run the generate loop. The tokenizer is the only non-trivial external dependency.
 
 ---
 
