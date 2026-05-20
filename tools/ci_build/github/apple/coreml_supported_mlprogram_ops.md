@@ -12,6 +12,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Bias if provided must be constant.|
 |ai.onnx:ConvTranspose|Weight and bias must be constant.<br/>padding_type of SAME_UPPER/SAME_LOWER is not supported.<br/>kernel_shape must have default values.<br/>output_shape is not supported.<br/>output_padding must have default values.|
 |ai.onnx:DepthToSpace|If 'mode' is 'CRD' the input must have a fixed shape.|
+|ai.onnx:Ceil||
 |ai.onnx:Div||
 |ai.onnx:Elu||
 |ai.onnx:Erf||
@@ -23,6 +24,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:GridSample|4D input.<br/>'mode' of 'linear' or 'zeros'.<br/>(mode==linear && padding_mode==reflection && align_corners==0) is not supported.|
 |ai.onnx:GroupNormalization||
 |ai.onnx:HardSigmoid||
+|ai.onnx:Identity||
 |ai.onnx:InstanceNormalization||
 |ai.onnx:LayerNormalization||
 |ai.onnx:LeakyRelu||
@@ -50,6 +52,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Sqrt||
 |ai.onnx:Squeeze||
 |ai.onnx:Tanh||
+|ai.onnx:Tile|`repeats` may be a constant initializer or a runtime tensor (MLProgram only). Input rank up to 5.|
 |ai.onnx:Transpose||
 |ai.onnx:Unsqueeze||
 |com.microsoft:QuickGelu|Produced by ORT's `QuickGeluFusion` optimizer pass. Decomposed into `mul` / `sigmoid` / `mul`.|
