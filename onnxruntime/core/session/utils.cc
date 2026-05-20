@@ -924,19 +924,9 @@ Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>
     return Status::OK();
   }
 
-  // Pick the first non-CPU provider if available; otherwise fall back to the first provider.
-  size_t selected_idx = 0;
-  for (size_t i = 0; i < provider_list.size(); ++i) {
-    const auto& provider = provider_list[i];
-    if (provider && provider->Type() != onnxruntime::kCpuExecutionProvider) {
-      selected_idx = i;
-      break;
-    }
-  }
-
-  auto& provider = provider_list[selected_idx];
-
-  if (provider && provider->Type() == onnxruntime::kCpuExecutionProvider) {
+  // Use the first provider in the list for variant selection.
+  auto& provider = provider_list[0];
+  if (!provider) {
     return Status::OK();
   }
 
@@ -946,6 +936,11 @@ Status GetVariantSelectionEpInfo(std::vector<std::unique_ptr<IExecutionProvider>
   // Add ep name to ep_info
   ep_info.ep_name = provider->Type();
   ORT_ENFORCE(!ep_info.ep_name.empty(), "EP name should have been set at this point.");
+
+  // CPU is built-in and needs no device/factory metadata for variant selection.
+  if (ep_info.ep_name == onnxruntime::kCpuExecutionProvider) {
+    return Status::OK();
+  }
 
   // Add ep devices to ep_info
   auto& ep_devices = provider->GetEpDevices();
@@ -991,10 +986,6 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                                               /*model_data*/ nullptr,
                                                               /*model_data_length*/ 0,
                                                               sess));
-
-  if (!model_package_context.HasOptions()) {
-    return OrtApis::CreateStatus(ORT_FAIL, "ModelPackageContext has no associated ModelPackageOptions.");
-  }
 
   auto& provider_list = model_package_context.MutableProviderList();
 

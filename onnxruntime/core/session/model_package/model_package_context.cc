@@ -13,6 +13,8 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
+#include "core/graph/constants.h"
+#include "core/providers/providers.h"
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_descriptor_parser.h"
 #include "core/session/model_package/model_package_options.h"
@@ -60,14 +62,11 @@ ModelPackageComponentContext::ModelPackageComponentContext(const std::string& co
                                                            const ModelPackageOptions& options)
     : component_model_name_(component_name),
       component_model_info_(component_model_info),
-      session_options_(options.SessionOptions()),
       owned_ep_infos_(options.EpInfos()),
       execution_devices_(options.ExecutionDevices()),
       devices_selected_(options.DevicesSelected()),
       from_policy_(options.FromPolicy()) {
-  // Copy the provider list from options so we own it.
-  // This avoids UAF if the external ModelPackageOptions handle is released
-  // before this component context.
+  // Move providers from options so we own them for the first session creation.
   auto& src_providers = options.MutableProviderList();
   provider_list_.reserve(src_providers.size());
   for (auto& p : src_providers) {
@@ -325,27 +324,24 @@ Status ModelPackageComponentContext::RebuildProviderListForSession(
     const Environment& env, const OrtSessionOptions& effective_options) {
   provider_list_.clear();
 
-  const bool has_provider_factories = !effective_options.provider_factories.empty();
-
-  if (has_provider_factories) {
-    const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
-    for (auto& factory : effective_options.provider_factories) {
-      provider_list_.push_back(factory->CreateProvider(effective_options, logger));
-    }
+  if (owned_ep_infos_.empty()) {
     return Status::OK();
   }
 
-  // Policy path: reconstruct providers from the already-selected EP devices.
-  if (from_policy_ && !devices_selected_.empty()) {
-    std::unique_ptr<IExecutionProviderFactory> provider_factory;
-    ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(
-        env,
-        gsl::span<const OrtEpDevice* const>(devices_selected_.data(), devices_selected_.size()),
-        provider_factory));
-
-    const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
-    provider_list_.push_back(provider_factory->CreateProvider(effective_options, logger));
+  const auto& ep_info = owned_ep_infos_[0];
+  if (ep_info.ep_name == kCpuExecutionProvider || ep_info.ep_devices.empty()) {
+    // CPU is built-in; no provider to register.
+    return Status::OK();
   }
+
+  std::unique_ptr<IExecutionProviderFactory> provider_factory;
+  ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(
+      env,
+      gsl::span<const OrtEpDevice* const>(ep_info.ep_devices.data(), ep_info.ep_devices.size()),
+      provider_factory));
+
+  const auto& logger = *logging::LoggingManager::DefaultLogger().ToExternal();
+  provider_list_.push_back(provider_factory->CreateProvider(effective_options, logger));
 
   return Status::OK();
 }

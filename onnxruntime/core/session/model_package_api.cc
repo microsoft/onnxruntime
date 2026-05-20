@@ -423,9 +423,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
   }
 
   auto& mp_ctx = *reinterpret_cast<onnxruntime::ModelPackageComponentContext*>(ctx);
-  if (!mp_ctx.HasOptions()) {
-    return OrtApis::CreateStatus(ORT_FAIL, "ModelPackageContext has no associated options.");
-  }
 
   // 1) Get the selected variant model file path.
   //    Note: This API only supports single-file variants. For multi-file variants, the caller
@@ -435,15 +432,17 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
   ORT_API_RETURN_IF_STATUS_NOT_OK(mp_ctx.GetSelectedVariantFilePath(selected_file_path));
 
   // 2) Pick the OrtSessionOptions per precedence rules:
-  //    - session_options == nullptr (default path): use the options captured on the context,
+  //    - session_options == nullptr (default path): start from a clean OrtSessionOptions,
   //      and merge variant-specific session + provider options from the package metadata.
   //    - session_options != nullptr (advanced path): use caller-supplied as-is, no metadata merge.
   const OrtSessionOptions* effective_options = nullptr;
   std::optional<OrtSessionOptions> effective_options_storage;
 
   if (session_options == nullptr) {
-    // Important: use copy-constructor, not assignment (operator= is not implemented).
-    effective_options_storage.emplace(*mp_ctx.SessionOptions());
+    // Start from a clean session options. The only EP-related state comes from
+    // the variant metadata (session options and provider options), not from the
+    // original session options used to create the package options.
+    effective_options_storage.emplace();
 
     // Merge variant/file session options into config options.
     gsl::span<const std::string> session_option_keys;
@@ -455,9 +454,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                       ORT_FAIL, "Session option keys/values size mismatch.");
 
     for (size_t i = 0; i < session_option_keys.size(); ++i) {
-      // Dispatch through OrtApis::AddSessionOption so well-known typed keys (intra_op_num_threads,
-      // graph_optimization_level, ...) hit their dedicated setters; everything else falls through
-      // to AddSessionConfigEntry. See onnxruntime_c_api.h::AddSessionOption for the full table.
       OrtStatus* st = OrtApis::AddSessionOption(&*effective_options_storage,
                                                 session_option_keys[i].c_str(),
                                                 session_option_values[i].c_str());

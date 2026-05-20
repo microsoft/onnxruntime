@@ -96,14 +96,6 @@ class ModelPackageComponentContext {
     return component_model_info_.variants;
   }
 
-  // Returns the session options snapshot used for this component.
-  // Only valid after construction with ModelPackageOptions (not ep_infos span).
-  const OrtSessionOptions* SessionOptions() const noexcept {
-    return session_options_ ? &*session_options_ : nullptr;
-  }
-
-  bool HasOptions() const noexcept { return session_options_.has_value(); }
-
   Status GetSelectedVariantFilePaths(gsl::span<const std::filesystem::path>& out_file_paths) const;
 
   Status GetSelectedVariantFolderPath(const std::filesystem::path*& out_folder_path) const;
@@ -149,9 +141,6 @@ class ModelPackageComponentContext {
   std::string component_model_name_;
   ComponentInfo component_model_info_{};
 
-  // Owned snapshot of the options state, copied during construction to avoid
-  // lifetime coupling with the external ModelPackageOptions handle.
-  std::optional<OrtSessionOptions> session_options_{};
   gsl::span<const VariantSelectionEpInfo> ep_infos_{};  // non-owning EP intent when options are not used
   std::vector<VariantSelectionEpInfo> owned_ep_infos_{};  // owned copy when constructed from ModelPackageOptions
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
