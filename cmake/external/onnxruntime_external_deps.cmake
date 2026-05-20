@@ -409,6 +409,8 @@ onnxruntime_fetchcontent_declare(
   GSL
   URL ${DEP_URL_microsoft_gsl}
   URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
+  # Stringify fix for GSL_SUPPRESS on MSVC (C4875). Remove when GSL ships a release
+  # containing microsoft/GSL#1213 (commit 543d0dd).
   PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1213.patch
   EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
