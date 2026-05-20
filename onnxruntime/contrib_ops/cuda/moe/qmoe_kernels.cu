@@ -792,6 +792,10 @@ void LaunchQMoERepackFP4ColToRow(
     int64_t k,
     int64_t n,
     cudaStream_t stream) {
+  ORT_ENFORCE(experts > 0, "LaunchQMoERepackFP4ColToRow requires positive expert count, got ", experts);
+  ORT_ENFORCE(k > 0 && n > 0, "LaunchQMoERepackFP4ColToRow requires positive k and n, got k=", k, ", n=", n);
+  ORT_ENFORCE(k % 2 == 0 && n % 2 == 0,
+              "LaunchQMoERepackFP4ColToRow requires even k and n, got k=", k, ", n=", n);
   const int64_t total = static_cast<int64_t>(experts) * n * (k / 2);
   constexpr int kThreads = 256;
   int64_t blocks = (total + kThreads - 1) / kThreads;

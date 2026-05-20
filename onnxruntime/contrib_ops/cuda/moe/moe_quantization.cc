@@ -21,6 +21,7 @@
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
 #include <cstring>
+#include <limits>
 #include <vector>
 
 using namespace onnxruntime::cuda;
@@ -1085,12 +1086,22 @@ void QMoE::PrePackSwizzleBlockScales(const Tensor& tensor, cudaStream_t stream, 
                                      IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
   auto shape = tensor.Shape();
   ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D FP4 block scales for WFP4AFP8 native prepack");
+  ORT_ENFORCE(tensor.IsDataType<Float8E8M0>(), "Expected Float8E8M0 FP4 block scales for WFP4AFP8 native prepack");
 
   const int64_t experts = shape[0];
   const int64_t rows = shape[1];
   const int64_t scale_cols = shape[2];
-  const int rows_padded = static_cast<int>(((rows + 127) / 128) * 128);
-  const int cols_padded = static_cast<int>(((scale_cols + 3) / 4) * 4);
+  ORT_ENFORCE(experts > 0 && rows > 0 && scale_cols > 0,
+              "FP4 block scales must have positive dimensions, got ", shape.ToString());
+  const int64_t rows_padded_i64 = ((rows + 127) / 128) * 128;
+  const int64_t cols_padded_i64 = ((scale_cols + 3) / 4) * 4;
+  ORT_ENFORCE(experts <= std::numeric_limits<int>::max() && rows <= std::numeric_limits<int>::max() &&
+                  scale_cols <= std::numeric_limits<int>::max() &&
+                  rows_padded_i64 <= std::numeric_limits<int>::max() &&
+                  cols_padded_i64 <= std::numeric_limits<int>::max(),
+              "FP4 block-scale dimensions exceed CUDA launch int range, got ", shape.ToString());
+  const int rows_padded = static_cast<int>(rows_padded_i64);
+  const int cols_padded = static_cast<int>(cols_padded_i64);
   const size_t dst_bytes = SafeInt<size_t>(experts) * SafeInt<size_t>(rows_padded) *
                            SafeInt<size_t>(cols_padded) * sizeof(uint8_t);
 
@@ -1134,10 +1145,16 @@ void QMoE::PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, Al
                                    IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
   auto shape = tensor.Shape();
   ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D FP4 weights for WFP4AFP8 native prepack");
+  ORT_ENFORCE(tensor.IsDataType<uint8_t>(), "Expected uint8 FP4 weights for WFP4AFP8 native prepack");
 
   const int64_t experts = shape[0];
   const int64_t k = shape[1];
   const int64_t n = shape[2] * 2;  // Packed: n/2 bytes per row in source
+  ORT_ENFORCE(experts > 0 && k > 0 && n > 0, "FP4 weights must have positive dimensions, got ", shape.ToString());
+  ORT_ENFORCE(k % 2 == 0 && n % 2 == 0,
+              "FP4 weight repack requires even k and n dimensions, got k=", k, ", n=", n);
+  ORT_ENFORCE(experts <= std::numeric_limits<int>::max(),
+              "FP4 weight expert count exceeds CUDA launch int range, got ", experts);
   const size_t bytes = tensor.SizeInBytes();
 
   // Ensure input is on GPU

@@ -226,7 +226,8 @@ void LaunchQMoEDequantizeFp8Weights(
     cudaStream_t stream);
 
 // Repack column-major FP4 packed weights to row-major layout on GPU.
-// Input shape interpretation: [experts, k, n/2] (col-major packed), output: [experts, n, k/2] (row-major packed).
+// Input shape interpretation: [experts, k, n/2] (col-major packed),
+// output: [experts, n, k/2] (row-major packed).
 // Each byte holds two 4-bit values. k and n must be even.
 void LaunchQMoERepackFP4ColToRow(
     const uint8_t* input,

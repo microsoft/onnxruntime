@@ -25,7 +25,7 @@ class QMoE final : public CudaKernel, public MoEBase {
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
  private:
-  // PrePack helpers — each handles one category of input tensor.
+  // PrePack helpers - each handles one category of input tensor.
   void PrePackTransposeAndPack(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   void PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
