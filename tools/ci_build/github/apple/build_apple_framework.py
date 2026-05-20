@@ -38,6 +38,32 @@ def _parse_build_settings(args):
     return build_settings
 
 
+def _get_framework_dir(build_dir_current_arch, build_config, sysroot, build_dynamic_framework):
+    if build_dynamic_framework:
+        framework_subdir = "onnxruntime.framework"
+    else:
+        framework_subdir = os.path.join("static_framework", "onnxruntime.framework")
+    candidates = []
+    if sysroot == "macabi" and build_dynamic_framework:
+        candidates.append(os.path.join(build_dir_current_arch, build_config, "onnxruntime.framework"))
+
+    candidates.append(os.path.join(build_dir_current_arch, build_config, build_config + "-" + sysroot, framework_subdir))
+
+    for framework_dir in candidates:
+        if os.path.exists(framework_dir):
+            return framework_dir
+
+    raise FileNotFoundError("Could not find built framework. Checked: " + ", ".join(candidates))
+
+
+def _get_framework_binary_path(framework_dir):
+    versioned_binary_path = os.path.join(framework_dir, "Versions", "A", "onnxruntime")
+    if os.path.exists(versioned_binary_path):
+        return versioned_binary_path
+
+    return os.path.join(framework_dir, "onnxruntime")
+
+
 # Build fat framework for all archs of a single sysroot
 # For example, arm64 and x86_64 for iphonesimulator
 def _build_for_apple_sysroot(
@@ -58,22 +84,20 @@ def _build_for_apple_sysroot(
             "--osx_arch=" + current_arch,
             "--build_dir=" + build_dir_current_arch,
         ]
+        if current_arch == "x86_64" and sysroot in {"iphonesimulator", "macabi"}:
+            build_command.extend(
+                [
+                    "--cmake_extra_defines=CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES=NO",
+                    "--cmake_extra_defines=CMAKE_XCODE_ATTRIBUTE_CLANG_ENABLE_EXPLICIT_MODULES=NO",
+                ]
+            )
 
         # the actual build process for current arch
         subprocess.run(build_command, shell=False, check=True, cwd=REPO_DIR)
 
         # get the compiled lib path
-        framework_dir = os.path.join(
-            build_dir_current_arch,
-            build_config,
-            build_config + "-" + sysroot,
-            (
-                "onnxruntime.framework"
-                if build_dynamic_framework
-                else os.path.join("static_framework", "onnxruntime.framework")
-            ),
-        )
-        ort_libs.append(os.path.join(framework_dir, "onnxruntime"))
+        framework_dir = _get_framework_dir(build_dir_current_arch, build_config, sysroot, build_dynamic_framework)
+        ort_libs.append(_get_framework_binary_path(framework_dir))
 
         # We only need to copy Info.plist, framework_info.json, and headers once since they are the same
         if not info_plist_path:
