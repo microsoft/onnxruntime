@@ -16,6 +16,10 @@ variables:
   value: true
 - name: Codeql.SkipTaskAutoInjection
   value: true
+# Verbose-output flag for tests. Resolves to System.Debug when set
+# (e.g. queue-time "Enable system diagnostics"), else 'false'.
+- name: OrtTestVerbose
+  value: $[ coalesce(variables['System.Debug'], 'false') ]
 
 resources:
   pipelines:
@@ -34,8 +38,10 @@ parameters:
   type: boolean
   default: true
 
-# Note: Windows ARM64 is not tested here because the test runs on an x64
-# build agent, which cannot execute ARM64 binaries.
+- name: test_windows_arm64
+  displayName: 'Test Windows ARM64'
+  type: boolean
+  default: true
 
 - name: test_linux_x64
   displayName: 'Test Linux x64'
@@ -87,6 +93,12 @@ extends:
         - template: stages/plugin-win-webgpu-test-stage.yml
           parameters:
             arch: 'x64'
+
+      # Windows ARM64
+      - ${{ if eq(parameters.test_windows_arm64, true) }}:
+        - template: stages/plugin-win-webgpu-test-stage.yml
+          parameters:
+            arch: 'arm64'
 
       # Linux x64
       - ${{ if eq(parameters.test_linux_x64, true) }}:
