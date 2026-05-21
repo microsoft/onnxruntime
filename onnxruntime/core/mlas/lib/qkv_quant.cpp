@@ -11,9 +11,9 @@ Module Name:
 Abstract:
 
     Portable scalar reference implementation of the symmetric INT4 / INT8
-    quantized KV-cache GEMM API declared in mlas_qkv_quant.h. SIMD-optimized
-    backends will be added in a separate change; this file always provides a
-    correct fallback.
+    quantized KV-cache GEMM API declared in mlas_qkv_quant.h. This file provides
+    a correct scalar fallback; SIMD-optimized backends (AVX2, AVX512-VNNI, NEON)
+    are dispatched at runtime via the platform dispatch table.
 
     See mlas_qkv_quant.h for the packing, scaling, and layout contract.
 
@@ -21,6 +21,8 @@ Abstract:
 
 #include "mlas_qkv_quant.h"
 #include "mlasi.h"
+#include "qkv_quant_kernel.h"
+#include "qkv_quant_common.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,27 +30,14 @@ Abstract:
 #include <cstring>
 #include <memory>
 
+using namespace MlasKVQuantInternal;
+
 namespace {
 
 constexpr int kInt4Min = -8;
 constexpr int kInt4Max = 7;
-constexpr int kInt4Bias = 8;
 constexpr int kInt8Min = -128;
 constexpr int kInt8Max = 127;
-
-inline bool
-IsInt4Mode(MLAS_KV_QUANT_TYPE QuantType)
-{
-    return QuantType == MLAS_KV_QUANT_TYPE::S4_PerTensor ||
-           QuantType == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
-
-inline bool
-IsPerChannelMode(MLAS_KV_QUANT_TYPE QuantType)
-{
-    return QuantType == MLAS_KV_QUANT_TYPE::S8_PerChannel ||
-           QuantType == MLAS_KV_QUANT_TYPE::S4_PerChannel;
-}
 
 // Round-to-nearest-even via rintf, matching the CUDA QDQ implementation.
 inline int8_t
@@ -298,6 +287,23 @@ MlasQKGemm(
         return;
     }
 
+    //
+    // Try the SIMD-optimized dispatch path. The vectorized kernels handle
+    // the full M×N×K computation in a single call (no thread pool — the
+    // caller's thread-pool loop already partitions across heads/batches).
+    //
+    const auto* Dispatch = GetMlasPlatform().KVQuantGemmDispatch;
+    if (Dispatch != nullptr && Dispatch->QKGemm != nullptr) {
+        // The dispatch kernels are designed to be called per-(batch,head) tile
+        // from an outer parallel loop, so we invoke them directly here. For
+        // large N the outer loop in gqa_attention_base already parallelizes.
+        Dispatch->QKGemm(M, N, K, Alpha, A, lda, B, QuantType, Scales, C, ldc);
+        return;
+    }
+
+    //
+    // Scalar reference fallback.
+    //
     const bool int4 = IsInt4Mode(QuantType);
     const bool per_channel = IsPerChannelMode(QuantType);
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, K);
@@ -362,6 +368,18 @@ MlasSVGemm(
         return;
     }
 
+    //
+    // Try the SIMD-optimized dispatch path.
+    //
+    const auto* Dispatch = GetMlasPlatform().KVQuantGemmDispatch;
+    if (Dispatch != nullptr && Dispatch->SVGemm != nullptr) {
+        Dispatch->SVGemm(M, N, K, A, lda, B, QuantType, Scales, C, ldc);
+        return;
+    }
+
+    //
+    // Scalar reference fallback.
+    //
     const bool int4 = IsInt4Mode(QuantType);
     const bool per_channel = IsPerChannelMode(QuantType);
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
