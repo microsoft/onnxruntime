@@ -48,14 +48,13 @@
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.h"
 
-namespace tk = onnxruntime::llm::common;
-namespace tkc = onnxruntime::llm::cutlass_extensions;
-
-using namespace cute;
-
 namespace onnxruntime::llm {
 namespace kernels {
 namespace cutlass_kernels {
+
+namespace tk = onnxruntime::llm::common;
+namespace tkc = onnxruntime::llm::cutlass_extensions;
+using namespace cute;
 
 template <typename ActivationType, typename WeightType, typename ScaleZeroType, typename BiasType, typename OutputType,
           cutlass::WeightOnlyQuantOp QuantOp, typename EpilogueTag, typename CTAShape, typename ClusterShape,
@@ -66,7 +65,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(
     ScaleZeroType const* weight_scales, ScaleZeroType const* weight_zero_points, BiasType const* biases,
     float const alpha, OutputType* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig /*gemm_config*/,
     char* workspace, size_t workspace_bytes, cudaStream_t stream, int* occupancy) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
 
   using CutlassActivationType = typename CudaToCutlassTypeAdapter<ActivationType>::type;
 
@@ -263,7 +262,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(
     ss << "[fpA_intB_gemm] Config (" << (int64_t)cute::size<0>(CTAShape{}) << ","
        << (int64_t)cute::size<1>(CTAShape{}) << "," << (int64_t)cute::size<2>(CTAShape{}) << ") ("
        << (int64_t)cute::size<0>(ClusterShape{}) << "," << (int64_t)cute::size<1>(ClusterShape{}) << ","
-       << (int64_t)cute::size<2>(ClusterShape{}) << ") not compiled with FAST_BUILD.";
+       << (int64_t)cute::size<2>(ClusterShape{}) << ") not compiled with ORT_QUICK_BUILD.";
 
     ORT_THROW(ss.str());
   }
@@ -274,7 +273,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const*, WeightType co
                                             ScaleZeroType const*, ScaleZeroType const*, BiasType const*,
                                             float const, OutputType*, int, int, int, int const, tkc::CutlassGemmConfig,
                                             char*, size_t, cudaStream_t, int*) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   ORT_THROW("[fpA_intB_gemm] Please recompile with support for hopper by passing 90a-real as an arch.");
 }
 #endif  // COMPILE_HOPPER_TMA_GEMMS
