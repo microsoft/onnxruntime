@@ -81,12 +81,16 @@
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
   else()
-    # The CUDA Attention kernel implementation depends on contrib ops (flash attention,
-    # memory efficient attention, unfused attention helpers). Remove it when contrib ops are disabled.
-    list(REMOVE_ITEM onnxruntime_providers_cuda_src
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/llm/attention.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/cuda/llm/attention.cc"
-    )
+    # The ONNX domain CUDA Attention kernel (core/providers/cuda/llm/attention.cc) depends on
+    # attention infrastructure in contrib_ops/cuda/bert/ (flash attention, memory efficient
+    # attention, unfused attention helpers, etc.). Include the bert attention infrastructure
+    # even when contrib ops are disabled so that the ONNX Attention kernel can compile and link.
+    set(onnxruntime_cuda_bert_cc_srcs ${onnxruntime_cuda_contrib_ops_cc_srcs})
+    list(FILTER onnxruntime_cuda_bert_cc_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
+    set(onnxruntime_cuda_bert_cu_srcs ${onnxruntime_cuda_contrib_ops_cu_srcs})
+    list(FILTER onnxruntime_cuda_bert_cu_srcs INCLUDE REGEX ".*/contrib_ops/cuda/bert/.*")
+    source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_bert_cc_srcs} ${onnxruntime_cuda_bert_cu_srcs})
+    list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_bert_cc_srcs} ${onnxruntime_cuda_bert_cu_srcs})
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_OPS)
