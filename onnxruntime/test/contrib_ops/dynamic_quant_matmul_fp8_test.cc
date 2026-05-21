@@ -458,6 +458,27 @@ TEST(DynamicQuantMatMulFp8, RejectsRuntimeFp8BZeroPointTypeMismatch) {
            "DynamicQuantMatMulFp8 requires B and B zero point FP8 types to match.");
 }
 
+TEST(DynamicQuantMatMulFp8, RejectsConstantFp8BZeroPointTypeMismatch) {
+  constexpr int64_t M = 128;
+  constexpr int64_t N = 128;
+  constexpr int64_t K = 128;
+
+  std::vector<float> a_data(static_cast<size_t>(M * K), 0.25f);
+  std::vector<Float8E4M3FN> b_data(static_cast<size_t>(K * N), Float8E4M3FN(-0.5f));
+  std::vector<float> b_scale{1.0f};
+  std::vector<Float8E5M2> b_zp{Float8E5M2(0.0f)};
+  std::vector<float> y_data(static_cast<size_t>(M * N), 0.0f);
+
+  OpTester test("DynamicQuantMatMulFp8", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("A", {M, K}, a_data);
+  test.AddInput<Float8E4M3FN>("B", {K, N}, b_data, true /*initializer*/);
+  test.AddInput<float>("B_scale", {N / 128, K / 128}, b_scale);
+  test.AddInput<Float8E5M2>("B_zero_point", {N / 128, K / 128}, b_zp);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "DynamicQuantMatMulFp8 requires B and B zero point FP8 types to match.");
+}
+
 TEST(DynamicQuantMatMulFp8, RejectsNonZeroBZeroPoint) {
   constexpr int64_t M = 128;
   constexpr int64_t N = 128;

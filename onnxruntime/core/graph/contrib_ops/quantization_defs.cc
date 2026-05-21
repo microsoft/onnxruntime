@@ -1008,6 +1008,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (block_size_k <= 0 || block_size_n <= 0) {
             fail_type_inference("block_size_k and block_size_n must be greater than zero.");
           }
+          if (hasInputShape(ctx, 1)) {
+            auto& b_shape = getInputShape(ctx, 1);
+            if (b_shape.dim_size() != 2) {
+              fail_type_inference("B must be 2D.");
+            }
+          }
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
           }
@@ -1026,9 +1032,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
             auto& b_shape = getInputShape(ctx, 1);
             auto& b_scale_shape = getInputShape(ctx, 2);
-            if (b_shape.dim_size() != 2) {
-              fail_type_inference("B must be 2D.");
-            }
             if (b_scale_shape.dim_size() != 2) {
               fail_type_inference("B scale must be 2D.");
             }
@@ -1048,9 +1051,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 1) && hasInputShape(ctx, 3)) {
             auto& b_shape = getInputShape(ctx, 1);
             auto& b_zp_shape = getInputShape(ctx, 3);
-            if (b_shape.dim_size() != 2) {
-              fail_type_inference("B must be 2D.");
-            }
             if (b_zp_shape.dim_size() != 2) {
               fail_type_inference("B zero point must be 2D.");
             }

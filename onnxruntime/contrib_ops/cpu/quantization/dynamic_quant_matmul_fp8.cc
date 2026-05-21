@@ -577,16 +577,17 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
     b_type = b_type_;
   } else if (b_is_fp8) {
     ORT_RETURN_IF_ERROR(GetFp8Type(b_elem_type, b_type));
-    if (b_zero_point != nullptr) {
-      const auto b_zp_elem_type =
-          static_cast<ONNX_NAMESPACE::TensorProto_DataType>(b_zero_point->GetElementType());
-      mlas_fp8_mode b_zp_type{};
-      ORT_RETURN_IF_ERROR(GetFp8Type(b_zp_elem_type, b_zp_type));
-      ORT_RETURN_IF(b_type != b_zp_type,
-                    "DynamicQuantMatMulFp8 requires B and B zero point FP8 types to match.");
-    }
   } else {
     b_type = fp8_type_;
+  }
+
+  if (b_zero_point != nullptr) {
+    const auto b_zp_elem_type =
+        static_cast<ONNX_NAMESPACE::TensorProto_DataType>(b_zero_point->GetElementType());
+    mlas_fp8_mode b_zp_type{};
+    ORT_RETURN_IF_ERROR(GetFp8Type(b_zp_elem_type, b_zp_type));
+    ORT_RETURN_IF(b_type != b_zp_type,
+                  "DynamicQuantMatMulFp8 requires B and B zero point FP8 types to match.");
   }
 
   if (y_size == 0) {

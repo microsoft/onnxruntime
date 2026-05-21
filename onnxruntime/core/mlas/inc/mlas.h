@@ -758,8 +758,10 @@ struct MLAS_FP8_GEMM_DATA_PARAMS {
     size_t ldb = 0;
     void* C = nullptr;
     size_t ldc = 0;
-    const float* ScaleA = nullptr;      // Tile scales for A: [BlocksM, BlocksK].
-    const float* ScaleB = nullptr;      // Tile scales for B: [BlocksK, BlocksN].
+    // Block-wise scales for A, indexed as block_m * ScaleAStrideM + block_k * ScaleAStrideK.
+    const float* ScaleA = nullptr;
+    // Block-wise scales for B, indexed as block_k * ScaleBStrideK + block_n * ScaleBStrideN.
+    const float* ScaleB = nullptr;
     const float* ScaleY = nullptr;      // Scalar scale for Y.
     mlas_fp8_mode Fp8Type = static_cast<mlas_fp8_mode>(0);
     size_t BlockSizeM = 128;  // Block size along M for A quantization.
