@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#ifdef USE_WEBGPU
 
 #include <numeric>
 
@@ -14,6 +14,65 @@
 using namespace Ort;
 
 namespace {
+
+// RAII helper: registers the WebGPU plugin EP library and unregisters on destruction.
+// In built-in builds this is a no-op.
+struct WebGpuPluginRegistration {
+  explicit WebGpuPluginRegistration([[maybe_unused]] Env& env) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    env_ = &env;
+#if defined(_WIN32)
+    const auto* lib_path = ORT_TSTR("onnxruntime_providers_webgpu.dll");
+#elif defined(__APPLE__)
+    const auto* lib_path = ORT_TSTR("libonnxruntime_providers_webgpu.dylib");
+#else
+    const auto* lib_path = ORT_TSTR("libonnxruntime_providers_webgpu.so");
+#endif
+    env.RegisterExecutionProviderLibrary(kRegistrationName,
+                                         std::basic_string<ORTCHAR_T>(lib_path));
+#endif
+  }
+
+  ~WebGpuPluginRegistration() {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    if (env_) {
+      try {
+        env_->UnregisterExecutionProviderLibrary(kRegistrationName);
+      } catch (...) {
+      }
+    }
+#endif
+  }
+
+  WebGpuPluginRegistration(const WebGpuPluginRegistration&) = delete;
+  WebGpuPluginRegistration& operator=(const WebGpuPluginRegistration&) = delete;
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  static constexpr const char* kRegistrationName = "WebGPU_GraphCaptureTest";
+  Env* env_ = nullptr;
+#endif
+};
+
+// Append WebGPU EP to session options, handling both built-in and plugin builds.
+void AppendWebGpuEp(Env& env, SessionOptions& session_options,
+                    const std::unordered_map<std::string, std::string>& provider_options) {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  // Plugin build: find the WebGPU EpDevice and use V2 API
+  auto ep_devices = env.GetEpDevices();
+  std::vector<ConstEpDevice> webgpu_devices;
+  for (const auto& device : ep_devices) {
+    if (std::string(device.EpName()) == onnxruntime::kWebGpuExecutionProvider) {
+      webgpu_devices.push_back(device);
+      break;
+    }
+  }
+  ASSERT_FALSE(webgpu_devices.empty()) << "No WebGPU EP device found after plugin registration";
+  session_options.AppendExecutionProvider_V2(env, webgpu_devices, provider_options);
+#else
+  ORT_UNUSED_PARAMETER(env);
+  session_options.AppendExecutionProvider("WebGPU", provider_options);
+#endif
+}
 
 // Build a model: Y = MatMul(Relu(MatMul(A, B)), C)
 // All shapes are unspecified (free dimensions) to keep it simple.
@@ -68,15 +127,19 @@ static Model CreateMatMulReluMatMulModel() {
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
   const auto& api = GetApi();
 
+  Env env(ORT_LOGGING_LEVEL_WARNING, "GraphCaptureTest");
+
+  // In plugin builds, register the WebGPU EP library before use.
+  WebGpuPluginRegistration plugin_registration(env);
+
   // Create session with WebGPU EP and graph capture enabled
   SessionOptions session_options;
   session_options.DisableMemPattern();
   std::unordered_map<std::string, std::string> provider_options;
   provider_options["enableGraphCapture"] = "1";
-  session_options.AppendExecutionProvider("WebGPU", provider_options);
+  AppendWebGpuEp(env, session_options, provider_options);
 
   auto model = CreateMatMulReluMatMulModel();
-  Env env(ORT_LOGGING_LEVEL_WARNING, "GraphCaptureTest");
   Session session(env, model, session_options);
 
   // Get GPU allocator from session
@@ -222,4 +285,4 @@ TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
 
 }  // namespace
 
-#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#endif  // USE_WEBGPU
