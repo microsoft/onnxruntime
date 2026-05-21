@@ -93,16 +93,19 @@ Choosing the wrong combination is a common cause of quantized models running *sl
 
 - x86/x64 without VNNI (most pre-Skylake-SP desktop/laptop CPUs):
     - `activation_type=QuantType.QUInt8`, `weight_type=QuantType.QInt8`
-    - Set `reduce_range=True` to quantize weights to 7-bit and avoid integer saturation on CPUs
-      that lack the VNNI dot-product instruction.
+    - Set `reduce_range=True` to quantize weights to 7-bit to reduce the risk of integer saturation
+      on CPUs that typically lack the VNNI dot-product instruction.
 
-- x86/x64 with VNNI (Intel Skylake-SP, Cascade Lake, Ice Lake, Sapphire Rapids; AMD Zen4+):
+- x86/x64 with VNNI (e.g., Intel Skylake-SP/Cascade Lake/Ice Lake/Sapphire Rapids or AMD Zen4 and
+  later, though exact support varies by SKU):
     - `activation_type=QuantType.QUInt8`, `weight_type=QuantType.QInt8`
-    - `reduce_range=False` — VNNI accumulates 8-bit products natively so range reduction is not needed.
+    - `reduce_range=False` — VNNI-capable cores typically accumulate 8-bit products without
+      saturation, so range reduction is often unnecessary.
 
 - ARM (Cortex-A, Apple Silicon, Graviton):
     - `activation_type=QuantType.QInt8`, `weight_type=QuantType.QInt8`
-    - `reduce_range=False` — ARM NEON/SVE handles signed 8-bit arithmetic without saturation issues.
+    - `reduce_range=False` — ARM NEON/SVE generally handles signed 8-bit arithmetic without
+      saturation issues.
 
 **per_channel**
 
@@ -113,6 +116,8 @@ Choosing the wrong combination is a common cause of quantized models running *sl
 
 ```python
 from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantFormat, QuantType
+
+# reader: CalibrationDataReader = MyCalibrationDataReader(...)  # user-supplied
 
 quantize_static(
     model_input="model.onnx",

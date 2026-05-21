@@ -509,36 +509,41 @@ def quantize_static(
 ):
     """
     Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file.
-    QuantFormat.QDQ has been the recommended format since 1.11. Recommended values for `activation_type`
-    and `weight_type` depend on the target hardware: see "Choosing parameters for CPU inference" below for
-    CPU guidance, or use symmetric `QuantType.QInt8` for both activations and weights when targeting GPU/TRT.
+    ``QuantFormat.QDQ`` has been the recommended format since 1.11. Recommended values for
+    ``activation_type`` and ``weight_type`` depend on the target hardware: see "Choosing parameters
+    for CPU inference" below for CPU guidance, or use symmetric ``QuantType.QInt8`` for both
+    activations and weights when targeting GPU/TRT.
 
     Choosing parameters for CPU inference:
 
-    - Format: QuantFormat.QDQ is strongly preferred over QOperator for CPU inference since ORT 1.11, as CPU
-      kernels are optimized for the QDQ representation.
+    - Format: ``QuantFormat.QDQ`` is strongly preferred over ``QOperator`` for CPU inference since
+      ORT 1.11, as CPU kernels are optimized for the QDQ representation.
 
     - x86/x64 CPU without VNNI (e.g., most pre-Skylake-SP desktop/laptop CPUs):
-      Use activation_type=QuantType.QUInt8 and weight_type=QuantType.QInt8, and set reduce_range=True.
-      The reduce_range flag quantizes weights to 7-bit to avoid integer overflow on CPUs that lack the
-      VNNI dot-product instruction, and is particularly helpful for per-channel weight quantization.
+      Use ``activation_type=QuantType.QUInt8`` and ``weight_type=QuantType.QInt8``, and set
+      ``reduce_range=True``. The ``reduce_range`` flag quantizes weights to 7-bit to reduce the risk
+      of integer saturation on CPUs that typically lack the VNNI dot-product instruction; this is
+      particularly helpful for per-channel weight quantization.
 
-    - x86/x64 CPU with VNNI (e.g., Intel Skylake-SP, Cascade Lake, Ice Lake, Sapphire Rapids; AMD Zen4+):
-      Use activation_type=QuantType.QUInt8 and weight_type=QuantType.QInt8 with reduce_range=False.
-      VNNI natively accumulates 8-bit products without overflow, so the range reduction is unnecessary.
+    - x86/x64 CPU with VNNI (e.g., Intel Skylake-SP/Cascade Lake/Ice Lake/Sapphire Rapids or AMD
+      Zen4 and later, though exact support varies by SKU):
+      Use ``activation_type=QuantType.QUInt8`` and ``weight_type=QuantType.QInt8`` with
+      ``reduce_range=False``. VNNI-capable cores typically accumulate 8-bit products without
+      saturation, so the range reduction is often unnecessary.
 
     - ARM CPU (e.g., Cortex-A, Apple Silicon, Graviton):
-      ARM cores handle symmetric QInt8 activations well. Use activation_type=QuantType.QInt8 and
-      weight_type=QuantType.QInt8 with reduce_range=False. Asymmetric (QUInt8) activations also work
-      but symmetric is often preferred by ARM-optimized kernels.
+      ARM cores generally handle symmetric ``QInt8`` activations well. Use
+      ``activation_type=QuantType.QInt8`` and ``weight_type=QuantType.QInt8`` with
+      ``reduce_range=False``. Asymmetric (``QUInt8``) activations also work but symmetric is often
+      preferred by ARM-optimized kernels.
 
-    - per_channel: Setting per_channel=False (the default) gives the best throughput on CPU. Setting
-      per_channel=True can improve accuracy for models with weight distributions that vary across
-      output channels (e.g., ResNet-style convolutions) at a small performance cost.
+    - per_channel: Setting ``per_channel=False`` (the default) gives the best throughput on CPU.
+      Setting ``per_channel=True`` can improve accuracy for models with weight distributions that
+      vary across output channels (e.g., ResNet-style convolutions) at a small performance cost.
 
-    Note: this guidance applies to models produced by `quantize_static`. The separate
-    `convert_onnx_models_to_ort` tool's `--target_platform` flag is unrelated and only affects ORT
-    format conversion; it does not change the quantization parameters above.
+    Note: this guidance applies to models produced by ``quantize_static``. The separate
+    ``convert_onnx_models_to_ort`` tool's ``--target_platform`` flag is unrelated and only affects
+    ORT format conversion; it does not change the quantization parameters above.
 
     For the full quantization guide including execution-provider-specific considerations, see
     https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html
