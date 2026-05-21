@@ -1304,6 +1304,38 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << "https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html"
                           << " to ensure all dependencies are met.";
 #endif
+  } else if (type == kNeutronExecutionProvider) {
+#ifdef USE_NEUTRON
+    NeutronProviderOptions neutron_options = {0, 0, 0};
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
+        if (option.first == "offline_packed") {
+          std::set<std::string> supported_values = {"true", "True", "false", "False"};
+          if (supported_values.find(option.second) != supported_values.end()) {
+            neutron_options.offline_packed = (option.second == "true") || (option.second == "True");
+          } else {
+            ORT_THROW(
+                "Invalid value for offline_packed. "
+                "Select from 'true' or 'false'\n");
+          }
+        } else if (option.first == "neutron_op_only") {
+          std::set<std::string> supported_values = {"true", "True", "false", "False"};
+          if (supported_values.find(option.second) != supported_values.end()) {
+            neutron_options.neutron_op_only = (option.second == "true") || (option.second == "True");
+          } else {
+            ORT_THROW(
+                "Invalid value for neutron_op_only. "
+                "Select from 'true' or 'false'\n");
+          }
+        } else {
+          ORT_THROW("Unrecognized option: ", option.first);
+        }
+      }
+    }
+
+    return onnxruntime::NeutronProviderFactoryCreator::Create(neutron_options);
+#endif
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
     // Try EPs dynamically registered via register_execution_provider_library().

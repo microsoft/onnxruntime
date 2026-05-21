@@ -1,0 +1,64 @@
+{
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "spdxVersion": "SPDX-2.3",
+  "creationInfo": {
+    "created": "2026-04-16T03:37:42Z",
+    "creators": [
+      "Organization: NXP"
+    ],
+    "licenseListVersion": "3.26"
+  },
+  "name": "onnxruntime-imx-1.24.3",
+  "dataLicense": "CC0-1.0",
+  "documentNamespace": "https://nxp.com/spdx/33cb647d-ec49-4bd6-8038-535c11f4ca5a",
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-package-33cb647d-ec49-4bd6-8038-535c11f4ca5a",
+      "name": "onnxruntime-imx",
+      "versionInfo": "1.24.3",
+      "licenseConcluded": "(MIT)",
+      "licenseDeclared": "(MIT)",
+      "downloadLocation": "https://github.com/nxp-upstream/onnxruntime",
+      "originator": "Organization: NXP",
+      "supplier": "NOASSERTION",
+      "externalRefs": [],
+      "filesAnalyzed": false
+    },
+    {
+      "SPDXID": "SPDXRef-package-33cb647d-ec49-4bd6-8038-535c11f4ca5a---98f28394-5357-486c-99b3-b6754dc68a09",
+      "name": "onnxruntime",
+      "versionInfo": "1.24.3",
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "homepage": "https://www.onnxruntime.ai",
+      "downloadLocation": "NOASSERTION",
+      "originator": "Organization: microsoft",
+      "supplier": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "OTHER",
+          "referenceLocator": "50571049-c8fc-4964-a078-2d75f97a4f04",
+          "referenceType": "BlackDuck-ComponentOrigin"
+        },
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceLocator": "pkg:github/microsoft/onnxruntime@v1.24.3",
+          "referenceType": "purl"
+        }
+      ],
+      "filesAnalyzed": false
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-package-33cb647d-ec49-4bd6-8038-535c11f4ca5a"
+    },
+    {
+      "spdxElementId": "SPDXRef-package-33cb647d-ec49-4bd6-8038-535c11f4ca5a",
+      "relationshipType": "CONTAINS",
+      "relatedSpdxElement": "SPDXRef-package-33cb647d-ec49-4bd6-8038-535c11f4ca5a---98f28394-5357-486c-99b3-b6754dc68a09"
+    }
+  ]
+}

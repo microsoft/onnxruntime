@@ -50,6 +50,7 @@ struct OrtDevice {
     //     that the EP is registered with (i.e. the OrtDevice passed to the base IExecutionProvider constructor).
     //   - Otherwise use OrtDevice::CPU.
     static constexpr MemoryType HOST_ACCESSIBLE = 5;
+    static constexpr MemoryType NEUTRON_PINNED = 6;
   };
 
   // PCI vendor ids
@@ -63,6 +64,7 @@ struct OrtDevice {
     HUAWEI = 0x19E5,     // CANN EP
     QUALCOMM = 0x5143,   // QNN DP
     INTEL = 0x8086,      // OpenVINO
+    NXP = 0x1957,        // Neutron EP
   };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, VendorId vendor_id_, DeviceId device_id_,
