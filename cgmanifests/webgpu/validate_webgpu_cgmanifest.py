@@ -106,9 +106,7 @@ def _validate_dawn_root(manifest: dict[str, Any]) -> None:
 
     expected_commit = _dawn_commit_from_deps_txt()
     if git["commitHash"] != expected_commit:
-        raise ValueError(
-            f"Dawn manifest commit {git['commitHash']} does not match {DEPS_TXT} commit {expected_commit}"
-        )
+        raise ValueError(f"Dawn manifest commit {git['commitHash']} does not match {DEPS_TXT} commit {expected_commit}")
 
 
 def _validate_dxc_release(manifest: dict[str, Any]) -> None:
