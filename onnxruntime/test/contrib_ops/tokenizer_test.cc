@@ -864,5 +864,200 @@ TEST(ContribOpTest, Tokenizer_EmptyInput) {
     test.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
+
+TEST(ContribOpTest, Tokenizer_InvalidUtf8Input_CharLevel) {
+  // Invalid UTF-8 input should return an error, not crash
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, {""}, 1);
+
+    std::vector<int64_t> dims{1};
+    // 0xFF is not a valid UTF-8 leading byte
+    std::vector<std::string> input{std::string("\xFF\xFE", 2)};
+    test.AddInput<std::string>("T", dims, input);
+
+    test.AddOutput<std::string>("Y", {1, 0}, {});
+
+    test.Run(OpTester::ExpectResult::kExpectFailure, "invalid utf8");
+  }
+}
+
+TEST(ContribOpTest, Tokenizer_InvalidUtf8Input_SeparatorMode) {
+  // Invalid UTF-8 input in separator mode should return an error
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, {" "}, 1);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{std::string("hello\xFF world", 12)};
+    test.AddInput<std::string>("T", dims, input);
+
+    test.AddOutput<std::string>("Y", {1, 0}, {});
+
+    test.Run(OpTester::ExpectResult::kExpectFailure, "invalid utf8");
+  }
+}
+
+TEST(ContribOpTest, Tokenizer_InvalidUtf8Input_TokenExpMode) {
+  // Invalid UTF-8 input in tokenexp mode should return an error
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, {}, 1, "\\w+");
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{std::string("hello\xFF world", 12)};
+    test.AddInput<std::string>("T", dims, input);
+
+    test.AddOutput<std::string>("Y", {1, 0}, {});
+
+    test.Run(OpTester::ExpectResult::kExpectFailure, "invalid utf8");
+  }
+}
+
+TEST(ContribOpTest, TokenizerWithSeparators_EmptyMatchRegex) {
+  // Regex that can match empty strings (e.g., "a*") should not infinite loop
+  // "a*" matches zero or more 'a' chars - can produce empty matches
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, {"a*"}, 1);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{"bbb"};
+    test.AddInput<std::string>("T", dims, input);
+
+    // "a*" matches empty at every position. The text before each empty match is
+    // always 0 characters (< mincharnum=1), so all tokens are filtered out.
+    // The advance past empty match consumes each character position.
+    std::vector<int64_t> output_dims{1, 0};
+    std::vector<std::string> output;
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
+TEST(ContribOpTest, TokenizerExpression_EmptyMatchRegex) {
+  // Token expression that can match empty strings - exercises progress guarantee
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    // "b?" can match empty or "b" - with longest_match it will match "b" where possible
+    const std::string tokenexp("b?");
+    InitTestAttr(test, false, {}, 1, tokenexp);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{"abc"};
+    test.AddInput<std::string>("T", dims, input);
+
+    // With longest match: matches "b" at position 1
+    // Empty matches at other positions are < mincharnum (but mincharnum=1 so empty = 0 chars < 1)
+    std::vector<int64_t> output_dims{1, 1};
+    std::vector<std::string> output{"b"};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
+TEST(ContribOpTest, Tokenizer_EmbeddedNullBytes) {
+  // Input with embedded null bytes should be handled correctly
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, false, {" "}, 1);
+
+    std::vector<int64_t> dims{1};
+    std::string str_with_null("hello\x00world", 11);
+    std::vector<std::string> input{str_with_null};
+    test.AddInput<std::string>("T", dims, input);
+
+    // No space separator found, entire string is one token
+    std::vector<int64_t> output_dims{1, 1};
+    std::vector<std::string> output{str_with_null};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
+TEST(ContribOpTest, TokenizerExpression_MinCharNum) {
+  // tokenexp with mincharnum > 1 should filter short matches
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    const std::string tokenexp("\\w+");
+    InitTestAttr(test, false, {}, 3, tokenexp);
+
+    std::vector<int64_t> dims{1};
+    std::vector<std::string> input{"I am a developer"};
+    test.AddInput<std::string>("T", dims, input);
+
+    // Only "developer" has >= 3 chars. "am" is 2, "I" and "a" are 1.
+    std::vector<int64_t> output_dims{1, 1};
+    std::vector<std::string> output{"developer"};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
+TEST(ContribOpTest, TokenizerCharLevel_SingleCharWithMark) {
+  // Single-character strings with mark=true
+  // Output should be [marker, char, marker]
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, {""}, 1);
+
+    std::vector<int64_t> dims{2};
+    std::vector<std::string> input{"a", "b"};
+    test.AddInput<std::string>("T", dims, input);
+
+    std::vector<int64_t> output_dims{2, 3};
+    std::vector<std::string> output{
+        start_mark, "a", end_mark,
+        start_mark, "b", end_mark};
+
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
+TEST(ContribOpTest, Tokenizer_LargeInput) {
+  // Stress test with larger input to exercise allocation paths
+  {
+    OpTester test("Tokenizer", opset_ver, domain);
+    InitTestAttr(test, true, {" "}, 1);
+
+    constexpr int64_t N = 10;
+    constexpr int64_t C = 10;
+    std::vector<int64_t> dims{N, C};
+
+    // Create 100 strings, each "word1 word2 word3"
+    std::vector<std::string> input;
+    input.reserve(N * C);
+    for (int i = 0; i < N * C; ++i) {
+      input.push_back("hello world foo");
+    }
+    test.AddInput<std::string>("T", dims, input);
+
+    // Each string splits into 3 tokens + 2 markers = 5
+    std::vector<int64_t> output_dims{N, C, 5};
+    std::vector<std::string> output;
+    output.reserve(N * C * 5);
+    for (int i = 0; i < N * C; ++i) {
+      output.push_back(start_mark);
+      output.push_back("hello");
+      output.push_back("world");
+      output.push_back("foo");
+      output.push_back(end_mark);
+    }
+    test.AddOutput<std::string>("Y", output_dims, output);
+
+    test.Run(OpTester::ExpectResult::kExpectSuccess);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """Smoke test for the onnxruntime-ep-webgpu Python package.
 
 Tests:

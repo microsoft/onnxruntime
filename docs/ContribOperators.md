@@ -3569,7 +3569,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.NhwcFusedConv"></a><a name="com.microsoft.nhwcfusedconv">**com.microsoft.NhwcFusedConv**</a>
 
   NhwcFusedConv is a Conv operator with optional activation and add operators fused in.
-  Only has fp16 implementation as of 2023/04/15.
 
 #### Version
 
@@ -3600,26 +3599,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>X</tt> : T</dt>
-<dd></dd>
+<dd>Input activation tensor in channels-last layout. For 2D convolution this is [N, H, W, C], where N is batch size, H/W are spatial dimensions, and C is the number of input channels.</dd>
 <dt><tt>W</tt> : T</dt>
-<dd></dd>
+<dd>Convolution weight tensor in the standard ONNX Conv filter layout [M, C/group, kH, kW], where M is the number of output channels.</dd>
 <dt><tt>B</tt> (optional) : T</dt>
-<dd></dd>
+<dd>Optional 1D bias tensor of shape [M].</dd>
 <dt><tt>Z</tt> (optional) : T</dt>
-<dd>Tensor to be added to the output, must be the same shape and format as the output tensor.</dd>
+<dd>Optional residual/add tensor in the same channels-last layout and shape as the output tensor Y. For 2D convolution this is [N, out_H, out_W, M].</dd>
 </dl>
 
 #### Outputs
 
 <dl>
 <dt><tt>Y</tt> : T</dt>
-<dd></dd>
+<dd>Output tensor in channels-last layout. For 2D convolution this is [N, out_H, out_W, M], where M is the number of output channels.</dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain input and output types to float tensors</dd>
 </dl>
 
@@ -4701,7 +4700,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
         The formula of linear dequantization of the quantized weights using scale and (optionally) zero-point is:
           dequantized_weight = (quantized_weight - zero_point) * scale
-        When zero_point is not provided, the default value is 2^(bits-1): 8 for 4 bits, 128 for 8 bits.
+        When zero_point is not provided, the default value is 2^(bits-1): 2 for 2 bits, 8 for 4 bits, 128 for 8 bits.
   
         If block_size is provided, both hidden_size and inter_size must be divisible by the block size, and
         the dequantization is performed per block of size block_size along the K (input feature) dimension.
@@ -4737,11 +4736,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>block_size</tt> : int</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). If provided, both hidden_size and inter_size must be divisible by the block size. Otherwise, there is no blocking and a whole column shares one scaling factor. </dd>
 <dt><tt>expert_weight_bits</tt> : int</dt>
-<dd>Number of bits used in quantized weights. Default is 4 bits</dd>
+<dd>Number of bits used in quantized weights. Supported values are 2, 4, and 8. Default is 4 bits</dd>
 <dt><tt>k</tt> : int</dt>
 <dd>Number of top experts to select from expert pool</dd>
 <dt><tt>normalize_routing_weights</tt> : int</dt>
 <dd>Whether to normalize routing weights</dd>
+<dt><tt>quant_type</tt> : string</dt>
+<dd>Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, 'fp8' for FP8 e4m3 weight-only quantization, or 'wfp4afp8' for MXFP4 weight with FP8 activation. When quant_type is 'fp4', weights are stored in MXFP4 format (2 values per byte), fc*_scales inputs contain MXFP4 block scales, and fc*_global_scale inputs must be provided.</dd>
 <dt><tt>swiglu_fusion</tt> : int</dt>
 <dd>0: not fused, 1: fused and interleaved. 2: fused and not interleaved.</dd>
 <dt><tt>swiglu_limit</tt> : float</dt>
@@ -4750,7 +4751,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether to use sparse mixer</dd>
 </dl>
 
-#### Inputs (7 - 15)
+#### Inputs (6 - 21)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -4759,20 +4760,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (num_tokens, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.</dd>
-<dt><tt>fc1_scales</tt> : T2</dt>
-<dd>2D tensor with shape (num_experts, fusion_size * inter_size), or 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided.</dd>
+<dt><tt>fc1_scales</tt> (optional) : T2</dt>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, fusion_size * inter_size), or a 3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, fusion_size * inter_size, hidden_size / 32). Not used for quant_type='fp8'.</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, fusion_size * inter_size)</dd>
 <dt><tt>fc2_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, hidden_size, inter_size / pack_size)</dd>
-<dt><tt>fc2_scales</tt> : T2</dt>
-<dd>2D tensor with shape (num_experts, hidden_size), or 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.</dd>
+<dt><tt>fc2_scales</tt> (optional) : T2</dt>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, hidden_size), or a 3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, hidden_size, inter_size / 32). Not used for quant_type='fp8'.</dd>
 <dt><tt>fc2_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, hidden_size)</dd>
 <dt><tt>fc3_experts_weights</tt> (optional) : T1</dt>
 <dd>3D optional tensor with shape (num_experts, inter_size, hidden_size / pack_size)</dd>
 <dt><tt>fc3_scales</tt> (optional) : T2</dt>
-<dd>2D optional tensor with shape (num_experts, inter_size), or 3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided.</dd>
+<dd>Optional weight scales. For quant_type='int', this is a 2D tensor with shape (num_experts, inter_size), or a 3D tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided. For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape (num_experts, inter_size, hidden_size / 32). Not used for quant_type='fp8'.</dd>
 <dt><tt>fc3_experts_bias</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_experts, inter_size)</dd>
 <dt><tt>fc1_zero_points</tt> (optional) : T1</dt>
@@ -4783,6 +4784,18 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D optional tensor with shape (num_experts, inter_size / pack_size), or 3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size / pack_size) when block_size is provided.</dd>
 <dt><tt>router_weights</tt> (optional) : T</dt>
 <dd>2D optional tensor with shape (num_tokens, num_experts). When provided, router_probs is used only for Top-K expert selection, and router_weights is used for aggregating expert outputs (the values at the selected expert indices are gathered and used as mixing weights). This enables DeepSeek-style noaux_tc routing where different tensors are used for selection and aggregation. When not provided, router_probs is used for both selection and aggregation (backward compatible).</dd>
+<dt><tt>fc1_global_scale</tt> (optional) : T4</dt>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.</dd>
+<dt><tt>fc2_global_scale</tt> (optional) : T4</dt>
+<dd>1D optional tensor with shape (num_experts,). Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.</dd>
+<dt><tt>fc1_act_scale</tt> (optional) : T4</dt>
+<dd>1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.</dd>
+<dt><tt>fc2_act_scale</tt> (optional) : T4</dt>
+<dd>1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC2 FP8 activation modes.</dd>
+<dt><tt>fc1_act_block_scale</tt> (optional) : T2</dt>
+<dd>3D optional float8e8m0 MXFP activation block-scale tensor for FC1 FP8 activation modes.</dd>
+<dt><tt>fc2_act_block_scale</tt> (optional) : T2</dt>
+<dd>3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.</dd>
 </dl>
 
 #### Outputs
@@ -4797,10 +4810,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
-<dt><tt>T1</tt> : tensor(uint8)</dt>
-<dd>Constrain weights type to uint8 tensors.</dd>
-<dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
-<dd>Constrain scales type to float tensors.</dd>
+<dt><tt>T1</tt> : tensor(uint8), tensor(float8e4m3fn)</dt>
+<dd>Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.</dd>
+<dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16), tensor(float8e8m0)</dt>
+<dd>Constrain scale types. Float tensors are used for integer quantization scales. Float8e8m0 tensors are used for MXFP block scales.</dd>
+<dt><tt>T4</tt> : tensor(float)</dt>
+<dd>Constrain FP4 global scale type to float32 tensors.</dd>
 </dl>
 
 
@@ -6109,7 +6124,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
     The first mode is selected when "tokenexp" is not set and "separators" is set. If "tokenexp" is set and "separators" is not set,
     the second mode will be used. The first mode breaks each input string into tokens by matching and removing separators.
-    "separators" is a list of strings which are regular expressions. "tokenexp" is a single regular expression.
+    "separators" is a list of strings which are RE2 regular expressions. "tokenexp" is a single RE2 regular expression.
     Let's assume "separators" is [" "] and consider an example.
     If input is
     ["Hello World", "I love computer science !"] whose shape is [2],
@@ -6118,8 +6133,9 @@ This version of the operator has been available since version 1 of the 'com.micr
    ["I", "love", "computer", "science", "!"]]
    whose shape is [2, 5] because you can find at most 5 tokens per input string.
    Note that the input at most can have two axes, so 3-D and higher dimension are not supported.
-   If "separators" contains a single empty string, the Tokenizer will enter into character tokenezation mode. This means all strings
-   will be broken part into individual characters.
+   If "separators" contains a single empty string, the Tokenizer will enter into character tokenization mode. This means all strings
+   will be broken apart into individual characters.
+   Similarly, if "tokenexp" is set to "." (match any single character), character tokenization mode is used.
    For each input string, the second mode searches matches of "tokenexp" and each match will be a token in Y.
    The matching of "tokenexp" is conducted greedily (i.e., a match should be as long as possible).
    This operator searches for the first match starting from the beginning of the considered string,
@@ -6149,9 +6165,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>pad_value</tt> : string (required)</dt>
 <dd>The string used to pad output tensors when the tokens extracted doesn't match the maximum number of tokens found. If start/end markers are needed, padding will appear outside the markers.</dd>
 <dt><tt>separators</tt> : list of strings</dt>
-<dd>an optional list of strings attribute that contains a list of separators - regular expressions to match separators Two consecutive segments in X connected by a separator would be divided into two tokens. For example, if the input is "Hello World!" and this attribute contains only one space character, the corresponding output would be ["Hello", "World!"]. To achieve character-level tokenization, one should set the 'separators' to [""], which contains an empty string.</dd>
+<dd>an optional list of strings attribute that contains a list of separators - RE2 regular expressions to match separators. Two consecutive segments in X connected by a separator would be divided into two tokens. For example, if the input is "Hello World!" and this attribute contains only one space character, the corresponding output would be ["Hello", "World!"]. To achieve character-level tokenization, one should set the 'separators' to [""], which contains an empty string.</dd>
 <dt><tt>tokenexp</tt> : string</dt>
-<dd>An optional string. Token's regular expression in basic POSIX format (pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap09.html#tag_09_03). If set, tokenizer may produce tokens matching the specified pattern. Note that one and only of 'tokenexp' and 'separators' should be set.</dd>
+<dd>An optional string. Token's regular expression in RE2 format (https://github.com/google/re2/wiki/Syntax). If set, tokenizer may produce tokens matching the specified pattern. Note that one and only one of 'tokenexp' and 'separators' should be set. If tokenexp is ".", the tokenizer enters character tokenization mode.</dd>
 </dl>
 
 #### Inputs

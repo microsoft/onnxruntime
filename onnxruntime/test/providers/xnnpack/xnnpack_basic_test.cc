@@ -574,6 +574,89 @@ TEST(XnnpackEP, DISABLED_TestResize_u8_and_s8_NHWC_pytorch_half_pixel) {  // [ON
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
 }
 
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28541.
+// A two-input Gemm (no optional C bias) used to dereference a null NodeArg pointer in
+// Gemm::IsOnnxNodeSupported, segfaulting InferenceSession::Initialize before any kernel
+// ran. The capability check must accept the missing-C case and let the node be assigned
+// to XNNPACK without crashing.
+TEST(XnnpackEP, TestGemm_NoC_NoSegfault) {
+  const std::vector<int64_t> a_shape = {2, 3};
+  const std::vector<int64_t> b_shape = {3, 4};
+  auto modelBuilder = [&](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>(a_shape, -1.f, 1.f);
+    auto* input_b = builder.MakeInitializer<float>(b_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+    auto& gemm_node = builder.AddNode("Gemm", {input_a, input_b}, {output_arg});
+    gemm_node.AddAttribute("alpha", 1.0f);
+    gemm_node.AddAttribute("beta", 1.0f);
+    gemm_node.AddAttribute("transA", static_cast<int64_t>(0));
+    gemm_node.AddAttribute("transB", static_cast<int64_t>(0));
+  };
+  // ExpectedEPNodeAssignment::All asserts both that the session initialized without
+  // segfaulting AND that XNNPACK accepted the 2-input Gemm node.
+  RunModelTest(modelBuilder, "xnnpack_test_graph_gemm_no_c",
+               {
+                   ExpectedEPNodeAssignment::All,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28542.
+// A Gemm with a scalar (rank 0) C bias used to skip past the dim_size() >= 3 guard and
+// then crash on C_shape->dim(0) inside Gemm::IsOnnxNodeSupported. The capability check
+// must reject rank-0 C cleanly so the node falls back to the CPU EP and the session
+// initializes without segfaulting. RunModelTest compares the XNNPACK + CPU run against
+// the pure CPU baseline, so this also verifies numerical correctness end to end.
+TEST(XnnpackEP, TestGemm_ScalarC_NoSegfault) {
+  const std::vector<int64_t> a_shape = {2, 3};
+  const std::vector<int64_t> b_shape = {3, 4};
+  auto modelBuilder = [&](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>(a_shape, -1.f, 1.f);
+    auto* input_b = builder.MakeInitializer<float>(b_shape, -1.f, 1.f);
+    auto* input_c = builder.MakeScalarInitializer<float>(0.5f);
+    auto* output_arg = builder.MakeOutput();
+    auto& gemm_node = builder.AddNode("Gemm", {input_a, input_b, input_c}, {output_arg});
+    gemm_node.AddAttribute("alpha", 1.0f);
+    gemm_node.AddAttribute("beta", 1.0f);
+    gemm_node.AddAttribute("transA", static_cast<int64_t>(0));
+    gemm_node.AddAttribute("transB", static_cast<int64_t>(0));
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_gemm_scalar_c",
+               {
+                   ExpectedEPNodeAssignment::None,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
+// Defense-in-depth regression test for the C_arg->Exists() == false branch. A 3-input
+// Gemm whose C slot is an empty optional input (Exists() == false) is semantically
+// equivalent to a 2-input Gemm per ONNX (empty optional input == omitted input). The
+// XNNPACK support check now treats them identically: both are accepted and routed to
+// the bias=nullptr path in xnn_create_fully_connected_nc_*. This locks in the
+// consistency between the 2-input case (TestGemm_NoC_NoSegfault) and the empty-optional
+// case, matching the kernel constructor's C_matrix_exists_ = C_arg && C_arg->Exists()
+// contract.
+TEST(XnnpackEP, TestGemm_EmptyC_NoSegfault) {
+  const std::vector<int64_t> a_shape = {2, 3};
+  const std::vector<int64_t> b_shape = {3, 4};
+  auto modelBuilder = [&](ModelTestBuilder& builder) {
+    auto* input_a = builder.MakeInput<float>(a_shape, -1.f, 1.f);
+    auto* input_b = builder.MakeInitializer<float>(b_shape, -1.f, 1.f);
+    auto* input_c = builder.MakeEmptyInput();
+    auto* output_arg = builder.MakeOutput();
+    auto& gemm_node = builder.AddNode("Gemm", {input_a, input_b, input_c}, {output_arg});
+    gemm_node.AddAttribute("alpha", 1.0f);
+    gemm_node.AddAttribute("beta", 1.0f);
+    gemm_node.AddAttribute("transA", static_cast<int64_t>(0));
+    gemm_node.AddAttribute("transB", static_cast<int64_t>(0));
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_gemm_empty_c",
+               {
+                   ExpectedEPNodeAssignment::All,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
 #endif
 
 }  // namespace test

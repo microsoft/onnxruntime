@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+
 """Build the Microsoft.ML.OnnxRuntime.EP.WebGpu NuGet package.
 
 Stages native binaries from build artifacts into the runtimes/ layout expected
@@ -44,6 +46,15 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR / "Microsoft.ML.OnnxRuntime.EP.WebGpu"
 CSPROJ = PROJECT_DIR / "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
 MIN_ORT_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
+REPO_ROOT = SCRIPT_DIR.parents[1]
+
+# License-related files to bundle into the .nupkg. Sourced from the repo root and copied into
+# the staging directory so the staged csproj can reference them by simple relative paths.
+LICENSE_FILES: tuple[Path, ...] = (REPO_ROOT / "LICENSE", REPO_ROOT / "ThirdPartyNotices.txt")
+
+# Import the shared template helper from _packaging_utils.py in the parent directory.
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+from _packaging_utils import gen_file_from_template  # noqa: E402  (path setup must precede import)
 
 
 class PackError(RuntimeError):
@@ -140,6 +151,19 @@ def stage_sources(staging_dir: Path) -> None:
     )
 
 
+def stage_license_files(staging_dir: Path) -> None:
+    """Copy LICENSE and ThirdPartyNotices.txt from the repo root into the staging directory.
+
+    The staged csproj references these via <None Include="LICENSE" .../> and
+    <None Include="ThirdPartyNotices.txt" .../> so they are bundled into the .nupkg at its root.
+    """
+    for src in LICENSE_FILES:
+        if not src.is_file():
+            raise PackError(f"expected license file not found: {src}")
+        shutil.copy2(src, staging_dir / src.name)
+        print(f"Staged {src.name}")
+
+
 def resolve_platform_source(
     name: str,
     binary_dir_override: Path | None,
@@ -208,14 +232,12 @@ def stage_binaries(
 def dotnet_common_args(
     staged_csproj: Path,
     args: argparse.Namespace,
-    min_ort_version_file: Path,
 ) -> list[str]:
     common = [
         str(staged_csproj),
         "--configuration",
         args.configuration,
         f"-p:Version={args.version}",
-        f"-p:OnnxRuntimeMinVersionFile={min_ort_version_file}",
     ]
     if args.nuget_config:
         common.extend(["--configfile", str(args.nuget_config)])
@@ -223,10 +245,10 @@ def dotnet_common_args(
     return common
 
 
-def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace, min_ort_version_file: Path) -> None:
+def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace) -> None:
     print()
     print(f"Running dotnet build (Version={args.version}, Configuration={args.configuration})...")
-    cmd = ["dotnet", "build", *dotnet_common_args(staged_csproj, args, min_ort_version_file)]
+    cmd = ["dotnet", "build", *dotnet_common_args(staged_csproj, args)]
     print("+ " + " ".join(cmd))
     subprocess.run(cmd, check=True)
 
@@ -243,14 +265,13 @@ def do_pack(
     staged_csproj: Path,
     output_dir: Path,
     args: argparse.Namespace,
-    min_ort_version_file: Path,
 ) -> None:
     print()
     print(f"Running dotnet pack (Version={args.version}, Configuration={args.configuration})...")
     pack_args = [
         "dotnet",
         "pack",
-        *dotnet_common_args(staged_csproj, args, min_ort_version_file),
+        *dotnet_common_args(staged_csproj, args),
         "--output",
         str(output_dir),
     ]
@@ -269,6 +290,21 @@ def do_pack(
         print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
 
 
+def render_readme(staging_dir: Path, min_ort_version: str) -> None:
+    """Substitute the minimum ORT version into the staged README in place."""
+    readme = staging_dir / "README.md"
+    if not readme.is_file():
+        raise PackError(f"staged README not found: {readme}")
+    try:
+        gen_file_from_template(
+            readme,
+            readme,
+            {"min_onnxruntime_version": min_ort_version},
+        )
+    except ValueError as e:
+        raise PackError(str(e)) from e
+
+
 def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_file: Path) -> None:
     staged_csproj = staging_dir / "Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj"
     output_dir: Path = args.output_dir
@@ -281,13 +317,18 @@ def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_
         print(f"Reusing existing staging directory: {staging_dir}")
     else:
         stage_sources(staging_dir)
+        stage_license_files(staging_dir)
         stage_binaries(staging_dir, args, required_platforms)
+        min_ort_version = min_ort_version_file.read_text(encoding="utf-8").strip()
+        if not min_ort_version:
+            raise PackError(f"{min_ort_version_file} is empty")
+        render_readme(staging_dir, min_ort_version)
 
     if args.build_only:
-        do_build(staged_csproj, staging_dir, args, min_ort_version_file)
+        do_build(staged_csproj, staging_dir, args)
         return
 
-    do_pack(staged_csproj, output_dir, args, min_ort_version_file)
+    do_pack(staged_csproj, output_dir, args)
 
     print()
     print(f"Done. Output: {output_dir}")
