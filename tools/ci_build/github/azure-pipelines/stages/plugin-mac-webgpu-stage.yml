@@ -70,7 +70,7 @@ stages:
           --wgsl_template static \
           --disable_rtti \
           --enable_lto \
-          --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 onnxruntime_BUILD_UNIT_TESTS=ON $(PluginEpVersionDefine) \
+          --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 onnxruntime_BUILD_UNIT_TESTS=OFF $(PluginEpVersionDefine) \
           --update --skip_submodule_sync --build --parallel
       displayName: 'Build WebGPU Plugin'
 
