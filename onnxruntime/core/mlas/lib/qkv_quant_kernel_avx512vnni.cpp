@@ -94,9 +94,10 @@ QuantizeRowToU8(const float* src, uint8_t* dst, size_t len)
         __m128i packed = _mm512_cvtepi32_epi8(qi);
         _mm_storeu_si128(reinterpret_cast<__m128i*>(dst + i), packed);
     }
-    // Scalar tail
+    // Scalar tail (use nearbyintf for round-to-nearest-even, matching the
+    // AVX-512 embedded rounding semantics above).
     for (; i < len; ++i) {
-        float q = std::round(src[i] * inv_scale) + 128.0f;
+        float q = std::nearbyintf(src[i] * inv_scale) + 128.0f;
         q = std::max(0.0f, std::min(255.0f, q));
         dst[i] = static_cast<uint8_t>(q);
     }
