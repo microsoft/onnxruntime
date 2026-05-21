@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_WEBGPU
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 #include <numeric>
 
@@ -222,4 +222,4 @@ TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
 
 }  // namespace
 
-#endif  // USE_WEBGPU
+#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
