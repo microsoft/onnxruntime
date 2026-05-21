@@ -16,5 +16,7 @@
 	<string>????</string>
 	<key>CFBundlePackageType</key>
 	<string>FMWK</string>
+	<key>MinimumOSVersion</key>
+	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
 </dict>
 </plist>

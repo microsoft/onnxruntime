@@ -82,6 +82,9 @@ jobs:
           lipo -verify_arch arm64 "$XCF/ios-arm64/onnxruntime.framework/onnxruntime"
           lipo -verify_arch arm64 x86_64 "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime"
           lipo -verify_arch arm64 x86_64 "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
 
       - name: archive xcframework
         run: |
