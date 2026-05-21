@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <vector>
 #include "core/common/cpuid_info.h"
 #include "core/graph/constants.h"
@@ -192,6 +193,10 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
 
   const auto group = node.GetAttributeInt("group").value_or(1);
   if (group <= 0) {
+    return false;
+  }
+  constexpr uint64_t kSizeTMax = static_cast<uint64_t>(std::numeric_limits<size_t>::max());
+  if (static_cast<uint64_t>(group) > kSizeTMax) {
     return false;
   }
   const auto group_count = narrow<size_t>(group);
