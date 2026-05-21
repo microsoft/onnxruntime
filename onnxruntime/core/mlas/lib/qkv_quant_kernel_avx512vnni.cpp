@@ -170,9 +170,11 @@ VnniDotInt8PerTensor(
 
     // Correction: dpbusd computed sum(a_u8 * b_s8).
     // We want sum((a_u8 - 128) * b_s8) = sum(a_u8 * b_s8) - 128 * sum(b_s8)
-    float corrected = static_cast<float>(dot_i32) - 128.0f * static_cast<float>(b_sum_i32);
+    // Perform correction in int32 to preserve precision (avoids float rounding
+    // when |dot_i32| or |128*b_sum_i32| exceed 2^24).
+    int32_t corrected = dot_i32 - (128 * b_sum_i32);
 
-    return corrected * scale_a * scale_b;
+    return static_cast<float>(corrected) * scale_a * scale_b;
 }
 
 //
@@ -403,11 +405,11 @@ VnniMultiDot4Int8PerTensor(
         bs[3] += static_cast<int32_t>(b3[k]);
     }
 
-    const float zp = 128.0f;
-    out[0] = (static_cast<float>(dot[0]) - zp * static_cast<float>(bs[0])) * combined_scale;
-    out[1] = (static_cast<float>(dot[1]) - zp * static_cast<float>(bs[1])) * combined_scale;
-    out[2] = (static_cast<float>(dot[2]) - zp * static_cast<float>(bs[2])) * combined_scale;
-    out[3] = (static_cast<float>(dot[3]) - zp * static_cast<float>(bs[3])) * combined_scale;
+    // Zero-point correction in int32 for precision (see VnniDotInt8PerTensor).
+    out[0] = static_cast<float>(dot[0] - 128 * bs[0]) * combined_scale;
+    out[1] = static_cast<float>(dot[1] - 128 * bs[1]) * combined_scale;
+    out[2] = static_cast<float>(dot[2] - 128 * bs[2]) * combined_scale;
+    out[3] = static_cast<float>(dot[3] - 128 * bs[3]) * combined_scale;
 }
 
 // ============================================================================
