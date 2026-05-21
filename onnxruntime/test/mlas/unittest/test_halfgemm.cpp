@@ -113,7 +113,7 @@ TEST(HalfGemmKleidiAISelector, DisableKleidiAIBypassesOverride) {
   SmallFloatFill(A.data(), A.size());
   SmallFloatFill(B.data(), B.size());
 
-  MLAS_HALF_GEMM_DATA_PARAMS data;
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
   data.A = A.data();
   data.B = B.data();
   data.C = reinterpret_cast<MLAS_FP16*>(C.data());

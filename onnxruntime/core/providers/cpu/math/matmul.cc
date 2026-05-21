@@ -8,6 +8,7 @@
 #include "core/util/math_cpuonly.h"
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 
 namespace onnxruntime {
 

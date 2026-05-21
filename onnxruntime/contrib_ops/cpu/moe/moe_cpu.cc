@@ -536,7 +536,7 @@ Status MoE<float>::ComputeGEMM(const float* A, const float* B, float* C,
 template <>
 Status MoE<MLFloat16>::ComputeGEMM(const MLFloat16* A, const MLFloat16* B, MLFloat16* C,
                                    int64_t M, int64_t K, int64_t N, bool transpose_B) const {
-  MLAS_HALF_GEMM_DATA_PARAMS params;
+  MLAS_HALF_GEMM_DATA_PARAMS params{};
   params.A = A;
   params.lda = static_cast<size_t>(K);
   params.C = C;

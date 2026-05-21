@@ -219,7 +219,7 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   const bool use_mlas_bias = beta == onnxruntime::MLFloat16::One && support_mlas_bias;
   if (trans_a == CblasNoTrans && trans_b == CblasNoTrans &&
       alpha == onnxruntime::MLFloat16::One && (use_mlas_no_bias || use_mlas_bias)) {
-    MLAS_HALF_GEMM_DATA_PARAMS data;
+    MLAS_HALF_GEMM_DATA_PARAMS data{};
     data.A = a_data;
     data.lda = K;
     data.B = b_data;

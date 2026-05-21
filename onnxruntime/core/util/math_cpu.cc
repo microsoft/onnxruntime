@@ -194,7 +194,7 @@ template <>
 void MatMul<MLFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const MLFloat16* A, const MLFloat16* B, MLFloat16* C, ThreadPool* threadpool,
                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-  MLAS_HALF_GEMM_DATA_PARAMS data;
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
   data.A = A;
   data.lda = static_cast<size_t>(K);
   data.B = B;

@@ -663,7 +663,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
 
           const auto* gemm_add = add_src == nullptr ? nullptr : worker_addsrc + group_id * group_output_channels;
           MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_, gemm_add);
-          MLAS_HALF_GEMM_DATA_PARAMS gemm_params;
+          MLAS_HALF_GEMM_DATA_PARAMS gemm_params{};
           gemm_params.A = AData;
           gemm_params.lda = lda;
           if (packed_W_buffer_) {
