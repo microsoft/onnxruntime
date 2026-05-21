@@ -137,10 +137,10 @@ env.RegisterExecutionProviderLibrary("webgpu_ep_registration",
     ORT_TSTR("onnxruntime_providers_webgpu.dll"));
 
 std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
-std::array<Ort::ConstEpDevice, 1> selected{nullptr};
-for (auto d : ep_devices) {
-    if (std::strcmp(d.GetName(), "WebGpuExecutionProvider") == 0) {
-        selected[0] = d;
+std::vector<Ort::ConstEpDevice> selected_ep_devices{};
+for (auto ep_device : ep_devices) {
+    if (std::strcmp(ep_device.EpName(), "WebGpuExecutionProvider") == 0) {
+        selected_ep_devices.push_back(ep_device);
         break;
     }
 }
@@ -150,7 +150,7 @@ ep_options.Add("preferredLayout",    "NHWC");
 ep_options.Add("enableGraphCapture", "1");
 
 Ort::SessionOptions session_options;
-session_options.AppendExecutionProvider_V2(env, selected, ep_options);
+session_options.AppendExecutionProvider_V2(env, selected_ep_devices, ep_options);
 
 Ort::Session session(env, ORT_TSTR("model.onnx"), session_options);
 ```
