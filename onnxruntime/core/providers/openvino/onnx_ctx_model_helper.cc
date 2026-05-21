@@ -5,12 +5,31 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <filesystem>
 
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_utils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
+
+namespace {
+
+bool IsAbsolutePath(const std::string& path_string) {
+  auto path = std::filesystem::path(path_string);
+  return path.is_absolute();
+}
+
+bool IsRelativePathToParentPath(const std::string& path_string) {
+  auto path = std::filesystem::path(path_string);
+  auto normalized = path.lexically_normal().string();
+  if (normalized.find("..") != std::string::npos) {
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
 
 EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger, std::shared_ptr<SharedContextManager> shared_context_manager)
     : openvino_sdk_version_(std::move(ov_sdk_version)), logger_(logger), shared_context_manager_(std::move(shared_context_manager)) {
@@ -114,6 +133,11 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
       blob_filepath = graph_viewer.ModelPath();
     }
+    // ep_cache_context must be a relative path within the context model directory.
+    ORT_ENFORCE(!IsAbsolutePath(ep_cache_context),
+                "ep_cache_context must be a relative path, but got absolute path: ", ep_cache_context);
+    ORT_ENFORCE(!IsRelativePathToParentPath(ep_cache_context),
+                "ep_cache_context must not contain '..'; it cannot point outside the model directory.");
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
@@ -242,6 +266,11 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
         shared_context->Deserialize(ss);
       }
     } else {
+      // ep_cache_context must be a relative path within the context model directory.
+      ORT_ENFORCE(!IsAbsolutePath(ep_cache_context),
+                  "ep_cache_context must be a relative path, but got absolute path: ", ep_cache_context);
+      ORT_ENFORCE(!IsRelativePathToParentPath(ep_cache_context),
+                  "ep_cache_context must not contain '..'; it cannot point outside the model directory.");
       std::filesystem::path ep_context_path = session_context.GetOutputModelPath().parent_path() / ep_cache_context;
       if (ep_context_path.extension() != ".xml") {
         shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
