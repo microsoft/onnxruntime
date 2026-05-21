@@ -118,6 +118,11 @@ struct GQABufferRequirements {
       }
     }
 
+    // Unfused fallback: needs Q buffer for rotary embedding output.
+    if (req.qkv_buffer_bytes == 0 && (params.do_rotary || params.is_packed_qkv)) {
+      req.qkv_buffer_bytes = elem_size * q_elements;
+    }
+
     return req;
   }
 };
