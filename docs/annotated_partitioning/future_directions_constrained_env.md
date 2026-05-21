@@ -79,8 +79,6 @@ A config like `gpu(layers.0, layers.1, ..., layers.15); cpu(layers.16, ..., laye
 ### Risks / Open Questions
 
 - **Name stability**: Node names aren't guaranteed stable across exports. Mitigated by prefix/substring matching rather than exact names.
-- **Unnamed nodes / nodes created by graph transformers**: See detailed analysis below.
-- **Subgraph nodes**: Control flow (If/Loop) subgraph nodes may have different naming conventions.
 
 ### Handling Nodes Created by Graph Transformers
 
@@ -129,6 +127,18 @@ For models with fully static shapes (common in transformer inference with fixed 
 Additionally, by knowing exact memory requirements before execution begins, ORT can **minimize the chance of running into OOM** — if the total memory needed exceeds device capacity, the session can fail at `Initialize()` time with a clear error rather than crashing mid-inference with an opaque allocation failure.
 
 This brings ORT's allocation efficiency on par with specialized runtimes like llama.cpp, while retaining ORT's generality for arbitrary model architectures.
+
+### Dynamic Shapes in Transformer Models
+
+Nearly all transformer models are *exported* with dynamic batch + sequence_length — this is the default in PyTorch `torch.onnx.export`, Hugging Face Optimum, and Olive. However, for constrained deployment the picture is different:
+
+- **Fixed-shape re-export is standard for edge/embedded:** batch=1, seq_len=128 (or a few discrete lengths like 128/256/512). This is standard practice for TensorRT, CoreML, and QNN deployments.
+- **LLM serving keeps shapes dynamic** (variable prompts, KV-cache growth). But these are typically high-VRAM scenarios (A100/H100), not constrained environments.
+- **Vision transformers** (ViT, DINO, etc.) have fixed patch sequences — only batch is dynamic, and fixing batch=1 yields fully static shapes.
+
+**Implication for pre-allocation:** The target audience of `pre_allocate_execution_buffers` — embedded, edge, single-model-per-device — typically *can* use static shapes. Models are re-exported with fixed dimensions as part of the deployment pipeline. The dynamic-shape case (LLM serving with variable seq_len) lives in a different deployment tier where VRAM budget is less critical than throughput and the arena allocator handles repeated allocations efficiently.
+
+**Implication for workspace estimation:** Even with dynamic shapes, `EstimateWorkspace` (Level 1) and `DeclareWorkspaceRequirements` (Level 2) remain valuable for *budget decisions* — they can use worst-case shapes (max batch, max seq_len from model config) to determine how many nodes fit on the device. The estimate doesn't need to match runtime exactly; it needs to be conservative enough to avoid OOM.
 
 ### Reference: What llama.cpp Does
 
@@ -232,7 +242,7 @@ Since partitioning is decided once at `Initialize()` time and all required devic
 
 **Why this matters:** The goal is not to fail gracefully — it's to **avoid failure entirely**. Today, models either OOM on device or trigger heavy VRAM thrashing on Windows. The partitioning must be conservative enough to prevent this, while accurate enough to maximize GPU utilization.
 
-**Solution: Two-level estimation with post-assignment verification and tail-trim**
+**Solution: Two-level estimation with post-assignment verification**
 
 **Level 1 — Static workspace estimation function (at partitioning time):**
 
@@ -314,7 +324,7 @@ Status Attention::DeclareWorkspaceRequirements(span<const TensorShape> shapes,
 
 Both call the same `ComputeAttentionWorkspace()` — producing **identical results**. The estimation function gets device properties from the EP; the kernel method gets them from its stored EP reference. Same data, same computation, same answer.
 
-**For cuDNN-based ops**, the estimation function can also be precise — it calls `build_plans()` using the EP's handle and the node's shapes/attributes. The Level 2 tail-trim remains as a safety net for any edge cases (e.g., cuDNN returning different results due to driver version differences between planning and execution).
+**For cuDNN-based ops**, the estimation function can also be precise — it calls `build_plans()` using the EP's handle and the node's shapes/attributes. Level 2 re-check serves as a diagnostic safety net — if the post-fusion total exceeds the budget, a warning is logged indicating that the Level 1 estimate was too optimistic (e.g., cuDNN returning different workspace sizes due to driver version differences or fusion changing the algorithm selection).
 
 **KernelCreateInfo and registration macros:**
 
@@ -329,18 +339,85 @@ struct KernelCreateInfo {
 };
 ```
 
-The existing `ONNX_OPERATOR_TYPED_KERNEL_EX` macro doesn't need changes — it produces `KernelCreateInfo` via `BuildKernelCreateInfo<>()`. The estimation function can be set separately after construction, or a new macro variant can be introduced:
+The existing `ONNX_OPERATOR_TYPED_KERNEL_EX` macro doesn't need changes — it produces `KernelCreateInfo` via `BuildKernelCreateInfo<>()`. A new macro variant adds the estimation function for kernels that implement it:
 
 ```cpp
-// Option: set via a builder-style extension after BuildKernelCreateInfo:
-auto info = BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(...)>();
-info.workspace_estimate_func = &EstimateAttentionWorkspace;
-
-// Option: new macro that includes the estimation function:
-// (only for kernels that implement estimation — opt-in)
+// New macro: ONNX_OPERATOR_TYPED_KERNEL_EX_WITH_ESTIMATE
+// Same as ONNX_OPERATOR_TYPED_KERNEL_EX but also registers a workspace estimation function.
+#define ONNX_OPERATOR_TYPED_KERNEL_EX_WITH_ESTIMATE(                                          \
+    name, domain, ver, type, provider, builder, estimate_fn, ...)                             \
+  class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name);             \
+  template <>                                                                                 \
+  KernelCreateInfo                                                                            \
+  BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(                                \
+      provider, domain, ver, type, name)>() {                                                 \
+    return KernelCreateInfo(                                                                  \
+        builder.SetName(#name)                                                                \
+            .SetDomain(domain)                                                                \
+            .SinceVersion(ver)                                                                \
+            .Provider(provider)                                                               \
+            .Build(),                                                                         \
+        static_cast<KernelCreatePtrFn>(                                                       \
+            [](FuncManager&, const OpKernelInfo& info,                                        \
+               std::unique_ptr<OpKernel>& out) -> Status {                                    \
+              out = std::make_unique<__VA_ARGS__>(info);                                       \
+              return Status::OK();                                                            \
+            }),                                                                               \
+        estimate_fn);                                                                         \
+  }
 ```
 
-No existing macros need modification — this is purely additive.
+This requires a new `KernelCreateInfo` constructor overload:
+
+```cpp
+struct KernelCreateInfo {
+  std::unique_ptr<KernelDef> kernel_def;
+  KernelCreateFn kernel_create_func;
+  OrtKernelWorkspaceEstimateFunc workspace_estimate_func;  // NEW — may be nullptr
+  Status status;
+
+  // Existing constructor (unchanged — sets workspace_estimate_func to nullptr):
+  KernelCreateInfo(std::unique_ptr<KernelDef> definition,
+                   KernelCreateFn create_func)
+      : kernel_def(std::move(definition)),
+        kernel_create_func(create_func),
+        workspace_estimate_func(nullptr) {}
+
+  // New constructor with estimation function:
+  KernelCreateInfo(std::unique_ptr<KernelDef> definition,
+                   KernelCreateFn create_func,
+                   OrtKernelWorkspaceEstimateFunc estimate_func)
+      : kernel_def(std::move(definition)),
+        kernel_create_func(create_func),
+        workspace_estimate_func(estimate_func) {}
+
+  KernelCreateInfo(KernelCreateInfo&& other) noexcept
+      : kernel_def(std::move(other.kernel_def)),
+        kernel_create_func(std::move(other.kernel_create_func)),
+        workspace_estimate_func(other.workspace_estimate_func) {}
+
+  KernelCreateInfo() = default;
+};
+```
+
+**Usage example** (registering a CUDA Attention kernel with estimation):
+
+```cpp
+// In cuda_contrib_kernels.cc:
+ONNX_OPERATOR_TYPED_KERNEL_EX_WITH_ESTIMATE(
+    Attention,                            // name
+    kMSDomain,                            // domain
+    1,                                    // ver
+    float,                                // type
+    kCudaExecutionProvider,               // provider
+    KernelDefBuilder()                    // builder
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .InputMemoryType(OrtMemTypeCPUInput, {3, 4}),
+    &cuda::EstimateAttentionWorkspace,    // estimate_fn  ← NEW argument
+    cuda::Attention<float>);              // kernel class (__VA_ARGS__)
+```
+
+Kernels without estimation continue using `ONNX_OPERATOR_TYPED_KERNEL_EX` unchanged — their `workspace_estimate_func` is `nullptr`, and the budget logic applies the 1.5x multiplier as today. The migration is opt-in, kernel by kernel.
 
 **Integration with GetCapability and the resource budget:**
 
@@ -480,48 +557,66 @@ This produces the **exact same result** as the kernel would compute during `Decl
 
 **Why no public API for device properties or library handles:** The estimation function is registered BY the EP for ITS kernels — it's EP-specific code running in the EP's own DLL. It can safely cast `OrtEp*` to its concrete type (e.g., `CudaEp*`) to access device_prop, cuDNN handles, etc. This is the same pattern kernels already use: `static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp()`. No generic `Ep_GetCudnnHandle` or `Ep_GetDeviceIntProperty` API is needed — that would be CUDA-specific pollution of the universal EP interface.
 
-**Level 2 — Verification and diagnostics (after kernel creation):**
+**Level 2 — Post-fusion budget re-check (before InsertCast and MemcpyTransformer):**
 
-After EP assignment and kernel creation, during `FinalizeSessionState()`:
+The `TransformGraph()` pipeline has a natural insertion point after EP-specific optimizers but before the transformers that bake in EP boundaries:
 
-1. Call `DeclareWorkspaceRequirements()` on all kernel instances → get exact workspace sizes.
-2. Compute actual total memory: initializers + peak activations + peak workspace.
-3. If actual total ≤ budget → proceed normally (log confirmation at verbose level).
-4. If actual total > budget → **log a warning** with the overrun amount and the nodes contributing most workspace. Do NOT attempt to reassign nodes.
+```
+L1 optimizers → Partition (GetCapability) → L2/L3 EP-specific optimizers → [HERE] → InsertCastTransformer → L4 → MemcpyTransformer
+```
 
-**What does `DeclareWorkspaceRequirements()` have that `EstimateWorkspace()` doesn't?**
+At `[HERE]`:
+- Nodes are assigned to EPs ✓
+- EP-specific fusions (ConvRelu, FusedMatMul, etc.) have already been applied ✓
+- The graph reflects the *actual* ops that will become kernels ✓
+- Cast nodes have NOT been inserted yet ✓ (no fp16↔fp32 casts at boundaries)
+- Memcpy nodes have NOT been inserted yet ✓ (boundaries can still move)
+- Kernels do NOT exist yet ✗ (cannot call `DeclareWorkspaceRequirements`)
 
-Both run during static initialization (not runtime). Both have access to static shapes, node attributes, and the EP's device state. In the common case, they should produce **identical answers** — they call the same shared helper with the same inputs. The design intentionally makes them equivalent.
+**Why before InsertCastTransformer:** The InsertCastTransformer inserts fp16↔fp32 Cast nodes at EP boundaries where input/output types don't match. If we offload nodes *after* Cast insertion, we'd leave orphaned Cast nodes at the old boundary and need new ones at the new boundary — similar to the MemcpyTransformer problem. By running before both, any Cast and Memcpy nodes are inserted at the final (post-offload) boundaries.
 
-However, `DeclareWorkspaceRequirements()` runs *after* one additional pipeline stage that can (in narrow cases) change what a node looks like:
+Since kernels don't exist, we call the **same `EstimateWorkspace()` functions** from Level 1 — but now on the post-fusion graph. This eliminates the only meaningful gap between Level 1 and Level 2: fused ops that didn't exist at `GetCapability()` time now have their own estimation functions registered alongside their kernel definitions.
 
-1. **EP-specific graph transforms (Level 2/3 optimizers):** These run *after* `GetCapability()` partitions the graph. They can fuse adjacent nodes within an EP's subgraph (e.g., Conv+Relu → ConvRelu, MatMul+Add → FusedMatMul). The fused node is a *different op* than the original — its workspace may differ from the sum of the parts. The estimation function at Level 1 was called on the pre-fusion nodes; `DeclareWorkspaceRequirements()` is called on the post-fusion kernel.
+**Algorithm:**
 
-2. **Kernel constructor decisions:** The constructor has access to the full `OpKernelInfo` including all inputs, attributes, and EP state simultaneously. Some kernels select between code paths based on complex multi-factor heuristics (e.g., "use flash path if head_size ≤ 128 AND sm ≥ 80 AND no causal mask" vs "use unfused path otherwise"). The estimation function must replicate this logic exactly — a bug there would cause divergence.
+1. For each node assigned to the constrained EP, look up its `OrtKernelWorkspaceEstimateFunc` from the kernel registry (same registry that will later be used to create the kernel).
+2. Call the estimation function on the (possibly fused) node → get workspace.
+3. Re-run the budget check: `base_cost + workspace` for all assigned nodes.
+4. If total ≤ budget → proceed to InsertCastTransformer/MemcpyTransformer normally.
+5. If total > budget → **log a warning** and proceed. Do NOT attempt to offload nodes.
 
-**In practice, divergence is rare because:**
-- Fused ops (case 1) typically don't exist in the kernel registry at Level 1 — they're created by the fusion transformer itself, which knows their workspace needs. The estimation function for a fused op would be registered alongside the fused kernel.
-- Constructor logic (case 2) is the same arithmetic the estimation function replicates.
+**Why warn-only (no runtime offload):**
 
-**The honest assessment:** For well-written estimation functions operating on models with static shapes, Level 2 should agree with Level 1 100% of the time. Level 2's value is purely as a **development-time assertion** — catching bugs in estimation functions during testing, not as a production safety net.
+The earlier design attempted tail-node offloading at this stage — walking backward through GPU-assigned nodes and reassigning them to CPU. In practice, this is problematic:
 
-**Why we cannot reassign nodes at this stage:**
+- **For bf16/fp16 models** (the dominant constrained-VRAM use case): CPU EP lacks kernels for most bf16/fp16 compute ops (MatMul, Attention, LayerNorm). The offload loop would hit a non-offloadable node almost immediately and accomplish nothing.
+- **For fp32 CNN models** (where CPU *could* handle offloaded ops): The performance cost of GPU→CPU→GPU data transfers typically outweighs the memory benefit of offloading a few tail nodes.
+- **Complexity vs value**: Offload logic (type checking, contiguous-tail constraint, boundary correctness) adds significant code for a feature that rarely fires and rarely helps.
 
-The MemcpyTransformer (which inserts data-copy nodes at EP boundaries) runs during graph transformation — well before `FinalizeSessionState()`. By the time kernels exist and exact workspace is known, the graph already has Memcpy nodes baked in at the original partition boundaries. Reassigning tail nodes to CPU would require:
-- Removing the now-incorrect Memcpy nodes at the old boundary
-- Inserting new Memcpy nodes at the new boundary
-- Re-running shape inference on affected subgraphs
-- Re-creating kernels for the moved nodes under a different EP
+The correct fix for a Level 2 budget overrun is to **improve Level 1 accuracy** — make the estimation functions precise enough that post-fusion re-check merely confirms (not corrects) the budget. Level 2 serves as a **diagnostic safety net**: if the warning fires, it indicates the Level 1 estimate was too optimistic, and the estimation function for the offending kernel(s) should be improved.
 
-This is effectively re-running a portion of `Initialize()` — not a simple post-hoc trim. The complexity and fragility of partial re-partitioning at this stage makes it impractical.
+```cpp
+// Pseudo-code in TransformGraph, after L2/L3, before InsertCastTransformer:
+if (level2_total > budget) {
+    size_t overrun = level2_total - budget;
+    LOGS(logger, WARNING)
+        << "Post-fusion budget re-check: EP '" << ep_type
+        << "' exceeds memory budget by " << overrun << " bytes. "
+        << "Level 1 estimation was too optimistic. "
+        << "Consider improving workspace estimation for fused ops. "
+        << "Proceeding — runtime OOM may occur.";
+}
+```
 
-**Design philosophy: get it right in Level 1.**
+This keeps the pipeline simple: Level 2 is purely observational (re-check + warn), not interventional. If the warning fires in testing, the developer improves the relevant `EstimateWorkspace()` function. In production, the budget was validated at Level 1 and Level 2 divergence should be rare.
 
-The estimation functions demonstrated above (Attention, Conv) produce **exact** workspace sizes using the same logic and data the kernel will use. For 75% of workspace-consuming kernels, shapes alone determine workspace (pure arithmetic). For another 16%, the cuDNN heuristic planner gives exact answers. The remaining ~12% (MOE, MatMulNBits) use upper-bound estimates that are tight.
+**Why Level 2 exists separately from Level 1:**
 
-Given this precision, Level 2 serves as a **diagnostic check**, not a correction mechanism:
-- If the estimate matches → confirms the system is working correctly.
-- If the estimate under-shot → the warning alerts the developer that a particular kernel's estimation function needs improvement. This is a bug to fix in the estimation function, not a runtime recovery scenario.
+Level 1 (during `GetCapability()`) operates on the **pre-fusion** graph. It estimates workspace for the original unfused nodes (Conv, Relu separately). Level 2 operates on the **post-fusion** graph (ConvRelu as a single node). The two can diverge when:
+- A fused op's workspace differs from the sum of its parts (common — fusion often reduces workspace)
+- Level 2/3 optimizers add or remove nodes (e.g., constant folding eliminates a node entirely)
+
+For most LLM models (which are repetitive transformer blocks with minimal fusion opportunity), Level 1 and Level 2 will agree. Level 2 matters more for CNN models with heavy fusion (Conv+BN+Relu patterns).
 
 **When static shapes are unavailable:**
 
@@ -832,17 +927,71 @@ Workspace pre-allocation follows the same model:
 
 **Note on CUDA:** In practice, concurrent `Run()` on the same CUDA session is uncommon (users don't typically do this). But the design should remain thread-safe by following the same per-run buffer pattern.
 
+**Single-thread pre-allocation mode (eliminating runtime OOM):**
+
+Even with workspace planning, the per-`Run()` buffer allocation can still OOM if device memory is fragmented or consumed by other processes since `Initialize()`. For constrained environments, this is the last remaining point of failure.
+
+Most constrained-environment users run **single-threaded inference** — one `Run()` at a time. ORT already has a concurrent-run counter (`InferenceSession::current_num_runs_`). If the session is configured to disallow concurrency, the execution buffer (which includes workspace slots) can be **allocated once at initialization and reused for every `Run()` call**:
+
+```cpp
+session_options.AddConfigEntry("session.pre_allocate_execution_buffers", "1");
+```
+
+When enabled:
+1. After `FinalizeSessionState()` computes the memory pattern (including workspace offsets from `DeclareWorkspaceRequirements`), allocate the peak buffer once: `IAllocator::Alloc(peak_size)` per EP.
+2. Store the pre-allocated buffer pointer on `SessionState`.
+3. Each `Run()` reuses the same buffer — no allocation, no OOM possible.
+4. Enforce `max_concurrent_runs = 1`: if a second `Run()` arrives, fail fast.
+
+```cpp
+if (pre_allocate_mode_ && current_num_runs_.fetch_add(1) > 0) {
+    current_num_runs_.fetch_sub(1);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+        "Concurrent Run() not allowed with pre-allocated execution buffers.");
+}
+```
+
+**What this guarantees:** If `Initialize()` succeeds, `Run()` cannot OOM — all device memory (weights + intermediates + workspace) is already resident. The budget at partition time accounts for all three: `budget ≥ weights_on_device + peak_execution_buffer`.
+
+**What already exists:** `MemoryPattern` computation is done, `MemoryPatternGroup::GetPeakAllocSize()` gives peak size, `current_num_runs_` counter exists, per-EP allocators exist. The `ExecutionFrame` already uses offset-based placement into a contiguous block — the change is to not free/reallocate that block between calls.
+
+**Scope:** Single-threaded only. For concurrent inference, multiple buffers are needed (defeating the guarantee).
+
+**Interaction with dynamic shapes:** `pre_allocate_execution_buffers` is fundamentally a **static-shape-only** feature. With dynamic shapes, `ExecutionFrame` must allocate buffers on every `Run()` because activation tensor sizes are unknown until the input arrives — there is no way to pre-compute a total buffer size at `Initialize()` time. Even if some kernels' workspace slots are shape-independent, the activation portion (which typically dominates) still requires per-`Run()` allocation, so the OOM-elimination guarantee cannot hold.
+
+Furthermore, the arena allocator already handles repeated allocations efficiently (same-size blocks are recycled without syscalls), so pre-allocating just the workspace portion while leaving activations dynamic would add complexity for negligible gain.
+
+**Summary:** For dynamic-shape models, the value of `DeclareWorkspaceRequirements` is in **budget estimation** (Level 1/Level 2, using worst-case or max-batch sizes to decide how many nodes fit on the device), not in runtime pre-allocation.
+
 **Planning flow (during FinalizeSessionState):**
 
 1. For each kernel in the execution plan (when shapes are static), call `DeclareWorkspaceRequirements()` with the inferred input shapes.
 2. Record `{NodeIndex, slot_id} → size_bytes` in the execution plan.
 3. Run liveness analysis: workspace for node N is live only during step N's execution.
 4. Compute offsets (same algorithm as activation patterns) → yields `peak_workspace_size` and per-slot offsets.
-5. Store workspace pattern in `SessionState` (like memory patterns).
+5. Store workspace pattern as a **separate `WorkspacePattern`** in `SessionState`.
+
+**Why workspace buffers are separate from `MemoryPattern` (activations):**
+
+Although the offset planning algorithm is the same (liveness → assign offsets → compute peak), workspace buffers differ in allocation and retrieval:
+
+| Aspect | MemoryPattern (activations) | WorkspacePattern |
+|--------|---------------------------|------------------|
+| **Addressing** | `MLValueIndex` — framework-assigned, part of graph IR | `(NodeIndex, slot_id)` — kernel-defined, opaque to framework |
+| **Who queries** | Framework automatically when creating output `OrtValue`s | Kernel explicitly via `GetPreallocatedWorkspace(slot_id)` |
+| **Lifetime** | Multi-step — output lives until its last consumer executes | Single-step — live only during the owning kernel's step |
+| **What's returned** | An `OrtValue` (typed tensor with shape metadata) | Raw `void*` — kernel interprets the bytes internally |
+| **Graph visibility** | Framework manages these as edges between nodes | Invisible to graph — internal scratch memory |
+| **Size determination** | Inferred from output shape × element_size | Declared by kernel (may be unrelated to any tensor shape) |
+
+Concretely, this means:
+- `WorkspacePattern` is a new class (not reusing `MemoryPatternGroup`) with its own lookup: `GetOffset(NodeIndex, slot_id) → {offset, size}`.
+- The workspace buffer is allocated separately from the activation buffer. They could share physical memory (workspace is always single-step, so it never overlaps with itself across steps), but keeping them separate simplifies accounting and makes budget tracking unambiguous: `peak_total = peak_activations + peak_workspace`.
+- In pre-allocation mode, both buffers are allocated once at init. In normal mode, both are allocated per-`Run()` from the arena. But they remain distinct allocations with distinct query paths.
 
 **Per-Run retrieval (during Compute):**
 
-Each `ExecutionFrame` allocates a workspace buffer of `peak_workspace_size` via `Reserve()` and provides offset-based access:
+Each `ExecutionFrame` allocates a workspace buffer of `peak_workspace_size` via the EP's allocator and provides offset-based access through a dedicated query interface (not the existing OrtValue/MLValue machinery):
 
 **Alternative A: Transparent fallback in GetScratchBuffer**
 
@@ -1024,14 +1173,30 @@ A minimal custom executable (CLI tool) serves three purposes:
 
 | Concern | Status | Notes |
 |---------|--------|-------|
-| Tokenizer | External dependency | ORT core has no tokenizer. Options: link sentencepiece, use onnxruntime-extensions, or bundle minimal BPE |
+| Tokenizer | Reuse from ORT Extensions | See tokenizer strategy below |
 | KV cache rotation | Straightforward | Pre-allocate `(batch, heads, max_seq, head_dim)`, feed `past_key_values` outputs back as inputs each step |
 | Decode loop | Trivial | Run session → extract logits → sample token → repeat |
 | Model format | Constraint | Requires decoder-style ONNX export with explicit KV cache I/O (HuggingFace optimum exports provide this) |
 | Partitioning | This design | Direction 1 + `IResourceAccountant` |
 | Static allocation | Phase A+B | Fixed `max_seq_len` makes all decode-phase shapes static |
 
-The executable would be ~500–1000 LOC (excluding tokenizer): configure session options, set up KV cache tensors, run the generate loop. The tokenizer is the only non-trivial external dependency.
+**Tokenizer strategy — borrowing from ORT Extensions:**
+
+[ORT Extensions](https://github.com/microsoft/onnxruntime-extensions) already implements production-quality tokenizers in C++:
+- **BPE** (GPT-2, LLaMA-3, Phi, Mistral) — `onnxruntime_extensions/tokenizer/bpe_tokenizer.cc`
+- **SentencePiece** (LLaMA-1/2, T5, mT5) — wraps the SentencePiece C++ library
+- **WordPiece** (BERT, DistilBERT) — `onnxruntime_extensions/tokenizer/wordpiece_tokenizer.cc`
+
+For the custom executable, we can **extract the tokenizer C++ code directly** from ORT Extensions rather than taking a full dependency on the extensions DLL. The tokenizer logic is self-contained: it reads a vocabulary/merge file, applies the algorithm (BPE merge loop, SentencePiece unigram, or WordPiece greedy match), and produces token IDs. No ONNX graph execution is involved.
+
+**Practical approach:**
+1. Copy the relevant tokenizer source files (BPE tokenizer is ~500 LOC + vocab loading) into the demo executable's source tree.
+2. Strip the ORT Extensions custom-op registration wrapper — keep only the core `Encode(string) → vector<int>` and `Decode(vector<int>) → string` logic.
+3. Load the tokenizer model file (e.g., `tokenizer.json` from HuggingFace, or `tokenizer.model` for SentencePiece) at startup alongside the ONNX model.
+
+This gives us a battle-tested tokenizer with no additional runtime dependency — just a few source files compiled into the executable. The code is already Apache-2.0 licensed (same as ORT).
+
+The executable would be ~500–1000 LOC (excluding tokenizer): configure session options, set up KV cache tensors, run the generate loop. With the borrowed tokenizer code, the total grows to ~1500–2000 LOC but remains self-contained with zero external dependencies beyond ORT itself.
 
 ---
 
