@@ -282,6 +282,76 @@ void LaunchQMoEPrePackOffsetBias(
   QMoEPrePackZPKernel<__nv_bfloat16><<<grid, block, 0, stream>>>(zp, scales, output, num_elements, offset);
 }
 
+// Batched 4-bit packed ZP scaled bias kernel.
+// Grid: (ceil(n/16), ceil(k_blocks/16), experts)
+// Each thread computes one output element: output[e][out_row][out_col]
+// where out_row in [0, k_blocks), out_col in [0, n).
+// ZP layout: [experts, n, packed_k_blocks] with packed_k_blocks = (k_blocks+1)/2
+// Scale/Output layout: [experts, k_blocks, n]
+template <typename T>
+__global__ void QMoEScaledZP4BitBatchedKernel(
+    const uint8_t* packed_zp,
+    const T* transposed_scale,
+    T* scaled_zero_point,
+    int n, int k_blocks,
+    float default_zero_point) {
+  int out_col = blockIdx.x * blockDim.x + threadIdx.x;
+  int out_row = blockIdx.y * blockDim.y + threadIdx.y;
+  int expert = blockIdx.z;
+
+  if (out_col < n && out_row < k_blocks) {
+    int packed_k_blocks = (k_blocks + 1) / 2;
+    int64_t expert_zp_offset = static_cast<int64_t>(expert) * n * packed_k_blocks;
+    int64_t expert_scale_offset = static_cast<int64_t>(expert) * k_blocks * n;
+
+    // ZP is [n, packed_k_blocks] per expert; in_row = out_col, in_col = out_row
+    int in_row = out_col;
+    int in_col = out_row;
+    int64_t packed_zp_offset = expert_zp_offset + static_cast<int64_t>(in_row) * packed_k_blocks + in_col / 2;
+    uint8_t packed_byte = packed_zp[packed_zp_offset];
+    float zero_point_val = static_cast<float>((in_col & 0x01) ? (packed_byte >> 4) : (packed_byte & 0x0f));
+
+    int64_t output_offset = expert_scale_offset + static_cast<int64_t>(out_row) * n + out_col;
+    T scale_val = transposed_scale[output_offset];
+    float result = static_cast<float>(scale_val) * (-zero_point_val + default_zero_point);
+    scaled_zero_point[output_offset] = static_cast<T>(result);
+  }
+}
+
+void LaunchQMoEScaledZP4BitBatched(
+    const uint8_t* packed_zp,
+    const half* transposed_scale,
+    half* scaled_zero_point,
+    int experts, int n, int k_blocks,
+    float default_zero_point,
+    cudaStream_t stream) {
+  constexpr int BLOCK_SIZE = 16;
+  dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
+  dim3 gridDim(
+      (n + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      (k_blocks + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      experts);
+  QMoEScaledZP4BitBatchedKernel<half><<<gridDim, blockDim, 0, stream>>>(
+      packed_zp, transposed_scale, scaled_zero_point, n, k_blocks, default_zero_point);
+}
+
+void LaunchQMoEScaledZP4BitBatched(
+    const uint8_t* packed_zp,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int experts, int n, int k_blocks,
+    float default_zero_point,
+    cudaStream_t stream) {
+  constexpr int BLOCK_SIZE = 16;
+  dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
+  dim3 gridDim(
+      (n + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      (k_blocks + BLOCK_SIZE - 1) / BLOCK_SIZE,
+      experts);
+  QMoEScaledZP4BitBatchedKernel<__nv_bfloat16><<<gridDim, blockDim, 0, stream>>>(
+      packed_zp, transposed_scale, scaled_zero_point, n, k_blocks, default_zero_point);
+}
+
 __global__ void QMoEShiftWeightsKernel(const uint8_t* input, uint8_t* output, int num_elements) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < num_elements) {
@@ -744,6 +814,65 @@ void LaunchQMoEDequantizeFp8Weights(
     int k,
     cudaStream_t stream) {
   LaunchQMoEDequantizeFp8WeightsImpl(weights, global_scales, output, num_experts, n, k, stream);
+}
+
+// Repack column-major FP4 packed weights to row-major layout.
+// Input: [experts, k, n/2] packed col-major (each byte holds 2 values along n).
+// Output: [experts, n, k/2] packed row-major (each byte holds 2 values along k).
+// One thread per output byte.
+__global__ void QMoERepackFP4ColToRowKernel(
+    const uint8_t* __restrict__ input,
+    uint8_t* __restrict__ output,
+    int experts,
+    int64_t k,
+    int64_t n) {
+  const int64_t k_half = k / 2;
+  const int64_t n_half = n / 2;
+  const int64_t out_expert_stride = n * k_half;
+  const int64_t in_expert_stride = k * n_half;
+  const int64_t total = static_cast<int64_t>(experts) * out_expert_stride;
+
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= total) return;
+
+  int64_t expert = idx / out_expert_stride;
+  int64_t rem = idx - expert * out_expert_stride;
+  int64_t row = rem / k_half;       // output row index [0, n)
+  int64_t col_byte = rem % k_half;  // output byte index [0, k/2)
+
+  int64_t col_even = col_byte * 2;
+  int64_t col_odd = col_even + 1;
+
+  // Source byte addresses: src[expert][col][row/2]
+  int64_t in_base = expert * in_expert_stride;
+  uint8_t src_even = input[in_base + col_even * n_half + row / 2];
+  uint8_t src_odd = input[in_base + col_odd * n_half + row / 2];
+
+  // Extract nibble based on row parity
+  uint8_t low_code = (row % 2 == 0) ? (src_even & 0x0F) : ((src_even >> 4) & 0x0F);
+  uint8_t high_code = (row % 2 == 0) ? (src_odd & 0x0F) : ((src_odd >> 4) & 0x0F);
+
+  output[idx] = low_code | static_cast<uint8_t>(high_code << 4);
+}
+
+void LaunchQMoERepackFP4ColToRow(
+    const uint8_t* input,
+    uint8_t* output,
+    int experts,
+    int64_t k,
+    int64_t n,
+    cudaStream_t stream) {
+  ORT_ENFORCE(experts > 0, "LaunchQMoERepackFP4ColToRow requires positive expert count, got ", experts);
+  ORT_ENFORCE(k > 0 && n > 0, "LaunchQMoERepackFP4ColToRow requires positive k and n, got k=", k, ", n=", n);
+  ORT_ENFORCE(k % 2 == 0 && n % 2 == 0,
+              "LaunchQMoERepackFP4ColToRow requires even k and n, got k=", k, ", n=", n);
+  const int64_t total = static_cast<int64_t>(experts) * n * (k / 2);
+  constexpr int kThreads = 256;
+  int64_t blocks = (total + kThreads - 1) / kThreads;
+  ORT_ENFORCE(blocks <= static_cast<int64_t>(std::numeric_limits<int>::max()),
+              "LaunchQMoERepackFP4ColToRow grid size exceeds int range");
+  QMoERepackFP4ColToRowKernel<<<static_cast<int>(blocks), kThreads, 0, stream>>>(
+      input, output, experts, k, n);
 }
 
 }  // namespace cuda
