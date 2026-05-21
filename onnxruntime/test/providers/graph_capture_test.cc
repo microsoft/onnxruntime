@@ -69,7 +69,7 @@ void AppendWebGpuEp(Env& env, SessionOptions& session_options,
   ASSERT_FALSE(webgpu_devices.empty()) << "No WebGPU EP device found after plugin registration";
   session_options.AppendExecutionProvider_V2(env, webgpu_devices, provider_options);
 #else
-  ORT_UNUSED_PARAMETER(env);
+  (void)env;
   session_options.AppendExecutionProvider("WebGPU", provider_options);
 #endif
 }
