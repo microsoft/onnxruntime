@@ -89,6 +89,8 @@ jobs:
 
   - task: Bash@3
     displayName: 'Build Python Wheel'
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh

@@ -77,6 +77,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool is_unidirectional,
                         bool is_nvidia,
                         bool is_apple,
+                        bool has_subgroups,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
                         bool has_head_sink = false)
@@ -88,12 +89,12 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         qkv_num_heads_(qkv_num_heads),
         is_unidirectional_(is_unidirectional),
         is_nvidia_(is_nvidia),
-        is_apple_(is_apple),
+        use_shm_path_(is_apple || is_nvidia || !has_subgroups),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
         has_head_sink_(has_head_sink) {
-    if (is_apple || is_nvidia) {
-      // On Apple and NVIDIA, use an optimized loop-based path with dynamic max_k_step.
+    if (use_shm_path_) {
+      // Use shared-memory loop-based path with dynamic max_k_step.
       // Compute max_k_step from workgroup shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
       const int element_size = is_fp16 ? 2 : 4;
       constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
@@ -130,7 +131,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int qkv_num_heads_;
   bool is_unidirectional_;
   bool is_nvidia_;
-  bool is_apple_;
+  bool use_shm_path_;
   bool q_BNSH_;
   bool use_seqlen_k_;
   bool has_head_sink_;

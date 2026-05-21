@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+
 """Shared utilities for the WebGPU plugin EP packaging scripts. Not a public API."""
 
 from __future__ import annotations

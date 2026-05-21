@@ -1,15 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <sstream>
+
 #include "core/graph/onnx_protobuf.h"
+#include "onnx/checker.h"
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/model.h"
+#include "core/graph/model_helpers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 
@@ -85,6 +90,34 @@ static void Check(const char* source,
       ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
     }
   }
+}
+
+static Status LoadModel(const char* source) {
+  ONNX_NAMESPACE::OnnxParser parser(source);
+  ONNX_NAMESPACE::ModelProto model;
+  auto parse_status = parser.Parse(model);
+  if (!parse_status.IsOK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to parse test model: ", parse_status.ErrorMessage());
+  }
+  if (!parser.EndOfInput()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Extra unparsed input unexpected.");
+  }
+
+  try {
+    ONNX_NAMESPACE::checker::check_model(model);
+  } catch (const std::exception& e) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX model check failed: ", e.what());
+  }
+
+  std::string serialized_model;
+  if (!model.SerializeToString(&serialized_model) || serialized_model.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize test model.");
+  }
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+  std::istringstream sstr(serialized_model);
+  return session_object.Load(sstr);
 }
 
 namespace {
@@ -301,6 +334,370 @@ TEST(FunctionTest, CallInConditional) {
         )";
 
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
+}
+
+TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.self_recursive (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        self_recursive (lx) => (ly) {
+            ly = local.self_recursive (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.first (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        first (lx) => (ly) {
+            ly = local.second (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        second (lx) => (ly) {
+            ly = local.first (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
+  // A local function that calls itself inside an If subgraph (then_branch).
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.recursive_if (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        recursive_if (lx) => (ly) {
+            temp = Identity (lx)
+            cond = Constant <value = bool {1}> ()
+            ly = If (cond) <
+                then_branch = then_graph () => (float[N] then_out)
+                {
+                    then_out = local.recursive_if (temp)
+                },
+                else_branch = else_graph () => (float[N] else_out)
+                {
+                    else_out = Identity (temp)
+                }
+                >
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+// --- Synthetic adjacency-list tests for ValidateCallGraphAcyclic ---
+// These test the cycle detection algorithm directly without constructing ONNX models.
+
+TEST(FunctionTest, CallGraphAcyclic_EmptyGraph) {
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SingleNodeNoCalls) {
+  // Single function with no callees.
+  std::string a = "A";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SelfCycle) {
+  std::string a = "A";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("A -> A"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_MutualCycle) {
+  std::string a = "A", b = "B";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_LongerCycle) {
+  // A -> B -> C -> A
+  std::string a = "A", b = "B", c = "C";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {c};
+  call_graph[c] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  // The cycle path should include all three participants.
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("A"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("B"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("C"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_DiamondNoCycle) {
+  // A -> B, A -> C, B -> D, C -> D  (no cycle)
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b, c};
+  call_graph[b] = {d};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_DeepChainNoCycle) {
+  // A -> B -> C -> D  (no cycle)
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {c};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_MultipleIndependentCycles) {
+  // Two independent cycles: A -> B -> A, C -> D -> C
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {a};
+  call_graph[c] = {d};
+  call_graph[d] = {c};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SharedCallsDiamondNoCycle) {
+  // Regression test: acyclic model with shared function calls (diamond pattern).
+  // E -> A, E -> B, A -> C, B -> C, C -> D  (no cycle despite shared references to C)
+  std::string a = "A", b = "B", c = "C", d = "D", e = "E";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[e] = {a, b};
+  call_graph[a] = {c};
+  call_graph[b] = {c};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+// --- Model-level integration tests ---
+
+TEST(FunctionTest, RejectsLongerCycle) {
+  // A -> B -> C -> A (three-function cycle)
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.func_a (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            ly = local.func_b (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_c (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_a (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, AcceptsAcyclicDiamond) {
+  // A -> B, A -> C, B -> D, C -> D (diamond, no cycle)
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.func_a (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            t1 = local.func_b (lx)
+            ly = local.func_c (t1)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        func_d (lx) => (ly) {
+            ly = Identity (lx)
+        }
+        )";
+
+  ASSERT_STATUS_OK(LoadModel(code));
+}
+
+TEST(FunctionTest, AcceptsTrivialSingleNodeFunction) {
+  // A local function with a single Identity node — verifies that trivial
+  // (but non-empty) function bodies pass acyclicity validation.
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.trivial_func (x)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        trivial_func (lx) => (ly) {
+            ly = Identity (lx)
+        }
+        )";
+
+  ASSERT_STATUS_OK(LoadModel(code));
+}
+
+TEST(FunctionTest, RejectsMultipleIndependentCycles) {
+  // Two independent cycles in the same model: A -> B -> A, C -> D -> C
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            t = local.func_a (x)
+            y = local.func_c (t)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            ly = local.func_b (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_a (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_d (lx) => (ly) {
+            ly = local.func_c (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
 }
 
 // Test use of attibute references, especially where source/target attribute

@@ -9,6 +9,7 @@
 #include <sstream>
 #include <utility>
 
+#include <onnx/defs/attr_proto_util.h>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/graph/extended_graph_edge.h"
 #include "core/graph/graph_utils.h"
@@ -31,21 +32,37 @@ bool CanNodePropagate(const Node& node) {
 
 // Makes matching attributes for new QuantizeLinear nodes from an existing DequantizeLinear node.
 NodeAttributes MakeQAttrsFromDQ(const Node& dq_node) {
-  assert(dq_node.SinceVersion() <= 21);  // Checked by previous call to QDQ::MatchDQNode().
-  // In opset <= 21, all DQ attributes (i.e., axis and block_size) are also Q attributes.
-  // So, set a copy of the DQ attributes.
-  return dq_node.GetAttributes();
+  // DQ's axis and block_size attributes are also valid Q attributes for all supported opsets.
+  // So, start with a copy of the DQ attributes.
+  NodeAttributes q_attrs = dq_node.GetAttributes();
+
+  // From opset 21 onward, Q supports an "output_dtype" attribute that controls the quantized
+  // element type when no zero-point input is provided. Without it, qdq_util.cc silently falls
+  // back to UINT8, which corrupts negative values for INT8 (or other signed) inputs.
+  if (dq_node.SinceVersion() >= 21) {
+    const auto* input_type_proto = dq_node.InputDefs()[0]->TypeAsProto();
+    if (input_type_proto != nullptr) {
+      const int32_t elem_type = input_type_proto->tensor_type().elem_type();
+      if (elem_type != ONNX_NAMESPACE::TensorProto::UNDEFINED) {
+        q_attrs["output_dtype"] = ONNX_NAMESPACE::MakeAttribute("output_dtype",
+                                                                static_cast<int64_t>(elem_type));
+      }
+    }
+  }
+
+  return q_attrs;
 }
 
 // Makes matching attributes for new DequantizeLinear nodes from an existing QuantizeLinear node.
 NodeAttributes MakeDQAttrsFromQ(const Node& q_node) {
-  assert(q_node.SinceVersion() <= 21);  // Checked by previous call to QDQ::MatchQNode().
+  // QDQ::MatchQNode() accepts opsets 10–25; the assert below would abort debug builds for
+  // opset 23/24/25 models, so it is intentionally omitted.
   const NodeAttributes& q_attrs = q_node.GetAttributes();
   if (q_attrs.empty()) {
     return {};
   }
 
-  // In opset <= 21, only the "axis" and "block_size" attributes for Q are also DQ attributes.
+  // Only the "axis" and "block_size" attributes for Q are also valid DQ attributes.
   NodeAttributes dq_attrs;
 
   auto axis_attr_it = q_attrs.find("axis");

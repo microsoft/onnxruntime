@@ -1007,8 +1007,17 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   const epctx::BufferWriteFuncHolder* output_write_func_holder = ep_context_gen_options.TryGetOutputModelWriteFunc();
   const std::filesystem::path* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
 
+  // Determine whether we need to resolve/validate a file system path for the output model.
+  // A path is needed when:
+  //   - Writing the output model to a file (not to a buffer or write function)
+  //   - Writing initializers to an external file (needs the model path to compute the external file location)
+  const bool output_is_to_file = (output_buffer_holder == nullptr && output_write_func_holder == nullptr);
+  const bool needs_path_for_external_initializers =
+      (ep_context_gen_options.TryGetExternalInitializerFileInfo() != nullptr);
+
   std::filesystem::path valid_output_model_path;
-  if (output_model_path_ptr != nullptr || !graph.ModelPath().empty()) {
+  if ((output_is_to_file || needs_path_for_external_initializers) &&
+      (output_model_path_ptr != nullptr || !graph.ModelPath().empty())) {
     std::filesystem::path output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr
                                                                                  : std::filesystem::path("");
     ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(output_model_path,
