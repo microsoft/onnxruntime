@@ -126,19 +126,19 @@ FusedDotInt8(
             acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
         }
     } else {
-        __m256 scale_vec = _mm256_broadcast_ss(scales);
+        // Per-tensor: defer scale multiplication until after accumulation.
+        // sum(a[k] * b[k] * scale) = scale * sum(a[k] * b[k])
+        // This saves one vmulps per 8 elements in the hot loop.
         for (; k < vec_end; k += 16) {
             __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
             __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
             __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
-            bf0 = _mm256_mul_ps(bf0, scale_vec);
             __m256 a0 = _mm256_loadu_ps(a_row + k);
             acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
 
             __m128i raw1 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k + 8));
             __m256i i32_1 = _mm256_cvtepi8_epi32(raw1);
             __m256 bf1 = _mm256_cvtepi32_ps(i32_1);
-            bf1 = _mm256_mul_ps(bf1, scale_vec);
             __m256 a1 = _mm256_loadu_ps(a_row + k + 8);
             acc1 = _mm256_fmadd_ps(a1, bf1, acc1);
         }
@@ -146,7 +146,6 @@ FusedDotInt8(
             __m128i raw0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + k));
             __m256i i32_0 = _mm256_cvtepi8_epi32(raw0);
             __m256 bf0 = _mm256_cvtepi32_ps(i32_0);
-            bf0 = _mm256_mul_ps(bf0, scale_vec);
             __m256 a0 = _mm256_loadu_ps(a_row + k);
             acc0 = _mm256_fmadd_ps(a0, bf0, acc0);
         }
@@ -161,9 +160,15 @@ FusedDotInt8(
     float dot = _mm_cvtss_f32(sum4);
 
     // Scalar tail
-    for (; k < K; ++k) {
-        float sc = per_channel ? scales[k] : scales[0];
-        dot += a_row[k] * static_cast<float>(b_row[k]) * sc;
+    if (per_channel) {
+        for (; k < K; ++k) {
+            dot += a_row[k] * static_cast<float>(b_row[k]) * scales[k];
+        }
+    } else {
+        for (; k < K; ++k) {
+            dot += a_row[k] * static_cast<float>(b_row[k]);
+        }
+        dot *= scales[0];
     }
     return dot;
 }

@@ -224,19 +224,19 @@ FusedDotInt8_Avx512(
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
         }
     } else {
-        __m512 scale_vec = _mm512_set1_ps(scales[0]);
+        // Per-tensor: defer scale multiplication until after accumulation.
+        // sum(a[k] * b[k] * scale) = scale * sum(a[k] * b[k])
+        // This saves one vmulps per 16 elements in the hot loop.
         for (; k < vec_end; k += 32) {
             __m128i raw0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k));
             __m512i i32_0 = _mm512_cvtepi8_epi32(raw0);
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
-            bf0 = _mm512_mul_ps(bf0, scale_vec);
             __m512 a0 = _mm512_loadu_ps(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
 
             __m128i raw1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k + 16));
             __m512i i32_1 = _mm512_cvtepi8_epi32(raw1);
             __m512 bf1 = _mm512_cvtepi32_ps(i32_1);
-            bf1 = _mm512_mul_ps(bf1, scale_vec);
             __m512 a1 = _mm512_loadu_ps(a_row + k + 16);
             acc1 = _mm512_fmadd_ps(a1, bf1, acc1);
         }
@@ -244,7 +244,6 @@ FusedDotInt8_Avx512(
             __m128i raw0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k));
             __m512i i32_0 = _mm512_cvtepi8_epi32(raw0);
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
-            bf0 = _mm512_mul_ps(bf0, scale_vec);
             __m512 a0 = _mm512_loadu_ps(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
         }
@@ -254,9 +253,15 @@ FusedDotInt8_Avx512(
     float dot = _mm512_reduce_add_ps(acc0);
 
     // Scalar tail
-    for (; k < K; ++k) {
-        float sc = per_channel ? scales[k] : scales[0];
-        dot += a_row[k] * static_cast<float>(b_row[k]) * sc;
+    if (per_channel) {
+        for (; k < K; ++k) {
+            dot += a_row[k] * static_cast<float>(b_row[k]) * scales[k];
+        }
+    } else {
+        for (; k < K; ++k) {
+            dot += a_row[k] * static_cast<float>(b_row[k]);
+        }
+        dot *= scales[0];
     }
     return dot;
 }
