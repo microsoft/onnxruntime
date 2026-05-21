@@ -80,7 +80,7 @@
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
-  else()
+  elseif(onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
     # The ONNX domain CUDA Attention kernel (core/providers/cuda/llm/attention.cc) depends on
     # attention infrastructure in contrib_ops/cuda/bert/ (flash attention, memory efficient
     # attention, unfused attention helpers, etc.). Include the bert attention infrastructure
