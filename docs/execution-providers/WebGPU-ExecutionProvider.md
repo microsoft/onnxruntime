@@ -9,7 +9,7 @@ redirect_from: /docs/reference/execution-providers/WebGPU-ExecutionProvider
 # WebGPU Execution Provider
 {: .no_toc }
 
-The WebGPU Execution Provider enables hardware-accelerated inference of ONNX models on a wide range of GPUs by targeting the [WebGPU](https://www.w3.org/TR/webgpu/) API. On native platforms it uses [Dawn](https://dawn.googlesource.com/dawn) (Google's WebGPU implementation), which in turn dispatches to D3D12, Vulkan, or Metal, depending on the platform. The same execution provider also powers the `webgpu` backend of [ONNX Runtime Web](../get-started/with-javascript/web.md) inside the browser.
+The WebGPU Execution Provider enables hardware-accelerated inference of ONNX models on a wide range of GPUs by targeting the [WebGPU](https://www.w3.org/TR/webgpu/) API. On native platforms it uses [Dawn](https://dawn.googlesource.com/dawn) (Google's WebGPU implementation), which in turn dispatches to D3D12, Vulkan, or Metal, depending on the platform. The same execution provider can also power the `webgpu` backend of [ONNX Runtime Web](../get-started/with-javascript/web.md) inside the browser.
 
 Compared to other GPU execution providers, WebGPU EP aims to be cross-vendor and cross-platform: a single build can target any GPU supported by the platform's native graphics API, without requiring a vendor-specific SDK on the end user's machine.
 
