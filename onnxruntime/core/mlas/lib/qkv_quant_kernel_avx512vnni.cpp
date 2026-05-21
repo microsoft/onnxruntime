@@ -577,7 +577,7 @@ SVGemm_Avx512Vnni(
                     }
                 }
             } else {
-                __m512 scale_vec = _mm512_set1_ps(Scales[0]);
+                // Per-tensor: accumulate unscaled dot products, then scale the output row once.
                 for (size_t k = 0; k < K; ++k) {
                     const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
                     const float a_val = a_row[k];
@@ -588,14 +588,24 @@ SVGemm_Avx512Vnni(
                         __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + n));
                         __m512i i32 = _mm512_cvtepi8_epi32(raw);
                         __m512 bf = _mm512_cvtepi32_ps(i32);
-                        bf = _mm512_mul_ps(bf, scale_vec);
                         __m512 c_vec = _mm512_loadu_ps(c_row + n);
                         c_vec = _mm512_fmadd_ps(a_broadcast, bf, c_vec);
                         _mm512_storeu_ps(c_row + n, c_vec);
                     }
                     for (; n < N; ++n) {
-                        c_row[n] += a_val * static_cast<float>(b_row[n]) * Scales[0];
+                        c_row[n] += a_val * static_cast<float>(b_row[n]);
                     }
+                }
+
+                __m512 scale_vec = _mm512_set1_ps(Scales[0]);
+                n = 0;
+                for (; n < vec_end_n; n += 16) {
+                    __m512 c_vec = _mm512_loadu_ps(c_row + n);
+                    c_vec = _mm512_mul_ps(c_vec, scale_vec);
+                    _mm512_storeu_ps(c_row + n, c_vec);
+                }
+                for (; n < N; ++n) {
+                    c_row[n] *= Scales[0];
                 }
             }
         } else {
