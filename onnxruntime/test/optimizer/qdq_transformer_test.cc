@@ -866,7 +866,9 @@ void QDQTransformerGemmTests() {
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false, false, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, false, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, false, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, false, true);
 }
 

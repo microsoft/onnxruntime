@@ -3763,6 +3763,8 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
   std::optional<ONNX_NAMESPACE::AttributeProto> no_axis;  // Empty axis value will not be set.
 
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, no_axis, kOnnxDomain);
+  // Skip remaining variants under ASan to stay under the 8 GB allocator limit.
+#if !defined(__SANITIZE_ADDRESS__)
   RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, no_axis, kOnnxDomain);
   RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, no_axis, kOnnxDomain);
 #if !defined(DISABLE_CONTRIB_OPS)
@@ -3770,6 +3772,7 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
   RunDequantizeLinearTestCase<uint8_t>(zp_input_shape, zp_value_shape, no_axis, kMSDomain);
   RunDequantizeLinearTestCase<uint16_t>(zp_input_shape, zp_value_shape, no_axis, kMSDomain);
   RunDequantizeLinearTestCase<int16_t>(zp_input_shape, zp_value_shape, no_axis, kMSDomain);
+#endif
 #endif
 }
 
