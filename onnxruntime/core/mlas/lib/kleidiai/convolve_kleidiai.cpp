@@ -555,12 +555,14 @@ static void ConvolveSme(const size_t co, //channels out
     const size_t output_channels_total = co * groups;
     const float* input_base = in;
     float* output_base = out;
+    std::vector<float> input_group_buffer;
+    if (grouped_channels_last) {
+        input_group_buffer.resize(ih * iw * ci);
+    }
 
     for (size_t g = 0; g < groups; ++g) {
         const float* input_group = in;
-        std::vector<float> input_group_buffer;
         if (grouped_channels_last) {
-            input_group_buffer.resize(ih * iw * ci);
             for (size_t pixel = 0; pixel < ih * iw; ++pixel) {
                 const float* src = input_base + pixel * input_channels_total + g * ci;
                 std::copy_n(src, ci, input_group_buffer.data() + pixel * ci);

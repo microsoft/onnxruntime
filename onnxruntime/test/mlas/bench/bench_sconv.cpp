@@ -153,11 +153,11 @@ void SCONV_NHWC_KLEIDIAI(benchmark::State& state, const char* /*dummy*/) {
   const int64_t input_channels_per_group = state.range(3);   // Cpg
   const int64_t output_channels_per_group = state.range(4);  // Fpg
 
-  if (rank <= 0) throw std::invalid_argument("Kernel rank must greater than 0!");
-  if (batch_size <= 0) throw std::invalid_argument("Batch size must greater than 0!");
-  if (groups <= 0) throw std::invalid_argument("Group count must greater than 0!");
-  if (input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must greater than 0!");
-  if (output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must greater than 0!");
+  if (rank <= 0) throw std::invalid_argument("Kernel rank must be greater than 0");
+  if (batch_size <= 0) throw std::invalid_argument("Batch size must be greater than 0");
+  if (groups <= 0) throw std::invalid_argument("Group count must be greater than 0");
+  if (input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must be greater than 0");
+  if (output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must be greater than 0");
 
   size_t arg_position = 5;
   const auto input_shape = BenchArgsVector(state, arg_position, rank);
