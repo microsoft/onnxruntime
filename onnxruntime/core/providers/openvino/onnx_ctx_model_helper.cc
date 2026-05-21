@@ -17,14 +17,15 @@ namespace {
 
 bool IsAbsolutePath(const std::string& path_string) {
   auto path = std::filesystem::path(path_string);
-  return path.is_absolute();
+  return path.has_root_path();
 }
 
 bool IsRelativePathToParentPath(const std::string& path_string) {
-  auto path = std::filesystem::path(path_string);
-  auto normalized = path.lexically_normal().string();
-  if (normalized.find("..") != std::string::npos) {
-    return true;
+  auto normalized = std::filesystem::path(path_string).lexically_normal();
+  for (const auto& component : normalized) {
+    if (component == "..") {
+      return true;
+    }
   }
   return false;
 }
