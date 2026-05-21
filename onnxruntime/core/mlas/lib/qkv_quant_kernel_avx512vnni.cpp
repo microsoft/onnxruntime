@@ -83,12 +83,13 @@ QuantizeRowToU8(const float* src, uint8_t* dst, size_t len)
     i = 0;
     for (; i < vec_end; i += 16) {
         __m512 v = _mm512_loadu_ps(src + i);
-        // q = round(v * inv_scale) + 128, clamped to [0, 255]
+        // q = (v * inv_scale) + 128, clamped to [0, 255]
         __m512 scaled = _mm512_fmadd_ps(v, inv_scale_vec, zp_vec);
-        scaled = _mm512_roundscale_ps(scaled, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
         scaled = _mm512_max_ps(scaled, min_val);
         scaled = _mm512_min_ps(scaled, max_clamp);
-        __m512i qi = _mm512_cvtps_epi32(scaled);
+        // Round-to-nearest-even and convert to int32 in a single instruction
+        // (AVX-512 embedded rounding eliminates a separate vrndscaleps).
+        __m512i qi = _mm512_cvt_roundps_epi32(scaled, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
         // Pack 16 int32 -> 16 uint8
         __m128i packed = _mm512_cvtepi32_epi8(qi);
         _mm_storeu_si128(reinterpret_cast<__m128i*>(dst + i), packed);
