@@ -1,10 +1,11 @@
 
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#if USE_FPA_INTB_GEMM
+#if defined(USE_CUDA)
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.h"
-#include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/common/common.h"
 #include "core/common/safeint.h"
+#include <cuda_runtime_api.h>
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -571,11 +572,13 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
 
   if (preprocessed_quantized_weight != src_buf) {
     const size_t num_bytes = num_elts * static_cast<size_t>(get_weight_quant_bits(quant_type)) / static_cast<size_t>(8);
-    CUDA_CALL_THROW(cudaMemcpyAsync(preprocessed_quantized_weight, src_buf, num_bytes, cudaMemcpyDeviceToDevice, stream));
+    auto copy_err = cudaMemcpyAsync(preprocessed_quantized_weight, src_buf, num_bytes, cudaMemcpyDeviceToDevice, stream);
+    ORT_ENFORCE(copy_err == cudaSuccess, "cudaMemcpyAsync failed: ", cudaGetErrorString(copy_err));
   }
 
   // Synchronize the stream to ensure the permutation is complete before row_permutation memory is relased.
-  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  auto sync_err = cudaStreamSynchronize(stream);
+  ORT_ENFORCE(sync_err == cudaSuccess, "cudaStreamSynchronize failed: ", cudaGetErrorString(sync_err));
 }
 
 }  // namespace weight_only
