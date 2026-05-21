@@ -108,7 +108,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
 
-
 #if defined(ORT_USE_EP_API_ADAPTERS)
   inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
     return *ep_logger_;
