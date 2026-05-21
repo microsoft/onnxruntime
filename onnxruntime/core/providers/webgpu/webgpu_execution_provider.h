@@ -108,10 +108,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
 
-  // Set the default GPU allocator so RefreshBufferManager can be called on it
-  // during OnRunStart/OnRunEnd. Used by the EP adapter path (factory.cc) where
-  // the allocator is created externally rather than via CreatePreferredAllocators.
-  void SetDefaultGpuAllocator(webgpu::GpuBufferAllocator* allocator) { default_gpu_allocator_ = allocator; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
   inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
@@ -137,7 +133,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   std::unordered_map<int, int> graph_id_to_run_count_;
   const int min_num_runs_before_graph_capture_ = 0;  // Required regular runs before graph capture for any necessary allocations.
-  int m_current_graph_annotation_id = 0;
+  int current_graph_annotation_id_ = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
@@ -152,10 +148,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   std::unordered_map<int, std::vector<webgpu::CapturedCommandInfo>> captured_graphs_;
   // Track which graph annotation IDs have completed capture
   std::unordered_set<int> captured_graph_ids_;
-
-  // Default device allocator — cached for RefreshBufferManager calls
-  // during OnRunStart/OnRunEnd to route allocations correctly.
-  webgpu::GpuBufferAllocator* default_gpu_allocator_{nullptr};
 
   // Allocator for prepacked weights (uses buffers without mapping)
   AllocatorPtr prepack_allocator_;

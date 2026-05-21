@@ -2571,7 +2571,7 @@ struct OrtEp {
   /** \brief Release a previously captured graph and its associated resources.
    *
    * Called when the caller no longer needs the captured graph for the given annotation ID.
-   * This allows the EP to free GPU buffers and other resources tied to this graph.
+   * This allows the EP to free buffers and other resources tied to this graph.
    *
    * \param[in] this_ptr The EP instance.
    * \param[in] graph_annotation_id The annotation ID of the graph to release.

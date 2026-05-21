@@ -3,221 +3,221 @@
 
 #ifdef USE_WEBGPU
 
-#include "core/graph/onnx_protobuf.h"
-#include "core/session/inference_session.h"
+#include "gtest/gtest.h"
 
-#include <sstream>
-
-#include "core/graph/model.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/session/IOBinding.h"
+#include "core/graph/constants.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
-#include "test/unittest_util/framework_test_utils.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/util/include/default_providers.h"
-#include "test/test_environment.h"
+using namespace Ort;
 
-using namespace ONNX_NAMESPACE;
+namespace {
 
-namespace onnxruntime {
-namespace test {
+// Build a model: Y = MatMul(Relu(MatMul(A, B)), C)
+// All shapes are unspecified (free dimensions) to keep it simple.
+static Model CreateMatMulReluMatMulModel() {
+  Graph graph;
 
-// Build a three-op model: Y = MatMul(Relu(MatMul(A, B)), C)
-// The two intermediate tensors (T1 from MatMul, T2 from Relu) exercise the per-graph buffer manager.
-static void CreateMatMulReluMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[onnxruntime::kOnnxDomain] = 7;
-  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
-  p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
-                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                    model_specific_functions, DefaultLoggingManager().DefaultLogger(),
-                                    ModelOptions(true, true));
-  onnxruntime::Graph& graph = p_model->MainGraph();
+  // Inputs: A[3x4], B[4x3], C[3x2] — float tensors
+  std::vector<int64_t> dims_a_shape = {3, 4};
+  std::vector<int64_t> dims_b_shape = {4, 3};
+  std::vector<int64_t> dims_c_shape = {3, 2};
+  std::vector<int64_t> dims_y_shape = {3, 2};
 
-  TypeProto tensor_float;
-  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TensorTypeAndShapeInfo a_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims_a_shape);
+  TensorTypeAndShapeInfo b_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims_b_shape);
+  TensorTypeAndShapeInfo c_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims_c_shape);
+  TensorTypeAndShapeInfo y_info(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims_y_shape);
 
-  auto& input_a = graph.GetOrCreateNodeArg("A", &tensor_float);
-  auto& input_b = graph.GetOrCreateNodeArg("B", &tensor_float);
-  auto& input_c = graph.GetOrCreateNodeArg("C", &tensor_float);
-  auto& t1 = graph.GetOrCreateNodeArg("T1", &tensor_float);
-  auto& t2 = graph.GetOrCreateNodeArg("T2", &tensor_float);
-  auto& output_y = graph.GetOrCreateNodeArg("Y", &tensor_float);
+  auto a_type = TypeInfo::CreateTensorInfo(a_info.GetConst());
+  auto b_type = TypeInfo::CreateTensorInfo(b_info.GetConst());
+  auto c_type = TypeInfo::CreateTensorInfo(c_info.GetConst());
+  auto y_type = TypeInfo::CreateTensorInfo(y_info.GetConst());
 
-  auto& matmul1 = graph.AddNode("matmul1", "MatMul", "MatMul",
-                                {&input_a, &input_b}, {&t1},
-                                nullptr, onnxruntime::kOnnxDomain);
-  auto& relu = graph.AddNode("relu", "Relu", "Relu",
-                             {&t1}, {&t2},
-                             nullptr, onnxruntime::kOnnxDomain);
-  auto& matmul2 = graph.AddNode("matmul2", "MatMul", "MatMul",
-                                {&t2, &input_c}, {&output_y},
-                                nullptr, onnxruntime::kOnnxDomain);
+  std::vector<ValueInfo> inputs;
+  inputs.emplace_back("A", a_type.GetConst());
+  inputs.emplace_back("B", b_type.GetConst());
+  inputs.emplace_back("C", c_type.GetConst());
 
-  matmul1.SetExecutionProviderType(provider_type);
-  relu.SetExecutionProviderType(provider_type);
-  matmul2.SetExecutionProviderType(provider_type);
+  std::vector<ValueInfo> outputs;
+  outputs.emplace_back("Y", y_type.GetConst());
 
-  ASSERT_STATUS_OK(graph.Resolve());
+  graph.SetInputs(inputs);
+  graph.SetOutputs(outputs);
+
+  // MatMul(A, B) -> T1
+  Node matmul1("MatMul", onnxruntime::kOnnxDomain, "matmul1", {"A", "B"}, {"T1"});
+  graph.AddNode(matmul1);
+
+  // Relu(T1) -> T2
+  Node relu("Relu", onnxruntime::kOnnxDomain, "relu", {"T1"}, {"T2"});
+  graph.AddNode(relu);
+
+  // MatMul(T2, C) -> Y
+  Node matmul2("MatMul", onnxruntime::kOnnxDomain, "matmul2", {"T2", "C"}, {"Y"});
+  graph.AddNode(matmul2);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 13}};
+  Model model(opsets);
+  model.AddGraph(graph);
+  return model;
 }
 
-TEST(InferenceSessionTests, TestReleaseCapturedGraph) {
-  SessionOptions so;
-  so.session_logid = "InferenceSessionTests.TestReleaseCapturedGraph";
-  so.session_log_verbosity_level = 1;
-  InferenceSession session_object{so, GetEnvironment()};
+TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
+  const auto& api = GetApi();
 
-  ConfigOptions config_options{};
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
-                                            webgpu::options::kEnableGraphCapture_ON)
-                  .IsOK());
-  auto provider = WebGpuExecutionProviderWithOptions(config_options);
-  auto* gpu_provider = provider.get();
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+  // Create session with WebGPU EP and graph capture enabled
+  SessionOptions session_options;
+  session_options.DisableMemPattern();
+  std::unordered_map<std::string, std::string> provider_options;
+  provider_options["enableGraphCapture"] = "1";
+  session_options.AppendExecutionProvider("WebGPU", provider_options);
 
-  std::unique_ptr<Model> p_model;
-  CreateMatMulReluMatMulModel(p_model, kWebGpuExecutionProvider);
-  std::string s1;
-  p_model->ToProto().SerializeToString(&s1);
-  std::istringstream str(s1);
-  ASSERT_STATUS_OK(session_object.Load(str));
-  ASSERT_STATUS_OK(session_object.Initialize());
+  auto model = CreateMatMulReluMatMulModel();
+  Env env(ORT_LOGGING_LEVEL_WARNING, "GraphCaptureTest");
+  Session session(env, model, session_options);
 
-  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-  OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
-  auto gpu_alloc = session_object.GetAllocator(mem_info);
+  // Get GPU allocator from session
+  MemoryInfo gpu_mem_info("WebGPU_Buffer", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Allocator gpu_allocator(session, gpu_mem_info);
 
   // Model: Y = MatMul(Relu(MatMul(A[3x4], B[4x3])), C[3x2]) => Y[3x2]
-  //
-  // Input set 1: A1 = {0..11}
-  //   MatMul(A1, B) = {42,48,54, 114,136,158, 186,224,262}
-  //   Relu = same (all positive)
-  //   Y1 = MatMul(Relu, C) = {96,102, 272,294, 448,486}
-  //
-  // Input set 2: A2 = {12,11,...,1}
-  //   MatMul(A2, B) = {174,216,258, 102,128,154, 30,40,50}
-  //   Relu = same (all positive)
-  //   Y2 = MatMul(Relu, C) = {432,474, 256,282, 80,90}
-
-  std::vector<float> values_a1 = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
-  std::vector<float> values_b = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
-  std::vector<float> values_c = {1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
-  std::vector<float> expected_y1 = {96, 102, 272, 294, 448, 486};
-
-  std::vector<float> values_a2 = {12.0f, 11.0f, 10.0f, 9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
-  std::vector<float> expected_y2 = {432, 474, 256, 282, 80, 90};
-
   std::vector<int64_t> dims_a = {3, 4};
   std::vector<int64_t> dims_b = {4, 3};
   std::vector<int64_t> dims_c = {3, 2};
   std::vector<int64_t> dims_y = {3, 2};
 
-  // Prepare GPU input A (will be overwritten between capture and replay)
-  OrtValue ml_a1_cpu;
-  CreateMLValue<float>(cpu_alloc, dims_a, values_a1, &ml_a1_cpu);
-  Tensor gpu_a(ml_a1_cpu.Get<Tensor>().DataType(), ml_a1_cpu.Get<Tensor>().Shape(), gpu_alloc);
-  ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(ml_a1_cpu.Get<Tensor>(), gpu_a));
-  OrtValue ml_a;
-  Tensor::InitOrtValue(std::move(gpu_a), ml_a);
+  // Input set 1
+  std::vector<float> values_a1(12);
+  std::iota(values_a1.begin(), values_a1.end(), 0.0f);  // 0..11
+  std::vector<float> values_b(12);
+  std::iota(values_b.begin(), values_b.end(), 0.0f);  // 0..11
+  std::vector<float> values_c = {1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
 
-  // Prepare GPU input B
-  OrtValue ml_b_cpu;
-  CreateMLValue<float>(cpu_alloc, dims_b, values_b, &ml_b_cpu);
-  Tensor gpu_b(ml_b_cpu.Get<Tensor>().DataType(), ml_b_cpu.Get<Tensor>().Shape(), gpu_alloc);
-  ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(ml_b_cpu.Get<Tensor>(), gpu_b));
-  OrtValue ml_b;
-  Tensor::InitOrtValue(std::move(gpu_b), ml_b);
+  // Input set 2
+  std::vector<float> values_a2 = {12.0f, 11.0f, 10.0f, 9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
 
-  // Prepare GPU input C
-  OrtValue ml_c_cpu;
-  CreateMLValue<float>(cpu_alloc, dims_c, values_c, &ml_c_cpu);
-  Tensor gpu_c(ml_c_cpu.Get<Tensor>().DataType(), ml_c_cpu.Get<Tensor>().Shape(), gpu_alloc);
-  ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(ml_c_cpu.Get<Tensor>(), gpu_c));
-  OrtValue ml_c;
-  Tensor::InitOrtValue(std::move(gpu_c), ml_c);
+  MemoryInfo cpu_mem_info = MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-  // Prepare GPU output
-  OrtValue ml_y;
-  AllocateMLValue<float>(gpu_alloc, dims_y, &ml_y);
+  // Pre-compute expected outputs on CPU:
+  // T1 = MatMul(A, B), T2 = Relu(T1), Y = MatMul(T2, C)
+  auto compute_expected = [&](const std::vector<float>& a) -> std::vector<float> {
+    // T1 = A[3x4] * B[4x3]
+    std::vector<float> t1(9, 0.0f);
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j)
+        for (int k = 0; k < 4; ++k)
+          t1[i * 3 + j] += a[i * 4 + k] * values_b[k * 3 + j];
 
-  // Bind inputs/outputs
-  std::unique_ptr<IOBinding> io_binding;
-  ASSERT_STATUS_OK(session_object.NewIOBinding(&io_binding));
-  ASSERT_STATUS_OK(io_binding->BindInput("A", ml_a));
-  ASSERT_STATUS_OK(io_binding->BindInput("B", ml_b));
-  ASSERT_STATUS_OK(io_binding->BindInput("C", ml_c));
-  ASSERT_STATUS_OK(io_binding->BindOutput("Y", ml_y));
-  ASSERT_TRUE(io_binding->SynchronizeInputs().IsOK());
+    // T2 = Relu(T1)
+    std::vector<float> t2(9);
+    for (int i = 0; i < 9; ++i)
+      t2[i] = std::max(0.0f, t1[i]);
 
-  // Helper: copy GPU output to CPU and verify against expected values
-  auto verify_output = [&](const std::vector<float>& expected) {
-    std::vector<OrtValue>& outputs = io_binding->GetOutputs();
-    ASSERT_EQ(1u, outputs.size());
-    auto& rtensor = outputs.front().Get<Tensor>();
-    Tensor cpu_tensor(rtensor.DataType(), rtensor.Shape(), cpu_alloc);
-    ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(rtensor, cpu_tensor));
-    OrtValue ml_value;
-    Tensor::InitOrtValue(std::move(cpu_tensor), ml_value);
-    VerifySingleOutput({ml_value}, dims_y, expected);
+    // Y = T2[3x3] * C[3x2]
+    std::vector<float> y(6, 0.0f);
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 2; ++j)
+        for (int k = 0; k < 3; ++k)
+          y[i * 2 + j] += t2[i * 3 + k] * values_c[k * 2 + j];
+
+    return y;
   };
 
-  // Helper: overwrite GPU tensor A with new CPU values
-  auto set_input_a = [&](const std::vector<float>& values) {
-    OrtValue cpu_val;
-    CreateMLValue<float>(cpu_alloc, dims_a, values, &cpu_val);
-    ASSERT_STATUS_OK(gpu_provider->GetDataTransfer()->CopyTensor(
-        cpu_val.Get<Tensor>(), const_cast<Tensor&>(io_binding->GetInputs()[0].Get<Tensor>())));
+  auto expected_y1 = compute_expected(values_a1);
+  auto expected_y2 = compute_expected(values_a2);
+
+  // Allocate GPU tensors
+  Value gpu_a = Value::CreateTensor<float>(gpu_allocator, dims_a.data(), dims_a.size());
+  Value gpu_b = Value::CreateTensor<float>(gpu_allocator, dims_b.data(), dims_b.size());
+  Value gpu_c = Value::CreateTensor<float>(gpu_allocator, dims_c.data(), dims_c.size());
+  Value gpu_y = Value::CreateTensor<float>(gpu_allocator, dims_y.data(), dims_y.size());
+
+  // Helper: copy CPU tensor to GPU tensor via CopyTensors API
+  auto copy_to_gpu = [&](float* data, size_t count, const int64_t* shape, size_t shape_len, Value& gpu_tensor) {
+    Value cpu_tensor = Value::CreateTensor<float>(cpu_mem_info, data, count, shape, shape_len);
+    const OrtValue* src = cpu_tensor;
+    OrtValue* dst = gpu_tensor;
+    ThrowOnError(api.CopyTensors(env, &src, &dst, nullptr, 1));
+  };
+
+  // Upload initial inputs (B and C are constant across all runs)
+  copy_to_gpu(values_a1.data(), values_a1.size(), dims_a.data(), dims_a.size(), gpu_a);
+  copy_to_gpu(values_b.data(), values_b.size(), dims_b.data(), dims_b.size(), gpu_b);
+  copy_to_gpu(values_c.data(), values_c.size(), dims_c.data(), dims_c.size(), gpu_c);
+
+  // Set up IoBinding
+  IoBinding io_binding(session);
+  io_binding.BindInput("A", gpu_a);
+  io_binding.BindInput("B", gpu_b);
+  io_binding.BindInput("C", gpu_c);
+  io_binding.BindOutput("Y", gpu_y);
+  io_binding.SynchronizeInputs();
+
+  // Helper: verify GPU output matches expected values
+  auto verify_output = [&](const std::vector<float>& expected) {
+    std::vector<float> result(expected.size(), 0.0f);
+    Value cpu_result = Value::CreateTensor<float>(cpu_mem_info, result.data(), result.size(),
+                                                  dims_y.data(), dims_y.size());
+    const OrtValue* src = gpu_y;
+    OrtValue* dst = cpu_result;
+    ThrowOnError(api.CopyTensors(env, &src, &dst, nullptr, 1));
+    for (size_t i = 0; i < expected.size(); ++i) {
+      ASSERT_FLOAT_EQ(result[i], expected[i]) << "Mismatch at index " << i;
+    }
+  };
+
+  // Helper: upload new A values to GPU
+  auto set_input_a = [&](std::vector<float>& values) {
+    copy_to_gpu(values.data(), values.size(), dims_a.data(), dims_a.size(), gpu_a);
   };
 
   // Helper: run with a given annotation ID
   auto run_with_id = [&](const char* id) {
     RunOptions run_options;
-    ORT_ENFORCE(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, id).IsOK());
-    return session_object.Run(run_options, *io_binding);
+    run_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, id);
+    session.Run(run_options, io_binding);
   };
 
-  // Capture ID 1 with input set 1
-  ASSERT_STATUS_OK(run_with_id("1"));
+  // Capture graph for annotation ID 1 (input set 1)
+  run_with_id("1");
   verify_output(expected_y1);
 
   // Replay ID 1
-  ASSERT_STATUS_OK(run_with_id("1"));
+  run_with_id("1");
   verify_output(expected_y1);
 
-  // Capture ID 2 with input set 2
+  // Capture graph for annotation ID 2 (input set 2)
   set_input_a(values_a2);
-  ASSERT_STATUS_OK(run_with_id("2"));
+  run_with_id("2");
   verify_output(expected_y2);
 
   // Replay ID 2
-  ASSERT_STATUS_OK(run_with_id("2"));
+  run_with_id("2");
   verify_output(expected_y2);
 
-  // Replay ID 1 again (cross-ID isolation: ID 1 should still replay with its captured buffers)
+  // Replay ID 1 again (cross-ID isolation)
   set_input_a(values_a1);
-  ASSERT_STATUS_OK(run_with_id("1"));
+  run_with_id("1");
   verify_output(expected_y1);
 
-  // Release ID 1 only
-  ASSERT_STATUS_OK(session_object.ReleaseCapturedGraph(1));
+  // Release ID 1 using the public C API
+  ThrowOnError(api.SessionReleaseCapturedGraph(session, 1));
 
   // Replay ID 2 (unaffected by ID 1 release)
   set_input_a(values_a2);
-  ASSERT_STATUS_OK(run_with_id("2"));
+  run_with_id("2");
   verify_output(expected_y2);
 
-  // Re-capture ID 1 (input A still has set 2 values)
-  ASSERT_STATUS_OK(run_with_id("1"));
+  // Re-capture ID 1 after release
+  run_with_id("1");
   verify_output(expected_y2);
 
   // Release both
-  ASSERT_STATUS_OK(session_object.ReleaseCapturedGraph(1));
-  ASSERT_STATUS_OK(session_object.ReleaseCapturedGraph(2));
+  ThrowOnError(api.SessionReleaseCapturedGraph(session, 1));
+  ThrowOnError(api.SessionReleaseCapturedGraph(session, 2));
 }
 
-}  // namespace test
-}  // namespace onnxruntime
+}  // namespace
 
 #endif  // USE_WEBGPU
