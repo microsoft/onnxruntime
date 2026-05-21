@@ -13,9 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WEBGPU_CGMANIFEST = REPO_ROOT / "cgmanifests" / "webgpu" / "cgmanifest.json"
+WEBGPU_CGMANIFEST = Path(__file__).resolve().with_name("cgmanifest.webgpu.json")
 DEPS_TXT = REPO_ROOT / "cmake" / "deps.txt"
 PLUGIN_WIN_WEBGPU_STAGE = (
     REPO_ROOT / "tools" / "ci_build" / "github" / "azure-pipelines" / "stages" / "plugin-win-webgpu-stage.yml"
