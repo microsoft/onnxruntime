@@ -546,7 +546,7 @@ TEST(MatMulIntegerToFloat, BiasShapeMismatch_LargerBias) {
   test.AddInput<float>("b_scale", {1}, B_scale);
   test.AddInput<uint8_t>("a_zero_point", {1}, A_zero_point);
   test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
-  test.AddInput<float>("bias", {1}, bad_bias);
+  test.AddInput<float>("bias", {N + 1}, bad_bias);
 
   test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
 
