@@ -3601,8 +3601,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         auto* subgraph_nodearg = subgraph->GetNodeArg(implicit_node_arg->Name());
         if (subgraph_nodearg != nullptr &&
             implicit_node_arg->TypeAsProto() != nullptr) {
-          ORT_RETURN_IF_ERROR(subgraph_nodearg->UpdateTypeAndShape(
-              *implicit_node_arg, /*strict=*/true, options.override_types, subgraph->logger_));
+          auto status = subgraph_nodearg->UpdateTypeAndShape(
+              *implicit_node_arg, /*strict=*/true, options.override_types, subgraph->logger_);
+          if (!status.IsOK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Node:", node.Name(), " [subgraph:", entry.first, "] ", status.ErrorMessage());
+          }
         }
       }
 
