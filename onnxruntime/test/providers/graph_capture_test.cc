@@ -3,6 +3,8 @@
 
 #ifdef USE_WEBGPU
 
+#include <numeric>
+
 #include "gtest/gtest.h"
 
 #include "core/graph/constants.h"
