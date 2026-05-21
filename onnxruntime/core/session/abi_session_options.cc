@@ -19,6 +19,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/session/utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 OrtSessionOptions::~OrtSessionOptions() = default;
 
@@ -270,18 +271,13 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _In_z_ const char* config_value) {
-  return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
-}
-
 namespace {
 
-// Dispatcher for OrtApis::AddSessionOption. Maps a fixed set of well-known string keys to the
+// Dispatcher for OrtApis::AddSessionConfigEntry. Maps a fixed set of well-known string keys to the
 // corresponding dedicated OrtSessionOptions setter, parsing the value into the appropriate type.
-// Any key not in the table falls through to AddSessionConfigEntry.
+// Any key not in the table falls through to config_options.AddConfigEntry.
 //
-// See OrtApi::AddSessionOption documentation for the full table and encoding rules.
+// See OrtApi::AddSessionConfigEntry documentation for key/value rules.
 
 enum class SessionOptionSetterKind {
   kIntraOpNumThreads,
@@ -304,22 +300,20 @@ struct KnownSessionOption {
   SessionOptionSetterKind kind;
 };
 
-// Order: canonical name first, then any documented aliases mapping to the same setter.
-constexpr KnownSessionOption kKnownSessionOptions[] = {
-    {"intra_op_num_threads", SessionOptionSetterKind::kIntraOpNumThreads},
-    {"inter_op_num_threads", SessionOptionSetterKind::kInterOpNumThreads},
-    {"enable_cpu_mem_arena", SessionOptionSetterKind::kEnableCpuMemArena},
-    {"enable_mem_pattern", SessionOptionSetterKind::kEnableMemPattern},
-    {"logid", SessionOptionSetterKind::kSessionLogId},
-    {"log_id", SessionOptionSetterKind::kSessionLogId},  // genai-style alias
-    {"log_severity_level", SessionOptionSetterKind::kLogSeverityLevel},
-    {"log_verbosity_level", SessionOptionSetterKind::kLogVerbosityLevel},
-    {"enable_profiling", SessionOptionSetterKind::kEnableProfiling},
-    {"graph_optimization_level", SessionOptionSetterKind::kGraphOptimizationLevel},
-    {"optimized_model_filepath", SessionOptionSetterKind::kOptimizedModelFilePath},
-    {"execution_mode", SessionOptionSetterKind::kExecutionMode},
-    {"use_per_session_threads", SessionOptionSetterKind::kUsePerSessionThreads},
-    {"use_deterministic_compute", SessionOptionSetterKind::kUseDeterministicCompute},
+static const KnownSessionOption kKnownSessionOptions[] = {
+    {kOrtSessionOptionsConfigIntraOpNumThreads, SessionOptionSetterKind::kIntraOpNumThreads},
+    {kOrtSessionOptionsConfigInterOpNumThreads, SessionOptionSetterKind::kInterOpNumThreads},
+    {kOrtSessionOptionsConfigEnableCpuMemArena, SessionOptionSetterKind::kEnableCpuMemArena},
+    {kOrtSessionOptionsConfigEnableMemPattern, SessionOptionSetterKind::kEnableMemPattern},
+    {kOrtSessionOptionsConfigLogId, SessionOptionSetterKind::kSessionLogId},
+    {kOrtSessionOptionsConfigLogSeverityLevel, SessionOptionSetterKind::kLogSeverityLevel},
+    {kOrtSessionOptionsConfigLogVerbosityLevel, SessionOptionSetterKind::kLogVerbosityLevel},
+    {kOrtSessionOptionsConfigEnableProfiling, SessionOptionSetterKind::kEnableProfiling},
+    {kOrtSessionOptionsConfigGraphOptimizationLevel, SessionOptionSetterKind::kGraphOptimizationLevel},
+    {kOrtSessionOptionsConfigOptimizedModelFilePath, SessionOptionSetterKind::kOptimizedModelFilePath},
+    {kOrtSessionOptionsConfigExecutionMode, SessionOptionSetterKind::kExecutionMode},
+    {kOrtSessionOptionsConfigUsePerSessionThreads, SessionOptionSetterKind::kUsePerSessionThreads},
+    {kOrtSessionOptionsConfigUseDeterministicCompute, SessionOptionSetterKind::kUseDeterministicCompute},
 };
 
 bool LookupKnownSessionOption(const char* key, SessionOptionSetterKind& out) {
@@ -350,14 +344,15 @@ OrtStatus* ParseBool(const char* key, const char* value, bool& out) {
     return nullptr;
   }
   std::ostringstream oss;
-  oss << "AddSessionOption: value for '" << key << "' must be a boolean ('0'/'1' or 'true'/'false'); got '" << value << "'";
+  oss << "AddSessionConfigEntry: value for '" << key
+      << "' must be a boolean ('0'/'1' or 'true'/'false'); got '" << value << "'";
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
 }
 
 OrtStatus* ParseInt(const char* key, const char* value, int& out) {
   if (value == nullptr || *value == '\0') {
     std::ostringstream oss;
-    oss << "AddSessionOption: value for '" << key << "' must be an integer; got empty string";
+    oss << "AddSessionConfigEntry: value for '" << key << "' must be an integer; got empty string";
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
   char* end = nullptr;
@@ -366,7 +361,7 @@ OrtStatus* ParseInt(const char* key, const char* value, int& out) {
   if (errno != 0 || end == value || *end != '\0' ||
       parsed < std::numeric_limits<int>::min() || parsed > std::numeric_limits<int>::max()) {
     std::ostringstream oss;
-    oss << "AddSessionOption: value for '" << key << "' must be a base-10 int32; got '" << value << "'";
+    oss << "AddSessionConfigEntry: value for '" << key << "' must be a base-10 int32; got '" << value << "'";
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
   out = static_cast<int>(parsed);
@@ -387,7 +382,7 @@ OrtStatus* ParseGraphOptLevel(const char* value, GraphOptimizationLevel& out) {
     out = ORT_ENABLE_ALL;
   } else {
     std::ostringstream oss;
-    oss << "AddSessionOption: value for 'graph_optimization_level' must be one of "
+    oss << "AddSessionConfigEntry: value for 'graph_optimization_level' must be one of "
         << "disable_all/enable_basic/enable_extended/enable_layout/enable_all; got '" << value << "'";
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
@@ -402,7 +397,7 @@ OrtStatus* ParseExecutionMode(const char* value, ExecutionMode& out) {
     out = ORT_PARALLEL;
   } else {
     std::ostringstream oss;
-    oss << "AddSessionOption: value for 'execution_mode' must be 'sequential' or 'parallel'; got '" << value << "'";
+    oss << "AddSessionConfigEntry: value for 'execution_mode' must be 'sequential' or 'parallel'; got '" << value << "'";
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
   return nullptr;
@@ -410,18 +405,17 @@ OrtStatus* ParseExecutionMode(const char* value, ExecutionMode& out) {
 
 }  // namespace
 
-ORT_API_STATUS_IMPL(OrtApis::AddSessionOption, _Inout_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
   API_IMPL_BEGIN
   if (options == nullptr || config_key == nullptr || config_value == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "AddSessionOption: options, config_key, and config_value must be non-null");
+                                 "AddSessionConfigEntry: options, config_key, and config_value must be non-null");
   }
 
   SessionOptionSetterKind kind;
   if (!LookupKnownSessionOption(config_key, kind)) {
-    // Unknown key -- preserve legacy AddSessionConfigEntry semantics.
-    return OrtApis::AddSessionConfigEntry(options, config_key, config_value);
+    return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
   }
 
   switch (kind) {
@@ -458,7 +452,6 @@ ORT_API_STATUS_IMPL(OrtApis::AddSessionOption, _Inout_ OrtSessionOptions* option
       return OrtApis::SetSessionLogVerbosityLevel(options, v);
     }
     case SessionOptionSetterKind::kEnableProfiling: {
-      // Empty value -> disable; non-empty -> enable with that prefix.
       if (config_value[0] == '\0') {
         return OrtApis::DisableProfiling(options);
       }
@@ -483,13 +476,10 @@ ORT_API_STATUS_IMPL(OrtApis::AddSessionOption, _Inout_ OrtSessionOptions* option
       bool v = false;
       if (auto* st = ParseBool(config_key, config_value, v); st != nullptr) return st;
       if (v) {
-        // True is the default; no public ABI to re-enable after a prior disable.
-        // If already disabled, this is unrecoverable: surface as an error rather than silently
-        // ignoring (which would leave the caller thinking they re-enabled it).
         if (!options->value.use_per_session_threads) {
           return OrtApis::CreateStatus(
               ORT_INVALID_ARGUMENT,
-              "AddSessionOption: cannot set 'use_per_session_threads' back to true after it was disabled");
+              "AddSessionConfigEntry: cannot set 'use_per_session_threads' back to true after it was disabled");
         }
         return nullptr;
       }
@@ -502,8 +492,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddSessionOption, _Inout_ OrtSessionOptions* option
     }
   }
 
-  // Unreachable; all enum cases handled above.
-  return OrtApis::CreateStatus(ORT_FAIL, "AddSessionOption: internal dispatch error");
+  return OrtApis::CreateStatus(ORT_FAIL, "AddSessionConfigEntry: internal dispatch error");
   API_IMPL_END
 }
 

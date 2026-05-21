@@ -40,7 +40,7 @@ OrtSessionOptions* MakeOptions() {
 void ReleaseOptions(OrtSessionOptions* opts) { Api().ReleaseSessionOptions(opts); }
 
 OrtStatus* AddOption(OrtSessionOptions* opts, const char* key, const char* value) {
-  return Api().AddSessionOption(opts, key, value);
+  return Api().AddSessionConfigEntry(opts, key, value);
 }
 
 OrtErrorCode CodeOf(OrtStatus* st) { return Api().GetErrorCode(st); }
@@ -51,7 +51,7 @@ const char* MsgOf(OrtStatus* st) { return Api().GetErrorMessage(st); }
 // -----------------------------------------------------------------------------
 // Bool-valued keys: enable_cpu_mem_arena, enable_mem_pattern, use_deterministic_compute
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, BoolKeys_AcceptsAllSpellings) {
+TEST(CApiTest, BoolKeys_AcceptsAllSpellings) {
   // ParseBool accepts: "0", "1", "true", "false", and case-insensitive variants.
   const char* truthy[] = {"1", "true", "True", "TRUE"};
   const char* falsy[] = {"0", "false", "False", "FALSE"};
@@ -72,7 +72,7 @@ TEST(AddSessionOptionTest, BoolKeys_AcceptsAllSpellings) {
   }
 }
 
-TEST(AddSessionOptionTest, BoolKey_EnableMemPattern) {
+TEST(CApiTest, BoolKey_EnableMemPattern) {
   OrtSessionOptions* opts = MakeOptions();
   ASSERT_TRUE(opts->value.enable_mem_pattern);  // default
 
@@ -89,7 +89,7 @@ TEST(AddSessionOptionTest, BoolKey_EnableMemPattern) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, BoolKey_UseDeterministicCompute) {
+TEST(CApiTest, BoolKey_UseDeterministicCompute) {
   OrtSessionOptions* opts = MakeOptions();
   EXPECT_FALSE(opts->value.use_deterministic_compute);
   OrtStatusGuard g{AddOption(opts, "use_deterministic_compute", "1")};
@@ -98,7 +98,7 @@ TEST(AddSessionOptionTest, BoolKey_UseDeterministicCompute) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, BoolKey_InvalidValueErrors) {
+TEST(CApiTest, BoolKey_InvalidValueErrors) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "enable_cpu_mem_arena", "yes")};
   ASSERT_NE(g.st, nullptr);
@@ -111,7 +111,7 @@ TEST(AddSessionOptionTest, BoolKey_InvalidValueErrors) {
 // Int-valued keys: intra_op_num_threads, inter_op_num_threads,
 //                  log_severity_level, log_verbosity_level
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, IntKey_IntraOpNumThreads) {
+TEST(CApiTest, IntKey_IntraOpNumThreads) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "4")};
   ASSERT_EQ(g.st, nullptr);
@@ -119,7 +119,7 @@ TEST(AddSessionOptionTest, IntKey_IntraOpNumThreads) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, IntKey_InterOpNumThreads) {
+TEST(CApiTest, IntKey_InterOpNumThreads) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "inter_op_num_threads", "2")};
   ASSERT_EQ(g.st, nullptr);
@@ -127,7 +127,7 @@ TEST(AddSessionOptionTest, IntKey_InterOpNumThreads) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, IntKey_LogSeverityAndVerbosity) {
+TEST(CApiTest, IntKey_LogSeverityAndVerbosity) {
   OrtSessionOptions* opts = MakeOptions();
   {
     OrtStatusGuard g{AddOption(opts, "log_severity_level", "2")};
@@ -142,7 +142,7 @@ TEST(AddSessionOptionTest, IntKey_LogSeverityAndVerbosity) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, IntKey_EmptyValueErrors) {
+TEST(CApiTest, IntKey_EmptyValueErrors) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "")};
   ASSERT_NE(g.st, nullptr);
@@ -151,7 +151,7 @@ TEST(AddSessionOptionTest, IntKey_EmptyValueErrors) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, IntKey_NonIntegerValueErrors) {
+TEST(CApiTest, IntKey_NonIntegerValueErrors) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "not_an_int")};
   ASSERT_NE(g.st, nullptr);
@@ -160,7 +160,7 @@ TEST(AddSessionOptionTest, IntKey_NonIntegerValueErrors) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, IntKey_TrailingGarbageErrors) {
+TEST(CApiTest, IntKey_TrailingGarbageErrors) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "intra_op_num_threads", "12abc")};
   ASSERT_NE(g.st, nullptr);
@@ -171,7 +171,7 @@ TEST(AddSessionOptionTest, IntKey_TrailingGarbageErrors) {
 // -----------------------------------------------------------------------------
 // Log id (logid + log_id alias)
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, LogId_CanonicalAndAlias) {
+TEST(CApiTest, LogId_CanonicalAndAlias) {
   {
     OrtSessionOptions* opts = MakeOptions();
     OrtStatusGuard g{AddOption(opts, "logid", "session-A")};
@@ -191,7 +191,7 @@ TEST(AddSessionOptionTest, LogId_CanonicalAndAlias) {
 // -----------------------------------------------------------------------------
 // Enable profiling: non-empty enables with prefix, empty disables.
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, EnableProfiling_NonEmptyEnables) {
+TEST(CApiTest, EnableProfiling_NonEmptyEnables) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "enable_profiling", "myrun_")};
   ASSERT_EQ(g.st, nullptr);
@@ -200,7 +200,7 @@ TEST(AddSessionOptionTest, EnableProfiling_NonEmptyEnables) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, EnableProfiling_EmptyDisables) {
+TEST(CApiTest, EnableProfiling_EmptyDisables) {
   OrtSessionOptions* opts = MakeOptions();
   // First enable.
   {
@@ -220,7 +220,7 @@ TEST(AddSessionOptionTest, EnableProfiling_EmptyDisables) {
 // -----------------------------------------------------------------------------
 // Graph optimization level (enum)
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, GraphOptimizationLevel_AllSpellings) {
+TEST(CApiTest, GraphOptimizationLevel_AllSpellings) {
   struct Case {
     const char* in;
     TransformerLevel expected;
@@ -243,7 +243,7 @@ TEST(AddSessionOptionTest, GraphOptimizationLevel_AllSpellings) {
   }
 }
 
-TEST(AddSessionOptionTest, GraphOptimizationLevel_InvalidValueErrors) {
+TEST(CApiTest, GraphOptimizationLevel_InvalidValueErrors) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "graph_optimization_level", "ludicrous")};
   ASSERT_NE(g.st, nullptr);
@@ -255,7 +255,7 @@ TEST(AddSessionOptionTest, GraphOptimizationLevel_InvalidValueErrors) {
 // -----------------------------------------------------------------------------
 // Optimized model filepath (path)
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, OptimizedModelFilepath) {
+TEST(CApiTest, OptimizedModelFilepath) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "optimized_model_filepath", "/tmp/opt_model.onnx")};
   ASSERT_EQ(g.st, nullptr);
@@ -267,7 +267,7 @@ TEST(AddSessionOptionTest, OptimizedModelFilepath) {
 // -----------------------------------------------------------------------------
 // Execution mode (enum)
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, ExecutionMode_SequentialAndParallel) {
+TEST(CApiTest, ExecutionMode_SequentialAndParallel) {
   {
     OrtSessionOptions* opts = MakeOptions();
     OrtStatusGuard g{AddOption(opts, "execution_mode", "parallel")};
@@ -284,7 +284,7 @@ TEST(AddSessionOptionTest, ExecutionMode_SequentialAndParallel) {
   }
 }
 
-TEST(AddSessionOptionTest, ExecutionMode_InvalidValueErrors) {
+TEST(CApiTest, ExecutionMode_InvalidValueErrors) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "execution_mode", "concurrent")};
   ASSERT_NE(g.st, nullptr);
@@ -296,7 +296,7 @@ TEST(AddSessionOptionTest, ExecutionMode_InvalidValueErrors) {
 // use_per_session_threads — one-way disable, true is a no-op while still enabled,
 // true after a disable is an error (no public ABI to re-enable).
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, UsePerSessionThreads_TrueIsNoOpInitially) {
+TEST(CApiTest, UsePerSessionThreads_TrueIsNoOpInitially) {
   OrtSessionOptions* opts = MakeOptions();
   ASSERT_TRUE(opts->value.use_per_session_threads);  // default
   OrtStatusGuard g{AddOption(opts, "use_per_session_threads", "true")};
@@ -305,7 +305,7 @@ TEST(AddSessionOptionTest, UsePerSessionThreads_TrueIsNoOpInitially) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, UsePerSessionThreads_FalseDisables) {
+TEST(CApiTest, UsePerSessionThreads_FalseDisables) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "use_per_session_threads", "false")};
   ASSERT_EQ(g.st, nullptr);
@@ -313,7 +313,7 @@ TEST(AddSessionOptionTest, UsePerSessionThreads_FalseDisables) {
   ReleaseOptions(opts);
 }
 
-TEST(AddSessionOptionTest, UsePerSessionThreads_TrueAfterDisableErrors) {
+TEST(CApiTest, UsePerSessionThreads_TrueAfterDisableErrors) {
   OrtSessionOptions* opts = MakeOptions();
   {
     OrtStatusGuard g{AddOption(opts, "use_per_session_threads", "false")};
@@ -329,9 +329,9 @@ TEST(AddSessionOptionTest, UsePerSessionThreads_TrueAfterDisableErrors) {
 }
 
 // -----------------------------------------------------------------------------
-// Unknown keys fall through to AddSessionConfigEntry semantics.
+// Unknown keys are stored as regular session config entries.
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, UnknownKey_FallsThroughToConfigEntry) {
+TEST(CApiTest, UnknownKey_FallsThroughToConfigEntry) {
   OrtSessionOptions* opts = MakeOptions();
   OrtStatusGuard g{AddOption(opts, "session.disable_prepacking", "1")};
   ASSERT_EQ(g.st, nullptr);
@@ -353,7 +353,7 @@ TEST(AddSessionOptionTest, UnknownKey_FallsThroughToConfigEntry) {
 // -----------------------------------------------------------------------------
 // Null arguments are rejected with INVALID_ARGUMENT.
 // -----------------------------------------------------------------------------
-TEST(AddSessionOptionTest, NullArguments_AreRejected) {
+TEST(CApiTest, NullArguments_AreRejected) {
   OrtSessionOptions* opts = MakeOptions();
   {
     OrtStatusGuard g{AddOption(nullptr, "intra_op_num_threads", "1")};

@@ -20,7 +20,7 @@ ModelPackageOptions::ModelPackageOptions(const Environment& env,
 }
 
 void ModelPackageOptions::ResolveEpSelection(const Environment& env,
-                                              const OrtSessionOptions& session_options) {
+                                             const OrtSessionOptions& session_options) {
   const bool has_provider_factories = !session_options.provider_factories.empty();
   from_policy_ = !has_provider_factories && session_options.value.ep_selection_policy.enable;
 

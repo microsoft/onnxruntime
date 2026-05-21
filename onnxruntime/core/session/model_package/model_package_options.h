@@ -20,7 +20,7 @@ class ModelPackageOptions {
   ModelPackageOptions(const Environment& env, const OrtSessionOptions& session_options);
 
   Status RebuildProviderListForSession(const Environment& env,
-                                        const OrtSessionOptions& effective_options) const;
+                                       const OrtSessionOptions& effective_options) const;
 
   // Resolved state accessors
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() const noexcept { return provider_list_; }

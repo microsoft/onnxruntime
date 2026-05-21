@@ -117,13 +117,13 @@ class ModelPackageComponentContext {
 
   // C API helpers: return const char* pointer arrays with context-owned lifetime.
   Status GetSelectedVariantFileSessionOptionPtrs(size_t file_idx,
+                                                 const char* const*& out_keys,
+                                                 const char* const*& out_values,
+                                                 size_t& out_count) const;
+  Status GetSelectedVariantFileProviderOptionPtrs(size_t file_idx,
                                                   const char* const*& out_keys,
                                                   const char* const*& out_values,
                                                   size_t& out_count) const;
-  Status GetSelectedVariantFileProviderOptionPtrs(size_t file_idx,
-                                                   const char* const*& out_keys,
-                                                   const char* const*& out_values,
-                                                   size_t& out_count) const;
 
   Status GetSelectedVariantConsumerMetadata(const std::string*& out_json_str) const;
 
@@ -142,7 +142,7 @@ class ModelPackageComponentContext {
   std::string component_model_name_;
   ComponentInfo component_model_info_{};
 
-  gsl::span<const VariantSelectionEpInfo> ep_infos_{};  // non-owning EP intent when options are not used
+  gsl::span<const VariantSelectionEpInfo> ep_infos_{};    // non-owning EP intent when options are not used
   std::vector<VariantSelectionEpInfo> owned_ep_infos_{};  // owned copy when constructed from ModelPackageOptions
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list_{};
 

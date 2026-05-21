@@ -454,9 +454,9 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                       ORT_FAIL, "Session option keys/values size mismatch.");
 
     for (size_t i = 0; i < session_option_keys.size(); ++i) {
-      OrtStatus* st = OrtApis::AddSessionOption(&*effective_options_storage,
-                                                session_option_keys[i].c_str(),
-                                                session_option_values[i].c_str());
+      OrtStatus* st = OrtApis::AddSessionConfigEntry(&*effective_options_storage,
+                                                     session_option_keys[i].c_str(),
+                                                     session_option_values[i].c_str());
       if (st != nullptr) {
         return st;
       }

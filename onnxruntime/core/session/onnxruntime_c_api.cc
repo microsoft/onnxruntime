@@ -4925,7 +4925,6 @@ static constexpr OrtApi ort_api_1_to_27 = {
     &OrtApis::GetMemPatternEnabled,
     &OrtApis::GetSessionExecutionMode,
     &OrtApis::GetModelPackageApi,
-    &OrtApis::AddSessionOption,
     // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 

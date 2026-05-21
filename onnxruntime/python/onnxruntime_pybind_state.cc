@@ -2532,16 +2532,6 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           },
           R"pbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
       .def(
-          "add_session_option",
-          [](PySessionOptions* options, const char* key, const char* value) -> void {
-            Ort::ThrowOnError(Ort::GetApi().AddSessionOption(options, key, value));
-          },
-          R"pbdoc(Set a session option by key/value string pair with automatic dispatch.
-
-Well-known keys (e.g., intra_op_num_threads, graph_optimization_level,
-execution_mode, enable_profiling, etc.) are dispatched to their dedicated
-typed setters. Unknown keys fall through to add_session_config_entry.)pbdoc")
-      .def(
           "get_session_config_entry",
           [](const PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);

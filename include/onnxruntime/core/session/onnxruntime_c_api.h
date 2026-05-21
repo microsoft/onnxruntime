@@ -7490,57 +7490,6 @@ struct OrtApi {
    * \since Version 1.27.
    */
   const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
-
-  /** \brief Add a session option from a string key and string value.
-   *
-   * Convenience helper for callers that build sessions from string-keyed JSON or config files
-   * (model packages, ORT-GenAI, future tools). The value is parsed to the type expected by the
-   * matching dedicated setter:
-   *
-   * | Key                          | Type     | Underlying setter                       |
-   * |------------------------------|----------|-----------------------------------------|
-   * | `intra_op_num_threads`       | int      | SetIntraOpNumThreads                    |
-   * | `inter_op_num_threads`       | int      | SetInterOpNumThreads                    |
-   * | `enable_cpu_mem_arena`       | bool     | EnableCpuMemArena / DisableCpuMemArena  |
-   * | `enable_mem_pattern`         | bool     | EnableMemPattern / DisableMemPattern    |
-   * | `logid` (alias: `log_id`)    | string   | SetSessionLogId                         |
-   * | `log_severity_level`         | int      | SetSessionLogSeverityLevel              |
-   * | `log_verbosity_level`        | int      | SetSessionLogVerbosityLevel             |
-   * | `enable_profiling`           | string   | EnableProfiling(prefix) (empty=Disable) |
-   * | `graph_optimization_level`   | enum str | SetSessionGraphOptimizationLevel        |
-   * | `optimized_model_filepath`   | path     | SetOptimizedModelFilePath               |
-   * | `execution_mode`             | enum str | SetSessionExecutionMode                 |
-   * | `use_per_session_threads`    | bool     | DisablePerSessionThreads (one-way)      |
-   * | `use_deterministic_compute`  | bool     | SetDeterministicCompute                 |
-   *
-   * Encoding rules:
-   *   - bool: "0"/"1" or "true"/"false" (case-insensitive).
-   *   - int: base-10 string.
-   *   - graph_optimization_level: one of "disable_all", "enable_basic", "enable_extended",
-   *     "enable_layout", "enable_all" (case-insensitive).
-   *   - execution_mode: one of "sequential", "parallel" (case-insensitive).
-   *   - enable_profiling: non-empty value enables profiling with that path prefix; empty value
-   *     calls DisableProfiling.
-   *   - use_per_session_threads: "true" is a no-op (default); "false" calls
-   *     DisablePerSessionThreads. There is no public ABI to re-enable, so flipping back to
-   *     "true" after a disable returns an error.
-   *
-   * For any key not in the table above, the call falls through to ::OrtApi::AddSessionConfigEntry
-   * with the same key/value, preserving the existing reserved-key namespaces in
-   * onnxruntime_session_options_config_keys.h. Setters that require non-scalar arguments
-   * (free-dimension overrides, external initializers, user logging function, EP append,
-   * custom-op library registration) are intentionally not dispatchable through this helper.
-   *
-   * \param[in] options
-   * \param[in] config_key Null-terminated UTF-8 key.
-   * \param[in] config_value Null-terminated UTF-8 value.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(AddSessionOption, _Inout_ OrtSessionOptions* options,
-                  _In_z_ const char* config_key, _In_z_ const char* config_value);
 };
 
 /*

@@ -1461,12 +1461,12 @@ TEST(ModelPackageTest, VariantSelector_TieBreakIsDeterministic) {
 }
 
 // ------------------------------------------------------------------
-// Test: a variant's per-file `session_options` flow through OrtApis::AddSessionOption.
+// Test: a variant's per-file `session_options` flow through OrtApis::AddSessionConfigEntry.
 // We verify this by feeding a *known* typed key (intra_op_num_threads) a non-integer value:
 // pre-change behavior would silently stuff it into AddConfigEntry and succeed; post-change
 // behavior parses it via the typed dispatcher and fails CreateSession with a parse error.
 // ------------------------------------------------------------------
-TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionOption) {
+TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEntry) {
   const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_session_options_dispatch";
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
@@ -1489,7 +1489,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionOption) 
   CreateComponentModelMetadata(package_root, "model_1", metadata_json);
 
   // Per-file session_options assigns a typed key (intra_op_num_threads) a value that is not a
-  // valid integer. Routing this through AddSessionOption (the new behavior) must reject it.
+  // valid integer. Routing this through OrtApis::AddSessionConfigEntry (the new behavior) must reject it.
   {
     std::ofstream os(variant_dir / "variant.json", std::ios::binary);
     os << R"({
@@ -1534,7 +1534,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionOption) 
   ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
   comp_ctx.reset(raw_comp_ctx);
 
-  // CreateSession iterates the per-file session_options and dispatches each through AddSessionOption.
+  // CreateSession iterates the per-file session_options and dispatches each through OrtApis::AddSessionConfigEntry.
   // The bad int value must surface as an error from this call.
   // Pass nullptr for session_options so the metadata-merge path runs (it is skipped when the caller
   // supplies their own session_options).
@@ -1547,9 +1547,9 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionOption) 
     Ort::GetApi().ReleaseSession(raw_session);
   }
 
-  // Message should mention either AddSessionOption or the typed-int parse failure.
+  // Message should mention either AddSessionConfigEntry or the typed-int parse failure.
   const bool mentions_dispatch =
-      err_msg.find("AddSessionOption") != std::string::npos ||
+      err_msg.find("AddSessionConfigEntry") != std::string::npos ||
       err_msg.find("base-10 int32") != std::string::npos ||
       err_msg.find("intra_op_num_threads") != std::string::npos;
   EXPECT_TRUE(mentions_dispatch) << "error did not mention typed dispatch: " << err_msg;
