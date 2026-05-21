@@ -135,7 +135,7 @@ MlasConv2dSingleChannel_CHW_Kernel3x3_Pad01_Dilation1(
 
     const size_t pad_top = Parameters->Padding[0];
     const size_t pad_left = Parameters->Padding[1];
-    const size_t pad_bottom = Parameters->Padding[2];
+    [[maybe_unused]] const size_t pad_bottom = Parameters->Padding[2];
     const size_t pad_right = Parameters->Padding[3];
 
     assert(pad_top <= 1);

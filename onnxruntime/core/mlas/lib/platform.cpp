@@ -477,6 +477,7 @@ Return Value:
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
+                this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx2;
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
@@ -562,6 +563,7 @@ Return Value:
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                             this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
+                            this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx512Vnni;
                         }
                     }
                 }
@@ -624,6 +626,7 @@ Return Value:
     this->HGemmDispatch = &MlasHGemmDispatchNeon;
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
+    this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
     // Use the AArch64 assembly implementation on non-Windows platforms.
@@ -722,7 +725,7 @@ Return Value:
         }
         else{
             this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;
-            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel; 
+            this->GeluFP16KernelRoutine = MlasNeonGeluFP16Kernel;
         }
     #else
         this->ErfFP16KernelRoutine = MlasNeonErfFP16Kernel;

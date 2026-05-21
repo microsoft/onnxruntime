@@ -224,17 +224,10 @@ Status CheckInputs(const T* query,
                            num_heads % kv_num_heads);
   }
 
-#ifdef USE_INT4_KV_CACHE
   if (kv_cache_bit_width != 0 && kv_cache_bit_width != 4 && kv_cache_bit_width != 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "kv_cache_bit_width must be 0, 4 or 8. Got kv_cache_bit_width == ", kv_cache_bit_width);
   }
-#else
-  if (kv_cache_bit_width != 0 && kv_cache_bit_width != 8) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "kv_cache_bit_width must be 0 or 8. Got kv_cache_bit_width == ", kv_cache_bit_width);
-  }
-#endif
 
   int batch_size = 0;
   int sequence_length = 0;

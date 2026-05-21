@@ -54,7 +54,7 @@ stages:
           --volume "$(Build.BinariesDirectory):/build" \
           --env PIP_INDEX_URL \
           --env "NVIDIA_VISIBLE_DEVICES=all" \
-          --env "ORT_TEST_VERBOSE=$(System.Debug)" \
+          --env "ORT_TEST_VERBOSE=$(OrtTestVerbose)" \
           onnxruntimecuda$(CudaVersionNoDot)plugintestx64 \
           /bin/bash -c "
             set -e -x

@@ -125,6 +125,7 @@ stages:
             $(extra_build_args)
         env:
           CUDA_VERSION: ${{ parameters.cuda_version }}
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
       - script: |
           set -e -x
