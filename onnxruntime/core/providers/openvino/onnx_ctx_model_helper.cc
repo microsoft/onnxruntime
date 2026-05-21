@@ -15,18 +15,67 @@ namespace openvino_ep {
 
 namespace {
 
-bool IsAbsolutePath(const std::string& path_string) {
-  auto path = std::filesystem::path(path_string);
-  return path.is_absolute();
+// Checks whether `path` starts with the given directory prefix (component-wise).
+bool HasPathComponentPrefix(const std::filesystem::path& prefix, const std::filesystem::path& path) {
+  auto [prefix_end, path_it] = std::mismatch(prefix.begin(), prefix.end(), path.begin(), path.end());
+  return prefix_end == prefix.end();
 }
 
-bool IsRelativePathToParentPath(const std::string& path_string) {
-  auto path = std::filesystem::path(path_string);
-  auto normalized = path.lexically_normal().string();
-  if (normalized.find("..") != std::string::npos) {
-    return true;
+// Validates that ep_cache_context resolves to a path within the model directory.
+// Resolves symlinks via weakly_canonical to prevent traversal attacks.
+Status ValidateEpCacheContextPath(const std::filesystem::path& model_path,
+                                  const std::string& ep_cache_context) {
+  std::filesystem::path cache_path(ep_cache_context);
+
+  // Reject absolute paths (covers both Unix '/' and Windows 'C:\' style).
+  if (!cache_path.root_path().empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "ep_cache_context must be a relative path, but got: ", ep_cache_context);
   }
-  return false;
+
+  // Determine model directory.
+  std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
+                                        ? std::filesystem::path{"."}
+                                        : model_path.parent_path();
+
+  // Resolve both paths to their weakly canonical forms (resolves symlinks for existing
+  // path components, normalizes the rest).
+  std::error_code ec;
+  auto model_dir_canonical = std::filesystem::weakly_canonical(model_dir, ec);
+  if (ec) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "Failed to resolve model directory: ", model_dir.string(), " - ", ec.message());
+  }
+
+  auto cache_path_canonical = std::filesystem::weakly_canonical(model_dir / cache_path, ec);
+  if (ec) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "Failed to resolve ep_cache_context path: ", (model_dir / cache_path).string(),
+                           " - ", ec.message());
+  }
+
+  // Verify the resolved cache path is contained within the model directory.
+  if (HasPathComponentPrefix(model_dir_canonical, cache_path_canonical)) {
+    return Status::OK();
+  }
+
+  // The model file itself may be a symlink (e.g., Hugging Face Hub cache).
+  // Check against the real model directory after resolving all symlinks.
+  if (!model_path.empty() && std::filesystem::is_symlink(model_path, ec) && !ec) {
+    auto real_model_path = std::filesystem::weakly_canonical(model_path, ec);
+    if (!ec) {
+      auto real_model_dir = real_model_path.parent_path();
+      if (HasPathComponentPrefix(real_model_dir, cache_path_canonical)) {
+        return Status::OK();
+      }
+    }
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                         "ep_cache_context path escapes model directory. ",
+                         "ep_cache_context: ", ep_cache_context,
+                         ", resolved path: ", cache_path_canonical.string(),
+                         ", model directory: ", model_dir_canonical.string());
 }
 
 }  // namespace
@@ -133,11 +182,7 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
       blob_filepath = graph_viewer.ModelPath();
     }
-    // ep_cache_context must be a relative path within the context model directory.
-    ORT_ENFORCE(!IsAbsolutePath(ep_cache_context),
-                "ep_cache_context must be a relative path, but got absolute path: ", ep_cache_context);
-    ORT_ENFORCE(!IsRelativePathToParentPath(ep_cache_context),
-                "ep_cache_context must not contain '..'; it cannot point outside the model directory.");
+    ORT_THROW_IF_ERROR(ValidateEpCacheContextPath(blob_filepath, ep_cache_context));
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
@@ -266,11 +311,7 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
         shared_context->Deserialize(ss);
       }
     } else {
-      // ep_cache_context must be a relative path within the context model directory.
-      ORT_ENFORCE(!IsAbsolutePath(ep_cache_context),
-                  "ep_cache_context must be a relative path, but got absolute path: ", ep_cache_context);
-      ORT_ENFORCE(!IsRelativePathToParentPath(ep_cache_context),
-                  "ep_cache_context must not contain '..'; it cannot point outside the model directory.");
+      ORT_THROW_IF_ERROR(ValidateEpCacheContextPath(session_context.GetOutputModelPath(), ep_cache_context));
       std::filesystem::path ep_context_path = session_context.GetOutputModelPath().parent_path() / ep_cache_context;
       if (ep_context_path.extension() != ".xml") {
         shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
