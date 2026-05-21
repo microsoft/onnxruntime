@@ -518,7 +518,7 @@ TEST(MatMulIntegerToFloat, BiasShapeMismatch) {
   test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "bias must be a 1-D tensor whose length equals");
+           "bias tensor's element count must equal B's last dimension");
 }
 
 }  // namespace test

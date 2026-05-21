@@ -436,7 +436,7 @@ TEST(DynamicQuantizeMatMul, KleidiBiasRuntimeShapeMismatch) {
   test.AddInput<float>("bias", {1}, bad_bias, false /*runtime*/);
   test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "bias must be a 1-D tensor whose length equals");
+           "bias tensor's element count must equal B's last dimension");
 }
 
 // 7. Mismatched bias (constant initializer) -> KleidiAI pre-pack rejects -> falls back to ComputeCommon
@@ -455,7 +455,7 @@ TEST(DynamicQuantizeMatMul, KleidiBiasInitializerShapeMismatch) {
   test.AddInput<float>("bias", {1}, bad_bias, true /*initializer*/);
   test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "bias must be a 1-D tensor whose length equals");
+           "bias tensor's element count must equal B's last dimension");
 }
 
 #endif  // USE_KLEIDIAI
@@ -548,7 +548,7 @@ TEST(DynamicQuantizeMatMul, BiasShapeMismatch) {
   test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "bias must be a 1-D tensor whose length equals");
+           "bias tensor's element count must equal B's last dimension");
 }
 
 }  // namespace test

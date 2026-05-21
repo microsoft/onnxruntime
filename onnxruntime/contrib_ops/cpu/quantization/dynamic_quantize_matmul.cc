@@ -82,8 +82,8 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
 
   if (bias_tensor != nullptr) {
     ORT_RETURN_IF_NOT(bias_tensor->Shape().Size() == static_cast<int64_t>(helper.N()),
-                      "bias must be a 1-D tensor whose length equals B's last dimension (",
-                      helper.N(), "), but got size ", bias_tensor->Shape().Size());
+                      "bias tensor's element count must equal B's last dimension (",
+                      helper.N(), "), but got ", bias_tensor->Shape().Size());
   }
 
   auto* y_data = y->MutableData<float>();
@@ -314,8 +314,8 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
       if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {
         const Tensor* bias_t = ctx->Input<Tensor>(IN_BIAS);
         ORT_RETURN_IF_NOT(bias_t->Shape().Size() == static_cast<int64_t>(gemm_shape.N),
-                          "bias must be a 1-D tensor whose length equals B's last dimension (",
-                          gemm_shape.N, "), but got size ", bias_t->Shape().Size());
+                          "bias tensor's element count must equal B's last dimension (",
+                          gemm_shape.N, "), but got ", bias_t->Shape().Size());
         const auto biases = std::vector<float>(&bias_t->Data<float>()[0],
                                                &bias_t->Data<float>()[gemm_shape.N]);
 
