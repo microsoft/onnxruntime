@@ -79,9 +79,9 @@ jobs:
         run: |
           set -euo pipefail
           XCF=$HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out/onnxruntime.xcframework
-          lipo -verify_arch arm64 "$XCF/ios-arm64/onnxruntime.framework/onnxruntime"
-          lipo -verify_arch arm64 x86_64 "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime"
-          lipo -verify_arch arm64 x86_64 "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime"
+          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
+          lipo "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
+          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
           test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
           test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
           test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
