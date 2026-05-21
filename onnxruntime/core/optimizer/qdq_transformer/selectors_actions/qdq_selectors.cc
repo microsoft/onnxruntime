@@ -186,8 +186,7 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
   // default nearest-neighbor mode is safe to fold. See issue #21319.
   if (node.OpType() == "Resize") {
     const auto* mode_attr = graph_utils::GetNodeAttribute(node, "mode");
-    const std::string mode = (mode_attr != nullptr) ? mode_attr->s() : "nearest";
-    if (mode != "nearest") {
+    if (mode_attr != nullptr && mode_attr->s() != "nearest") {
       return false;
     }
   }
