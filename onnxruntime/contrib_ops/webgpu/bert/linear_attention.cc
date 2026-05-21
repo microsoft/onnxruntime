@@ -202,6 +202,19 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   TensorShapeVector state_shape({batch_size, kv_num_heads_, head_dim_k, head_dim_v});
   Tensor* present_state = context.Output(1, state_shape);
 
+  constexpr uint32_t kMaxSupportedWorkgroupSize = 256;
+  ORT_RETURN_IF_NOT(head_dim_k <= static_cast<int64_t>(kMaxSupportedWorkgroupSize),
+                    "LinearAttention WebGPU kernel requires head_dim_k <= ",
+                    kMaxSupportedWorkgroupSize,
+                    ", got ",
+                    head_dim_k);
+  uint32_t workgroup_size = 1;
+  while (workgroup_size < static_cast<uint32_t>(head_dim_k)) {
+    workgroup_size *= 2;
+  }
+  // Cap at GPU limits
+  workgroup_size = std::min(workgroup_size, kMaxSupportedWorkgroupSize);
+
   // Vectorization: when head_dim_v is divisible by 4, use vec4 to pack 4 dv values
   // per element. This replaces scalar TILE_V loops with native vec4 SIMD operations,
   // reduces shared memory access overhead, and enables coalesced memory reads/writes.
@@ -216,27 +229,16 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // Only expand for longer sequences (>=16) where the benefit outweighs the
   // increased register pressure and shared memory usage.
   if (subgroup_min_size > 0 && seq_length >= 16) {
-    // Only expand if the vectorized dim has enough columns to fill the larger tile.
+    // Ensure the vectorized dimension is wide enough to warrant a larger tile.
     if (head_dim_v / components >= tile_v * 4) {
       tile_v *= 4;
     }
   }
+  // Clamp to workgroup_size since the shader assigns one thread per tile_v
+  // column (threads with dk_idx >= TILE_V are idle for output/state writes).
+  tile_v = std::min(tile_v, static_cast<int>(workgroup_size));
 
   const int head_dim_v_vectorized = onnxruntime::narrow<int>(head_dim_v) / components;
-
-  constexpr uint32_t kMaxSupportedWorkgroupSize = 256;
-  ORT_RETURN_IF_NOT(head_dim_k <= static_cast<int64_t>(kMaxSupportedWorkgroupSize),
-                    "LinearAttention WebGPU kernel requires head_dim_k <= ",
-                    kMaxSupportedWorkgroupSize,
-                    ", got ",
-                    head_dim_k);
-  uint32_t workgroup_size = 1;
-  while (workgroup_size < static_cast<uint32_t>(head_dim_k)) {
-    workgroup_size *= 2;
-  }
-  // Cap at GPU limits
-  workgroup_size = std::min(workgroup_size, kMaxSupportedWorkgroupSize);
-
   const int num_dv_tiles = (head_dim_v_vectorized + tile_v - 1) / tile_v;
   const uint32_t num_workgroups = onnxruntime::narrow<uint32_t>(batch_size * kv_num_heads_ * num_dv_tiles);
 
