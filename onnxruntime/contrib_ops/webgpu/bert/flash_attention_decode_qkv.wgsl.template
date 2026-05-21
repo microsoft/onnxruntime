@@ -9,7 +9,7 @@
 #param sub_tile_count
 #param tile_size
 #param tile_size_k_vec
-#param use_seqlen_k
+#param use_indirect_dispatch
 
 // Fused QK^T + softmax + V multiply shader.
 //
@@ -52,7 +52,7 @@ var<workgroup> tile_sum: array<f32, m_tile>;
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
-  #if use_seqlen_k
+  #if use_indirect_dispatch
   let total_sequence_length = u32(seqlens_k[0]) + 1u;
   #else
   let total_sequence_length = uniforms.total_sequence_length;

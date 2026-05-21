@@ -5,7 +5,7 @@
 #param m_tile
 #param seq_tile_size
 #param tile_size
-#param use_seqlen_k
+#param use_indirect_dispatch
 
 // This shader reduces partial V outputs from the fused QKV shader.
 // Each tile produced a locally-normalized V contribution. To get the
@@ -30,7 +30,7 @@ $MAIN {
   }
   let local_row = u32(local_idx / tile_size);
   let local_col = local_idx % tile_size;
-  #if use_seqlen_k
+  #if use_indirect_dispatch
   let total_sequence_length = u32(seqlens_k[0]) + 1u;
   let num_total_seq_length_tile = (total_sequence_length + seq_tile_size - 1) / seq_tile_size;
   #else
