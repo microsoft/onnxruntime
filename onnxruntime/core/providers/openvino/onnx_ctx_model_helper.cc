@@ -25,6 +25,10 @@ bool HasPathComponentPrefix(const std::filesystem::path& prefix, const std::file
 // Resolves symlinks via weakly_canonical to prevent traversal attacks.
 Status ValidateEpCacheContextPath(const std::filesystem::path& model_path,
                                   const std::string& ep_cache_context) {
+  if (ep_cache_context.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "ep_cache_context must not be empty");
+  }
+
   std::filesystem::path cache_path(ep_cache_context);
 
   // Reject absolute paths (covers both Unix '/' and Windows 'C:\' style).
