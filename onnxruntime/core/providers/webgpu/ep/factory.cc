@@ -170,7 +170,7 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
 
   *allocator = new onnxruntime::ep::adapter::Allocator(memory_info,
                                                        [](const OrtMemoryInfo&) -> AllocatorPtr {
-                                                         return std::make_shared<webgpu::GpuBufferAllocator>(WebGpuContextFactory::DefaultContext().BufferManager(), false);
+                                                         return std::make_shared<webgpu::GpuBufferAllocator>([]() -> const webgpu::BufferManager& { return WebGpuContextFactory::DefaultContext().BufferManager(); }, false);
                                                        });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
