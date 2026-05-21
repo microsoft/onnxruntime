@@ -27,6 +27,8 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 5; }
 
   bool SupportsMLProgram() const override { return true; }
+
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <list>
 #include <string>
+#include <unordered_map>
 #include <thread>
 #include <queue>
 #include <iomanip>
@@ -65,6 +66,7 @@
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/abi_devices.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/DmlRuntimeGraphFusionTransformer.h"
@@ -298,6 +300,38 @@ Status GetMinimalBuildOptimizationHandling(
 };
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+// Maps an OrtHardwareDeviceType (from the V2 OrtEpDevice path) to a string
+// matching the EpDeviceUsage telemetry schema.
+const char* HardwareDeviceTypeToString(OrtHardwareDeviceType type) {
+  switch (type) {
+    case OrtHardwareDeviceType_CPU:
+      return "CPU";
+    case OrtHardwareDeviceType_GPU:
+      return "GPU";
+    case OrtHardwareDeviceType_NPU:
+      return "NPU";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+// Maps a legacy OrtDevice::DeviceType (used by EPs that did not come through the V2
+// OrtEpDevice path) to a string matching the EpDeviceUsage telemetry schema.
+const char* OrtDeviceTypeToString(OrtDevice::DeviceType type) {
+  switch (type) {
+    case OrtDevice::CPU:
+      return "CPU";
+    case OrtDevice::GPU:
+      return "GPU";
+    case OrtDevice::NPU:
+      return "NPU";
+    case OrtDevice::FPGA:
+      return "FPGA";
+    default:
+      return "UNKNOWN";
+  }
+}
 
 }  // namespace
 
@@ -826,10 +860,20 @@ InferenceSession::~InferenceSession() {
   ORT_TRY {
     std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
     if (telemetry_.total_runs_since_last_ > 0) {
-      Env::Default().GetTelemetryProvider().LogRuntimePerf(session_id_,
-                                                           telemetry_.total_runs_since_last_,
-                                                           telemetry_.total_run_duration_since_last_,
-                                                           telemetry_.duration_per_batch_size_);
+      const auto& telemetry_provider = Env::Default().GetTelemetryProvider();
+      telemetry_provider.LogRuntimePerf(session_id_,
+                                        telemetry_.total_runs_since_last_,
+                                        telemetry_.total_run_duration_since_last_,
+                                        telemetry_.duration_per_batch_size_);
+      // Also flush a final EpDeviceUsage per (EP, device) to capture any runs
+      // that occurred between the last heartbeat and session destruction.
+      for (const auto& ep_info : telemetry_.ep_device_info_) {
+        telemetry_provider.LogEpDeviceUsage(
+            session_id_, ep_info.ep_type, ep_info.hardware_device_type,
+            ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
+            ep_info.assigned_node_count,
+            telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
+      }
     }
   }
   ORT_CATCH(const std::exception& e) {
@@ -1678,7 +1722,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
         cpu_regs = kernel_regs[kernel_regs.size() - 1];
       }
 
-      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
+      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs, on_partition_assignment_fn};
       ORT_RETURN_IF_ERROR_SESSIONID_(
           apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
                                  ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
@@ -2722,10 +2766,29 @@ common::Status InferenceSession::Initialize() {
     std::filesystem::path model_path = graph.ModelPath();
     std::string model_file_name = PathToUTF8String(model_path.filename().native());
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+
+    // Populate per-(EP, hardware-device) telemetry data captured once at session
+    // initialization. The graph partitioning is complete at this point, so we can
+    // count how many nodes each EP is assigned. This populates telemetry_.ep_device_info_
+    // and the comma-separated summary strings used to enrich SessionCreation.
+    PopulateEpDeviceInfo(graph);
+
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
+        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(),
+        telemetry_.ep_device_types_summary_, telemetry_.ep_device_vendor_ids_summary_,
+        model_has_fp16_inputs, false);
+
+    // Emit one initial EpDeviceUsage event per (EP, device) pair with run counts of 0.
+    // Ensures we capture EP/device topology even for sessions that end before the
+    // first RuntimePerf heartbeat (2s after the first Run()).
+    for (const auto& ep_info : telemetry_.ep_device_info_) {
+      env.GetTelemetryProvider().LogEpDeviceUsage(
+          session_id_, ep_info.ep_type, ep_info.hardware_device_type,
+          ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
+          ep_info.assigned_node_count, 0, 0);
+    }
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
@@ -3381,6 +3444,18 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
         env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
                                                   telemetry_.total_run_duration_since_last_,
                                                   telemetry_.duration_per_batch_size_);
+
+        // Emit one EpDeviceUsage event per (EP, hardware device) tuple so
+        // downstream consumers can attribute usage to a specific EP+device combo
+        // without joining back to SessionCreation (which may fall outside the
+        // telemetry pipeline's lookback window for long-lived sessions).
+        for (const auto& ep_info : telemetry_.ep_device_info_) {
+          env.GetTelemetryProvider().LogEpDeviceUsage(
+              session_id_, ep_info.ep_type, ep_info.hardware_device_type,
+              ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
+              ep_info.assigned_node_count,
+              telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
+        }
         // reset counters
         telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
         telemetry_.total_runs_since_last_ = 0;
@@ -3993,6 +4068,98 @@ void InferenceSession::ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_t
   }
 }
 
+void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
+  telemetry_.ep_device_info_.clear();
+  telemetry_.ep_device_types_summary_.clear();
+  telemetry_.ep_device_vendor_ids_summary_.clear();
+
+  // First, count nodes assigned to each EP type after graph partitioning.
+  // The graph node only carries the EP type string, so when a single EP targets
+  // multiple devices (e.g. QNN targeting both NPU and GPU on the same SoC) we
+  // cannot disambiguate node-to-device assignment here — every device row for the
+  // same EP type will carry the same total count. Downstream aggregation should
+  // use MAX (not SUM) across device rows to avoid double counting.
+  std::unordered_map<std::string, int> nodes_per_ep;
+  for (const auto& node : graph.Nodes()) {
+    const auto& ep = node.GetExecutionProviderType();
+    if (!ep.empty()) {
+      nodes_per_ep[ep]++;
+    }
+  }
+
+  // Then iterate registered EPs and emit one entry per (EP, OrtEpDevice) tuple,
+  // falling back to OrtDevice for legacy EPs that were not created via the V2
+  // OrtEpDevice path.
+  for (const auto& provider : execution_providers_) {
+    if (!provider) {
+      continue;
+    }
+
+    const std::string& ep_type = provider->Type();
+    const int assigned_nodes = nodes_per_ep.count(ep_type) ? nodes_per_ep[ep_type] : 0;
+    const auto& ep_devices = provider->GetEpDevices();
+
+    if (!ep_devices.empty()) {
+      // V2 path: full hardware metadata available via OrtEpDevice / OrtHardwareDevice.
+      for (const OrtEpDevice* ep_device : ep_devices) {
+        if (!ep_device) {
+          continue;
+        }
+
+        Telemetry::EpDeviceInfo entry;
+        entry.ep_type = ep_type;
+        entry.ep_vendor = ep_device->ep_vendor;
+        if (ep_device->device != nullptr) {
+          entry.hardware_device_type = HardwareDeviceTypeToString(ep_device->device->type);
+          entry.vendor_id = ep_device->device->vendor_id;
+          entry.device_id = ep_device->device->device_id;
+          entry.vendor = ep_device->device->vendor;
+        } else {
+          entry.hardware_device_type = "UNKNOWN";
+        }
+        entry.assigned_node_count = assigned_nodes;
+        telemetry_.ep_device_info_.push_back(std::move(entry));
+      }
+    } else {
+      // Legacy path: only OrtDevice is available. PCI vendor/device IDs and
+      // vendor name are not populated for legacy EPs — downstream consumers
+      // see vendor_id from OrtDevice (which matches PCI for known EPs) and
+      // empty vendor / device_id of 0.
+      const OrtDevice& device = provider->GetDevice();
+      Telemetry::EpDeviceInfo entry;
+      entry.ep_type = ep_type;
+      entry.hardware_device_type = OrtDeviceTypeToString(device.Type());
+      entry.vendor_id = device.Vendor();
+      entry.device_id = 0;
+      entry.vendor = std::string();
+      entry.ep_vendor = std::string();
+      entry.assigned_node_count = assigned_nodes;
+      telemetry_.ep_device_info_.push_back(std::move(entry));
+    }
+  }
+
+  // Build the comma-separated summaries used to enrich SessionCreation. Order
+  // matches execution_providers_.GetIds() iteration order so consumers can join
+  // by position against the existing executionProviderIds field.
+  std::ostringstream types_oss;
+  std::ostringstream vendor_ids_oss;
+  bool first = true;
+  for (const auto& entry : telemetry_.ep_device_info_) {
+    if (!first) {
+      types_oss << ',';
+      vendor_ids_oss << ',';
+    }
+    first = false;
+    types_oss << entry.hardware_device_type;
+    // Format vendor IDs as hex for readability (PCI IDs are conventionally hex).
+    vendor_ids_oss << "0x" << std::hex << std::uppercase << std::setw(4)
+                   << std::setfill('0') << entry.vendor_id
+                   << std::dec << std::nouppercase << std::setfill(' ');
+  }
+  telemetry_.ep_device_types_summary_ = types_oss.str();
+  telemetry_.ep_device_vendor_ids_summary_ = vendor_ids_oss.str();
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 // assumes model has already been loaded before
 common::Status InferenceSession::DoPostLoadProcessing(onnxruntime::Model& model) {
@@ -4235,7 +4402,9 @@ void InferenceSession::LogAllSessions() {
       env.GetTelemetryProvider().LogSessionCreation(
           session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
           graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
-          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
+          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(),
+          session->telemetry_.ep_device_types_summary_, session->telemetry_.ep_device_vendor_ids_summary_,
+          model_has_fp16_inputs, true);
     }
 
     InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);

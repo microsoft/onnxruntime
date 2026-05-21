@@ -1403,6 +1403,14 @@ struct MLAS_ELTWISE_DISPATCH;
 extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
 
 //
+// Quantized KV-cache GEMM dispatch structure (QKGemm / SVGemm).
+//
+struct MLAS_KV_QUANT_GEMM_DISPATCH;
+extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx2;
+extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
+extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
+
+//
 // Quantized depthwise convolution kernels.
 //
 
@@ -1628,6 +1636,7 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
+    const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
 };
 
 inline

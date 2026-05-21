@@ -56,7 +56,7 @@ stages:
         python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
       displayName: 'Install and test Python package'
       env:
-        ORT_TEST_VERBOSE: $(System.Debug)
+        ORT_TEST_VERBOSE: $(OrtTestVerbose)
 
   # NuGet package test (x64 only — the NuGet package is multi-platform but
   # the test runs on a single Windows agent that exercises the WebGPU EP).

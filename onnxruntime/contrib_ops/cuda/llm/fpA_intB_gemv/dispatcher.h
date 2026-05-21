@@ -324,7 +324,7 @@ template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool
 void exec_kernel(Params& params, cudaStream_t s) {
   using T = typename Details::TypeDetailsA::Type;
   if (params.m % CtaM || params.n % (CtaN * Details::kInterleave)) {
-    throw std::runtime_error("launch failed");
+    ORT_THROW("launch failed");
   }
   dim3 grid(params.m / CtaM, params.n / (CtaN * Details::kInterleave));
   dim3 block(Threads);
@@ -384,7 +384,7 @@ void dispatcher(Params& params, cudaStream_t s) {
     DISPATCHER_FOR_M(14, 14, 8, 128);
     DISPATCHER_FOR_M(15, 15, 8, 128);
   }
-  throw std::runtime_error("unsupported m");
+  ORT_THROW("unsupported m");
 #undef DISPATCHER_FOR_M
 }
 

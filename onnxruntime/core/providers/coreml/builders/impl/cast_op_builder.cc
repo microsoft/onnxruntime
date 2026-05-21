@@ -22,6 +22,12 @@ class CastOpBuilder : public BaseOpBuilder {
 
  public:
   bool SupportsMLProgram() const override { return true; }
+
+  // Cast is shape-only data movement from CoreML's perspective: per-element
+  // dtype conversion that the marshalling overhead dominates for small
+  // tensors. CoreML claims it but a partition consisting only of Casts
+  // doesn't earn its own marshalling cost.
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
