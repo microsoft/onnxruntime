@@ -226,6 +226,559 @@ Since partitioning is decided once at `Initialize()` time and all required devic
 
 ### How to Approach
 
+#### The Chicken-and-Egg Problem: Workspace Estimation vs EP Assignment
+
+**Problem statement:** To make precise memory budget decisions during `GetCapability()`, `IResourceAccountant` needs workspace sizes per node. But workspace sizes come from kernels, which don't exist until *after* EP assignment (kernels are created during `Compile()`/session state finalization — same reason `PrePack` happens late). At decision time, you can't ask a kernel that doesn't exist yet.
+
+**Why this matters:** The goal is not to fail gracefully — it's to **avoid failure entirely**. Today, models either OOM on device or trigger heavy VRAM thrashing on Windows. The partitioning must be conservative enough to prevent this, while accurate enough to maximize GPU utilization.
+
+**Solution: Two-level estimation with post-assignment verification and tail-trim**
+
+**Level 1 — Static workspace estimation function (at partitioning time):**
+
+When a kernel is registered (via `KernelRegistry_AddKernel`), optionally provide a **static estimation function** — a class-level function that takes node info and returns a conservative workspace estimate without needing a kernel instance:
+
+```c
+// Registered alongside the kernel definition in KernelRegistry_AddKernel:
+typedef OrtStatus*(ORT_API_CALL* OrtKernelWorkspaceEstimateFunc)(
+    _In_ const OrtEpApi* api,          // for querying node attributes/shapes/device props
+    _In_ const OrtNode* node,          // the specific node being evaluated
+    _In_ const OrtEp* ep,              // EP instance (for device properties like SM count)
+    _Out_ size_t* estimated_workspace_bytes);
+```
+
+The function uses `api->Node_GetAttribute*()` and `api->Node_GetInputShape()` to access the node's attributes and input shapes, and `api->Ep_GetDeviceProperty()` for GPU hardware properties — everything needed to compute workspace without a kernel instance.
+
+**Can the estimate be precise (not just conservative)?**
+
+Depends on the kernel:
+
+| Kernel | Workspace depends on | Available at GetCapability()? | Precise estimate? |
+|--------|---------------------|-------------------------------|-------------------|
+| **Attention (Flash)** | shapes + `num_heads` attr + `device_prop.multiProcessorCount` | ✓ All available (EP has device_prop) | **YES — exact** |
+| **Conv (cuDNN)** | cuDNN `build_plans(handle)` with tensor shapes + conv params | ✓ EP has handle; shapes/attrs available from node | **YES — exact** (with `HEUR_MODE_A`) |
+| **GEMM/MatMul** | No workspace | N/A | N/A (returns 0) |
+
+For **attention**, workspace is determined by `get_num_splits_and_buffer_sizes()` which is pure arithmetic given `(batch, seq, heads, head_size, multiProcessorCount)`. The EP already has `multiProcessorCount` from `cudaGetDeviceProperties()` which runs during EP construction (before `GetCapability()`). So the estimate can be **exact**.
+
+For **cuDNN-based ops** (Conv), the workspace depends on which algorithm cuDNN selects via `build_plans(handle)`. However, a cuDNN handle is just a lightweight context object (`cudnnCreate` + `cudnnSetStream`) — the EP already owns one from construction time. With static shapes, all inputs to `build_plans()` are known: tensor dimensions, conv parameters (from node attributes), and the handle. The `CUDNN_HEUR_MODE_A` (fast heuristic) used by ORT is essentially a lookup + arithmetic — not actual GPU profiling. So the estimation function **can call `build_plans()` and get the exact workspace size**. This makes Conv estimates **precise too**.
+
+The reason `build_plans()` currently runs during first `Compute()` is historical: ORT didn't have a pre-execution workspace declaration phase, and shapes weren't known until runtime. With static shapes and the estimation function pattern, this computation can move earlier.
+
+The estimation function accesses the handle by casting `OrtEp*` to the EP's concrete type (safe because the function is EP-specific code registered by that EP):
+
+```cpp
+auto* cuda_ep = static_cast<const CudaEp*>(ep);  // plugin path
+cudnnHandle_t handle = cuda_ep->GetCudnnHandle();
+```
+
+**Can it be the same function as DeclareWorkspaceRequirements?**
+
+Not the same function pointer (different signatures — one has a kernel instance, one doesn't). But the **core computation logic can be a shared static helper** called from both:
+
+```cpp
+// Shared static helper (no instance needed):
+static size_t ComputeAttentionWorkspace(int batch, int seq, int heads,
+                                         int head_size, int num_SMs) {
+    auto [num_splits, slse_size, o_size] = flash::get_num_splits_and_buffer_sizes(
+        batch, seq, seq, heads, head_size, num_SMs);
+    return flash::get_softmax_lse_size(seq, batch, heads) + slse_size + o_size;
+}
+
+// Estimation function (no kernel instance — called during GetCapability):
+OrtStatus* EstimateAttentionWorkspace(const OrtEpApi* api, const OrtNode* node,
+                                       const OrtEp* ep, size_t* out) {
+    const int64_t* shape; size_t rank;
+    api->Node_GetInputShape(node, 0, &shape, &rank);
+    int64_t num_heads;
+    api->Node_GetAttributeInt(node, "num_heads", &num_heads);
+
+    // EP-specific: cast to concrete type to access device properties
+    auto* cuda_ep = static_cast<const CudaEp*>(ep);
+    int num_SMs = cuda_ep->GetDeviceProp().multiProcessorCount;
+
+    *out = ComputeAttentionWorkspace(shape[0], shape[1], num_heads, shape[3], num_SMs);
+    return nullptr;
+}
+
+// DeclareWorkspaceRequirements (has kernel instance — called during FinalizeSessionState):
+Status Attention::DeclareWorkspaceRequirements(span<const TensorShape> shapes,
+                                               InlinedVector<WorkspaceRequirement>& reqs) {
+    int num_SMs = GetDeviceProp().multiProcessorCount;
+    size_t total = ComputeAttentionWorkspace(
+        shapes[0][0], shapes[0][1], num_heads_, head_size_, num_SMs);
+    reqs.push_back({total, kSlotFlashWorkspace});
+    return Status::OK();
+}
+```
+
+Both call the same `ComputeAttentionWorkspace()` — producing **identical results**. The estimation function gets device properties from the EP; the kernel method gets them from its stored EP reference. Same data, same computation, same answer.
+
+**For cuDNN-based ops**, the estimation function can also be precise — it calls `build_plans()` using the EP's handle and the node's shapes/attributes. The Level 2 tail-trim remains as a safety net for any edge cases (e.g., cuDNN returning different results due to driver version differences between planning and execution).
+
+**KernelCreateInfo and registration macros:**
+
+Today `KernelCreateInfo` contains `{kernel_def, kernel_create_func, status}`. To add the estimation function:
+
+```cpp
+struct KernelCreateInfo {
+  std::unique_ptr<KernelDef> kernel_def;
+  KernelCreateFn kernel_create_func;
+  OrtKernelWorkspaceEstimateFunc workspace_estimate_func;  // NEW — may be nullptr
+  Status status;
+};
+```
+
+The existing `ONNX_OPERATOR_TYPED_KERNEL_EX` macro doesn't need changes — it produces `KernelCreateInfo` via `BuildKernelCreateInfo<>()`. The estimation function can be set separately after construction, or a new macro variant can be introduced:
+
+```cpp
+// Option: set via a builder-style extension after BuildKernelCreateInfo:
+auto info = BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(...)>();
+info.workspace_estimate_func = &EstimateAttentionWorkspace;
+
+// Option: new macro that includes the estimation function:
+// (only for kernels that implement estimation — opt-in)
+```
+
+No existing macros need modification — this is purely additive.
+
+**Integration with GetCapability and the resource budget:**
+
+The estimation function is called during budget enforcement — by the EP directly (in-tree) or by the host bridge (plugin). The result is combined with the base cost from `IResourceAccountant`.
+
+**Multiplier handling — non-member helper approach:**
+
+`ComputeResourceCount()` currently applies a 1.5x multiplier to approximate workspace for kernels without estimation functions. With precise workspace estimates available, the multiplier must be skipped. Rather than changing `ComputeResourceCount()`'s signature, we move the multiplier out and into a non-member helper that encapsulates the budget decision:
+
+```cpp
+// Non-member helper (e.g., in resource_accountant_helpers.h):
+// Called by both in-tree GetCapability and the plugin host bridge.
+ResourceCount ComputeNodeCostForBudget(
+    IResourceAccountant& accountant,
+    const Node& node,
+    std::optional<ResourceCount> workspace_estimate) {
+  // ComputeResourceCount returns base cost: outputs + initializers (dedup'd)
+  // NO multiplier — multiplier is now applied here when needed
+  ResourceCount base_cost = accountant.ComputeResourceCount(node);
+
+  if (workspace_estimate.has_value()) {
+    // Precise workspace known — add it directly, no multiplier
+    return AddResourceCounts(base_cost, *workspace_estimate);
+  }
+  // No workspace estimate — apply heuristic multiplier (1.5x)
+  return ApplyWorkspaceHeuristic(base_cost);
+}
+
+// Multiplier as an explicit utility:
+ResourceCount ApplyWorkspaceHeuristic(ResourceCount base) {
+  size_t bytes = std::get<0>(base);
+  return ResourceCount{static_cast<size_t>(bytes * 1.5)};
+}
+```
+
+**Design rationale:**
+- `ComputeResourceCount()` signature is **unchanged** — it returns the raw base cost (outputs + initializers with dedup). The 1.5x multiplier moves out of the accountant into this helper.
+- The helper is the **single decision point** for both code paths (in-tree and plugin host bridge). No duplicated logic.
+- `ApplyWorkspaceHeuristic()` makes the multiplier explicit and testable. It can be adjusted (e.g., per-EP or per-op-type) without changing any interface.
+- The helper integrates naturally with the existing budget check pattern:
+
+```cpp
+// Usage in GetCapability (both paths):
+auto total_cost = ComputeNodeCostForBudget(*accountant, node, workspace_estimate);
+auto would_be_consumed = AddResourceCounts(consumed, total_cost);
+
+if (has_budget && ResourceCountExceeds(would_be_consumed, budget)) {
+    accountant->SetStopAssignment();
+    break;
+}
+
+consumed = would_be_consumed;
+sub_graph->SetAccountant(accountant);
+sub_graph->AppendNodeCost(total_cost);
+```
+
+**Why this is clean with committed/uncommitted weights:**
+
+- **Weight dedup is unaffected.** `ComputeResourceCount()` handles pending/committed weight tracking internally. The workspace estimate is purely additive — it's not a weight, so it doesn't participate in dedup.
+- **`AppendNodeCost()` stores the combined total.** When `AccountForNode()` runs later (during `TryAssignNodes()`), it adds the stored cost (base + workspace) to `consumed_amount` and commits the weights. The workspace portion just inflates the per-node cost.
+- **`CommitWeightsForNode()` only touches initializers.** Workspace is a separate addend, not tracked in weight sets.
+- **`ResetForNewPass()` is fine.** The workspace estimate is stateless — recomputed fresh from node shapes each call, no state to carry across passes.
+
+If no estimation function is registered for a kernel, the helper applies the 1.5x multiplier as today (unchanged behavior).
+
+**Example estimation function (CUDA Conv):**
+
+```cpp
+OrtStatus* EstimateConvWorkspace(const OrtEpApi* api, const OrtNode* node,
+                                  const OrtEp* ep, size_t* out) {
+    // Get input shape (X: NCHW)
+    const int64_t* x_shape = nullptr;
+    size_t x_rank = 0;
+    OrtStatus* status = api->Node_GetInputShape(node, 0, &x_shape, &x_rank);
+    if (status) return status;
+    if (x_rank < 3) {
+        return api->CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Conv: input X must be at least rank 3");
+    }
+
+    // Get weight shape (W: [M, C/group, kH, kW, ...])
+    const int64_t* w_shape = nullptr;
+    size_t w_rank = 0;
+    status = api->Node_GetInputShape(node, 1, &w_shape, &w_rank);
+    if (status) return status;
+    if (w_rank != x_rank) {
+        return api->CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Conv: weight rank must match input rank");
+    }
+
+    // Get conv attributes (all optional — defaults to empty/zeros per ONNX spec)
+    const int64_t* pads = nullptr;
+    size_t pads_count = 0;
+    status = api->Node_GetAttributeInts(node, "pads", &pads, &pads_count);
+    if (status) return status;  // distinguishes "not present" (OK + nullptr) from error
+
+    const int64_t* strides = nullptr;
+    size_t strides_count = 0;
+    status = api->Node_GetAttributeInts(node, "strides", &strides, &strides_count);
+    if (status) return status;
+
+    const int64_t* dilations = nullptr;
+    size_t dilations_count = 0;
+    status = api->Node_GetAttributeInts(node, "dilations", &dilations, &dilations_count);
+    if (status) return status;
+
+    // EP-specific: cast to concrete type to access cuDNN handle
+    auto* cuda_ep = static_cast<const CudaEp*>(ep);
+    cudnnHandle_t handle = cuda_ep->GetCudnnHandle();
+    if (!handle) {
+        return api->CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                 "Conv: cuDNN handle not available on EP");
+    }
+
+    // Build cuDNN frontend graph and query workspace
+    // (same logic as CreateCudnnFeExecutionPlan but without storing state)
+    auto graph = BuildConvFrontendGraph(x_shape, x_rank, w_shape, w_rank,
+                                         pads, pads_count, strides, strides_count,
+                                         dilations, dilations_count);
+    if (!graph) {
+        return api->CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                 "Conv: failed to build cuDNN frontend graph");
+    }
+
+    auto plan_status = graph->build_plans(handle, cudnn_frontend::BuildPlanPolicy_t::HEURISTICS_ONLY);
+    if (plan_status) {
+        return api->CreateStatus(ORT_RUNTIME_EXCEPTION,
+                                 plan_status.get_message());
+    }
+
+    *out = graph->get_workspace_size();
+    return nullptr;  // success
+}
+```
+
+This produces the **exact same result** as the kernel would compute during `DeclareWorkspaceRequirements` — same handle, same shapes, same algorithm selection. The shared logic is the cuDNN frontend graph construction.
+
+**Why no public API for device properties or library handles:** The estimation function is registered BY the EP for ITS kernels — it's EP-specific code running in the EP's own DLL. It can safely cast `OrtEp*` to its concrete type (e.g., `CudaEp*`) to access device_prop, cuDNN handles, etc. This is the same pattern kernels already use: `static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp()`. No generic `Ep_GetCudnnHandle` or `Ep_GetDeviceIntProperty` API is needed — that would be CUDA-specific pollution of the universal EP interface.
+
+**Level 2 — Verification and diagnostics (after kernel creation):**
+
+After EP assignment and kernel creation, during `FinalizeSessionState()`:
+
+1. Call `DeclareWorkspaceRequirements()` on all kernel instances → get exact workspace sizes.
+2. Compute actual total memory: initializers + peak activations + peak workspace.
+3. If actual total ≤ budget → proceed normally (log confirmation at verbose level).
+4. If actual total > budget → **log a warning** with the overrun amount and the nodes contributing most workspace. Do NOT attempt to reassign nodes.
+
+**What does `DeclareWorkspaceRequirements()` have that `EstimateWorkspace()` doesn't?**
+
+Both run during static initialization (not runtime). Both have access to static shapes, node attributes, and the EP's device state. In the common case, they should produce **identical answers** — they call the same shared helper with the same inputs. The design intentionally makes them equivalent.
+
+However, `DeclareWorkspaceRequirements()` runs *after* one additional pipeline stage that can (in narrow cases) change what a node looks like:
+
+1. **EP-specific graph transforms (Level 2/3 optimizers):** These run *after* `GetCapability()` partitions the graph. They can fuse adjacent nodes within an EP's subgraph (e.g., Conv+Relu → ConvRelu, MatMul+Add → FusedMatMul). The fused node is a *different op* than the original — its workspace may differ from the sum of the parts. The estimation function at Level 1 was called on the pre-fusion nodes; `DeclareWorkspaceRequirements()` is called on the post-fusion kernel.
+
+2. **Kernel constructor decisions:** The constructor has access to the full `OpKernelInfo` including all inputs, attributes, and EP state simultaneously. Some kernels select between code paths based on complex multi-factor heuristics (e.g., "use flash path if head_size ≤ 128 AND sm ≥ 80 AND no causal mask" vs "use unfused path otherwise"). The estimation function must replicate this logic exactly — a bug there would cause divergence.
+
+**In practice, divergence is rare because:**
+- Fused ops (case 1) typically don't exist in the kernel registry at Level 1 — they're created by the fusion transformer itself, which knows their workspace needs. The estimation function for a fused op would be registered alongside the fused kernel.
+- Constructor logic (case 2) is the same arithmetic the estimation function replicates.
+
+**The honest assessment:** For well-written estimation functions operating on models with static shapes, Level 2 should agree with Level 1 100% of the time. Level 2's value is purely as a **development-time assertion** — catching bugs in estimation functions during testing, not as a production safety net.
+
+**Why we cannot reassign nodes at this stage:**
+
+The MemcpyTransformer (which inserts data-copy nodes at EP boundaries) runs during graph transformation — well before `FinalizeSessionState()`. By the time kernels exist and exact workspace is known, the graph already has Memcpy nodes baked in at the original partition boundaries. Reassigning tail nodes to CPU would require:
+- Removing the now-incorrect Memcpy nodes at the old boundary
+- Inserting new Memcpy nodes at the new boundary
+- Re-running shape inference on affected subgraphs
+- Re-creating kernels for the moved nodes under a different EP
+
+This is effectively re-running a portion of `Initialize()` — not a simple post-hoc trim. The complexity and fragility of partial re-partitioning at this stage makes it impractical.
+
+**Design philosophy: get it right in Level 1.**
+
+The estimation functions demonstrated above (Attention, Conv) produce **exact** workspace sizes using the same logic and data the kernel will use. For 75% of workspace-consuming kernels, shapes alone determine workspace (pure arithmetic). For another 16%, the cuDNN heuristic planner gives exact answers. The remaining ~12% (MOE, MatMulNBits) use upper-bound estimates that are tight.
+
+Given this precision, Level 2 serves as a **diagnostic check**, not a correction mechanism:
+- If the estimate matches → confirms the system is working correctly.
+- If the estimate under-shot → the warning alerts the developer that a particular kernel's estimation function needs improvement. This is a bug to fix in the estimation function, not a runtime recovery scenario.
+
+**When static shapes are unavailable:**
+
+If the model has dynamic shapes, the estimation function cannot compute workspace (shapes are unknown at `GetCapability()` time). In this case:
+- The estimation function returns a failure status or a sentinel value indicating "unknown."
+- `ComputeNodeCostForBudget()` falls back to the 1.5x heuristic multiplier on base cost.
+- The user may need to **tune the memory budget by trial and error** — setting a conservative budget and adjusting based on observed OOM or under-utilization. This is analogous to llama.cpp's `-ngl` flag: the user picks a layer count and adjusts based on whether it fits.
+- A future extension could accept user-provided "typical shape hints" (e.g., `max_batch=4, max_seq=2048`) to enable estimation even for dynamic-shape models, but this is out of scope for the initial design.
+
+**Plugin C ABI for Level 1:**
+
+```c
+// Workspace estimation function type (no kernel instance needed):
+typedef OrtStatus*(ORT_API_CALL* OrtKernelWorkspaceEstimateFunc)(
+    _In_ const OrtEpApi* api,
+    _In_ const OrtNode* node,
+    _In_ const OrtEp* ep,
+    _Out_ size_t* estimated_workspace_bytes);
+
+// Extension to KernelRegistry_AddKernel in OrtEpApi:
+ORT_API2_STATUS(KernelRegistry_AddKernelV2,
+    _Inout_ OrtKernelRegistry* registry,
+    _In_ const OrtKernelDef* kernel_def,
+    _In_ OrtKernelCreateFunc create_func,
+    _In_opt_ void* create_func_state,
+    _In_opt_ OrtKernelWorkspaceEstimateFunc workspace_estimate_func);  // NEW — may be NULL
+```
+
+**Required OrtEpApi additions for the estimation function to query node info:**
+
+```c
+// Query input shape from a node's NodeArg (populated by shape inference):
+ORT_API2_STATUS(Node_GetInputShape,
+    _In_ const OrtNode* node,
+    _In_ size_t input_index,
+    _Outptr_result_maybenull_ const int64_t** shape,  // NULL if dynamic
+    _Out_ size_t* rank);
+
+// Query integer attribute from a node:
+ORT_API2_STATUS(Node_GetAttributeInt,
+    _In_ const OrtNode* node,
+    _In_ const char* attr_name,
+    _Out_ int64_t* value);
+
+// Query integer array attribute:
+ORT_API2_STATUS(Node_GetAttributeInts,
+    _In_ const OrtNode* node,
+    _In_ const char* attr_name,
+    _Outptr_ const int64_t** values,
+    _Out_ size_t* count);
+```
+
+**Device properties and library handles** (cuDNN, cuBLAS, etc.) are accessed by casting `OrtEp*` to the EP's concrete type inside the estimation function — no public API needed (see examples above).
+
+---
+
+### Implementation Across Kernel Types and GetCapability Paths
+
+ORT has **three distinct kernel authoring scenarios** and **two GetCapability architectures**. The workspace estimation and declaration APIs must work correctly in each combination.
+
+#### Three Kernel Types
+
+| Type | Description | Registration mechanism | Examples |
+|------|-------------|----------------------|----------|
+| **In-tree** | C++ kernels compiled into the ORT binary | `BuildKernelCreateInfo<>()` via macros (`ONNX_OPERATOR_TYPED_KERNEL_EX`) | All CPU kernels, legacy CUDA EP kernels |
+| **Plugin (shared source)** | Same C++ source as in-tree, compiled into EP plugin DLL, uses adapter layer | `KernelRegistry_AddKernel` C ABI, with `CudaKernelAdapter<T>` bridging | CUDA EP plugin kernels |
+| **Pure ABI** | Kernels written directly against the C ABI (`OrtKernelImpl`) | `KernelRegistry_AddKernel` C ABI, `OrtKernelImpl` function pointers | Third-party EP plugin kernels |
+
+#### Two GetCapability Architectures
+
+| Architecture | Resource budgeting location | Workspace estimation call site |
+|-------------|---------------------------|-------------------------------|
+| **In-tree** | Inside `CUDAExecutionProvider::GetCapability()` — EP owns the loop, calls `resource_accountant->ComputeResourceCount(node)`, makes accept/reject decisions | EP calls estimation function directly in its loop |
+| **Plugin bridge** | In `PluginExecutionProvider::GetCapability()` (the C++ host wrapper) — plugin EP only proposes candidates, host does budgeting after plugin returns | Host calls estimation function during budget enforcement |
+
+**Critical difference:** In the plugin path, the plugin's `GetCapabilityImpl` returns a list of "I support these nodes" without resource checks. The **host bridge** (`ep_plugin_provider_interfaces.cc`) then iterates those nodes in topological order, calls `resource_accountant->ComputeResourceCount(node)` for each, and enforces the budget — halting assignment when the threshold is exceeded. The plugin never sees the accountant directly.
+
+#### Implementation: `OrtKernelWorkspaceEstimateFunc` (Level 1 — at partitioning time)
+
+**In-tree path:**
+
+```cpp
+// In CUDAExecutionProvider::GetCapability() loop (in-tree only):
+const KernelCreateInfo* kci = kernel_lookup.LookUpKernel(node);
+std::optional<size_t> workspace_estimate;
+if (kci && kci->workspace_estimate_func) {
+    size_t ws = 0;
+    // In-tree: pass IExecutionProvider* — func casts to CUDAExecutionProvider*
+    kci->workspace_estimate_func(this, node, &ws);
+    workspace_estimate = ws;
+}
+// Use non-member helper for budget decision:
+auto total_cost = ComputeNodeCostForBudget(*resource_accountant, node, workspace_estimate);
+// ... budget check with total_cost ...
+```
+
+The estimation function for in-tree kernels is a static member function. It casts the EP pointer to `CUDAExecutionProvider*` to access `GetDeviceProp()` and `PerThreadDefaultCudnnHandle()` — exactly the same pattern kernels already use.
+
+**Plugin bridge path:**
+
+```cpp
+// In PluginExecutionProvider::GetCapability() host-side budget loop
+// (ep_plugin_provider_interfaces.cc):
+for (const auto& node_grouping : api_graph_support_info.node_groupings) {
+    const Node& internal_node = node_grouping.nodes[0]->GetInternalNode();
+
+    // Look up workspace estimate function from kernel registry
+    const KernelCreateInfo* kci = kernel_lookup.LookUpKernel(internal_node);
+    std::optional<size_t> workspace_estimate;
+    if (kci && kci->workspace_estimate_func) {
+        size_t ws = 0;
+        // Plugin path: registered via KernelRegistry_AddKernelV2
+        // Function casts OrtEp* to its concrete type internally
+        OrtStatus* est_status = kci->workspace_estimate_func(
+            &ep_api_, ep_node->ToExternal(), ort_ep_.get(), &ws);
+        if (est_status) { OrtApis::ReleaseStatus(est_status); }
+        else { workspace_estimate = ws; }
+    }
+
+    // Same non-member helper as in-tree:
+    auto total_cost = ComputeNodeCostForBudget(*resource_accountant, internal_node,
+                                               workspace_estimate);
+    // ... budget check with total_cost ...
+}
+```
+
+**Pure ABI path (third-party EP):**
+
+Same as plugin bridge — the estimation function is registered via `KernelRegistry_AddKernelV2` and called by the host during budget enforcement. The kernel author provides the function pointer at registration time:
+
+```c
+// Third-party EP kernel registration:
+OrtStatus* MyConvEstimate(const OrtEpApi* api, const OrtNode* node,
+                           const OrtEp* ep, size_t* out) {
+    // Cast to concrete EP type to access device-specific state:
+    auto* my_ep = static_cast<const MyGpuEp*>(ep);
+    // ... compute workspace from node shapes + my_ep->device_properties ...
+}
+
+// During EP's RegisterKernels callback:
+ep_api->KernelRegistry_AddKernelV2(registry, conv_kernel_def, CreateConvKernel,
+                                    /*state=*/nullptr, &MyConvEstimate);
+```
+
+#### Implementation: `DeclareWorkspaceRequirements` (Level 2 — after kernel creation)
+
+**In-tree path:**
+
+Straightforward — add a virtual method to `OpKernel`:
+
+```cpp
+// In include/onnxruntime/core/framework/op_kernel.h:
+[[nodiscard]] virtual Status DeclareWorkspaceRequirements(
+    gsl::span<const TensorShape> input_shapes,
+    InlinedVector<WorkspaceRequirement>& requirements) const {
+  return Status::OK();  // Default: no workspace declared
+}
+```
+
+In-tree kernels override this just like they override `PrePack()`. Called during `FinalizeSessionState()` after kernel instances exist.
+
+**Plugin (shared source) path:**
+
+The `CudaKernelAdapter<T>` already bridges virtual calls to the underlying kernel class. The adapter forwards `DeclareWorkspaceRequirements` to the underlying kernel's implementation:
+
+```cpp
+// In cuda_kernel_adapter.h — adapter already forwards PrePack similarly:
+Status DeclareWorkspaceRequirements(
+    gsl::span<const TensorShape> input_shapes,
+    InlinedVector<WorkspaceRequirement>& requirements) const override {
+  // The underlying kernel class (compiled in the plugin DLL) implements this directly.
+  // CudaKernelAdapter<T> inherits from T, so T::DeclareWorkspaceRequirements is accessible.
+  return T::DeclareWorkspaceRequirements(input_shapes, requirements);
+}
+```
+
+Since plugin shared-source kernels ARE the same C++ class (just compiled in a different DLL), they implement `DeclareWorkspaceRequirements` as a regular virtual override — no ABI translation needed.
+
+**Pure ABI path (third-party EP):**
+
+Add an optional function pointer to `OrtKernelImpl`:
+
+```c
+// In onnxruntime_ep_c_api.h, extend OrtKernelImpl:
+struct OrtKernelImpl {
+  // ... existing fields (Compute, Release, PrePackWeight, ...) ...
+
+  // NEW — optional workspace declaration (ORT >= 1.XX):
+  ORT_API2_STATUS(DeclareWorkspaceRequirements,
+      _In_ OrtKernelImpl* this_ptr,
+      _In_ const int64_t* const* input_shapes,  // array of shape arrays
+      _In_ const size_t* input_ranks,            // rank of each input
+      _In_ size_t num_inputs,
+      _Out_ OrtWorkspaceRequirement** requirements,  // allocated by kernel
+      _Out_ size_t* num_requirements);
+};
+```
+
+The `PluginEpOpKernel` adapter (in `ep_kernel_registration.cc`) bridges this to the virtual call:
+
+```cpp
+// In PluginEpOpKernel:
+Status DeclareWorkspaceRequirements(
+    gsl::span<const TensorShape> input_shapes,
+    InlinedVector<WorkspaceRequirement>& requirements) const override {
+  // Version guard (same pattern as PrePack):
+  if (kernel_impl_->ort_version_supported < XX ||
+      kernel_impl_->DeclareWorkspaceRequirements == nullptr) {
+    return Status::OK();  // No declaration — fall back to arena
+  }
+
+  // Convert TensorShape spans to C arrays
+  InlinedVector<const int64_t*> shape_ptrs;
+  InlinedVector<size_t> ranks;
+  for (const auto& shape : input_shapes) {
+    shape_ptrs.push_back(shape.GetDims().data());
+    ranks.push_back(shape.NumDimensions());
+  }
+
+  OrtWorkspaceRequirement* reqs = nullptr;
+  size_t num_reqs = 0;
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+      kernel_impl_->DeclareWorkspaceRequirements(
+          kernel_impl_, shape_ptrs.data(), ranks.data(),
+          shape_ptrs.size(), &reqs, &num_reqs)));
+
+  // Convert C results to C++ vector
+  for (size_t i = 0; i < num_reqs; ++i) {
+    requirements.push_back({reqs[i].size_bytes, reqs[i].slot_id});
+  }
+  // Free C allocation (kernel used OrtAllocator or static buffer)
+  return Status::OK();
+}
+```
+
+#### Summary: Where Each Piece Lives
+
+| Component | In-tree | Plugin (shared source) | Pure ABI |
+|-----------|---------|----------------------|----------|
+| **Workspace estimation func** | Static member on kernel class; stored in `KernelCreateInfo::workspace_estimate_func` | Same static function, registered via `KernelRegistry_AddKernelV2` | C function pointer, registered via `KernelRegistry_AddKernelV2` |
+| **Who calls estimation** | EP's `GetCapability()` loop via `ComputeNodeCostForBudget()` helper | Host bridge via same `ComputeNodeCostForBudget()` helper | Host bridge (same) |
+| **DeclareWorkspaceRequirements** | Virtual override on `OpKernel` | Virtual override (same C++ class in plugin DLL) | `OrtKernelImpl::DeclareWorkspaceRequirements` function pointer → `PluginEpOpKernel` adapter |
+| **Who calls DeclareWorkspace** | `FinalizeSessionState()` | `FinalizeSessionState()` (same) | `FinalizeSessionState()` via adapter |
+| **Device property access** | `static_cast<CUDAExecutionProvider*>(ep)->GetDeviceProp()` | `static_cast<const CudaEp*>(ep)->GetDeviceProp()` | `static_cast<const MyEp*>(ep)->GetDeviceProps()` |
+| **cuDNN handle access** | `static_cast<CUDAExecutionProvider*>(ep)->PerThreadDefaultCudnnHandle()` | `static_cast<const CudaEp*>(ep)->GetCudnnHandle()` | N/A (EP-specific) |
+
+#### Key Design Principle
+
+The **estimation function** signature differs between in-tree and plugin paths:
+
+- **In-tree:** `static size_t EstimateWorkspace(const IExecutionProvider* ep, const Node& node)` — C++ types, direct EP access
+- **Plugin/ABI:** `OrtStatus* EstimateWorkspace(const OrtEpApi*, const OrtNode*, const OrtEp*, size_t*)` — C ABI, opaque types
+
+But both compute the same result. For shared-source kernels (compiled both in-tree and as plugin), a single static helper function (e.g., `ComputeAttentionWorkspace()`) is called from both wrappers — ensuring the estimate is identical regardless of build configuration.
+
+---
+
 #### Phase A: Workspace Pre-declaration (`DeclareWorkspaceRequirements`)
 
 The core missing piece. Today no kernel declares its temp buffer needs before `Compute()`. To close this gap, introduce a method on `OpKernel` that returns workspace descriptors — each with a size and a key for later retrieval.
@@ -491,9 +1044,10 @@ Near-term (low effort, high value):
 │     - Match against Node::Name() instead of metadata
 │     - Support range expressions for numbered layers
 │
-├── 2. Precise memory estimation for static-shape models
-│     - Run shape inference during Initialize() when shapes are known
-│     - Compute exact per-layer memory in IResourceAccountant
+├── 2. Precise per-node memory estimation
+│     - Static workspace estimation functions registered per kernel type
+│     - IResourceAccountant uses exact output sizes + workspace estimates
+│     - Eliminates 1.5x multiplier for kernels with estimation functions
 │
 Mid-term (medium effort):
 ├── 3. Auto-partitioning with memory budget only
