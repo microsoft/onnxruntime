@@ -39,6 +39,7 @@ All links can be found on AMD's [repo.radeon manylinux page](https://repo.radeon
 
 |ONNX Runtime Version|MIGraphX ROCm Release| Python 3.8 | Python 3.9 | Python 3.10 | Python 3.12 |
 |---|---|---|---|---|---|
+|1.23.2|7.2.1||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/onnxruntime_migraphx-1.23.2-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.1/onnxruntime_migraphx-1.23.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |
 |1.23.2|7.2||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/onnxruntime_migraphx-1.23.2-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2/onnxruntime_migraphx-1.23.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |
 |1.23.1|7.1.1||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.1.1/onnxruntime_migraphx-1.23.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.1.1/onnxruntime_migraphx-1.23.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |
 |1.23.1|7.1||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.1/onnxruntime_migraphx-1.23.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-7.1/onnxruntime_migraphx-1.23.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl) |

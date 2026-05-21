@@ -60,7 +60,9 @@ Even without step 3, ONNX Runtime will often provide performance improvements co
 
 ONNX Runtime applies a number of graph optimizations on the model graph then partitions it into subgraphs based on available hardware-specific accelerators. Optimized computation kernels in core ONNX Runtime provide performance improvements and assigned subgraphs benefit from further acceleration from each [Execution Provider](./execution-providers).
 
+### Model Validation
 
+You are responsible for testing and validating any model you use with ONNX Runtime, including its accuracy, performance, and suitability for your intended use case. ONNX Runtime will validate that the model conforms to the [ONNX](https://onnx.ai/onnx/index.html) specification. It is, however, possible to construct a malicious model that, for example, consumes large amounts of memory or compute resources unnecessarily. If you are using a model from an untrusted source, we recommend inspecting the model and testing it in a safe environment before using it in production.
 
 ---
 

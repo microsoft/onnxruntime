@@ -56,6 +56,8 @@ number of threads used to parallelize the execution of the graph (_across_ nodes
 
   * Controls whether additional INTRA or INTER threads spin waiting for work. Provides faster inference but consumes more CPU cycles, resources, and power
   * Default: 1 (Enabled)
+  * `spin_duration_us`: optional time-bounded spin window in microseconds (not set by default; uses legacy fixed iteration count)
+  * `spin_backoff_max`: optional exponential-backoff cap for spin pause density (default `1`, no backoff). Set to a power of two (e.g. `8`) to reduce CPU/power usage during the spin window
 
 
 ## Set number of intra-op threads
@@ -83,12 +85,49 @@ Controls whether additional INTRA or INTER threads spin waiting for work. Provid
 
 Example disabling spinning so WorkerLoop doesn't consume extra active cycles spinning waiting or attempting to steal work
 
-[Python](https://onnxruntime.ai/docs/api/python/api_summary.html#onnxruntime.SessionOptions.add_session_config_entry) (below) - [C++](https://onnxruntime.ai/docs/api/c/struct_ort_api.html) - [.NET/C#](https://onnxruntime.ai/docs/api/csharp/api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_AddSessionConfigEntry_System_String_System_String_) - [Keys](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L90)
+[Python](https://onnxruntime.ai/docs/api/python/api_summary.html#onnxruntime.SessionOptions.add_session_config_entry) (below) - [C++](https://onnxruntime.ai/docs/api/c/struct_ort_api.html) - [.NET/C#](https://onnxruntime.ai/docs/api/csharp/api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_AddSessionConfigEntry_System_String_System_String_) - [Keys](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h)
 ```python
 sess_opt = SessionOptions()
-sess_opt.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0")
-sess_opt.AddConfigEntry(kOrtSessionOptionsConfigAllowInterOpSpinning, "0")
+sess_opt.AddConfigEntry("session.intra_op.allow_spinning", "0")
+sess_opt.AddConfigEntry("session.inter_op.allow_spinning", "0")
 ```
+
+### Spin duration
+
+By default, thread pool workers spin for a fixed number of iterations before going to sleep. The `session.intra_op.spin_duration_us` and `session.inter_op.spin_duration_us` config keys let you specify a time-bounded spin window in microseconds instead. At session creation the runtime calibrates how many spin-loop iterations fit into the requested duration, so the actual spin time adapts to the host CPU speed.
+
+* Default: not set (uses the legacy fixed iteration count).
+* Setting the value to `0` disables spinning entirely (equivalent to `allow_spinning = 0`).
+* A positive value (e.g. `1000` for 1 ms) caps the spin window to that duration.
+
+```python
+sess_opt = SessionOptions()
+# Spin for at most 1 ms before sleeping
+sess_opt.add_session_config_entry("session.intra_op.spin_duration_us", "1000")
+sess_opt.add_session_config_entry("session.inter_op.spin_duration_us", "1000")
+sess = ort.InferenceSession('model.onnx', sess_opt)
+```
+
+### Spin backoff (exponential)
+
+When spinning is enabled, each spin iteration normally executes a single `SpinPause()` instruction. The `session.intra_op.spin_backoff_max` and `session.inter_op.spin_backoff_max` config keys activate an **exponential-backoff** mode: each successive iteration doubles the number of `SpinPause()` calls (1, 2, 4, … capped at `spin_backoff_max`). This reduces pause-instruction density and lowers CPU/power usage during the spin window — particularly beneficial on hybrid (P-core / E-core) and mobile platforms.
+
+The iteration count is automatically scaled so the total wall-clock spin budget (set by `spin_duration_us` or the legacy default) is preserved.
+
+* Default: `1` (one `SpinPause()` per iteration — identical to existing behavior).
+* Must be a power of two (e.g. 1, 2, 4, 8, …). Values that are not a power of two are rounded down.
+* Subordinate to `allow_spinning` — when spinning is disabled, this setting is ignored.
+* Composable with `spin_duration_us` — the two knobs are orthogonal and can be combined.
+
+```python
+sess_opt = SessionOptions()
+# Combine 1 ms time-bounded spinning with exponential backoff capped at 8
+sess_opt.add_session_config_entry("session.intra_op.spin_duration_us", "1000")
+sess_opt.add_session_config_entry("session.intra_op.spin_backoff_max", "8")
+sess = ort.InferenceSession('model.onnx', sess_opt)
+```
+
+In [benchmarks](https://github.com/microsoft/onnxruntime/pull/28096), `spin_duration_us=1000` combined with `spin_backoff_max=8` was the most consistent best performer across models and thread counts.
 
 ## Set number of inter-op threads
 
