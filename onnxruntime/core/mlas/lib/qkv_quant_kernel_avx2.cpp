@@ -20,6 +20,7 @@ Abstract:
 #include "qkv_quant_common.h"
 #include "mlas_qkv_quant.h"
 
+#include <cstring>
 #include <immintrin.h>
 
 using namespace MlasKVQuantInternal;
@@ -39,15 +40,19 @@ DequantInt4x8(const uint8_t* src, size_t col, bool per_channel, const float* sca
     // For 8 elements starting at `col`, we need 4 bytes (cols col..col+7 → bytes col/2..col/2+3).
     const uint8_t* base = src + col / 2;
 
-    // Load 4 packed bytes into SSE register and extract 8 nibbles in-register.
-    __m128i packed = _mm_cvtsi32_si128(*reinterpret_cast<const int*>(base));
+    // Load 4 packed bytes safely without strict-aliasing / alignment UB.
+    // Compilers optimize memcpy of 4 bytes to a single mov instruction.
+    int raw_bytes;
+    std::memcpy(&raw_bytes, base, sizeof(raw_bytes));
+    __m128i packed = _mm_cvtsi32_si128(raw_bytes);
 
     // Low nibbles (even columns): AND with 0x0F
     __m128i lo_mask = _mm_set1_epi8(0x0F);
     __m128i lo = _mm_and_si128(packed, lo_mask);
 
-    // High nibbles (odd columns): shift right 4, AND with 0x0F
-    __m128i hi = _mm_and_si128(_mm_srli_epi16(packed, 4), lo_mask);
+    // High nibbles (odd columns): shift right 4 using 32-bit granularity
+    // to prevent bit bleeding across 16-bit lane boundaries, then mask.
+    __m128i hi = _mm_and_si128(_mm_srli_epi32(packed, 4), lo_mask);
 
     // Interleave low and high nibbles: [lo0,hi0, lo1,hi1, lo2,hi2, lo3,hi3]
     __m128i interleaved = _mm_unpacklo_epi8(lo, hi);
