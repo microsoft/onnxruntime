@@ -87,13 +87,22 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
-    // TODO: Add NormalizeDispatchGroupSize logic here to avoid exceeding max dispatch size.
     shader.MainFunctionBody() << "  // Prepare indirect dispatch buffer for thread 0\n"
                               << "  if (global_idx == 0u) {\n"
                               << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
-                              << "    indirect_buffer[0] = num_total_seq_length_tile;\n"
-                              << "    indirect_buffer[1] = uniforms.num_heads;\n"
-                              << "    indirect_buffer[2] = 1u;\n"
+                              << "    let num_q_tiles = (uniforms.new_sequence_length + uniforms.m_tile - 1u) / uniforms.m_tile;\n"
+                              << "    let total = uniforms.batch_size * uniforms.num_heads * num_q_tiles * num_total_seq_length_tile;\n"
+                              << "    let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension\n"
+                              << "    if (total <= limit) {\n"
+                              << "      indirect_buffer[0] = total;\n"
+                              << "      indirect_buffer[1] = 1u;\n"
+                              << "      indirect_buffer[2] = 1u;\n"
+                              << "    } else {\n"
+                              << "      let dispatch_avg = u32(ceil(sqrt(f32(total))));\n"
+                              << "      indirect_buffer[0] = dispatch_avg;\n"
+                              << "      indirect_buffer[1] = dispatch_avg;\n"
+                              << "      indirect_buffer[2] = 1u;\n"
+                              << "    }\n"
                               << "  }\n\n";
   }
 
@@ -120,7 +129,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                   uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer) {
+                   uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer, uint32_t m_tile) {
   // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
@@ -176,7 +185,10 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {tile_size},
-                            {static_cast<uint32_t>(parameters.num_heads_)}});
+                            {static_cast<uint32_t>(parameters.num_heads_)},
+                            {static_cast<uint32_t>(parameters.batch_size_)},
+                            {static_cast<uint32_t>(parameters.sequence_length_)},
+                            {m_tile}});
 
   return context.RunProgram(program);
 }
@@ -401,13 +413,17 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Declare query_output at function scope to ensure it persists throughout the function
   Tensor query_output;
 
+  // Compute m_tile early so it can be passed to CopyKVCache for indirect dispatch.
+  const uint32_t m_tile = parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u);
+
   // Create indirect dispatch buffer if using indirect dispatch
   Tensor* indirect_buffer_ptr = nullptr;
   Tensor indirect_buffer;
 
-  // Prepare indirect dispatch buffer for decode path with static KV cache
-  const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
-                                     parameters.past_present_share_buffer_ &&
+  // Prepare indirect dispatch buffer for split-reduce path with static KV cache.
+  // When graph capture is enabled, total_sequence_length_ may be 0 (GPU-based
+  // seqlen_k), so the indirect buffer computes dispatch sizes on GPU.
+  const bool use_indirect_dispatch = parameters.past_present_share_buffer_ &&
                                      seqlen_k != nullptr &&
                                      context.IsGraphCaptureEnabled();
   if (use_indirect_dispatch) {
@@ -429,10 +445,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                                       Q, seqlen_k,
                                                                       cos_cache, sin_cache,
                                                                       &query_output, present_key, present_value,
-                                                                      indirect_buffer_ptr, tile_size));
+                                                                      indirect_buffer_ptr, tile_size, m_tile));
     Q = &query_output;
   } else {
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, m_tile));
   }
 
   // Route between prefill path (FlashAttentionProgram, single kernel)
@@ -509,10 +525,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   }
 
   // Split-reduce path (QKV + VxReduce)
-
-  // Compute m_tile: process multiple Q rows per workgroup to amortize K/V loads
-  const uint32_t m_tile = parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u);
-
   const uint32_t num_total_seq_length_tile = (parameters.total_sequence_length_ + tile_size - 1) / tile_size;
   const uint32_t num_present_sequence_length_tile = (present_sequence_length + tile_size - 1) / tile_size;
 
@@ -557,7 +569,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* present_key,
                                                      Tensor* present_value,
                                                      Tensor* indirect_buffer,
-                                                     uint32_t tile_size) {
+                                                     uint32_t tile_size, uint32_t m_tile) {
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -614,6 +626,9 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
       {present_sequence_length},
       {tile_size},
       {static_cast<uint32_t>(dispatch_size)},
+      {static_cast<uint32_t>(params.batch_size_)},
+      {static_cast<uint32_t>(params.sequence_length_)},
+      {m_tile},
   });
 
   program.SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);

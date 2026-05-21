@@ -35,7 +35,10 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
       {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
       {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
       {"tile_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32},
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"m_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
@@ -56,7 +59,10 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"m_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_;
@@ -214,7 +220,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* present_key,
                                                      Tensor* present_value,
                                                      Tensor* indirect_buffer,
-                                                     uint32_t tile_size);
+                                                     uint32_t tile_size, uint32_t m_tile);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
