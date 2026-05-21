@@ -99,7 +99,7 @@ def render(inst: Instantiation) -> str:
 
 #ifndef EXCLUDE_SM_120
 #ifdef COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 {fp8_open}{bf16_open}
 #include "contrib_ops/cuda/llm/moe_gemm/launchers/moe_gemm_tma_ws_launcher.inl"
 
@@ -109,7 +109,7 @@ INSTANTIATE_TMA_WARP_SPECIALIZED_MOE_GEMM(Sm120, {inst.act_cpp_type}, {inst.wt_c
 
 }}  // namespace onnxruntime::llm::kernels::cutlass_kernels
 
-{bf16_close}{fp8_close}#endif  // ENABLE_FP4 && ENABLE_CUDA_FP4_QMOE
+{bf16_close}{fp8_close}#endif  // ENABLE_FP4 && USE_FP4_QMOE
 #endif  // COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS
 #endif  // EXCLUDE_SM_120
 """

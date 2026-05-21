@@ -6,7 +6,7 @@
  */
 
 #ifdef COMPILE_HOPPER_TMA_GROUPED_GEMMS
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 #ifndef ORT_QUICK_BUILD
 #include "contrib_ops/cuda/llm/moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_instantiation.cuh"
 
@@ -17,5 +17,5 @@ ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_CO_FINALIZE(half, 128, 32, 128, 2, 1, 1);
 }  // namespace onnxruntime::llm::kernels::cutlass_kernels
 
 #endif  // !ORT_QUICK_BUILD
-#endif  // ENABLE_FP4 && ENABLE_CUDA_FP4_QMOE
+#endif  // ENABLE_FP4 && USE_FP4_QMOE
 #endif  // COMPILE_HOPPER_TMA_GROUPED_GEMMS

@@ -102,7 +102,7 @@ def render(instantiation: Instantiation) -> str:
  */
 
 #ifdef COMPILE_HOPPER_TMA_GROUPED_GEMMS
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
 {quick_open}{bf16_open}#include "contrib_ops/cuda/llm/moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_instantiation.cuh"
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {{
@@ -111,7 +111,7 @@ namespace onnxruntime::llm::kernels::cutlass_kernels {{
 
 }}  // namespace onnxruntime::llm::kernels::cutlass_kernels
 
-{bf16_close}{quick_close}#endif  // ENABLE_FP4 && ENABLE_CUDA_FP4_QMOE
+{bf16_close}{quick_close}#endif  // ENABLE_FP4 && USE_FP4_QMOE
 #endif  // COMPILE_HOPPER_TMA_GROUPED_GEMMS
 """
 

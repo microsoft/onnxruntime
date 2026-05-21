@@ -813,7 +813,7 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
     }
 #endif
 
-#if defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE)
+#if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
     // Hopper W4A16 (FP4 weights + FP16/BF16 activations) WS grouped GEMM
     if constexpr (use_wfp4a16) {
 #ifdef ORT_QUICK_BUILD

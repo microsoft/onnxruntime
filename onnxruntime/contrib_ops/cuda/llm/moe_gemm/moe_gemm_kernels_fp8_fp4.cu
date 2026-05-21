@@ -10,7 +10,7 @@ namespace onnxruntime::llm::kernels::cutlass_kernels {
 // Routes through the SM100+ block-scaled tensor op path
 // (OpClassBlockScaledTensorOp) inside dispatchMoeGemmSelectBiasTmaWarpSpecialized.
 // Requires both ENABLE_FP4 (CUDA >= 12.8) and ENABLE_FP8.
-#if defined(ENABLE_FP8) && defined(ENABLE_FP4) && defined(ENABLE_CUDA_FP4_QMOE) && defined(ENABLE_CUDA_FP8_QMOE)
+#if defined(ENABLE_FP8) && defined(ENABLE_FP4) && defined(USE_FP4_QMOE) && defined(USE_FP8_QMOE)
 template class MoeGemmRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, half>;
 #ifdef ENABLE_BF16
 template class MoeGemmRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, __nv_bfloat16>;
