@@ -138,8 +138,8 @@ FP4 e2m1 are symmetric formats with no zero-point.
 | `"int"` (4-bit) | W4A16 | FP16/BF16 | INT4 group-wise | SM75+ (Ampere GemmGrouped) | — | always |
 | `"int"` (8-bit) | W8A16 | FP16/BF16 | INT8 group-wise | SM75+ | — | always |
 | `"fp8"` | W8A16-fp8 | BF16/FP16 | FP8 e4m3 (no packing) | **SM90+** native | dequant→A16 on SM<90 | `ENABLE_FP8` (CUDA ≥ 11.8) |
-| `"fp4"` | W4A16-MXFP4 | BF16/FP16 | MXFP4 e2m1, group=32 | **SM120+** native | dequant→A16 on SM<120 | `ENABLE_FP4` + `ENABLE_CUDA_FP4_QMOE` (CUDA ≥ 12.8) |
-| `"wfp4afp8"` | W4A8-MXFP4×FP8 | FP8 e4m3 (quantized in-runner) | MXFP4 e2m1, group=32 | **SM100+** native | dequant→A16 on SM<100 | `ENABLE_FP4` + `ENABLE_CUDA_FP4_QMOE` + `ENABLE_FP8` |
+| `"fp4"` | W4A16-MXFP4 | BF16/FP16 | MXFP4 e2m1, group=32 | **SM120+** native | dequant→A16 on SM<120 | `ENABLE_FP4` + `USE_FP4_QMOE` (CUDA ≥ 12.8) |
+| `"wfp4afp8"` | W4A8-MXFP4×FP8 | FP8 e4m3 (quantized in-runner) | MXFP4 e2m1, group=32 | **SM100+** native | dequant→A16 on SM<100 | `ENABLE_FP4` + `USE_FP4_QMOE` + `ENABLE_FP8` |
 
 Selection logic (see [moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)):
 
@@ -158,9 +158,9 @@ When the build is configured without the corresponding flags, `quant_type`
 values that require them are rejected at construction time:
 
 ```cpp
-#if !defined(ENABLE_FP4) || !defined(ENABLE_CUDA_FP4_QMOE)
+#if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4",
-              "QMoE quant_type='fp4' requires ENABLE_CUDA_FP4_QMOE with CUDA 12.8 or newer.");
+              "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8", ...);
 #endif
 #if !defined(ENABLE_FP8)
@@ -534,7 +534,7 @@ enum class FpXBlockScalingType { MXFPX /*32*/, NVFP4 /*16*/, NONE };
 ### 9.6 Constructor and ComputeInternal
 
 ```cpp
-// Constructor (sm_ >= 120, ENABLE_FP4 + ENABLE_CUDA_FP4_QMOE)
+// Constructor (sm_ >= 120, ENABLE_FP4 + USE_FP4_QMOE)
 m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp4_e2m1, half>>(
     sm_, activation_type_, has_fc3_, normalize_routing_weights_, use_sparse_mixer_);
 
@@ -554,11 +554,11 @@ quant_params = QuantParams::FP4(
 | `moe_gemm/moe_gemm_kernels_bf16_fp4.cu` | `MoeGemmRunner<__nv_bfloat16, __nv_fp4_e2m1, __nv_bfloat16>` |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_instantiation.cuh` | Instantiation macros: `ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_{PP,CO}` (NONE fusion), `ORT_MOE_GEMM_TMA_WS_SM90_FP4_INST_{PP,CO}_FINALIZE` |
 | `moe_gemm/launchers/generate_moe_gemm_tma_ws_sm90_fp4.py` | Python generator: produces 320 `.generated.cu` files across FP16/BF16, M={64,128}, N={16,32,64,128}, K={128,256}, 4 cluster shapes, PP/CO schedules, NONE/FINALIZE fusion |
-| `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_*.generated.cu` | 320 generated SM90 mixed-input FP4 launcher instantiations (built when `onnxruntime_ENABLE_CUDA_FP4_QMOE=ON`) |
+| `moe_gemm/launchers/moe_gemm_tma_ws_sm90_fp4_*.generated.cu` | 320 generated SM90 mixed-input FP4 launcher instantiations (built when `onnxruntime_USE_FP4_QMOE=ON`) |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp4_*.generated.cu` | SM120 mixed-input FP4 launcher |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp8_fp4.generated.cu` | SM120 block-scaled FP8×FP4 launcher (WFP4AFP8) |
 
-> **Build note**: When `onnxruntime_ENABLE_CUDA_FP4_QMOE` is OFF, the stub is also
+> **Build note**: When `onnxruntime_USE_FP4_QMOE` is OFF, the stub is also
 > excluded and all `moe_gemm_kernels_*_fp4.cu` / `moe_gemm_tma_ws_sm{90,120}_fp4_*.generated.cu`
 > files are filtered out. CUDA 13 PTXAS does not complete the FP4 M=128/N=64
 > pingpong specializations, so those specific generated units are also excluded
@@ -712,7 +712,7 @@ supported only on SM100+ (Blackwell).
 ### 11.1 Native dispatch (SM100+)
 
 ```cpp
-// Constructor — sm_ >= 100 with ENABLE_FP4 + ENABLE_CUDA_FP4_QMOE + ENABLE_FP8
+// Constructor — sm_ >= 100 with ENABLE_FP4 + USE_FP4_QMOE + ENABLE_FP8
 m_moe_runner = std::make_unique<
     CutlassMoeFCRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, half, half>>(...);
 // or BF16 output:
@@ -757,7 +757,7 @@ on SM90 (H200) using the bundled Python parity test.
 | `moe_gemm/moe_gemm_kernels_fp8_fp4.cu` | `MoeGemmRunner<__nv_fp8_e4m3, __nv_fp4_e2m1, half>` and BF16 variant |
 | `moe_gemm/launchers/moe_gemm_tma_ws_sm120_fp8_fp4.generated.cu` | SM120 block-scaled tensor op launcher (FP8×FP4, 128×128×128 tile) |
 
-Built only when `onnxruntime_ENABLE_CUDA_FP4_QMOE=ON` (which implies
+Built only when `onnxruntime_USE_FP4_QMOE=ON` (which implies
 `ENABLE_FP4`+`ENABLE_FP8`). The SM120 launcher additionally requires
 `COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS` (set by cmake when SM120 is
 in `CMAKE_CUDA_ARCHITECTURES`).
@@ -829,7 +829,7 @@ CMake gates relevant to MoE/QMoE (see [cmake/CMakeLists.txt](cmake/CMakeLists.tx
 | `ENABLE_BF16` | CUDA ≥ 11.0 | BF16 weight/activation paths. |
 | `ENABLE_FP8`  | CUDA ≥ 11.8 | FP8 e4m3 instantiations and `QuantParams::FP8`. |
 | `ENABLE_FP4`  | CUDA ≥ 12.8 | FP4 e2m1 type (`__nv_fp4_e2m1`) and FP4 traits. |
-| `onnxruntime_ENABLE_CUDA_FP4_QMOE` | user opt-in (requires `ENABLE_FP4`) | Enables FP4 / WFP4AFP8 kernel instantiations and CUTLASS launchers. |
+| `onnxruntime_USE_FP4_QMOE` | user opt-in (requires `ENABLE_FP4`) | Enables FP4 / WFP4AFP8 kernel instantiations and CUTLASS launchers. |
 | `EXCLUDE_SM_100`, `EXCLUDE_SM_120` | architecture exclusion | Drops the corresponding generated kernels. |
 
 CUDA architecture defaults:
@@ -842,7 +842,7 @@ CUDA architecture defaults:
 [cmake/onnxruntime_cuda_source_filters.cmake](cmake/onnxruntime_cuda_source_filters.cmake):
 
 ```cmake
-if(NOT onnxruntime_ENABLE_CUDA_FP4_QMOE)
+if(NOT onnxruntime_USE_FP4_QMOE)
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm90_fp4_.*\\.generated\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_.*\\.generated\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp8_fp4\\.generated\\.cu")
@@ -857,7 +857,7 @@ else()
        "moe_gemm_tma_ws_sm90_fp4_(fp16|bf16)_m128_n64_k[0-9]+_cm[12]_cn[12]_pp(_finalize)?\\.generated\\.cu")
 endif()
 
-if(NOT onnxruntime_ENABLE_CUDA_FP8_QMOE)
+if(NOT onnxruntime_USE_FP8_QMOE)
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm90_wfp8_.*\\.generated\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp4_fp8_.*\\.generated\\.cu")
   list(FILTER … EXCLUDE REGEX "moe_gemm_tma_ws_sm120_fp8_fp4\\.generated\\.cu")
