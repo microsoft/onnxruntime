@@ -16,6 +16,24 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
+// WGSL helper function for writing normalized indirect dispatch buffer.
+// Shared by CopyKVCacheProgram and SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram.
+constexpr const char kWriteIndirectDispatchFn[] = R"(
+fn write_indirect_dispatch(total: u32) {
+  let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension
+  if (total <= limit) {
+    indirect_buffer[0] = total;
+    indirect_buffer[1] = 1u;
+    indirect_buffer[2] = 1u;
+  } else {
+    let dispatch_avg = u32(ceil(sqrt(f32(total))));
+    indirect_buffer[0] = dispatch_avg;
+    indirect_buffer[1] = dispatch_avg;
+    indirect_buffer[2] = 1u;
+  }
+}
+)";
+
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
@@ -28,6 +46,7 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
 
   if (prepare_indirect_dispatch_) {
     sh.AddOutput("indirect_buffer", ShaderUsage::None);
+    sh.AdditionalImplementation() << kWriteIndirectDispatchFn;
   }
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
@@ -87,22 +106,12 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
-    shader.MainFunctionBody() << "  // Prepare indirect dispatch buffer for thread 0\n"
-                              << "  if (global_idx == 0u) {\n"
+    shader.AdditionalImplementation() << kWriteIndirectDispatchFn;
+    shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
                               << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
                               << "    let num_q_tiles = (uniforms.new_sequence_length + uniforms.m_tile - 1u) / uniforms.m_tile;\n"
                               << "    let total = uniforms.batch_size * uniforms.num_heads * num_q_tiles * num_total_seq_length_tile;\n"
-                              << "    let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension\n"
-                              << "    if (total <= limit) {\n"
-                              << "      indirect_buffer[0] = total;\n"
-                              << "      indirect_buffer[1] = 1u;\n"
-                              << "      indirect_buffer[2] = 1u;\n"
-                              << "    } else {\n"
-                              << "      let dispatch_avg = u32(ceil(sqrt(f32(total))));\n"
-                              << "      indirect_buffer[0] = dispatch_avg;\n"
-                              << "      indirect_buffer[1] = dispatch_avg;\n"
-                              << "      indirect_buffer[2] = 1u;\n"
-                              << "    }\n"
+                              << "    write_indirect_dispatch(total);\n"
                               << "  }\n\n";
   }
 

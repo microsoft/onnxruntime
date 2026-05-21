@@ -41,22 +41,11 @@ $MAIN {
 #endif
 
 #if prepare_indirect_dispatch
-  // Prepare indirect dispatch buffer for thread 0
   if (global_idx == 0u) {
     let num_total_seq_length_tile = (total_seqlen + uniforms.tile_size - 1u) / uniforms.tile_size;
     let num_q_tiles = (uniforms.new_sequence_length + uniforms.m_tile - 1u) / uniforms.m_tile;
     let total = uniforms.batch_size * uniforms.num_heads * num_q_tiles * num_total_seq_length_tile;
-    let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension
-    if (total <= limit) {
-      indirect_buffer[0] = total;
-      indirect_buffer[1] = 1u;
-      indirect_buffer[2] = 1u;
-    } else {
-      let dispatch_avg = u32(ceil(sqrt(f32(total))));
-      indirect_buffer[0] = dispatch_avg;
-      indirect_buffer[1] = dispatch_avg;
-      indirect_buffer[2] = 1u;
-    }
+    write_indirect_dispatch(total);
   }
 #endif
 
