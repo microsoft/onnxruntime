@@ -791,11 +791,11 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
             webgpu::BufferCacheMode::Disabled);
       }
       graph_buffer_mgr_active_ = true;
-    }
 
-    if (graph_annotation_id != -1 && IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
-      auto& commands = captured_graphs_[graph_annotation_id];
-      context_.CaptureBegin(&commands, *per_graph_buffer_mgrs_[graph_annotation_id]);
+      if (IsGraphCaptureAllowed() && !IsGraphCaptured(graph_annotation_id)) {
+        auto& commands = captured_graphs_[graph_annotation_id];
+        context_.CaptureBegin(&commands, *it->second);
+      }
     }
   }
 
