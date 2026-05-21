@@ -20,6 +20,7 @@ import onnx.shape_inference
 from op_test_utils import TestDataFeeds
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
+from onnxruntime.quantization.quant_utils import compute_scale_zp_blocked, quantize_onnx_initializer
 
 
 def _make_matmul_model(opset: int) -> onnx.ModelProto:
@@ -176,6 +177,70 @@ class TestQDQBlockSize(unittest.TestCase):
                 op_types_to_quantize=["Conv"],
                 extra_options={"WeightSymmetric": True, "ActivationSymmetric": True, "BlockSize": 4},
             )
+
+    def test_block_size_axis1_scale_shape(self):
+        """scale/zero_point for axis=1 must have shape (M, n_blocks), not (n_blocks, M).
+
+        Regression test for the moveaxis bug: compute_scale_zp_blocked was not moving
+        the block axis back to its original position before returning, so axis=1 results
+        were transposed relative to the ONNX opset-21 spec requirement that
+        scale.shape[axis] == ceil(input.shape[axis] / block_size).
+        """
+        rng = np.random.default_rng(0)
+        # weight (M=4, N=8), quantize along axis=1 with block_size=4
+        # => n_blocks = ceil(8/4) = 2; expected scale shape: (4, 2)
+        weight = rng.uniform(-1.0, 1.0, (4, 8)).astype(np.float32)
+        quant_type = onnx.TensorProto.INT8
+        axis = 1
+        block_size = 4
+
+        zero_points, scales = compute_scale_zp_blocked(
+            weight, quant_type, axis=axis, block_size=block_size, symmetric=True
+        )
+
+        expected_shape = (4, 2)
+        self.assertEqual(
+            scales.shape,
+            expected_shape,
+            f"Expected scale shape {expected_shape}, got {scales.shape}",
+        )
+        self.assertEqual(
+            zero_points.shape,
+            expected_shape,
+            f"Expected zero_point shape {expected_shape}, got {zero_points.shape}",
+        )
+
+        # Verify the quantize_onnx_initializer round-trip produces the correct output shape.
+        weight_proto = onnx.numpy_helper.from_array(weight, "W")
+        q_proto = quantize_onnx_initializer(
+            weight_proto,
+            quant_type,
+            zero_point=zero_points,
+            scale=scales,
+            axis=axis,
+            block_size=block_size,
+        )
+        q_data = onnx.numpy_helper.to_array(q_proto)
+        self.assertEqual(
+            q_data.shape,
+            weight.shape,
+            f"Quantized weight shape {q_data.shape} must match original {weight.shape}",
+        )
+
+        # Dequantize and check round-trip error is within one quantization step.
+        # Expand scale/zp from (4, 2) to (4, 8) by repeating each block entry block_size
+        # times along axis=1, then trim to the actual weight width.
+        N = weight.shape[axis]  # noqa: N806
+        scale_expanded = np.repeat(scales, block_size, axis=axis)[:, :N].astype(np.float32)
+        zp_expanded = np.repeat(zero_points, block_size, axis=axis)[:, :N].astype(np.float32)
+        dequant = (q_data.astype(np.float32) - zp_expanded) * scale_expanded
+        max_err = float(np.abs(dequant - weight).max())
+        # For INT8, max quantization error must be <= 0.5 * max(scale).
+        self.assertLessEqual(
+            max_err,
+            0.5 * float(scales.max()) + 1e-6,
+            f"Dequantization round-trip error {max_err:.6f} exceeds allowed bound",
+        )
 
     def test_block_size_zero_unchanged(self):
         """With no BlockSize option, no block_size attribute should appear on any node."""

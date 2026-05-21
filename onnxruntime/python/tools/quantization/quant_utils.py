@@ -406,15 +406,17 @@ def compute_scale_zp_blocked(
     scale and zero_point tensors to have the **same rank** as the input tensor.
     Only rank-2 weight tensors are supported; rank > 2 is explicitly rejected.
 
-    Returns 2-D arrays with shape ``[n_blocks, <other_dim>]``, which matches
-    the rank of a 2-D weight.
+    Returns arrays with the same rank and dimensions as *weight*, except
+    ``shape[axis] == ceil(weight.shape[axis] / block_size)``. This matches
+    the ONNX opset-21 QuantizeLinear/DequantizeLinear blocked-quantization spec.
 
     :param weight: Float32/float16 weight array (must be rank-2).
     :param quant_type: ONNX tensor data type for quantization.
     :param axis: Axis along which to apply block-wise quantization.
     :param block_size: Number of elements per block along *axis*.
     :param symmetric: Whether to use symmetric quantization per block.
-    :return: Tuple of (zero_point, scale) each with shape [n_blocks, other_dim].
+    :return: Tuple of (zero_point, scale), each with shape matching *weight*
+        except ``shape[axis] == n_blocks``, where ``n_blocks == ceil(weight.shape[axis] / block_size)``.
     :raises NotImplementedError: If weight rank is not 2 (opset-21 constraint).
     """
     if weight.ndim != 2:
@@ -479,6 +481,12 @@ def compute_scale_zp_blocked(
         raw_zp = numpy.clip(raw_zp, qmin_val, qmax_val)
         zero_points = raw_zp.astype(zp_dtype)
         zero_points[degenerate] = 0
+
+    # Move the block axis back to its original position so the returned arrays have
+    # the same rank as the weight and shape[axis] == n_blocks, as required by the
+    # ONNX opset-21 QuantizeLinear/DequantizeLinear spec.
+    scales = numpy.moveaxis(scales, 0, axis)
+    zero_points = numpy.moveaxis(zero_points, 0, axis)
 
     return zero_points, scales
 
@@ -635,14 +643,19 @@ def quantize_onnx_initializer(
         k = weight_data.shape[axis]
         other = int(numpy.prod([d for i, d in enumerate(weight_data.shape) if i != axis]))
         moved = numpy.moveaxis(weight_data, axis, 0).reshape(k, other)
+        # scale/zero_point are in spec shape (shape[axis] == n_blocks); move the block
+        # axis to position 0 locally so the loop can index [blk, col] uniformly.
+        scale_moved = numpy.moveaxis(scale, axis, 0)
+        zp_moved = numpy.moveaxis(zero_point, axis, 0)
+        n_blocks = scale_moved.shape[0]
         quant_np_dtype = onnx.helper.tensor_dtype_to_np_dtype(quant_type)
         q_moved = numpy.empty_like(moved, dtype=quant_np_dtype)
-        for blk in range(scale.shape[0]):
+        for blk in range(n_blocks):
             start = blk * block_size
             end = min(start + block_size, k)
             for col in range(other):
                 q_moved[start:end, col] = quantize_nparray(
-                    quant_type, moved[start:end, col].ravel(), scale[blk, col], zero_point[blk, col]
+                    quant_type, moved[start:end, col].ravel(), scale_moved[blk, col], zp_moved[blk, col]
                 )
         q_weight_data = numpy.moveaxis(
             q_moved.reshape([k] + [d for i, d in enumerate(weight_data.shape) if i != axis]), 0, axis
