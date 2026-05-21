@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <string>
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
