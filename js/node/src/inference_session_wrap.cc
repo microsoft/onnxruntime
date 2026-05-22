@@ -275,7 +275,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() < 2, env, "Expect argument: inputs(feed) and outputs(fetch).");
   ORT_NAPI_THROW_TYPEERROR_IF(!info[0].IsObject() || !info[1].IsObject(), env,
                               "Expect inputs(feed) and outputs(fetch) to be objects.");
-  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && (!info[2].IsObject() || info[2].IsNull()), env,
+  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && !info[2].IsUndefined() && (!info[2].IsObject() || info[2].IsNull()), env,
                               "'runOptions' must be an object.");
   ORT_NAPI_THROW_ERROR_IF(preferredOutputLocations_.size() > 0, env,
                           "Async run() does not support IO binding; use runSync() for GPU EP workloads.");
@@ -327,7 +327,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       }
     }
 
-    if (info.Length() > 2) {
+    if (info.Length() > 2 && !info[2].IsUndefined()) {
       ctx->runOptions.emplace();
       ParseRunOptions(info[2].As<Napi::Object>(), *ctx->runOptions);
     }
@@ -378,7 +378,7 @@ Napi::Value InferenceSessionWrap::RunSync(const Napi::CallbackInfo& info) {
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() < 2, env, "Expect argument: inputs(feed) and outputs(fetch).");
   ORT_NAPI_THROW_TYPEERROR_IF(!info[0].IsObject() || !info[1].IsObject(), env,
                               "Expect inputs(feed) and outputs(fetch) to be objects.");
-  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && (!info[2].IsObject() || info[2].IsNull()), env,
+  ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && !info[2].IsUndefined() && (!info[2].IsObject() || info[2].IsNull()), env,
                               "'runOptions' must be an object.");
 
   Napi::EscapableHandleScope scope(env);
@@ -414,12 +414,12 @@ Napi::Value InferenceSessionWrap::RunSync(const Napi::CallbackInfo& info) {
         auto value = fetch.Get(name);
         reuseOutput.push_back(!value.IsNull());
         outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
-        requestedOutputLocations.push_back(j < preferredOutputLocations_.size() ? preferredOutputLocations_[j] : 0);
+        requestedOutputLocations.push_back(j < preferredOutputLocations_.size() ? preferredOutputLocations_[j] : DATA_LOCATION_CPU);
       }
     }
 
     Ort::RunOptions runOptions{nullptr};
-    if (info.Length() > 2) {
+    if (info.Length() > 2 && !info[2].IsUndefined()) {
       runOptions = Ort::RunOptions{};
       ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
     }
