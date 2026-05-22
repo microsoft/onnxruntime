@@ -31,6 +31,9 @@ class OnnxRuntimeTestSession : public TestSession {
   }
 
   bool PopulateGeneratedInputTestData(int32_t seed);
+  bool PopulateMultiShapeInputTestData(
+      int32_t seed,
+      const std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups);
 
   ~OnnxRuntimeTestSession();
 

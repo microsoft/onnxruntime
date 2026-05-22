@@ -306,9 +306,14 @@ bool PerformanceRunner::Initialize() {
   test_case_ = CreateOnnxTestCase(narrow_model_name, std::move(test_model_info_), 0.0, 0.0);
 
   if (performance_test_config_.run_config.generate_model_input_binding) {
-    return static_cast<OnnxRuntimeTestSession*>(
-               session_.get())
-        ->PopulateGeneratedInputTestData(performance_test_config_.run_config.random_seed_for_input_data);
+    auto* ort_session = static_cast<OnnxRuntimeTestSession*>(session_.get());
+    if (!performance_test_config_.run_config.data_shape_groups.empty()) {
+      return ort_session->PopulateMultiShapeInputTestData(
+          performance_test_config_.run_config.random_seed_for_input_data,
+          performance_test_config_.run_config.data_shape_groups);
+    }
+    return ort_session->PopulateGeneratedInputTestData(
+        performance_test_config_.run_config.random_seed_for_input_data);
   }
 
   // TODO: Place input tensor on cpu memory if dnnl provider type to avoid CopyTensor logic in CopyInputAcrossDevices
