@@ -21,6 +21,7 @@ struct RunAsyncContext {
   napi_deferred deferred;
   Napi::ObjectReference sessionRef;
   std::vector<Napi::Reference<Napi::Value>> inputValueRefs;
+  std::vector<Napi::Reference<Napi::Value>> outputValueRefs;
   int* inFlightCount;
 
   Ort::Session* session;
@@ -34,6 +35,7 @@ struct RunAsyncContext {
 
   std::optional<Ort::RunOptions> runOptions;
   Ort::MemoryInfo cpuMemoryInfo{nullptr};
+  Ort::MemoryInfo gpuBufferMemoryInfo{nullptr};
 
   std::string errorMessage;
   bool hasError;
@@ -91,6 +93,9 @@ void RunAfterWorkCallback(napi_env /*env*/, napi_status status, void* data) {
 
   ctx->sessionRef.Reset();
   for (auto& ref : ctx->inputValueRefs) {
+    ref.Reset();
+  }
+  for (auto& ref : ctx->outputValueRefs) {
     ref.Reset();
   }
   napi_delete_async_work(ctx->env, ctx->work);
@@ -278,14 +283,18 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   napi_value promise_value;
   auto* ctx = new RunAsyncContext{};
   ctx->env = static_cast<napi_env>(env);
-  napi_create_promise(env, &ctx->deferred, &promise_value);
+  if (napi_create_promise(env, &ctx->deferred, &promise_value) != napi_ok) {
+    delete ctx;
+    Napi::Error::New(env, "Failed to create promise for async inference.").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
   ctx->sessionRef = Napi::Persistent(info.This().As<Napi::Object>());
   ctx->inFlightCount = &this->inFlightCount_;
   ctx->session = session_.get();
   ctx->inputIndex = 0;
   ctx->outputIndex = 0;
   ctx->cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
+  ctx->gpuBufferMemoryInfo = Ort::MemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
   ctx->hasError = false;
 
   auto feed = info[0].As<Napi::Object>();
@@ -301,7 +310,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         // (which are zero-copy borrowed by NapiValueToOrtValue) stays alive
         // for the duration of the async thread-pool work.
         ctx->inputValueRefs.push_back(Napi::Persistent(value));
-        ctx->inputValues.push_back(NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, gpuBufferMemoryInfo));
+        ctx->inputValues.push_back(NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, ctx->gpuBufferMemoryInfo));
       }
     }
     for (auto& name : outputNames_) {
@@ -309,8 +318,12 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         ctx->outputIndex++;
         ctx->outputNames_cstr.push_back(name.c_str());
         auto value = fetch.Get(name);
-        ctx->outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr}
-                                                      : NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, gpuBufferMemoryInfo));
+        if (!value.IsNull()) {
+          ctx->outputValueRefs.push_back(Napi::Persistent(value));
+          ctx->outputValues.emplace_back(NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, ctx->gpuBufferMemoryInfo));
+        } else {
+          ctx->outputValues.emplace_back(Ort::Value{nullptr});
+        }
       }
     }
 
@@ -322,6 +335,9 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   } catch (...) {
     ctx->sessionRef.Reset();
     for (auto& ref : ctx->inputValueRefs) {
+      ref.Reset();
+    }
+    for (auto& ref : ctx->outputValueRefs) {
       ref.Reset();
     }
     delete ctx;
@@ -345,6 +361,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
                                                std::to_string(static_cast<int>(queue_status)) + ").").Value());
     ctx->sessionRef.Reset();
     for (auto& ref : ctx->inputValueRefs) ref.Reset();
+    for (auto& ref : ctx->outputValueRefs) ref.Reset();
     if (ctx->work != nullptr) {
       napi_delete_async_work(env, ctx->work);
     }
