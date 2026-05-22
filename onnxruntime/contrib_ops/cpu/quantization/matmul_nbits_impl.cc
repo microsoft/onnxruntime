@@ -180,6 +180,40 @@ void Dequantize2BitsKernel(
   }
 }
 
+template <class T, class zeroT>
+void Dequantize2BitsFallback(
+    T* output, const uint8_t* quant_data, const T* scale_data,
+    const zeroT* zero_points, int block_size, int N, int K) {
+  const int k_blocks = (K + block_size - 1) / block_size;
+
+  for (int n = 0; n < N; ++n) {
+    for (int kb = 0; kb < k_blocks; ++kb) {
+      const int group_offset = (n * k_blocks + kb) * block_size;
+      const int k_start = kb * block_size;
+      const int k_count = std::min(block_size, K - k_start);
+
+      const T scale = scale_data[static_cast<uint64_t>(n) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb)];
+      float zp_f = 0.0f;
+      if (zero_points) {
+        if constexpr (std::is_same_v<zeroT, MLFloat16>) {
+          zp_f = zero_points[static_cast<uint64_t>(n) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb)].ToFloat();
+        } else {
+          zp_f = static_cast<float>(zero_points[static_cast<uint64_t>(n) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb)]);
+        }
+      }
+      const T zp_adjust = -scale * zp_f;
+      T* output_i = output + static_cast<uint64_t>(n) * static_cast<uint64_t>(K) + static_cast<uint64_t>(k_start);
+
+      for (int i = 0; i < k_count; ++i) {
+        const int element_offset = group_offset + i;
+        const uint8_t packed = quant_data[element_offset / 4];
+        const uint8_t q = (packed >> (2 * (element_offset & 0x3))) & 0x3;
+        output_i[i] = static_cast<T>(q) * scale + zp_adjust;
+      }
+    }
+  }
+}
+
 // Specialization of DequantizeBlockwise for qbits=2
 template <typename inputT, typename zeroT>
 void DequantizeBlockwise2Bits(
@@ -188,15 +222,20 @@ void DequantizeBlockwise2Bits(
     const inputT* scales_data,
     const zeroT* zero_points,
     int32_t block_size,
-    bool,
+    bool columnwise,
     int32_t K,
     int32_t N,
     onnxruntime::concurrency::ThreadPool* pool) {
   auto ceildiv = [](int a, int b) { return (a + b - 1) / b; };
   constexpr int elements_per_thread = 16;
-  ORT_ENFORCE(block_size > 0 && block_size <= 256 * elements_per_thread && block_size % elements_per_thread == 0,
-              "block_size must be positive, at most ", 256 * elements_per_thread,
-              ", and a multiple of ", elements_per_thread, ", got: ", block_size);
+  ORT_ENFORCE(columnwise, "Row-wise quantization is not supported");
+  ORT_ENFORCE(block_size > 0, "block_size must be positive, got: ", block_size);
+  ORT_ENFORCE((block_size & (block_size - 1)) == 0, "block_size must be a power of two, got: ", block_size);
+  if (block_size > 256 * elements_per_thread || block_size % elements_per_thread != 0) {
+    Dequantize2BitsFallback(output, quant_data, scales_data, zero_points, block_size, N, K);
+    return;
+  }
+
   int groups_per_threadblock = 256 * elements_per_thread / block_size;
   int groups_per_K = ceildiv(K, block_size);
   int total_groups = N * groups_per_K;

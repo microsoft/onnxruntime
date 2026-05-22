@@ -28,7 +28,7 @@ void DequantizeBlockwise2Bits(
     const inputT* scales_data,  // quantization scales
     const zeroT* zero_points,   // quantization zero points
     int32_t block_size,         // quantization block size
-    bool,                       // columnwise quantization or row-wise
+    bool columnwise,            // columnwise quantization or row-wise
     int32_t K,                  // number of rows in quantized input
     int32_t N,                  // number of columns in quantized input
     onnxruntime::concurrency::ThreadPool* thread_pool);

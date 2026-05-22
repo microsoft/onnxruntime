@@ -936,7 +936,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
     if (zero_points && zero_points->IsDataType<float>()) {
       if (nbits_ == 2) {
         ORT_ENFORCE(reorder_idx_data == nullptr,
-                    "g_idx (reorder index) is not supported for 2-bit quantization with float zero points");
+                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
         DequantizeBlockwise2Bits<float, float>(
             tmp_b_data_ptr.get(),
             b_data,
@@ -1089,7 +1089,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
     if (zero_points && zero_points->IsDataType<MLFloat16>()) {
       if (nbits_ == 2) {
         ORT_ENFORCE(reorder_idx_data == nullptr,
-                    "g_idx (reorder index) is not supported for 2-bit quantization with float zero points");
+                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
         DequantizeBlockwise2Bits<float, MLFloat16>(
             tmp_b_data_ptr.get(),
             b_data,
