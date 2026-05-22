@@ -125,8 +125,6 @@ static Model CreateMatMulReluMatMulModel() {
 }
 
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
-  const auto& api = GetApi();
-
   Env env(ORT_LOGGING_LEVEL_WARNING, "GraphCaptureTest");
 
   // In plugin builds, register the WebGPU EP library before use.
@@ -198,12 +196,11 @@ TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
   Value gpu_c = Value::CreateTensor<float>(gpu_allocator, dims_c.data(), dims_c.size());
   Value gpu_y = Value::CreateTensor<float>(gpu_allocator, dims_y.data(), dims_y.size());
 
-  // Helper: copy CPU tensor to GPU tensor via CopyTensors API
+  // Helper: copy CPU tensor to GPU tensor via Env::CopyTensor
   auto copy_to_gpu = [&](float* data, size_t count, const int64_t* shape, size_t shape_len, Value& gpu_tensor) {
     Value cpu_tensor = Value::CreateTensor<float>(cpu_mem_info, data, count, shape, shape_len);
-    const OrtValue* src = cpu_tensor;
-    OrtValue* dst = gpu_tensor;
-    ThrowOnError(api.CopyTensors(env, &src, &dst, nullptr, 1));
+    auto status = env.CopyTensor(cpu_tensor, gpu_tensor, nullptr);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
   };
 
   // Upload initial inputs (B and C are constant across all runs)
@@ -224,9 +221,8 @@ TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
     std::vector<float> result(expected.size(), 0.0f);
     Value cpu_result = Value::CreateTensor<float>(cpu_mem_info, result.data(), result.size(),
                                                   dims_y.data(), dims_y.size());
-    const OrtValue* src = gpu_y;
-    OrtValue* dst = cpu_result;
-    ThrowOnError(api.CopyTensors(env, &src, &dst, nullptr, 1));
+    auto status = env.CopyTensor(gpu_y, cpu_result, nullptr);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
     for (size_t i = 0; i < expected.size(); ++i) {
       ASSERT_FLOAT_EQ(result[i], expected[i]) << "Mismatch at index " << i;
     }
@@ -266,8 +262,8 @@ TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
   run_with_id("1");
   verify_output(expected_y1);
 
-  // Release ID 1 using the public C API
-  ThrowOnError(api.SessionReleaseCapturedGraph(session, 1));
+  // Release ID 1 using the C++ API
+  session.ReleaseCapturedGraph(1);
 
   // Replay ID 2 (unaffected by ID 1 release)
   set_input_a(values_a2);
@@ -278,9 +274,9 @@ TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
   run_with_id("1");
   verify_output(expected_y2);
 
-  // Release both
-  ThrowOnError(api.SessionReleaseCapturedGraph(session, 1));
-  ThrowOnError(api.SessionReleaseCapturedGraph(session, 2));
+  // Release both using the C++ API
+  session.ReleaseCapturedGraph(1);
+  session.ReleaseCapturedGraph(2);
 }
 
 }  // namespace

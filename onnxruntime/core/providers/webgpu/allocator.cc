@@ -8,7 +8,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
-GpuBufferAllocator::GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter, bool is_read_only_allocator)
+GpuBufferAllocator::GpuBufferAllocator(
+    std::function<const BufferManager&()> buffer_manager_getter,
+    bool is_read_only_allocator)
     : IAllocator(
           OrtMemoryInfo(WEBGPU_BUFFER,
                         is_read_only_allocator ? OrtAllocatorType::OrtReadOnlyAllocator

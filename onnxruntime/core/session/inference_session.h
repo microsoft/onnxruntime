@@ -415,7 +415,7 @@ class InferenceSession {
   [[nodiscard]] common::Status Run(IOBinding& io_binding);
 
   /**
-   * Release a previously captured graph and its associated GPU resources.
+   * Release a previously captured graph and its associated resources.
    * @param graph_annotation_id The annotation ID of the captured graph to release.
    */
   [[nodiscard]] common::Status ReleaseCapturedGraph(int graph_annotation_id);

@@ -142,7 +142,10 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
       std::make_shared<webgpu::GpuBufferAllocator>(
-          [context_id]() -> const webgpu::BufferManager& { return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager(); }, true),  // initializer device allocator
+          [context_id]() -> const webgpu::BufferManager& {
+            return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager();
+          },
+          true),  // initializer device allocator
   };
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
   return nullptr;
@@ -170,7 +173,12 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
 
   *allocator = new onnxruntime::ep::adapter::Allocator(memory_info,
                                                        [](const OrtMemoryInfo&) -> AllocatorPtr {
-                                                         return std::make_shared<webgpu::GpuBufferAllocator>([]() -> const webgpu::BufferManager& { return WebGpuContextFactory::DefaultContext().BufferManager(); }, false);
+                                                         return std::make_shared<webgpu::GpuBufferAllocator>(
+                                                             []() -> const webgpu::BufferManager& {
+                                                               return WebGpuContextFactory::DefaultContext()
+                                                                   .BufferManager();
+                                                             },
+                                                             false);
                                                        });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

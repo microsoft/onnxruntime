@@ -131,7 +131,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   std::unordered_map<int, int> graph_id_to_run_count_;
-  const int min_num_runs_before_graph_capture_ = 0;  // Required regular runs before graph capture for any necessary allocations.
+  // Required regular runs before graph capture for any necessary allocations.
+  const int min_num_runs_before_graph_capture_ = 0;
   int current_graph_annotation_id_ = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
