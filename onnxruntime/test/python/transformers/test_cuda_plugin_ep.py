@@ -310,7 +310,12 @@ def make_bias_dropout_model():
 
 
 def run_operator_test(
-    target_device, model_creator, inputs, expected_fn, ep_name=CUDA_PLUGIN_EP_NAME, session_config=None,
+    target_device,
+    model_creator,
+    inputs,
+    expected_fn,
+    ep_name=CUDA_PLUGIN_EP_NAME,
+    session_config=None,
     nhwc_ops=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
@@ -411,17 +416,15 @@ def _expected_conv(inputs):
 
 _NHWC_CONFIG = {"ep.cuda.prefer_nhwc_layout": "1"}
 
-_NHWC_DOMAIN = "com.ms.internal.nhwc"
-
 
 def _assert_nhwc_domain_assigned(session, ep_name, expected_ops):
     """Assert that NHWC layout transformation occurred for the expected ops.
 
     The framework's NHWC layout transformer rewrites eligible ops to the internal NHWC domain
-    and wraps them with Transpose nodes. The assignment API reports only the Transpose wrapper
-    nodes (the internal NHWC-domain nodes are not surfaced). We verify NHWC transformation by
-    checking that Transpose nodes were assigned to the EP — their presence indicates the layout
-    transformer ran and the NHWC kernel was found for the target op(s).
+    and wraps them with Transpose nodes. We verify NHWC transformation by checking:
+    1. If the assignment API surfaces NHWC-domain nodes, verify expected ops are present.
+    2. Otherwise, fall back to checking that Transpose nodes were assigned (their presence
+       indicates the layout transformer ran and the NHWC kernel was found).
 
     Args:
         session: An InferenceSession with graph assignment info enabled.
@@ -433,8 +436,19 @@ def _assert_nhwc_domain_assigned(session, ep_name, expected_ops):
     """
     assigned_nodes, _ = _get_assigned_nodes(session, ep_name)
 
-    # The NHWC transformation inserts Transpose nodes around the target op.
-    # If Transpose nodes are assigned to the EP, NHWC transformation occurred.
+    # Check for NHWC-domain nodes directly (preferred when the API surfaces them).
+    nhwc_domain = "com.ms.internal.nhwc"
+    nhwc_ops_found = {n.op_type for n in assigned_nodes if n.domain == nhwc_domain}
+    if nhwc_ops_found:
+        missing = set(expected_ops) - nhwc_ops_found
+        if missing:
+            raise AssertionError(
+                f"Expected NHWC-domain nodes for {sorted(missing)} but only found "
+                f"{sorted(nhwc_ops_found)} in {ep_name} NHWC assignments."
+            )
+        return True
+
+    # Fallback: the NHWC transformation inserts Transpose nodes around the target op.
     transpose_count = sum(1 for n in assigned_nodes if n.op_type == "Transpose")
     if transpose_count == 0:
         all_ops = [f"{n.domain or 'ai.onnx'}::{n.op_type}" for n in assigned_nodes]
@@ -680,8 +694,12 @@ class TestCudaPluginEP(unittest.TestCase):
             "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
         }
         result = run_operator_test(
-            target_device, create_conv_model, inputs, _expected_conv,
-            session_config=_NHWC_CONFIG, nhwc_ops={"Conv"},
+            target_device,
+            create_conv_model,
+            inputs,
+            _expected_conv,
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"Conv"},
         )
         self.assertTrue(result, "Conv (NHWC) plugin test failed")
 
@@ -689,8 +707,12 @@ class TestCudaPluginEP(unittest.TestCase):
         target_device = get_cuda_plugin_device()
         inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
         result = run_operator_test(
-            target_device, create_batch_norm_model, inputs, _expected_batchnorm,
-            session_config=_NHWC_CONFIG, nhwc_ops={"BatchNormalization"},
+            target_device,
+            create_batch_norm_model,
+            inputs,
+            _expected_batchnorm,
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"BatchNormalization"},
         )
         self.assertTrue(result, "BatchNormalization (NHWC) plugin test failed")
 
@@ -702,7 +724,8 @@ class TestCudaPluginEP(unittest.TestCase):
             create_maxpool_model,
             inputs,
             lambda feed: F.max_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
-            session_config=_NHWC_CONFIG, nhwc_ops={"MaxPool"},
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"MaxPool"},
         )
         self.assertTrue(result, "MaxPool (NHWC) plugin test failed")
 
@@ -714,7 +737,8 @@ class TestCudaPluginEP(unittest.TestCase):
             create_avgpool_model,
             inputs,
             lambda feed: F.avg_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
-            session_config=_NHWC_CONFIG, nhwc_ops={"AveragePool"},
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"AveragePool"},
         )
         self.assertTrue(result, "AveragePool (NHWC) plugin test failed")
 
@@ -723,11 +747,17 @@ class TestCudaPluginEP(unittest.TestCase):
         # ConvTranspose: input [1,2,4,4], weight [2,3,3,3] -> output [1,3,6,6] with stride=2, padding=1, output_padding=1
         f_dtype = TensorProto.FLOAT
         node = helper.make_node(
-            "ConvTranspose", ["X", "W"], ["Y"],
-            strides=[2, 2], pads=[1, 1, 1, 1], output_padding=[1, 1], group=1,
+            "ConvTranspose",
+            ["X", "W"],
+            ["Y"],
+            strides=[2, 2],
+            pads=[1, 1, 1, 1],
+            output_padding=[1, 1],
+            group=1,
         )
         graph = helper.make_graph(
-            [node], "test-ConvTranspose",
+            [node],
+            "test-ConvTranspose",
             [
                 helper.make_tensor_value_info("X", f_dtype, [1, 2, 4, 4]),
                 helper.make_tensor_value_info("W", f_dtype, [2, 3, 3, 3]),
@@ -742,8 +772,11 @@ class TestCudaPluginEP(unittest.TestCase):
 
         def expected_fn(feed):
             return F.conv_transpose2d(
-                torch.from_numpy(feed["X"]), torch.from_numpy(feed["W"]),
-                stride=2, padding=1, output_padding=1,
+                torch.from_numpy(feed["X"]),
+                torch.from_numpy(feed["W"]),
+                stride=2,
+                padding=1,
+                output_padding=1,
             ).numpy()
 
         result = _run_nhwc_model_test(target_device, "ConvTranspose", model, {"X": x, "W": w}, expected_fn)

@@ -237,7 +237,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
       std::string node_domain = node.GetDomain();
       if (node_domain == kMSInternalNHWCDomain) {
         ORT_CXX_LOGF(Ort::Logger(&ep->logger_), ORT_LOGGING_LEVEL_WARNING,
-                     "NHWC kernel miss: op=%s domain=%s version=%d node=%s — "
+                     "NHWC kernel miss: op=%s domain=%s version=%d node=%s - "
                      "no matching kernel registered in the CUDA plugin EP.",
                      node.GetOperatorType().c_str(), node_domain.c_str(),
                      node.GetSinceVersion(), node.GetName().c_str());

@@ -5,6 +5,8 @@
 
 #include <string_view>
 
+#include "core/graph/constants.h"
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -38,7 +40,7 @@ inline bool IsNhwcEligible(std::string_view domain, std::string_view op_type) {
   if (domain.empty()) {
     return IsNhwcEligibleOnnxOp(op_type);
   }
-  if (domain == "com.microsoft") {
+  if (domain == kMSDomain) {
     return IsNhwcEligibleMsOp(op_type);
   }
   return false;
