@@ -42,9 +42,14 @@ namespace onnxruntime {
 namespace perftest {
 
 RunTiming OnnxRuntimeTestSession::Run() {
-  // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
-  const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
-  const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
+  // Select input set: round-robin for multi-shape mode, random otherwise.
+  size_t id;
+  if (use_round_robin_ && test_inputs_.size() > 1) {
+    id = shape_group_counter_.fetch_add(1, std::memory_order_relaxed) % test_inputs_.size();
+  } else {
+    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
+    id = static_cast<size_t>(dist_(rand_engine_, p));
+  }
 
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
@@ -88,6 +93,7 @@ RunTiming OnnxRuntimeTestSession::Run() {
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
     timing.total_timing = timing.submit_timing;
   }
+  timing.shape_group_index = id;
   return timing;
 }
 
@@ -1201,6 +1207,7 @@ bool OnnxRuntimeTestSession::PopulateMultiShapeInputTestData(
 #endif
     }
   }
+  use_round_robin_ = true;
   return true;
 }
 

@@ -308,9 +308,15 @@ bool PerformanceRunner::Initialize() {
   if (performance_test_config_.run_config.generate_model_input_binding) {
     auto* ort_session = static_cast<OnnxRuntimeTestSession*>(session_.get());
     if (!performance_test_config_.run_config.data_shape_groups.empty()) {
-      return ort_session->PopulateMultiShapeInputTestData(
-          performance_test_config_.run_config.random_seed_for_input_data,
-          performance_test_config_.run_config.data_shape_groups);
+      if (!ort_session->PopulateMultiShapeInputTestData(
+              performance_test_config_.run_config.random_seed_for_input_data,
+              performance_test_config_.run_config.data_shape_groups)) {
+        return false;
+      }
+      // Pre-size per-shape timing vectors
+      size_t num_groups = performance_test_config_.run_config.data_shape_groups.begin()->second.size();
+      performance_result_.per_shape_time_costs_total.resize(num_groups);
+      return true;
     }
     return ort_session->PopulateGeneratedInputTestData(
         performance_test_config_.run_config.random_seed_for_input_data);
