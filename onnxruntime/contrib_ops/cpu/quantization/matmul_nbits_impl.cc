@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -41,11 +42,11 @@ void Dequantize4BitsKernelReOrder(
   T* output_i = output + out_y * out_cols + out_x;
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 2));
   if constexpr (onnxruntime::endian::native == onnxruntime::endian::big) {
-    const uint8_t* c = (const uint8_t*)(&quant_value);
-    quant_value = (uint32_t)c[0] |
-                  (uint32_t)c[1] << 8 |
-                  (uint32_t)c[2] << 16 |
-                  (uint32_t)c[3] << 24;
+    const uint8_t* c = reinterpret_cast<const uint8_t*>(&quant_value);
+    quant_value = static_cast<uint32_t>(c[0]) |
+                  static_cast<uint32_t>(c[1]) << 8 |
+                  static_cast<uint32_t>(c[2]) << 16 |
+                  static_cast<uint32_t>(c[3]) << 24;
   }
   const int remain_x = std::min(8, out_cols - out_x);
   const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx_x * 8) & (block_size - 1));
@@ -146,18 +147,19 @@ void Dequantize2BitsKernel(
   }
 
   T* output_i = output + n_offset * K + k_offset;
-  // 16 elements × 2 bits = 4 bytes
-  uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset / 4));
+  // 16 elements × 2 bits = 4 bytes. Use memcpy to avoid alignment UB.
+  uint32_t quant_value = 0;
+  std::memcpy(&quant_value, quant_data + element_offset / 4, sizeof(uint32_t));
   if constexpr (onnxruntime::endian::native == onnxruntime::endian::big) {
-    const uint8_t* c = (const uint8_t*)(&quant_value);
-    quant_value = (uint32_t)c[0] |
-                  (uint32_t)c[1] << 8 |
-                  (uint32_t)c[2] << 16 |
-                  (uint32_t)c[3] << 24;
+    const uint8_t* c = reinterpret_cast<const uint8_t*>(&quant_value);
+    quant_value = static_cast<uint32_t>(c[0]) |
+                  static_cast<uint32_t>(c[1]) << 8 |
+                  static_cast<uint32_t>(c[2]) << 16 |
+                  static_cast<uint32_t>(c[3]) << 24;
   }
   const int remain_k = std::min(elements_per_thread, K - k_offset);
 
-  T scale = *(scale_data + static_cast<uint64_t>(n_idx) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb_idx));
+  float scale_f = static_cast<float>(*(scale_data + static_cast<uint64_t>(n_idx) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb_idx)));
   float zp_f = 0.0f;
   if (zero_points) {
     if constexpr (std::is_same_v<zeroT, MLFloat16>) {
@@ -167,16 +169,10 @@ void Dequantize2BitsKernel(
     }
   }
 
-  if constexpr (std::is_same_v<T, MLFloat16>) {
-    T zp_adjust = -scale * MLFloat16(zp_f);
-    for (int i = 0; i < remain_k; i++) {
-      output_i[i] = static_cast<float>((quant_value >> (2 * i)) & 0x3) * scale + zp_adjust;
-    }
-  } else {
-    T zp_adjust = -scale * zp_f;
-    for (int i = 0; i < remain_k; i++) {
-      output_i[i] = T((quant_value >> (2 * i)) & 0x3) * scale + zp_adjust;
-    }
+  float zp_adjust = -scale_f * zp_f;
+  for (int i = 0; i < remain_k; i++) {
+    float q = static_cast<float>((quant_value >> (2 * i)) & 0x3);
+    output_i[i] = static_cast<T>(q * scale_f + zp_adjust);
   }
 }
 
@@ -192,7 +188,7 @@ void Dequantize2BitsFallback(
       const int k_start = kb * block_size;
       const int k_count = std::min(block_size, K - k_start);
 
-      const T scale = scale_data[static_cast<uint64_t>(n) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb)];
+      const float scale = static_cast<float>(scale_data[static_cast<uint64_t>(n) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb)]);
       float zp_f = 0.0f;
       if (zero_points) {
         if constexpr (std::is_same_v<zeroT, MLFloat16>) {
@@ -201,14 +197,14 @@ void Dequantize2BitsFallback(
           zp_f = static_cast<float>(zero_points[static_cast<uint64_t>(n) * static_cast<uint64_t>(k_blocks) + static_cast<uint64_t>(kb)]);
         }
       }
-      const T zp_adjust = -scale * zp_f;
+      const float zp_adjust = -scale * zp_f;
       T* output_i = output + static_cast<uint64_t>(n) * static_cast<uint64_t>(K) + static_cast<uint64_t>(k_start);
 
       for (int i = 0; i < k_count; ++i) {
         const int element_offset = group_offset + i;
         const uint8_t packed = quant_data[element_offset / 4];
         const uint8_t q = (packed >> (2 * (element_offset & 0x3))) & 0x3;
-        output_i[i] = static_cast<T>(q) * scale + zp_adjust;
+        output_i[i] = static_cast<T>(static_cast<float>(q) * scale + zp_adjust);
       }
     }
   }
