@@ -9,7 +9,6 @@ import unittest
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
 from op_test_utils import (
     TestDataFeeds,
     check_model_correctness,
@@ -62,17 +61,17 @@ class TestOpFlatten(unittest.TestCase):
         flatten_node = onnx.helper.make_node("Flatten", flatten_inputs, flatten_outputs, name=flatten_name, axis=1)
 
         # make graph
-        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, input_shape)
-        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, output_shape)
+        input_tensor = onnx.helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, input_shape)
+        output_tensor = onnx.helper.make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, output_shape)
         graph_name = "Flatten_Quant_Test"
-        graph = helper.make_graph(
+        graph = onnx.helper.make_graph(
             [matmul_node, flatten_node],
             graph_name,
             [input_tensor],
             [output_tensor],
             initializer=initializers,
         )
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 11)])
         model.ir_version = 7  # use stable onnx ir version
 
         onnx.save(model, output_model_path)
@@ -84,7 +83,9 @@ class TestOpFlatten(unittest.TestCase):
         # input [3,7], weight [7,7] -> matmul output [3,7] -> flatten(axis=1) output [3,7]
         self.construct_model_matmul_flatten(model_fp32_path, [3, 7], [7, 7], [3, 7])
 
-        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
+        activation_proto_qtype = (
+            onnx.TensorProto.UINT8 if activation_type == QuantType.QUInt8 else onnx.TensorProto.INT8
+        )
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
         model_uint8_path = f"flatten_{activation_type_str}{weight_type_str}.onnx"
