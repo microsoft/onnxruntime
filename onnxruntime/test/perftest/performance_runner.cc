@@ -206,9 +206,15 @@ Status PerformanceRunner::Run() {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
   }
 
-  // warm up
+  // warm up — run one iteration per shape group to ensure all shapes are warmed
+  size_t warmup_count = 1;
+  if (!performance_test_config_.run_config.data_shape_groups.empty()) {
+    warmup_count = performance_test_config_.run_config.data_shape_groups.begin()->second.size();
+  }
   initial_inference_result_.start = std::chrono::high_resolution_clock::now();
-  ORT_RETURN_IF_ERROR(RunOneIteration<true>());
+  for (size_t w = 0; w < warmup_count; w++) {
+    ORT_RETURN_IF_ERROR(RunOneIteration<true>());
+  }
   initial_inference_result_.end = std::chrono::high_resolution_clock::now();
 
   // TODO: start profiling
