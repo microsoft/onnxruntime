@@ -67,6 +67,10 @@
 
   include(onnxruntime_cuda_source_filters.cmake)
   onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)
+  onnxruntime_extract_sm_specific_cuda_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
+    SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
+  )
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
@@ -309,6 +313,13 @@
     if(MSVC)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+      # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
+      # issues with abseil headers when compiled through nvcc.
+      # See https://github.com/NVIDIA/cutlass/issues/3065
+      target_compile_options(${target} PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+      )
     endif()
 
     onnxruntime_add_include_to_target(${target} onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
@@ -434,6 +445,44 @@
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
   endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
+
+  # Create OBJECT libraries for SM90/SM120 TMA WS generated files that must be compiled
+  # with restricted CUDA architectures. These files use CUTLASS 3.x SM90+/SM120+ features
+  # (GMMA, TMA) that cannot produce useful device code for older architectures.
+  if(onnxruntime_cuda_sm90_tma_srcs)
+    # SM90 TMA warp-specialized files use SM90-specific collective operations.
+    # Compile at exactly 90a-real: SM120+ GPUs run SM90 native code via forward compat.
+    set(_ort_has_sm90_plus FALSE)
+    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
+      if(_arch_num GREATER_EQUAL 90)
+        set(_ort_has_sm90_plus TRUE)
+        break()
+      endif()
+    endforeach()
+    if(_ort_has_sm90_plus)
+      onnxruntime_add_object_library(onnxruntime_providers_cuda_sm90_tma ${onnxruntime_cuda_sm90_tma_srcs})
+      set_target_properties(onnxruntime_providers_cuda_sm90_tma PROPERTIES CUDA_ARCHITECTURES "90a-real")
+      config_cuda_provider_shared_module(onnxruntime_providers_cuda_sm90_tma)
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_sm90_tma)
+    endif()
+  endif()
+
+  if(onnxruntime_cuda_sm120_tma_srcs)
+    set(_ort_sm120_cuda_architectures)
+    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
+      if(_arch_num GREATER_EQUAL 120)
+        list(APPEND _ort_sm120_cuda_architectures "${_arch}")
+      endif()
+    endforeach()
+    if(_ort_sm120_cuda_architectures)
+      onnxruntime_add_object_library(onnxruntime_providers_cuda_sm120_tma ${onnxruntime_cuda_sm120_tma_srcs})
+      set_target_properties(onnxruntime_providers_cuda_sm120_tma PROPERTIES CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}")
+      config_cuda_provider_shared_module(onnxruntime_providers_cuda_sm120_tma)
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_sm120_tma)
+    endif()
+  endif()
   # Cannot use glob because the file cuda_provider_options.h should not be exposed out.
   set(ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS
         "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_context.h"

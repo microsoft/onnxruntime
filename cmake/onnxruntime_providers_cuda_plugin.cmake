@@ -104,6 +104,10 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transforme
 # Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
 include(onnxruntime_cuda_source_filters.cmake)
 onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
+onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
+  SM90_SOURCES _cuda_plugin_sm90_tma_srcs
+  SM120_SOURCES _cuda_plugin_sm120_tma_srcs
+)
 
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
@@ -215,6 +219,58 @@ if("100" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
 endif()
 if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
+endif()
+
+# SM90/SM120 TMA WS OBJECT libraries — compiled with restricted CUDA architectures.
+if(_cuda_plugin_sm90_tma_srcs)
+  set(_plugin_has_sm90_plus FALSE)
+  foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+    string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
+    if(_arch_num GREATER_EQUAL 90)
+      set(_plugin_has_sm90_plus TRUE)
+      break()
+    endif()
+  endforeach()
+  if(_plugin_has_sm90_plus)
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_sm90_tma ${_cuda_plugin_sm90_tma_srcs})
+    set_target_properties(onnxruntime_providers_cuda_plugin_sm90_tma PROPERTIES
+      CUDA_ARCHITECTURES "90a-real"
+      CUDA_STANDARD 20
+      CUDA_STANDARD_REQUIRED ON
+    )
+    target_include_directories(onnxruntime_providers_cuda_plugin_sm90_tma PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin_sm90_tma PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_DEFINITIONS>)
+    target_compile_options(onnxruntime_providers_cuda_plugin_sm90_tma PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_OPTIONS>)
+    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE onnxruntime_providers_cuda_plugin_sm90_tma)
+  endif()
+endif()
+
+if(_cuda_plugin_sm120_tma_srcs)
+  set(_plugin_sm120_cuda_architectures)
+  foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+    string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
+    if(_arch_num GREATER_EQUAL 120)
+      list(APPEND _plugin_sm120_cuda_architectures "${_arch}")
+    endif()
+  endforeach()
+  if(_plugin_sm120_cuda_architectures)
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_sm120_tma ${_cuda_plugin_sm120_tma_srcs})
+    set_target_properties(onnxruntime_providers_cuda_plugin_sm120_tma PROPERTIES
+      CUDA_ARCHITECTURES "${_plugin_sm120_cuda_architectures}"
+      CUDA_STANDARD 20
+      CUDA_STANDARD_REQUIRED ON
+    )
+    target_include_directories(onnxruntime_providers_cuda_plugin_sm120_tma PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin_sm120_tma PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_DEFINITIONS>)
+    target_compile_options(onnxruntime_providers_cuda_plugin_sm120_tma PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_OPTIONS>)
+    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE onnxruntime_providers_cuda_plugin_sm120_tma)
+  endif()
 endif()
 
 # --- Find cuDNN (may be at a custom path via onnxruntime_CUDNN_HOME) ---

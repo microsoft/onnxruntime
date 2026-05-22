@@ -41,3 +41,48 @@ macro(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
     list(FILTER ${CU_SRC_LIST} EXCLUDE REGEX "moe_gemm_kernels_fp8_fp4\\.cu")
   endif()
 endmacro()
+
+# Extract SM90/SM120 TMA warp-specialized generated source files from a CUDA source list.
+# These files use CUTLASS 3.x features (GMMA, TMA) that are specific to SM90+ or SM120+.
+# They are compiled in separate OBJECT libraries with restricted CUDA_ARCHITECTURES to:
+#   1. Reduce compile time (avoid compiling heavy templates for unused architectures)
+#   2. Reduce binary size (no dead device code for unsupported architectures)
+#   3. Ensure correctness (SM90 code compiled at exactly 90a-real, SM120 at 120+)
+#
+# The per-source CUDA_ARCHITECTURES property does not work with the Visual Studio generator,
+# so OBJECT libraries are needed.
+#
+# Usage:
+#   onnxruntime_extract_sm_specific_cuda_sources(<cu_src_list_var>
+#       SM90_SOURCES <output_var> SM120_SOURCES <output_var>)
+#
+# Removes matched files from <cu_src_list_var> and stores them in the output variables.
+macro(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
+  cmake_parse_arguments(_EXTRACT "" "SM90_SOURCES;SM120_SOURCES" "" ${ARGN})
+
+  # Extract SM90 TMA WS generated files
+  set(${_EXTRACT_SM90_SOURCES})
+  if(ORT_HAS_SM90_OR_LATER)
+    foreach(_src IN LISTS ${CU_SRC_LIST})
+      if(_src MATCHES "moe_gemm_tma_ws_sm90_.*\\.generated\\.cu$")
+        list(APPEND ${_EXTRACT_SM90_SOURCES} "${_src}")
+      endif()
+    endforeach()
+    if(${_EXTRACT_SM90_SOURCES})
+      list(REMOVE_ITEM ${CU_SRC_LIST} ${${_EXTRACT_SM90_SOURCES}})
+    endif()
+  endif()
+
+  # Extract SM120 TMA WS generated files
+  set(${_EXTRACT_SM120_SOURCES})
+  if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+    foreach(_src IN LISTS ${CU_SRC_LIST})
+      if(_src MATCHES "moe_gemm_tma_ws_sm120_.*\\.generated\\.cu$")
+        list(APPEND ${_EXTRACT_SM120_SOURCES} "${_src}")
+      endif()
+    endforeach()
+    if(${_EXTRACT_SM120_SOURCES})
+      list(REMOVE_ITEM ${CU_SRC_LIST} ${${_EXTRACT_SM120_SOURCES}})
+    endif()
+  endif()
+endmacro()
