@@ -131,11 +131,6 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      - name: Check log file
-        shell: cmd
-        run: |
-          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
-
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
