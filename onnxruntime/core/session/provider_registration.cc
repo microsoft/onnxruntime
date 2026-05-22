@@ -89,6 +89,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_BEGIN
   enum class EpID {
     INVALID = 0,
+    CPU,
     DML,
     QNN,
     OpenVINO,
@@ -110,7 +111,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 13> supported_eps = {
+  static std::array<EpToAppend, 14> supported_eps = {
+      EpToAppend{EpID::CPU, "CPU", kCpuExecutionProvider},
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -197,6 +199,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                                                              ep_to_append.canonical_name));
 
   switch (ep_to_append.id) {
+    case EpID::CPU: {
+      // CPU EP is always available by default. Accept the name as valid but do nothing,
+      // since the CPU EP is implicitly registered in every session.
+      break;
+    }
     case EpID::DML: {
 #if defined(USE_DML)
       options->provider_factories.push_back(
