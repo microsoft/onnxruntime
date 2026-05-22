@@ -208,7 +208,13 @@ bool ParseDataShapeGroups(const std::string& input,
       std::string dim_token;
       while (std::getline(dims_ss, dim_token, ',')) {
         ORT_TRY {
-          int64_t dim_val = std::stoll(dim_token);
+          size_t chars_parsed = 0;
+          int64_t dim_val = std::stoll(dim_token, &chars_parsed);
+          if (chars_parsed != dim_token.length()) {
+            std::cerr << "Error parsing --data_shape: invalid characters in dimension '"
+                      << dim_token << "' for input '" << input_name << "'." << std::endl;
+            return false;
+          }
           if (dim_val <= 0) {
             std::cerr << "Error parsing --data_shape: dimensions must be positive integers, got '"
                       << dim_token << "' for input '" << input_name << "'." << std::endl;
