@@ -334,8 +334,13 @@ class Session:
 
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_value }``
-        :param callback: python function that accept array of results, and a status string on error.
-            The callback will be invoked by a cxx thread from ort intra-op threadpool.
+        :param callback: python function that accepts an array of results, a user data object,
+            and a status string on error. The callback will be invoked by a cxx thread from the
+            ort intra-op threadpool.
+        :param user_data: arbitrary Python object forwarded unchanged to ``callback``. Use this to
+            associate per-request state (for example, a request id or a buffer to fill in) with the
+            results that arrive on the callback thread. ONNX Runtime does not inspect or modify
+            this value.
         :param run_options: See :class:`onnxruntime.RunOptions`.
 
         ::
@@ -351,7 +356,7 @@ class Session:
               else:
                 # save results to user_data
 
-            sess.run_async([output_name], {input_name: x}, callback)
+            sess.run_async([output_name], {input_name: x}, callback, MyData())
         """
         self._validate_input(list(input_feed.keys()))
         if not output_names:
