@@ -613,23 +613,24 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
   const size_t blocks_m = M;
   const size_t blocks_k = expected_blocks_k;
 
-  const size_t blocks_n = N / block_size_n_;
-  ORT_RETURN_IF(!b_scales_ && b_scale == nullptr,
+  const bool uses_model_b_scale = b_scales_ == nullptr;
+  ORT_RETURN_IF(uses_model_b_scale && b_scale == nullptr,
                 "DynamicQuantMatMulFp8 requires B scale when B is already FP8.");
-  ORT_RETURN_IF(b_scale != nullptr && b_scale->Shape().NumDimensions() != 2,
+  ORT_RETURN_IF(uses_model_b_scale && b_scale->Shape().NumDimensions() != 2,
                 "DynamicQuantMatMulFp8 requires B scale to be a 2D tensor.");
-  ORT_RETURN_IF(blocks_n == 0, "DynamicQuantMatMulFp8 requires non-zero B scale N dimension.");
   ORT_RETURN_IF(N % block_size_n_ != 0,
                 "DynamicQuantMatMulFp8 requires N to be divisible by block_size_n.");
-  ORT_RETURN_IF(b_scale != nullptr && static_cast<size_t>(b_scale->Shape()[0]) != blocks_n,
+  const size_t blocks_n = N / block_size_n_;
+  ORT_RETURN_IF(blocks_n == 0, "DynamicQuantMatMulFp8 requires non-zero B scale N dimension.");
+  ORT_RETURN_IF(uses_model_b_scale && static_cast<size_t>(b_scale->Shape()[0]) != blocks_n,
                 "DynamicQuantMatMulFp8 requires B scale N dimension to be N / block_size_n.");
-  ORT_RETURN_IF(b_scale != nullptr && static_cast<size_t>(b_scale->Shape()[1]) != blocks_k,
+  ORT_RETURN_IF(uses_model_b_scale && static_cast<size_t>(b_scale->Shape()[1]) != blocks_k,
                 "DynamicQuantMatMulFp8 requires B scale K dimension to be K / block_size_k.");
 
   const size_t a_scale_batch_stride = SafeMul<size_t>(blocks_m, blocks_k);
   const size_t b_zp_count = SafeMul<size_t>(blocks_k, blocks_n);
 
-  if (b_zero_point != nullptr) {
+  if (uses_model_b_scale && b_zero_point != nullptr) {
     ORT_RETURN_IF(b_zero_point->Shape().NumDimensions() != 2,
                   "DynamicQuantMatMulFp8 requires B zero point to be a 2D tensor.");
     ORT_RETURN_IF(b_zero_point->Shape()[0] != static_cast<int64_t>(blocks_n) ||
