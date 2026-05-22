@@ -2087,14 +2087,14 @@ struct OrtEpApi {
    *
    * The returned handle owns only ORT's copy of callback function pointers and opaque state pointer values. It does not
    * own the application-provided state. The application is responsible for keeping callback state valid and
-   * synchronized while an EP may call ReadEpContextData or WriteEpContextData with this config.
+   * synchronized while an EP may call callbacks retrieved from this config.
    *
    * \param[in] session_options The OrtSessionOptions instance.
    * \param[out] config The extracted OrtEpContextConfig.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
   ORT_API2_STATUS(SessionOptions_GetEpContextConfig,
                   _In_ const OrtSessionOptions* session_options,
@@ -2104,66 +2104,49 @@ struct OrtEpApi {
    *
    * \param[in] input The OrtEpContextConfig instance to release. May be NULL.
    *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
   ORT_CLASS_RELEASE(EpContextConfig);
 
-  /** \brief Read EPContext binary data, using an application read callback or falling back to disk.
+  /** \brief Get the application-provided EPContext data read callback.
    *
-   * If config contains a read callback, the callback is invoked with the provided allocator. Otherwise, ORT reads the
-   * file from disk. The disk fallback derives the base directory from the graph's model path.
+   * Returns the OrtReadEpContextDataFunc and opaque state pointer registered via
+   * OrtApi::SessionOptions_SetEpContextDataReadFunc. If no callback was registered, *read_func and *state are set to
+   * NULL. The EP is responsible for calling the callback when present and for using its own normal read path when no
+   * callback is present.
    *
-   * This function is synchronous. If a callback is present, it is invoked on the calling thread and its OrtStatus is
-   * returned to the caller. ORT does not serialize concurrent calls across EP instances or EP worker threads.
-   *
-   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig. May be NULL for disk fallback.
-   * \param[in] file_name EPContext file name as a null-terminated UTF-8 string.
-   * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
-   * \param[in] allocator Allocator for the output buffer.
-   * \param[out] buffer Output buffer containing the EPContext binary data.
-   * \param[out] buffer_size Size of the output buffer in bytes.
+   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig.
+   * \param[out] read_func The registered read callback, or NULL if none was registered.
+   * \param[out] state Opaque state pointer passed to read_func, or NULL if none was registered.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
-  ORT_API2_STATUS(ReadEpContextData,
-                  _In_opt_ const OrtEpContextConfig* config,
-                  _In_ const char* file_name,
-                  _In_opt_ const OrtGraph* graph,
-                  _Inout_ OrtAllocator* allocator,
-                  _Outptr_ void** buffer,
-                  _Out_ size_t* buffer_size);
+  ORT_API2_STATUS(EpContextConfig_GetEpContextDataReadFunc,
+                  _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtReadEpContextDataFunc* read_func,
+                  _Out_ void** state);
 
-  /** \brief Write EPContext binary data, using an application write callback or falling back to disk.
+  /** \brief Get the application-provided EPContext data write callback.
    *
-   * If config contains a write callback, the data is forwarded to the application's callback. Otherwise, ORT writes the
-   * data to disk. The disk fallback derives the base directory from the graph's model path.
+   * Returns the OrtWriteEpContextDataFunc and opaque state pointer registered via
+   * OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc. If no callback was registered, *write_func and
+   * *state are set to NULL. The EP is responsible for calling the callback when present and for using its own normal
+   * write path when no callback is present.
    *
-   * This function is synchronous. If a callback is present, it is invoked on the calling thread and its OrtStatus is
-   * returned to the caller. ORT does not retain buffer after the callback returns, reorder callback invocations, or
-   * serialize concurrent calls across EP instances or EP worker threads.
-   *
-   * Each call is one complete write operation for file_name. The API does not provide an offset, sequence number, or
-   * final-chunk marker. EPs should prefer one call per EPContext binary, or document EP-specific chunk ordering and
-   * completion semantics if multiple calls are made for the same file_name.
-   *
-   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig. May be NULL for disk fallback.
-   * \param[in] file_name EPContext file name as a null-terminated UTF-8 string.
-   * \param[in] graph The OrtGraph from which ORT derives the model path for disk fallback. May be NULL.
-   * \param[in] buffer The buffer containing EPContext binary data to write.
-   * \param[in] buffer_size Size of the buffer in bytes.
+   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig.
+   * \param[out] write_func The registered write callback, or NULL if none was registered.
+   * \param[out] state Opaque state pointer passed to write_func, or NULL if none was registered.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
-  ORT_API2_STATUS(WriteEpContextData,
-                  _In_opt_ const OrtEpContextConfig* config,
-                  _In_ const char* file_name,
-                  _In_opt_ const OrtGraph* graph,
-                  _In_ const void* buffer,
-                  _In_ size_t buffer_size);
+  ORT_API2_STATUS(EpContextConfig_GetEpContextDataWriteFunc,
+                  _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtWriteEpContextDataFunc* write_func,
+                  _Out_ void** state);
 };
 
 /**

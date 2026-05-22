@@ -5,15 +5,11 @@
 
 #include <algorithm>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "core/common/path_string.h"
 #include "core/common/semver.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
@@ -50,25 +46,6 @@ struct OrtEpContextConfig {
 };
 
 namespace OrtExecutionProviderApi {
-
-namespace {
-
-std::filesystem::path ResolveEpContextDataPath(const char* file_name, const OrtGraph* graph) {
-  std::filesystem::path data_path{ToPathString(file_name)};
-  if (data_path.is_absolute() || graph == nullptr) {
-    return data_path;
-  }
-
-  const ORTCHAR_T* model_path = graph->GetModelPath();
-  if (model_path == nullptr || model_path[0] == 0) {
-    return data_path;
-  }
-
-  std::filesystem::path model_file_path{model_path};
-  return model_file_path.parent_path() / data_path;
-}
-
-}  // namespace
 
 ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _In_ const OrtHardwareDevice* hardware_device,
@@ -1255,85 +1232,32 @@ ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config
   delete config;
 }
 
-ORT_API_STATUS_IMPL(ReadEpContextData,
-                    _In_opt_ const OrtEpContextConfig* config,
-                    _In_ const char* file_name,
-                    _In_opt_ const OrtGraph* graph,
-                    _Inout_ OrtAllocator* allocator,
-                    _Outptr_ void** buffer,
-                    _Out_ size_t* buffer_size) {
+ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataReadFunc,
+                    _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtReadEpContextDataFunc* read_func,
+                    _Out_ void** state) {
   API_IMPL_BEGIN
-  ORT_API_RETURN_IF(file_name == nullptr, ORT_INVALID_ARGUMENT, "file_name is NULL");
-  ORT_API_RETURN_IF(allocator == nullptr, ORT_INVALID_ARGUMENT, "OrtAllocator is NULL");
-  ORT_API_RETURN_IF(buffer == nullptr, ORT_INVALID_ARGUMENT, "Output buffer is NULL");
-  ORT_API_RETURN_IF(buffer_size == nullptr, ORT_INVALID_ARGUMENT, "Output buffer_size is NULL");
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "Output read_func is NULL");
+  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
 
-  *buffer = nullptr;
-  *buffer_size = 0;
-
-  if (config != nullptr && config->read_func != nullptr) {
-    OrtStatus* status = config->read_func(config->read_state, file_name, allocator, buffer, buffer_size);
-    if (status != nullptr) {
-      return status;
-    }
-
-    ORT_API_RETURN_IF(*buffer_size != 0 && *buffer == nullptr, ORT_FAIL,
-                      "OrtReadEpContextDataFunc returned a null buffer for non-empty EPContext data");
-    return nullptr;
-  }
-
-  const std::filesystem::path data_path = ResolveEpContextDataPath(file_name, graph);
-  size_t file_size = 0;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetFileLength(data_path.native().c_str(), file_size));
-
-  if (file_size == 0) {
-    return nullptr;
-  }
-
-  void* allocated_buffer = allocator->Alloc(allocator, file_size);
-  ORT_API_RETURN_IF(allocated_buffer == nullptr, ORT_FAIL, "Failed to allocate buffer for EPContext data");
-
-  const auto read_status = Env::Default().ReadFileIntoBuffer(
-      data_path.native().c_str(), 0, file_size, gsl::make_span(static_cast<char*>(allocated_buffer), file_size));
-  if (!read_status.IsOK()) {
-    allocator->Free(allocator, allocated_buffer);
-    ORT_API_RETURN_IF_STATUS_NOT_OK(read_status);
-  }
-
-  *buffer = allocated_buffer;
-  *buffer_size = file_size;
+  *read_func = config->read_func;
+  *state = config->read_func != nullptr ? config->read_state : nullptr;
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(WriteEpContextData,
-                    _In_opt_ const OrtEpContextConfig* config,
-                    _In_ const char* file_name,
-                    _In_opt_ const OrtGraph* graph,
-                    _In_ const void* buffer,
-                    _In_ size_t buffer_size) {
+ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataWriteFunc,
+                    _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtWriteEpContextDataFunc* write_func,
+                    _Out_ void** state) {
   API_IMPL_BEGIN
-  ORT_API_RETURN_IF(file_name == nullptr, ORT_INVALID_ARGUMENT, "file_name is NULL");
-  ORT_API_RETURN_IF(buffer_size != 0 && buffer == nullptr, ORT_INVALID_ARGUMENT,
-                    "EPContext data buffer is NULL for non-empty data");
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ORT_API_RETURN_IF(write_func == nullptr, ORT_INVALID_ARGUMENT, "Output write_func is NULL");
+  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
 
-  if (config != nullptr && config->write_func != nullptr) {
-    return config->write_func(config->write_state, file_name, buffer, buffer_size);
-  }
-
-  const std::filesystem::path data_path = ResolveEpContextDataPath(file_name, graph);
-  std::ofstream output_stream(data_path, std::ios::binary);
-  ORT_API_RETURN_IF(!output_stream, ORT_FAIL, "Failed to open EPContext data file for write: ",
-                    PathToUTF8String(data_path.native()));
-
-  if (buffer_size != 0) {
-    ORT_API_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<std::streamsize>::max()),
-                      ORT_INVALID_ARGUMENT, "EPContext data buffer is too large to write");
-    output_stream.write(static_cast<const char*>(buffer), static_cast<std::streamsize>(buffer_size));
-    ORT_API_RETURN_IF(!output_stream, ORT_FAIL, "Failed to write EPContext data file: ",
-                      PathToUTF8String(data_path.native()));
-  }
-
+  *write_func = config->write_func;
+  *state = config->write_func != nullptr ? config->write_state : nullptr;
   return nullptr;
   API_IMPL_END
 }
@@ -1427,11 +1351,13 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
+    // End of Version 26 - DO NOT MODIFY ABOVE
+    // End of Version 27 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::SessionOptions_GetEpContextConfig,
     &OrtExecutionProviderApi::ReleaseEpContextConfig,
-    &OrtExecutionProviderApi::ReadEpContextData,
-    &OrtExecutionProviderApi::WriteEpContextData,
+    &OrtExecutionProviderApi::EpContextConfig_GetEpContextDataReadFunc,
+    &OrtExecutionProviderApi::EpContextConfig_GetEpContextDataWriteFunc,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1443,6 +1369,8 @@ static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
 static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
               "Size of version 25 API cannot change");
+static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
+              "Size of version 27 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
 

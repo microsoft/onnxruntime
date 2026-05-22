@@ -769,6 +769,24 @@ inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardwar
   ThrowOnError(GetEpApi().CreateEpDevice(&ep_factory, hardware_device, ep_metadata, ep_options, &p_));
 }
 
+inline EpContextConfig::EpContextConfig(const OrtSessionOptions* session_options) {
+  ThrowOnError(GetEpApi().SessionOptions_GetEpContextConfig(session_options, &p_));
+}
+
+inline std::pair<OrtReadEpContextDataFunc, void*> EpContextConfig::GetEpContextDataReadFunc() const {
+  OrtReadEpContextDataFunc read_func = nullptr;
+  void* state = nullptr;
+  ThrowOnError(GetEpApi().EpContextConfig_GetEpContextDataReadFunc(this->p_, &read_func, &state));
+  return {read_func, state};
+}
+
+inline std::pair<OrtWriteEpContextDataFunc, void*> EpContextConfig::GetEpContextDataWriteFunc() const {
+  OrtWriteEpContextDataFunc write_func = nullptr;
+  void* state = nullptr;
+  ThrowOnError(GetEpApi().EpContextConfig_GetEpContextDataWriteFunc(this->p_, &write_func, &state));
+  return {write_func, state};
+}
+
 namespace detail {
 template <typename T>
 inline std::string EpAssignedSubgraphImpl<T>::GetEpName() const {

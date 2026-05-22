@@ -4,19 +4,149 @@
 #include "ep.h"
 
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
-#include <atomic>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "ep_factory.h"
 #include "ep_stream_support.h"
 
 extern std::atomic<uint64_t> g_sync_count;
+
+namespace {
+
+#ifdef _WIN32
+std::wstring Utf8ToWideString(std::string_view value) {
+  if (value.empty() || value.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return {};
+  }
+
+  const int wide_length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                                              static_cast<int>(value.size()), nullptr, 0);
+  if (wide_length <= 0) {
+    return {};
+  }
+
+  std::wstring wide_value(static_cast<size_t>(wide_length), L'\0');
+  MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                      wide_value.data(), wide_length);
+  return wide_value;
+}
+
+std::string WideToUtf8String(std::wstring_view value) {
+  if (value.empty() || value.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return {};
+  }
+
+  const int utf8_length = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
+                                              nullptr, 0, nullptr, nullptr);
+  if (utf8_length <= 0) {
+    return {};
+  }
+
+  std::string utf8_value(static_cast<size_t>(utf8_length), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), utf8_value.data(), utf8_length,
+                      nullptr, nullptr);
+  return utf8_value;
+}
+#endif
+
+std::filesystem::path Utf8Path(const char* path) {
+#ifdef _WIN32
+  return std::filesystem::path{Utf8ToWideString(path)};
+#else
+  return std::filesystem::path{path};
+#endif
+}
+
+std::string PathToUtf8String(const std::filesystem::path& path) {
+#ifdef _WIN32
+  return WideToUtf8String(path.wstring());
+#else
+  return path.string();
+#endif
+}
+
+OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
+                                    std::filesystem::path& data_path) {
+  data_path = Utf8Path(file_name);
+  if (data_path.is_absolute() || graph == nullptr) {
+    return nullptr;
+  }
+
+  const ORTCHAR_T* model_path = nullptr;
+  RETURN_IF_ERROR(api.Graph_GetModelPath(graph, &model_path));
+  if (model_path == nullptr || model_path[0] == 0) {
+    return nullptr;
+  }
+
+  data_path = std::filesystem::path{model_path}.parent_path() / data_path;
+  return nullptr;
+}
+
+OrtStatus* ReadEpContextDataFromFile(const OrtApi& api, const char* file_name, const OrtGraph* graph,
+                                     std::vector<char>& data) {
+  std::filesystem::path data_path;
+  RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
+  std::ifstream input_stream(data_path, std::ios::binary);
+  if (!input_stream) {
+    const std::string message = "Failed to open EPContext data file for read: " +
+                                PathToUtf8String(data_path);
+    return api.CreateStatus(ORT_FAIL, message.c_str());
+  }
+
+  data.assign(std::istreambuf_iterator<char>{input_stream}, std::istreambuf_iterator<char>{});
+  if (input_stream.bad()) {
+    const std::string message = "Failed to read EPContext data file: " +
+                                PathToUtf8String(data_path);
+    return api.CreateStatus(ORT_FAIL, message.c_str());
+  }
+
+  return nullptr;
+}
+
+OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_name, const OrtGraph* graph,
+                                    const void* buffer, size_t buffer_size) {
+  std::filesystem::path data_path;
+  RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
+  std::ofstream output_stream(data_path, std::ios::binary);
+  if (!output_stream) {
+    const std::string message = "Failed to open EPContext data file for write: " +
+                                PathToUtf8String(data_path);
+    return api.CreateStatus(ORT_FAIL, message.c_str());
+  }
+
+  if (buffer_size != 0) {
+    if (buffer_size > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
+      return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data buffer is too large to write");
+    }
+
+    output_stream.write(static_cast<const char*>(buffer), static_cast<std::streamsize>(buffer_size));
+    if (!output_stream) {
+      const std::string message = "Failed to write EPContext data file: " +
+                                  PathToUtf8String(data_path);
+      return api.CreateStatus(ORT_FAIL, message.c_str());
+    }
+  }
+
+  return nullptr;
+}
+
+}  // namespace
 
 const FloatInitializer* MulKernel::TryGetSavedInitializer(const std::string& name) const {
   auto iter = float_initializers.find(name);
@@ -168,14 +298,14 @@ struct EpContextNodeComputeInfo : NodeComputeInfoBase {
 };
 
 ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
-                     OrtEpContextConfig* ep_context_config)
+                     Ort::EpContextConfig ep_context_config)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
       name_{name},
       config_{config},
       logger_{logger},
-      ep_context_config_{ep_context_config} {
+      ep_context_config_{std::move(ep_context_config)} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 
   // Initialize the execution provider's function table
@@ -194,9 +324,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
                                              ORT_FILE, __LINE__, __FUNCTION__));
 }
 
-ExampleEp::~ExampleEp() {
-  ep_api.ReleaseEpContextConfig(ep_context_config_);
-}
+ExampleEp::~ExampleEp() = default;
 
 /*static*/
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
@@ -423,14 +551,35 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         std::string ep_cache_context;
         RETURN_IF_ERROR(ep_cache_context_attr.GetValue(ep_cache_context));
 
-        Ort::AllocatorWithDefaultOptions allocator;
-        void* ep_context_data = nullptr;
-        size_t ep_context_data_size = 0;
-        RETURN_IF_ERROR(ep->ep_api.ReadEpContextData(ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
-                                                     allocator, &ep_context_data, &ep_context_data_size));
-        (void)ep_context_data_size;
-        if (ep_context_data != nullptr) {
-          allocator.Free(ep_context_data);
+        OrtReadEpContextDataFunc read_func = nullptr;
+        void* read_state = nullptr;
+        RETURN_IF_ERROR(ep->ep_api.EpContextConfig_GetEpContextDataReadFunc(ep->ep_context_config_, &read_func,
+                                                                            &read_state));
+        if (read_func != nullptr) {
+          Ort::AllocatorWithDefaultOptions allocator;
+          void* ep_context_data = nullptr;
+          size_t ep_context_data_size = 0;
+          OrtStatus* status = read_func(read_state, ep_cache_context.c_str(), allocator, &ep_context_data,
+                                        &ep_context_data_size);
+          if (status != nullptr) {
+            if (ep_context_data != nullptr) {
+              allocator.Free(ep_context_data);
+            }
+            return status;
+          }
+
+          if (ep_context_data_size != 0 && ep_context_data == nullptr) {
+            return ep->ort_api.CreateStatus(ORT_FAIL,
+                                            "OrtReadEpContextDataFunc returned a null buffer for non-empty EPContext data");
+          }
+
+          if (ep_context_data != nullptr) {
+            allocator.Free(ep_context_data);
+          }
+        } else {
+          std::vector<char> ep_context_data;
+          RETURN_IF_ERROR(ReadEpContextDataFromFile(ep->ort_api, ep_cache_context.c_str(), ort_graphs[0],
+                                                    ep_context_data));
         }
       }
 
@@ -545,8 +694,16 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
       std::string ep_ctx = config_.embed_ep_context_in_model ? "binary_data" : fused_node_name + ".ctx";
       if (!config_.embed_ep_context_in_model) {
         const std::string ep_context_data = "binary_data";
-        RETURN_IF_ERROR(ep_api.WriteEpContextData(ep_context_config_, ep_ctx.c_str(), graph,
-                                                  ep_context_data.data(), ep_context_data.size()));
+        OrtWriteEpContextDataFunc write_func = nullptr;
+        void* write_state = nullptr;
+        RETURN_IF_ERROR(ep_api.EpContextConfig_GetEpContextDataWriteFunc(ep_context_config_, &write_func,
+                                                                         &write_state));
+        if (write_func != nullptr) {
+          RETURN_IF_ERROR(write_func(write_state, ep_ctx.c_str(), ep_context_data.data(), ep_context_data.size()));
+        } else {
+          RETURN_IF_ERROR(WriteEpContextDataToFile(ort_api, ep_ctx.c_str(), graph,
+                                                   ep_context_data.data(), ep_context_data.size()));
+        }
       }
       attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),
                                   ORT_OP_ATTR_STRING);
