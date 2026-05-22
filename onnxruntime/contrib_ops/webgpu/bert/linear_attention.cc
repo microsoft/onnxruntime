@@ -219,7 +219,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   // per element. This replaces scalar TILE_V loops with native vec4 SIMD operations,
   // reduces shared memory access overhead, and enables coalesced memory reads/writes.
   // TODO: support components == 2 (vec2) for head_dim_v divisible by 2 but not 4.
-  const int components = (head_dim_v % 4 == 0 && head_dim_v >= 4) ? 4 : 1;
+  const int components = (head_dim_v % 4 == 0) ? 4 : 1;
   int tile_v = (components == 4) ? 1 : std::min(4, onnxruntime::narrow<int>(head_dim_v));
 
   // subgroup_min_size > 0 enables subgroup-based reduction; 0 falls back to barrier-tree.
