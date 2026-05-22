@@ -59,22 +59,11 @@ Lstm::Lstm(const OpKernelInfo& info) : WebGpuKernel(info) {
 }
 
 // ===========================================================================
-// LstmZeroFillProgram
-// ===========================================================================
-Status LstmZeroFillProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddOutput("dst", ShaderUsage::UseElementTypeAlias);
-  auto& body = shader.MainFunctionBody();
-  body << "  if (global_idx < uniforms.size) {\n"
-       << "    dst[global_idx] = dst_element_t(0.0);\n"
-       << "  }\n";
-  return Status::OK();
-}
-
-// ===========================================================================
 // LstmStateCopyProgram
 // ===========================================================================
 Status LstmStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("src", ShaderUsage::UseElementTypeAlias);
+  if (has_seq_lens_) shader.AddInput("seq_lens", ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("dst", ShaderUsage::UseElementTypeAlias);
   auto& body = shader.MainFunctionBody();
   body << "  let H = uniforms.hidden_size;\n"
@@ -91,6 +80,12 @@ Status LstmStateCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
     body << "  let state_idx = (batch_idx * num_dir + dir) * H + j;\n";
   }
   if (to_state_) {
+    if (has_seq_lens_) {
+      body << "  if (u32(seq_lens[batch_idx]) == 0u) {\n"
+           << "    dst[state_idx] = dst_element_t(0.0);\n"
+           << "    return;\n"
+           << "  }\n";
+    }
     body << "  dst[state_idx] = src[flat_idx];\n";
   } else {
     body << "  dst[flat_idx] = src[state_idx];\n";
@@ -353,15 +348,18 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
   if (wg_size == 0) wg_size = 1;
   uint32_t num_groups = (total_threads + wg_size - 1) / wg_size;
 
-  // Helper lambdas for dispatching utility programs
-  auto zero_fill = [&](Tensor* buf) -> Status {
-    LstmZeroFillProgram prog;
-    prog.CacheHint("zfill");
-    prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
-    prog.AddOutputs({{buf, ProgramTensorMetadataDependency::None}});
-    prog.AddUniformVariables({{total_threads}});
-    return context.RunProgram(prog);
-  };
+  // sequence_lens is on GPU (no InputMemoryType CPU override)
+  bool has_seq_lens = (sequence_lens != nullptr);
+
+  if (seq_length == 0) {
+    if (has_Y_h) {
+      context.FillZero(*Y_h);
+    }
+    if (has_Y_c) {
+      context.FillZero(*Y_c);
+    }
+    return Status::OK();
+  }
 
   auto copy_from_state = [&](const Tensor* src, Tensor* dst, int dir) -> Status {
     LstmStateCopyProgram prog{/*to_state=*/false, static_cast<int>(layout_)};
@@ -379,10 +377,11 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
   };
 
   auto copy_to_state = [&](Tensor* src, Tensor* dst, int dir) -> Status {
-    LstmStateCopyProgram prog{/*to_state=*/true, static_cast<int>(layout_)};
-    prog.CacheHint("to", std::to_string(layout_));
+    LstmStateCopyProgram prog{/*to_state=*/true, static_cast<int>(layout_), has_seq_lens};
+    prog.CacheHint("to", std::to_string(layout_), std::to_string(has_seq_lens));
     prog.SetWorkgroupSize(wg_size).SetDispatchGroupSize(num_groups);
     prog.AddInputs({{src, ProgramTensorMetadataDependency::Type}});
+    if (has_seq_lens) prog.AddInputs({{sequence_lens, ProgramTensorMetadataDependency::Type}});
     prog.AddOutputs({{dst, ProgramTensorMetadataDependency::None}});
     prog.AddUniformVariables({
         {static_cast<uint32_t>(batch_size)},
@@ -392,9 +391,6 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     });
     return context.RunProgram(prog);
   };
-
-  // sequence_lens is on GPU (no InputMemoryType CPU override)
-  bool has_seq_lens = (sequence_lens != nullptr);
 
   // Check if the cell program would exceed storage buffer limits (max 10).
   // Base bindings: x, w, r, h_prev, c_prev (5 inputs) + h_new, c_new (2 outputs) = 7.
@@ -419,12 +415,12 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     if (initial_h != nullptr) {
       ORT_RETURN_IF_ERROR(copy_from_state(initial_h, &H_a, dir));
     } else {
-      ORT_RETURN_IF_ERROR(zero_fill(&H_a));
+      context.FillZero(H_a);
     }
     if (initial_c != nullptr) {
       ORT_RETURN_IF_ERROR(copy_from_state(initial_c, &C_a, dir));
     } else {
-      ORT_RETURN_IF_ERROR(zero_fill(&C_a));
+      context.FillZero(C_a);
     }
 
     // Per-timestep loop
@@ -510,10 +506,10 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     Tensor* final_c = (seq_length % 2 == 1) ? &C_b : &C_a;
 
     // Copy to Y_h / Y_c
-    if (seq_length > 0 && has_Y_h) {
+    if (has_Y_h) {
       ORT_RETURN_IF_ERROR(copy_to_state(final_h, Y_h, dir));
     }
-    if (seq_length > 0 && has_Y_c) {
+    if (has_Y_c) {
       ORT_RETURN_IF_ERROR(copy_to_state(final_c, Y_c, dir));
     }
   }

@@ -12,22 +12,13 @@
 namespace onnxruntime {
 namespace webgpu {
 
-// Fills a GPU buffer with zeros.
-class LstmZeroFillProgram final : public Program<LstmZeroFillProgram> {
- public:
-  LstmZeroFillProgram() : Program{"LstmZeroFill"} {}
-  Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"size", ProgramUniformVariableDataType::Uint32});
-};
-
 // Copies between flat [batch, H] and directional [num_dir, batch, H] (or [batch, num_dir, H]).
 // to_state=true:  src [batch, H] -> dst [num_dir, batch, H] at dir offset  (for Y_h/Y_c output)
 // to_state=false: src [num_dir, batch, H] at dir offset -> dst [batch, H]  (for initial state extraction)
 class LstmStateCopyProgram final : public Program<LstmStateCopyProgram> {
  public:
-  LstmStateCopyProgram(bool to_state, int layout)
-      : Program{"LstmStateCopy"}, to_state_(to_state), layout_(layout) {}
+  LstmStateCopyProgram(bool to_state, int layout, bool has_seq_lens = false)
+      : Program{"LstmStateCopy"}, to_state_(to_state), layout_(layout), has_seq_lens_(has_seq_lens) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
@@ -38,6 +29,7 @@ class LstmStateCopyProgram final : public Program<LstmStateCopyProgram> {
  private:
   bool to_state_;
   int layout_;
+  bool has_seq_lens_;
 };
 
 // Per-timestep LSTM cell compute.
