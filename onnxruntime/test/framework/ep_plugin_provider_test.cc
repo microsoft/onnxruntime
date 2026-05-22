@@ -69,18 +69,6 @@ static void ExpectOrtStatus(OrtStatus* status_ptr, OrtErrorCode expected_code, c
   EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr(expected_message));
 }
 
-static void ExpectOrtStatusNotOk(OrtStatus* status_ptr) {
-  Ort::Status status{status_ptr};
-  EXPECT_FALSE(status.IsOK());
-}
-
-static std::filesystem::path MakeEpContextDataTestDir(const char* test_name) {
-  std::filesystem::path test_dir = std::filesystem::temp_directory_path() / test_name;
-  std::filesystem::remove_all(test_dir);
-  std::filesystem::create_directories(test_dir);
-  return test_dir;
-}
-
 struct EpContextReadCallbackState {
   bool called = false;
   std::string file_name;
@@ -109,26 +97,6 @@ static OrtStatus* ORT_API_CALL EpContextReadCallback(void* state, const char* fi
   return nullptr;
 }
 
-struct EpContextCallbackErrorState {
-  OrtErrorCode error_code = ORT_FAIL;
-  const char* message = nullptr;
-};
-
-static OrtStatus* ORT_API_CALL EpContextFailingReadCallback(void* state, const char* /*file_name*/,
-                                                            OrtAllocator* /*allocator*/, void** /*buffer*/,
-                                                            size_t* /*data_size*/) {
-  const auto* error_state = static_cast<const EpContextCallbackErrorState*>(state);
-  return Ort::GetApi().CreateStatus(error_state->error_code, error_state->message);
-}
-
-static OrtStatus* ORT_API_CALL EpContextNonEmptyNullBufferReadCallback(void* /*state*/, const char* /*file_name*/,
-                                                                       OrtAllocator* /*allocator*/, void** buffer,
-                                                                       size_t* data_size) {
-  *buffer = nullptr;
-  *data_size = 4;
-  return nullptr;
-}
-
 struct EpContextWriteCallbackState {
   bool called = false;
   std::string file_name;
@@ -145,12 +113,6 @@ static OrtStatus* ORT_API_CALL EpContextWriteCallback(void* state, const char* f
     write_state->payload.assign(static_cast<const char*>(buffer), static_cast<const char*>(buffer) + buffer_size);
   }
   return nullptr;
-}
-
-static OrtStatus* ORT_API_CALL EpContextFailingWriteCallback(void* state, const char* /*file_name*/,
-                                                             const void* /*buffer*/, size_t /*buffer_size*/) {
-  const auto* error_state = static_cast<const EpContextCallbackErrorState*>(state);
-  return Ort::GetApi().CreateStatus(error_state->error_code, error_state->message);
 }
 
 // Normally, a plugin EP would be implemented in a separate library.
@@ -1813,33 +1775,43 @@ TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
   }
 }
 
-TEST(PluginExecutionProviderTest, EpContextDataReadFuncIsCalledViaEpApi) {
+TEST(PluginExecutionProviderTest, EpContextDataReadFuncIsReturnedByEpApi) {
   const auto& ep_api = Ort::GetEpApi();
   Ort::SessionOptions session_options;
 
-  EpContextReadCallbackState read_state{
+  EpContextReadCallbackState callback_state{
       false,
       {},
       {'e', 'p', 'c', 't', 'x'},
   };
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &read_state);
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(session_options, &ep_context_config));
   auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
 
+  OrtReadEpContextDataFunc read_func = nullptr;
+  void* callback_state_out = nullptr;
+  ASSERT_ORTSTATUS_OK(ep_api.EpContextConfig_GetEpContextDataReadFunc(ep_context_config, &read_func,
+                                                                      &callback_state_out));
+  ASSERT_EQ(read_func, EpContextReadCallback);
+  ASSERT_EQ(callback_state_out, &callback_state);
+
   Ort::AllocatorWithDefaultOptions allocator;
   void* buffer = nullptr;
   size_t buffer_size = 0;
-  ASSERT_ORTSTATUS_OK(ep_api.ReadEpContextData(ep_context_config, "context.bin", nullptr, allocator,
-                                               &buffer, &buffer_size));
-  auto release_buffer = gsl::finally([&]() { allocator.Free(buffer); });
+  ASSERT_ORTSTATUS_OK(read_func(callback_state_out, "context.bin", allocator, &buffer, &buffer_size));
+  auto release_buffer = gsl::finally([&]() {
+    if (buffer != nullptr) {
+      allocator.Free(buffer);
+    }
+  });
 
-  ASSERT_TRUE(read_state.called);
-  EXPECT_EQ(read_state.file_name, "context.bin");
-  ASSERT_EQ(buffer_size, read_state.payload.size());
+  ASSERT_TRUE(callback_state.called);
+  EXPECT_EQ(callback_state.file_name, "context.bin");
+  ASSERT_EQ(buffer_size, callback_state.payload.size());
   EXPECT_EQ(std::vector<char>(static_cast<char*>(buffer), static_cast<char*>(buffer) + buffer_size),
-            read_state.payload);
+            callback_state.payload);
 }
 
 TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
@@ -1858,23 +1830,24 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
   ExpectOrtStatus(ort_api.SessionOptions_SetEpContextDataReadFunc(session_options, nullptr, nullptr),
                   ORT_INVALID_ARGUMENT, "'read_func' parameter must not be NULL");
 
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* buffer = nullptr;
-  size_t buffer_size = 0;
-  ExpectOrtStatus(ep_api.ReadEpContextData(nullptr, nullptr, nullptr, allocator, &buffer, &buffer_size),
-                  ORT_INVALID_ARGUMENT, "file_name is NULL");
-  ExpectOrtStatus(ep_api.ReadEpContextData(nullptr, "context.bin", nullptr, nullptr, &buffer, &buffer_size),
-                  ORT_INVALID_ARGUMENT, "OrtAllocator is NULL");
-  ExpectOrtStatus(ep_api.ReadEpContextData(nullptr, "context.bin", nullptr, allocator, nullptr, &buffer_size),
-                  ORT_INVALID_ARGUMENT, "Output buffer is NULL");
-  ExpectOrtStatus(ep_api.ReadEpContextData(nullptr, "context.bin", nullptr, allocator, &buffer, nullptr),
-                  ORT_INVALID_ARGUMENT, "Output buffer_size is NULL");
+  ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(session_options, &ep_context_config));
+  auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
 
-  const std::vector<char> payload{'x'};
-  ExpectOrtStatus(ep_api.WriteEpContextData(nullptr, nullptr, nullptr, payload.data(), payload.size()),
-                  ORT_INVALID_ARGUMENT, "file_name is NULL");
-  ExpectOrtStatus(ep_api.WriteEpContextData(nullptr, "context.bin", nullptr, nullptr, payload.size()),
-                  ORT_INVALID_ARGUMENT, "EPContext data buffer is NULL for non-empty data");
+  OrtReadEpContextDataFunc read_func = nullptr;
+  OrtWriteEpContextDataFunc write_func = nullptr;
+  void* state = nullptr;
+  ExpectOrtStatus(ep_api.EpContextConfig_GetEpContextDataReadFunc(nullptr, &read_func, &state),
+                  ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ExpectOrtStatus(ep_api.EpContextConfig_GetEpContextDataReadFunc(ep_context_config, nullptr, &state),
+                  ORT_INVALID_ARGUMENT, "Output read_func is NULL");
+  ExpectOrtStatus(ep_api.EpContextConfig_GetEpContextDataReadFunc(ep_context_config, &read_func, nullptr),
+                  ORT_INVALID_ARGUMENT, "Output state is NULL");
+  ExpectOrtStatus(ep_api.EpContextConfig_GetEpContextDataWriteFunc(nullptr, &write_func, &state),
+                  ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ExpectOrtStatus(ep_api.EpContextConfig_GetEpContextDataWriteFunc(ep_context_config, nullptr, &state),
+                  ORT_INVALID_ARGUMENT, "Output write_func is NULL");
+  ExpectOrtStatus(ep_api.EpContextConfig_GetEpContextDataWriteFunc(ep_context_config, &write_func, nullptr),
+                  ORT_INVALID_ARGUMENT, "Output state is NULL");
 
 #if !defined(ORT_MINIMAL_BUILD)
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataApiRejectsInvalidArguments"};
@@ -1889,211 +1862,88 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
-TEST(PluginExecutionProviderTest, EpContextDataCallbackErrorsArePropagated) {
+TEST(PluginExecutionProviderTest, EpContextDataAccessorsReturnNullWhenCallbacksUnset) {
   const auto& ep_api = Ort::GetEpApi();
   Ort::SessionOptions session_options;
-
-  EpContextCallbackErrorState read_error{ORT_FAIL, "read callback failed"};
-  session_options.SetEpContextDataReadFunc(EpContextFailingReadCallback, &read_error);
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(session_options, &ep_context_config));
   auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
 
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* buffer = nullptr;
-  size_t buffer_size = 0;
-  ExpectOrtStatus(ep_api.ReadEpContextData(ep_context_config, "context.bin", nullptr, allocator,
-                                           &buffer, &buffer_size),
-                  ORT_FAIL, "read callback failed");
+  OrtReadEpContextDataFunc read_func = EpContextReadCallback;
+  OrtWriteEpContextDataFunc write_func = EpContextWriteCallback;
+  void* state = reinterpret_cast<void*>(0x1);
+
+  ASSERT_ORTSTATUS_OK(ep_api.EpContextConfig_GetEpContextDataReadFunc(ep_context_config, &read_func, &state));
+  EXPECT_EQ(read_func, nullptr);
+  EXPECT_EQ(state, nullptr);
+
+  ASSERT_ORTSTATUS_OK(ep_api.EpContextConfig_GetEpContextDataWriteFunc(ep_context_config, &write_func, &state));
+  EXPECT_EQ(write_func, nullptr);
+  EXPECT_EQ(state, nullptr);
+}
+
+TEST(PluginExecutionProviderTest, EpContextConfigCxxWrapperReturnsCallbacks) {
+  Ort::SessionOptions session_options;
+
+  EpContextReadCallbackState callback_state{};
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
+
+  Ort::EpContextConfig ep_context_config{session_options};
+  auto [read_func, read_state] = ep_context_config.GetEpContextDataReadFunc();
+  EXPECT_EQ(read_func, EpContextReadCallback);
+  EXPECT_EQ(read_state, &callback_state);
+
+  auto [write_func, write_state] = ep_context_config.GetEpContextDataWriteFunc();
+  EXPECT_EQ(write_func, nullptr);
+  EXPECT_EQ(write_state, nullptr);
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataCallbackErrorsArePropagated"};
+TEST(PluginExecutionProviderTest, EpContextDataWriteFuncIsReturnedByEpApi) {
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataWriteFuncIsReturnedByEpApi"};
+  Ort::SessionOptions session_options;
   Ort::ModelCompilationOptions compilation_options{env, session_options};
-  EpContextCallbackErrorState write_error{ORT_EP_FAIL, "write callback failed"};
-  compilation_options.SetEpContextDataWriteFunc(EpContextFailingWriteCallback, &write_error);
+
+  EpContextWriteCallbackState callback_state{};
+  compilation_options.SetEpContextDataWriteFunc(EpContextWriteCallback, &callback_state);
 
   const auto* internal_options = reinterpret_cast<const onnxruntime::ModelCompilationOptions*>(
       static_cast<OrtModelCompilationOptions*>(compilation_options));
-  OrtEpContextConfig* write_config = nullptr;
-  ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(&internal_options->GetSessionOptions(), &write_config));
-  auto release_write_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(write_config); });
+  Ort::EpContextConfig ep_context_config{&internal_options->GetSessionOptions()};
+  auto [write_func, callback_state_out] = ep_context_config.GetEpContextDataWriteFunc();
+  ASSERT_EQ(write_func, EpContextWriteCallback);
+  ASSERT_EQ(callback_state_out, &callback_state);
 
-  const std::vector<char> payload{'x'};
-  ExpectOrtStatus(ep_api.WriteEpContextData(write_config, "context.bin", nullptr, payload.data(), payload.size()),
-                  ORT_EP_FAIL, "write callback failed");
-#endif  // !defined(ORT_MINIMAL_BUILD)
+  const std::vector<char> payload{'b', 'i', 'n', 'a', 'r', 'y'};
+  ASSERT_ORTSTATUS_OK(write_func(callback_state_out, "engine.bin", payload.data(), payload.size()));
+
+  ASSERT_TRUE(callback_state.called);
+  EXPECT_EQ(callback_state.file_name, "engine.bin");
+  EXPECT_EQ(callback_state.payload, payload);
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
-TEST(PluginExecutionProviderTest, EpContextDataAllowsEmptyPayloads) {
-  const auto& ep_api = Ort::GetEpApi();
+TEST(PluginExecutionProviderTest, EpContextDataReturnedReadFuncAllowsEmptyPayloads) {
   Ort::SessionOptions session_options;
 
-  EpContextReadCallbackState read_state{};
-  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &read_state);
+  EpContextReadCallbackState callback_state{};
+  session_options.SetEpContextDataReadFunc(EpContextReadCallback, &callback_state);
 
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
+  Ort::EpContextConfig ep_context_config{session_options};
+  auto [read_func, read_state] = ep_context_config.GetEpContextDataReadFunc();
+  ASSERT_EQ(read_func, EpContextReadCallback);
+  ASSERT_EQ(read_state, &callback_state);
 
   Ort::AllocatorWithDefaultOptions allocator;
   void* buffer = reinterpret_cast<void*>(0x1);
   size_t buffer_size = 1;
-  ASSERT_ORTSTATUS_OK(ep_api.ReadEpContextData(ep_context_config, "empty.bin", nullptr, allocator,
-                                               &buffer, &buffer_size));
-  EXPECT_TRUE(read_state.called);
-  EXPECT_EQ(read_state.file_name, "empty.bin");
+  ASSERT_ORTSTATUS_OK(read_func(read_state, "empty.bin", allocator, &buffer, &buffer_size));
+
+  EXPECT_TRUE(callback_state.called);
+  EXPECT_EQ(callback_state.file_name, "empty.bin");
   EXPECT_EQ(buffer, nullptr);
   EXPECT_EQ(buffer_size, 0U);
-
-#if !defined(ORT_MINIMAL_BUILD)
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataAllowsEmptyPayloads"};
-  Ort::ModelCompilationOptions compilation_options{env, session_options};
-  EpContextWriteCallbackState write_state{};
-  compilation_options.SetEpContextDataWriteFunc(EpContextWriteCallback, &write_state);
-
-  const auto* internal_options = reinterpret_cast<const onnxruntime::ModelCompilationOptions*>(
-      static_cast<OrtModelCompilationOptions*>(compilation_options));
-  OrtEpContextConfig* write_config = nullptr;
-  ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(&internal_options->GetSessionOptions(), &write_config));
-  auto release_write_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(write_config); });
-
-  ASSERT_ORTSTATUS_OK(ep_api.WriteEpContextData(write_config, "empty.bin", nullptr, nullptr, 0));
-  EXPECT_TRUE(write_state.called);
-  EXPECT_EQ(write_state.file_name, "empty.bin");
-  EXPECT_TRUE(write_state.payload.empty());
-#endif  // !defined(ORT_MINIMAL_BUILD)
-}
-
-TEST(PluginExecutionProviderTest, EpContextDataReadRejectsNonEmptyNullCallbackBuffer) {
-  const auto& ep_api = Ort::GetEpApi();
-  Ort::SessionOptions session_options;
-  session_options.SetEpContextDataReadFunc(EpContextNonEmptyNullBufferReadCallback, nullptr);
-
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
-
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* buffer = nullptr;
-  size_t buffer_size = 0;
-  ExpectOrtStatus(ep_api.ReadEpContextData(ep_context_config, "context.bin", nullptr, allocator,
-                                           &buffer, &buffer_size),
-                  ORT_FAIL, "returned a null buffer for non-empty EPContext data");
-}
-
-#if !defined(ORT_MINIMAL_BUILD)
-TEST(PluginExecutionProviderTest, EpContextDataWriteFuncIsCalledViaEpApi) {
-  const auto& ep_api = Ort::GetEpApi();
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataWriteFuncIsCalledViaEpApi"};
-  Ort::SessionOptions session_options;
-  Ort::ModelCompilationOptions compilation_options{env, session_options};
-
-  EpContextWriteCallbackState write_state{};
-  compilation_options.SetEpContextDataWriteFunc(EpContextWriteCallback, &write_state);
-
-  const auto* internal_options = reinterpret_cast<const onnxruntime::ModelCompilationOptions*>(
-      static_cast<OrtModelCompilationOptions*>(compilation_options));
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(ep_api.SessionOptions_GetEpContextConfig(&internal_options->GetSessionOptions(),
-                                                               &ep_context_config));
-  auto release_config = gsl::finally([&]() { ep_api.ReleaseEpContextConfig(ep_context_config); });
-
-  const std::vector<char> payload{'b', 'i', 'n', 'a', 'r', 'y'};
-  ASSERT_ORTSTATUS_OK(ep_api.WriteEpContextData(ep_context_config, "engine.bin", nullptr,
-                                                payload.data(), payload.size()));
-
-  ASSERT_TRUE(write_state.called);
-  EXPECT_EQ(write_state.file_name, "engine.bin");
-  EXPECT_EQ(write_state.payload, payload);
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-TEST(PluginExecutionProviderTest, EpContextDataFallsBackToDisk) {
-  const auto& ep_api = Ort::GetEpApi();
-  const std::filesystem::path test_dir = std::filesystem::temp_directory_path() / "ort_ep_context_data_test";
-  std::filesystem::create_directories(test_dir);
-  const std::filesystem::path data_path = test_dir / "context.bin";
-  const std::string data_path_utf8 = PathToUTF8String(data_path.native());
-  auto cleanup = gsl::finally([&]() {
-    std::error_code ec;
-    std::filesystem::remove(data_path, ec);
-    std::filesystem::remove(test_dir, ec);
-  });
-
-  const std::vector<char> payload{'d', 'i', 's', 'k'};
-  ASSERT_ORTSTATUS_OK(ep_api.WriteEpContextData(nullptr, data_path_utf8.c_str(), nullptr,
-                                                payload.data(), payload.size()));
-
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* buffer = nullptr;
-  size_t buffer_size = 0;
-  ASSERT_ORTSTATUS_OK(ep_api.ReadEpContextData(nullptr, data_path_utf8.c_str(), nullptr, allocator,
-                                               &buffer, &buffer_size));
-  auto release_buffer = gsl::finally([&]() { allocator.Free(buffer); });
-
-  ASSERT_EQ(buffer_size, payload.size());
-  EXPECT_EQ(std::vector<char>(static_cast<char*>(buffer), static_cast<char*>(buffer) + buffer_size), payload);
-}
-
-TEST(PluginExecutionProviderTest, EpContextDataDiskFallbackResolvesRelativePathAgainstGraphModelPath) {
-  const auto& ep_api = Ort::GetEpApi();
-  const std::filesystem::path test_dir = MakeEpContextDataTestDir("ort_ep_context_data_relative_path_test");
-  auto cleanup = gsl::finally([&]() {
-    std::error_code ec;
-    std::filesystem::remove_all(test_dir, ec);
-  });
-
-  const std::filesystem::path source_model_path{ORT_TSTR("testdata/add_mul_add.onnx")};
-  const std::filesystem::path model_path = test_dir / "model.onnx";
-  std::filesystem::copy_file(source_model_path, model_path, std::filesystem::copy_options::overwrite_existing);
-
-  std::shared_ptr<Model> model;
-  ASSERT_STATUS_OK(Model::Load(model_path.native().c_str(), model, nullptr,
-                               DefaultLoggingManager().DefaultLogger()));
-  GraphViewer graph_viewer(model->MainGraph());
-  std::unique_ptr<EpGraph> ep_graph = nullptr;
-  ASSERT_STATUS_OK(EpGraph::Create(graph_viewer, ep_graph, true));
-
-  const std::vector<char> payload{'r', 'e', 'l'};
-  ASSERT_ORTSTATUS_OK(ep_api.WriteEpContextData(nullptr, "context.bin", ep_graph.get(),
-                                                payload.data(), payload.size()));
-
-  const std::filesystem::path expected_context_path = test_dir / "context.bin";
-  ASSERT_TRUE(std::filesystem::exists(expected_context_path));
-
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* buffer = nullptr;
-  size_t buffer_size = 0;
-  ASSERT_ORTSTATUS_OK(ep_api.ReadEpContextData(nullptr, "context.bin", ep_graph.get(), allocator,
-                                               &buffer, &buffer_size));
-  auto release_buffer = gsl::finally([&]() { allocator.Free(buffer); });
-
-  ASSERT_EQ(buffer_size, payload.size());
-  EXPECT_EQ(std::vector<char>(static_cast<char*>(buffer), static_cast<char*>(buffer) + buffer_size), payload);
-}
-
-TEST(PluginExecutionProviderTest, EpContextDataDiskFallbackReportsFileErrors) {
-  const auto& ep_api = Ort::GetEpApi();
-  const std::filesystem::path test_dir = MakeEpContextDataTestDir("ort_ep_context_data_file_error_test");
-  auto cleanup = gsl::finally([&]() {
-    std::error_code ec;
-    std::filesystem::remove_all(test_dir, ec);
-  });
-
-  const std::filesystem::path missing_file_path = test_dir / "missing" / "context.bin";
-  const std::string missing_file_path_utf8 = PathToUTF8String(missing_file_path.native());
-  const std::vector<char> payload{'x'};
-
-  ExpectOrtStatus(ep_api.WriteEpContextData(nullptr, missing_file_path_utf8.c_str(), nullptr,
-                                            payload.data(), payload.size()),
-                  ORT_FAIL, "Failed to open EPContext data file for write");
-
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* buffer = nullptr;
-  size_t buffer_size = 0;
-  ExpectOrtStatusNotOk(ep_api.ReadEpContextData(nullptr, missing_file_path_utf8.c_str(), nullptr, allocator,
-                                                &buffer, &buffer_size));
 }
 
 // Helper: create a no-threshold resource accountant via the real factory (config ",").

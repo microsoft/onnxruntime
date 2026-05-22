@@ -67,7 +67,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   };
 
   ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
-            OrtEpContextConfig* ep_context_config);
+            Ort::EpContextConfig ep_context_config);
 
   ~ExampleEp();
 
@@ -125,7 +125,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
-  OrtEpContextConfig* ep_context_config_ = nullptr;
+  Ort::EpContextConfig ep_context_config_{nullptr};
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> mul_kernels_;
   std::unordered_map<std::string, std::unique_ptr<EpContextKernel>> ep_context_kernels_;
   std::unordered_map<std::string, FloatInitializer> float_initializers_;

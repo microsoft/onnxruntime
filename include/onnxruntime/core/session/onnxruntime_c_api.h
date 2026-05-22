@@ -605,9 +605,9 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
 
 /** \brief Function called to write EPContext binary data during compilation.
  *
- * This function is called synchronously by OrtEpApi::WriteEpContextData on the calling thread. ORT does not retain
- * buffer after the callback returns, does not reorder callback invocations, and does not serialize invocations made by
- * different EP instances or EP worker threads.
+ * This function is called synchronously by the execution provider on the calling thread. ORT does not own or retain
+ * buffer after the callback returns. ORT does not serialize invocations made by different EP instances or EP worker
+ * threads.
  *
  * Each callback invocation represents one complete write operation for file_name. The callback signature does not
  * provide an offset, sequence number, or final-chunk marker, so EPs that need chunked streaming must define their own
@@ -637,8 +637,8 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteEpContextDataFunc)(_In_ void* state,
  *
  * The application reads, processes (e.g., decrypts, decompresses, downloads), and returns the EPContext binary data.
  * ORT provides an allocator so the application can allocate the output buffer directly. The callback is called
- * synchronously by OrtEpApi::ReadEpContextData on the calling thread. ORT does not serialize invocations made by
- * different EP instances or EP worker threads.
+ * synchronously by the execution provider on the calling thread. ORT does not serialize invocations made by different
+ * EP instances or EP worker threads.
  *
  * \param[in] state Opaque pointer holding the user's state. ORT does not own or manage this pointer. The application
  *                  must keep it valid while any session or EP created from the associated OrtSessionOptions may invoke
@@ -7569,8 +7569,8 @@ struct OrtApi {
 
   /** \brief Registers a callback to provide EPContext binary data during session load.
    *
-   * When loading a compiled model with external (non-embedded) EPContext binary data, an execution provider can use
-   * OrtEpApi::ReadEpContextData to call this callback instead of reading the binary data from disk.
+   * When loading a compiled model with external (non-embedded) EPContext binary data, an execution provider can
+   * retrieve this callback from OrtEpContextConfig and call it instead of reading the binary data from disk.
    *
    * The state pointer is stored as-is and is not owned by ORT. It must remain valid while any session or EP created
    * from these options may call the callback. If the same state may be used by multiple EPs or threads, the application
@@ -7582,7 +7582,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
   ORT_API2_STATUS(SessionOptions_SetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
                   _In_ OrtReadEpContextDataFunc read_func, _In_opt_ void* state);
@@ -8431,8 +8431,8 @@ struct OrtCompileApi {
 
   /** \brief Sets a callback for writing EPContext binary data during compilation.
    *
-   * When EPContext embed mode is disabled, execution providers can use OrtEpApi::WriteEpContextData to call this
-   * callback instead of writing EPContext binary data directly to disk.
+   * When EPContext embed mode is disabled, execution providers can retrieve this callback from OrtEpContextConfig and
+   * call it instead of writing EPContext binary data directly to disk.
    *
    * The state pointer is stored as-is and is not owned by ORT. It must remain valid for the duration of the compile
    * operation that may call the callback. If the same state may be used by multiple EPs or threads, the application is
@@ -8444,7 +8444,7 @@ struct OrtCompileApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,

@@ -658,6 +658,7 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -786,6 +787,7 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
+struct EpContextConfig;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1183,6 +1185,21 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
   /// \brief Wraps OrtEpApi::CreateEpDevice
   EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
            ConstKeyValuePairs ep_metadata = {}, ConstKeyValuePairs ep_options = {});
+};
+
+/** \brief Owning wrapper around ::OrtEpContextConfig. */
+struct EpContextConfig : detail::Base<OrtEpContextConfig> {
+  explicit EpContextConfig(std::nullptr_t) {}                                       ///< No instance is created
+  explicit EpContextConfig(OrtEpContextConfig* p) : Base<OrtEpContextConfig>{p} {}  ///< Take ownership
+
+  /// \brief Wraps OrtEpApi::SessionOptions_GetEpContextConfig
+  explicit EpContextConfig(const OrtSessionOptions* session_options);
+
+  /// \brief Wraps OrtEpApi::EpContextConfig_GetEpContextDataReadFunc
+  std::pair<OrtReadEpContextDataFunc, void*> GetEpContextDataReadFunc() const;
+
+  /// \brief Wraps OrtEpApi::EpContextConfig_GetEpContextDataWriteFunc
+  std::pair<OrtWriteEpContextDataFunc, void*> GetEpContextDataWriteFunc() const;
 };
 
 /** \brief Validate a compiled model's compatibility for one or more EP devices.
