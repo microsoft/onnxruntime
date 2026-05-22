@@ -470,6 +470,19 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
       break;
     }
 
+    // If next_node is a Reshape with allowzero=1, the fused node cannot represent this
+    // correctly: the fused node inherits attributes from the first node in the chain
+    // (which has allowzero=0 or no allowzero attribute). Bailing out here prevents
+    // incorrect fusion such as Reshape([0,8,2]->[4,2,-1]) + Reshape([0,0,4],allowzero=1)
+    // being collapsed into Reshape([0,8,2]->[0,0,4],allowzero=0), which would silently
+    // copy dims from the original input instead of preserving the explicit zeros.
+    if (next_node->OpType() == "Reshape") {
+      const auto* az_attr = graph_utils::GetNodeAttribute(*next_node, "allowzero");
+      if ((nullptr != az_attr) && az_attr->has_i() && az_attr->i() != 0) {
+        break;
+      }
+    }
+
     auto shape = next_node->OutputDefs()[0]->Shape();
     if (!shape) {
       break;
