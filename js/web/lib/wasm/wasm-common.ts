@@ -3,9 +3,6 @@
 
 import { Tensor } from 'onnxruntime-common';
 
-// Float16Array is natively available in TypeScript 5.6+ (lib.esnext.float16).
-// No polyfill declaration needed.
-
 // This file includes common definitions. They do NOT have dependency on the WebAssembly instance.
 
 /**
@@ -174,7 +171,8 @@ export const tensorTypeToTypedArrayConstructor = (
   | BigUint64ArrayConstructor => {
   switch (type) {
     case 'float16':
-      // allow Float16Array polyfill.
+      // Float16 tensor data is stored as raw 16-bit values. Prefer a native or polyfilled Float16Array when
+      // available so callers can work with float16 values directly; otherwise fall back to Uint16Array storage.
       return typeof Float16Array !== 'undefined' ? (Float16Array as unknown as Uint16ArrayConstructor) : Uint16Array;
     case 'float32':
       return Float32Array;

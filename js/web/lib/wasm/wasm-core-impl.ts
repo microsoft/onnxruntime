@@ -106,7 +106,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
   getInstance().asyncInit?.();
 
   // perform WebGPU availability check ( either JSEP or WebGPU EP )
-  let webgpuAdapter = env.webgpu.adapter;
+  let webgpuAdapter: GPUAdapter | null = env.webgpu.adapter;
   if (epName === 'webgpu') {
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
@@ -121,7 +121,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
       if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
         throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
       }
-      webgpuAdapter = (await navigator.gpu.requestAdapter({ powerPreference, forceFallbackAdapter }))!;
+      webgpuAdapter = await navigator.gpu.requestAdapter({ powerPreference, forceFallbackAdapter });
       if (!webgpuAdapter) {
         throw new Error(
           'Failed to get GPU adapter. ' +

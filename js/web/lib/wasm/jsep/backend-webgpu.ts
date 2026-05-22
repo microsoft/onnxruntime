@@ -263,6 +263,8 @@ export class WebGpuBackend {
       (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
         ? await adapterWithRequestInfo.requestAdapterInfo()
         : undefined);
+    // adapterInfo is optional and may not be available in all browsers.
+    // AdapterInfoImpl will handle the case when adapterInfo is undefined.
     this.adapterInfo = new AdapterInfoImpl(adapterInfo);
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
