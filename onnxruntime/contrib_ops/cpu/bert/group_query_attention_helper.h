@@ -289,11 +289,11 @@ Status CheckInputs(const T* query,
     // This prevents OOB access when deriving position IDs from seqlens_k during rotary embedding.
     const bool is_seqlens_k_on_cpu = (seqlens_k->Location().device.Type() == OrtDevice::CPU);
     if (is_seqlens_k_on_cpu) {
-      const int rotary_cache_max_seq = static_cast<int>(std::min(cos_cache->Shape().GetDims()[0],
-                                                                 sin_cache->Shape().GetDims()[0]));
+      const int64_t rotary_cache_max_seq = std::min(cos_cache->Shape().GetDims()[0],
+                                                    sin_cache->Shape().GetDims()[0]);
       const int32_t* seqlens_k_data = seqlens_k->template Data<int32_t>();
       for (int b = 0; b < batch_size; b++) {
-        if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= rotary_cache_max_seq) {
+        if (seqlens_k_data[b] < 0 || static_cast<int64_t>(seqlens_k_data[b]) >= rotary_cache_max_seq) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                  "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                  " is out of range for rotary cache dimension 0 (", rotary_cache_max_seq, ")");

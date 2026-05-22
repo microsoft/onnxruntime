@@ -144,8 +144,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
-    // Validation of seqlens_k against rotary cache size is now performed in CheckInputs()
-    // to ensure all execution providers (CPU, CUDA, etc.) get the protection in one place.
+    // Validation of seqlens_k against rotary cache size is performed in CheckInputs()
+    // when seqlens_k is on CPU. GPU EPs where seqlens_k resides on device rely on
+    // RunRotaryEmbedding's position_ids validation for OOB protection.
 
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
