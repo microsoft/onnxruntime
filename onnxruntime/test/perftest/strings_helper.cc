@@ -158,12 +158,36 @@ void ParseEpDeviceFilterKeyValuePairs(const std::string& input, std::vector<std:
 bool ParseDataShapeGroups(const std::string& input,
                           std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups) {
   // Parse format: "input_name:[d0,d1,...][d0,d1,...] input_name2:[d0,d1][d0,d1]"
-  std::stringstream ss(input);
-  std::string input_spec;
+  // Split on whitespace that is outside brackets to allow spaces inside shape specs.
+  std::vector<std::string> input_specs;
+  std::string current;
+  int bracket_depth = 0;
+  for (char c : input) {
+    if (c == '[') {
+      bracket_depth++;
+      current += c;
+    } else if (c == ']') {
+      bracket_depth--;
+      current += c;
+    } else if ((c == ' ' || c == '\t') && bracket_depth == 0) {
+      if (!current.empty()) {
+        input_specs.push_back(current);
+        current.clear();
+      }
+    } else {
+      current += c;
+    }
+  }
+  if (!current.empty()) {
+    input_specs.push_back(current);
+  }
 
-  while (std::getline(ss, input_spec, ' ')) {
-    if (input_spec.empty()) continue;
+  if (bracket_depth != 0) {
+    std::cerr << "Error parsing --data_shape: mismatched brackets (unbalanced '[' and ']')." << std::endl;
+    return false;
+  }
 
+  for (const auto& input_spec : input_specs) {
     // Split on first ':' to get input_name and shapes string
     size_t colon_pos = input_spec.find(':');
     if (colon_pos == std::string::npos || colon_pos == 0) {
@@ -207,6 +231,15 @@ bool ParseDataShapeGroups(const std::string& input,
       std::stringstream dims_ss(dims_str);
       std::string dim_token;
       while (std::getline(dims_ss, dim_token, ',')) {
+        // Trim whitespace from dimension token
+        size_t start = dim_token.find_first_not_of(" \t");
+        size_t end = dim_token.find_last_not_of(" \t");
+        if (start == std::string::npos) {
+          std::cerr << "Error parsing --data_shape: empty dimension token for input '" << input_name << "'." << std::endl;
+          return false;
+        }
+        dim_token = dim_token.substr(start, end - start + 1);
+
         ORT_TRY {
           size_t chars_parsed = 0;
           int64_t dim_val = std::stoll(dim_token, &chars_parsed);

@@ -111,7 +111,7 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 
   // Per-shape statistics (when --data_shape is used)
-  if (!per_shape_time_costs_total.empty()) {
+  if (!per_shape_time_costs_total.empty() && f_include_statistics) {
     auto output_per_shape = [&](std::ostream& ostream) {
       for (size_t g = 0; g < per_shape_time_costs_total.size(); g++) {
         const auto& shape_costs = per_shape_time_costs_total[g];
@@ -139,9 +139,7 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
       output_per_shape(outfile);
     }
 
-    if (f_include_statistics) {
-      output_per_shape(std::cout);
-    }
+    output_per_shape(std::cout);
   }
 }
 
