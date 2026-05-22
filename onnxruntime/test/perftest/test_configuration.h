@@ -67,6 +67,9 @@ struct RunConfig {
   std::unordered_map<std::string, std::string> run_config_entries;
   std::map<std::string, int64_t> free_dim_name_overrides;
   std::map<std::string, int64_t> free_dim_denotation_overrides;
+  // Multi-shape profiling: maps input name -> list of shape groups.
+  // Each shape group is a vector of dimensions. Empty when --data_shape is not specified.
+  std::map<std::string, std::vector<std::vector<int64_t>>> data_shape_groups;
   std::string intra_op_thread_affinities;
   bool disable_spinning = false;
   bool disable_spinning_between_run = false;
