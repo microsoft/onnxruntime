@@ -74,7 +74,9 @@ void RunAfterWorkCallback(napi_env /*env*/, napi_status status, void* data) {
   } else if (status == napi_cancelled) {
     napi_reject_deferred(ctx->env, ctx->deferred, Napi::Error::New(env, "Async inference was cancelled.").Value());
   } else if (status != napi_ok) {
-    napi_reject_deferred(ctx->env, ctx->deferred, Napi::Error::New(env, "Async inference failed.").Value());
+    napi_reject_deferred(ctx->env, ctx->deferred,
+                         Napi::Error::New(env, "Async inference failed (napi_status=" +
+                                               std::to_string(static_cast<int>(status)) + ").").Value());
   } else {
     try {
       Napi::Object result = Napi::Object::New(env);
@@ -328,9 +330,26 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
 
   this->inFlightCount_++;
   napi_value async_resource_name;
-  napi_create_string_utf8(env, "OnnxRuntimeRun", NAPI_AUTO_LENGTH, &async_resource_name);
-  napi_create_async_work(env, nullptr, async_resource_name, RunWorkCallback, RunAfterWorkCallback, ctx, &ctx->work);
-  napi_queue_async_work(env, ctx->work);
+  napi_status queue_status = napi_create_string_utf8(env, "OnnxRuntimeRun", NAPI_AUTO_LENGTH, &async_resource_name);
+  if (queue_status == napi_ok) {
+    queue_status = napi_create_async_work(env, nullptr, async_resource_name,
+                                          RunWorkCallback, RunAfterWorkCallback, ctx, &ctx->work);
+  }
+  if (queue_status == napi_ok) {
+    queue_status = napi_queue_async_work(env, ctx->work);
+  }
+  if (queue_status != napi_ok) {
+    this->inFlightCount_--;
+    napi_reject_deferred(env, ctx->deferred,
+                         Napi::Error::New(env, "Failed to dispatch async inference work (napi_status=" +
+                                               std::to_string(static_cast<int>(queue_status)) + ").").Value());
+    ctx->sessionRef.Reset();
+    for (auto& ref : ctx->inputValueRefs) ref.Reset();
+    if (ctx->work != nullptr) {
+      napi_delete_async_work(env, ctx->work);
+    }
+    delete ctx;
+  }
 
   return Napi::Value(env, promise_value);
 }
