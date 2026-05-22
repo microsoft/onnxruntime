@@ -89,7 +89,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_BEGIN
   enum class EpID {
     INVALID = 0,
-    CPU,
     DML,
     QNN,
     OpenVINO,
@@ -102,7 +101,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     VitisAI,
     CoreML,
     NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
-    MIGraphX
+    MIGraphX,
+    CPU
   };
 
   struct EpToAppend {
@@ -112,7 +112,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   };
 
   static std::array<EpToAppend, 14> supported_eps = {
-      EpToAppend{EpID::CPU, "CPU", kCpuExecutionProvider},
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -125,7 +124,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
       EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider},
-      EpToAppend{EpID::MIGraphX, "MIGraphX", kMIGraphXExecutionProvider}};
+      EpToAppend{EpID::MIGraphX, "MIGraphX", kMIGraphXExecutionProvider},
+      EpToAppend{EpID::CPU, "CPU", kCpuExecutionProvider}};
 
   ProviderOptions provider_options;
   OrtStatus* status = ParseProviderOptions(provider_options_keys,
