@@ -414,7 +414,7 @@ Napi::Value InferenceSessionWrap::RunSync(const Napi::CallbackInfo& info) {
         auto value = fetch.Get(name);
         reuseOutput.push_back(!value.IsNull());
         outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
-        requestedOutputLocations.push_back(!preferredOutputLocations_.empty() ? preferredOutputLocations_[j] : 0);
+        requestedOutputLocations.push_back(j < preferredOutputLocations_.size() ? preferredOutputLocations_[j] : 0);
       }
     }
 
