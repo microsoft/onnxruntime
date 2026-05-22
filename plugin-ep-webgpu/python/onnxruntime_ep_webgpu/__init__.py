@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """ONNX Runtime WebGPU Plugin Execution Provider Python Package.
 
 Provides helper functions to locate the plugin EP shared library and
