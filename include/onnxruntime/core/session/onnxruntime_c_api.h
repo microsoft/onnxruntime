@@ -7474,8 +7474,8 @@ struct OrtApi {
 
   /** \brief Release a previously captured graph and its associated resources.
    *
-   * When graph capture is enabled, the EP records GPU commands during initial runs and replays them
-   * on subsequent runs. This function releases the captured commands and associated buffers
+   * When graph capture is enabled, the EP records information during initial runs (e.g., GPU commands) and replays it
+   * on subsequent runs. This function releases the captured information and associated resources
    * for a specific graph annotation ID, freeing memory.
    *
    * \param[in] session The OrtSession instance.
