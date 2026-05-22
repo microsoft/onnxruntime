@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/// <reference types="node" />
+
 import { Backend, InferenceSession, InferenceSessionHandler, SessionHandler } from 'onnxruntime-common';
 
 import { Binding, binding, initOrt } from './binding';
@@ -41,7 +43,12 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     if (typeof pathOrBuffer === 'string') {
       this.#inferenceSession.loadModel(pathOrBuffer, options);
     } else {
-      this.#inferenceSession.loadModel(pathOrBuffer.buffer, pathOrBuffer.byteOffset, pathOrBuffer.byteLength, options);
+      this.#inferenceSession.loadModel(
+        pathOrBuffer.buffer as ArrayBuffer,
+        pathOrBuffer.byteOffset,
+        pathOrBuffer.byteLength,
+        options,
+      );
     }
 
     // prepare input/output names and metadata
@@ -119,16 +126,23 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     fetches: SessionHandler.FetchesType,
     options: InferenceSession.RunOptions,
   ): Promise<SessionHandler.ReturnType> {
-    return new Promise((resolve, reject) => {
-      setImmediate(() => {
-        try {
-          resolve(this.#inferenceSession.run(feeds, fetches, options));
-        } catch (e) {
-          // reject if any error is thrown
-          reject(e);
-        }
-      });
-    });
+    try {
+      return await this.#inferenceSession.run(feeds, fetches, options);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  runSync(
+    feeds: SessionHandler.FeedsType,
+    fetches: SessionHandler.FetchesType,
+    options: InferenceSession.RunOptions,
+  ): SessionHandler.ReturnType {
+    try {
+      return this.#inferenceSession.runSync(feeds, fetches, options);
+    } catch (error) {
+      throw error instanceof Error ? error : new Error(String(error));
+    }
   }
 }
 

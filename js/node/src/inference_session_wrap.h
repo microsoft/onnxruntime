@@ -53,13 +53,22 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   Napi::Value GetMetadata(const Napi::CallbackInfo& info);
 
   /**
-   * [sync] run the model.
+   * [async] run the model.
    * @param arg0 input object: all keys must present, value is object
    * @param arg1 output object: at least one key must present, value can be null.
    * @returns an object that every output specified will present and value must be object
    * @throw error if status code != 0
    */
   Napi::Value Run(const Napi::CallbackInfo& info);
+
+  /**
+   * [sync] run the model.
+   * @param arg0 input object: all keys must present, value is object
+   * @param arg1 output object: at least one key must present, value can be null.
+   * @returns an object that every output specified will present and value must be object
+   * @throw error if status code != 0
+   */
+  Napi::Value RunSync(const Napi::CallbackInfo& info);
 
   /**
    * [sync] dispose the session.
