@@ -8,6 +8,7 @@
 #include <codecvt>
 #include <locale>
 #include <string>
+#include <system_error>
 #include <unordered_set>
 
 #include "core/common/cpuid_info.h"
@@ -548,6 +549,9 @@ bool Win32kSystemCallsDisallowed() {
                                  &policy, sizeof(policy))) {
     return policy.Win32kSystemCallsDisallowed != 0;
   }
+  const auto error_code = ::GetLastError();
+  LOGS_DEFAULT(ERROR) << "GetProcessMitigationPolicy failed errcode = " << error_code
+                      << " - " << std::system_category().message(error_code);
   return false;
 }
 
