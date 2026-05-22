@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <numeric>
 #include <iostream>
 #include <random>
 #include <chrono>
@@ -61,6 +62,7 @@ class PerformanceRunner {
 
  private:
   bool Initialize();
+  void PrintPerShapeStats() const;
 
   template <bool isWarmup>
   Status RunOneIteration() {
