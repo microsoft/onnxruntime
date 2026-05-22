@@ -647,9 +647,16 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cuda_group.add_argument(
         "--nvcc_threads",
         nargs="?",
-        default=-1,  # -1 signifies auto-detect based on jobs/memory
+        default=4,
         type=int,
-        help="Max NVCC threads per parallel job (-1=auto).",
+        help="Max NVCC threads per parallel job (default is 4).",
+    )
+    cuda_group.add_argument(
+        "--flash_nvcc_threads",
+        nargs="?",
+        default=-1,
+        type=int,
+        help="Max NVCC threads per parallel job for flash attention (default is same value of --nvcc_threads).",
     )
     # CUDA-specific profiling
     cuda_group.add_argument(

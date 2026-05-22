@@ -209,31 +209,14 @@ def number_of_nvcc_threads(args):
     if args.nvcc_threads >= 0:
         return args.nvcc_threads
 
-    nvcc_threads = 1
-    try:
-        import psutil  # noqa: PLC0415
+    return 4
 
-        available_memory = psutil.virtual_memory().available
-        if isinstance(available_memory, int) and available_memory > 0:
-            if available_memory >= 64 * 1024 * 1024 * 1024:
-                # When available memory is large enough, chance of OOM is small.
-                nvcc_threads = min(4, int(available_memory / (8 * 4 * 1024 * 1024 * 1024)))
-            else:
-                # NVCC need a lot of memory to compile 48 flash attention cu files.
-                # Here we select number of threads to ensure each thread has enough memory (>= 4 GB).
-                memory_per_thread = 4 * 1024 * 1024 * 1024
-                fmha_cu_files = 48
-                fmha_parallel_jobs = min(fmha_cu_files, number_of_parallel_jobs(args))
-                nvcc_threads = max(1, int(available_memory / (memory_per_thread * fmha_parallel_jobs)))
-                print(
-                    f"nvcc_threads={nvcc_threads} to ensure memory per thread >= 4GB for available_memory={available_memory} and fmha_parallel_jobs={fmha_parallel_jobs}"
-                )
-    except ImportError:
-        print(
-            "Failed to import psutil. Please `pip install psutil` for better estimation of nvcc threads. Use nvcc_threads=1"
-        )
 
-    return nvcc_threads
+def number_of_flash_nvcc_threads(args):
+    if args.flash_nvcc_threads >= 0:
+        return args.flash_nvcc_threads
+
+    return number_of_nvcc_threads(args)
 
 
 # See https://learn.microsoft.com/en-us/vcpkg/commands/install
@@ -724,6 +707,10 @@ def generate_build_tree(
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
+
+        flash_nvcc_threads = number_of_flash_nvcc_threads(args)
+        cmake_args.append("-Donnxruntime_FLASH_NVCC_THREADS=" + str(flash_nvcc_threads))
+
         cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
