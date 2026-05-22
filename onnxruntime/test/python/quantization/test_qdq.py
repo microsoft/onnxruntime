@@ -2501,6 +2501,103 @@ class TestConvBiasScaleValidation(unittest.TestCase):
             "indicating silent numerical corruption from incorrect fusion.",
         )
 
+    def test_per_channel_nonfinite_w_scale_skips_fusion(self):
+        """Per-channel w_scale containing a non-finite value must prevent fusion.
+
+        When w_scale is a 1-D tensor (one value per output channel) and any
+        element is NaN or Inf, the bias-scale validator must return false and
+        fusion to QLinearConv must be skipped.
+        """
+        inp_shape = [1, 4, 4, 4]
+        weight_shape = [4, 1, 1, 1]
+        num_out_channels = weight_shape[0]
+
+        x_scale = np.float32(0.05)
+        # Per-channel w_scale: channels 0-2 are valid, channel 3 is non-finite (NaN).
+        w_scale_arr = np.array([0.02, 0.03, 0.04, float("nan")], dtype=np.float32)
+        # b_scale matches x_scale * w_scale for the finite channels (doesn't matter
+        # for the non-finite channel since we expect early rejection).
+        b_scale_arr = (x_scale * w_scale_arr).astype(np.float32)
+
+        # Build scales / zero-points as initializer tensors.
+        x_scale_tensor = onnx.numpy_helper.from_array(np.array(x_scale, dtype=np.float32), "x_scale")
+        x_zp_tensor = onnx.numpy_helper.from_array(np.array(128, dtype=np.uint8), "x_zp")
+        w_scale_tensor = onnx.numpy_helper.from_array(w_scale_arr, "w_scale")
+        w_zp_tensor = onnx.numpy_helper.from_array(np.zeros(num_out_channels, dtype=np.int8), "w_zp")
+        b_scale_tensor = onnx.numpy_helper.from_array(b_scale_arr, "b_scale")
+        b_zp_tensor = onnx.numpy_helper.from_array(np.zeros(num_out_channels, dtype=np.int32), "b_zp")
+        out_scale_tensor = onnx.numpy_helper.from_array(np.array(x_scale, dtype=np.float32), "out_scale")
+        out_zp_tensor = onnx.numpy_helper.from_array(np.array(128, dtype=np.uint8), "out_zp")
+
+        # Random int8 weights (shape [C_out, C_in/group, kH, kW]).
+        rng = np.random.default_rng(7)
+        weight_quant_data = rng.integers(-5, 6, size=weight_shape, dtype=np.int8)
+        weight_quant = onnx.numpy_helper.from_array(weight_quant_data, "weight_q")
+
+        # Bias as int32 (per-channel, one element per output channel).
+        bias_float = np.ones(num_out_channels, dtype=np.float32)
+        # Use channel-0 b_scale for encoding (non-finite channel is still skipped).
+        bias_q_data = np.round(bias_float / np.float32(0.001)).astype(np.int32)
+        bias_q = onnx.numpy_helper.from_array(bias_q_data, "bias_q")
+
+        input_q = onnx.helper.make_tensor_value_info("input_q", onnx.TensorProto.UINT8, inp_shape)
+        output_q = onnx.helper.make_tensor_value_info("output_q", onnx.TensorProto.UINT8, None)
+
+        dq_input = onnx.helper.make_node(
+            "DequantizeLinear", ["input_q", "x_scale", "x_zp"], ["input_f"], name="DQ_input"
+        )
+        dq_weight = onnx.helper.make_node(
+            "DequantizeLinear", ["weight_q", "w_scale", "w_zp"], ["weight_f"], name="DQ_weight", axis=0
+        )
+        dq_bias = onnx.helper.make_node(
+            "DequantizeLinear", ["bias_q", "b_scale", "b_zp"], ["bias_f"], name="DQ_bias", axis=0
+        )
+        conv_node = onnx.helper.make_node("Conv", ["input_f", "weight_f", "bias_f"], ["conv_out"], name="Conv0")
+        q_output = onnx.helper.make_node(
+            "QuantizeLinear", ["conv_out", "out_scale", "out_zp"], ["output_q"], name="Q_output"
+        )
+
+        graph = onnx.helper.make_graph(
+            [dq_input, dq_weight, dq_bias, conv_node, q_output],
+            "QDQConvPerChannelNonFiniteTest",
+            [input_q],
+            [output_q],
+            initializer=[
+                weight_quant,
+                x_scale_tensor,
+                x_zp_tensor,
+                w_scale_tensor,
+                w_zp_tensor,
+                b_scale_tensor,
+                b_zp_tensor,
+                bias_q,
+                out_scale_tensor,
+                out_zp_tensor,
+            ],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+
+        model_path = os.path.join(self._tmp_dir_path, "conv_per_channel_nonfinite_w_scale.qdq.onnx")
+        onnx.save_model(model, model_path)
+
+        rng2 = np.random.default_rng(0)
+        input_data = rng2.integers(100, 200, size=inp_shape, dtype=np.uint8)
+        inputs = {"input_q": input_data}
+
+        optimized_path = os.path.join(self._tmp_dir_path, "conv_per_channel_nonfinite_w_scale.opt.onnx")
+        self._run_model(model_path, inputs, optimize=True, optimized_save_path=optimized_path)
+
+        # Fusion must be rejected: a non-finite w_scale element means the
+        # bias-scale validator must return false and QLinearConv must not appear.
+        op_counts = self._op_counts(optimized_path)
+        self.assertEqual(
+            op_counts.get("QLinearConv", 0),
+            0,
+            f"Expected no QLinearConv when per-channel w_scale contains NaN, got: {op_counts}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

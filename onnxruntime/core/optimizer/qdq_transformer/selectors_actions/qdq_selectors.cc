@@ -475,13 +475,18 @@ static bool CheckConvBiasScale(const GraphViewer& graph_viewer,
   constexpr float atol = 1e-6f;
   constexpr float rtol = 1e-2f;
 
+  // x_scale is a scalar — check it once here rather than redundantly on every loop iteration.
+  if (!std::isfinite(x_scale)) {
+    return false;
+  }
+
   for (size_t i = 0; i < num_channels; ++i) {
     const float w_scale = (w_num == 1) ? w_scales[0] : w_scales[i];
     const float b_scale = (b_num == 1) ? b_scales[0] : b_scales[i];
-    // Reject non-finite values: NaN compares unequal to itself so the tolerance
-    // check below could pass or fail unpredictably; Inf * Inf = Inf which also
-    // produces unreliable results.  Be conservative and refuse fusion.
-    if (!std::isfinite(x_scale) || !std::isfinite(w_scale) || !std::isfinite(b_scale)) {
+    // Reject non-finite per-channel values: NaN compares unequal to itself so
+    // the tolerance check below could pass or fail unpredictably; Inf * Inf =
+    // Inf which also produces unreliable results.  Be conservative and refuse fusion.
+    if (!std::isfinite(w_scale) || !std::isfinite(b_scale)) {
       return false;
     }
     const float expected = x_scale * w_scale;

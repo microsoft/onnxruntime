@@ -4439,7 +4439,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClip) {
     auto* dq_bias = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
     builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+    // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+    builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
     // Conv
     auto* conv_output = builder.MakeIntermediate();
@@ -4506,7 +4507,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClipNonScalar) {
     auto* dq_bias = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
     builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+    // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+    builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
     // Conv
     auto* conv_output = builder.MakeIntermediate();
@@ -4576,7 +4578,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       auto* dq_bias = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
       builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+      // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+      builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
       // Conv
       auto* conv_output = builder.MakeIntermediate();
@@ -4682,7 +4685,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       auto* dq_bias = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
       builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+      // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+      builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
       // Conv
       auto* conv_output = builder.MakeIntermediate();
