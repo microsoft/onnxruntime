@@ -277,10 +277,10 @@ Status DeepCpuLstmOp::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
 }
 
 Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
+  ORT_RETURN_IF_ERROR(ValidateInputs(*context));
   const Tensor& X = *context->Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
 
   Status status;
-  // auto& logger = context->Logger();
 
   if (X.IsDataType<float>()) {
     const Tensor* W = packed_W_.buffer_ ? nullptr : context->Input<Tensor>(1);
@@ -290,6 +290,25 @@ Status DeepCpuLstmOp::Compute(OpKernelContext* context) const {
 
     const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
     const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
+    const auto& X_shape = X.Shape();
+
+    if (W_shape.NumDimensions() != 3 ||
+        W_shape[0] != num_directions_ ||
+        W_shape[1] != static_cast<int64_t>(hidden_size_) * 4 ||
+        W_shape[2] != X_shape[2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
+                             num_directions_, ",", 4, "*", hidden_size_, ",",
+                             X_shape[2], "}. Actual:", W_shape);
+    }
+
+    if (R_shape.NumDimensions() != 3 ||
+        R_shape[0] != num_directions_ ||
+        R_shape[1] != static_cast<int64_t>(hidden_size_) * 4 ||
+        R_shape[2] != hidden_size_) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
+                             num_directions_, ",", 4, "*", hidden_size_, ",",
+                             hidden_size_, "}. Actual:", R_shape);
+    }
 
     const auto* input_weights = (W != nullptr) ? W->Data<float>() : nullptr;
     const auto* recurrent_weights = (R != nullptr) ? R->Data<float>() : nullptr;

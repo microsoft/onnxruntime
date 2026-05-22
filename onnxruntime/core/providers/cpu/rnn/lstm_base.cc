@@ -44,9 +44,6 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
   int batch_size = narrow<int>(X_shape[1]);
   int input_size = narrow<int>(X_shape[2]);
 
-  Status status = ValidateInputs(X, B, sequence_lens, initial_h, initial_c, P);
-  ORT_RETURN_IF_ERROR(status);
-
   // LSTM outputs are optional but must be in the same order
   TensorShape Y_dims{seq_length, num_directions_, batch_size, hidden_size_};
   Tensor* Y = context.Output(/*index*/ 0, Y_dims);
@@ -73,7 +70,7 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
   }
 
   AllocatorPtr alloc;
-  status = context.GetTempSpaceAllocator(&alloc);
+  Status status = context.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
 
   gsl::span<const InputT> bias = B != nullptr ? B->DataAsSpan<InputT>() : gsl::span<const InputT>();
@@ -177,19 +174,23 @@ Status LSTMBase::ComputeImpl(OpKernelContext& context,
   return Status::OK();
 }
 
-Status LSTMBase::ValidateInputs(const Tensor& X,
-                                const Tensor* B,
-                                const Tensor* sequence_lens,
-                                const Tensor* initial_h,
-                                const Tensor* initial_c,
-                                const Tensor* P) const {
+Status LSTMBase::ValidateInputs(OpKernelContext& context) const {
+  const Tensor& X = *context.Input<Tensor>(0);
+  const Tensor* B = context.Input<Tensor>(3);
+  const Tensor* sequence_lens = context.Input<Tensor>(4);
+  const Tensor* initial_h = context.Input<Tensor>(5);
+  const Tensor* initial_c = context.Input<Tensor>(6);
+  const Tensor* P = context.Input<Tensor>(7);
   auto& X_shape = X.Shape();
+
+  // ONNX shape inference (RNNShapeInference) validates X rank before the kernel
+  // runs during standard model loading. This check is defense-in-depth for
+  // programmatic graph construction or internal paths that bypass shape inference.
+  if (X_shape.NumDimensions() != 3)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
 
   int64_t seq_length = X_shape[0];
   int64_t batch_size = X_shape[1];
-
-  if (X_shape.NumDimensions() != 3)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();

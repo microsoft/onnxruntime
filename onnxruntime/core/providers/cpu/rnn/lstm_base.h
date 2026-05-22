@@ -65,12 +65,7 @@ class LSTMBase {
                      const rnn::detail::GemmWeights<WeightT>& R_1,
                      const rnn::detail::GemmWeights<WeightT>& R_2) const;
 
-  Status ValidateInputs(const Tensor& X,
-                        const Tensor* B,
-                        const Tensor* sequence_lens,
-                        const Tensor* initial_h,
-                        const Tensor* initial_c,
-                        const Tensor* P) const;
+  Status ValidateInputs(OpKernelContext& context) const;
 
   rnn::detail::Direction direction_;
   int num_directions_;

@@ -164,13 +164,35 @@ Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePt
   }
 
 Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
+  ORT_RETURN_IF_ERROR(ValidateInputs(*context));
+  const Tensor& X = *context->Input<Tensor>(0);
+  const auto& X_shape = X.Shape();
+
   // weights. [num_directions, input_size, 4*hidden_size]
   const Tensor* W = packed_W_.buffer_ ? nullptr : context->Input<Tensor>(1);
-  // recurrence weights. [num_directionshidden_size, 4*hidden_size]
+  // recurrence weights. [num_directions, hidden_size, 4*hidden_size]
   const Tensor* R = packed_R_.buffer_ ? nullptr : context->Input<Tensor>(2);
 
   const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
   const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
+
+  if (W_shape.NumDimensions() != 3 ||
+      W_shape[0] != num_directions_ ||
+      W_shape[2] != static_cast<int64_t>(hidden_size_) * 4 ||
+      W_shape[1] != X_shape[2]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
+                           num_directions_, ",", X_shape[2], ",", 4, "*", hidden_size_,
+                           "}. Actual:", W_shape);
+  }
+
+  if (R_shape.NumDimensions() != 3 ||
+      R_shape[0] != num_directions_ ||
+      R_shape[1] != hidden_size_ ||
+      R_shape[2] != static_cast<int64_t>(hidden_size_) * 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
+                           num_directions_, ",", hidden_size_, ",", 4, "*", hidden_size_,
+                           "}. Actual:", R_shape);
+  }
 
   const Tensor* w_scale = context->Input<Tensor>(8);
   const Tensor* w_zp = context->Input<Tensor>(9);
