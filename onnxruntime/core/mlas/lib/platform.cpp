@@ -296,8 +296,10 @@ Return Value:
     this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
 
 #if defined(MLAS_USE_RVV_ZVFH)
-    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
-    this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
+        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
+    }
 #endif
 
     // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.

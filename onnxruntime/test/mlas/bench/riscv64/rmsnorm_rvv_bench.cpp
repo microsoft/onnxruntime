@@ -14,10 +14,7 @@ Abstract:
 
     Scalar path: ORT's ComputeJob<float> with simplified=true
       (anonymous namespace in layer_norm_impl.cc, reproduced here verbatim)
-    RVV path: RVV vectorized implementation
-      (same as the #if __riscv_vector path in layer_norm_impl.cc)
-
-    Both paths are identical to ORT's internal code.
+    MLAS path: MlasLayerNormF32 dispatch (uses RVV kernel when available)
 
 --*/
 
@@ -31,10 +28,6 @@ Abstract:
 #include <iostream>
 #include <string_view>
 #include <vector>
-
-#if defined(__riscv) && defined(__riscv_vector)
-#include <riscv_vector.h>
-#endif
 
 namespace {
 
@@ -101,42 +94,16 @@ void OrtRmsNormScalar(
   }
 }
 
-//
-// RVV path: verbatim from layer_norm_impl.cc #if __riscv_vector block
-// with simplified=true (RMSNorm).
-//
-void OrtRmsNormRvv(
+void OrtRmsNormMlas(
     const float* input,
     const float* scale,
     size_t norm_size,
     float epsilon,
     float* output) {
-#if defined(__riscv) && defined(__riscv_vector)
-  vfloat32m1_t vsumsq = __riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvl_e32m1(1));
-  size_t i = 0;
-  while (i < norm_size) {
-    size_t vl = __riscv_vsetvl_e32m4(norm_size - i);
-    vfloat32m4_t vx = __riscv_vle32_v_f32m4(input + i, vl);
-    vfloat32m4_t vx2 = __riscv_vfmul_vv_f32m4(vx, vx, vl);
-    vsumsq = __riscv_vfredusum_vs_f32m4_f32m1(vx2, vsumsq, vl);
-    i += vl;
+  if (!MlasLayerNormF32(input, scale, nullptr, output, nullptr, nullptr,
+                        norm_size, epsilon, true)) {
+    OrtRmsNormScalar(input, scale, norm_size, epsilon, output);
   }
-  float ms = __riscv_vfmv_f_s_f32m1_f32(vsumsq);
-  float inv_denom = 1.0f / sqrtf(ms / static_cast<float>(norm_size) + epsilon);
-
-  i = 0;
-  while (i < norm_size) {
-    size_t vl = __riscv_vsetvl_e32m4(norm_size - i);
-    vfloat32m4_t vx = __riscv_vle32_v_f32m4(input + i, vl);
-    vfloat32m4_t vs = __riscv_vle32_v_f32m4(scale + i, vl);
-    vfloat32m4_t vy = __riscv_vfmul_vf_f32m4(vx, inv_denom, vl);
-    vy = __riscv_vfmul_vv_f32m4(vy, vs, vl);
-    __riscv_vse32_v_f32m4(output + i, vy, vl);
-    i += vl;
-  }
-#else
-  OrtRmsNormScalar(input, scale, norm_size, epsilon, output);
-#endif
 }
 
 }  // namespace
@@ -146,7 +113,7 @@ int main(int argc, char** argv) {
   const size_t N = opts.hidden;
   const float epsilon = 1e-6f;
 
-  std::cout << "=== RMSNorm: RVV vs ORT Scalar (from layer_norm_impl.cc) ===\n"
+  std::cout << "=== RMSNorm: MLAS Dispatch vs ORT Scalar ===\n"
             << "  hidden=" << N << " iters=" << opts.iters << " warmup=" << opts.warmup << "\n\n";
 
   std::vector<float> input(N), scale(N);
@@ -159,7 +126,7 @@ int main(int argc, char** argv) {
 
   // --- Correctness ---
   OrtRmsNormScalar(input.data(), scale.data(), N, epsilon, out_scalar.data());
-  OrtRmsNormRvv(input.data(), scale.data(), N, epsilon, out_rvv.data());
+  OrtRmsNormMlas(input.data(), scale.data(), N, epsilon, out_rvv.data());
 
   double max_abs = 0.0, max_rel = 0.0;
   size_t mismatches = 0;
@@ -181,7 +148,7 @@ int main(int argc, char** argv) {
     OrtRmsNormScalar(input.data(), scale.data(), N, epsilon, out_scalar.data());
   };
   auto run_rvv = [&]() {
-    OrtRmsNormRvv(input.data(), scale.data(), N, epsilon, out_rvv.data());
+    OrtRmsNormMlas(input.data(), scale.data(), N, epsilon, out_rvv.data());
   };
 
   for (size_t i = 0; i < opts.warmup; i++) {

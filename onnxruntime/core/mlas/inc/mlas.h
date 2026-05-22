@@ -1668,6 +1668,7 @@ MlasRotaryEmbedOneRow(
 /**
  * @brief Compute LayerNorm or RMSNorm (simplified) for one row of float data.
  *        Uses platform-optimized kernel if available, otherwise returns false.
+ *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
  *
  * @return true if an optimized kernel was used, false if caller should fall back
  */

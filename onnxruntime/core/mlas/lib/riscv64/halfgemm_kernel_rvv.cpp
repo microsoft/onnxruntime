@@ -134,6 +134,9 @@ struct MLAS_HALF_GEMM_KERNEL_RVV {
     static constexpr MLAS_HALF_GEMM_STRIDES Strides{16, 128, 256};
 };
 
+// FP32->FP16 conversion routines for when AIsfp32/BIsfp32 is set.
+// PackNeeded=false means no packing, but these are still called
+// to convert FP32 inputs to FP16 on the fly (see matmul.cc).
 template <>
 MLAS_FORCEINLINE void
 MlasHalfGemmConvertPackA<MLAS_HALF_GEMM_KERNEL_RVV>(

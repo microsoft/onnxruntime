@@ -78,11 +78,9 @@ RopeKernel_Fp32(
             vfloat32m4_t vc = __riscv_vle32_v_f32m4(cos_data + i, vl);
             vfloat32m4_t vs = __riscv_vle32_v_f32m4(sin_data + i, vl);
 
-            // Deinterleave: load pairs [even, odd, even, odd, ...]
-            // Use strided loads: even elements at stride 2
-            const float* base = input + 2 * i;
-            vfloat32m4_t v_even = __riscv_vlse32_v_f32m4(base, 8, vl);
-            vfloat32m4_t v_odd = __riscv_vlse32_v_f32m4(base + 1, 8, vl);
+            vfloat32m4x2_t seg = __riscv_vlseg2e32_v_f32m4x2(input + 2 * i, vl);
+            vfloat32m4_t v_even = __riscv_vget_v_f32m4x2_f32m4(seg, 0);
+            vfloat32m4_t v_odd = __riscv_vget_v_f32m4x2_f32m4(seg, 1);
 
             // output[2i]   = even * cos - odd * sin
             vfloat32m4_t r_even = __riscv_vfmul_vv_f32m4(v_even, vc, vl);
@@ -92,10 +90,8 @@ RopeKernel_Fp32(
             vfloat32m4_t r_odd = __riscv_vfmul_vv_f32m4(v_odd, vc, vl);
             r_odd = __riscv_vfmacc_vv_f32m4(r_odd, vs, v_even, vl);
 
-            // Store interleaved
-            float* out_base = output + 2 * i;
-            __riscv_vsse32_v_f32m4(out_base, 8, r_even, vl);
-            __riscv_vsse32_v_f32m4(out_base + 1, 8, r_odd, vl);
+            vfloat32m4x2_t out = __riscv_vcreate_v_f32m4x2(r_even, r_odd);
+            __riscv_vsseg2e32_v_f32m4x2(output + 2 * i, out, vl);
 
             i += vl;
         }
@@ -104,10 +100,9 @@ RopeKernel_Fp32(
 
 }  // namespace rope_rvv
 
-const MLAS_ROPE_DISPATCH MlasRopeDispatchRvv = []() {
-    MLAS_ROPE_DISPATCH d;
-    d.SRope = rope_rvv::RopeKernel_Fp32;
-    return d;
-}();
+const MLAS_ROPE_DISPATCH MlasRopeDispatchRvv = {
+    rope_rvv::RopeKernel_Fp32,
+    nullptr,
+};
 
 #endif  // MLAS_USE_RVV

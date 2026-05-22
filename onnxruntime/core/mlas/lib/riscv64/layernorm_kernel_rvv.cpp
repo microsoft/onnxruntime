@@ -21,8 +21,11 @@ Abstract:
 
 #include <riscv_vector.h>
 
+#include <cassert>
 #include <cmath>
 
+// Processes one normalization row. A multi-row variant that fuses
+// several rows would reduce dispatch overhead for small NormSize.
 void MLASCALL
 MlasLayerNormKernelRvv(
     const float* Input,
@@ -36,23 +39,31 @@ MlasLayerNormKernelRvv(
     bool Simplified
 )
 {
+    assert(!Simplified || Bias == nullptr);
     const size_t n = NormSize;
 
-    vfloat32m1_t vsum = __riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvl_e32m1(1));
-    vfloat32m1_t vsumsq = __riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvl_e32m1(1));
+    size_t maxvl = __riscv_vsetvl_e32m4(n);
+    vfloat32m4_t vacc_sum = __riscv_vfmv_v_f_f32m4(0.0f, maxvl);
+    vfloat32m4_t vacc_sumsq = __riscv_vfmv_v_f_f32m4(0.0f, maxvl);
 
     size_t i = 0;
     while (i < n) {
         size_t vl = __riscv_vsetvl_e32m4(n - i);
         vfloat32m4_t vx = __riscv_vle32_v_f32m4(Input + i, vl);
-        vsum = __riscv_vfredusum_vs_f32m4_f32m1(vx, vsum, vl);
+        vacc_sum = __riscv_vfadd_vv_f32m4_tu(vacc_sum, vacc_sum, vx, vl);
         vfloat32m4_t vx2 = __riscv_vfmul_vv_f32m4(vx, vx, vl);
-        vsumsq = __riscv_vfredusum_vs_f32m4_f32m1(vx2, vsumsq, vl);
+        vacc_sumsq = __riscv_vfadd_vv_f32m4_tu(vacc_sumsq, vacc_sumsq, vx2, vl);
         i += vl;
     }
 
-    float mean_val = __riscv_vfmv_f_s_f32m1_f32(vsum) / static_cast<float>(n);
-    float ms_val = __riscv_vfmv_f_s_f32m1_f32(vsumsq);
+    vfloat32m1_t vzero = __riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvl_e32m1(1));
+    float mean_val = __riscv_vfmv_f_s_f32m1_f32(
+                         __riscv_vfredusum_vs_f32m4_f32m1(vacc_sum, vzero, maxvl)
+                     ) /
+                     static_cast<float>(n);
+    float ms_val = __riscv_vfmv_f_s_f32m1_f32(
+        __riscv_vfredusum_vs_f32m4_f32m1(vacc_sumsq, vzero, maxvl)
+    );
     float denom;
     if (Simplified) {
         denom = sqrtf(ms_val / static_cast<float>(n) + Epsilon);
