@@ -547,7 +547,7 @@ bool Win32kSystemCallsDisallowed() {
   PROCESS_MITIGATION_SYSTEM_CALL_DISABLE_POLICY policy = {};
   if (GetProcessMitigationPolicy(GetCurrentProcess(), ProcessSystemCallDisablePolicy,
                                  &policy, sizeof(policy))) {
-    return policy.Win32kSystemCallsDisallowed != 0;
+    return policy.DisallowWin32kSystemCalls != 0;
   }
   const auto error_code = ::GetLastError();
   LOGS_DEFAULT(ERROR) << "GetProcessMitigationPolicy failed errcode = " << error_code
