@@ -1113,9 +1113,11 @@ void QMoE::PrePackSwizzleBlockScales(const Tensor& tensor, cudaStream_t stream, 
     p_src = temp_src_gpu.get();
   }
 
+  // QMoEBlockScaleInterleaveKernel writes every byte of the output buffer
+  // (the (batch, row, col) -> offset map is a bijection over
+  // [0, batch_size) x [0, rows_padded) x [0, cols_padded), and padded
+  // source positions are written as 0), so no explicit memset is required.
   packed_buf = IAllocator::MakeUniquePtr<void>(alloc, dst_bytes, true);
-  // Zero-fill for padding regions (kernel only writes within bounds)
-  CUDA_CALL_THROW(cudaMemsetAsync(packed_buf.get(), 0, dst_bytes, stream));
 
   int multi_processor_count = 0;
   int device_id = 0;
@@ -1250,16 +1252,23 @@ void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, Allocat
       return;
     }
 
-    bool is_fp16 = is_fp16_;
-    bool is_bf16 = !is_fp16_;
-
     ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D zeros for block-wise 4-bit");
+    ORT_ENFORCE(shape[0] > 0 && shape[1] > 0 && shape[2] > 0,
+                "4-bit block-wise zeros must have positive dimensions, got ", shape.ToString());
+    // packed_k_blocks is doubled to k_blocks below; constrain it to half of INT_MAX to keep the
+    // doubled value (and the int dims passed into LaunchQMoEScaledZP4BitBatched) within int range.
+    constexpr int64_t kMaxPackedKBlocks = std::numeric_limits<int>::max() / 2;
+    ORT_ENFORCE(shape[0] <= std::numeric_limits<int>::max() &&
+                    shape[1] <= std::numeric_limits<int>::max() &&
+                    shape[2] <= kMaxPackedKBlocks,
+                "4-bit block-wise zeros dimensions exceed CUDA launch int range, got ", shape.ToString());
     const int experts = static_cast<int>(shape[0]);
     const int n = static_cast<int>(shape[1]);
     const int packed_k_blocks = static_cast<int>(shape[2]);
     const int k_blocks = packed_k_blocks * 2;
+    // QMoE only supports FP16/BF16 inputs (is_fp16_ is set in the ctor), both of which are 2 bytes.
     size_t output_count = static_cast<size_t>(experts) * static_cast<size_t>(k_blocks) * static_cast<size_t>(n);
-    size_t bytes = output_count * (is_fp16 || is_bf16 ? 2 : 4);
+    size_t bytes = output_count * sizeof(uint16_t);
     packed_bias = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
 
     const void* p_src_zp = tensor.DataRaw();
@@ -1272,20 +1281,18 @@ void QMoE::PrePackComputeBias(const Tensor& tensor, cudaStream_t stream, Allocat
 
     const uint8_t* zp_ptr = static_cast<const uint8_t*>(p_src_zp);
     constexpr float kDefaultZeroPoint4Bit = 8.0f;
-    if (is_fp16) {
+    if (is_fp16_) {
       LaunchQMoEScaledZP4BitBatched(
           zp_ptr,
           static_cast<const half*>(packed_scale.get()),
           static_cast<half*>(packed_bias.get()),
           experts, n, k_blocks, kDefaultZeroPoint4Bit, stream);
-    } else if (is_bf16) {
+    } else {
       LaunchQMoEScaledZP4BitBatched(
           zp_ptr,
           static_cast<const __nv_bfloat16*>(packed_scale.get()),
           static_cast<__nv_bfloat16*>(packed_bias.get()),
           experts, n, k_blocks, kDefaultZeroPoint4Bit, stream);
-    } else {
-      ORT_THROW("Unsupported type for 4-bit block-wise ZP prepack. Expected FP16/BF16.");
     }
   }
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));

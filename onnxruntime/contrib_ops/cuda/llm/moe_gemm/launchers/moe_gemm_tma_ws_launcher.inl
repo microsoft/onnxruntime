@@ -77,7 +77,9 @@ ReturnType construct_if_true(Args&&... args)
 {
     if constexpr (FLAG)
     {
-        return ReturnType{std::forward<Args>(args)...};
+        // Use parenthesized aggregate init (C++20) instead of brace-init to avoid
+        // MSVC C2397 narrowing conversion errors (e.g. size_t -> FastDivmod(int)).
+        return ReturnType(std::forward<Args>(args)...);
     }
     else
     {
