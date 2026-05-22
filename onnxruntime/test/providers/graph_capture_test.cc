@@ -13,45 +13,9 @@
 
 using namespace Ort;
 
+extern std::unique_ptr<Ort::Env> ort_env;
+
 namespace {
-
-// RAII helper: registers the WebGPU plugin EP library and unregisters on destruction.
-// In built-in builds this is a no-op.
-struct WebGpuPluginRegistration {
-  explicit WebGpuPluginRegistration([[maybe_unused]] Env& env) {
-#if defined(ORT_USE_EP_API_ADAPTERS)
-    env_ = &env;
-#if defined(_WIN32)
-    const auto* lib_path = ORT_TSTR("onnxruntime_providers_webgpu.dll");
-#elif defined(__APPLE__)
-    const auto* lib_path = ORT_TSTR("libonnxruntime_providers_webgpu.dylib");
-#else
-    const auto* lib_path = ORT_TSTR("libonnxruntime_providers_webgpu.so");
-#endif
-    env.RegisterExecutionProviderLibrary(kRegistrationName,
-                                         std::basic_string<ORTCHAR_T>(lib_path));
-#endif
-  }
-
-  ~WebGpuPluginRegistration() {
-#if defined(ORT_USE_EP_API_ADAPTERS)
-    if (env_) {
-      try {
-        env_->UnregisterExecutionProviderLibrary(kRegistrationName);
-      } catch (...) {
-      }
-    }
-#endif
-  }
-
-  WebGpuPluginRegistration(const WebGpuPluginRegistration&) = delete;
-  WebGpuPluginRegistration& operator=(const WebGpuPluginRegistration&) = delete;
-
-#if defined(ORT_USE_EP_API_ADAPTERS)
-  static constexpr const char* kRegistrationName = "WebGPU_GraphCaptureTest";
-  Env* env_ = nullptr;
-#endif
-};
 
 // Append WebGPU EP to session options, handling both built-in and plugin builds.
 void AppendWebGpuEp(Env& env, SessionOptions& session_options,
@@ -125,10 +89,7 @@ static Model CreateMatMulReluMatMulModel() {
 }
 
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {
-  Env env(ORT_LOGGING_LEVEL_WARNING, "GraphCaptureTest");
-
-  // In plugin builds, register the WebGPU EP library before use.
-  WebGpuPluginRegistration plugin_registration(env);
+  Env& env = *ort_env;
 
   // Create session with WebGPU EP and graph capture enabled
   SessionOptions session_options;
