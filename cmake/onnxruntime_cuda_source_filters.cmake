@@ -86,3 +86,64 @@ macro(onnxruntime_extract_sm_specific_cuda_sources CU_SRC_LIST)
     endif()
   endif()
 endmacro()
+
+# Extract Flash Attention CUDA source files into a separate list for compilation
+# in a dedicated OBJECT library with SM80+ architectures and independent nvcc_threads.
+# Flash Attention V2 kernels require SM80 (Ampere) or later — they contain
+# __CUDA_ARCH__ >= 800 guards in kernel_traits.h and all files are *_sm80.cu.
+# Compiling them separately allows:
+#   1. Restricting CUDA_ARCHITECTURES to SM80+ (skip dead pre-Ampere passes)
+#   2. Using --threads 1 (memory-intensive) while other targets use higher parallelism
+#
+# Usage:
+#   onnxruntime_extract_flash_attention_sources(<cu_src_list_var>
+#       FLASH_SOURCES <output_var>)
+macro(onnxruntime_extract_flash_attention_sources CU_SRC_LIST)
+  cmake_parse_arguments(_FA "" "FLASH_SOURCES" "" ${ARGN})
+
+  set(${_FA_FLASH_SOURCES})
+  foreach(_src IN LISTS ${CU_SRC_LIST})
+    if(_src MATCHES "/bert/flash_attention/.*\\.cu$")
+      list(APPEND ${_FA_FLASH_SOURCES} "${_src}")
+    endif()
+  endforeach()
+  if(${_FA_FLASH_SOURCES})
+    list(REMOVE_ITEM ${CU_SRC_LIST} ${${_FA_FLASH_SOURCES}})
+  endif()
+endmacro()
+
+# Extract LLM CUDA source files into separate lists for per-architecture compilation.
+# The LLM directory (contrib_ops/cuda/llm/) contains kernels with minimum SM75 support
+# (fpA_intB_gemv/gemm enforce arch >= 75). SM90-specific launchers (fpA_intB_gemm
+# launchers guarded by #ifndef EXCLUDE_SM_90) are extracted separately to be compiled
+# at 90a-real (merged into the SM90 TMA OBJECT library).
+#
+# Note: SM90 TMA MoE GEMM files are already extracted by
+# onnxruntime_extract_sm_specific_cuda_sources() before this macro is called.
+#
+# Usage:
+#   onnxruntime_extract_llm_sources(<cu_src_list_var>
+#       LLM_SOURCES <output_var>
+#       LLM_SM90_SOURCES <output_var>)
+macro(onnxruntime_extract_llm_sources CU_SRC_LIST)
+  cmake_parse_arguments(_LLM "" "LLM_SOURCES;LLM_SM90_SOURCES" "" ${ARGN})
+
+  set(${_LLM_LLM_SOURCES})
+  set(${_LLM_LLM_SM90_SOURCES})
+  foreach(_src IN LISTS ${CU_SRC_LIST})
+    if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
+      # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
+      if(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$")
+        list(APPEND ${_LLM_LLM_SM90_SOURCES} "${_src}")
+      else()
+        list(APPEND ${_LLM_LLM_SOURCES} "${_src}")
+      endif()
+    endif()
+  endforeach()
+  if(${_LLM_LLM_SOURCES})
+    list(REMOVE_ITEM ${CU_SRC_LIST} ${${_LLM_LLM_SOURCES}})
+  endif()
+  if(${_LLM_LLM_SM90_SOURCES})
+    list(REMOVE_ITEM ${CU_SRC_LIST} ${${_LLM_LLM_SM90_SOURCES}})
+  endif()
+endmacro()

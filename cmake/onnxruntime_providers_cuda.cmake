@@ -71,6 +71,13 @@
     SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
     SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
   )
+  onnxruntime_extract_flash_attention_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    FLASH_SOURCES onnxruntime_cuda_flash_attention_srcs
+  )
+  onnxruntime_extract_llm_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    LLM_SOURCES onnxruntime_cuda_llm_srcs
+    LLM_SM90_SOURCES onnxruntime_cuda_llm_sm90_srcs
+  )
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
@@ -224,8 +231,9 @@
 
     # Note: CUDA 11.3+ supports parallel compilation
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
+    # --threads is NOT set here; it is applied per-target after calling this function
+    # so that flash attention can use a different (lower) thread count.
     set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
-    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
 
     # suppress warnings like this:
     #   cutlass-src\include\cute/arch/mma_sm120.hpp(3128): error #177-D: variable "tidA" was declared but never
@@ -443,15 +451,19 @@
   endfunction()
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     config_cuda_provider_shared_module(onnxruntime_providers_cuda_obj)
+    target_compile_options(onnxruntime_providers_cuda_obj PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
   endif()
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
+  target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
 
   # Create OBJECT libraries for SM90/SM120 TMA WS generated files that must be compiled
   # with restricted CUDA architectures. These files use CUTLASS 3.x SM90+/SM120+ features
   # (GMMA, TMA) that cannot produce useful device code for older architectures.
-  if(onnxruntime_cuda_sm90_tma_srcs)
+  if(onnxruntime_cuda_sm90_tma_srcs OR onnxruntime_cuda_llm_sm90_srcs)
     # SM90 TMA warp-specialized files use SM90-specific collective operations.
     # Compile at exactly 90a-real: SM120+ GPUs run SM90 native code via forward compat.
+    # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
+    set(_ort_sm90_all_srcs ${onnxruntime_cuda_sm90_tma_srcs} ${onnxruntime_cuda_llm_sm90_srcs})
     set(_ort_has_sm90_plus FALSE)
     foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
       string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
@@ -461,9 +473,10 @@
       endif()
     endforeach()
     if(_ort_has_sm90_plus)
-      onnxruntime_add_object_library(onnxruntime_providers_cuda_sm90_tma ${onnxruntime_cuda_sm90_tma_srcs})
+      onnxruntime_add_object_library(onnxruntime_providers_cuda_sm90_tma ${_ort_sm90_all_srcs})
       set_target_properties(onnxruntime_providers_cuda_sm90_tma PROPERTIES CUDA_ARCHITECTURES "90a-real")
       config_cuda_provider_shared_module(onnxruntime_providers_cuda_sm90_tma)
+      target_compile_options(onnxruntime_providers_cuda_sm90_tma PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
       target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_sm90_tma)
     endif()
   endif()
@@ -480,9 +493,56 @@
       onnxruntime_add_object_library(onnxruntime_providers_cuda_sm120_tma ${onnxruntime_cuda_sm120_tma_srcs})
       set_target_properties(onnxruntime_providers_cuda_sm120_tma PROPERTIES CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}")
       config_cuda_provider_shared_module(onnxruntime_providers_cuda_sm120_tma)
+      target_compile_options(onnxruntime_providers_cuda_sm120_tma PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
       target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_sm120_tma)
     endif()
   endif()
+
+  # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
+  # Flash Attention V2 kernels require SM80 (Ampere) and are memory-intensive to compile.
+  # Isolating them allows the rest of the build to use higher --threads without OOM.
+  set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
+      "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
+  if(onnxruntime_cuda_flash_attention_srcs)
+    set(_ort_flash_cuda_architectures)
+    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
+      if(_arch_num GREATER_EQUAL 80)
+        list(APPEND _ort_flash_cuda_architectures "${_arch}")
+      endif()
+    endforeach()
+    if(_ort_flash_cuda_architectures)
+      onnxruntime_add_object_library(onnxruntime_providers_cuda_flash_attention ${onnxruntime_cuda_flash_attention_srcs})
+      set_target_properties(onnxruntime_providers_cuda_flash_attention PROPERTIES
+        CUDA_ARCHITECTURES "${_ort_flash_cuda_architectures}")
+      config_cuda_provider_shared_module(onnxruntime_providers_cuda_flash_attention)
+      target_compile_options(onnxruntime_providers_cuda_flash_attention PRIVATE
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_FLASH_NVCC_THREADS}\">"
+      )
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_flash_attention)
+    endif()
+  endif()
+
+  # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
+  # Restricts CUDA_ARCHITECTURES to avoid compiling heavy CUTLASS templates for pre-Turing GPUs.
+  if(onnxruntime_cuda_llm_srcs)
+    set(_ort_llm_cuda_architectures)
+    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
+      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
+      if(_arch_num GREATER_EQUAL 75)
+        list(APPEND _ort_llm_cuda_architectures "${_arch}")
+      endif()
+    endforeach()
+    if(_ort_llm_cuda_architectures)
+      onnxruntime_add_object_library(onnxruntime_providers_cuda_llm ${onnxruntime_cuda_llm_srcs})
+      set_target_properties(onnxruntime_providers_cuda_llm PROPERTIES
+        CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}")
+      config_cuda_provider_shared_module(onnxruntime_providers_cuda_llm)
+      target_compile_options(onnxruntime_providers_cuda_llm PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_llm)
+    endif()
+  endif()
+
   # Cannot use glob because the file cuda_provider_options.h should not be exposed out.
   set(ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS
         "${REPO_ROOT}/include/onnxruntime/core/providers/cuda/cuda_context.h"
