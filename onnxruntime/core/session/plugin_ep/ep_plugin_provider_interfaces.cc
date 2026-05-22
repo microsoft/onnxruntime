@@ -468,6 +468,10 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   return result;
 }
 
+// Out-of-line destructor: EpNode and EpValueInfo must be complete types
+// when unique_ptr members are destroyed (required by libc++).
+PluginExecutionProvider::FusedNodeState::~FusedNodeState() = default;
+
 Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node) {
   std::unique_ptr<EpNode> unique_ep_fused_node = nullptr;
   ORT_RETURN_IF_ERROR(EpNode::Create(fused_node, /*parent graph*/ nullptr, this->value_infos, unique_ep_fused_node));
@@ -781,6 +785,13 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   }
 
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
+}
+
+Status PluginExecutionProvider::OnSessionInitializationEnd() {
+  if (ort_ep_->ort_version_supported < 27 || ort_ep_->OnSessionInitializationEnd == nullptr) {
+    return Base::OnSessionInitializationEnd();
+  }
+  return ToStatusAndRelease(ort_ep_->OnSessionInitializationEnd(ort_ep_.get()));
 }
 
 Status PluginExecutionProvider::Sync() const {

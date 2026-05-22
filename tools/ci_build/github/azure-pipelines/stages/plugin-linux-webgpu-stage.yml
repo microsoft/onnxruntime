@@ -48,7 +48,7 @@ stages:
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
-      - template: ../templates/set-plugin-build-variables-step.yml
+      - template: ../templates/set-plugin-ep-build-variables-step.yml
         parameters:
           package_version: ${{ parameters.package_version }}
           version_file: ${{ parameters.version_file }}
@@ -85,22 +85,6 @@ stages:
           touch "$(Build.ArtifactStagingDirectory)/version/$(PluginPackageVersion)"
         displayName: 'Create version marker file'
 
-      - script: |
-          set -e -x
-          mkdir -p "$(Build.BinariesDirectory)/universal_package"
-          cp -R "$(Build.ArtifactStagingDirectory)/bin/"* "$(Build.BinariesDirectory)/universal_package/"
-        displayName: 'Stage binaries for universal package'
-
-      - task: UniversalPackages@0
-        displayName: 'Publish universal package'
-        inputs:
-          command: publish
-          publishDirectory: '$(Build.BinariesDirectory)/universal_package'
-          vstsFeedPublish: 'PublicPackages/ORT-Nightly'
-          vstsFeedPackagePublish: 'onnxruntime-plugin-ep-webgpu-linux-x64'
-          versionOption: custom
-          versionPublish: '$(PluginUniversalPackageVersion)'
-
   # Python package build job
   - job: Linux_plugin_webgpu_x64_Python_Package
     dependsOn: Linux_plugin_webgpu_x64_Build
@@ -124,7 +108,7 @@ stages:
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 
-    - template: ../templates/set-plugin-build-variables-step.yml
+    - template: ../templates/set-plugin-ep-build-variables-step.yml
       parameters:
         package_version: ${{ parameters.package_version }}
         version_file: ${{ parameters.version_file }}

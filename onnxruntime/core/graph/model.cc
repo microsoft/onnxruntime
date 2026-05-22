@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/model_helpers.h"
 #include "core/graph/model_load_utils.h"
 
 #ifdef _MSC_VER
@@ -128,6 +135,8 @@ Model::Model(const std::string& graph_name,
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name(), func_ptr->overload()),
                                             func_ptr);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
@@ -260,6 +269,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   for (auto& func : model_proto_.functions()) {
     model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload()), &func);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {

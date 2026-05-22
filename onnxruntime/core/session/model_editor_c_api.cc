@@ -3,7 +3,10 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <algorithm>
 #include <variant>
+
+#include "core/common/inlined_containers.h"
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ort_value.h"
@@ -105,6 +108,14 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len) {
   API_IMPL_BEGIN
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
+  if (inputs == nullptr && inputs_len != 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "inputs cannot be null when inputs_len is non-zero");
+  }
+
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
 
   if (graph == nullptr) {
@@ -112,7 +123,27 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
                                  "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
 
+  // Check for duplicate pointers in the input array to prevent double-free
+  onnxruntime::InlinedHashSet<const OrtValueInfo*> seen;
+  for (size_t i = 0; i < inputs_len; ++i) {
+    if (inputs[i] == nullptr) {
+      continue;
+    }
+    if (!seen.insert(inputs[i]).second) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Duplicate OrtValueInfo pointer found in inputs array. "
+                                   "Each OrtValueInfo can only appear once.");
+    }
+    onnxruntime::ModelEditorValueInfo* vi = onnxruntime::ModelEditorValueInfo::ToInternal(inputs[i]);
+    if (vi != nullptr && vi->owned_) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "This OrtValueInfo has already been added to a graph. "
+                                   "Each OrtValueInfo can only be added once.");
+    }
+  }
+
   graph->inputs.clear();
+  graph->inputs.reserve(inputs_len);
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "inputs cannot contain null entries");
@@ -125,6 +156,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
     }
 
     graph->inputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(input));  // take ownership
+    input->owned_ = true;
     inputs[i] = nullptr;
   }
 
@@ -135,6 +167,14 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len) {
   API_IMPL_BEGIN
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
+  if (outputs == nullptr && outputs_len != 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "outputs cannot be null when outputs_len is non-zero");
+  }
+
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
 
   if (graph == nullptr) {
@@ -142,7 +182,27 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
                                  "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
 
+  // Check for duplicate pointers in the output array to prevent double-free
+  onnxruntime::InlinedHashSet<const OrtValueInfo*> seen;
+  for (size_t i = 0; i < outputs_len; ++i) {
+    if (outputs[i] == nullptr) {
+      continue;
+    }
+    if (!seen.insert(outputs[i]).second) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Duplicate OrtValueInfo pointer found in outputs array. "
+                                   "Each OrtValueInfo can only appear once.");
+    }
+    onnxruntime::ModelEditorValueInfo* vi = onnxruntime::ModelEditorValueInfo::ToInternal(outputs[i]);
+    if (vi != nullptr && vi->owned_) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "This OrtValueInfo has already been added to a graph. "
+                                   "Each OrtValueInfo can only be added once.");
+    }
+  }
+
   graph->outputs.clear();
+  graph->outputs.reserve(outputs_len);
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "outputs cannot contain null entries");
@@ -155,6 +215,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
     }
 
     graph->outputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(output));  // take ownership
+    output->owned_ = true;
     outputs[i] = nullptr;
   }
 
@@ -163,8 +224,20 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
 }
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort_graph, _In_ const char* name,
-                    _Inout_ OrtValue* tensor, bool data_is_external) {
+                    _In_ const OrtValue* ort_value, bool data_is_external) {
   API_IMPL_BEGIN
+  if (name == nullptr || *name == '\0') {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name cannot be null or empty string");
+  }
+
+  if (ort_value == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ort_value cannot be null");
+  }
+
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
 
   if (graph == nullptr) {
@@ -172,17 +245,23 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                  "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
 
-  if (!tensor->IsTensor()) {
+  if (!ort_value->IsTensor()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only Tensor is currently supported.");
   }
 
-  if (!tensor->IsAllocated()) {
+  if (!ort_value->IsAllocated()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Tensor must be allocated.");
   }
 
-  const auto& t = tensor->Get<onnxruntime::Tensor>();
+  const auto& t = ort_value->Get<onnxruntime::Tensor>();
   if (t.Location().device.Type() != OrtDevice::CPU) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only CPU based tensors are currently supported.");
+  }
+
+  // Reject duplicate name in either map
+  if (graph->initializers.count(name) != 0 || graph->external_initializers.count(name) != 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "An initializer with this name has already been added to the graph.");
   }
 
   if (data_is_external) {
@@ -195,11 +274,11 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                    "External initializer should only be used for data >= 128 bytes. "
                                    "Please use CreateTensorAsOrtValue instead.");
     }
-
-    graph->external_initializers[name] = std::unique_ptr<OrtValue>(tensor);  // take ownership
-  } else {
-    graph->initializers[name] = std::unique_ptr<OrtValue>(tensor);  // take ownership
   }
+
+  auto& m = data_is_external ? graph->external_initializers : graph->initializers;
+  auto [it, inserted] = m.emplace(name, *ort_value);
+  ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
 
   return nullptr;
   API_IMPL_END
@@ -207,6 +286,14 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph, _Inout_ OrtNode* ort_node) {
   API_IMPL_BEGIN
+  if (ort_node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "node cannot be null");
+  }
+
+  if (ort_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
   onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
 
   if (graph == nullptr) {
@@ -221,8 +308,19 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
                                  "Invalid OrtNode variant for use in the OrtModelEditorApi");
   }
 
+  // Reject if this node has already been added to a graph (prevents double-free)
+  if (node->owned_) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "This node has already been added to a graph. "
+                                 "Each OrtNode can only be added once.");
+  }
+
   node->id = graph->nodes.size();
-  graph->nodes.push_back(std::unique_ptr<onnxruntime::ModelEditorNode>(node));  // take ownership
+  if (graph->nodes.size() == graph->nodes.capacity()) {
+    graph->nodes.reserve(std::max(graph->nodes.capacity() * 2, size_t{1}));
+  }
+  graph->nodes.emplace_back(node);
+  node->owned_ = true;
   return nullptr;
   API_IMPL_END
 }
@@ -246,11 +344,36 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateModel,
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddGraphToModel, _In_ OrtModel* model, _Inout_ OrtGraph* graph) {
   API_IMPL_BEGIN
 
+  if (model == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "model cannot be null");
+  }
+
   if (graph == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
   }
 
+  // Reject if model already has a graph (prevents double-free/UAF)
+  if (model->graph != nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Model already has a graph. Each OrtModel can only have one graph.");
+  }
+
+  // Reject if this graph has already been added to a model (prevents double-free across models)
+  onnxruntime::ModelEditorGraph* me_graph = onnxruntime::ModelEditorGraph::ToInternal(graph);
+  if (me_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
+  }
+
+  if (me_graph->owned_) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "This graph has already been added to a model. "
+                                 "Each OrtGraph can only be added once.");
+  }
+
   model->graph = std::unique_ptr<OrtGraph>(graph);  // take ownership
+  me_graph->owned_ = true;
+
   return nullptr;
   API_IMPL_END
 }
