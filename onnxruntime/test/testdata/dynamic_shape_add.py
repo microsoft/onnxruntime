@@ -36,5 +36,9 @@ model = helper.make_model(graph_proto, opset_imports=[helper.make_operatorsetid(
 checker.check_model(model, True)
 save(model, "dynamic_shape_add.onnx")
 print("Saved dynamic_shape_add.onnx")
-print(f"  Inputs: {[(i.name, [d.dim_param or d.dim_value for d in i.type.tensor_type.shape.dim]) for i in model.graph.input]}")
-print(f"  Outputs: {[(o.name, [d.dim_param or d.dim_value for d in o.type.tensor_type.shape.dim]) for o in model.graph.output]}")
+print(
+    f"  Inputs: {[(i.name, [d.dim_param or d.dim_value for d in i.type.tensor_type.shape.dim]) for i in model.graph.input]}"
+)
+print(
+    f"  Outputs: {[(o.name, [d.dim_param or d.dim_value for d in o.type.tensor_type.shape.dim]) for o in model.graph.output]}"
+)
