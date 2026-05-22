@@ -284,26 +284,26 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
   // Helper to strip the EP prefix from config entry keys when building as a plugin EP.
   // The full key is like "ep.webgpuexecutionprovider.storageBufferCacheMode", and the
   // config entry expects just "storageBufferCacheMode" in the EP API build.
-  // Returns a pointer into the original string, so the result is valid as long as the input is.
-  auto strip_ep_prefix = [](const char* full_key) -> const char* {
+  auto normalize_config_key = [](const char* key) -> std::string {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-    std::string_view key{full_key};
+    std::string normalized_key = key;
     std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
-    ORT_ENFORCE(key.length() >= prefix.length() && key.substr(0, prefix.length()) == prefix,
-                "Config key \"", key, "\" does not start with expected prefix \"", prefix, "\"");
-    return full_key + prefix.length();
+    if (normalized_key.rfind(prefix, 0) == 0) {
+      normalized_key.erase(0, prefix.length());
+    }
+    return normalized_key;
 #else
-    return full_key;
+    return key;
 #endif
   };
 
   // Disable storage buffer cache
-  ORT_ENFORCE(config_options.AddConfigEntry(strip_ep_prefix(webgpu::options::kStorageBufferCacheMode),
+  ORT_ENFORCE(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
                                             webgpu::options::kBufferCacheMode_Disabled)
                   .IsOK());
   if (!is_nhwc) {
     // Enable NCHW support
-    ORT_ENFORCE(config_options.AddConfigEntry(strip_ep_prefix(webgpu::options::kPreferredLayout),
+    ORT_ENFORCE(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),
                                               webgpu::options::kPreferredLayout_NCHW)
                     .IsOK());
   }
@@ -318,11 +318,21 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
 #if defined(USE_WEBGPU)
 #if defined(ORT_USE_EP_API_ADAPTERS)
+  ConfigOptions normalized_config_options{};
+  const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
+  for (const auto& [key, value] : config_options.GetConfigOptionsMap()) {
+    std::string normalized_key = key;
+    if (normalized_key.rfind(prefix, 0) == 0) {
+      normalized_key.erase(0, prefix.length());
+    }
+    ORT_ENFORCE(normalized_config_options.AddConfigEntry(normalized_key.c_str(), value.c_str()).IsOK());
+  }
+
   auto ep_name = dynamic_plugin_ep_infra::GetEpName();
   ORT_ENFORCE(ep_name == kWebGpuExecutionProvider,
               "Dynamic plugin EP is not the WebGPU EP. Expected \"", kWebGpuExecutionProvider,
               "\", got \"", ep_name.value_or("<uninitialized>"), "\"");
-  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &normalized_config_options);
 #else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #endif
