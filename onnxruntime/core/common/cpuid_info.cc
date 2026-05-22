@@ -207,7 +207,7 @@ void CPUIDInfo::ArmLinuxInit() {
         continue;
       }
       auto coreid = proc->linux_id;
-      if (coreid >= core_uarchs_.size()) {
+      if (coreid < 0 || static_cast<size_t>(coreid) >= core_uarchs_.size()) {
         continue;
       }
 
