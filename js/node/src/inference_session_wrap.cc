@@ -17,15 +17,13 @@ namespace {
 
 struct RunAsyncContext {
   napi_async_work work;
-  napi_env env;       // raw handle — Napi::Env has no default constructor
-  napi_deferred deferred;  // raw handle — Napi::Promise::Deferred has no default constructor
+  napi_env env;
+  napi_deferred deferred;
   Napi::ObjectReference sessionRef;
   std::vector<Napi::Reference<Napi::Value>> inputValueRefs;
+  int* inFlightCount;
 
   Ort::Session* session;
-  Ort::IoBinding* ioBinding;
-  bool useIoBinding;
-  std::vector<int> preferredOutputLocations;
 
   std::vector<const char*> inputNames_cstr;
   std::vector<Ort::Value> inputValues;
@@ -34,11 +32,9 @@ struct RunAsyncContext {
   size_t inputIndex;
   size_t outputIndex;
 
-  std::optional<Ort::RunOptions> runOptions;  // empty = use singleton default
-  Ort::MemoryInfo cpuMemoryInfo{nullptr};       // overwritten in Run() before dispatch
-  Ort::MemoryInfo gpuBufferMemoryInfo{nullptr}; // overwritten in Run() before dispatch
+  std::optional<Ort::RunOptions> runOptions;
+  Ort::MemoryInfo cpuMemoryInfo{nullptr};
 
-  std::vector<Ort::Value> asyncOutputs;
   std::string errorMessage;
   bool hasError;
 };
@@ -53,18 +49,13 @@ void RunWorkCallback(napi_env /*env*/, void* data) {
       return;
     }
     Ort::RunOptions& opts = ctx->runOptions.has_value() ? *ctx->runOptions : ortObjects->default_run_options;
-    if (!ctx->useIoBinding) {
-      ctx->session->Run(opts,
-                        ctx->inputIndex == 0 ? nullptr : ctx->inputNames_cstr.data(),
-                        ctx->inputIndex == 0 ? nullptr : ctx->inputValues.data(),
-                        ctx->inputIndex,
-                        ctx->outputIndex == 0 ? nullptr : ctx->outputNames_cstr.data(),
-                        ctx->outputIndex == 0 ? nullptr : ctx->outputValues.data(),
-                        ctx->outputIndex);
-    } else {
-      ctx->session->Run(opts, *ctx->ioBinding);
-      ctx->asyncOutputs = ctx->ioBinding->GetOutputValues();
-    }
+    ctx->session->Run(opts,
+                      ctx->inputIndex == 0 ? nullptr : ctx->inputNames_cstr.data(),
+                      ctx->inputIndex == 0 ? nullptr : ctx->inputValues.data(),
+                      ctx->inputIndex,
+                      ctx->outputIndex == 0 ? nullptr : ctx->outputNames_cstr.data(),
+                      ctx->outputIndex == 0 ? nullptr : ctx->outputValues.data(),
+                      ctx->outputIndex);
   } catch (std::exception const& e) {
     ctx->hasError = true;
     ctx->errorMessage = e.what();
@@ -76,21 +67,19 @@ void RunAfterWorkCallback(napi_env /*env*/, napi_status status, void* data) {
   Napi::Env env(ctx->env);
   Napi::HandleScope scope(env);
 
+  (*ctx->inFlightCount)--;
+
   if (ctx->hasError) {
     napi_reject_deferred(ctx->env, ctx->deferred, Napi::Error::New(env, ctx->errorMessage).Value());
   } else if (status == napi_cancelled) {
     napi_reject_deferred(ctx->env, ctx->deferred, Napi::Error::New(env, "Async inference was cancelled.").Value());
+  } else if (status != napi_ok) {
+    napi_reject_deferred(ctx->env, ctx->deferred, Napi::Error::New(env, "Async inference failed.").Value());
   } else {
     try {
       Napi::Object result = Napi::Object::New(env);
-      if (!ctx->useIoBinding) {
-        for (size_t i = 0; i < ctx->outputIndex; i++) {
-          result.Set(ctx->outputNames_cstr[i], OrtValueToNapiValue(env, std::move(ctx->outputValues[i])));
-        }
-      } else {
-        for (size_t i = 0; i < ctx->outputIndex; i++) {
-          result.Set(ctx->outputNames_cstr[i], OrtValueToNapiValue(env, std::move(ctx->asyncOutputs[i])));
-        }
+      for (size_t i = 0; i < ctx->outputIndex; i++) {
+        result.Set(ctx->outputNames_cstr[i], OrtValueToNapiValue(env, std::move(ctx->outputValues[i])));
       }
       napi_resolve_deferred(ctx->env, ctx->deferred, result);
     } catch (std::exception const& e) {
@@ -152,7 +141,7 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
 }
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
-    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr) {}
+    : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), inFlightCount_(0), session_(nullptr) {}
 
 InferenceSessionWrap::~InferenceSessionWrap() {
   // If the ORT singleton has already been destroyed (e.g. during process shutdown when the
@@ -281,20 +270,20 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
                               "Expect inputs(feed) and outputs(fetch) to be objects.");
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && (!info[2].IsObject() || info[2].IsNull()), env,
                               "'runOptions' must be an object.");
+  ORT_NAPI_THROW_ERROR_IF(preferredOutputLocations_.size() > 0, env,
+                          "Async run() does not support IO binding; use runSync() for GPU EP workloads.");
 
   napi_value promise_value;
   auto* ctx = new RunAsyncContext{};
   ctx->env = static_cast<napi_env>(env);
   napi_create_promise(env, &ctx->deferred, &promise_value);
   ctx->sessionRef = Napi::Persistent(info.This().As<Napi::Object>());
+  ctx->inFlightCount = &this->inFlightCount_;
   ctx->session = session_.get();
-  ctx->ioBinding = ioBinding_.get();
-  ctx->useIoBinding = (preferredOutputLocations_.size() > 0);
-  ctx->preferredOutputLocations = preferredOutputLocations_;
   ctx->inputIndex = 0;
   ctx->outputIndex = 0;
   ctx->cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  ctx->gpuBufferMemoryInfo = Ort::MemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
+  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
   ctx->hasError = false;
 
   auto feed = info[0].As<Napi::Object>();
@@ -310,7 +299,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         // (which are zero-copy borrowed by NapiValueToOrtValue) stays alive
         // for the duration of the async thread-pool work.
         ctx->inputValueRefs.push_back(Napi::Persistent(value));
-        ctx->inputValues.push_back(NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, ctx->gpuBufferMemoryInfo));
+        ctx->inputValues.push_back(NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, gpuBufferMemoryInfo));
       }
     }
     for (auto& name : outputNames_) {
@@ -319,7 +308,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         ctx->outputNames_cstr.push_back(name.c_str());
         auto value = fetch.Get(name);
         ctx->outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr}
-                                                      : NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, ctx->gpuBufferMemoryInfo));
+                                                      : NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, gpuBufferMemoryInfo));
       }
     }
 
@@ -328,21 +317,6 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       ParseRunOptions(info[2].As<Napi::Object>(), *ctx->runOptions);
     }
 
-    if (ctx->useIoBinding) {
-      ORT_NAPI_THROW_ERROR_IF(preferredOutputLocations_.size() != outputNames_.size(), env,
-                              "Preferred output locations must have the same size as output names.");
-      for (size_t i = 0; i < ctx->inputIndex; i++) {
-        ctx->ioBinding->BindInput(ctx->inputNames_cstr[i], ctx->inputValues[i]);
-      }
-      for (size_t i = 0; i < ctx->outputIndex; i++) {
-        // TODO: support preallocated output tensor (ctx->outputValues[i])
-        if (ctx->preferredOutputLocations[i] == DATA_LOCATION_GPU_BUFFER) {
-          ctx->ioBinding->BindOutput(ctx->outputNames_cstr[i], ctx->gpuBufferMemoryInfo);
-        } else {
-          ctx->ioBinding->BindOutput(ctx->outputNames_cstr[i], ctx->cpuMemoryInfo);
-        }
-      }
-    }
   } catch (...) {
     ctx->sessionRef.Reset();
     for (auto& ref : ctx->inputValueRefs) {
@@ -352,6 +326,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
     throw;
   }
 
+  this->inFlightCount_++;
   napi_value async_resource_name;
   napi_create_string_utf8(env, "OnnxRuntimeRun", NAPI_AUTO_LENGTH, &async_resource_name);
   napi_create_async_work(env, nullptr, async_resource_name, RunWorkCallback, RunAfterWorkCallback, ctx, &ctx->work);
@@ -380,6 +355,7 @@ Napi::Value InferenceSessionWrap::RunSync(const Napi::CallbackInfo& info) {
   std::vector<const char*> outputNames_cstr;
   std::vector<Ort::Value> outputValues;
   std::vector<bool> reuseOutput;
+  std::vector<int> requestedOutputLocations;
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
@@ -394,13 +370,15 @@ Napi::Value InferenceSessionWrap::RunSync(const Napi::CallbackInfo& info) {
         inputValues.push_back(NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
       }
     }
-    for (auto& name : outputNames_) {
+    for (size_t j = 0; j < outputNames_.size(); j++) {
+      const auto& name = outputNames_[j];
       if (fetch.Has(name)) {
         outputIndex++;
         outputNames_cstr.push_back(name.c_str());
         auto value = fetch.Get(name);
         reuseOutput.push_back(!value.IsNull());
         outputValues.emplace_back(value.IsNull() ? Ort::Value{nullptr} : NapiValueToOrtValue(env, value, cpuMemoryInfo, gpuBufferMemoryInfo));
+        requestedOutputLocations.push_back(!preferredOutputLocations_.empty() ? preferredOutputLocations_[j] : 0);
       }
     }
 
@@ -431,8 +409,7 @@ Napi::Value InferenceSessionWrap::RunSync(const Napi::CallbackInfo& info) {
       }
       for (size_t i = 0; i < outputIndex; i++) {
         // TODO: support preallocated output tensor (outputValues[i])
-
-        if (preferredOutputLocations_[i] == DATA_LOCATION_GPU_BUFFER) {
+        if (requestedOutputLocations[i] == DATA_LOCATION_GPU_BUFFER) {
           ioBinding_->BindOutput(outputNames_cstr[i], gpuBufferMemoryInfo);
         } else {
           ioBinding_->BindOutput(outputNames_cstr[i], cpuMemoryInfo);
@@ -461,6 +438,7 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
+  ORT_NAPI_THROW_ERROR_IF(this->inFlightCount_ > 0, env, "Cannot dispose session while run() calls are in-flight.");
 
   this->inputTypes_.clear();
   this->outputTypes_.clear();

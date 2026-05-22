@@ -91,6 +91,7 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // session objects
   bool initialized_;
   bool disposed_;
+  int inFlightCount_;
   std::unique_ptr<Ort::Session> session_;
 
   // input/output metadata
