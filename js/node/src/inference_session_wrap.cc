@@ -21,7 +21,6 @@ struct RunAsyncContext {
   napi_deferred deferred;
   Napi::ObjectReference sessionRef;
   std::vector<Napi::Reference<Napi::Value>> inputValueRefs;
-  std::vector<Napi::Reference<Napi::Value>> outputValueRefs;
   int* inFlightCount;
 
   Ort::Session* session;
@@ -93,9 +92,6 @@ void RunAfterWorkCallback(napi_env /*env*/, napi_status status, void* data) {
 
   ctx->sessionRef.Reset();
   for (auto& ref : ctx->inputValueRefs) {
-    ref.Reset();
-  }
-  for (auto& ref : ctx->outputValueRefs) {
     ref.Reset();
   }
   napi_delete_async_work(ctx->env, ctx->work);
@@ -341,21 +337,18 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
     napi_reject_deferred(env, ctx->deferred, e.Value());
     ctx->sessionRef.Reset();
     for (auto& ref : ctx->inputValueRefs) ref.Reset();
-    for (auto& ref : ctx->outputValueRefs) ref.Reset();
     delete ctx;
     return Napi::Value(env, promise_value);
   } catch (std::exception const& e) {
     napi_reject_deferred(env, ctx->deferred, Napi::Error::New(env, e.what()).Value());
     ctx->sessionRef.Reset();
     for (auto& ref : ctx->inputValueRefs) ref.Reset();
-    for (auto& ref : ctx->outputValueRefs) ref.Reset();
     delete ctx;
     return Napi::Value(env, promise_value);
   } catch (...) {
     napi_reject_deferred(env, ctx->deferred, Napi::Error::New(env, "Unknown error during inference setup.").Value());
     ctx->sessionRef.Reset();
     for (auto& ref : ctx->inputValueRefs) ref.Reset();
-    for (auto& ref : ctx->outputValueRefs) ref.Reset();
     delete ctx;
     return Napi::Value(env, promise_value);
   }
@@ -377,7 +370,6 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
                                                std::to_string(static_cast<int>(queue_status)) + ").").Value());
     ctx->sessionRef.Reset();
     for (auto& ref : ctx->inputValueRefs) ref.Reset();
-    for (auto& ref : ctx->outputValueRefs) ref.Reset();
     if (ctx->work != nullptr) {
       napi_delete_async_work(env, ctx->work);
     }
@@ -492,7 +484,7 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-  ORT_NAPI_THROW_ERROR_IF(this->inFlightCount_ > 0, env, "Cannot dispose session while run() calls are in-flight.");
+  ORT_NAPI_THROW_ERROR_IF(this->inFlightCount_ > 0, env, "Cannot dispose session while async run() calls are in-flight.");
 
   this->inputTypes_.clear();
   this->outputTypes_.clear();
