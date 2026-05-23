@@ -216,6 +216,8 @@ TEST(MathOpTest, MatMulFloatTypeFastMathKTailFallsBackToSgemm) {
 
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object.Run(RunOptions{}, feeds, AsSpan({std::string("Y")}), &fetches));
+  ASSERT_EQ(fetches.size(), 1u);
+  ASSERT_TRUE(fetches[0].IsTensor());
 
   const auto& output_tensor = fetches[0].Get<Tensor>();
   ASSERT_EQ(output_tensor.Shape(), TensorShape({M, N}));
