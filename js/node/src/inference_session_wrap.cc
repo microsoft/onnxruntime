@@ -43,14 +43,7 @@ struct RunAsyncContext {
 void RunWorkCallback(napi_env /*env*/, void* data) {
   auto* ctx = static_cast<RunAsyncContext*>(data);
   try {
-    auto* ortObjects = OrtSingletonData::GetOrtObjects();
-    if (!ortObjects) {
-      ctx->hasError = true;
-      ctx->errorMessage = "ORT runtime has been destroyed.";
-      return;
-    }
-    Ort::RunOptions& opts = ctx->runOptions.has_value() ? *ctx->runOptions : ortObjects->default_run_options;
-    ctx->session->Run(opts,
+    ctx->session->Run(*ctx->runOptions,
                       ctx->inputIndex == 0 ? nullptr : ctx->inputNames_cstr.data(),
                       ctx->inputIndex == 0 ? nullptr : ctx->inputValues.data(),
                       ctx->inputIndex,
@@ -339,6 +332,8 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
     if (info.Length() > 2 && !info[2].IsUndefined()) {
       ctx->runOptions.emplace();
       ParseRunOptions(info[2].As<Napi::Object>(), *ctx->runOptions);
+    } else {
+      ctx->runOptions.emplace();  // default Ort::RunOptions; owned by ctx so the worker never aliases singleton state
     }
 
   } catch (Napi::Error const& e) {
