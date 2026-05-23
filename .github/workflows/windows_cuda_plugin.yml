@@ -84,6 +84,7 @@ jobs:
             --use_vcpkg `
             --use_vcpkg_ms_internal_asset_cache `
             --enable_cuda_profiling `
+            --cmake_extra_defines onnxruntime_QUICK_BUILD=ON `
             --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 `
             --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
 
