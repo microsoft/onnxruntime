@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/// <reference types="node" />
-
 import { Backend, InferenceSession, InferenceSessionHandler, SessionHandler } from 'onnxruntime-common';
 
 import { Binding, binding, initOrt } from './binding';
