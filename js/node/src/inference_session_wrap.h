@@ -56,8 +56,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    * [async] run the model.
    * @param arg0 input object: keys present in the object that match model input names are forwarded; missing keys are
    *             silently ignored (ORT will error if a required input is absent).
-   * @param arg1 output object: at least one key must match a model output name; null values request ORT-allocated
-   *             outputs, non-null values provide preallocated buffers (not supported for async, must be null).
+   * @param arg1 output object: at least one key must match a model output name; values must be null (preallocated
+   *             output tensors are not supported for async run — use runSync() if preallocated outputs are needed).
    * @param arg2 (optional) run options object
    * @returns a Promise that resolves to an object where every requested output is present and value must be object.
    *          The Promise rejects on inference error or invalid arguments detected after Promise creation.

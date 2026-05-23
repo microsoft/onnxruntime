@@ -322,11 +322,9 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         ctx->outputNames_cstr.push_back(name.c_str());
         auto value = fetch.Get(name);
         if (!value.IsNull()) {
-          ctx->outputValueRefs.push_back(Napi::Persistent(value));
-          ctx->outputValues.emplace_back(NapiValueToOrtValue(env, value, ctx->cpuMemoryInfo, ctx->gpuBufferMemoryInfo));
-        } else {
-          ctx->outputValues.emplace_back(Ort::Value{nullptr});
+          throw Napi::Error::New(env, "Preallocated output tensors are not supported for async run(); set fetch values to null.");
         }
+        ctx->outputValues.emplace_back(Ort::Value{nullptr});
       }
     }
 
