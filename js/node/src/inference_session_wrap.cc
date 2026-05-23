@@ -330,6 +330,10 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       }
     }
 
+    if (ctx->outputIndex == 0) {
+      throw Napi::Error::New(env, "At least one output must be requested.");
+    }
+
     if (info.Length() > 2 && !info[2].IsUndefined()) {
       ctx->runOptions.emplace();
       ParseRunOptions(info[2].As<Napi::Object>(), *ctx->runOptions);
@@ -431,6 +435,8 @@ Napi::Value InferenceSessionWrap::RunSync(const Napi::CallbackInfo& info) {
         requestedOutputLocations.push_back(j < preferredOutputLocations_.size() ? preferredOutputLocations_[j] : DATA_LOCATION_CPU);
       }
     }
+
+    ORT_NAPI_THROW_ERROR_IF(outputIndex == 0, env, "At least one output must be requested.");
 
     Ort::RunOptions runOptions{nullptr};
     if (info.Length() > 2 && !info[2].IsUndefined()) {
