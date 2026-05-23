@@ -4,7 +4,7 @@
 'use strict';
 
 const fs = require('fs');
-const https = require('https');
+const axios = require('axios');
 const { execFileSync } = require('child_process');
 const path = require('path');
 const os = require('os');
@@ -13,16 +13,17 @@ const AdmZip = require('adm-zip'); // Use adm-zip instead of spawn
 async function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
-    https
-      .get(url, (res) => {
-        if (res.statusCode !== 200) {
+    axios
+      .get(url, { responseType: 'stream', maxRedirects: 5 })
+      .then((res) => {
+        if (res.status !== 200) {
           file.close();
           fs.unlinkSync(dest);
-          reject(new Error(`Failed to download from ${url}. HTTP status code = ${res.statusCode}`));
+          reject(new Error(`Failed to download from ${url}. HTTP status code = ${res.status}`));
           return;
         }
 
-        res.pipe(file);
+        res.data.pipe(file);
         file.on('finish', () => {
           file.close();
           resolve();
@@ -32,7 +33,7 @@ async function downloadFile(url, dest) {
           reject(err);
         });
       })
-      .on('error', (err) => {
+      .catch((err) => {
         fs.unlinkSync(dest);
         reject(err);
       });
@@ -41,9 +42,10 @@ async function downloadFile(url, dest) {
 
 async function downloadJson(url) {
   return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        const { statusCode } = res;
+    axios
+      .get(url, { maxRedirects: 5, validateStatus: () => true, responseType: 'text' })
+      .then((res) => {
+        const { status: statusCode } = res;
         const contentType = res.headers['content-type'];
 
         if (!statusCode) {
@@ -61,23 +63,13 @@ async function downloadJson(url) {
           reject(new Error(`unexpected content type: ${contentType}`));
           return;
         }
-        res.setEncoding('utf8');
-        let rawData = '';
-        res.on('data', (chunk) => {
-          rawData += chunk;
-        });
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(rawData));
-          } catch (e) {
-            reject(e);
-          }
-        });
-        res.on('error', (err) => {
-          reject(err);
-        });
+        try {
+          resolve(JSON.parse(res.data));
+        } catch (e) {
+          reject(e);
+        }
       })
-      .on('error', (err) => {
+      .catch((err) => {
         reject(err);
       });
   });
