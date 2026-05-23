@@ -26,8 +26,11 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateActivationOpBuilder("Elu", op_registrations);
   CreateActivationOpBuilder("HardSigmoid", op_registrations);
 
-  // Microsoft-domain ops produced by ORT's own optimizer passes
+  // Microsoft-domain ops produced by ORT's own optimizer passes.
   CreateQuickGeluOpBuilder("QuickGelu", op_registrations);
+  // FusedConv (from ConvActivationFusion) is handled by the same ConvOpBuilder
+  // class, which branches on op_type internally.
+  CreateConvOpBuilder("FusedConv", op_registrations);
 
   // Unary ops
   CreateUnaryOpBuilder("Erf", op_registrations);
@@ -35,6 +38,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateUnaryOpBuilder("Round", op_registrations);
   CreateUnaryOpBuilder("Sqrt", op_registrations);
   CreateUnaryOpBuilder("Exp", op_registrations);
+  CreateUnaryOpBuilder("Ceil", op_registrations);
 
   // Binary elementwise ops
   CreateBinaryOpBuilder("Add", op_registrations);
@@ -74,6 +78,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateGatherOpBuilder("Gather", op_registrations);
   CreateGemmOpBuilder("Gemm", op_registrations);
   CreateGridSampleOpBuilder("GridSample", op_registrations);
+  CreateIdentityOpBuilder("Identity", op_registrations);
   CreateLRNOpBuilder("LRN", op_registrations);
   CreateGemmOpBuilder("MatMul", op_registrations);
   CreatePadOpBuilder("Pad", op_registrations);
@@ -84,6 +89,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateSplitOpBuilder("Split", op_registrations);
   CreateSoftmaxOpBuilder("Softmax", op_registrations);
   CreateSqueezeOpBuilder("Squeeze", op_registrations);
+  CreateTileOpBuilder("Tile", op_registrations);
   CreateTransposeOpBuilder("Transpose", op_registrations);
   CreateSqueezeOpBuilder("Unsqueeze", op_registrations);
 

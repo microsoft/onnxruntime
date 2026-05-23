@@ -124,6 +124,18 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 // Default is an empty string which means no optimizers are disabled.
 static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
+// Maximum total output size in bytes that the constant folding optimizer is allowed to produce per node.
+// Prevents malicious models from causing excessive memory allocation during optimization.
+// If the estimated or actual output size of a constant-foldable node exceeds this limit, the node will
+// not be constant folded and will instead be executed at runtime.
+//
+// Option values:
+// - A positive integer (as string): Maximum allowed output size in bytes per constant-folded node.
+//   Default is "1073741824" (1 GB).
+// - "0": Disable the size limit (not recommended for untrusted models).
+static const char* const kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes =
+    "optimization.constant_folding_max_output_size_in_bytes";
+
 // It controls whether to run graph optimizations in loop or not.
 //
 // "0": disable. Graph Optimization Loop is disabled.
@@ -211,12 +223,22 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 /// <summary>
 /// Key for using the ORT format model flatbuffer bytes directly for initializers.
 /// This avoids copying the bytes and reduces peak memory usage during model loading and initialization.
-/// Requires `session.use_ort_model_bytes_directly` to be true.
+/// Requires `session.use_ort_model_bytes_directly` or `session.use_memory_mapped_ort_model` to be true.
 /// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire
 /// duration of the InferenceSession.
 /// </summary>
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =
     "session.use_ort_model_bytes_for_initializers";
+
+/// <summary>
+/// Key for using memory-mapped I/O to load ORT format model files.
+/// When set to "1" and the session is created from a file path, ORT will use memory-mapped I/O
+/// to load the .ort model file instead of reading it into a heap-allocated buffer.
+/// Usage with session.use_ort_model_bytes_for_initializers will ensure Tensors point directly to the mapped bytes,
+/// although the mapping must remain valid and model weights will be immutable.
+/// The model load will fail if the mapping fails; fallbacks should be caller-handled.
+/// </summary>
+static const char* const kOrtSessionOptionsConfigUseMemoryMappedOrtModel = "session.use_memory_mapped_ort_model";
 
 // This should only be specified when exporting an ORT format model for use on a different platform.
 // If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"

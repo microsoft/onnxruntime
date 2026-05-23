@@ -54,6 +54,7 @@ limitations under the License.
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 
@@ -276,7 +277,7 @@ class PosixEnv : public Env {
 
   std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
     std::vector<LogicalProcessors> ret;
-#ifdef ORT_USE_CPUINFO
+#if defined(ORT_USE_CPUINFO) && defined(__linux__)
     if (cpuinfo_available_) {
       auto num_phys_cores = cpuinfo_get_cores_count();
       ret.reserve(num_phys_cores);
@@ -292,7 +293,7 @@ class PosixEnv : public Env {
         ret.push_back(std::move(th_aff));
       }
     }
-#endif
+#endif  // defined(ORT_USE_CPUINFO) && defined(__linux__)
     // Just the size of the thread-pool
     if (ret.empty()) {
       ret.resize(GetNumPhysicalCpuCores());
@@ -430,9 +431,21 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
+    // Validate that the file is large enough for the requested mapping.
+    struct stat file_stat;
+    if (fstat(file_descriptor.Get(), &file_stat) != 0) {
+      return ReportSystemError("fstat", file_path);
+    }
+    const size_t requested_end = SafeInt<size_t>(offset) + length;
+    ORT_RETURN_IF(static_cast<size_t>(file_stat.st_size) < requested_end,
+                  "File \"", file_path,
+                  "\" is too small for the requested mapping (file size: ",
+                  file_stat.st_size, " bytes, requested offset + length: ",
+                  requested_end, " bytes).");
+
     static const size_t page_size = narrow<size_t>(sysconf(_SC_PAGESIZE));
     const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
-    const size_t mapped_length = length + static_cast<size_t>(offset_to_page);
+    const size_t mapped_length = SafeInt<size_t>(length) + static_cast<size_t>(offset_to_page);
     const FileOffsetType mapped_offset = offset - offset_to_page;
     void* const mapped_base =
         mmap(nullptr, mapped_length, PROT_READ | PROT_WRITE, MAP_PRIVATE, file_descriptor.Get(), mapped_offset);
@@ -527,6 +540,19 @@ class PosixEnv : public Env {
       return ReportSystemError("realpath", path);
     }
     canonical_path.assign(canonical_path_cstr.get());
+    return Status::OK();
+  }
+
+  common::Status GetWeaklyCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const override {
+    std::error_code ec;
+    auto canonical = std::filesystem::weakly_canonical(std::filesystem::path{path}, ec);
+    if (ec) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL,
+                            "Failed to get the weakly canonical path: " + path + " - " + ec.message());
+    }
+    canonical_path.assign(canonical.native());
     return Status::OK();
   }
 

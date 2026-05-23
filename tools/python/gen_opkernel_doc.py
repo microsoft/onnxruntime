@@ -103,6 +103,14 @@ def main(output_path: pathlib.Path, provider_filter: [str], plugin_eps=None):
             "[this script](https://github.com/microsoft/onnxruntime/blob/main/tools/python/gen_opkernel_doc.py).\n"
             "Do not modify directly.*\n\n"
         )
+        fout.write(
+            "### Version Notation\n\n"
+            "The **OpSet Version** column uses the following notation:\n\n"
+            "- `N` — registered only for opset N (e.g., `13`).\n"
+            "- `[N, M]` — registered for opsets N through M inclusive (e.g., `[6, 12]`).\n"
+            "- `N+` — registered for opset N and all later opsets until superseded by a newer"
+            " kernel registration (e.g., `16+`).\n\n"
+        )
         opdef = rtpy.get_all_operator_schema()
         paramdict = {}
         for schema in opdef:

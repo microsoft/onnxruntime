@@ -20,6 +20,7 @@ Abstract:
 #ifndef __clang__
 #pragma GCC push_options
 #pragma GCC target("arch=armv8.2-a+sve")
+#endif
 
 // Use Clang-specific per-function attribute
 #ifdef __clang__
@@ -676,5 +677,4 @@ MlasSveCompareGreaterThan(svbool_t Pred, MLAS_SVFLOAT32 A, MLAS_SVFLOAT32 B)
 #pragma GCC pop_options
 #endif
 
-#endif
 

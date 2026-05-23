@@ -1401,6 +1401,20 @@ inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const cha
 }
 
 template <typename T>
+inline bool ConstSessionOptionsImpl<T>::GetMemPatternEnabled() const {
+  int out = 0;
+  ThrowOnError(GetApi().GetMemPatternEnabled(this->p_, &out));
+  return out != 0;
+}
+
+template <typename T>
+inline ExecutionMode ConstSessionOptionsImpl<T>::GetExecutionMode() const {
+  ExecutionMode out{};
+  ThrowOnError(GetApi().GetSessionExecutionMode(this->p_, &out));
+  return out;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetIntraOpNumThreads(int intra_op_num_threads) {
   ThrowOnError(GetApi().SetIntraOpNumThreads(this->p_, intra_op_num_threads));
   return *this;
@@ -3918,11 +3932,9 @@ inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
 }
 
 template <typename T>
-inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
-  // Graph takes ownership of `initializer`
-  // On error the ownership is not transferred.
+inline void GraphImpl<T>::AddInitializer(const std::string& name, const Value& initializer, bool data_is_external) {
+  // Graph copies the OrtValue internally. Caller retains ownership of initializer.
   ThrowOnError(GetModelEditorApi().AddInitializerToGraph(this->p_, name.c_str(), initializer, data_is_external));
-  initializer.release();
 }
 
 template <typename T>

@@ -568,5 +568,78 @@ TEST(TransformerTest, CrossEpCastNodesNotFused) {
       << "Cast_2 input should remain float32, not be changed to int64";
 }
 
+// Verify that on_partition_assignment_fn_ is NOT called for a node whose CPU EP assignment was
+// already recorded by the partitioner, even when ForceSingleNodeCPUFloat16ToFloat32 later clears
+// that assignment to force the node through the fp32 cast-wrapping path.
+//
+// Graph: I1(fp16) -> Relu(no fp16 kernel, EP empty) -> O1(fp16)
+//                 -> Concat(fp16 kernel, EP=CPU)     -> O2(fp16)
+//                 -> Relu(no fp16 kernel, EP empty)  -> O3(fp16)
+//
+// The two Relu nodes are unassigned.  InsertCastTransformer's fallback policy wraps them with
+// fp32 casts and assigns them to CPU EP; the callback should fire once for each.
+//
+// Concat was already assigned to CPU EP by the partitioner (it has an fp16 CPU kernel).
+// ForceSingleNodeCPUFloat16ToFloat32 clears its EP so it also gets cast-wrapped (avoiding an
+// isolated fp16 island).  When the transformer then assigns Concat to CPU EP as a fallback, it
+// must NOT fire the callback — that would duplicate the partitioner's already-recorded assignment.
+TEST(TransformerTest, IsolatedFp16NodeDoesNotDuplicatePartitionCallback) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg i1_def("I1", &tensor_float_16),
+      o1_def("O1", &tensor_float_16),
+      o2_def("O2", &tensor_float_16),
+      o3_def("O3", &tensor_float_16);
+
+  // Leave the Relu nodes' EP unset so InsertCastTransformer treats them as newly assigned and wraps them.
+  auto& relu1 = graph.AddNode("relu1", "Relu", "EP unset", {&i1_def}, {&o1_def});
+  // Simulate a node that was already assigned by the partitioner.
+  NodeAttributes concat_attrs = {{"axis", utils::MakeAttribute("axis", static_cast<int64_t>(0))}};
+  auto& concat = graph.AddNode("concat", "Concat", "pre-assigned", {&o1_def}, {&o2_def}, &concat_attrs);
+  concat.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  auto& relu2 = graph.AddNode("relu2", "Relu", "EP unset", {&o2_def}, {&o3_def});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // Collect the node indices reported to the partition callback.
+  std::vector<NodeIndex> callback_indices;
+  auto on_assignment = [&callback_indices](const Graph&, const ComputeCapability& capability,
+                                           const std::string&) {
+    if (capability.sub_graph) {
+      for (NodeIndex idx : capability.sub_graph->nodes) {
+        callback_indices.push_back(idx);
+      }
+    }
+  };
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get(),
+                                    on_assignment);
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_TRUE(modified);
+
+  // Only the two Relu nodes (new CPU assignments) should have fired the callback.
+  // Concat was already assigned by the partitioner — re-assigning it must not produce a duplicate.
+  ASSERT_EQ(callback_indices.size(), 2u)
+      << "on_partition_assignment_fn_ must fire exactly once per newly-assigned node; "
+         "Concat was already assigned and must not produce a duplicate record";
+
+  const NodeIndex relu1_idx = relu1.Index();
+  const NodeIndex relu2_idx = relu2.Index();
+  EXPECT_NE(std::find(callback_indices.begin(), callback_indices.end(), relu1_idx), callback_indices.end())
+      << "Relu1 should have been reported as a new CPU assignment";
+  EXPECT_NE(std::find(callback_indices.begin(), callback_indices.end(), relu2_idx), callback_indices.end())
+      << "Relu2 should have been reported as a new CPU assignment";
+  EXPECT_EQ(std::find(callback_indices.begin(), callback_indices.end(), concat.Index()), callback_indices.end())
+      << "Concat was already assigned to CPU EP — its re-assignment must not fire the callback again";
+}
+
 }  // namespace test
 }  // namespace onnxruntime
