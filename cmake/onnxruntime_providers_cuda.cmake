@@ -388,10 +388,6 @@
       endif()
     endif()
 
-    if("100" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
-      target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_TMA_GROUPED_GEMMS)
-    endif()
-
     if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
       target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
     endif()
