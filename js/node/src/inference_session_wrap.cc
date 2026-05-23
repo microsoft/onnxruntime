@@ -285,8 +285,6 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   ctx->session = session_.get();
   ctx->inputIndex = 0;
   ctx->outputIndex = 0;
-  ctx->cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  ctx->gpuBufferMemoryInfo = Ort::MemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
   ctx->hasError = false;
 
   auto rejectSetup = [&](napi_value error_value) -> Napi::Value {
@@ -301,6 +299,8 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   auto fetch = info[1].As<Napi::Object>();
 
   try {
+    ctx->cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+    ctx->gpuBufferMemoryInfo = Ort::MemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
     for (auto& name : inputNames_) {
       if (feed.Has(name)) {
         ctx->inputIndex++;
