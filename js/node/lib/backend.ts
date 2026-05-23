@@ -124,7 +124,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   async run(
     feeds: SessionHandler.FeedsType,
     fetches: SessionHandler.FetchesType,
-    options: InferenceSession.RunOptions,
+    options?: InferenceSession.RunOptions,
   ): Promise<SessionHandler.ReturnType> {
     try {
       return await this.#inferenceSession.run(feeds, fetches, options);
@@ -136,7 +136,7 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   runSync(
     feeds: SessionHandler.FeedsType,
     fetches: SessionHandler.FetchesType,
-    options: InferenceSession.RunOptions,
+    options?: InferenceSession.RunOptions,
   ): SessionHandler.ReturnType {
     try {
       return this.#inferenceSession.runSync(feeds, fetches, options);

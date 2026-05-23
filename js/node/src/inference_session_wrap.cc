@@ -277,6 +277,9 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
                               "Expect inputs(feed) and outputs(fetch) to be objects.");
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && !info[2].IsUndefined() && (!info[2].IsObject() || info[2].IsNull()), env,
                               "'runOptions' must be an object.");
+  // ioBinding_ is only non-null when at least one output was configured for a non-CPU location
+  // (set by ParsePreferredOutputLocations). Allowing async execution with an IoBinding would require
+  // either a per-run binding instance or thread-safe access to the shared binding — deferred as future work.
   ORT_NAPI_THROW_ERROR_IF(ioBinding_ != nullptr, env,
                           "Async run() does not support IO binding; use runSync() for GPU EP workloads.");
 

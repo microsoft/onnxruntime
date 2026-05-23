@@ -56,8 +56,10 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    * [async] run the model.
    * @param arg0 input object: all keys must present, value is object
    * @param arg1 output object: at least one key must present, value can be null.
-   * @returns a Promise that resolves to an object where every requested output is present and value must be object
-   * @throw error if status code != 0
+   * @param arg2 (optional) run options object
+   * @returns a Promise that resolves to an object where every requested output is present and value must be object.
+   *          The Promise rejects on inference error or invalid arguments detected after Promise creation.
+   *          Argument validation errors (wrong types, IO binding active) throw synchronously before the Promise is created.
    */
   Napi::Value Run(const Napi::CallbackInfo& info);
 
