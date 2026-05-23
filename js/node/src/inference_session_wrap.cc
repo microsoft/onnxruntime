@@ -277,7 +277,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
                               "Expect inputs(feed) and outputs(fetch) to be objects.");
   ORT_NAPI_THROW_TYPEERROR_IF(info.Length() > 2 && !info[2].IsUndefined() && (!info[2].IsObject() || info[2].IsNull()), env,
                               "'runOptions' must be an object.");
-  ORT_NAPI_THROW_ERROR_IF(preferredOutputLocations_.size() > 0, env,
+  ORT_NAPI_THROW_ERROR_IF(ioBinding_ != nullptr, env,
                           "Async run() does not support IO binding; use runSync() for GPU EP workloads.");
 
   napi_value promise_value;
@@ -332,16 +332,27 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       ParseRunOptions(info[2].As<Napi::Object>(), *ctx->runOptions);
     }
 
-  } catch (...) {
+  } catch (Napi::Error const& e) {
+    napi_reject_deferred(env, ctx->deferred, e.Value());
     ctx->sessionRef.Reset();
-    for (auto& ref : ctx->inputValueRefs) {
-      ref.Reset();
-    }
-    for (auto& ref : ctx->outputValueRefs) {
-      ref.Reset();
-    }
+    for (auto& ref : ctx->inputValueRefs) ref.Reset();
+    for (auto& ref : ctx->outputValueRefs) ref.Reset();
     delete ctx;
-    throw;
+    return Napi::Value(env, promise_value);
+  } catch (std::exception const& e) {
+    napi_reject_deferred(env, ctx->deferred, Napi::Error::New(env, e.what()).Value());
+    ctx->sessionRef.Reset();
+    for (auto& ref : ctx->inputValueRefs) ref.Reset();
+    for (auto& ref : ctx->outputValueRefs) ref.Reset();
+    delete ctx;
+    return Napi::Value(env, promise_value);
+  } catch (...) {
+    napi_reject_deferred(env, ctx->deferred, Napi::Error::New(env, "Unknown error during inference setup.").Value());
+    ctx->sessionRef.Reset();
+    for (auto& ref : ctx->inputValueRefs) ref.Reset();
+    for (auto& ref : ctx->outputValueRefs) ref.Reset();
+    delete ctx;
+    return Napi::Value(env, promise_value);
   }
 
   this->inFlightCount_++;
