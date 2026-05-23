@@ -194,15 +194,23 @@ else()
 endif()
 # Shared CUDA compile options (excluding --threads, which is set per-target so that
 # flash attention can use a lower thread count without duplicate-flag nvcc warnings).
+# These mirror the options from the parent plugin target and config_cuda_provider_shared_module
+# so that OBJECT libraries compiled separately receive the same flags.
 set(_cuda_plugin_shared_compile_options
+    # Force NVCC onto C++20 explicitly. With the VS generator the CUDA_STANDARD
+    # property alone still leaves `-std=c++17` in AdditionalOptions.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--std c++20>"
     "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>"
+    # Suppress cudafe front-end diagnostic 550 (variable set but never used) from third-party headers.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=550>"
+    # Suppress cudafe [[nodiscard]] false positive on Status assignments.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
 )
 
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
-            "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2810>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
@@ -211,6 +219,17 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
                 "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>"
         )
     endif()
+endif()
+
+if (MSVC)
+    list(APPEND _cuda_plugin_shared_compile_options
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+    )
 endif()
 
 include(cudnn_frontend)
