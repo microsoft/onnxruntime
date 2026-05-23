@@ -249,6 +249,8 @@
       endif()
       # skip diagnosis error caused by cuda header files
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+      # NVCC false positive: assigning a [[nodiscard]] Status via operator= is flagged as discarding the value.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2810>")
       # CUDA 12.8 also reports deprecated implicit by-copy 'this' captures from CUTLASS headers.
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>")
     endif()
