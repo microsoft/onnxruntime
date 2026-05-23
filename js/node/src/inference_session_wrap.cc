@@ -296,6 +296,14 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   ctx->gpuBufferMemoryInfo = Ort::MemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
   ctx->hasError = false;
 
+  auto rejectSetup = [&](napi_value error_value) -> Napi::Value {
+    napi_reject_deferred(env, ctx->deferred, error_value);
+    ctx->sessionRef.Reset();
+    for (auto& ref : ctx->inputValueRefs) ref.Reset();
+    delete ctx;
+    return Napi::Value(env, promise_value);
+  };
+
   auto feed = info[0].As<Napi::Object>();
   auto fetch = info[1].As<Napi::Object>();
 
@@ -334,23 +342,11 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
     }
 
   } catch (Napi::Error const& e) {
-    napi_reject_deferred(env, ctx->deferred, e.Value());
-    ctx->sessionRef.Reset();
-    for (auto& ref : ctx->inputValueRefs) ref.Reset();
-    delete ctx;
-    return Napi::Value(env, promise_value);
+    return rejectSetup(e.Value());
   } catch (std::exception const& e) {
-    napi_reject_deferred(env, ctx->deferred, Napi::Error::New(env, e.what()).Value());
-    ctx->sessionRef.Reset();
-    for (auto& ref : ctx->inputValueRefs) ref.Reset();
-    delete ctx;
-    return Napi::Value(env, promise_value);
+    return rejectSetup(Napi::Error::New(env, e.what()).Value());
   } catch (...) {
-    napi_reject_deferred(env, ctx->deferred, Napi::Error::New(env, "Unknown error during inference setup.").Value());
-    ctx->sessionRef.Reset();
-    for (auto& ref : ctx->inputValueRefs) ref.Reset();
-    delete ctx;
-    return Napi::Value(env, promise_value);
+    return rejectSetup(Napi::Error::New(env, "Unknown error during inference setup.").Value());
   }
 
   this->inFlightCount_++;
