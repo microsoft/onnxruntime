@@ -93,11 +93,6 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 # which cannot convert to ep::adapter::OpKernel in the plugin build.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/shape_op\\.cc$")
 
-# Exclude contrib llm/ for now. The core CUDA llm kernels are adapter-safe, but
-# contrib llm kernels still need their own plugin pass.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
-list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
-
 # Exclude contrib training ops (shrunken_gather depends on provider_api.h in header).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shrunken_gather\\.cc$")
 
@@ -105,6 +100,10 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shr
 # Exclude contrib transformers/ (beam search, greedy search, sampling). Those need subgraph inference.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
+
+# Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
+include(onnxruntime_cuda_source_filters.cmake)
+onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
 
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
@@ -191,6 +190,7 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
     if (MSVC)
@@ -202,6 +202,20 @@ endif()
 
 include(cudnn_frontend)
 include(cutlass)
+
+# TMA compile definitions — mirror config_cuda_provider_shared_module in onnxruntime_providers_cuda.cmake
+if(ORT_HAS_SM90_OR_LATER)
+  target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
+  target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+endif()
+if("100" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_TMA_GROUPED_GEMMS)
+endif()
+if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
+endif()
 
 # --- Find cuDNN (may be at a custom path via onnxruntime_CUDNN_HOME) ---
 set(_CUDNN_SEARCH_PATHS "")
