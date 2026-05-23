@@ -3,7 +3,7 @@
 
 import typescriptEslint from '@typescript-eslint/eslint-plugin';
 import preferArrow from 'eslint-plugin-prefer-arrow';
-import header from 'eslint-plugin-header';
+import header from '@tony.ganchev/eslint-plugin-header';
 import _import from 'eslint-plugin-import';
 import unicorn from 'eslint-plugin-unicorn';
 import jsdoc from 'eslint-plugin-jsdoc';
@@ -22,10 +22,6 @@ const compat = new FlatCompat({
   recommendedConfig: js.configs.recommended,
   allConfig: js.configs.all,
 });
-
-// eslint-plugin-header does not support ESLint 9 yet, but the following workaround is available:
-// https://github.com/Stuk/eslint-plugin-header/issues/57#issuecomment-2378485611
-header.rules.header.meta.schema = false;
 
 export default [
   {
