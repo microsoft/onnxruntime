@@ -525,11 +525,18 @@
 
   # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
   # Restricts CUDA_ARCHITECTURES to avoid compiling heavy CUTLASS templates for pre-Turing GPUs.
+  # Excludes SM120+ real (native SASS) architectures because SM120-specific kernels are already
+  # compiled in the separate SM120 TMA OBJECT library, and compiling the general LLM code for
+  # sm_120a triggers CCCL tcgen05 PTX headers that fail on Windows/MSVC. The virtual arch
+  # (PTX) is kept so SM120 devices can JIT-compile the code.
   if(onnxruntime_cuda_llm_srcs)
     set(_ort_llm_cuda_architectures)
     foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
       string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
       if(_arch_num GREATER_EQUAL 75)
+        if(_arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
+          continue()
+        endif()
         list(APPEND _ort_llm_cuda_architectures "${_arch}")
       endif()
     endforeach()

@@ -342,11 +342,17 @@ if(_cuda_plugin_flash_attention_srcs)
 endif()
 
 # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
+# Excludes SM120+ real (native SASS) architectures — SM120-specific kernels are compiled in
+# the separate SM120 TMA OBJECT library, and the general LLM code triggers CCCL tcgen05 PTX
+# headers that fail on Windows/MSVC when compiled for sm_120a. Virtual arch (PTX) is kept.
 if(_cuda_plugin_llm_srcs)
   set(_plugin_llm_cuda_architectures)
   foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
     string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
     if(_arch_num GREATER_EQUAL 75)
+      if(_arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
+        continue()
+      endif()
       list(APPEND _plugin_llm_cuda_architectures "${_arch}")
     endif()
   endforeach()
