@@ -249,7 +249,7 @@ TEST(LSTMTest, InvalidInputShapes) {
                                valid_W_data,
                                valid_R_dims,
                                valid_R_data,
-                               "First input tensor must have rank 3");
+                               "must have rank 3");
 
   RunInvalidLstmInputShapeTest(valid_X_dims,
                                valid_X_data,
