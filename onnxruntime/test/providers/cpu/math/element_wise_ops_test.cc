@@ -4232,6 +4232,29 @@ TEST(MathOpTest, ErfMoreData) {
   test.Run();
 }
 
+TEST(MathOpTest, ErfNaN) {
+  // Regression for #28462: NaN inputs were clamped to 1.0 on the FMA3 path.
+  OpTester test("Erf", 9);
+  constexpr float qnan = std::numeric_limits<float>::quiet_NaN();
+  constexpr int64_t size = 36;
+  std::vector<int64_t> dims{size};
+  std::vector<float> inputs(size);
+  std::vector<float> outputs(size);
+  for (int64_t i = 0; i < size; ++i) {
+    if (i % 5 == 0) {
+      inputs[i] = qnan;
+      outputs[i] = qnan;
+    } else {
+      const float v = 0.1f * static_cast<float>(i - size / 2);
+      inputs[i] = v;
+      outputs[i] = std::erf(v);
+    }
+  }
+  test.AddInput<float>("A", dims, inputs);
+  test.AddOutput<float>("B", dims, outputs);
+  test.Run();
+}
+
 TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
   OpTester test("Erf", 9);
   static constexpr int64_t size = 100;
