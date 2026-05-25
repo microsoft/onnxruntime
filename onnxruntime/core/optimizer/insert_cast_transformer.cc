@@ -287,125 +287,138 @@ static bool ShouldKeepNativeCpuFp16ForMatMulOrGemm(
   return nk >= kMinNativeFp16NK;
 }
 
-static const IKernelTypeStrResolver& GetInsertCastKernelTypeStrResolver() {
+static bool KernelDomainMatchesNode(const KernelDef& kernel_def, const onnxruntime::Node& node) {
+  const auto& kernel_domain = kernel_def.Domain();
+  const auto& node_domain = node.Domain();
+  return kernel_domain == node_domain ||
+         (kernel_domain == kOnnxDomainAlias && node_domain.empty());
+}
+
+static bool KernelVersionMatchesNode(const KernelDef& kernel_def, const onnxruntime::Node& node) {
+  const auto [kernel_start_version, kernel_end_version] = kernel_def.SinceVersion();
+  return kernel_start_version <= node.SinceVersion() &&
+         kernel_end_version >= node.SinceVersion();
+}
+
+static bool IsKernelTypeCompatible(gsl::span<const MLDataType> enabled_types,
+                                   const ONNX_NAMESPACE::TypeProto& actual_type,
+                                   bool replace_fp16_with_float) {
+  const auto* type_to_check = &actual_type;
+  TypeProto float_tensor_type;
+  if (replace_fp16_with_float &&
+      DataTypeImpl::TypeFromProto(actual_type) == DataTypeImpl::GetTensorType<MLFloat16>()) {
+    float_tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    type_to_check = &float_tensor_type;
+  }
+
+  return std::any_of(enabled_types.begin(), enabled_types.end(),
+                     [type_to_check](const DataTypeImpl* enabled_type) {
+                       return enabled_type->IsCompatible(*type_to_check);
+                     });
+}
+
+static bool KernelTypeConstraintsMatchAllNodeArgs(const onnxruntime::Node& node,
+                                                  const KernelDef& kernel_def,
+                                                  bool replace_fp16_with_float) {
 #if !defined(ORT_MINIMAL_BUILD)
   static const OpSchemaKernelTypeStrResolver resolver;
 #else
   static const KernelTypeStrResolver resolver;
 #endif
-  return resolver;
-}
 
-static bool BuildTypeConstraintMapForNode(const onnxruntime::Node& node,
-                                          bool replace_fp16_with_float,
-                                          InlinedHashMap<std::string, MLDataType>& type_constraint_map) {
-  // Build the type-constraint map that kernel lookup uses for this node.
-  //
-  // ONNX kernel lookup is based on the operator schema's type variables (e.g. T, T1, T2)
-  // rather than directly on individual NodeArg names. For example, a schema may say that
-  // both inputs and the output are of type "T". To ask "does CPU have a kernel for this
-  // node as currently typed?" or "does CPU have a float32 fallback for this fp16 node?",
-  // we first need to resolve those schema type variables to concrete MLDataType values.
-  //
-  // When replace_fp16_with_float is false we record the node's current types as-is.
-  // When it is true we rewrite any float16 tensors to float in the constructed map so
-  // we can ask whether a valid float32 fallback kernel exists for the same operator.
-  const auto* schema = node.Op();
-  if (!schema) {
-    return false;
+  const auto actual_inputs = node.InputDefs();
+  const auto actual_outputs = node.OutputDefs();
+  const auto& actual_input_arg_counts = node.InputArgCount();
+  InlinedVector<int> actual_input_arg_offsets;
+  actual_input_arg_offsets.reserve(actual_input_arg_counts.size());
+  int current_offset = 0;
+  for (const auto arg_count : actual_input_arg_counts) {
+    actual_input_arg_offsets.push_back(current_offset);
+    current_offset += arg_count;
   }
 
-  const TypeConstraintMap& type_schema = schema->typeConstraintMap();
-  type_constraint_map.reserve(type_schema.size());
-
-  const auto SetTypeConstraint = [&](const std::string& type_str, const NodeArg* def) {
-    if (!def || !def->Exists()) {
-      return;
+  const auto CheckArg = [&](const NodeArg* arg,
+                            gsl::span<const MLDataType> enabled_types) {
+    if (!arg || !arg->Exists()) {
+      return true;
     }
 
-    TypeConstraintMap::const_iterator it = type_schema.find(type_str);
-    if (it == type_schema.end()) {
-      return;
+    const auto* type_proto = arg->TypeAsProto();
+    if (type_proto == nullptr) {
+      return false;
     }
 
-    auto type = DataTypeImpl::TypeFromProto(*(def->TypeAsProto()));
-    if (replace_fp16_with_float && type == DataTypeImpl::GetTensorType<MLFloat16>()) {
-      type = DataTypeImpl::GetTensorType<float>();
-    }
-
-    type_constraint_map[type_str] = type;
+    return IsKernelTypeCompatible(enabled_types, *type_proto, replace_fp16_with_float);
   };
 
-  const auto& input_arg_counts = node.InputArgCount();
-  const auto& input_defs = node.InputDefs();
-  const auto& formal_inputs = schema->inputs();
-  const size_t num_inputs = std::min(formal_inputs.size(), input_arg_counts.size());
-  int input_idx_start = 0;
-  for (size_t formal_idx = 0;
-       formal_idx < num_inputs;
-       input_idx_start += input_arg_counts[formal_idx], formal_idx++) {
-    const auto& type_str = formal_inputs[formal_idx].GetTypeStr();
-    // Variadic formal parameters can map to multiple actual inputs. For current CPU fp16
-    // preservation/fallback decisions we only need one concrete binding for the schema type
-    // variable, so we take the first existing actual input for that formal parameter.
-    for (int input_idx = 0; input_idx < input_arg_counts[formal_idx]; input_idx++) {
-      const size_t idx = static_cast<size_t>(input_idx_start) + static_cast<size_t>(input_idx);
-      ORT_ENFORCE(idx < input_defs.size());
-      const NodeArg* input_def = input_defs[idx];
-      if (!input_def || !input_def->Exists()) {
-        continue;
-      }
-
-      SetTypeConstraint(type_str, input_def);
-      break;
+  for (const auto& [kernel_type_str, enabled_types] : kernel_def.TypeConstraints()) {
+    gsl::span<const ArgTypeAndIndex> constraint_args;
+    if (!resolver.ResolveKernelTypeStr(node, kernel_type_str, constraint_args).IsOK()) {
+      return false;
     }
-  }
 
-  const auto& output_defs = node.OutputDefs();
-  const auto& formal_outputs = schema->outputs();
-  const size_t num_outputs = std::min(formal_outputs.size(), output_defs.size());
-  for (size_t idx = 0; idx < num_outputs; idx++) {
-    const auto& type_str = formal_outputs[idx].GetTypeStr();
-    SetTypeConstraint(type_str, output_defs[idx]);
+    for (const auto& [arg_type, formal_arg_idx] : constraint_args) {
+      if (arg_type == ArgType::kInput) {
+        if (formal_arg_idx >= actual_input_arg_counts.size() ||
+            actual_input_arg_counts[formal_arg_idx] == 0) {
+          continue;
+        }
+
+        const auto first_arg_idx = actual_input_arg_offsets[formal_arg_idx];
+        for (int arg_idx = 0; arg_idx < actual_input_arg_counts[formal_arg_idx]; arg_idx++) {
+          const auto actual_arg_idx = static_cast<size_t>(first_arg_idx + arg_idx);
+          ORT_ENFORCE(actual_arg_idx < actual_inputs.size());
+          if (!CheckArg(actual_inputs[actual_arg_idx], enabled_types)) {
+            return false;
+          }
+        }
+      } else {
+        if (formal_arg_idx < actual_outputs.size() &&
+            !CheckArg(actual_outputs[formal_arg_idx], enabled_types)) {
+          return false;
+        }
+      }
+    }
   }
 
   return true;
+}
+
+static bool HasCpuKernelWithTypeSupport(
+    const onnxruntime::Node& node,
+    const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
+    bool replace_fp16_with_float) {
+  for (const KernelRegistry* cpu_kernel_registry : cpu_kernel_registries) {
+    for (const auto& [_, kernel_create_info] : cpu_kernel_registry->GetKernelCreateMap()) {
+      const auto* kernel_def = kernel_create_info.kernel_def.get();
+      if (kernel_def != nullptr &&
+          kernel_def->Provider() == kCpuExecutionProvider &&
+          kernel_def->OpName() == node.OpType() &&
+          KernelDomainMatchesNode(*kernel_def, node) &&
+          KernelVersionMatchesNode(*kernel_def, node) &&
+          KernelTypeConstraintsMatchAllNodeArgs(node, *kernel_def, replace_fp16_with_float)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 static bool HasCpuKernelForCurrentTypes(
     const onnxruntime::Node& node,
     const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
     const logging::Logger& logger) {
-  const auto& resolver = GetInsertCastKernelTypeStrResolver();
-  for (const KernelRegistry* cpu_kernel_registry : cpu_kernel_registries) {
-    if (KernelRegistry::HasImplementationOf(*cpu_kernel_registry, node, kCpuExecutionProvider, resolver, logger)) {
-      return true;
-    }
-  }
-
-  return false;
+  ORT_UNUSED_PARAMETER(logger);
+  return HasCpuKernelWithTypeSupport(node, cpu_kernel_registries, false);
 }
 
 static bool HasCpuFloat32FallbackKernel(
     const onnxruntime::Node& node,
     const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
     const logging::Logger& logger) {
-  InlinedHashMap<std::string, MLDataType> type_constraint_map;
-  if (!BuildTypeConstraintMapForNode(node, true, type_constraint_map)) {
-    return false;
-  }
-
-  for (const KernelRegistry* cpu_kernel_registry : cpu_kernel_registries) {
-    const KernelCreateInfo* kernel_create_info{};
-    const auto lookup_status = cpu_kernel_registry->TryFindKernel(
-        kCpuExecutionProvider, node.OpType(), node.Domain(),
-        node.SinceVersion(), type_constraint_map, logger, &kernel_create_info);
-    if (lookup_status.IsOK() && kernel_create_info != nullptr) {
-      return true;
-    }
-  }
-
-  return false;
+  ORT_UNUSED_PARAMETER(logger);
+  return HasCpuKernelWithTypeSupport(node, cpu_kernel_registries, true);
 }
 
 onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
@@ -539,7 +552,13 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
           type_constraint_map[type_str] = DataTypeImpl::GetTensorType<float>();
           break;  // we don't have multiple tensors feeding into one input
         }
-        type_constraint_map[type_str] = DataTypeImpl::TypeFromProto(*(input_def->TypeAsProto()));
+
+        const auto* type_proto = input_def->TypeAsProto();
+        if (type_proto == nullptr) {
+          return false;
+        }
+
+        type_constraint_map[type_str] = DataTypeImpl::TypeFromProto(*type_proto);
         break;  // we don't have multiple tensors feeding into one input
       }
     }
@@ -581,7 +600,12 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
         fp16_args.emplace((int)idx);
         type_constraint_map[type_str] = DataTypeImpl::GetTensorType<float>();
       } else {
-        type_constraint_map[type_str] = DataTypeImpl::TypeFromProto(*(output_def->TypeAsProto()));
+        const auto* type_proto = output_def->TypeAsProto();
+        if (type_proto == nullptr) {
+          return false;
+        }
+
+        type_constraint_map[type_str] = DataTypeImpl::TypeFromProto(*type_proto);
       }
     }
 

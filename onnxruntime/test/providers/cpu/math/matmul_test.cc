@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 
 #include "core/mlas/inc/mlas.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -717,8 +718,8 @@ TEST(MathOpTest, MatMulFloat16NativePrepackedWeightsAreNotShared) {
 
   SessionOptions so;
   ASSERT_EQ(so.AddInitializer("B", &b), Status::OK());
-  ASSERT_EQ(so.config_options.AddConfigEntry("session.enable_cpu_fp16", "1"), Status::OK());
-  ASSERT_EQ(so.config_options.AddConfigEntry("session.cpu_fp16_use_fp32_fallback_heuristic", "0"), Status::OK());
+  ASSERT_EQ(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableCpuFp16, "1"), Status::OK());
+  ASSERT_EQ(so.config_options.AddConfigEntry(kOrtSessionOptionsCpuFp16UseFp32FallbackHeuristic, "0"), Status::OK());
 
   test.EnableSharingOfPrePackedWeightsAcrossSessions();
 

@@ -25,17 +25,21 @@ namespace test {
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
-static TypeProto MakeFp16TensorType(std::initializer_list<int64_t> shape = {}) {
-  TypeProto tensor_float_16;
-  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+static TypeProto MakeTensorType(TensorProto_DataType elem_type, std::initializer_list<int64_t> shape = {}) {
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(elem_type);
   if (shape.size() > 0) {
-    auto* tensor_shape = tensor_float_16.mutable_tensor_type()->mutable_shape();
+    auto* tensor_shape = tensor_type.mutable_tensor_type()->mutable_shape();
     for (const auto dim : shape) {
       tensor_shape->add_dim()->set_dim_value(dim);
     }
   }
 
-  return tensor_float_16;
+  return tensor_type;
+}
+
+static TypeProto MakeFp16TensorType(std::initializer_list<int64_t> shape = {}) {
+  return MakeTensorType(TensorProto_DataType_FLOAT16, shape);
 }
 
 TEST(TransformerTest, InsertCastGPUTest) {
@@ -418,6 +422,38 @@ static std::shared_ptr<Model> MakeCpuFp16MatMulModelWithShapes(const std::string
   } else {
     graph.SetInputs({&a, &b});
   }
+  graph.SetOutputs({&y});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+
+  return model;
+}
+
+static std::shared_ptr<Model> MakeCpuFp16ResizeModel(const std::string& model_name, bool assign_cpu_ep) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 13;
+  auto model = std::make_shared<onnxruntime::Model>(model_name, false, ModelMetaData(), PathString(),
+                                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                                    std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                    DefaultLoggingManager().DefaultLogger());
+  auto& graph = model->MainGraph();
+
+  TypeProto x_type = MakeFp16TensorType({1, 1, 2, 2});
+  TypeProto roi_type = MakeTensorType(TensorProto_DataType_FLOAT, {0});
+  TypeProto scales_type = MakeTensorType(TensorProto_DataType_FLOAT, {4});
+  TypeProto y_type = MakeFp16TensorType({1, 1, 4, 4});
+
+  auto& x = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& roi = graph.GetOrCreateNodeArg("roi", &roi_type);
+  auto& scales = graph.GetOrCreateNodeArg("scales", &scales_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &y_type);
+
+  auto& node = graph.AddNode("Resize", "Resize", "fp16 resize fallback test",
+                             ArgMap{&x, &roi, &scales}, ArgMap{&y});
+  if (assign_cpu_ep) {
+    node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  }
+
+  graph.SetInputs({&x, &roi, &scales});
   graph.SetOutputs({&y});
   ORT_THROW_IF_ERROR(graph.Resolve());
 
@@ -878,6 +914,31 @@ TEST(TransformerTest, CpuFp16UnsupportedCpuAssignedOpStillGetsCasts) {
   ASSERT_EQ(abs_node->OutputDefs().size(), 1U);
   EXPECT_TRUE(IsNodeArgType(*abs_node->InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
   EXPECT_TRUE(IsNodeArgType(*abs_node->OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+}
+
+TEST(TransformerTest, CpuFp16CpuAssignedResizeWithoutFp16KernelUsesFp32Fallback) {
+  auto model = MakeCpuFp16ResizeModel("cpu_fp16_resize_cpu_assigned", true);
+  auto& graph = model->MainGraph();
+
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get(),
+                                    true, false);
+  bool modified = false;
+  EXPECT_STATUS_OK(transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger()));
+  EXPECT_STATUS_OK(graph.Resolve());
+
+  const auto op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts.at("Cast"), 2);
+
+  const Node* resize_node = FindNodeByOpType(graph, "Resize");
+  ASSERT_NE(resize_node, nullptr);
+  EXPECT_EQ(resize_node->SinceVersion(), 13);
+  EXPECT_EQ(resize_node->GetExecutionProviderType(), kCpuExecutionProvider);
+  ASSERT_EQ(resize_node->InputDefs().size(), 3U);
+  ASSERT_EQ(resize_node->OutputDefs().size(), 1U);
+  EXPECT_TRUE(IsNodeArgType(*resize_node->InputDefs()[0], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(IsNodeArgType(*resize_node->InputDefs()[1], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(IsNodeArgType(*resize_node->InputDefs()[2], DataTypeImpl::GetTensorType<float>()));
+  EXPECT_TRUE(IsNodeArgType(*resize_node->OutputDefs()[0], DataTypeImpl::GetTensorType<float>()));
 }
 
 TEST(TransformerTest, CpuFp16SupportedCpuOpKeepsFp16WhenEnabled) {

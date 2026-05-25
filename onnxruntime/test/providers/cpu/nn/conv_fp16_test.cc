@@ -9,7 +9,6 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/random_generator.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/scoped_env_vars.h"
 #include "default_providers.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
