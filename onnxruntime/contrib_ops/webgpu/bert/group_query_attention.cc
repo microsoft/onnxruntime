@@ -347,15 +347,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   }
 
   if (kv_empty) {
-    // KV inputs are empty - shared KV layer. Only need to extract Q and optionally apply RoPE to Q.
-    if (parameters.is_packed_qkv_) {
-      // Extract only Q from packed QKV — no need to allocate K/V split tensors.
-      qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
-      ORT_RETURN_IF_ERROR(ExtractQFromPackedQKV(context, parameters, query, &qSplit));
-      parameters.is_packed_qkv_ = false;
-      parameters.qkv_format_ = Q_K_V_BSNH;
-      query = &qSplit;
-    }
+    // KV inputs are empty - shared KV layer. Only need to optionally apply RoPE to Q.
+    ORT_ENFORCE(!parameters.is_packed_qkv_, "Packed QKV is not supported with kv_sequence_length==0 (shared KV layers).");
     if (do_rotary_) {
       // Apply RoPE to Q only — K doesn't need rotation since we reuse another layer's already-rotated KV cache.
       qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
