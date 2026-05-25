@@ -118,6 +118,11 @@ jobs:
             bash -c "
               set -ex
               export PATH=/opt/python/cp312-cp312/bin:\$PATH
+              # Ensure libcudart.so.13 is findable regardless of host-runner NVIDIA Container Toolkit configuration.
+              # The CUDA runtime library lives in the container image at /usr/local/cuda-13.0/lib64, but the
+              # LD_LIBRARY_PATH may not include this path when the runner's NVIDIA toolkit only mounts driver
+              # libraries at /usr/local/nvidia/lib64.
+              export LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
 
               # Install the ORT wheel
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl
