@@ -422,7 +422,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (kv_empty) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "WebGPU non-flash attention path does not support kv_sequence_length==0 (shared KV layers). "
-                           "Flash attention is required for Gemma4 KV-shared decoder layers.");
+                           "Flash attention is required for KV-shared decoder layers.");
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
