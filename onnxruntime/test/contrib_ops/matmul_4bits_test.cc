@@ -293,6 +293,7 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     base_opts.output_abs_error = 0.1f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
 #if defined(USE_WEBGPU)
+    // Match existing fp16 MatMulNBits tolerance for WebGPU builds while keeping CPU stricter.
     base_opts.output_abs_error = 0.1f;
 #else
     base_opts.output_abs_error = 0.065f;
