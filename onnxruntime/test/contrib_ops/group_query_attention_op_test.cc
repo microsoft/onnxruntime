@@ -369,7 +369,8 @@ static std::vector<float> RunGQASharedKV(
     int num_heads,
     int kv_num_heads,
     int head_size,
-    bool use_cuda = false) {
+    bool use_cuda = false,
+    bool use_webgpu = false) {
   const int hidden_size = num_heads * head_size;
   const int total_seq_len = past_seq_len;  // all KV data is in past
 
@@ -414,6 +415,8 @@ static std::vector<float> RunGQASharedKV(
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (use_cuda) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
+  } else if (use_webgpu) {
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
   } else {
     execution_providers.push_back(DefaultCpuExecutionProvider());
   }
@@ -828,7 +831,8 @@ static std::vector<float> RunGQASharedKVWithRotary(
     int num_heads,
     int kv_num_heads,
     int head_size,
-    bool use_cuda = false) {
+    bool use_cuda = false,
+    bool use_webgpu = false) {
   const int hidden_size = num_heads * head_size;
   const int total_seq_len = past_seq_len;
   const int rotary_dim = head_size;           // full rotary
@@ -896,6 +900,8 @@ static std::vector<float> RunGQASharedKVWithRotary(
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (use_cuda) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
+  } else if (use_webgpu) {
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
   } else {
     execution_providers.push_back(DefaultCpuExecutionProvider());
   }
