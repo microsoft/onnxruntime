@@ -210,9 +210,9 @@ Status RunRotaryEmbeddingQOnly(onnxruntime::webgpu::ComputeContext& context,
 
   // K domain with 0 heads — shader condition `bsnh[2] < k_global_shape[2]` is never true.
   std::vector<uint32_t> k_global_dims = {gsl::narrow_cast<uint32_t>(params.batch_size_),
-                                          gsl::narrow_cast<uint32_t>(params.sequence_length_),
-                                          0u,
-                                          gsl::narrow_cast<uint32_t>(head_size - half_rotary_embedding_dim)};
+                                         gsl::narrow_cast<uint32_t>(params.sequence_length_),
+                                         0u,
+                                         gsl::narrow_cast<uint32_t>(head_size - half_rotary_embedding_dim)};
 
   const auto q_domain_size = gsl::narrow_cast<uint32_t>(q_global_shape.Size());
 
