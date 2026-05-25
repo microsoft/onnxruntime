@@ -495,7 +495,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
-  // Extract present_sequence_length after kv_empty aliasing ensures present_key is valid.
+  // Extract present_sequence_length directly from present_key tensor shape
+  // after kv_empty aliasing ensures present_key is valid:
+  // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
   const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
   if (parameters.sequence_length_ > 1) {
