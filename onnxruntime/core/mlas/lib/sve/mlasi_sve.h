@@ -480,6 +480,18 @@ MlasSveMultiplyAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT
 
 MLAS_SVE_TARGET
 MLAS_FORCEINLINE
+MLAS_SVINT32
+MlasSveMultiplyAddInt32(
+    svbool_t Pred,
+    svint32_t Vector1,
+    svint32_t Vector2,
+    svint32_t Vector3)
+{
+    return svmla_s32_m(Pred, Vector3, Vector1, Vector2);
+}
+
+MLAS_SVE_TARGET
+MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveMultiplyAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, float Scalar2, MLAS_SVFLOAT32 Vector3)
 {
