@@ -741,10 +741,10 @@ struct MLAS_FP8_GEMM_SHAPE_PARAMS {
 #define MLAS_FP8_MODE_DEFINED
 enum mlas_fp8_mode : uint8_t {
     MLAS_FP8_MODE_E4M3_INF = 0,  ///< E4M3 with NaN/Inf on overflow.
-    MLAS_FP8_MODE_E4M3_SAT = 1,  ///< E4M3 with saturation on overflow.
-    MLAS_FP8_MODE_E5M2_INF = 2,  ///< E5M2 with NaN/Inf on overflow.
-    MLAS_FP8_MODE_E5M2_SAT = 3,  ///< E5M2 with saturation on overflow.
-    MLAS_FP8_MODE_END = 4,       ///< End marker. Do not use.
+    MLAS_FP8_MODE_E4M3_SAT,      ///< E4M3 with saturation on overflow.
+    MLAS_FP8_MODE_E5M2_INF,      ///< E5M2 with NaN/Inf on overflow.
+    MLAS_FP8_MODE_E5M2_SAT,      ///< E5M2 with saturation on overflow.
+    MLAS_FP8_MODE_END,           ///< End marker. Do not use.
 };
 #endif  // MLAS_FP8_MODE_DEFINED
 
