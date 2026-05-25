@@ -76,16 +76,16 @@ Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   // Inputs: packed_qkv [B, S, D], outputs: Q, K, V [B, S, D]
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
   if (q_only_) {
-    const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+    const auto& query = sh.AddOutput("query", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
     sh.MainFunctionBody()
         << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.input_size")
-        << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
-        << "  let batch = packed_qkv_indices[0];\n"
-        << "  let seq = packed_qkv_indices[1];\n"
-        << "  let d = packed_qkv_indices[2];\n"
-        << "  if (d < uniforms.hidden_size) {\n"
-        << "    " << query.SetByIndices("vec3<u32>(batch, seq, d)", packed_qkv.GetByOffset("global_idx")) << ";\n"
-        << "  }\n";
+        << "  let query_indices = " << query.OffsetToIndices("global_idx") << ";\n"
+        << "  let batch = query_indices[0];\n"
+        << "  let seq = query_indices[1];\n"
+        << "  let d = query_indices[2];\n"
+        << "  let total_d = uniforms.hidden_size + 2u * uniforms.kv_hidden_size;\n"
+        << "  let input_offset = batch * uniforms.query_shape[1u] * total_d + seq * total_d + d;\n"
+        << "  " << query.SetByOffset("global_idx", packed_qkv.GetByOffset("input_offset")) << ";\n";
   } else {
     const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
     const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
@@ -133,18 +133,18 @@ Status ExtractQFromPackedQKV(onnxruntime::webgpu::ComputeContext& context, const
                              const Tensor* packedQKV, Tensor* query) {
   const int components = std::min({GetMaxComponents(params.hidden_size_), GetMaxComponents(params.kv_hidden_size_), GetMaxComponents(params.v_hidden_size_)});
   SplitPackedQKVProgram program(/*q_only=*/true);
-  auto input_size = packedQKV->Shape().Size();
-  const uint32_t vectorized_input_size = static_cast<uint32_t>(input_size / components);
+  auto output_size = query->Shape().Size();
+  const uint32_t vectorized_output_size = static_cast<uint32_t>(output_size / components);
   program
       .CacheHint("q_only", components)
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddOutput({query, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddUniformVariables({
-          {vectorized_input_size},
+          {vectorized_output_size},
           {static_cast<uint32_t>(params.hidden_size_ / components)},
           {static_cast<uint32_t>(params.kv_hidden_size_ / components)},
       })
-      .SetDispatchGroupSize((vectorized_input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+      .SetDispatchGroupSize((vectorized_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
 
