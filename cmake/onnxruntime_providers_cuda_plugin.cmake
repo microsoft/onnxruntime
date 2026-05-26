@@ -257,49 +257,28 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
 # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
 if(_cuda_plugin_sm90_tma_srcs OR _cuda_plugin_llm_sm90_srcs)
   set(_plugin_sm90_all_srcs ${_cuda_plugin_sm90_tma_srcs} ${_cuda_plugin_llm_sm90_srcs})
-  set(_plugin_has_sm90_plus FALSE)
-  foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
-    string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
-    if(_arch_num GREATER_EQUAL 90)
-      set(_plugin_has_sm90_plus TRUE)
-      break()
-    endif()
-  endforeach()
-  if(_plugin_has_sm90_plus)
-    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_sm90_tma ${_plugin_sm90_all_srcs})
-    set_target_properties(onnxruntime_providers_cuda_plugin_sm90_tma PROPERTIES
+  onnxruntime_filter_cuda_archs(_plugin_sm90_check MIN_SM 90)
+  if(_plugin_sm90_check)
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_sm90_tma
+      PARENT onnxruntime_providers_cuda_plugin
       CUDA_ARCHITECTURES "90a-real"
-      CUDA_STANDARD 20
-      CUDA_STANDARD_REQUIRED ON
-    )
-    target_include_directories(onnxruntime_providers_cuda_plugin_sm90_tma PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
-    target_compile_definitions(onnxruntime_providers_cuda_plugin_sm90_tma PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_DEFINITIONS>)
-    target_compile_options(onnxruntime_providers_cuda_plugin_sm90_tma PRIVATE
-      ${_cuda_plugin_shared_compile_options}
-      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
-    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE onnxruntime_providers_cuda_plugin_sm90_tma)
+      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_plugin_sm90_all_srcs})
   endif()
 endif()
 
 if(_cuda_plugin_sm120_tma_srcs)
   onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
   if(_plugin_sm120_cuda_architectures)
-    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_sm120_tma ${_cuda_plugin_sm120_tma_srcs})
-    set_target_properties(onnxruntime_providers_cuda_plugin_sm120_tma PROPERTIES
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_sm120_tma
+      PARENT onnxruntime_providers_cuda_plugin
       CUDA_ARCHITECTURES "${_plugin_sm120_cuda_architectures}"
-      CUDA_STANDARD 20
-      CUDA_STANDARD_REQUIRED ON
-    )
-    target_include_directories(onnxruntime_providers_cuda_plugin_sm120_tma PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
-    target_compile_definitions(onnxruntime_providers_cuda_plugin_sm120_tma PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_DEFINITIONS>)
-    target_compile_options(onnxruntime_providers_cuda_plugin_sm120_tma PRIVATE
-      ${_cuda_plugin_shared_compile_options}
-      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
-    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE onnxruntime_providers_cuda_plugin_sm120_tma)
+      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_cuda_plugin_sm120_tma_srcs})
   endif()
 endif()
 
@@ -311,21 +290,13 @@ endif()
 if(_cuda_plugin_flash_attention_srcs)
   onnxruntime_filter_cuda_archs(_plugin_flash_cuda_architectures MIN_SM 80)
   if(_plugin_flash_cuda_architectures)
-    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_flash_attention ${_cuda_plugin_flash_attention_srcs})
-    set_target_properties(onnxruntime_providers_cuda_plugin_flash_attention PROPERTIES
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_flash_attention
+      PARENT onnxruntime_providers_cuda_plugin
       CUDA_ARCHITECTURES "${_plugin_flash_cuda_architectures}"
-      CUDA_STANDARD 20
-      CUDA_STANDARD_REQUIRED ON
-    )
-    target_include_directories(onnxruntime_providers_cuda_plugin_flash_attention PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
-    target_compile_definitions(onnxruntime_providers_cuda_plugin_flash_attention PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_DEFINITIONS>)
-    target_compile_options(onnxruntime_providers_cuda_plugin_flash_attention PRIVATE
-      ${_cuda_plugin_shared_compile_options}
-      # Flash attention uses a lower nvcc --threads (memory-intensive compilation).
-      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_FLASH_NVCC_THREADS}\">")
-    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE onnxruntime_providers_cuda_plugin_flash_attention)
+      NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_cuda_plugin_flash_attention_srcs})
   endif()
 endif()
 
@@ -336,20 +307,13 @@ endif()
 if(_cuda_plugin_llm_srcs)
   onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
   if(_plugin_llm_cuda_architectures)
-    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_llm ${_cuda_plugin_llm_srcs})
-    set_target_properties(onnxruntime_providers_cuda_plugin_llm PROPERTIES
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_llm
+      PARENT onnxruntime_providers_cuda_plugin
       CUDA_ARCHITECTURES "${_plugin_llm_cuda_architectures}"
-      CUDA_STANDARD 20
-      CUDA_STANDARD_REQUIRED ON
-    )
-    target_include_directories(onnxruntime_providers_cuda_plugin_llm PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
-    target_compile_definitions(onnxruntime_providers_cuda_plugin_llm PRIVATE
-      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,COMPILE_DEFINITIONS>)
-    target_compile_options(onnxruntime_providers_cuda_plugin_llm PRIVATE
-      ${_cuda_plugin_shared_compile_options}
-      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
-    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE onnxruntime_providers_cuda_plugin_llm)
+      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_cuda_plugin_llm_srcs})
   endif()
 endif()
 

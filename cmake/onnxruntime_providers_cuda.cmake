@@ -464,31 +464,26 @@
     # Compile at exactly 90a-real: SM120+ GPUs run SM90 native code via forward compat.
     # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
     set(_ort_sm90_all_srcs ${onnxruntime_cuda_sm90_tma_srcs} ${onnxruntime_cuda_llm_sm90_srcs})
-    set(_ort_has_sm90_plus FALSE)
-    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
-      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
-      if(_arch_num GREATER_EQUAL 90)
-        set(_ort_has_sm90_plus TRUE)
-        break()
-      endif()
-    endforeach()
-    if(_ort_has_sm90_plus)
-      onnxruntime_add_object_library(onnxruntime_providers_cuda_sm90_tma ${_ort_sm90_all_srcs})
-      set_target_properties(onnxruntime_providers_cuda_sm90_tma PROPERTIES CUDA_ARCHITECTURES "90a-real")
-      config_cuda_provider_shared_module(onnxruntime_providers_cuda_sm90_tma)
-      target_compile_options(onnxruntime_providers_cuda_sm90_tma PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_sm90_tma)
+    onnxruntime_filter_cuda_archs(_ort_sm90_check MIN_SM 90)
+    if(_ort_sm90_check)
+      onnxruntime_add_cuda_object_library(
+        NAME onnxruntime_providers_cuda_sm90_tma
+        PARENT onnxruntime_providers_cuda
+        CUDA_ARCHITECTURES "90a-real"
+        NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+        SOURCES ${_ort_sm90_all_srcs})
     endif()
   endif()
 
   if(onnxruntime_cuda_sm120_tma_srcs)
     onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
     if(_ort_sm120_cuda_architectures)
-      onnxruntime_add_object_library(onnxruntime_providers_cuda_sm120_tma ${onnxruntime_cuda_sm120_tma_srcs})
-      set_target_properties(onnxruntime_providers_cuda_sm120_tma PROPERTIES CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}")
-      config_cuda_provider_shared_module(onnxruntime_providers_cuda_sm120_tma)
-      target_compile_options(onnxruntime_providers_cuda_sm120_tma PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_sm120_tma)
+      onnxruntime_add_cuda_object_library(
+        NAME onnxruntime_providers_cuda_sm120_tma
+        PARENT onnxruntime_providers_cuda
+        CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+        SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
     endif()
   endif()
 
@@ -500,14 +495,12 @@
   if(onnxruntime_cuda_flash_attention_srcs)
     onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80)
     if(_ort_flash_cuda_architectures)
-      onnxruntime_add_object_library(onnxruntime_providers_cuda_flash_attention ${onnxruntime_cuda_flash_attention_srcs})
-      set_target_properties(onnxruntime_providers_cuda_flash_attention PROPERTIES
-        CUDA_ARCHITECTURES "${_ort_flash_cuda_architectures}")
-      config_cuda_provider_shared_module(onnxruntime_providers_cuda_flash_attention)
-      target_compile_options(onnxruntime_providers_cuda_flash_attention PRIVATE
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_FLASH_NVCC_THREADS}\">"
-      )
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_flash_attention)
+      onnxruntime_add_cuda_object_library(
+        NAME onnxruntime_providers_cuda_flash_attention
+        PARENT onnxruntime_providers_cuda
+        CUDA_ARCHITECTURES "${_ort_flash_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
+        SOURCES ${onnxruntime_cuda_flash_attention_srcs})
     endif()
   endif()
 
@@ -520,12 +513,12 @@
   if(onnxruntime_cuda_llm_srcs)
     onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
     if(_ort_llm_cuda_architectures)
-      onnxruntime_add_object_library(onnxruntime_providers_cuda_llm ${onnxruntime_cuda_llm_srcs})
-      set_target_properties(onnxruntime_providers_cuda_llm PROPERTIES
-        CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}")
-      config_cuda_provider_shared_module(onnxruntime_providers_cuda_llm)
-      target_compile_options(onnxruntime_providers_cuda_llm PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_providers_cuda_llm)
+      onnxruntime_add_cuda_object_library(
+        NAME onnxruntime_providers_cuda_llm
+        PARENT onnxruntime_providers_cuda
+        CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+        SOURCES ${onnxruntime_cuda_llm_srcs})
     endif()
   endif()
 

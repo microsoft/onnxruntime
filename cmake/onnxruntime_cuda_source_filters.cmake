@@ -190,3 +190,56 @@ function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
   endforeach()
   set("${OUTPUT_VAR}" "${_filtered}" PARENT_SCOPE)
 endfunction()
+
+# Create a CUDA OBJECT library for the in-tree CUDA EP and link it to the parent target.
+# Uses config_cuda_provider_shared_module() for full configuration (includes, link libs,
+# PCH, platform flags, etc.), then applies nvcc --threads.
+#
+# Usage:
+#   onnxruntime_add_cuda_object_library(
+#       NAME <target_name>
+#       PARENT <parent_target>
+#       CUDA_ARCHITECTURES <arch_list>
+#       NVCC_THREADS <thread_count>
+#       SOURCES <source_files...>)
+function(onnxruntime_add_cuda_object_library)
+  cmake_parse_arguments(PARSE_ARGV 0 _ARG "" "NAME;PARENT;CUDA_ARCHITECTURES;NVCC_THREADS" "SOURCES")
+
+  onnxruntime_add_object_library("${_ARG_NAME}" ${_ARG_SOURCES})
+  set_target_properties("${_ARG_NAME}" PROPERTIES CUDA_ARCHITECTURES "${_ARG_CUDA_ARCHITECTURES}")
+  config_cuda_provider_shared_module("${_ARG_NAME}")
+  target_compile_options("${_ARG_NAME}" PRIVATE
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${_ARG_NVCC_THREADS}\">")
+  target_link_libraries("${_ARG_PARENT}" PRIVATE "${_ARG_NAME}")
+endfunction()
+
+# Create a CUDA OBJECT library for the plugin EP and link it to the parent target.
+# Handles the boilerplate: set CUDA_ARCHITECTURES/CUDA_STANDARD, propagate includes
+# and compile definitions from the parent, apply shared compile options + nvcc --threads.
+#
+# Usage:
+#   onnxruntime_add_cuda_plugin_object_library(
+#       NAME <target_name>
+#       PARENT <parent_target>
+#       CUDA_ARCHITECTURES <arch_list>
+#       NVCC_THREADS <thread_count>
+#       COMPILE_OPTIONS <options...>
+#       SOURCES <source_files...>)
+function(onnxruntime_add_cuda_plugin_object_library)
+  cmake_parse_arguments(PARSE_ARGV 0 _ARG "" "NAME;PARENT;CUDA_ARCHITECTURES;NVCC_THREADS" "SOURCES;COMPILE_OPTIONS")
+
+  onnxruntime_add_object_library("${_ARG_NAME}" ${_ARG_SOURCES})
+  set_target_properties("${_ARG_NAME}" PROPERTIES
+    CUDA_ARCHITECTURES "${_ARG_CUDA_ARCHITECTURES}"
+    CUDA_STANDARD 20
+    CUDA_STANDARD_REQUIRED ON
+  )
+  target_include_directories("${_ARG_NAME}" PRIVATE
+    $<TARGET_PROPERTY:${_ARG_PARENT},INCLUDE_DIRECTORIES>)
+  target_compile_definitions("${_ARG_NAME}" PRIVATE
+    $<TARGET_PROPERTY:${_ARG_PARENT},COMPILE_DEFINITIONS>)
+  target_compile_options("${_ARG_NAME}" PRIVATE
+    ${_ARG_COMPILE_OPTIONS}
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${_ARG_NVCC_THREADS}\">")
+  target_link_libraries("${_ARG_PARENT}" PRIVATE "${_ARG_NAME}")
+endfunction()
