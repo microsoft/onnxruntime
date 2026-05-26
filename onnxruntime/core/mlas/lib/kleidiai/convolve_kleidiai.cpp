@@ -447,6 +447,9 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
 
     const auto lhs_size = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(m,kh*kw,ci);
     auto lhs = std::make_unique<std::byte[]>(lhs_size);
+    // Some ukernel packing paths may not overwrite every byte in the packed buffer for partial tiles.
+    // Start from a deterministic zero state so stale heap contents cannot influence later math.
+    std::fill_n(lhs.get(), lhs_size, std::byte{0});
 
     std::unique_ptr<float[]> nhwc_holder;
     const float* activation_src = nullptr;
