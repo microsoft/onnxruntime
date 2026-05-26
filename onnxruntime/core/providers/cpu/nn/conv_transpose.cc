@@ -76,7 +76,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     size_t packed_filter_data_size = SafeInt<size_t>(packed_elements_per_group) * sizeof(float) * conv_transpose_attrs_.group;
     auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
 
-    // Wrap in BufferUniquePtr immediately to prevent leaks if MlasTranspose throws.
+    // Wrap in BufferUniquePtr immediately to prevent leaks.
     transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(std::move(alloc)));
 
     // Initialize memory to 0 as there could be some padding associated with pre-packed
