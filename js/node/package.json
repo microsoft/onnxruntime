@@ -37,6 +37,7 @@
   ],
   "devDependencies": {
     "@types/minimist": "^1.2.2",
+    "@types/node": "^20.10.0",
     "cmake-js": "^8.0.0",
     "jsonc": "^2.0.0",
     "minimist": "^1.2.8",

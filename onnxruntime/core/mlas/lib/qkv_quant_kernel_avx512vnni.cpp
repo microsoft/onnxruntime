@@ -83,19 +83,21 @@ QuantizeRowToU8(const float* src, uint8_t* dst, size_t len)
     i = 0;
     for (; i < vec_end; i += 16) {
         __m512 v = _mm512_loadu_ps(src + i);
-        // q = round(v * inv_scale) + 128, clamped to [0, 255]
+        // q = (v * inv_scale) + 128, clamped to [0, 255]
         __m512 scaled = _mm512_fmadd_ps(v, inv_scale_vec, zp_vec);
-        scaled = _mm512_roundscale_ps(scaled, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
         scaled = _mm512_max_ps(scaled, min_val);
         scaled = _mm512_min_ps(scaled, max_clamp);
-        __m512i qi = _mm512_cvtps_epi32(scaled);
+        // Round-to-nearest-even and convert to int32 in a single instruction
+        // (AVX-512 embedded rounding eliminates a separate vrndscaleps).
+        __m512i qi = _mm512_cvt_roundps_epi32(scaled, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
         // Pack 16 int32 -> 16 uint8
         __m128i packed = _mm512_cvtepi32_epi8(qi);
         _mm_storeu_si128(reinterpret_cast<__m128i*>(dst + i), packed);
     }
-    // Scalar tail
+    // Scalar tail (use nearbyintf for round-to-nearest-even, matching the
+    // AVX-512 embedded rounding semantics above).
     for (; i < len; ++i) {
-        float q = std::round(src[i] * inv_scale) + 128.0f;
+        float q = std::nearbyintf(src[i] * inv_scale) + 128.0f;
         q = std::max(0.0f, std::min(255.0f, q));
         dst[i] = static_cast<uint8_t>(q);
     }
@@ -169,9 +171,11 @@ VnniDotInt8PerTensor(
 
     // Correction: dpbusd computed sum(a_u8 * b_s8).
     // We want sum((a_u8 - 128) * b_s8) = sum(a_u8 * b_s8) - 128 * sum(b_s8)
-    float corrected = static_cast<float>(dot_i32) - 128.0f * static_cast<float>(b_sum_i32);
+    // Perform correction in int32 to preserve precision (avoids float rounding
+    // when |dot_i32| or |128*b_sum_i32| exceed 2^24).
+    int32_t corrected = dot_i32 - (128 * b_sum_i32);
 
-    return corrected * scale_a * scale_b;
+    return static_cast<float>(corrected) * scale_a * scale_b;
 }
 
 //
@@ -221,19 +225,19 @@ FusedDotInt8_Avx512(
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
         }
     } else {
-        __m512 scale_vec = _mm512_set1_ps(scales[0]);
+        // Per-tensor: defer scale multiplication until after accumulation.
+        // sum(a[k] * b[k] * scale) = scale * sum(a[k] * b[k])
+        // This saves one vmulps per 16 elements in the hot loop.
         for (; k < vec_end; k += 32) {
             __m128i raw0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k));
             __m512i i32_0 = _mm512_cvtepi8_epi32(raw0);
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
-            bf0 = _mm512_mul_ps(bf0, scale_vec);
             __m512 a0 = _mm512_loadu_ps(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
 
             __m128i raw1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k + 16));
             __m512i i32_1 = _mm512_cvtepi8_epi32(raw1);
             __m512 bf1 = _mm512_cvtepi32_ps(i32_1);
-            bf1 = _mm512_mul_ps(bf1, scale_vec);
             __m512 a1 = _mm512_loadu_ps(a_row + k + 16);
             acc1 = _mm512_fmadd_ps(a1, bf1, acc1);
         }
@@ -241,7 +245,6 @@ FusedDotInt8_Avx512(
             __m128i raw0 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + k));
             __m512i i32_0 = _mm512_cvtepi8_epi32(raw0);
             __m512 bf0 = _mm512_cvtepi32_ps(i32_0);
-            bf0 = _mm512_mul_ps(bf0, scale_vec);
             __m512 a0 = _mm512_loadu_ps(a_row + k);
             acc0 = _mm512_fmadd_ps(a0, bf0, acc0);
         }
@@ -251,9 +254,15 @@ FusedDotInt8_Avx512(
     float dot = _mm512_reduce_add_ps(acc0);
 
     // Scalar tail
-    for (; k < K; ++k) {
-        float sc = per_channel ? scales[k] : scales[0];
-        dot += a_row[k] * static_cast<float>(b_row[k]) * sc;
+    if (per_channel) {
+        for (; k < K; ++k) {
+            dot += a_row[k] * static_cast<float>(b_row[k]) * scales[k];
+        }
+    } else {
+        for (; k < K; ++k) {
+            dot += a_row[k] * static_cast<float>(b_row[k]);
+        }
+        dot *= scales[0];
     }
     return dot;
 }
@@ -402,11 +411,11 @@ VnniMultiDot4Int8PerTensor(
         bs[3] += static_cast<int32_t>(b3[k]);
     }
 
-    const float zp = 128.0f;
-    out[0] = (static_cast<float>(dot[0]) - zp * static_cast<float>(bs[0])) * combined_scale;
-    out[1] = (static_cast<float>(dot[1]) - zp * static_cast<float>(bs[1])) * combined_scale;
-    out[2] = (static_cast<float>(dot[2]) - zp * static_cast<float>(bs[2])) * combined_scale;
-    out[3] = (static_cast<float>(dot[3]) - zp * static_cast<float>(bs[3])) * combined_scale;
+    // Zero-point correction in int32 for precision (see VnniDotInt8PerTensor).
+    out[0] = static_cast<float>(dot[0] - 128 * bs[0]) * combined_scale;
+    out[1] = static_cast<float>(dot[1] - 128 * bs[1]) * combined_scale;
+    out[2] = static_cast<float>(dot[2] - 128 * bs[2]) * combined_scale;
+    out[3] = static_cast<float>(dot[3] - 128 * bs[3]) * combined_scale;
 }
 
 // ============================================================================
@@ -569,7 +578,7 @@ SVGemm_Avx512Vnni(
                     }
                 }
             } else {
-                __m512 scale_vec = _mm512_set1_ps(Scales[0]);
+                // Per-tensor: accumulate unscaled dot products, then scale the output row once.
                 for (size_t k = 0; k < K; ++k) {
                     const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
                     const float a_val = a_row[k];
@@ -580,14 +589,24 @@ SVGemm_Avx512Vnni(
                         __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + n));
                         __m512i i32 = _mm512_cvtepi8_epi32(raw);
                         __m512 bf = _mm512_cvtepi32_ps(i32);
-                        bf = _mm512_mul_ps(bf, scale_vec);
                         __m512 c_vec = _mm512_loadu_ps(c_row + n);
                         c_vec = _mm512_fmadd_ps(a_broadcast, bf, c_vec);
                         _mm512_storeu_ps(c_row + n, c_vec);
                     }
                     for (; n < N; ++n) {
-                        c_row[n] += a_val * static_cast<float>(b_row[n]) * Scales[0];
+                        c_row[n] += a_val * static_cast<float>(b_row[n]);
                     }
+                }
+
+                __m512 scale_vec = _mm512_set1_ps(Scales[0]);
+                n = 0;
+                for (; n < vec_end_n; n += 16) {
+                    __m512 c_vec = _mm512_loadu_ps(c_row + n);
+                    c_vec = _mm512_mul_ps(c_vec, scale_vec);
+                    _mm512_storeu_ps(c_row + n, c_vec);
+                }
+                for (; n < N; ++n) {
+                    c_row[n] *= Scales[0];
                 }
             }
         } else {

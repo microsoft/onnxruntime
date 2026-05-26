@@ -2108,7 +2108,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
-    5. For uint8 data, the `gather_axis` must be 0.
+    5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
+       for `bits` < 8 the values are packed along the last dimension (low-order bits first).
 
 #### Version
 
@@ -2118,7 +2119,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>bits</tt> : int</dt>
-<dd>Number of bits used for weight quantization. Must be either 4 or 8. </dd>
+<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. </dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>gather_axis</tt> : int</dt>

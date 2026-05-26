@@ -194,6 +194,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   if (do_rotary_) {
     // When kv_sequence_length == 0 (shared KV), only Q needs RoPE — K is skipped below.
     ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
+    // Validation of seqlens_k against rotary cache size is performed in CheckInputs()
+    // when seqlens_k is on CPU. GPU EPs where seqlens_k resides on device rely on
+    // RunRotaryEmbedding's position_ids validation for OOB protection.
+
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
     rotary_params.batch_size = batch_size;
