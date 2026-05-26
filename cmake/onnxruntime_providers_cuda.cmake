@@ -482,13 +482,7 @@
   endif()
 
   if(onnxruntime_cuda_sm120_tma_srcs)
-    set(_ort_sm120_cuda_architectures)
-    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
-      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
-      if(_arch_num GREATER_EQUAL 120)
-        list(APPEND _ort_sm120_cuda_architectures "${_arch}")
-      endif()
-    endforeach()
+    onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
     if(_ort_sm120_cuda_architectures)
       onnxruntime_add_object_library(onnxruntime_providers_cuda_sm120_tma ${onnxruntime_cuda_sm120_tma_srcs})
       set_target_properties(onnxruntime_providers_cuda_sm120_tma PROPERTIES CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}")
@@ -504,13 +498,7 @@
   set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
       "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
   if(onnxruntime_cuda_flash_attention_srcs)
-    set(_ort_flash_cuda_architectures)
-    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
-      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
-      if(_arch_num GREATER_EQUAL 80)
-        list(APPEND _ort_flash_cuda_architectures "${_arch}")
-      endif()
-    endforeach()
+    onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80)
     if(_ort_flash_cuda_architectures)
       onnxruntime_add_object_library(onnxruntime_providers_cuda_flash_attention ${onnxruntime_cuda_flash_attention_srcs})
       set_target_properties(onnxruntime_providers_cuda_flash_attention PROPERTIES
@@ -530,16 +518,7 @@
   # sm_120a triggers CCCL tcgen05 PTX headers that fail on Windows/MSVC. The virtual arch
   # (PTX) is kept so SM120 devices can JIT-compile the code.
   if(onnxruntime_cuda_llm_srcs)
-    set(_ort_llm_cuda_architectures)
-    foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
-      string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
-      if(_arch_num GREATER_EQUAL 75)
-        if(_arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
-          continue()
-        endif()
-        list(APPEND _ort_llm_cuda_architectures "${_arch}")
-      endif()
-    endforeach()
+    onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
     if(_ort_llm_cuda_architectures)
       onnxruntime_add_object_library(onnxruntime_providers_cuda_llm ${onnxruntime_cuda_llm_srcs})
       set_target_properties(onnxruntime_providers_cuda_llm PROPERTIES

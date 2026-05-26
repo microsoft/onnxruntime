@@ -73,7 +73,8 @@ jobs:
             --build_dir build `
             --skip_submodule_sync `
             --parallel `
-            --nvcc_threads 4 --flash_nvcc_threads 4 `
+            --nvcc_threads 4 `
+            --flash_nvcc_threads 4 `
             --use_binskim_compliant_compile_flags `
             --cmake_generator "Visual Studio 17 2022" `
             --build_shared_lib `

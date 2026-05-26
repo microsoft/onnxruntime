@@ -32,7 +32,8 @@ jobs:
         --use_binskim_compliant_compile_flags
         --build_wheel
         --parallel
-        --nvcc_threads 4 --flash_nvcc_threads 4
+        --nvcc_threads 4
+        --flash_nvcc_threads 4
         --cuda_version=12.8
         --cuda_home=/usr/local/cuda-12.8
         --cudnn_home=/usr/local/cuda-12.8
