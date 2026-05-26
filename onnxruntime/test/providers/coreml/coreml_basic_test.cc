@@ -3349,6 +3349,73 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+namespace {
+// int64 X -> Cast(bool) -> Not -> Cast(float). Wrap the bool tensor between
+// int<->bool Casts -- CoreML partitions cannot have bool I/O, so the bool
+// stays internal. Mirrors the And test scaffolding from PR #28597.
+std::string MakeNotChainModelData() {
+  onnxruntime::Model model("not_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto int64_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  const auto float_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &int64_type);
+  auto& b = graph.GetOrCreateNodeArg("B", &bool_type);
+  auto& n = graph.GetOrCreateNodeArg("N", &bool_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &float_type);
+
+  auto& cast_b = graph.AddNode("cast_b", "Cast", "int64 -> bool", {&x}, {&b});
+  cast_b.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  graph.AddNode("not", "Not", "logical not", {&b}, {&n});
+  auto& cast_y = graph.AddNode("cast_y", "Cast", "bool -> float", {&n}, {&y});
+  cast_y.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// Not is lowered to the ML Program 'logical_not' op.
+TEST(CoreMLExecutionProviderTest, Not_MLProgram) {
+  const std::string model_data = MakeNotChainModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue x_val;
+  CreateMLValue<int64_t>(CPUAllocator::DefaultInstance(), dims, {1, 0, 1, 0}, &x_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// Not only has an ML Program lowering ('logical_not'); on the NeuralNetwork
+// format the chain falls back to CPU.
+TEST(CoreMLExecutionProviderTest, NotNeuralNetworkNotSupported) {
+  const std::string model_data = MakeNotChainModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
