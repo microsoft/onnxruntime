@@ -72,23 +72,43 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   return plugin_ep;
 }
 
+// Do some basic checks on `ort_ep` to detect obvious issues early on.
+static Status SanityCheckOrtEp(const OrtEp& ort_ep) {
+  // Plugin EPs were first introduced in ORT 1.22, so we expect at least this API version.
+  constexpr auto kMinAllowedOrtVersionSupported = 22;
+
+  ORT_RETURN_IF_NOT(ort_ep.ort_version_supported >= kMinAllowedOrtVersionSupported,
+                    "OrtEp has invalid ort_version_supported=", ort_ep.ort_version_supported,
+                    " (expected at least ", kMinAllowedOrtVersionSupported, ").");
+
+  ORT_RETURN_IF_NOT(ort_ep.GetName != nullptr, "OrtEp has null GetName function pointer.");
+
+  ORT_RETURN_IF_NOT(ort_ep.GetName(&ort_ep) != nullptr, "OrtEp's GetName function returned null.");
+
+  return Status::OK();
+}
+
 Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
     const OrtSessionOptions& session_options,
     const OrtLogger& logger,
     /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
   plugin_ep = nullptr;
-  OrtEp* ort_ep = nullptr;
+  OrtEp* ort_ep_raw = nullptr;
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(),
                                                               ep_metadata_.data(), hardware_devices_.size(),
-                                                              &session_options, &logger, &ort_ep)));
-  ORT_RETURN_IF(ort_ep == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
+                                                              &session_options, &logger, &ort_ep_raw)));
+  ORT_RETURN_IF(ort_ep_raw == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
                 "' returned a NULL OrtEp instance");
+
+  auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter(ep_factory_));
+
+  ORT_RETURN_IF_ERROR(SanityCheckOrtEp(*ort_ep));
 
   std::shared_ptr<KernelRegistry> kernel_registry;
   ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
 
-  plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+  plugin_ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                         session_options, ep_factory_, devices_,
                                                         kernel_registry,
                                                         *logger.ToInternal());

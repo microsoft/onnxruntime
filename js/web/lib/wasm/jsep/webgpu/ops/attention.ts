@@ -14,7 +14,6 @@ import {
   ShaderHelper,
   tensorTypeToWsglStorageType,
   tensorTypeToWsglValueType,
-  UniformDataElementType,
   UniformsArrayType,
 } from './common';
 
@@ -533,7 +532,7 @@ const createAttentionProbsProgramInfo = (
       { name: 'N', type: 'u32' },
       { name: 'num_heads', type: 'u32' },
       { name: 'head_size', type: 'u32' },
-      { name: 'alpha', type: 'f32' as UniformDataElementType },
+      { name: 'alpha', type: 'f32' },
       { name: 'past_sequence_length', type: 'u32' },
       { name: 'kv_sequence_length', type: 'u32' },
       { name: 'n_reps', type: 'u32' },

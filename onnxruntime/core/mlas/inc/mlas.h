@@ -1666,6 +1666,27 @@ MlasRotaryEmbedOneRow(
 );
 
 /**
+ * @brief Compute LayerNorm or RMSNorm (simplified) for one row of float data.
+ *        Uses platform-optimized kernel if available, otherwise returns false.
+ *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
+ *
+ * @return true if an optimized kernel was used, false if caller should fall back
+ */
+bool
+MLASCALL
+MlasLayerNormF32(
+    const float* Input,
+    const float* Scale,
+    const float* Bias,
+    float* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
+);
+
+/**
  * @brief Supply matrices data information to half precision gemm functions
  */
 struct MLAS_HGEMM_DATA_PARAMS {
