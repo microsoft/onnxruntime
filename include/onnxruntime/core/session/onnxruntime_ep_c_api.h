@@ -2575,6 +2575,9 @@ struct OrtEp {
    * - Determine if the EP is CPU-based (which affects synchronization and data transfer decisions)
    * - Bind execution streams to the correct device
    *
+   * If the implementation allows an EP to be created with multiple EpDevices this should return the OrtMemoryDevice
+   * that ORT should consider as default for this EP instance.
+   *
    * An OrtMemoryDevice is obtained from an OrtMemoryInfo via `OrtEpApi::MemoryInfo_GetMemoryDevice()`.
    * Typically, an EP creates OrtMemoryInfo instances and registers them with its OrtEpDevice(s) via
    * `OrtEpApi::EpDevice_AddAllocatorInfo()`. The OrtMemoryDevice returned here must correspond to an
