@@ -249,7 +249,6 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
 Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
                                       const Tensor* attention_bias, Tensor* output, Tensor* present_key, Tensor* metadata, const Tensor* seqlen_k,
                                       const WebgpuAttentionParameters& parameters, const Tensor* indirect_buffer, uint32_t num_total_seq_length_tile, uint32_t num_present_sequence_length_tile, uint32_t tile_size, bool use_indirect_dispatch, uint32_t present_sequence_length) {
-  ORT_UNUSED_PARAMETER(indirect_buffer);
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
 
@@ -279,13 +278,11 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
     attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
   }
 
-  // Avoid wgpuComputePassEncoderDispatchWorkgroupsIndirect: on Vulkan, Dawn's
-  // TransformIndirectDispatchBuffer path costs ~80us per call (vkAllocateMemory +
-  // vkAllocateDescriptorSets), which dominates decode tps under graph capture.
-  // num_present_sequence_length_tile is the worst-case tile count for the static
-  // KV cache; the shader already masks workgroups via seqlens_k.
-  const uint32_t qkt_dispatch_tiles = use_indirect_dispatch ? num_present_sequence_length_tile : num_total_seq_length_tile;
-  program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * qkt_dispatch_tiles);
+  if (use_indirect_dispatch) {
+    program.SetIndirectDispatchTensor(indirect_buffer);
+  } else {
+    program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_total_seq_length_tile);
+  }
   program.SetWorkgroupSize(64)
       .CacheHint(tile_size, has_attention_bias, use_indirect_dispatch)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
@@ -339,7 +336,6 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
                                                bool use_indirect_dispatch,
                                                uint32_t present_sequence_length,
                                                const Tensor* head_sink) {
-  ORT_UNUSED_PARAMETER(indirect_buffer);
   const int components = 4;
   const bool has_head_sink = head_sink != nullptr;
   int head_size_vec = parameters.v_head_size_ / components;
@@ -355,11 +351,13 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
   if (has_head_sink) {
     program.AddInput({head_sink, ProgramTensorMetadataDependency::Type});
   }
-  // See FlashAttentionDecodeQKT above: avoid indirect dispatch to skip Dawn's
-  // per-call TransformIndirectDispatchBuffer overhead on Vulkan. The shader masks
-  // out-of-range workgroups via seqlens_k.
-  const uint32_t splitvx_dispatch_tiles = use_indirect_dispatch ? num_present_sequence_length_tile : num_total_seq_length_tile;
-  program.SetDispatchGroupSize(batch_heads * splitvx_dispatch_tiles);
+  // SetIndirectDispatchTensor must be called after all AddInput calls because it
+  // appends the indirect buffer as the last program input.
+  if (use_indirect_dispatch) {
+    program.SetIndirectDispatchTensor(indirect_buffer);
+  } else {
+    program.SetDispatchGroupSize(batch_heads * num_total_seq_length_tile);
+  }
   program.CacheHint(tile_size, head_size_vec, use_indirect_dispatch, has_head_sink)
       .SetWorkgroupSize(64)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.total_sequence_length_)},
