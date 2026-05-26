@@ -57,6 +57,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/flashattn.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
   ${MLAS_SRC_DIR}/cast.cpp
+  ${MLAS_SRC_DIR}/layernorm.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
   ${MLAS_SRC_DIR}/rotary_embedding.cpp
   ${MLAS_SRC_DIR}/softmax.h
@@ -959,6 +960,8 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/rotary_embedding_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
             )
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
@@ -968,8 +971,22 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/rotary_embedding_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
+
+            if(onnxruntime_USE_RVV_ZVFH)
+              list(APPEND mlas_platform_srcs
+                ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+              )
+              set_source_files_properties(
+                ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                PROPERTIES COMPILE_FLAGS "-march=rv64gcv_zvfh -mabi=lp64d")
+              list(APPEND mlas_private_compile_definitions MLAS_USE_RVV_ZVFH=1)
+            endif()
           else()
             message(
               WARNING
