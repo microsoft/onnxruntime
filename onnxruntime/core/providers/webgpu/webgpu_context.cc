@@ -543,8 +543,15 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
                                       : std::begin(toggles),
                                   std::end(toggles));
 #else
-  // In release/relwithdebinfo builds, always enable Dawn's skip_validation toggle.
-  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  // In release/relwithdebinfo builds, default to skip_validation for performance,
+  // but honor explicit validationMode overrides.
+  if (!validation_mode_explicitly_set_) {
+    return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  }
+  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                      ? std::begin(toggles) + 1
+                                      : std::begin(toggles),
+                                  std::end(toggles));
 #endif
 }
 
@@ -1013,6 +1020,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
                                                                     config.validation_mode,
+                                                                    config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
