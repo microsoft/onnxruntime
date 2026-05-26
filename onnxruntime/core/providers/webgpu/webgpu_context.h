@@ -92,7 +92,7 @@ struct WebGpuContextConfig {
 #ifndef NDEBUG
       webgpu::ValidationMode::Full  // for debug build, enable full validation by default
 #else
-      webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
+  webgpu::ValidationMode::Disabled  // for release build, disable validation by default
 #endif  // !NDEBUG
   };
   bool preserve_device{false};
