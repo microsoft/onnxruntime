@@ -11,6 +11,9 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <cerrno>
+#include <cinttypes>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -21,7 +24,12 @@
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 
+#ifdef __APPLE__
+#include <crt_externs.h>
+#define environ (*_NSGetEnviron())
+#else
 extern char** environ;
+#endif
 
 namespace {
 
@@ -30,12 +38,34 @@ inline int GetAddr2LineEnv() {
   if (val == nullptr) {
     return 0;
   }
-  return atoi(val);
+  char* end = nullptr;
+  long parsed = strtol(val, &end, 10);
+  if (end == val || parsed < 0 || parsed > INT_MAX) {
+    return 0;
+  }
+  return static_cast<int>(parsed);
 }
 
 int GetAddr2LineCount() {
   static const int count = GetAddr2LineEnv();
   return count;
+}
+
+bool CreateCloseOnExecPipe(int pipe_fds[2]) {
+  if (pipe(pipe_fds) != 0) {
+    return false;
+  }
+
+  for (int i = 0; i < 2; ++i) {
+    const int flags = fcntl(pipe_fds[i], F_GETFD);
+    if (flags == -1 || fcntl(pipe_fds[i], F_SETFD, flags | FD_CLOEXEC) == -1) {
+      close(pipe_fds[0]);
+      close(pipe_fds[1]);
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Resolve file offsets to file:line using addr2line, grouped by binary.
@@ -70,7 +100,7 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
     offset_strs.reserve(frames.size());
     for (const auto& frame : frames) {
       char buf[32];
-      snprintf(buf, sizeof(buf), "0x%lx", static_cast<unsigned long>(frame.offset));
+      snprintf(buf, sizeof(buf), "0x%" PRIxPTR, frame.offset);
       offset_strs.emplace_back(buf);
     }
 
@@ -87,14 +117,28 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
 
     // Create a pipe for reading addr2line's stdout.
     int pipe_fds[2];
-    if (pipe(pipe_fds) != 0) continue;
+    if (!CreateCloseOnExecPipe(pipe_fds)) continue;
 
     posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
+    int rc = posix_spawn_file_actions_init(&actions);
+    if (rc != 0) {
+      close(pipe_fds[0]);
+      close(pipe_fds[1]);
+      continue;
+    }
+
+    bool actions_ok = true;
+    actions_ok &= posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO) == 0;
+    actions_ok &= posix_spawn_file_actions_addclose(&actions, pipe_fds[0]) == 0;
     // Redirect stderr to /dev/null to suppress error messages.
-    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+    actions_ok &= posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0) == 0;
+
+    if (!actions_ok) {
+      posix_spawn_file_actions_destroy(&actions);
+      close(pipe_fds[0]);
+      close(pipe_fds[1]);
+      continue;
+    }
 
     pid_t pid;
     int spawn_ret = posix_spawnp(&pid, "addr2line", &actions, nullptr, argv.data(), environ);
@@ -110,10 +154,13 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
     FILE* fp = fdopen(pipe_fds[0], "r");
     if (!fp) {
       close(pipe_fds[0]);
-      waitpid(pid, nullptr, 0);
+      while (waitpid(pid, nullptr, 0) == -1 && errno == EINTR) {
+      }
       continue;
     }
 
+    // We intentionally do not use -f/-i so output remains 1 line per address.
+    // Adding those flags would break the 1:1 parsing below.
     char line_buf[1024];
     size_t frame_idx = 0;
     while (fgets(line_buf, sizeof(line_buf), fp) && frame_idx < frames.size()) {
@@ -122,14 +169,15 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
       if (len > 0 && line_buf[len - 1] == '\n') line_buf[len - 1] = '\0';
 
       std::string resolved(line_buf);
-      // addr2line returns "?? ??:0" or similar for unknown frames — skip those
-      if (resolved.find("??") == std::string::npos) {
+      // addr2line returns "??:0" or "??:?" for unknown frames, so skip those.
+      if (resolved != "??:0" && resolved != "??:?" && resolved.substr(0, 2) != "??") {
         result[frames[frame_idx].addr] = resolved;
       }
       ++frame_idx;
     }
     fclose(fp);
-    waitpid(pid, nullptr, 0);
+    while (waitpid(pid, nullptr, 0) == -1 && errno == EINTR) {
+    }
   }
 
   return result;
@@ -156,6 +204,7 @@ std::vector<std::string> GetStackTrace() {
   std::unordered_map<void*, std::string> resolved;
   int count = GetAddr2LineCount();
   if (count > 0) {
+    // Only resolve the top N frames to limit addr2line overhead on large binaries.
     resolved = ResolveWithAddr2Line(addresses, std::min(depth, count));
   }
 
