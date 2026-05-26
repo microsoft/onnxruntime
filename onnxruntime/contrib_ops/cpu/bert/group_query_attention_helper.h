@@ -310,6 +310,22 @@ Status CheckInputs(const T* query,
   int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
     ORT_RETURN_IF_ERROR(CheckRotaryCaches(cos_cache, sin_cache, head_size, total_sequence_length, rotary_dim));
+
+    // Validate seqlens_k against rotary cache size when rotary embeddings are enabled.
+    // This prevents OOB access when deriving position IDs from seqlens_k during rotary embedding.
+    const bool is_seqlens_k_on_cpu = (seqlens_k->Location().device.Type() == OrtDevice::CPU);
+    if (is_seqlens_k_on_cpu) {
+      const int64_t rotary_cache_max_seq = std::min(cos_cache->Shape().GetDims()[0],
+                                                    sin_cache->Shape().GetDims()[0]);
+      const int32_t* seqlens_k_data = seqlens_k->template Data<int32_t>();
+      for (int b = 0; b < batch_size; b++) {
+        if (seqlens_k_data[b] < 0 || static_cast<int64_t>(seqlens_k_data[b]) >= rotary_cache_max_seq) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "seqlens_k[", b, "] = ", seqlens_k_data[b],
+                                 " is out of range for rotary cache dimension 0 (", rotary_cache_max_seq, ")");
+        }
+      }
+    }
   } else if (cos_cache != nullptr || sin_cache != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
