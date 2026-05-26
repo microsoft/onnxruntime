@@ -423,6 +423,30 @@ TEST(ReductionOpTest, ReduceL1_int32_keepdims_singleton_axis_negative_input) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// INT_MIN abs is UB in two's complement; saturating_abs should clamp to INT_MAX.
+TEST(ReductionOpTest, ReduceL1_int32_INT_MIN) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<int32_t>("data", {1}, {std::numeric_limits<int32_t>::min()});
+  // abs(INT_MIN) overflows; we expect saturation to INT_MAX.
+  test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Summation overflow: summing large positive values should saturate to INT_MAX rather than wrap.
+TEST(ReductionOpTest, ReduceL1_int32_summation_overflow) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  // 3 * 1,000,000,000 = 3e9 > INT32_MAX (2,147,483,647)
+  test.AddInput<int32_t>("data", {3}, {1000000000, 1000000000, 1000000000});
+  test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
+  // Only CPU handles saturation; CUDA casts to float (loses precision but doesn't overflow).
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
   OpTester test("ReduceL2");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -552,6 +576,31 @@ TEST(ReductionOpTest, ReduceL2_int32_keepdims_singleton_axis_negative_input) {
   // TensorRT/OpenVINO do not support int32 ReduceL2.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// INT_MIN: sqrt(INT_MIN^2) overflows; should saturate to INT_MAX.
+TEST(ReductionOpTest, ReduceL2_int32_INT_MIN) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<int32_t>("data", {1}, {std::numeric_limits<int32_t>::min()});
+  // sqrt(INT_MIN^2) = |INT_MIN| which overflows int32; saturate to INT_MAX.
+  test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Squaring overflow: large values squared exceed int32 range; double accumulator avoids UB.
+TEST(ReductionOpTest, ReduceL2_int32_squaring_overflow) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  // sqrt(50000^2 + 50000^2) = 50000*sqrt(2) ≈ 70710
+  test.AddInput<int32_t>("data", {2}, {50000, 50000});
+  test.AddOutput<int32_t>("reduced", {}, {70710});
+  // Only CPU handles this precisely with double accumulator.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_keepdims) {
