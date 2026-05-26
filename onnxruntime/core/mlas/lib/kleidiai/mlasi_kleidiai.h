@@ -7,7 +7,6 @@
 #pragma once
 
 #include "../mlasi.h"
-#include <iostream>
 
 // Fix to ensure compatibility with MSVC build
 #if defined(_MSC_VER)
@@ -25,6 +24,7 @@
 #endif
 
 #if KLEIDIAI_DEBUG_LOGGING ||KLEIDIAI_KERNEL_LOGGING
+#include <iostream>
 #define KLEIDIAI_LOG(tag, msg) \
     do { \
         std::cout << "[KLEIDIAI " << tag << "]: " << __FILE__ << " : " << __LINE__ << " : " << msg << std::endl; \
@@ -49,6 +49,9 @@
     #define KLEIDIAI_KERNEL_LOG(msg)
 #endif
 
+// Forward declaration since the function is used in this file, implementation is at the bottom of the file
+inline bool mul_overflow_size_t_builtin(size_t a, size_t b, size_t* out);
+
 namespace ArmKleidiAI {
 
 // By default we should try for SME2 first before falling back to SME.
@@ -64,16 +67,39 @@ enum class ConvRoute {
 
 inline constexpr size_t ConvIgemmMaxWork = 1000000ULL;
 
-inline constexpr size_t ComputeDilatedKernelSize(size_t dilation, size_t kernel) {
-    return (dilation * kernel) - (dilation - 1);
+inline bool TryComputeDilatedKernelSize(size_t dilation, size_t kernel, size_t* result) {
+    if (dilation == 0 || kernel == 0) return false;
+
+    // using formula: dilated_kernel_size = dilation * (kernel - 1) + 1
+    size_t scaled_kernel;
+    if (mul_overflow_size_t_builtin(kernel - 1, dilation, &scaled_kernel)) return false;
+
+    if (scaled_kernel == SIZE_MAX) return false;
+
+    *result = scaled_kernel + 1;
+    return true;
 }
 
-inline constexpr size_t ComputeConvOutputSize(size_t input, size_t kernel, size_t padding, size_t stride) {
-    if (stride > 0 && (input + 2 * padding) >= kernel) {
-        return (((input - kernel) + (2 * padding)) / stride) + 1;
-    }
+inline bool TryComputeConvOutputSize(size_t input, size_t kernel, size_t padding, size_t stride, size_t* result) {
+    *result = 0;
 
-    return 0;
+    // not an arithmetic overflow, return true but with result 0
+    if (stride == 0) return true;
+
+    size_t double_padding;
+    if (mul_overflow_size_t_builtin(padding, 2, &double_padding)) return false;
+
+    if (double_padding > (SIZE_MAX - input)) return false;
+    const size_t padded_input = double_padding + input;
+
+    // not an overflow but rather mismatched params, return true with result 0
+    if (padded_input < kernel) return true;
+
+    // using formula: output_size = ((2*padding + input - kernel) / stride) + 1
+    const size_t output_minus_one = (padded_input - kernel) / stride;
+    if (output_minus_one == SIZE_MAX) return false;
+    *result = output_minus_one + 1;
+    return true;
 }
 
 inline ConvRoute SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters) {
@@ -86,13 +112,29 @@ inline ConvRoute SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters) {
         return ConvRoute::None;
     }
 
-    const auto effective_kernel_h =
-        ComputeDilatedKernelSize(Parameters->DilationShape[0], Parameters->KernelShape[0]);
-    const auto effective_kernel_w =
-        ComputeDilatedKernelSize(Parameters->DilationShape[1], Parameters->KernelShape[1]);
-    const auto output_m =
-        ComputeConvOutputSize(Parameters->InputShape[0], effective_kernel_h, Parameters->Padding[0], Parameters->StrideShape[0]) *
-        ComputeConvOutputSize(Parameters->InputShape[1], effective_kernel_w, Parameters->Padding[1], Parameters->StrideShape[1]);
+    size_t effective_kernel_h;
+    size_t effective_kernel_w;
+    if (!TryComputeDilatedKernelSize(Parameters->DilationShape[0], Parameters->KernelShape[0], &effective_kernel_h) ||
+        !TryComputeDilatedKernelSize(Parameters->DilationShape[1], Parameters->KernelShape[1], &effective_kernel_w)) {
+        return ConvRoute::None;
+    }
+
+    size_t output_m;
+    size_t output_h_size;
+    size_t output_w_size;
+    if (!TryComputeConvOutputSize(Parameters->InputShape[0],
+                                  effective_kernel_h,
+                                  Parameters->Padding[0],
+                                  Parameters->StrideShape[0],
+                                  &output_h_size) ||
+        !TryComputeConvOutputSize(Parameters->InputShape[1],
+                                  effective_kernel_w,
+                                  Parameters->Padding[1],
+                                  Parameters->StrideShape[1],
+                                  &output_w_size) ||
+        mul_overflow_size_t_builtin(output_h_size, output_w_size, &output_m)) {
+        return ConvRoute::None;
+    }
 
     if (output_m == 0) {
         return ConvRoute::None;
@@ -103,8 +145,12 @@ inline ConvRoute SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters) {
         return ConvRoute::None;
     }
 
-    const auto effective_k = Parameters->InputChannels * effective_kernel_h * effective_kernel_w;
-    if(effective_k == 0 || filter_count == 0) {
+    size_t effective_k;
+    if (mul_overflow_size_t_builtin(Parameters->InputChannels, effective_kernel_h, &effective_k) ||
+        mul_overflow_size_t_builtin(effective_k, effective_kernel_w, &effective_k)) {
+        return ConvRoute::None;
+    }
+    if (effective_k == 0 || filter_count == 0) {
         return ConvRoute::None;
     }
 

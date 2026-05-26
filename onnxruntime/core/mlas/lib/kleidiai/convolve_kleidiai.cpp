@@ -146,6 +146,18 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     const auto route = ArmKleidiAI::SelectConvRoute(Parameters);
 
     if (route == ArmKleidiAI::ConvRoute::Igemm) {
+        // ensure LHS packed buffer size is non-zero
+        const size_t d_kh = ComputeKernelSize(Parameters->DilationShape[0], Parameters->KernelShape[0]);
+        const size_t d_kw = ComputeKernelSize(Parameters->DilationShape[1], Parameters->KernelShape[1]);
+        const size_t m_step = imatmul_conv.ukernel.get_m_step();
+
+        const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
+            m_step, d_kh * d_kw, Parameters->InputChannels);
+
+        if (bytes_per_m_step == 0) {
+            KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSME returning false on zero LHS packed size");
+            return false;
+        }
         return true;
     }
 
@@ -599,6 +611,8 @@ static void ConvolveSme(const size_t co, //channels out
             // Query the packed LHS buffer size for exactly one m_step block.
             const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
                 m_step, d_kh * d_kw, ci);
+            ORT_ENFORCE(bytes_per_m_step != 0,
+                        "KleidiAI LHS packed size must be non-zero.");
 
             // Determine how many rows we can pack in one chunk.
             size_t m_chunk = std::max<size_t>(m_step, MAX_LHS_CHUNK_BYTES / bytes_per_m_step * m_step);
