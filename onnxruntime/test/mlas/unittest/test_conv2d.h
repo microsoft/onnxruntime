@@ -716,12 +716,16 @@ class MlasConv2DTest : public MlasTestBase {
     //
     // This sequence forces pad-buffer growth by running a smaller-CI convolution followed by a larger-CI
     // convolution (with padding to ensure pad pointers are used), then runs the smaller-CI convolution again.
+    // Execute both orders to validate that results are stable regardless of invocation order.
     // Repeat a few times to increase the likelihood of triggering a reallocation and verify the path.
     //
     for (int i = 0; i < 4; ++i) {
       Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // smaller CI
       Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);  // larger CI forces pad buffer growth
       Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // sanity: back to smaller CI after growth
+
+      Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);  // reversed order start
+      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // reversed order end
     }
   }
 
