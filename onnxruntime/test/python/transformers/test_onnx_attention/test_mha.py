@@ -2534,7 +2534,6 @@ class TestONNXAttentionFlashSoftcap(unittest.TestCase):
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
 class TestONNXAttentionMHACutlassBiasAlignment(unittest.TestCase):
-class TestONNXAttentionMHACutlassBiasAlignment(unittest.TestCase):
     """Test CUTLASS BiasLoader alignment with unaligned total_kv lengths.
 
     CUTLASS Memory Efficient Attention (MEA) uses vectorized loads for the
