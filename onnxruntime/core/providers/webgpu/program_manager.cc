@@ -29,10 +29,6 @@ ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
     shader_dump_fn_ = [dump_file = std::move(dump_file)](std::string_view shader_content) {
       *dump_file << shader_content << "\n";
     };
-  } else {
-    shader_dump_fn_ = [](std::string_view shader_content) {
-      LOGS_DEFAULT(VERBOSE) << shader_content;
-    };
   }
 }
 
@@ -116,14 +112,23 @@ Status ProgramManager::Build(const ProgramBase& program,
   std::string code;
   ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
 
-  if (shader_dump_fn_) {
-    shader_dump_fn_(MakeString("\n=== WebGPU Shader code [", program.Name(),
-                               ", Key=\"", program_key, "\"",
-                               "] Start ===\n\n",
-                               code,
-                               "\n=== WebGPU Shader code [", program.Name(),
-                               ", Key=\"", program_key, "\"",
-                               "] End ===\n"));
+  // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
+  {
+    const auto shader_content = [&program, &program_key, &code]() {
+      return MakeString("\n=== WebGPU Shader code [", program.Name(),
+                        ", Key=\"", program_key, "\"",
+                        "] Start ===\n\n",
+                        code,
+                        "\n=== WebGPU Shader code [", program.Name(),
+                        ", Key=\"", program_key, "\"",
+                        "] End ===\n");
+    };
+
+    if (shader_dump_fn_) {
+      shader_dump_fn_(shader_content());
+    } else {
+      LOGS_DEFAULT(VERBOSE) << shader_content();
+    }
   }
 
   wgpu::ShaderSourceWGSL wgsl_source{};
