@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 
 namespace onnxruntime {
 namespace test {
@@ -73,6 +74,23 @@ TEST(TopKOperator, Top1DefaultAxisOpset9_double) {
   std::vector<int64_t> expected_indices = {3, 1};
   std::vector<int64_t> expected_dimensions = {2, 1};
   RunTest(9, 1, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
+}
+
+TEST(TopKOperator, DynamicScalarKFromShapeGather) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 4}, {0.1f, 0.4f, 0.2f, 0.3f});
+    auto* shape_arg = builder.MakeIntermediate<int64_t>(std::vector<int64_t>{2});
+    auto* k_arg = builder.MakeIntermediate<int64_t>({});
+    auto* values_arg = builder.MakeOutput<float>(std::vector<int64_t>{1, 4});
+    auto* indices_arg = builder.MakeOutput<int64_t>(std::vector<int64_t>{1, 4});
+    auto* gather_index_arg = builder.MakeScalarInitializer<int64_t>(1);
+
+    builder.AddNode("Shape", {input_arg}, {shape_arg});
+    builder.AddNode("Gather", {shape_arg, gather_index_arg}, {k_arg});
+    builder.AddNode("TopK", {input_arg, k_arg}, {values_arg, indices_arg}).AddAttribute("axis", int64_t{-1});
+  };
+
+  TransformerTester(build_test_case, nullptr, TransformerLevel::Default, TransformerLevel::Default, 17);
 }
 
 TEST(TopKOperator, Top2DefaultAxisOpset9) {
