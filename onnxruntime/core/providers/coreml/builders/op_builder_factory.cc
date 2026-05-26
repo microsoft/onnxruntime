@@ -85,6 +85,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateLRNOpBuilder("LRN", op_registrations);
   CreateGemmOpBuilder("MatMul", op_registrations);
   CreatePadOpBuilder("Pad", op_registrations);
+  CreateRangeOpBuilder("Range", op_registrations);
   CreateReshapeOpBuilder("Reshape", op_registrations);
   CreateResizeOpBuilder("Resize", op_registrations);
   CreateShapeOpBuilder("Shape", op_registrations);

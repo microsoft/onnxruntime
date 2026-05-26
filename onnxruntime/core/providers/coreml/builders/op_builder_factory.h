@@ -48,6 +48,7 @@ void CreateTileOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateQuickGeluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateRangeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace coreml
 }  // namespace onnxruntime

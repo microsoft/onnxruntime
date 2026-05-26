@@ -36,6 +36,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Mul||
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
 |ai.onnx:PRelu||
+|ai.onnx:Range|Lowered to MIL `range_1d`. Inputs (start, limit, delta) are remapped to MIL's (end, start, step). int32/fp16/fp32. MLProgram only.|
 |ai.onnx:Reciprocal|this ask for a `epislon` (default 1e-4) where onnx don't provide|
 |ai.onnx:ReduceSum||
 |ai.onnx:ReduceMean||

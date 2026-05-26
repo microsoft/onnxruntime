@@ -3349,6 +3349,70 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+namespace {
+// Range(start, limit, delta) with int32 scalar graph inputs (so the build
+// has to wire runtime tensors through to MIL `range_1d`'s scalar arguments).
+std::string MakeRangeModelData() {
+  onnxruntime::Model model("range_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto scalar_int;
+  scalar_int.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  // scalar = 0 dims; intentionally leave shape empty.
+
+  ONNX_NAMESPACE::TypeProto out_type;
+  out_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  out_type.mutable_tensor_type()->mutable_shape()->add_dim();  // dynamic-length 1D
+
+  auto& s = graph.GetOrCreateNodeArg("start", &scalar_int);
+  auto& l = graph.GetOrCreateNodeArg("limit", &scalar_int);
+  auto& d = graph.GetOrCreateNodeArg("delta", &scalar_int);
+  auto& y = graph.GetOrCreateNodeArg("Y", &out_type);
+  graph.AddNode("range", "Range", "generate range", {&s, &l, &d}, {&y});
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// Range is lowered to MIL `range_1d`. ONNX (start, limit, delta) -> MIL
+// (end, start, step).
+TEST(CoreMLExecutionProviderTest, Range_MLProgram) {
+  const std::string model_data = MakeRangeModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> scalar_dims;
+  OrtValue s_val, l_val, d_val;
+  CreateMLValue<int32_t>(CPUAllocator::DefaultInstance(), scalar_dims, {0}, &s_val);
+  CreateMLValue<int32_t>(CPUAllocator::DefaultInstance(), scalar_dims, {6}, &l_val);
+  CreateMLValue<int32_t>(CPUAllocator::DefaultInstance(), scalar_dims, {2}, &d_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("start", s_val));
+  feeds.insert(std::make_pair("limit", l_val));
+  feeds.insert(std::make_pair("delta", d_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// Range only has an ML Program lowering; on the NeuralNetwork format it must
+// fall back to CPU.
+TEST(CoreMLExecutionProviderTest, RangeNeuralNetworkNotSupported) {
+  const std::string model_data = MakeRangeModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
