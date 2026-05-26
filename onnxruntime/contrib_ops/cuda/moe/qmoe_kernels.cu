@@ -3,25 +3,20 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
+#include "core/common/narrow.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include <cuda_bf16.h>
 #include <cub/cub.cuh>
 #include <algorithm>
 #include <cfloat>
-#include <limits>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 int Compute1DGridSize(int num_elements, int block_size) {
-  ORT_ENFORCE(num_elements >= 0, "CUDA launch element count must be non-negative, got ", num_elements);
-  ORT_ENFORCE(block_size > 0, "CUDA launch block size must be positive, got ", block_size);
-  int64_t grid_size = (static_cast<int64_t>(num_elements) + block_size - 1) / block_size;
-  ORT_ENFORCE(grid_size <= std::numeric_limits<int>::max(),
-              "CUDA launch grid size exceeds int range: ", grid_size);
-  return static_cast<int>(grid_size);
+  return (num_elements + block_size - 1) / block_size;
 }
 
 template <typename T>
@@ -698,11 +693,7 @@ void LaunchQMoEDequantizeFp4WeightsImpl(
     cudaStream_t stream) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
-  ORT_ENFORCE(total >= 0, "QMoEDequantizeFp4Weights: negative element count, got ", total);
-  int64_t grid_i64 = (total + block - 1) / block;
-  ORT_ENFORCE(grid_i64 <= std::numeric_limits<int>::max(),
-              "QMoEDequantizeFp4Weights: grid size exceeds int range: ", grid_i64);
-  int grid = static_cast<int>(grid_i64);
+  int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeFp4WeightsKernel<<<grid, block, 0, stream>>>(
       packed_weights, block_scales, global_scales, output, num_experts, n, k);
 }
@@ -785,11 +776,7 @@ void LaunchQMoEDequantizeFp8WeightsImpl(
     cudaStream_t stream) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
-  ORT_ENFORCE(total >= 0, "QMoEDequantizeFp8Weights: negative element count, got ", total);
-  int64_t grid_i64 = (total + block - 1) / block;
-  ORT_ENFORCE(grid_i64 <= std::numeric_limits<int>::max(),
-              "QMoEDequantizeFp8Weights: grid size exceeds int range: ", grid_i64);
-  int grid = static_cast<int>(grid_i64);
+  int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeFp8WeightsKernel<<<grid, block, 0, stream>>>(
       weights, global_scales, output, num_experts, n, k);
 }
@@ -862,16 +849,10 @@ void LaunchQMoERepackFP4ColToRow(
     int64_t k,
     int64_t n,
     cudaStream_t stream) {
-  ORT_ENFORCE(experts > 0, "LaunchQMoERepackFP4ColToRow requires positive expert count, got ", experts);
-  ORT_ENFORCE(k > 0 && n > 0, "LaunchQMoERepackFP4ColToRow requires positive k and n, got k=", k, ", n=", n);
-  ORT_ENFORCE(k % 2 == 0 && n % 2 == 0,
-              "LaunchQMoERepackFP4ColToRow requires even k and n, got k=", k, ", n=", n);
   const int64_t total = static_cast<int64_t>(experts) * n * (k / 2);
   constexpr int kThreads = 256;
-  int64_t blocks = (total + kThreads - 1) / kThreads;
-  ORT_ENFORCE(blocks <= static_cast<int64_t>(std::numeric_limits<int>::max()),
-              "LaunchQMoERepackFP4ColToRow grid size exceeds int range");
-  QMoERepackFP4ColToRowKernel<<<static_cast<int>(blocks), kThreads, 0, stream>>>(
+  int blocks = onnxruntime::narrow<int>((total + kThreads - 1) / kThreads);
+  QMoERepackFP4ColToRowKernel<<<blocks, kThreads, 0, stream>>>(
       input, output, experts, k, n);
 }
 
@@ -901,10 +882,7 @@ __global__ void BatchedTransposeKernel(const T* __restrict__ input, T* __restric
 void LaunchBatchedTranspose(cudaStream_t stream, const void* input, void* output, int batch, int rows, int cols, int element_size) {
   int64_t total_elements = static_cast<int64_t>(batch) * rows * cols;
   int threads = 256;
-  int64_t blocks_i64 = (total_elements + threads - 1) / threads;
-  ORT_ENFORCE(blocks_i64 <= std::numeric_limits<int>::max(),
-              "LaunchBatchedTranspose grid size exceeds int range: ", blocks_i64);
-  int blocks = static_cast<int>(blocks_i64);
+  int blocks = onnxruntime::narrow<int>((total_elements + threads - 1) / threads);
 
   if (element_size == 1) {
     BatchedTransposeKernel<uint8_t><<<blocks, threads, 0, stream>>>(static_cast<const uint8_t*>(input), static_cast<uint8_t*>(output), batch, rows, cols);
