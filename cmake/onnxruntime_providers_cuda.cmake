@@ -233,7 +233,7 @@
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#options-for-guiding-compiler-driver-threads
     # --threads is NOT set here; it is applied per-target after calling this function
     # so that flash attention can use a different (lower) thread count.
-    set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
+    set(onnxruntime_NVCC_THREADS "4" CACHE STRING "Number of threads that NVCC can use for compilation.")
 
     # suppress warnings like this:
     #   cutlass-src\include\cute/arch/mma_sm120.hpp(3128): error #177-D: variable "tidA" was declared but never
