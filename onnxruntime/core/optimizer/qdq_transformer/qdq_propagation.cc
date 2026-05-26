@@ -371,6 +371,21 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
+    // Do not propagate DQ forward when its data input is a constant (graph initializer or
+    // Constant op output). Propagation would insert a Q -> DQ pair after any downstream
+    // reshape-like node; later passes (e.g. S8-to-U8 weight transformer) may flip the
+    // existing DQ to uint8 without touching the inserted Q, causing int8 negatives to
+    // be clamped to zero. See GitHub issue #28491.
+    const NodeArg* dq_data_input = dq_node.InputDefs()[QDQ::InputIndex::INPUT_ID];
+    const bool is_initializer_constant = graph_utils::NodeArgIsConstant(graph, *dq_data_input);
+    const Node* dq_data_producer = graph.GetProducerNode(dq_data_input->Name());
+    const bool is_constant_op_output = dq_data_producer != nullptr &&
+                                       dq_data_producer->OpType() == "Constant" &&
+                                       dq_data_producer->Domain() == kOnnxDomain;
+    if (is_initializer_constant || is_constant_op_output) {
+      continue;
+    }
+
     auto& dq_scale = *dq_node.MutableInputDefs()[QDQ::InputIndex::SCALE_ID];
     auto* dq_zero_point = dq_zero_point_exists
                               ? dq_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID]
