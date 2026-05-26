@@ -131,12 +131,43 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
+      - name: Run tests (onnxruntime_provider_test) with verbose logging for shader key validation
+        timeout-minutes: 60
         shell: pwsh
         run: |
+          # Test correctness is already validated by CTest in the "Build and Test" step.
+          # This step re-runs onnxruntime_provider_test with verbose logging to capture
+          # WebGPU shader compilation logs (stderr) for shader key validation.
+          #
+          # We use GTest sharding to split tests across multiple processes. Running all
+          # provider tests in a single process causes Dawn/WebGPU to hang because hundreds
+          # of tests share one WebGPU context and accumulated GPU staging buffers from
+          # MapAsync calls eventually exhaust resources (observed hang at ActivationOpTest.Elu).
+          # Each shard runs in its own process with an isolated WebGPU context, so GPU
+          # resources are released between shards.
+          #
+          # Use 2 shards (not more) to reduce D3D12 device creation/teardown cycles.
+          # Each shard process creates and destroys a D3D12 command queue; Windows WDDM
+          # releases those resources asynchronously, so rapid successive device creations
+          # can exhaust GPU memory (E_OUTOFMEMORY). Fewer shards means fewer cycles.
+          # A 15-second pause between shards gives WDDM time to drain the previous
+          # shard's deferred cleanup before the next shard creates a new device.
           $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
-          .\onnxruntime_test_all.exe 2> .\onnxruntime_test_stderr.log
-          .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
+          $totalShards = 2
+          for ($i = 0; $i -lt $totalShards; $i++) {
+            if ($i -gt 0) {
+              Write-Host "Waiting 15 seconds for WDDM to release GPU resources from previous shard..."
+              Start-Sleep -Seconds 15
+            }
+            $env:GTEST_TOTAL_SHARDS = $totalShards
+            $env:GTEST_SHARD_INDEX = $i
+            Write-Host "Running shard $($i + 1) of $totalShards..."
+            .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
+            if ($lastExitCode -ne 0) {
+              Write-Error "Shard $($i + 1) failed with exit code $lastExitCode"
+              exit $lastExitCode
+            }
+          }
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
       - name: Check log file
