@@ -34,6 +34,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Max||
 |ai.onnx:Mul||
+|ai.onnx:Neg|Lowered to MIL `mul(x, -1)`. Supports fp32 / fp16 / int32. MLProgram only.|
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
 |ai.onnx:PRelu||
 |ai.onnx:Reciprocal|this ask for a `epislon` (default 1e-4) where onnx don't provide|

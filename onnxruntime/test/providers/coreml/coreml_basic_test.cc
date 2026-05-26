@@ -3349,6 +3349,59 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+namespace {
+// Float input -> Neg -> float output. Used by the Neg tests below.
+std::string MakeNegModelData(int32_t elem_type) {
+  onnxruntime::Model model("neg_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(elem_type);
+  for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &t);
+  auto& y = graph.GetOrCreateNodeArg("Y", &t);
+  graph.AddNode("neg", "Neg", "negate", {&x}, {&y});
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// Neg is lowered to MIL `mul(x, -1)` (the iOS15 MIL op set has no native
+// `neg`); the const -1 is emitted with the input's dtype.
+TEST(CoreMLExecutionProviderTest, Neg_MLProgram) {
+  const std::string model_data = MakeNegModelData(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue x_val;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {1.0f, -2.0f, 0.0f, 3.5f}, &x_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// Neg only has an ML Program lowering; on the NeuralNetwork format it must
+// fall back to CPU.
+TEST(CoreMLExecutionProviderTest, NegNeuralNetworkNotSupported) {
+  const std::string model_data = MakeNegModelData(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime

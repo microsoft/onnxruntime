@@ -34,6 +34,7 @@ void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateGridSampleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateIdentityOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateNegOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
