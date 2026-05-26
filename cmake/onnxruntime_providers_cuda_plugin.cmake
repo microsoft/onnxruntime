@@ -253,37 +253,14 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
   "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
 )
 
-# SM90/SM120 TMA WS OBJECT libraries — compiled with restricted CUDA architectures.
-# Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
-if(_cuda_plugin_sm90_tma_srcs OR _cuda_plugin_llm_sm90_srcs)
-  set(_plugin_sm90_all_srcs ${_cuda_plugin_sm90_tma_srcs} ${_cuda_plugin_llm_sm90_srcs})
-  onnxruntime_filter_cuda_archs(_plugin_sm90_check MIN_SM 90)
-  if(_plugin_sm90_check)
-    onnxruntime_add_cuda_plugin_object_library(
-      NAME onnxruntime_providers_cuda_plugin_sm90_tma
-      PARENT onnxruntime_providers_cuda_plugin
-      CUDA_ARCHITECTURES "90a-real"
-      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
-      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
-      SOURCES ${_plugin_sm90_all_srcs})
-  endif()
-endif()
-
-if(_cuda_plugin_sm120_tma_srcs)
-  onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
-  if(_plugin_sm120_cuda_architectures)
-    onnxruntime_add_cuda_plugin_object_library(
-      NAME onnxruntime_providers_cuda_plugin_sm120_tma
-      PARENT onnxruntime_providers_cuda_plugin
-      CUDA_ARCHITECTURES "${_plugin_sm120_cuda_architectures}"
-      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
-      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
-      SOURCES ${_cuda_plugin_sm120_tma_srcs})
-  endif()
-endif()
+# SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
+# Flash Attention is also used by the ONNX domain Attention op, so it is always included.
+# SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).
 
 # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
 # Flash Attention V2 kernels require SM80 and are memory-intensive to compile.
+# Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
+# kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
 if(NOT DEFINED onnxruntime_FLASH_NVCC_THREADS)
   set(onnxruntime_FLASH_NVCC_THREADS "1")
 endif()
@@ -300,20 +277,51 @@ if(_cuda_plugin_flash_attention_srcs)
   endif()
 endif()
 
-# LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
-# Excludes SM120+ real (native SASS) architectures — SM120-specific kernels are compiled in
-# the separate SM120 TMA OBJECT library, and the general LLM code triggers CCCL tcgen05 PTX
-# headers that fail on Windows/MSVC when compiled for sm_120a. Virtual arch (PTX) is kept.
-if(_cuda_plugin_llm_srcs)
-  onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
-  if(_plugin_llm_cuda_architectures)
-    onnxruntime_add_cuda_plugin_object_library(
-      NAME onnxruntime_providers_cuda_plugin_llm
-      PARENT onnxruntime_providers_cuda_plugin
-      CUDA_ARCHITECTURES "${_plugin_llm_cuda_architectures}"
-      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
-      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
-      SOURCES ${_cuda_plugin_llm_srcs})
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # SM90 TMA warp-specialized files use SM90-specific collective operations.
+  # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
+  if(_cuda_plugin_sm90_tma_srcs OR _cuda_plugin_llm_sm90_srcs)
+    set(_plugin_sm90_all_srcs ${_cuda_plugin_sm90_tma_srcs} ${_cuda_plugin_llm_sm90_srcs})
+    onnxruntime_filter_cuda_archs(_plugin_sm90_check MIN_SM 90)
+    if(_plugin_sm90_check)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_sm90_tma
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "90a-real"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_plugin_sm90_all_srcs})
+    endif()
+  endif()
+
+  if(_cuda_plugin_sm120_tma_srcs)
+    onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
+    if(_plugin_sm120_cuda_architectures)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_sm120_tma
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "${_plugin_sm120_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_cuda_plugin_sm120_tma_srcs})
+    endif()
+  endif()
+
+  # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
+  # Excludes SM120+ real (native SASS) architectures — SM120-specific kernels are compiled in
+  # the separate SM120 TMA OBJECT library, and the general LLM code triggers CCCL tcgen05 PTX
+  # headers that fail on Windows/MSVC when compiled for sm_120a. Virtual arch (PTX) is kept.
+  if(_cuda_plugin_llm_srcs)
+    onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+    if(_plugin_llm_cuda_architectures)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_llm
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "${_plugin_llm_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_cuda_plugin_llm_srcs})
+    endif()
   endif()
 endif()
 

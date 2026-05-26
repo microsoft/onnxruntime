@@ -456,69 +456,79 @@
   config_cuda_provider_shared_module(onnxruntime_providers_cuda)
   target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
 
-  # Create OBJECT libraries for SM90/SM120 TMA WS generated files that must be compiled
+  # Create OBJECT libraries for SM-specific contrib CUDA sources that must be compiled
   # with restricted CUDA architectures. These files use CUTLASS 3.x SM90+/SM120+ features
   # (GMMA, TMA) that cannot produce useful device code for older architectures.
-  if(onnxruntime_cuda_sm90_tma_srcs OR onnxruntime_cuda_llm_sm90_srcs)
-    # SM90 TMA warp-specialized files use SM90-specific collective operations.
-    # Compile at exactly 90a-real: SM120+ GPUs run SM90 native code via forward compat.
-    # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
-    set(_ort_sm90_all_srcs ${onnxruntime_cuda_sm90_tma_srcs} ${onnxruntime_cuda_llm_sm90_srcs})
-    onnxruntime_filter_cuda_archs(_ort_sm90_check MIN_SM 90)
-    if(_ort_sm90_check)
-      onnxruntime_add_cuda_object_library(
-        NAME onnxruntime_providers_cuda_sm90_tma
-        PARENT onnxruntime_providers_cuda
-        CUDA_ARCHITECTURES "90a-real"
-        NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
-        SOURCES ${_ort_sm90_all_srcs})
+  #
+  # SM90/SM120 TMA and LLM OBJECT libraries contain MoE and MatMulNBits kernels (contrib ops).
+  # Flash Attention is also used by the ONNX domain Attention op, so it is included even
+  # when contrib ops are disabled.
+  if(NOT onnxruntime_CUDA_MINIMAL)
+    # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
+    # Flash Attention V2 kernels require SM80 (Ampere) and are memory-intensive to compile.
+    # Isolating them allows the rest of the build to use higher --threads without OOM.
+    # Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
+    # kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+    set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
+        "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
+    if(onnxruntime_cuda_flash_attention_srcs)
+      onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80)
+      if(_ort_flash_cuda_architectures)
+        onnxruntime_add_cuda_object_library(
+          NAME onnxruntime_providers_cuda_flash_attention
+          PARENT onnxruntime_providers_cuda
+          CUDA_ARCHITECTURES "${_ort_flash_cuda_architectures}"
+          NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
+          SOURCES ${onnxruntime_cuda_flash_attention_srcs})
+      endif()
     endif()
-  endif()
 
-  if(onnxruntime_cuda_sm120_tma_srcs)
-    onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
-    if(_ort_sm120_cuda_architectures)
-      onnxruntime_add_cuda_object_library(
-        NAME onnxruntime_providers_cuda_sm120_tma
-        PARENT onnxruntime_providers_cuda
-        CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
-        NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
-        SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
-    endif()
-  endif()
+    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      # SM90 TMA warp-specialized files use SM90-specific collective operations.
+      # Compile at exactly 90a-real: SM120+ GPUs run SM90 native code via forward compat.
+      # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
+      if(onnxruntime_cuda_sm90_tma_srcs OR onnxruntime_cuda_llm_sm90_srcs)
+        set(_ort_sm90_all_srcs ${onnxruntime_cuda_sm90_tma_srcs} ${onnxruntime_cuda_llm_sm90_srcs})
+        onnxruntime_filter_cuda_archs(_ort_sm90_check MIN_SM 90)
+        if(_ort_sm90_check)
+          onnxruntime_add_cuda_object_library(
+            NAME onnxruntime_providers_cuda_sm90_tma
+            PARENT onnxruntime_providers_cuda
+            CUDA_ARCHITECTURES "90a-real"
+            NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+            SOURCES ${_ort_sm90_all_srcs})
+        endif()
+      endif()
 
-  # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
-  # Flash Attention V2 kernels require SM80 (Ampere) and are memory-intensive to compile.
-  # Isolating them allows the rest of the build to use higher --threads without OOM.
-  set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
-      "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
-  if(onnxruntime_cuda_flash_attention_srcs)
-    onnxruntime_filter_cuda_archs(_ort_flash_cuda_architectures MIN_SM 80)
-    if(_ort_flash_cuda_architectures)
-      onnxruntime_add_cuda_object_library(
-        NAME onnxruntime_providers_cuda_flash_attention
-        PARENT onnxruntime_providers_cuda
-        CUDA_ARCHITECTURES "${_ort_flash_cuda_architectures}"
-        NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
-        SOURCES ${onnxruntime_cuda_flash_attention_srcs})
-    endif()
-  endif()
+      if(onnxruntime_cuda_sm120_tma_srcs)
+        onnxruntime_filter_cuda_archs(_ort_sm120_cuda_architectures MIN_SM 120)
+        if(_ort_sm120_cuda_architectures)
+          onnxruntime_add_cuda_object_library(
+            NAME onnxruntime_providers_cuda_sm120_tma
+            PARENT onnxruntime_providers_cuda
+            CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
+            NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+            SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
+        endif()
+      endif()
 
-  # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
-  # Restricts CUDA_ARCHITECTURES to avoid compiling heavy CUTLASS templates for pre-Turing GPUs.
-  # Excludes SM120+ real (native SASS) architectures because SM120-specific kernels are already
-  # compiled in the separate SM120 TMA OBJECT library, and compiling the general LLM code for
-  # sm_120a triggers CCCL tcgen05 PTX headers that fail on Windows/MSVC. The virtual arch
-  # (PTX) is kept so SM120 devices can JIT-compile the code.
-  if(onnxruntime_cuda_llm_srcs)
-    onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
-    if(_ort_llm_cuda_architectures)
-      onnxruntime_add_cuda_object_library(
-        NAME onnxruntime_providers_cuda_llm
-        PARENT onnxruntime_providers_cuda
-        CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}"
-        NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
-        SOURCES ${onnxruntime_cuda_llm_srcs})
+      # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
+      # Restricts CUDA_ARCHITECTURES to avoid compiling heavy CUTLASS templates for pre-Turing GPUs.
+      # Excludes SM120+ real (native SASS) architectures because SM120-specific kernels are already
+      # compiled in the separate SM120 TMA OBJECT library, and compiling the general LLM code for
+      # sm_120a triggers CCCL tcgen05 PTX headers that fail on Windows/MSVC. The virtual arch
+      # (PTX) is kept so SM120 devices can JIT-compile the code.
+      if(onnxruntime_cuda_llm_srcs)
+        onnxruntime_filter_cuda_archs(_ort_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+        if(_ort_llm_cuda_architectures)
+          onnxruntime_add_cuda_object_library(
+            NAME onnxruntime_providers_cuda_llm
+            PARENT onnxruntime_providers_cuda
+            CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}"
+            NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+            SOURCES ${onnxruntime_cuda_llm_srcs})
+        endif()
+      endif()
     endif()
   endif()
 
