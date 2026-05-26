@@ -17,9 +17,10 @@ using namespace onnxruntime::webgpu;
 
 class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram> {
  public:
-  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, uint32_t multi_rotary_cache_concat_offset)
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram(bool interleaved, bool prepare_indirect_dispatch, uint32_t multi_rotary_cache_concat_offset)
       : Program{"SplitPackedQKVWithRotaryEmbeddingAndCopyKV"},
         interleaved_(interleaved),
+        prepare_indirect_dispatch_(prepare_indirect_dispatch),
         multi_rotary_cache_concat_offset_(multi_rotary_cache_concat_offset) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -33,30 +34,35 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
       {"head_size", ProgramUniformVariableDataType::Uint32},
       {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
       {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
+  const bool prepare_indirect_dispatch_;
   const uint32_t multi_rotary_cache_concat_offset_;
 };
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
   CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool past_present_share_buffer,
-                     bool use_seqlen_k = false)
-      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer), use_seqlen_k_(use_seqlen_k) {
+                     bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"copy_size", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32});
+                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"tile_size", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_;
   bool kv_BNSH_;
   bool past_present_share_buffer_;
+  bool prepare_indirect_dispatch_;
   bool use_seqlen_k_;
 };
 
@@ -217,7 +223,9 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      const Tensor* sin_cache,
                                                      Tensor* query,
                                                      Tensor* present_key,
-                                                     Tensor* present_value);
+                                                     Tensor* present_value,
+                                                     Tensor* indirect_buffer,
+                                                     uint32_t tile_size);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

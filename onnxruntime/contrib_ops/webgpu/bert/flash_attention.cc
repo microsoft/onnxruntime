@@ -26,9 +26,14 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
   const auto& present_key = sh.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = sh.AddOutput("present_value", ShaderUsage::UseUniform);
 
+  if (prepare_indirect_dispatch_) {
+    sh.AddOutput("indirect_buffer", ShaderUsage::None);
+  }
+
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
                              WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
+                             WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
                              WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
@@ -57,6 +62,10 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
+  // If prepare_indirect_dispatch is enabled, add seqlen_k input and indirect_buffer output
+  if (prepare_indirect_dispatch_) {
+    shader.AddOutput("indirect_buffer", ShaderUsage::None);
+  }
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.copy_size")
                             << "  let output_indices = " << copy_kv_shape.OffsetToIndices("global_idx") << ";\n"
@@ -74,6 +83,18 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n";
   } else {
     shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, sequence_id, head_size_id)") << ";\n";
+  }
+
+  // Add indirect dispatch logic for thread 0
+  if (prepare_indirect_dispatch_) {
+    // TODO: Add NormalizeDispatchGroupSize logic here to avoid exceeding max dispatch size.
+    shader.MainFunctionBody() << "  // Prepare indirect dispatch buffer for thread 0\n"
+                              << "  if (global_idx == 0u) {\n"
+                              << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
+                              << "    indirect_buffer[0] = num_total_seq_length_tile;\n"
+                              << "    indirect_buffer[1] = uniforms.num_heads;\n"
+                              << "    indirect_buffer[2] = 1u;\n"
+                              << "  }\n\n";
   }
 
   if (has_past_) {
@@ -99,10 +120,11 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                   const Tensor* seqlen_k) {
+                   uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer) {
   // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
+  // If indirect_buffer is provided, also prepare indirect dispatch buffer for flash attention.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
   // has_past means non-static kv cache with valid past data
   bool has_past = !parameters.past_present_share_buffer_ && past_key != nullptr && past_value != nullptr && past_key->SizeInBytes() > 0;
@@ -114,9 +136,12 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   TensorShape copy_kv_shape{parameters.batch_size_, num_heads, copy_sequence_length, parameters.head_size_ / components};
   int64_t copy_size = copy_kv_shape.Size();
 
+  // Determine if we need to prepare indirect dispatch
+  bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
-  CopyKVCacheProgram program{"CopyKVCache", has_past, kv_BNSH, parameters.past_present_share_buffer_, use_seqlen_k};
+  CopyKVCacheProgram program{"CopyKVCache", has_past, kv_BNSH, parameters.past_present_share_buffer_,
+                             prepare_indirect_dispatch, use_seqlen_k};
   if (kv_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -139,13 +164,19 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}});
 
+  if (prepare_indirect_dispatch) {
+    program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
+  }
+
   program.AddIndices(std::move(copy_kv_shape));
   program.SetDispatchGroupSize(static_cast<uint32_t>((copy_size + 63) / 64))
       .SetWorkgroupSize(64)
-      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_, use_seqlen_k)
+      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_, prepare_indirect_dispatch, use_seqlen_k)
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length_)}});
+                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+                            {tile_size},
+                            {static_cast<uint32_t>(parameters.num_heads_)}});
 
   return context.RunProgram(program);
 }
@@ -217,7 +248,8 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
 
 Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
                                       const Tensor* attention_bias, Tensor* output, Tensor* present_key, Tensor* metadata, const Tensor* seqlen_k,
-                                      const WebgpuAttentionParameters& parameters, uint32_t num_total_seq_length_tile, uint32_t num_present_sequence_length_tile, uint32_t tile_size, bool use_indirect_dispatch, uint32_t present_sequence_length) {
+                                      const WebgpuAttentionParameters& parameters, const Tensor* indirect_buffer, uint32_t num_total_seq_length_tile, uint32_t num_present_sequence_length_tile, uint32_t tile_size, bool use_indirect_dispatch, uint32_t present_sequence_length) {
+  ORT_UNUSED_PARAMETER(indirect_buffer);
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
 
@@ -252,8 +284,6 @@ Status ComputeFlashAttentionDecodeQKT(onnxruntime::webgpu::ComputeContext& conte
   // vkAllocateDescriptorSets), which dominates decode tps under graph capture.
   // num_present_sequence_length_tile is the worst-case tile count for the static
   // KV cache; the shader already masks workgroups via seqlens_k.
-  // Despite the legacy flag name, use_indirect_dispatch selects worst-case tiling
-  // for a direct dispatch here rather than issuing an indirect dispatch.
   const uint32_t qkt_dispatch_tiles = use_indirect_dispatch ? num_present_sequence_length_tile : num_total_seq_length_tile;
   program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * qkt_dispatch_tiles);
   program.SetWorkgroupSize(64)
@@ -302,12 +332,14 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
                                                Tensor* present_value,
                                                const Tensor* seqlen_k,
                                                const WebgpuAttentionParameters& parameters,
+                                               const Tensor* indirect_buffer,
                                                uint32_t num_total_seq_length_tile,
                                                uint32_t num_present_sequence_length_tile,
                                                uint32_t tile_size,
                                                bool use_indirect_dispatch,
                                                uint32_t present_sequence_length,
                                                const Tensor* head_sink) {
+  ORT_UNUSED_PARAMETER(indirect_buffer);
   const int components = 4;
   const bool has_head_sink = head_sink != nullptr;
   int head_size_vec = parameters.v_head_size_ / components;
@@ -326,8 +358,6 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
   // See FlashAttentionDecodeQKT above: avoid indirect dispatch to skip Dawn's
   // per-call TransformIndirectDispatchBuffer overhead on Vulkan. The shader masks
   // out-of-range workgroups via seqlens_k.
-  // Despite the legacy flag name, use_indirect_dispatch selects worst-case tiling
-  // for a direct dispatch here rather than issuing an indirect dispatch.
   const uint32_t splitvx_dispatch_tiles = use_indirect_dispatch ? num_present_sequence_length_tile : num_total_seq_length_tile;
   program.SetDispatchGroupSize(batch_heads * splitvx_dispatch_tiles);
   program.CacheHint(tile_size, head_size_vec, use_indirect_dispatch, has_head_sink)
@@ -419,13 +449,20 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Declare query_output at function scope to ensure it persists throughout the function
   Tensor query_output;
 
-  // Whether the decode path can apply worst-case-tile direct dispatch with seqlens_k
-  // masking in the shader. Only valid for sequence_length == 1 with static KV cache
-  // under graph capture, where seqlen_k is non-null.
+  // Create indirect dispatch buffer if using indirect dispatch
+  Tensor* indirect_buffer_ptr = nullptr;
+  Tensor indirect_buffer;
+
+  // Prepare indirect dispatch buffer for decode path with static KV cache
   const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
                                      parameters.past_present_share_buffer_ &&
                                      seqlen_k != nullptr &&
                                      context.IsGraphCaptureEnabled();
+  if (use_indirect_dispatch) {
+    const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
+    indirect_buffer = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
+    indirect_buffer_ptr = &indirect_buffer;
+  }
 
   const bool do_rotary = (cos_cache != nullptr && sin_cache != nullptr);
 
@@ -439,10 +476,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(context, parameters,
                                                                       Q, seqlen_k,
                                                                       cos_cache, sin_cache,
-                                                                      &query_output, present_key, present_value));
+                                                                      &query_output, present_key, present_value,
+                                                                      indirect_buffer_ptr, tile_size));
     Q = &query_output;
   } else {
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, use_seqlen_k ? seqlen_k : nullptr));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
   if (parameters.sequence_length_ > 1) {
@@ -526,7 +564,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const TensorShape metadata_shape(metadata_dims);
   Tensor metadata = context.CreateGPUTensor(DataTypeImpl::GetType<float>(), metadata_shape);
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeQKT(context, Q, attention_bias, &qk, present_key, &metadata, seqlen_k,
-                                                     parameters, num_total_seq_length_tile,
+                                                     parameters, indirect_buffer_ptr, num_total_seq_length_tile,
                                                      num_present_sequence_length_tile, tile_size, use_indirect_dispatch,
                                                      present_sequence_length));
 
@@ -535,7 +573,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const TensorShape out_split_vx_shape(out_split_vx_dims);
   Tensor out_split_vx = context.CreateGPUTensor(Q->DataType(), out_split_vx_shape);
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeSplitVxScore(context, &metadata, &qk, &out_split_vx, present_value,
-                                                              seqlen_k, parameters,
+                                                              seqlen_k, parameters, indirect_buffer_ptr,
                                                               num_total_seq_length_tile,
                                                               num_present_sequence_length_tile, tile_size,
                                                               use_indirect_dispatch, present_sequence_length,
@@ -561,7 +599,9 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      const Tensor* sin_cache,
                                                      Tensor* query,
                                                      Tensor* present_key,
-                                                     Tensor* present_value) {
+                                                     Tensor* present_value,
+                                                     Tensor* indirect_buffer,
+                                                     uint32_t tile_size) {
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -587,11 +627,12 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
   // Extract present_sequence_length from present_key tensor shape
   const uint32_t present_sequence_length = gsl::narrow_cast<uint32_t>(present_key->Shape()[2]);
 
+  const bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
 
-  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, multi_rotary_cache_concat_offset);
+  SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram program(params.rotary_interleaved_, prepare_indirect_dispatch, multi_rotary_cache_concat_offset);
   program
-      .CacheHint(params.rotary_interleaved_, multi_rotary_cache_concat_offset)
+      .CacheHint(params.rotary_interleaved_, prepare_indirect_dispatch, multi_rotary_cache_concat_offset)
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
@@ -602,6 +643,10 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                       {present_key, ProgramTensorMetadataDependency::None, components},
                       {present_value, ProgramTensorMetadataDependency::None, components}});
 
+  if (prepare_indirect_dispatch) {
+    program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
+  }
+
   program.AddUniformVariables({
       {static_cast<uint32_t>(params.sequence_length_)},
       {static_cast<uint32_t>(params.hidden_size_ / components)},
@@ -611,6 +656,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
       {static_cast<uint32_t>(head_size_vec)},
       {static_cast<uint32_t>(half_rotary_embedding_dim_vec)},
       {present_sequence_length},
+      {tile_size},
       {static_cast<uint32_t>(dispatch_size)},
   });
 
