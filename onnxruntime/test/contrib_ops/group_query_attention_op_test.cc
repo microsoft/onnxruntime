@@ -354,7 +354,7 @@ static void ExpectOutputsMatch(const std::vector<float>& a, const std::vector<fl
 
 // ---------------------------------------------------------------------------
 // Tests for kv_sequence_length=0 with borrowed past_key/past_value
-// (shared KV pattern: empty K/V inputs, all KV data in past buffer)
+// (Gemma4 shared KV pattern: empty K/V inputs, all KV data in past buffer)
 // ---------------------------------------------------------------------------
 
 // Helper: run GQA with empty K/V and past_key/past_value (shared KV pattern).
@@ -616,7 +616,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_LargeHeadSize_CPU) {
   EXPECT_FALSE(all_zero) << "Output should not be all zeros";
 }
 
-// CPU: GQA ratio num_heads=8, kv_num_heads=1.
+// CPU: GQA ratio num_heads=8, kv_num_heads=1 (matches Gemma4 config).
 TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_GQARatio8_CPU) {
   constexpr int batch_size = 1;
   constexpr int q_seq_len = 1;
@@ -816,7 +816,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_GQARatio8_CUDA) {
 }
 
 // ---------------------------------------------------------------------------
-// Shared KV tests with do_rotary=1
+// Shared KV tests with do_rotary=1 (Gemma4 primary use case)
 // ---------------------------------------------------------------------------
 
 // Helper: run GQA with empty K/V, past_key/past_value, and do_rotary=1.
@@ -1754,7 +1754,7 @@ TEST(GroupQueryAttentionTest, SeqlensKExceedsCosCache_MultiBatch) {
 }
 
 // ---------------------------------------------------------------------------
-// WebGPU: shared KV tests (kv_sequence_length=0 pattern)
+// WebGPU: shared KV tests (Gemma4 kv_sequence_length=0 pattern)
 // Each test cross-checks WebGPU against CPU for correctness.
 // ---------------------------------------------------------------------------
 
