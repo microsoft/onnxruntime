@@ -8,6 +8,7 @@
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
 #ifdef ENABLE_TRAINING
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -206,13 +207,13 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
           &one, input_tensor, input_data,
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y)));
     } else {
-      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data
-      // for this case. This happens when the input is Scalar.
+      // cudnnReduceTensor has issues if input and output have the same size. This happens when the input is a
+      // scalar or when a singleton axis (dim == 1) is reduced, making the reduction a no-op.
       if (input_count == output_count) {
-        // For norm ops the single-element result must still be non-negative.
+        // For norm ops the result must still be non-negative (|x| for single-element no-op reductions).
         if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {
-          Impl_Abs<CudaT>(cuda_stream, reinterpret_cast<const CudaT*>(X),
-                          reinterpret_cast<CudaT*>(Y), input_count);
+          Impl_SaturatingAbs<CudaT>(cuda_stream, reinterpret_cast<const CudaT*>(X),
+                                    reinterpret_cast<CudaT*>(Y), input_count);
         } else if (reinterpret_cast<const void*>(Y) != reinterpret_cast<const void*>(X)) {
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y, X, input_count * sizeof(T), cudaMemcpyDeviceToDevice, cuda_stream));
         }
@@ -594,13 +595,13 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
             &zero, output_tensor, p_output));
       }
     } else {
-      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data
-      // for this case.
+      // cudnnReduceTensor has issues if input and output have the same size. This happens when the input is a
+      // scalar or when a singleton axis (dim == 1) is reduced, making the reduction a no-op.
       if (input_count == output_count) {
-        // For norm ops the single-element result must still be non-negative.
+        // For norm ops the result must still be non-negative (|x| for single-element no-op reductions).
         if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {
-          Impl_Abs<CudaT>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
-                          reinterpret_cast<CudaT*>(output.MutableData<T>()), input_count);
+          Impl_SaturatingAbs<CudaT>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                    reinterpret_cast<CudaT*>(output.MutableData<T>()), input_count);
         } else if (output.MutableData<T>() != input.Data<T>()) {
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), input.Data<T>(),
                                                input_count * sizeof(T), cudaMemcpyDeviceToDevice, stream));
@@ -788,8 +789,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     if (input_count == output_count) {                                                                                    \
       /* For no-op reductions where element count is unchanged, L1/L2 must still apply norm semantics. */                 \
       if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {                 \
-        Impl_Abs<CudaT>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()),                                        \
-                        reinterpret_cast<CudaT*>(Y->MutableData<T>()), input_count);                                      \
+        Impl_SaturatingAbs<CudaT>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()),                              \
+                                  reinterpret_cast<CudaT*>(Y->MutableData<T>()), input_count);                            \
       } else if (Y->MutableData<T>() != X->Data<T>()) {                                                                   \
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->MutableData<T>(), X->Data<T>(),                                           \
                                              input_count * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));            \

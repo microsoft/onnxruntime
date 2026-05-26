@@ -347,6 +347,13 @@ TEST(ReductionOpTest, ReduceL10DTensor) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ReduceL1_0DTensor_negative_input) {
+  OpTester test("ReduceL1");
+  test.AddInput<float>("data", {}, {-3.0f});
+  test.AddOutput<float>("reduced", {}, {3.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceL1_int32_singleton_axis_negative_input) {
   OpTester test("ReduceL1");
   test.AddAttribute("axes", std::vector<int64_t>{0});
@@ -665,6 +672,13 @@ TEST(ReductionOpTest, ReduceL20DTensor) {
   OpTester test("ReduceL2");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL2_0DTensor_negative_input) {
+  OpTester test("ReduceL2");
+  test.AddInput<float>("data", {}, {-5.0f});
+  test.AddOutput<float>("reduced", {}, {5.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 

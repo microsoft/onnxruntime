@@ -513,3 +513,48 @@ INSTANTIATE_REDUCE_MATRIX_COLUMNS(BFloat16);
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+// =============================================================================
+// Saturating absolute value for norm no-op reductions.
+//
+// When reducing a singleton axis (input_count == output_count), the cuDNN
+// workaround copies data directly. For NORM1/NORM2 the result must be
+// non-negative. The standard _Abs(a) uses `a > 0 ? a : -a` which is undefined
+// behavior for the minimum value of signed types (e.g., INT32_MIN) because
+// -INT32_MIN overflows int32.
+//
+// This saturating variant clamps the result to numeric_limits<T>::max() when
+// the true absolute value is unrepresentable. This is mathematically the
+// closest value within the type's range.
+// =============================================================================
+namespace onnxruntime {
+namespace cuda {
+
+template <typename T>
+struct OP_SaturatingAbs {
+  __device__ __inline__ T operator()(const T& a) const {
+    if constexpr (std::is_signed_v<T> && std::is_integral_v<T>) {
+      // For the minimum value of a signed type, -a overflows.
+      // Saturate to max representable value instead.
+      if (a == std::numeric_limits<T>::min()) {
+        return std::numeric_limits<T>::max();
+      }
+    }
+    return a > T(0) ? a : -a;
+  }
+};
+
+template <typename T>
+void Impl_SaturatingAbs(cudaStream_t stream, const T* input_data, T* output_data, size_t count) {
+  UnaryElementWiseImpl(stream, input_data, output_data, OP_SaturatingAbs<T>(), count);
+}
+
+// Explicit instantiations for types registered for ReduceL1/L2 on CUDA.
+template void Impl_SaturatingAbs<float>(cudaStream_t, const float*, float*, size_t);
+template void Impl_SaturatingAbs<double>(cudaStream_t, const double*, double*, size_t);
+template void Impl_SaturatingAbs<half>(cudaStream_t, const half*, half*, size_t);
+template void Impl_SaturatingAbs<BFloat16>(cudaStream_t, const BFloat16*, BFloat16*, size_t);
+template void Impl_SaturatingAbs<int32_t>(cudaStream_t, const int32_t*, int32_t*, size_t);
+
+}  // namespace cuda
+}  // namespace onnxruntime
