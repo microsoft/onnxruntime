@@ -33,6 +33,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:MatMul|Only support for transA == 0, alpha == 1.0 and beta == 1.0 is currently implemented.|
 |ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:Max||
+|ai.onnx:Mod|`fmod` attribute must be 0 (floor mod). fp32/fp16/int32. MLProgram only.|
 |ai.onnx:Mul||
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
 |ai.onnx:PRelu||

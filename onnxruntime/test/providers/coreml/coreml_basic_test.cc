@@ -3349,6 +3349,86 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+namespace {
+// X(int32) Mod Y(int32 const) -> int32 output. Used by the Mod tests below.
+// fmod attribute defaults to 0 (floor mod, matches MIL `mod`).
+std::string MakeModModelData(int32_t elem_type, int64_t fmod = 0) {
+  onnxruntime::Model model("mod_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(elem_type);
+  for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &t);
+  auto& y = graph.GetOrCreateNodeArg("Y", &t);
+  auto& z = graph.GetOrCreateNodeArg("Z", &t);
+
+  ONNX_NAMESPACE::TensorProto y_init;
+  y_init.set_name("Y");
+  y_init.set_data_type(elem_type);
+  y_init.add_dims(1);
+  y_init.add_dims(4);
+  if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    for (int32_t v : {3, 3, 3, 3}) y_init.add_int32_data(v);
+  } else {
+    for (float v : {3.0f, 3.0f, 3.0f, 3.0f}) y_init.add_float_data(v);
+  }
+  graph.AddInitializedTensor(y_init);
+
+  auto& mod_node = graph.AddNode("mod", "Mod", "modulo", {&x, &y}, {&z});
+  mod_node.AddAttribute("fmod", fmod);
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// Mod with fmod=0 (floor mod) is lowered to MIL `mod`.
+TEST(CoreMLExecutionProviderTest, Mod_MLProgram) {
+  const std::string model_data =
+      MakeModModelData(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue x_val;
+  CreateMLValue<int32_t>(CPUAllocator::DefaultInstance(), dims, {7, 8, 9, 10}, &x_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// Mod with fmod=1 (C-style truncated remainder) has different semantics from
+// MIL's floor `mod`, so it must fall back to CPU.
+TEST(CoreMLExecutionProviderTest, ModFmodTrueNotSupported) {
+  const std::string model_data =
+      MakeModModelData(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, /*fmod=*/1);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+// Mod only has an ML Program lowering; on the NeuralNetwork format it must
+// fall back to CPU.
+TEST(CoreMLExecutionProviderTest, ModNeuralNetworkNotSupported) {
+  const std::string model_data =
+      MakeModModelData(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
