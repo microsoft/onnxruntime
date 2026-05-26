@@ -329,28 +329,16 @@ struct ConvTransposeAttributes : public ConvAttributes {
     if (pad_type == AutoPadType::SAME_UPPER || pad_type == AutoPadType::SAME_LOWER) {
       // The ONNX spec says if `auto_pad` attribute is set, pad until the `out_size`
       // is `in_size * stride`
-      ORT_TRY {
-        int64_t auto_out_size = SafeInt<int64_t>(in_size) * stride;
-        auto total_pad = ComputeTotalPad(in_size, stride, adj,
-                                         kernel, dilation, auto_out_size);
-        DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
-      }
-      ORT_CATCH(const OnnxRuntimeException&) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Integer overflow in ConvTranspose output size computation.");
-      }
+      int64_t auto_out_size = SafeInt<int64_t>(in_size) * stride;
+      auto total_pad = ComputeTotalPad(in_size, stride, adj,
+                                       kernel, dilation, auto_out_size);
+      DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
     }
 
     // *out_size = (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - *pad_head - *pad_tail
-    ORT_TRY {
-      *out_size = SafeInt<int64_t>(in_size - 1) * stride + adj +
-                  SafeInt<int64_t>(kernel - 1) * dilation + 1 -
-                  *pad_head - *pad_tail;
-    }
-    ORT_CATCH(const OnnxRuntimeException&) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Integer overflow in ConvTranspose output size computation.");
-    }
+    *out_size = SafeInt<int64_t>(in_size - 1) * stride + adj +
+                SafeInt<int64_t>(kernel - 1) * dilation + 1 -
+                *pad_head - *pad_tail;
     return Status::OK();
   }
 };
