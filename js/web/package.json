@@ -64,6 +64,9 @@
     "source-map": "^0.7.4",
     "strip-json-comments": "^5.0.0"
   },
+  "overrides": {
+    "ws": "^8.20.1"
+  },
   "main": "dist/ort.node.min.js",
   "browser": "dist/ort.min.js",
   "exports": {

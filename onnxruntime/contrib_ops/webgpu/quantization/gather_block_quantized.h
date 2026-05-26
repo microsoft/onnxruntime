@@ -31,7 +31,9 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_size", ProgramUniformVariableDataType::Uint32},
                                           {"quantize_axis", ProgramUniformVariableDataType::Uint32},
                                           {"gather_axis", ProgramUniformVariableDataType::Uint32},
-                                          {"block_size", ProgramUniformVariableDataType::Uint32});
+                                          {"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"scale_qaxis_dim", ProgramUniformVariableDataType::Uint32},
+                                          {"zp_packed_qaxis_dim", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool is_signed_;
@@ -52,11 +54,10 @@ class GatherBlockQuantized final : public WebGpuKernel {
     quantize_axis_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("quantize_axis", 1));
     bits_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("bits", 4));
 
-    ORT_ENFORCE(bits_ == 4 || bits_ == 8, "'bits' must be 4 or 8.");
+    ORT_ENFORCE(bits_ == 2 || bits_ == 4 || bits_ == 8, "'bits' must be 2, 4 or 8.");
     ORT_ENFORCE(block_size_ >= 16 && ((block_size_ - 1) & block_size_) == 0,
                 "'block_size' must be 2's power and not less than 16.");
   }
-
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:

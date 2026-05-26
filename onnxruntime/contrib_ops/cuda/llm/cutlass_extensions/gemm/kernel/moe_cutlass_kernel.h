@@ -586,8 +586,12 @@ struct MoeFCGemm {
       run_kernel<arch::Sm80>(params, shared_storage);
     }
 #else
-    static_assert(
-        false, "Invalid architecture being compiled. Only Ampere+ supported in weight-only quantization kernels.");
+    // Pre-Ampere device compile pass: the MoeFCGemm body is unsupported on these archs,
+    // but NVCC must still emit *some* body for each requested target. Runtime dispatch
+    // in MoeGemmRunner::dispatchToArch() never invokes this kernel when sm_ < 80, so a
+    // device-side trap is safe and lets the same .cu compile cleanly under mixed arch
+    // lists (e.g. 52;61;75;86;89;90 in packaging pipelines).
+    CUTLASS_NOT_IMPLEMENTED();
 #endif
 #else
     CUTLASS_NOT_IMPLEMENTED();
