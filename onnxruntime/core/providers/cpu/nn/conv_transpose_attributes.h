@@ -149,7 +149,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Dynamic pads tensor must be 1-D. Got rank: ", Pads->Shape().NumDimensions());
       }
-      const int64_t expected_pads_size = static_cast<int64_t>(kernel_shape.size()) * 2;
+      const int64_t expected_pads_size = SafeInt<int64_t>(kernel_shape.size()) * 2;
       const int64_t actual_pads_size = Pads->Shape().SizeFromDimension(0);
       if (actual_pads_size != expected_pads_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

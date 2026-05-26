@@ -275,14 +275,14 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
   // both must have at least 3 dimensions. Check before dims-changed comparison because
   // a scalar (rank 0) has empty dims which matches the default-initialized last_x_dims,
   // causing the validation block to be skipped entirely.
-  const int rank = static_cast<int>(x_shape.NumDimensions());
+  const size_t rank = x_shape.NumDimensions();
   if (rank < 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input X must have at least 3 dimensions (N x C x D1...Dn).",
                            " X: ", x_shape.ToString().c_str());
   }
 
-  if (static_cast<int>(w_shape.NumDimensions()) < 3) {
+  if (w_shape.NumDimensions() < 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
                            " W: ", w_shape.ToString().c_str());
