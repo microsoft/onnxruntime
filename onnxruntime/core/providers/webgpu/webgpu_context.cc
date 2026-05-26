@@ -533,14 +533,19 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Enable / disable other toggles that may affect the performance.
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
-      "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
+      "skip_validation",
       "disable_robustness",
       "d3d_disable_ieee_strictness",
   };
+#ifndef NDEBUG
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
                                       ? std::begin(toggles) + 1
                                       : std::begin(toggles),
                                   std::end(toggles));
+#else
+  // In release/relwithdebinfo builds, always enable Dawn's skip_validation toggle.
+  return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+#endif
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
