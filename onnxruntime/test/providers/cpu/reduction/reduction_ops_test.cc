@@ -347,6 +347,75 @@ TEST(ReductionOpTest, ReduceL10DTensor) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ReduceL1_int32_singleton_axis_negative_input) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<int32_t>("data", {1, 1}, {-4});
+  test.AddOutput<int32_t>("reduced", {1}, {4});
+  // TensorRT does not support int32 ReduceL1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL1_int64_singleton_axis_negative_input) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<int64_t>("data", {1, 1}, {-4});
+  test.AddOutput<int64_t>("reduced", {1}, {4});
+  // TensorRT does not support int64 ReduceL1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL1_float_singleton_axis_negative_input) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {1, 1}, {-4.0f});
+  test.AddOutput<float>("reduced", {1}, {4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL1_double_singleton_axis_negative_input) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<double>("data", {1, 1}, {-4.0});
+  test.AddOutput<double>("reduced", {1}, {4.0});
+  // TensorRT does not support double ReduceL1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+#if defined(USE_CUDA)
+TEST(ReductionOpTest, ReduceL1_half_singleton_axis_negative_input) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<MLFloat16>("data", {1, 1}, FloatsToMLFloat16s({-4.0f}));
+  test.AddOutput<MLFloat16>("reduced", {1}, FloatsToMLFloat16s({4.0f}));
+  test.Run();
+}
+#endif
+
+TEST(ReductionOpTest, ReduceL1_float_multi_element_all_negative) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {3, 2}, {-1.0f, -2.0f, -3.0f, -4.0f, -5.0f, -6.0f});
+  test.AddOutput<float>("reduced", {2}, {9.0f, 12.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL1_int32_keepdims_singleton_axis_negative_input) {
+  OpTester test("ReduceL1");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<int32_t>("data", {1, 2}, {-3, -7});
+  test.AddOutput<int32_t>("reduced", {1, 2}, {3, 7});
+  // TensorRT does not support int32 ReduceL1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
   OpTester test("ReduceL2");
   test.AddAttribute("keepdims", (int64_t)1);
@@ -404,6 +473,78 @@ TEST(ReductionOpTest, ReduceL2_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {3.741657387f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
+
+TEST(ReductionOpTest, ReduceL2_singleton_axis_negative_input) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<float>("data", {1, 1}, {-4.0f});
+  test.AddOutput<float>("reduced", {1}, {4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL2_double_singleton_axis_negative_input) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<double>("data", {1, 1}, {-4.0});
+  test.AddOutput<double>("reduced", {1}, {4.0});
+  // TensorRT does not support double ReduceL2.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL2_int32_singleton_axis_negative_input) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<int32_t>("data", {1, 1}, {-4});
+  test.AddOutput<int32_t>("reduced", {1}, {4});
+  // TensorRT/OpenVINO do not support int32 ReduceL2.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#if defined(USE_CUDA)
+TEST(ReductionOpTest, ReduceL2_half_singleton_axis_negative_input) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  test.AddInput<MLFloat16>("data", {1, 1}, FloatsToMLFloat16s({-4.0f}));
+  test.AddOutput<MLFloat16>("reduced", {1}, FloatsToMLFloat16s({4.0f}));
+  test.Run();
+}
+#endif
+
+TEST(ReductionOpTest, ReduceL2_float_multi_element_all_negative) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(0));
+  // sqrt((-1)^2 + (-3)^2 + (-5)^2) = sqrt(35) ≈ 5.916
+  // sqrt((-2)^2 + (-4)^2 + (-6)^2) = sqrt(56) ≈ 7.483
+  test.AddInput<float>("data", {3, 2}, {-1.0f, -2.0f, -3.0f, -4.0f, -5.0f, -6.0f});
+  test.AddOutput<float>("reduced", {2}, {5.91607978f, 7.48331477f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL2_float_keepdims_singleton_axis_negative_input) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<float>("data", {1, 2}, {-3.0f, -7.0f});
+  test.AddOutput<float>("reduced", {1, 2}, {3.0f, 7.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceL2_int32_keepdims_singleton_axis_negative_input) {
+  OpTester test("ReduceL2");
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+  test.AddInput<int32_t>("data", {1, 2}, {-3, -7});
+  test.AddOutput<int32_t>("reduced", {1, 2}, {3, 7});
+  // TensorRT/OpenVINO do not support int32 ReduceL2.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_keepdims) {

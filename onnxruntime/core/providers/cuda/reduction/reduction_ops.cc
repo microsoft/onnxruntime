@@ -206,9 +206,14 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
           &one, input_tensor, input_data,
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y)));
     } else {
-      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data
+      // for this case. This happens when the input is Scalar.
       if (input_count == output_count) {
-        if (reinterpret_cast<const void*>(Y) != reinterpret_cast<const void*>(X)) {
+        // For norm ops the single-element result must still be non-negative.
+        if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {
+          Impl_Abs<CudaT>(cuda_stream, reinterpret_cast<const CudaT*>(X),
+                          reinterpret_cast<CudaT*>(Y), input_count);
+        } else if (reinterpret_cast<const void*>(Y) != reinterpret_cast<const void*>(X)) {
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y, X, input_count * sizeof(T), cudaMemcpyDeviceToDevice, cuda_stream));
         }
       } else {
@@ -589,10 +594,16 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
             &zero, output_tensor, p_output));
       }
     } else {
-      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data
+      // for this case.
       if (input_count == output_count) {
-        if (output.MutableData<T>() != input.Data<T>()) {
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), input.Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+        // For norm ops the single-element result must still be non-negative.
+        if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {
+          Impl_Abs<CudaT>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                          reinterpret_cast<CudaT*>(output.MutableData<T>()), input_count);
+        } else if (output.MutableData<T>() != input.Data<T>()) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), input.Data<T>(),
+                                               input_count * sizeof(T), cudaMemcpyDeviceToDevice, stream));
         }
       } else {
         if (temp_X) {
@@ -775,7 +786,11 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     }                                                                                                                     \
                                                                                                                           \
     if (input_count == output_count) {                                                                                    \
-      if (Y->MutableData<T>() != X->Data<T>()) {                                                                          \
+      /* For no-op reductions where element count is unchanged, L1/L2 must still apply norm semantics. */                 \
+      if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {                 \
+        Impl_Abs<CudaT>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()),                                        \
+                        reinterpret_cast<CudaT*>(Y->MutableData<T>()), input_count);                                      \
+      } else if (Y->MutableData<T>() != X->Data<T>()) {                                                                   \
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->MutableData<T>(), X->Data<T>(),                                           \
                                              input_count * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));            \
       }                                                                                                                   \
