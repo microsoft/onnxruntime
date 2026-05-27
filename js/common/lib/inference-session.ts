@@ -27,7 +27,7 @@ export declare namespace InferenceSession {
    * - An array of string indicating the output names.
    * - An object that use output names as keys and OnnxValue or null as corresponding values.
    *
-   * @remark
+   * @remarks
    * different from input argument, in output, OnnxValue is optional. If an OnnxValue is present it will be
    * used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
    * internally.
@@ -311,7 +311,8 @@ export declare namespace InferenceSession {
    * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext
    */
   export interface WebNNOptionsWithMLContext
-    extends WebNNExecutionProviderName,
+    extends
+      WebNNExecutionProviderName,
       Omit<WebNNContextOptions, 'deviceType'>,
       Required<Pick<WebNNContextOptions, 'deviceType'>> {
     context: TryGetGlobalType<'MLContext'>;

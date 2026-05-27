@@ -525,10 +525,13 @@ class WhisperHelper:
             f.write(audio_processor_json)
 
         provider_options = [] if "cpu" in provider else [{f"{provider}": {}}]
+        # Prefer max_target_positions (always 448 for Whisper) over max_length,
+        # which may not exist on WhisperConfig and fall back to a wrong default (20).
+        context_length = getattr(config, "max_target_positions", None) or config.max_length
         genai_config = {
             "model": {
                 "bos_token_id": config.bos_token_id,
-                "context_length": config.max_length,
+                "context_length": context_length,
                 "decoder": {
                     "session_options": {
                         "log_id": "onnxruntime-genai",
@@ -581,7 +584,7 @@ class WhisperHelper:
                 "do_sample": False,
                 "early_stopping": True,
                 "length_penalty": 1.0,
-                "max_length": config.max_length,
+                "max_length": context_length,
                 "min_length": 0,
                 "no_repeat_ngram_size": 0,
                 "num_beams": 1,

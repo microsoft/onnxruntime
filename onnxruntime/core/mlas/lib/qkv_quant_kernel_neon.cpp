@@ -29,12 +29,13 @@ using namespace MlasKVQuantInternal;
 namespace {
 
 //
-// Dequantize 8 INT8 values starting at `col` and scale them.
+// Dequantize 8 INT8 values starting at `col`.
+// Per-channel rows are always scaled. Per-tensor rows may defer scaling.
 // Produces two float32x4_t (8 floats total) stored into dst.
 //
 inline void
 DequantInt8x8_Neon(const int8_t* src, size_t col, bool per_channel,
-                   const float* scales, float* dst)
+                   const float* scales, bool apply_per_tensor_scale, float* dst)
 {
     // Load 8 int8 values
     int8x8_t raw = vld1_s8(src + col);
@@ -52,7 +53,7 @@ DequantInt8x8_Neon(const int8_t* src, size_t col, bool per_channel,
         float32x4_t sc_hi = vld1q_f32(scales + col + 4);
         f_lo = vmulq_f32(f_lo, sc_lo);
         f_hi = vmulq_f32(f_hi, sc_hi);
-    } else {
+    } else if (apply_per_tensor_scale) {
         float32x4_t sc = vdupq_n_f32(scales[0]);
         f_lo = vmulq_f32(f_lo, sc);
         f_hi = vmulq_f32(f_hi, sc);
@@ -64,10 +65,11 @@ DequantInt8x8_Neon(const int8_t* src, size_t col, bool per_channel,
 
 //
 // Dequantize 8 INT4 values (4 packed bytes) starting at even column `col`.
+// Per-channel rows are always scaled. Per-tensor rows may defer scaling.
 //
 inline void
 DequantInt4x8_Neon(const uint8_t* src, size_t col, bool per_channel,
-                   const float* scales, float* dst)
+                   const float* scales, bool apply_per_tensor_scale, float* dst)
 {
     const uint8_t* base = src + col / 2;
 
@@ -94,7 +96,7 @@ DequantInt4x8_Neon(const uint8_t* src, size_t col, bool per_channel,
         float32x4_t sc_hi = vld1q_f32(scales + col + 4);
         f_lo = vmulq_f32(f_lo, sc_lo);
         f_hi = vmulq_f32(f_hi, sc_hi);
-    } else {
+    } else if (apply_per_tensor_scale) {
         float32x4_t sc = vdupq_n_f32(scales[0]);
         f_lo = vmulq_f32(f_lo, sc);
         f_hi = vmulq_f32(f_hi, sc);
@@ -106,6 +108,8 @@ DequantInt4x8_Neon(const uint8_t* src, size_t col, bool per_channel,
 
 //
 // Dequantize one row of length `cols` from packed quantized buffer into `dst`.
+// `apply_per_tensor_scale=false` leaves per-tensor rows unscaled so callers can
+// factor the single scale out of an outer accumulation loop.
 //
 void
 DequantRow_Neon(
@@ -113,7 +117,8 @@ DequantRow_Neon(
     float* dst,
     size_t cols,
     MLAS_KV_QUANT_TYPE qt,
-    const float* scales)
+    const float* scales,
+    bool apply_per_tensor_scale)
 {
     const bool int4 = IsInt4Mode(qt);
     const bool per_channel = IsPerChannelMode(qt);
@@ -124,22 +129,32 @@ DequantRow_Neon(
     if (!int4) {
         const auto* src = static_cast<const int8_t*>(src_raw);
         for (; c < vec_end; c += 8) {
-            DequantInt8x8_Neon(src, c, per_channel, scales, dst + c);
+            DequantInt8x8_Neon(src, c, per_channel, scales, apply_per_tensor_scale, dst + c);
         }
         for (; c < cols; ++c) {
-            float sc = per_channel ? scales[c] : scales[0];
-            dst[c] = static_cast<float>(src[c]) * sc;
+            if (per_channel) {
+                dst[c] = static_cast<float>(src[c]) * scales[c];
+            } else if (apply_per_tensor_scale) {
+                dst[c] = static_cast<float>(src[c]) * scales[0];
+            } else {
+                dst[c] = static_cast<float>(src[c]);
+            }
         }
     } else {
         const auto* src = static_cast<const uint8_t*>(src_raw);
         for (; c < vec_end; c += 8) {
-            DequantInt4x8_Neon(src, c, per_channel, scales, dst + c);
+            DequantInt4x8_Neon(src, c, per_channel, scales, apply_per_tensor_scale, dst + c);
         }
         for (; c < cols; ++c) {
             uint8_t packed = src[c / 2];
             int nibble = (c & 1) == 0 ? (packed & 0x0F) : ((packed >> 4) & 0x0F);
-            float sc = per_channel ? scales[c] : scales[0];
-            dst[c] = static_cast<float>(nibble - kInt4Bias) * sc;
+            if (per_channel) {
+                dst[c] = static_cast<float>(nibble - kInt4Bias) * scales[c];
+            } else if (apply_per_tensor_scale) {
+                dst[c] = static_cast<float>(nibble - kInt4Bias) * scales[0];
+            } else {
+                dst[c] = static_cast<float>(nibble - kInt4Bias);
+            }
         }
     }
 }
@@ -174,7 +189,7 @@ QKGemm_Neon(
 
     for (size_t n = 0; n < N; ++n) {
         const uint8_t* b_row = B_bytes + n * row_bytes;
-        DequantRow_Neon(b_row, b_buf, K, QuantType, Scales);
+        DequantRow_Neon(b_row, b_buf, K, QuantType, Scales, true);
 
         for (size_t m = 0; m < M; ++m) {
             const float* a_row = A + m * lda;
@@ -246,6 +261,7 @@ SVGemm_Neon(
 {
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
     const auto* B_bytes = static_cast<const uint8_t*>(B);
+    const bool per_channel = IsPerChannelMode(QuantType);
 
     float b_stack[256];
     float* b_buf = b_stack;
@@ -272,7 +288,7 @@ SVGemm_Neon(
 
         for (size_t k = 0; k < K; ++k) {
             const uint8_t* b_row_packed = B_bytes + k * row_bytes;
-            DequantRow_Neon(b_row_packed, b_buf, N, QuantType, Scales);
+            DequantRow_Neon(b_row_packed, b_buf, N, QuantType, Scales, per_channel);
 
             const float a_val = a_row[k];
             float32x4_t a_broadcast = vdupq_n_f32(a_val);
@@ -286,6 +302,19 @@ SVGemm_Neon(
             }
             for (; n < N; ++n) {
                 c_row[n] += a_val * b_buf[n];
+            }
+        }
+
+        if (!per_channel) {
+            const float32x4_t scale_vec = vdupq_n_f32(Scales[0]);
+            n = 0;
+            for (; n < vec_end_n; n += 4) {
+                float32x4_t c_vec = vld1q_f32(c_row + n);
+                c_vec = vmulq_f32(c_vec, scale_vec);
+                vst1q_f32(c_row + n, c_vec);
+            }
+            for (; n < N; ++n) {
+                c_row[n] *= Scales[0];
             }
         }
     }

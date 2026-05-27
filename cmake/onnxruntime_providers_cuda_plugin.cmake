@@ -104,6 +104,17 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transforme
 # Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
 include(onnxruntime_cuda_source_filters.cmake)
 onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
+onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
+  SM90_SOURCES _cuda_plugin_sm90_tma_srcs
+  SM120_SOURCES _cuda_plugin_sm120_tma_srcs
+)
+onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
+  FLASH_SOURCES _cuda_plugin_flash_attention_srcs
+)
+onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
+  LLM_SOURCES _cuda_plugin_llm_srcs
+  LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs
+)
 
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
@@ -179,25 +190,46 @@ endif()
 if (DEFINED onnxruntime_NVCC_THREADS)
     set(onnxruntime_plugin_nvcc_threads "${onnxruntime_NVCC_THREADS}")
 else()
-    set(onnxruntime_plugin_nvcc_threads "1")
+    set(onnxruntime_plugin_nvcc_threads "4")
 endif()
-target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
-        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>"
+# Shared CUDA compile options (excluding --threads, which is set per-target so that
+# flash attention can use a lower thread count without duplicate-flag nvcc warnings).
+# These mirror the options from the parent plugin target and config_cuda_provider_shared_module
+# so that OBJECT libraries compiled separately receive the same flags.
+set(_cuda_plugin_shared_compile_options
+    # Force NVCC onto C++20 explicitly. With the VS generator the CUDA_STANDARD
+    # property alone still leaves `-std=c++17` in AdditionalOptions.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--std c++20>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>"
+    # Suppress cudafe front-end diagnostic 550 (variable set but never used) from third-party headers.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=550>"
+    # Suppress cudafe [[nodiscard]] false positive on Status assignments.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
 )
 
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+    list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
     if (MSVC)
-        target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        list(APPEND _cuda_plugin_shared_compile_options
                 "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>"
         )
     endif()
+endif()
+
+if (MSVC)
+    list(APPEND _cuda_plugin_shared_compile_options
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+    )
 endif()
 
 include(cudnn_frontend)
@@ -205,16 +237,97 @@ include(cutlass)
 
 # TMA compile definitions — mirror config_cuda_provider_shared_module in onnxruntime_providers_cuda.cmake
 if(ORT_HAS_SM90_OR_LATER)
-  target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
-  target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>)
+  list(APPEND _cuda_plugin_shared_compile_options
+    "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
 endif()
-if("100" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
-  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_TMA_GROUPED_GEMMS)
-endif()
 if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
+endif()
+
+# Apply shared options + --threads to the parent plugin target.
+target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+  ${_cuda_plugin_shared_compile_options}
+  "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
+)
+
+# SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
+# Flash Attention is also used by the ONNX domain Attention op, so it is always included.
+# SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).
+
+# Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
+# Flash Attention V2 kernels require SM80 and are memory-intensive to compile.
+# Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
+# kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+if(NOT DEFINED onnxruntime_FLASH_NVCC_THREADS)
+  set(onnxruntime_FLASH_NVCC_THREADS "1")
+endif()
+if(_cuda_plugin_flash_attention_srcs)
+  onnxruntime_filter_cuda_archs(_plugin_flash_cuda_architectures MIN_SM 80)
+  if(_plugin_flash_cuda_architectures)
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_flash_attention
+      PARENT onnxruntime_providers_cuda_plugin
+      CUDA_ARCHITECTURES "${_plugin_flash_cuda_architectures}"
+      NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_cuda_plugin_flash_attention_srcs})
+  else()
+    # No SM80+ architectures available: compile flash sources in parent target so the
+    # linker can find the host-side symbols referenced by flash_api.cc. The kernels
+    # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
+    target_sources(onnxruntime_providers_cuda_plugin PRIVATE ${_cuda_plugin_flash_attention_srcs})
+  endif()
+endif()
+
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # SM90 TMA warp-specialized files use SM90-specific collective operations.
+  # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
+  if(_cuda_plugin_sm90_tma_srcs OR _cuda_plugin_llm_sm90_srcs)
+    set(_plugin_sm90_all_srcs ${_cuda_plugin_sm90_tma_srcs} ${_cuda_plugin_llm_sm90_srcs})
+    onnxruntime_filter_cuda_archs(_plugin_sm90_check MIN_SM 90)
+    if(_plugin_sm90_check)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_sm90_tma
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "90a-real"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_plugin_sm90_all_srcs})
+    endif()
+  endif()
+
+  if(_cuda_plugin_sm120_tma_srcs)
+    onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
+    if(_plugin_sm120_cuda_architectures)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_sm120_tma
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "${_plugin_sm120_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_cuda_plugin_sm120_tma_srcs})
+    endif()
+  endif()
+
+  # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
+  # Excludes SM120+ real (native SASS) architectures — SM120-specific kernels are compiled in
+  # the separate SM120 TMA OBJECT library, and the general LLM code triggers CCCL tcgen05 PTX
+  # headers that fail on Windows/MSVC when compiled for sm_120a. Virtual arch (PTX) is kept.
+  if(_cuda_plugin_llm_srcs)
+    onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+    if(_plugin_llm_cuda_architectures)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_llm
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "${_plugin_llm_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_cuda_plugin_llm_srcs})
+    endif()
+  endif()
 endif()
 
 # --- Find cuDNN (may be at a custom path via onnxruntime_CUDNN_HOME) ---
