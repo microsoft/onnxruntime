@@ -84,6 +84,9 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                      _In_ const OrtMemoryInfo* memory_info,
                                                      _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept;
 
+  static const OrtMemoryInfo* ORT_API_CALL GetMemoryInfoByMemTypeImpl(_In_ const OrtEp* this_ptr,
+                                                                      _In_ OrtMemType mem_type) noexcept;
+
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(_In_ OrtEp* this_ptr,
                                                                _In_ const OrtMemoryDevice* memory_device,
                                                                _Outptr_ OrtSyncStreamImpl** stream) noexcept;

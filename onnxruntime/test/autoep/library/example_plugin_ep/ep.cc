@@ -182,6 +182,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   Compile = CompileImpl;
   ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   CreateAllocator = CreateAllocatorImpl;                                      // optional. can be nullptr
+  GetMemoryInfoByMemType = GetMemoryInfoByMemTypeImpl;                        // optional. can be nullptr
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;                  // optional. can be nullptr
   GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;  // compatibility info for compiled models
   Sync = SyncImpl;                                                            // optional. can be nullptr
@@ -564,6 +565,27 @@ OrtStatus* ORT_API_CALL ExampleEp::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
 
   // for simplicity in this example we use the factory implementation.
   return ep->factory_.CreateAllocator(&ep->factory_, memory_info, nullptr, allocator);
+}
+
+/*static*/
+const OrtMemoryInfo* ORT_API_CALL ExampleEp::GetMemoryInfoByMemTypeImpl(_In_ const OrtEp* this_ptr,
+                                                                        _In_ OrtMemType mem_type) noexcept {
+  // Optional. Lets the EP declare, per OrtMemType, which registered OrtMemoryInfo ORT should
+  // use when placing graph inputs/outputs. Returning nullptr defers to ORT's built-in resolution.
+  //
+  // An EP that also registered a host-accessible OrtMemoryInfo would typically route
+  // OrtMemTypeCPUInput / OrtMemTypeCPUOutput to it here, e.g.:
+  //
+  //   case OrtMemTypeCPUInput:
+  //   case OrtMemTypeCPUOutput:
+  //     return ep->factory_.GetHostAccessibleMemoryInfo();
+  const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+  switch (mem_type) {
+    case OrtMemTypeDefault:
+      return ep->factory_.GetDefaultMemoryInfo();
+    default:
+      return nullptr;
+  }
 }
 
 /*static*/

@@ -38,6 +38,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
     return vendor_id_;
   }
 
+  const Ort::MemoryInfo& GetDefaultMemoryInfo() const {
+    return default_memory_info_;
+  }
+
   const OrtLogger& default_logger_;  // default logger for the EP factory
 
  private:

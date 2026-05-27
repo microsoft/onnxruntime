@@ -239,6 +239,15 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   }
 }
 
+OrtDevice PluginExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  if (ort_ep_->ort_version_supported >= 27 && ort_ep_->GetMemoryInfoByMemType != nullptr) {
+    if (const OrtMemoryInfo* info = ort_ep_->GetMemoryInfoByMemType(ort_ep_.get(), mem_type)) {
+      return info->device;
+    }
+  }
+  return IExecutionProvider::GetOrtDeviceByMemType(mem_type);
+}
+
 PluginExecutionProvider::~PluginExecutionProvider() {
   if (ort_ep_ && !api_node_compute_infos_.empty() && ort_ep_->ReleaseNodeComputeInfos != nullptr) {
     ort_ep_->ReleaseNodeComputeInfos(ort_ep_.get(), api_node_compute_infos_.data(),
@@ -686,6 +695,19 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
                                                                              kernel_context))));
       return Status::OK();
     };
+
+    if (api_node_compute_info->ort_version_supported >= 27) {
+      using MemTypesFn = OrtStatus*(ORT_API_CALL*)(const OrtNodeComputeInfo*, size_t, OrtMemType*);
+      auto bind = [api_node_compute_info](MemTypesFn api_fn, GetIoMemTypesFunc& out) {
+        if (api_fn != nullptr) {
+          out = [api_node_compute_info, api_fn](gsl::span<OrtMemType> mem_types) -> Status {
+            return ToStatusAndRelease(api_fn(api_node_compute_info, mem_types.size(), mem_types.data()));
+          };
+        }
+      };
+      bind(api_node_compute_info->GetInputMemTypes, compute_info.get_input_mem_types);
+      bind(api_node_compute_info->GetOutputMemTypes, compute_info.get_output_mem_types);
+    }
 
     node_compute_infos.push_back(std::move(compute_info));
   }
