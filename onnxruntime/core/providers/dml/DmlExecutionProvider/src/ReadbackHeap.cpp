@@ -161,7 +161,7 @@ namespace Dml
         // Map the readback heap and copy it into the destination
         void* readbackHeapData = nullptr;
         ORT_THROW_IF_FAILED(m_readbackHeap->Map(0, nullptr, &readbackHeapData));
-        auto unmapReadbackHeap = gsl::finally([this]() { m_readbackHeap->Unmap(0, nullptr); });
+        [[maybe_unused]] auto unmapReadbackHeap = gsl::finally([this]() { m_readbackHeap->Unmap(0, nullptr); });
 
         // Copy from the readback heap into the destination buffers.
         offset = 0;

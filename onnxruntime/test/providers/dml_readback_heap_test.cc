@@ -10,7 +10,13 @@
 #include <cstdint>
 #include <limits>
 
-#include <d3d12.h>
+#ifdef _GAMING_XBOX_SCARLETT
+#include <d3d12_xs.h>
+#elif defined(_GAMING_XBOX_XBOXONE)
+#include <d3d12_x.h>
+#else
+#include "directx/d3d12.h"
+#endif
 #include <gsl/gsl>
 #include <wrl/client.h>
 
@@ -38,6 +44,7 @@ TEST(DmlReadbackHeapTest, ComputeTotalReadbackSizeIncludesSizesAfterZero) {
   EXPECT_EQ(Dml::detail::ComputeTotalReadbackSize(gsl::make_span(sizes.data(), sizes.size())), 12u);
 }
 
+#ifndef ORT_NO_EXCEPTIONS
 TEST(DmlReadbackHeapTest, ComputeTotalReadbackSizeRejectsSizeTOverflow) {
   const std::array<size_t, 2> sizes = {std::numeric_limits<size_t>::max(), 1};
 
@@ -50,6 +57,7 @@ TEST(DmlReadbackHeapTest, ComputeTotalReadbackSizeRejectsMidBatchOverflow) {
 
   EXPECT_ANY_THROW((void)Dml::detail::ComputeTotalReadbackSize(gsl::make_span(sizes.data(), sizes.size())));
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

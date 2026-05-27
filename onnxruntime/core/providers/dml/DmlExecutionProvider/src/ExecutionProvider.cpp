@@ -43,12 +43,14 @@ namespace Dml
 {
     using namespace onnxruntime::common;
 
+#ifndef ORT_NO_EXCEPTIONS
     static Status HResultToStatus(HRESULT hr, const char* operation, const char* details)
     {
         const StatusCode status_code = hr == E_INVALIDARG ? INVALID_ARGUMENT : FAIL;
         return Status(ONNXRUNTIME, status_code,
                       onnxruntime::MakeString(operation, " failed with HRESULT ", hr, ": ", details));
     }
+#endif
 
     ExecutionProvider::~ExecutionProvider()
     {
