@@ -8,13 +8,12 @@
 #include <cstddef>
 #include <limits>
 #include <vector>
-#include "mlas.h"
-
-#include "mlasi_kleidiai.h"
-
-#include "kai_ukernel_interface.h"
 
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme.h"
+#include "kai_ukernel_interface.h"
+#include "mlas.h"
+#include "mlasi_kleidiai.h"
 
 namespace {
 struct KaiHalfTlsBuffers {
@@ -70,11 +69,15 @@ ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(
     size_t N,
     size_t K
 ) {
-    if (TransA != CblasNoTrans || TransB != CblasNoTrans || N == 0 || K == 0) {
+    if (TransA != CblasNoTrans ||
+        (TransB != CblasNoTrans && TransB != CblasTrans) ||
+        N == 0 || K == 0) {
         return 0;
     }
 
-    return kai_get_rhs_packed_size_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(N, K);
+    return TransB == CblasNoTrans
+               ? kai_get_rhs_packed_size_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(N, K)
+               : kai_get_rhs_packed_size_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme(N, K);
 }
 
 bool
@@ -88,11 +91,13 @@ ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
     size_t ldb,
     void* PackedB
 ) {
-    if (TransA != CblasNoTrans || TransB != CblasNoTrans) {
+    if (TransA != CblasNoTrans ||
+        (TransB != CblasNoTrans && TransB != CblasTrans)) {
         return false;
     }
 
-    if (PackedB == nullptr || B == nullptr || N == 0 || K == 0 || ldb < N) {
+    const size_t min_ldb = TransB == CblasNoTrans ? N : K;
+    if (PackedB == nullptr || B == nullptr || N == 0 || K == 0 || ldb < min_ldb) {
         return false;
     }
 
@@ -109,14 +114,27 @@ ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
     }
 
     const auto& hgemm = GetKleidiAIHgemmUKernel();
-    kai_run_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(
-        1, N, K, hgemm.ukernel.get_nr(), hgemm.ukernel.get_kr(), hgemm.ukernel.get_sr(), ldb_bytes,
-        B,
-        zero_bias.data(),
-        nullptr,
-        PackedB,
-        0,
-        nullptr);
+    if (TransB == CblasNoTrans) {
+        kai_run_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(
+            1, N, K, hgemm.ukernel.get_nr(), hgemm.ukernel.get_kr(), hgemm.ukernel.get_sr(), ldb_bytes,
+            B,
+            zero_bias.data(),
+            nullptr,
+            PackedB,
+            0,
+            nullptr
+        );
+    } else {
+        kai_run_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme(
+            1, N, K, hgemm.ukernel.get_nr(), hgemm.ukernel.get_kr(), hgemm.ukernel.get_sr(), ldb_bytes,
+            B,
+            zero_bias.data(),
+            nullptr,
+            PackedB,
+            0,
+            nullptr
+        );
+    }
 
     return true;
 }
@@ -157,6 +175,10 @@ ArmKleidiAI::MlasHalfGemmBatch(
         if (data.BIsBackendNativePacked && data.ldb != 0) {
             return false;
         }
+        if (data.BIsTransposed &&
+            (data.BIsBackendNativePacked || data.BIsPacked || data.BIsfp32 || data.ldb < K)) {
+            return false;
+        }
         // Native-packed RHS is consumed directly below. Only allocate the
         // runtime RHS packing scratch when at least one batch entry needs it.
         needs_rhs_packing = needs_rhs_packing || !data.BIsBackendNativePacked;
@@ -169,7 +191,16 @@ ArmKleidiAI::MlasHalfGemmBatch(
     const size_t sr = hgemm.ukernel.get_sr();
     KLEIDIAI_KERNEL_LOG(hgemm.name);
 
-    const size_t packed_rhs_size = kai_get_rhs_packed_size_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(N, K);
+    size_t packed_rhs_size = kai_get_rhs_packed_size_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(N, K);
+    for (size_t b = 0; b < BatchN; ++b) {
+        if (DataParams[b].BIsTransposed) {
+            packed_rhs_size = std::max(
+                packed_rhs_size,
+                kai_get_rhs_packed_size_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme(N, K)
+            );
+            break;
+        }
+    }
     if (packed_rhs_size == 0) {
         return false;
     }
@@ -243,14 +274,27 @@ ArmKleidiAI::MlasHalfGemmBatch(
                 std::fill(g_kai_half_tls.bias_zero.begin(), g_kai_half_tls.bias_zero.end(), MLAS_FP16::FromBits(0));
             }
 
-            kai_run_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(
-                1, N, K, nr, kr, sr, ldb_bytes,
-                rhs_base,
-                data.Bias != nullptr ? data.Bias : g_kai_half_tls.bias_zero.data(),
-                nullptr,
-                rhs_packed_buffer,
-                0,
-                nullptr);
+            if (data.BIsTransposed) {
+                kai_run_rhs_pack_nxk_x16p2vlx2b_x16_x16_sme(
+                    1, N, K, nr, kr, sr, ldb_bytes,
+                    rhs_base,
+                    data.Bias != nullptr ? data.Bias : g_kai_half_tls.bias_zero.data(),
+                    nullptr,
+                    rhs_packed_buffer,
+                    0,
+                    nullptr
+                );
+            } else {
+                kai_run_rhs_pack_kxn_x16p2vlx2b_x16_x16_sme(
+                    1, N, K, nr, kr, sr, ldb_bytes,
+                    rhs_base,
+                    data.Bias != nullptr ? data.Bias : g_kai_half_tls.bias_zero.data(),
+                    nullptr,
+                    rhs_packed_buffer,
+                    0,
+                    nullptr
+                );
+            }
             rhs_packed = rhs_packed_buffer;
         }
 
