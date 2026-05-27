@@ -549,12 +549,18 @@ void Impl_SaturatingAbs(cudaStream_t stream, const T* input_data, T* output_data
   UnaryElementWiseImpl(stream, input_data, output_data, OP_SaturatingAbs<T>(), count);
 }
 
-// Explicit instantiations for types registered for ReduceL1/L2 on CUDA.
+// Explicit instantiations for types used by ReduceL1/L2 on CUDA.
+// The SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL macro expands for int32_t, int64_t, int8_t, uint8_t.
+// Even though ReduceL1/L2 aren't registered for int64/int8/uint8, the runtime check
+// on cudnn_reduce_op causes the compiler to emit the call, so the linker needs symbols.
 template void Impl_SaturatingAbs<float>(cudaStream_t, const float*, float*, size_t);
 template void Impl_SaturatingAbs<double>(cudaStream_t, const double*, double*, size_t);
 template void Impl_SaturatingAbs<half>(cudaStream_t, const half*, half*, size_t);
 template void Impl_SaturatingAbs<BFloat16>(cudaStream_t, const BFloat16*, BFloat16*, size_t);
 template void Impl_SaturatingAbs<int32_t>(cudaStream_t, const int32_t*, int32_t*, size_t);
+template void Impl_SaturatingAbs<int64_t>(cudaStream_t, const int64_t*, int64_t*, size_t);
+template void Impl_SaturatingAbs<int8_t>(cudaStream_t, const int8_t*, int8_t*, size_t);
+template void Impl_SaturatingAbs<uint8_t>(cudaStream_t, const uint8_t*, uint8_t*, size_t);
 
 }  // namespace cuda
 }  // namespace onnxruntime

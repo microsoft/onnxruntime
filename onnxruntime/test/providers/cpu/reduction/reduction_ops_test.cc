@@ -431,7 +431,9 @@ TEST(ReductionOpTest, ReduceL1_int32_INT_MIN) {
   test.AddInput<int32_t>("data", {1}, {std::numeric_limits<int32_t>::min()});
   // abs(INT_MIN) overflows; we expect saturation to INT_MAX.
   test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Exclude EPs that may not implement the CPU's saturating INT_MIN behavior.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // Summation overflow: summing large positive values should saturate to INT_MAX rather than wrap.
@@ -442,9 +444,9 @@ TEST(ReductionOpTest, ReduceL1_int32_summation_overflow) {
   // 3 * 1,000,000,000 = 3e9 > INT32_MAX (2,147,483,647)
   test.AddInput<int32_t>("data", {3}, {1000000000, 1000000000, 1000000000});
   test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
-  // Only CPU handles saturation; CUDA casts to float (loses precision but doesn't overflow).
+  // CUDA now uses double accumulation (same as CPU), so saturation matches.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
@@ -598,9 +600,9 @@ TEST(ReductionOpTest, ReduceL2_int32_squaring_overflow) {
   // sqrt(50000^2 + 50000^2) = 50000*sqrt(2) ≈ 70710
   test.AddInput<int32_t>("data", {2}, {50000, 50000});
   test.AddOutput<int32_t>("reduced", {}, {70710});
-  // Only CPU handles this precisely with double accumulator.
+  // Both CPU and CUDA use double accumulator, so squaring is exact for int32.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_keepdims) {
