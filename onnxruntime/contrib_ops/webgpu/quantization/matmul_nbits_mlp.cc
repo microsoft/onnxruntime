@@ -320,7 +320,10 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
       CanApplyWideTileMatMulNBits(M,
                                   K,
                                   block_size,
-                                  bits_);
+                                  bits_,
+                                  /*has_weight_idx_indirect=*/false,
+                                  components_a,
+                                  components_b);
 
   const bool can_use_decode_fast_path =
       is_decode_fast_path_candidate &&

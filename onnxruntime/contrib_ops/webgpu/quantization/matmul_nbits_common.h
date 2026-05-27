@@ -38,12 +38,15 @@ bool HasDP4ADeviceSupport(int context_id = 0);
 
 // Feasibility + dispatch-precondition check for the wide-tile MatMulNBits
 // kernel (Block32 / fp16 a4-component prefill). Returns true when the kernel
-// is supported for the given dims and the M-threshold is met.
+// is supported for the given dims and the M-threshold is met. Optional components_a
+// and components_b parameters allow skipping recalculation if already available.
 bool CanApplyWideTileMatMulNBits(uint32_t M,
                                  uint32_t K,
                                  uint32_t block_size,
                                  int64_t nbits,
-                                 bool has_weight_idx_indirect = false);
+                                 bool has_weight_idx_indirect = false,
+                                 uint32_t components_a = 0,
+                                 uint32_t components_b = 0);
 
 }  // namespace webgpu
 }  // namespace contrib

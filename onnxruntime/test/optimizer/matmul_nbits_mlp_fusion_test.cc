@@ -51,6 +51,12 @@ enum class ActivationShape {
   kQuickGelu,
 };
 
+enum class SkipNormVariant {
+  kDefault,
+  kWithBiasInput,
+  kAxisZero,
+};
+
 void SetWebGpuProvider(Node& node) {
   node.SetExecutionProviderType(kWebGpuExecutionProvider);
 }
@@ -151,11 +157,36 @@ Status CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph(const Graph& graph) {
   return Status::OK();
 }
 
+Status CheckMatMulNBitsMlpSkipPatternNotFusedGraph(const Graph& graph) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsMlp") != 0 ||
+      OpCount(op_to_count, "com.microsoft.SkipSimplifiedLayerNormalization") != 1 ||
+      OpCount(op_to_count, "com.microsoft.MatMulNBits") != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Expected unfused skip MLP pattern (SkipSimplifiedLayerNormalization + 2 MatMulNBits).");
+  }
+
+  return Status::OK();
+}
+
+Status CheckMatMulNBitsMlpSimplifiedPatternNotFusedGraph(const Graph& graph) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  if (OpCount(op_to_count, "com.microsoft.MatMulNBitsMlp") != 0 ||
+      OpCount(op_to_count, "SimplifiedLayerNormalization") != 1 ||
+      OpCount(op_to_count, "com.microsoft.MatMulNBits") != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Expected unfused simplified MLP pattern (SimplifiedLayerNormalization + 2 MatMulNBits).");
+  }
+
+  return Status::OK();
+}
+
 void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
                                           NormAnchorKind norm_anchor_kind,
                                           SkipOutputKind skip_output_kind = SkipOutputKind::kNone,
                                           BiasKind bias_kind = BiasKind::kWithBias,
-                                          ActivationShape activation_shape = ActivationShape::kSilu) {
+                                          ActivationShape activation_shape = ActivationShape::kSilu,
+                                          SkipNormVariant skip_norm_variant = SkipNormVariant::kDefault) {
   constexpr int64_t k = 32;
   constexpr int64_t n = 8;
   constexpr int64_t block_size = 32;
@@ -200,6 +231,9 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
         std::vector<int64_t>{1, k},
         std::vector<MLFloat16>(static_cast<size_t>(k), MLFloat16(0.25f)));
     NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({k}, MLFloat16(1.0f), MLFloat16(1.0f));
+    NodeArg* norm_bias = (skip_norm_variant == SkipNormVariant::kWithBiasInput)
+                             ? builder.MakeInitializer<MLFloat16>({k}, MLFloat16(0.0f), MLFloat16(0.0f))
+                             : nullptr;
     NodeArg* optional_norm_output_1 = builder.MakeOptionalTensor();
     NodeArg* optional_norm_output_2 = builder.MakeOptionalTensor();
     std::vector<NodeArg*> norm_outputs{normalized_input};
@@ -209,11 +243,20 @@ void BuildMatMulNBitsMlpWebGpuPatternImpl(ModelTestBuilder& builder,
       norm_outputs.push_back(optional_norm_output_2);
       norm_outputs.push_back(residual_output);
     }
-    norm = &builder.AddNode("SkipSimplifiedLayerNormalization", {input, skip_input, norm_scale}, norm_outputs,
-                            kMSDomain);
+    std::vector<NodeArg*> norm_inputs{input, skip_input, norm_scale};
+    if (norm_bias != nullptr) {
+      norm_inputs.push_back(norm_bias);
+    }
+    norm = &builder.AddNode("SkipSimplifiedLayerNormalization", norm_inputs, norm_outputs, kMSDomain);
+    if (skip_norm_variant == SkipNormVariant::kAxisZero) {
+      norm->AddAttribute("axis", static_cast<int64_t>(0));
+    }
   } else {
     NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({k}, MLFloat16(1.0f), MLFloat16(1.0f));
     norm = &builder.AddNode("SimplifiedLayerNormalization", {input, norm_scale}, {normalized_input});
+    if (skip_norm_variant == SkipNormVariant::kAxisZero) {
+      norm->AddAttribute("axis", static_cast<int64_t>(0));
+    }
   }
 
   Node& gate_matmul = builder.AddNode("MatMulNBits",
@@ -291,6 +334,24 @@ void BuildMatMulNBitsMlpSimplifiedQuickGeluWebGpuPattern(ModelTestBuilder& build
 void BuildMatMulNBitsMlpSkipQuickGeluWebGpuPattern(ModelTestBuilder& builder) {
   BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kNone,
                                        BiasKind::kWithBias, ActivationShape::kQuickGelu);
+}
+
+void BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormBias(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kNone,
+                                       BiasKind::kWithBias, ActivationShape::kSilu,
+                                       SkipNormVariant::kWithBiasInput);
+}
+
+void BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormAxisZero(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kNone,
+                                       BiasKind::kWithBias, ActivationShape::kSilu,
+                                       SkipNormVariant::kAxisZero);
+}
+
+void BuildMatMulNBitsMlpSimplifiedWebGpuPatternWithNormAxisZero(ModelTestBuilder& builder) {
+  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSimplified, SkipOutputKind::kNone,
+                                       BiasKind::kWithBias, ActivationShape::kSilu,
+                                       SkipNormVariant::kAxisZero);
 }
 
 }  // namespace
@@ -542,6 +603,30 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipQuickGelu
       5e-3,
       std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       []() { return DefaultWebGpuExecutionProvider(); });
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionDoesNotFuseSkipWebGpuPatternWithSkipNormBiasInput) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormBias,
+      21,
+      *logger_,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2,
+      0,
+      nullptr,
+      CheckMatMulNBitsMlpSkipPatternNotFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionDoesNotFuseSimplifiedWebGpuPatternWithNonDefaultAxis) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildMatMulNBitsMlpSimplifiedWebGpuPatternWithNormAxisZero,
+      21,
+      *logger_,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2,
+      0,
+      nullptr,
+      CheckMatMulNBitsMlpSimplifiedPatternNotFusedGraph));
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

@@ -68,16 +68,23 @@ bool CanApplyWideTileMatMulNBits(uint32_t M,
                                  uint32_t K,
                                  uint32_t block_size,
                                  int64_t nbits,
-                                 bool has_weight_idx_indirect) {
+                                 bool has_weight_idx_indirect,
+                                 uint32_t components_a,
+                                 uint32_t components_b) {
   if (has_weight_idx_indirect) {
     return false;
   }
 
-  const uint32_t components_a = onnxruntime::webgpu::GetMaxComponents(K);
-  const uint32_t block_size_per_col = block_size;
-  const uint32_t blob_size = (block_size_per_col / 8) * static_cast<uint32_t>(nbits);
-  const uint32_t blob_size_in_words = blob_size / 4;
-  const uint32_t components_b = onnxruntime::webgpu::GetMaxComponents(blob_size_in_words);
+  // If not provided, calculate components_a and components_b.
+  if (components_a == 0) {
+    components_a = onnxruntime::webgpu::GetMaxComponents(K);
+  }
+  if (components_b == 0) {
+    const uint32_t block_size_per_col = block_size;
+    const uint32_t blob_size = (block_size_per_col / 8) * static_cast<uint32_t>(nbits);
+    const uint32_t blob_size_in_words = blob_size / 4;
+    components_b = onnxruntime::webgpu::GetMaxComponents(blob_size_in_words);
+  }
 
   return block_size == 32 &&
          components_a == 4 &&

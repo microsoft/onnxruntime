@@ -154,10 +154,6 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   auto* output = context.Output(0, x_shape);
   auto* input_skip_bias_sum = context.Output(3, x_shape);
 
-  if (x_shape.Size() == 0) {
-    return Status::OK();
-  }
-
   return RunSkipLayerNormProgram(context, x, skip, gamma, beta, bias, epsilon_, simplified,
                                  output, input_skip_bias_sum);
 }

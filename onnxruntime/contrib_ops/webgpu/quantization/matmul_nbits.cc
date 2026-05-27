@@ -234,8 +234,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                         y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
                                         subgroup_matrix_config_index,
                                         M,
-                                        has_weight_idx_indirect,
-                                        override_M)) {
+                                        has_weight_idx_indirect)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
   }
 #endif
@@ -253,7 +252,9 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                                                  K,
                                                                  block_size,
                                                                  nbits,
-                                                                 has_weight_idx_indirect);
+                                                                 has_weight_idx_indirect,
+                                                                 components_a,
+                                                                 components_b);
 
   if (use_wide_tile_program) {
     // Enforce output components to 1.
