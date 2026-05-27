@@ -4,10 +4,6 @@ on:
   schedule:
   - cron: '0 9 * * *'  # Daily at 09:00 UTC
   workflow_dispatch:
-  # TODO remove the `push` trigger - only for testing
-  push:
-    branches:
-    - edgchen1/webgpu_ep_dump_shader_code
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
