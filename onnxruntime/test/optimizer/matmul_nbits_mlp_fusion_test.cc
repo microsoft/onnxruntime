@@ -342,12 +342,6 @@ void BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormBias(ModelTestBuilder& buil
                                        SkipNormVariant::kWithBiasInput);
 }
 
-void BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormAxisZero(ModelTestBuilder& builder) {
-  BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSkipSimplified, SkipOutputKind::kNone,
-                                       BiasKind::kWithBias, ActivationShape::kSilu,
-                                       SkipNormVariant::kAxisZero);
-}
-
 void BuildMatMulNBitsMlpSimplifiedWebGpuPatternWithNormAxisZero(ModelTestBuilder& builder) {
   BuildMatMulNBitsMlpWebGpuPatternImpl(builder, NormAnchorKind::kSimplified, SkipOutputKind::kNone,
                                        BiasKind::kWithBias, ActivationShape::kSilu,
