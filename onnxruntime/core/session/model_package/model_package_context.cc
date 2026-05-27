@@ -16,12 +16,18 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 #include "core/session/model_package/model_package_context.h"
-#include "core/session/model_package/model_package_descriptor_parser.h"
 #include "core/session/model_package/model_package_options.h"
 #include "core/session/model_package/model_package_variant_selector.h"
 #include "core/session/ort_env.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
+
+// We intentionally use the standalone model_package library's internal C++ types directly
+// (model_package::ParsePackage, model_package_internal.h) rather than its public C API
+// (ModelPackage_* functions). This avoids double-wrapping since ORT compiles the library in-tree.
+// The public C API exists for external consumers (GenAI, FL) who link independently.
+#include "model_package_internal.h"
+#include "parser.h"
 
 namespace onnxruntime {
 
@@ -362,31 +368,62 @@ Status ModelPackageComponentContext::GetSelectedVariantConsumerMetadata(const st
 }
 
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<VariantInfo>& variants = model_variant_infos_;
-  ORT_THROW_IF_ERROR(parser.ParseVariantsFromRoot(package_root, variants));
+  // Use the standalone model_package library for parsing.
+  model_package::PackageInfo pkg_info;
+  std::string error;
+  if (!model_package::ParsePackage(package_root, pkg_info, error)) {
+    ORT_THROW("Failed to parse model package: ", error);
+  }
 
+  // Convert standalone library types to ORT internal types.
   model_package_info_.components.clear();
   component_name_to_index_.clear();
 
-  // Create model package info cache
-  for (const auto& variant : variants) {
-    const auto& name = variant.component_name;
-    size_t component_idx = 0;
-    auto it = component_name_to_index_.find(name);
-    if (it == component_name_to_index_.end()) {
-      component_idx = model_package_info_.components.size();
-      component_name_to_index_[name] = component_idx;
+  for (const auto& component : pkg_info.components) {
+    const auto& name = component.name;
+    size_t component_idx = model_package_info_.components.size();
+    component_name_to_index_[name] = component_idx;
 
-      ComponentInfo component{};
-      component.component_name = name;
-      component.selected_variant_index.reset();  // no selection state used anymore
-      model_package_info_.components.push_back(std::move(component));
-    } else {
-      component_idx = it->second;
+    ComponentInfo ort_component{};
+    ort_component.component_name = name;
+    ort_component.selected_variant_index.reset();
+
+    for (const auto& variant : component.variants) {
+      VariantInfo ort_variant{};
+      ort_variant.component_name = name;
+      ort_variant.variant_name = variant.name;
+
+      // Convert EP compatibility entries.
+      for (const auto& ec : variant.ep_compatibility) {
+        VariantEpCompatibilityInfo ort_ec{};
+        ort_ec.ep = ec.ep;
+        ort_ec.device = ec.device;
+        ort_ec.compatibility_string = ec.compatibility_string;
+        ort_ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+        ort_variant.ep_compatibility.push_back(std::move(ort_ec));
+      }
+
+      // Convert file entries.
+      for (const auto& file : variant.files) {
+        VariantModelInfo ort_file{};
+        ort_file.identifier = file.filename;
+        ort_file.model_file_path = file.resolved_path;
+        ort_file.session_options = file.session_options;
+        ort_file.provider_options = file.provider_options;
+        ort_file.shared_files = file.shared_files;
+        ort_variant.files.push_back(std::move(ort_file));
+      }
+
+      // Consumer metadata.
+      if (variant.consumer_metadata_json.has_value()) {
+        ort_variant.consumer_metadata = nlohmann::json::parse(*variant.consumer_metadata_json);
+      }
+
+      model_variant_infos_.push_back(ort_variant);
+      ort_component.variants.push_back(std::move(ort_variant));
     }
 
-    model_package_info_.components[component_idx].variants.push_back(variant);
+    model_package_info_.components.push_back(std::move(ort_component));
   }
 
   // Create component names cache for quick lookup.

@@ -12,7 +12,6 @@
 #include "gtest/gtest.h"
 
 #include "core/session/model_package/model_package_context.h"
-#include "core/session/model_package/model_package_descriptor_parser.h"
 #include "core/session/abi_devices.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
@@ -947,11 +946,9 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
     })";
   }
 
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<VariantInfo> variants;
-  auto status = parser.ParseVariantsFromRoot(package_root, variants);
+  ModelPackageContext ctx(package_root);
+  const auto& variants = ctx.GetVariantInfos();
 
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_EQ(variants.size(), 2u);
 
   std::unordered_map<std::string, const VariantInfo*> by_file;
@@ -1014,11 +1011,9 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
     })";
   }
 
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<VariantInfo> variants;
-  auto status = parser.ParseVariantsFromRoot(component_root, variants);
+  ModelPackageContext ctx(component_root);
+  const auto& variants = ctx.GetVariantInfos();
 
-  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
   ASSERT_EQ(variants.size(), 1u);
   ASSERT_EQ(variants[0].files.size(), 1u);
   EXPECT_EQ(variants[0].files[0].model_file_path.filename().string(), "mul_1.onnx");
@@ -1085,12 +1080,12 @@ TEST(ModelPackageTest, ParserRejects_EpCompatibilityMissingEp) {
   const auto package_root = MakeSingleComponentPackageWithMetadata(
       "ort_model_package_parser_missing_ep", metadata_json);
 
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<VariantInfo> variants;
-  auto status = parser.ParseVariantsFromRoot(package_root, variants);
-
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("ep"), std::string::npos) << status.ErrorMessage();
+  try {
+    ModelPackageContext ctx(package_root);
+    FAIL() << "Expected exception for missing 'ep' field";
+  } catch (const std::exception& e) {
+    EXPECT_NE(std::string(e.what()).find("ep"), std::string::npos) << e.what();
+  }
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
@@ -1111,12 +1106,12 @@ TEST(ModelPackageTest, ParserRejects_EpCompatibilityNullEp) {
   const auto package_root = MakeSingleComponentPackageWithMetadata(
       "ort_model_package_parser_null_ep", metadata_json);
 
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<VariantInfo> variants;
-  auto status = parser.ParseVariantsFromRoot(package_root, variants);
-
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("ep"), std::string::npos) << status.ErrorMessage();
+  try {
+    ModelPackageContext ctx(package_root);
+    FAIL() << "Expected exception for null 'ep' field";
+  } catch (const std::exception& e) {
+    EXPECT_NE(std::string(e.what()).find("ep"), std::string::npos) << e.what();
+  }
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
@@ -1137,12 +1132,12 @@ TEST(ModelPackageTest, ParserRejects_EpCompatibilityEmptyEp) {
   const auto package_root = MakeSingleComponentPackageWithMetadata(
       "ort_model_package_parser_empty_ep", metadata_json);
 
-  ModelPackageDescriptorParser parser(logging::LoggingManager::DefaultLogger());
-  std::vector<VariantInfo> variants;
-  auto status = parser.ParseVariantsFromRoot(package_root, variants);
-
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_NE(status.ErrorMessage().find("ep"), std::string::npos) << status.ErrorMessage();
+  try {
+    ModelPackageContext ctx(package_root);
+    FAIL() << "Expected exception for empty 'ep' field";
+  } catch (const std::exception& e) {
+    EXPECT_NE(std::string(e.what()).find("ep"), std::string::npos) << e.what();
+  }
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
