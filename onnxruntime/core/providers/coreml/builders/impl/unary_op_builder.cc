@@ -44,6 +44,10 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       coreml_op_type = "round";
     } else if (op_type == "Exp") {
       coreml_op_type = "exp";
+    } else if (op_type == "Sin") {
+      coreml_op_type = "sin";
+    } else if (op_type == "Cos") {
+      coreml_op_type = "cos";
     } else if (op_type == "Ceil") {
       coreml_op_type = "ceil";
     } else {
@@ -89,8 +93,11 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 bool UnaryOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                        const logging::Logger& /*logger*/) const {
   if (!input_params.create_mlprogram) {
-    if (node.OpType() == "Erf" || node.OpType() == "Round" || node.OpType() == "Exp" ||
-        node.OpType() == "Ceil") {
+    // These ops only have an ML Program lowering; the NeuralNetwork
+    // UnaryFunctionLayerParams has no equivalent.
+    const auto& op_type = node.OpType();
+    if (op_type == "Erf" || op_type == "Round" || op_type == "Exp" ||
+        op_type == "Sin" || op_type == "Cos" || op_type == "Ceil") {
       return false;
     }
   }
