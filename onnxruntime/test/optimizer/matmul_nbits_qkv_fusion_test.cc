@@ -214,10 +214,6 @@ void BuildMatMulNBitsQkvSkipWebGpuPatternWithSkipNormBias(ModelTestBuilder& buil
   BuildMatMulNBitsQkvWebGpuPatternImpl(builder, true, false, SkipNormVariant::kWithBiasInput);
 }
 
-void BuildMatMulNBitsQkvSkipWebGpuPatternWithSkipNormAxisZero(ModelTestBuilder& builder) {
-  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, true, false, SkipNormVariant::kAxisZero);
-}
-
 void BuildMatMulNBitsQkvWebGpuPatternWithNormAxisZero(ModelTestBuilder& builder) {
   BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false, SkipNormVariant::kAxisZero);
 }

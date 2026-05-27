@@ -250,7 +250,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const Tensor* gate_bias = context.Input<Tensor>(5);
   const Tensor* up_b = context.Input<Tensor>(6);
   const Tensor* up_scales = context.Input<Tensor>(7);
-  const Tensor* up_bias = context.Input<Tensor>(8);
+  const Tensor* up_bias = context.InputCount() > 8 ? context.Input<Tensor>(8) : nullptr;
 
   ORT_ENFORCE(skip == nullptr || norm_scale != nullptr,
               "MatMulNBitsMlp requires norm_scale when skip is present.");
