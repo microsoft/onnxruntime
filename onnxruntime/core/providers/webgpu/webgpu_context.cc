@@ -184,6 +184,16 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
+Status WebGpuContext::WaitForQueueIdle() {
+  return Wait(device_queue_.OnSubmittedWorkDone(
+      wgpu::CallbackMode::WaitAnyOnly,
+      [](wgpu::QueueWorkDoneStatus status, wgpu::StringView message) {
+        ORT_ENFORCE(status == wgpu::QueueWorkDoneStatus::Success,
+                    "Failed to wait for submitted WebGPU work: ",
+                    std::string_view{message});
+      }));
+}
+
 Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();

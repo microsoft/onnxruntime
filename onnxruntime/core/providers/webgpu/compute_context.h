@@ -34,10 +34,12 @@ class ComputeContextBase {
  public:
   // Nested accessor class to provide controlled access to BufferManager
   class BufferManagerAccessor {
-    // access to BufferManager is limited to class WebGpuContext.
-    // This ensures no access to BufferManager from other classes, avoiding
-    // potential misuse.
+    // Access to BufferManager is limited to WebGpuContext and ComputeContextBase.
+    // ComputeContextBase needs it for FlushAndWait(), which routes through the
+    // currently-active buffer manager. This narrow allow-list prevents
+    // arbitrary classes from reaching into BufferManager directly.
     friend class WebGpuContext;
+    friend class ComputeContextBase;
 
    private:
     static const webgpu::BufferManager& Get(const ComputeContextBase& context);
@@ -119,6 +121,11 @@ class ComputeContextBase {
   //
   inline Status RunProgram(const ProgramBase& program) {
     return webgpu_context_.Run(*this, program);
+  }
+
+  inline Status FlushAndWait() {
+    webgpu_context_.Flush(BufferManagerAccessor::Get(*this));
+    return webgpu_context_.WaitForQueueIdle();
   }
 
  protected:
