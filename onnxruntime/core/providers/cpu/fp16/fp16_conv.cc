@@ -9,6 +9,9 @@
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
+#include <array>
+
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/common/float16.h"
 #include "core/framework/op_kernel.h"
@@ -48,6 +51,12 @@ class FusedConvFp16 final : public OpKernel {
     ORT_ENFORCE(GetFusedActivationAttr(info, activation_).IsOK());
     channels_last_ = (info.GetKernelDef().OpName() == "NhwcFusedConv");
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    const auto& input_defs = info.node().InputDefs();
+    has_bias_input_ = input_defs.size() >= 3 && input_defs[2]->Exists();
+    const Tensor* bias = nullptr;
+    if (has_bias_input_ && info.TryGetConstantInput(2, &bias)) {
+      constant_B_ = bias;
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -97,7 +106,11 @@ class FusedConvFp16 final : public OpKernel {
   MLAS_ACTIVATION activation_;
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   ConvAttributes conv_attrs_;
+  bool has_bias_input_{false};
+  const Tensor* constant_B_{nullptr};
   TensorShape W_shape_;
+  BufferUniquePtr packed_halfconv_weights_and_bias_buffer_;
+  size_t packed_halfconv_weights_and_bias_size_{0};
   BufferUniquePtr packed_W_buffer_;
   size_t packed_W_size_{0};
   bool is_W_packed_{false};
@@ -142,8 +155,53 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   const size_t kernel_dim = group_input_channels * kernel_size;
 
   bool share_prepacked_weights = (prepacked_weights != nullptr);
+  const bool has_valid_constant_halfconv_bias =
+      constant_B_ != nullptr &&
+      !share_prepacked_weights &&
+      constant_B_->Shape().NumDimensions() == 1 &&
+      constant_B_->Shape()[0] == static_cast<int64_t>(output_channels);
 
   const bool is_depthwise_conv = (group_input_channels == 1 && group_output_channels == 1);
+
+  if (group_count == 1 &&
+      rank == 4 &&
+      output_channels > 1 &&
+      activation_.ActivationKind == MlasIdentityActivation &&
+      (!has_bias_input_ || has_valid_constant_halfconv_bias)) {
+    std::array<int64_t, 2> halfconv_kernel_shape{shape[2], shape[3]};
+    std::array<int64_t, 2> halfconv_dilations{1, 1};
+    if (!conv_attrs_.dilations.empty()) {
+      halfconv_dilations = {conv_attrs_.dilations[0], conv_attrs_.dilations[1]};
+    }
+
+    packed_halfconv_weights_and_bias_size_ = MlasHalfConvPackWeightsAndBiasSize(
+        output_channels,
+        group_input_channels,
+        halfconv_kernel_shape.data(),
+        halfconv_dilations.data(),
+        &mlas_backend_kernel_selector_config_);
+    if (packed_halfconv_weights_and_bias_size_ != 0) {
+      auto* packed_halfconv_weights_and_bias = alloc->Alloc(packed_halfconv_weights_and_bias_size_);
+      BufferUniquePtr packed_halfconv_weights_and_bias_buffer(
+          packed_halfconv_weights_and_bias, BufferDeleter(alloc));
+      const auto* bias_data = constant_B_ != nullptr ? constant_B_->Data<MLFloat16>() : nullptr;
+      if (MlasHalfConvPackWeightsAndBias(
+              output_channels,
+              group_input_channels,
+              halfconv_kernel_shape.data(),
+              halfconv_dilations.data(),
+              Wdata,
+              bias_data,
+              packed_halfconv_weights_and_bias,
+              nullptr,
+              &mlas_backend_kernel_selector_config_)) {
+        packed_halfconv_weights_and_bias_buffer_ = std::move(packed_halfconv_weights_and_bias_buffer);
+      } else {
+        packed_halfconv_weights_and_bias_size_ = 0;
+      }
+    }
+  }
+
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (!is_depthwise_conv) {
     packed_W_size_ = MlasHalfGemmPackBSize(group_output_channels, kernel_dim, false);
@@ -188,6 +246,9 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   }
 
   if (share_prepacked_weights) {
+    // `packed_halfconv_weights_and_bias_buffer_` is session-local only. It encodes a bias
+    // choice even when the bias is null, so it must not be shared under the
+    // W-only prepack cache key.
     prepacked_weights->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
     prepacked_weights->buffer_sizes_.push_back(0);
   }
@@ -225,12 +286,13 @@ Status FusedConvFp16::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
 
   used_shared_buffers = true;
 
-  if (prepacked_buffers.size() == 1) {  // This means that only packed_W_ exists
+  if (prepacked_buffers.size() == 1) {  // only packed_W_ exists
     packed_W_buffer_ = std::move(prepacked_buffers[0]);
-  } else if (prepacked_buffers.size() == 2) {  // This means that only reordered_W_ exists
-    // Enforce that the first "placeholder" buffer is nullptr
+  } else if (prepacked_buffers.size() == 2) {  // placeholder + reordered_W_
     ORT_ENFORCE(prepacked_buffers[0].get() == nullptr);
     reordered_W_buffer_ = std::move(prepacked_buffers[1]);
+  } else {
+    ORT_ENFORCE(false, "Unexpected number of shared prepacked fp16 conv buffers.");
   }
 
   return Status::OK();
@@ -299,6 +361,63 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+
+  const auto* Bdata = B != nullptr ? B->Data<MLFloat16>() : nullptr;
+
+  if (Sum == nullptr && kernel_rank == 2) {
+    MLAS_CONV_PARAMETERS parameters;
+
+    size_t working_buffer_size = 0;
+    if (MlasHalfConvPrepare(&parameters,
+                            kernel_rank,
+                            narrow<size_t>(N),
+                            narrow<size_t>(conv_attrs_.group),
+                            narrow<size_t>(C / conv_attrs_.group),
+                            input_shape.GetDims().data(),
+                            kernel_shape.data(),
+                            dilations.data(),
+                            pads.data(),
+                            strides.data(),
+                            output_shape.GetDims().data(),
+                            narrow<size_t>(M / conv_attrs_.group),
+                            &activation_,
+                            &working_buffer_size,
+                            0.0f,
+                            channels_last_,
+                            thread_pool,
+                            &mlas_backend_kernel_selector_config_)) {
+      const MLFloat16* halfconv_filter = nullptr;
+      const MLFloat16* halfconv_bias = Bdata;
+      bool halfconv_filter_and_bias_are_packed = false;
+
+      if (packed_halfconv_weights_and_bias_buffer_ != nullptr) {
+        halfconv_filter = static_cast<const MLFloat16*>(packed_halfconv_weights_and_bias_buffer_.get());
+        halfconv_filter_and_bias_are_packed = true;
+        halfconv_bias = nullptr;
+      } else if (W != nullptr) {
+        halfconv_filter = W->Data<MLFloat16>();
+      }
+
+      if (halfconv_filter != nullptr) {
+        auto* working_data = working_buffer_size > 0
+                                 ? alloc->Alloc(sizeof(MLFloat16) * SafeInt<size_t>(working_buffer_size))
+                                 : nullptr;
+        BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
+
+        if (MlasHalfConv(&parameters,
+                         X->Data<MLFloat16>(),
+                         halfconv_filter,
+                         halfconv_filter_and_bias_are_packed,
+                         halfconv_bias,
+                         static_cast<MLFloat16*>(working_buffer.get()),
+                         Y->MutableData<MLFloat16>(),
+                         thread_pool)) {
+          return Status::OK();
+        }
+      }
+    }
+  }
 
   // Handle the case of a dynamic weight filter.
   BufferUniquePtr reordered_W_buffer;
@@ -340,7 +459,6 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   const int64_t col_buffer_size = kernel_dim * output_image_size;
 
   const auto* Xdata = X->Data<MLFloat16>();
-  const auto* Bdata = B != nullptr ? B->Data<MLFloat16>() : nullptr;
   auto* Ydata = Y->MutableData<MLFloat16>();
   const auto* sum_data = Sum != nullptr ? Sum->Data<MLFloat16>() : nullptr;
 
@@ -389,8 +507,6 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), MLFloat16());
   }
-
-  concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
   /*************************************
    * Thread partition idea: we are essentially partition a GEMM A[M,K] x B[K,N].
@@ -547,7 +663,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
 
           const auto* gemm_add = add_src == nullptr ? nullptr : worker_addsrc + group_id * group_output_channels;
           MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_, gemm_add);
-          MLAS_HALF_GEMM_DATA_PARAMS gemm_params;
+          MLAS_HALF_GEMM_DATA_PARAMS gemm_params{};
           gemm_params.A = AData;
           gemm_params.lda = lda;
           if (packed_W_buffer_) {
@@ -567,7 +683,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
               static_cast<size_t>(output_count),
               static_cast<size_t>(group_output_channels),
               static_cast<size_t>(kernel_dim),
-              1, &gemm_params, nullptr);
+              1, &gemm_params, nullptr, &mlas_backend_kernel_selector_config_);
         }
       }
     };
