@@ -524,13 +524,10 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       is_packed,
                                                       &weights_to_be_filled_in));
 
-                  if (is_packed) {
-                    // BUG CHECK: Ensure that the kernel has filled in the pre-packed weight
-                    // to be cached if the weight was pre-packed
-                    ORT_ENFORCE(weights_to_be_filled_in.buffers_.size() > 0,
-                                "The kernel corresponding to the node ", node.Name(),
-                                " doesn't have an implementation that can cache computed pre-packed weights");
-
+                  // Some kernels pre-pack for their own session but intentionally do not
+                  // expose those buffers for sharing, for example when the packed layout is
+                  // backend-specific and the shared container has no layout metadata.
+                  if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
                     const auto& op_type = node.OpType();
 
                     // Sanity check

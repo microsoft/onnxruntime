@@ -190,6 +190,35 @@ void MatMul<float>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const float* A, const 
   MlasGemm(CblasNoTrans, CblasNoTrans, M, N, K, 1.f, A, K, B, N, 0.f, C, N, threadpool, mlas_backend_kernel_selector_config);
 }
 
+template <>
+void MatMul<MLFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const MLFloat16* A, const MLFloat16* B, MLFloat16* C, ThreadPool* threadpool,
+                       const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = A;
+  data.lda = static_cast<size_t>(K);
+  data.B = B;
+  data.ldb = static_cast<size_t>(N);
+  data.C = C;
+  data.ldc = static_cast<size_t>(N);
+  MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, threadpool,
+                    mlas_backend_kernel_selector_config);
+#else
+  ORT_UNUSED_PARAMETER(threadpool);
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+  auto C_mat = EigenMatrixMap<Eigen::half>(reinterpret_cast<Eigen::half*>(C), N, M);
+  C_mat.noalias() = ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(B), N, K) *
+                    ConstEigenMatrixMap<Eigen::half>(reinterpret_cast<const Eigen::half*>(A), K, M);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+#endif
+}
+
 #ifdef MLAS_SUPPORTS_GEMM_DOUBLE
 template <>
 void MatMul<double>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const double* A, const double* B, double* C, ThreadPool* threadpool,
