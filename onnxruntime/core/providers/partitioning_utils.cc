@@ -335,6 +335,21 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     // explicit-operand index ordering in meta_def->inputs.
     collect_boundary_inputs(node->ImplicitInputDefs());
 
+    // Surface implicit inputs from If/Loop/Scan nodes as fused subgraph inputs for OpenVINO EP.
+    if (execution_provider_name == "OpenVINOExecutionProvider" && node->ContainsSubgraph()) {
+      for (const auto* implicit_input : node->ImplicitInputDefs()) {
+        if (!implicit_input->Exists()) {
+          continue;
+        }
+        if (!Contains(node_outputs, implicit_input)) {
+          if (!Contains(subgraph_inputs, implicit_input)) {
+            subgraph_inputs.insert(implicit_input);
+            ordered_subgraph_inputs.push_back(implicit_input);
+          }
+        }
+      }
+    }
+
     const auto& output_defs = node->OutputDefs();
     for (const auto* output_def : output_defs) {
       node_outputs.insert(output_def);
