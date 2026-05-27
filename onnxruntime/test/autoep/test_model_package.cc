@@ -477,7 +477,8 @@ TEST(ModelPackageApiTest, MultiFileVariantInComponent_SelectComponentAndCreateSe
 
     // Create per-file stage session.
     Ort::SessionOptions stage_session_options;
-    stage_session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, {});
+    std::unordered_map<std::string, std::string> empty_opts;
+    stage_session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, empty_opts);
 
     Ort::Session stage_session(*ort_env, file_path, stage_session_options);
 
