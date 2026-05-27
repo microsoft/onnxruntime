@@ -213,11 +213,10 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   }
 
   const auto output_size = gsl::narrow_cast<uint32_t>(global_shape.Size());
-  const auto input_output_strides = std::vector<uint32_t>({
-      gsl::narrow_cast<uint32_t>(input->Shape().SizeFromDimension(1)),
-      gsl::narrow_cast<uint32_t>(hidden_size),
-      gsl::narrow_cast<uint32_t>(head_size),
-      1u});
+  const auto input_output_strides = std::vector<uint32_t>({gsl::narrow_cast<uint32_t>(input->Shape().SizeFromDimension(1)),
+                                                           gsl::narrow_cast<uint32_t>(hidden_size),
+                                                           gsl::narrow_cast<uint32_t>(head_size),
+                                                           1u});
 
   RotaryEmbeddingWithOffsetProgram program(rotary_interleaved);
   program
@@ -334,11 +333,11 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // Apply RoPE to Q only — K doesn't need rotation since we reuse another layer's already-rotated KV cache.
       qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
       ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context,
-                                                  query, cos_cache, sin_cache, &qRotary,
-                                                  parameters.batch_size_, parameters.sequence_length_,
-                                                  parameters.hidden_size_, parameters.head_size_,
-                                                  parameters.past_sequence_length_,
-                                                  parameters.scale_, parameters.rotary_interleaved_));
+                                             query, cos_cache, sin_cache, &qRotary,
+                                             parameters.batch_size_, parameters.sequence_length_,
+                                             parameters.hidden_size_, parameters.head_size_,
+                                             parameters.past_sequence_length_,
+                                             parameters.scale_, parameters.rotary_interleaved_));
       query = &qRotary;
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {
