@@ -115,6 +115,9 @@ struct EpNode : public OrtNode {
   struct SubgraphState {
     SubgraphState() = default;
     SubgraphState(SubgraphState&& other) = default;
+    // Destructor defined out-of-line so EpGraph is complete when
+    // unique_ptr<EpGraph> is destroyed (required by libc++).
+    ~SubgraphState();
     std::string attribute_name;
     std::unique_ptr<GraphViewer> subgraph_viewer;  // The graph_viewer wrapped by EpGraph below.
     std::unique_ptr<EpGraph> ep_subgraph;

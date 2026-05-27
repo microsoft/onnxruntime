@@ -50,6 +50,13 @@ function(filter_test_srcs test_srcs_var)
 endfunction()
 
 set(disabled_warnings)
+
+function(onnxruntime_disable_gtest_character_conversion_as_error target_name)
+  if (HAS_NO_ERROR_CHARACTER_CONVERSION)
+    target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
+  endif()
+endfunction()
+
 function(AddTest)
   cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   list(REMOVE_DUPLICATES _UT_SOURCES)
@@ -170,9 +177,7 @@ function(AddTest)
     if (${HAS_NOERROR})
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
     endif()
-    if (${HAS_CHARACTER_CONVERSION})
-      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
-    endif()
+    onnxruntime_disable_gtest_character_conversion_as_error(${_UT_TARGET})
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
@@ -847,9 +852,7 @@ if(MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-  if (HAS_CHARACTER_CONVERSION)
-    target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=character-conversion>")
-  endif()
+  onnxruntime_disable_gtest_character_conversion_as_error(onnxruntime_test_utils)
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -1447,6 +1450,50 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
     target_compile_definitions(onnxruntime_mlas_softmax_riscv_compare PRIVATE ${mlas_private_compile_definitions})
     set_target_properties(onnxruntime_mlas_softmax_riscv_compare PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_halfgemm_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/halfgemm_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_halfgemm_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_halfgemm_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_halfgemm_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_halfgemm_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_cast_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/cast_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_cast_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_cast_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_cast_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_cast_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_rope_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/rope_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_rope_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_rope_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_rope_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_rope_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_rmsnorm_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/rmsnorm_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_rmsnorm_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_rmsnorm_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_rmsnorm_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_rmsnorm_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   if(WIN32)

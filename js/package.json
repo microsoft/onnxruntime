@@ -28,7 +28,7 @@
     "npmlog": "^7.0.1",
     "prettier": "^3.3.3",
     "terser": "^5.37.0",
-    "typescript": "^5.2.2"
+    "typescript": "^5.6.2"
   },
   "scripts": {
     "prepare": "tsc --build scripts",
@@ -36,6 +36,10 @@
     "format": "prettier \"**/*.{json,jsonc,js,mjs,cjs,ts,mts,cts,md}\" --write",
     "prepare-node-tests": "node ./scripts/prepare-onnx-node-tests",
     "update-version": "node ./scripts/update-version"
+  },
+  "overrides": {
+    "diff": "^8.0.3",
+    "serialize-javascript": "^7.0.5"
   },
   "license": "MIT"
 }

@@ -38,6 +38,20 @@ void ComputeJob(
   ORT_UNUSED_PARAMETER(bias_float_ptr);   // only used in MLFloat16 overload
   ORT_UNUSED_PARAMETER(alloc);
 
+  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
+
+  if constexpr (std::is_same_v<T, float>) {
+    if (MlasLayerNormF32(
+            X_data + task_idx * norm_size, scale_data + i,
+            (simplified || !bias_data) ? nullptr : bias_data + i,
+            Y_data + task_idx * norm_size,
+            mean_data ? &mean_data[task_idx] : nullptr,
+            inv_std_dev_data ? &inv_std_dev_data[task_idx] : nullptr,
+            static_cast<size_t>(norm_size), epsilon, simplified)) {
+      return;
+    }
+  }
+
   const T* p_input = X_data + task_idx * norm_size;
   T* p_output = Y_data + task_idx * norm_size;
 
@@ -56,9 +70,6 @@ void ComputeJob(
   } else {
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
-
-  // Compute the offset of gamma and beta to support broadcasting.
-  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (int64_t h = 0; h < norm_size; h++, i++) {
     if (simplified) {

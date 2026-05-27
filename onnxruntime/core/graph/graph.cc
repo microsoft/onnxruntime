@@ -527,6 +527,28 @@ bool NodeArg::Exists() const noexcept {
   return exists_;
 }
 
+// Out-of-line constructor and destructor so Graph is complete when
+// unique_ptr<Graph> in subgraphs_ is destroyed (required by libc++).
+Node::Node() = default;
+Node::~Node() = default;
+
+Node::Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+Node::Node(std::string_view name,
+           std::string_view op_type,
+           std::string_view description,
+           gsl::span<NodeArg* const> input_args,
+           gsl::span<NodeArg* const> output_args,
+           const NodeAttributes* attributes,
+           std::string_view domain) {
+  Init(name, op_type, description,
+       input_args,
+       output_args,
+       attributes, domain);
+}
+#endif
+
 Node::EdgeEnd::EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept
     : node_(&node),
       src_arg_index_(src_arg_index),
@@ -1440,6 +1462,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   for (auto& initializer : graph_proto_->initializer()) {
     auto& initializer_name = initializer.name();
     auto initializer_arg = GetNodeArg(initializer_name);
+    ORT_ENFORCE(initializer_arg, "Graph ctor should have created NodeArg for initializer. Missing: ", initializer_name);
     graph_initializers.insert({initializer_name, initializer_arg});
   }
 
@@ -3565,6 +3588,28 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     auto& node = *GetNode(node_index);
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
+
+      // Propagate type info from outer scope implicit inputs to the subgraph's NodeArgs.
+      // This is needed when the op's type/shape inference function does not invoke subgraph
+      // inferencing (e.g., some contrib ops like BeamSearch), so InferAndVerifySubgraphTypes
+      // may not have been called to propagate type info from outer scope values such as
+      // initializers declared in the parent graph.
+      // When InferAndVerifySubgraphTypes was already called, UpdateTypeAndShape with strict=true
+      // validates that the existing type is consistent with the outer-scope type.
+      const auto& implicit_input_defs = node.GetDefinitions().implicit_input_defs;
+      for (const auto* implicit_node_arg : implicit_input_defs) {
+        auto* subgraph_nodearg = subgraph->GetNodeArg(implicit_node_arg->Name());
+        if (subgraph_nodearg != nullptr &&
+            implicit_node_arg->TypeAsProto() != nullptr) {
+          auto status = subgraph_nodearg->UpdateTypeAndShape(
+              *implicit_node_arg, /*strict=*/true, options.override_types, subgraph->logger_);
+          if (!status.IsOK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Node:", node.Name(), " [subgraph:", entry.first, "] ", status.ErrorMessage());
+          }
+        }
+      }
+
       ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
     }
   }
