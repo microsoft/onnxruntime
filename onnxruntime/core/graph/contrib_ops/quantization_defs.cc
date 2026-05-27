@@ -994,7 +994,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain input B type to fp8, or to float16, bfloat16, or float for constant initializers.")
         .TypeConstraint("TZ", {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"},
                         "Constrain zero point types to fp8. Only zero-valued zero points are supported.")
-        // Scale tensors are upcast to float by the CPU kernel before calling MLAS.
+        // Scale tensors are upcast to float by the CPU kernel before compute.
         .TypeConstraint("TS", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain scale types to float, float16, or bfloat16.")
         .TypeConstraint("TY", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},

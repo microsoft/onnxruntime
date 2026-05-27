@@ -826,7 +826,7 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
     b_scales = b_scale_float.get();
   }
 
-  // MLAS FP8 GEMM accumulates and stores float output. Use scratch for lower-precision Y,
+  // The internal FP8 GEMM helper accumulates and stores float output. Use scratch for lower-precision Y,
   // then convert once after all batched GEMMs complete.
   IAllocatorUniquePtr<float> y_float_buffer;
   float* y_float_data = nullptr;
