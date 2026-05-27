@@ -2589,10 +2589,12 @@ struct OrtEp {
    * (typically by storing the parent OrtMemoryInfo as a member of the EP).
    *
    * If this function is not implemented (NULL), or if it sets `device` to NULL, ORT infers
-   * the default memory device from the `OrtDeviceAllocator` entry with `OrtDeviceMemoryType_DEFAULT`
-   * registered via `EpDevice_AddAllocatorInfo`. In this fallback case, all OrtEpDevice instances must
-   * use the same `OrtDeviceMemoryType_DEFAULT` OrtMemoryInfo (or ORT cannot determine which device to
-   * use). If no such entry is registered, the EP defaults to a CPU memory device.
+   * the default memory device from the first OrtEpDevice's `OrtDeviceAllocator` entry with
+   * `OrtDeviceMemoryType_DEFAULT` registered via `EpDevice_AddAllocatorInfo`. EPs created against
+   * multiple OrtEpDevices whose default memory devices differ should implement this function to
+   * disambiguate; otherwise the first OrtEpDevice's default memory device is used and the others
+   * are ignored for identity purposes. If no such allocator entry is registered, the EP defaults
+   * to a CPU memory device.
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[out] device Set to the EP's default OrtMemoryDevice, or NULL to use the default behavior (described above).

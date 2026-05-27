@@ -123,8 +123,7 @@ struct PluginEpMetaDefNameFunctor {
 
 static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ep, gsl::span<const OrtEpDevice* const> ep_devices) {
   // Resolve the EP's default device. If the EP implements GetDefaultMemoryDevice, use its
-  // answer directly. Otherwise infer from OrtEpDevice.device_memory_info (and enforce that
-  // all OrtEpDevice instances agree).
+  // answer directly. Otherwise fall back to the first OrtEpDevice's default memory info.
 
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
 
@@ -136,28 +135,8 @@ static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ep, gsl::span<const OrtEpD
     }
   }
 
+  // If there's no explicit default memory device, choose the first default memory info.
   const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
-
-  // Check assertion that all OrtEpDevice instances must have equivalent device_memory_infos
-  bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [mem_a = device_memory_info](const OrtEpDevice* ep_device) {
-                                 const OrtMemoryInfo* mem_b = ep_device->device_memory_info;
-
-                                 if (mem_a == mem_b) {
-                                   return true;  // Point to the same OrtMemoryInfo instance.
-                                 }
-
-                                 if (mem_a == nullptr || mem_b == nullptr) {
-                                   return false;  // One is nullptr and the other is not.
-                                 }
-
-                                 // Both non-null but point to different instances. Use operator==.
-                                 return *mem_a == *mem_b;
-                               });
-  if (!all_match) {
-    ORT_THROW("Error creating execution provider '", ep_devices[0]->ep_name,
-              "': expected all OrtEpDevice instances to use the same device_memory_info.");
-  }
 
   return device_memory_info != nullptr ? device_memory_info->device : OrtDevice();
 }
