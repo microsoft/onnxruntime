@@ -56,10 +56,22 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   int64_t group = getAttribute(ctx, "group", 1);
+  if (group <= 0) {
+    fail_shape_inference("group attribute must be positive. Got: ", group);
+  }
 
   auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-  if (input_shape.dim_size() < 2) {
-    return;  // Input tensor should have at least two dimensions.
+  // ConvTranspose requires X=(N x C x D1...Dn) and W=(C x M/group x k1...kn), both rank >= 3.
+  // The upstream ONNX ConvTranspose shape inference only checks rank >= 2, which allows rank-2
+  // inputs to pass shape inference but crash at kernel execution time. We tighten the check here
+  // to fail early at model load with a clear error. Fixing ONNX upstream is tracked separately.
+  if (input_shape.dim_size() < 3) {
+    fail_shape_inference("Input tensor must have at least 3 dimensions. Got: ", input_shape.dim_size());
+  }
+
+  auto weight_shape = ctx.getInputType(1)->tensor_type().shape();
+  if (weight_shape.dim_size() < 3) {
+    fail_shape_inference("Weight tensor must have at least 3 dimensions. Got: ", weight_shape.dim_size());
   }
 
   // first dim is the batch axis and the next is the number of channels.
@@ -147,7 +159,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 
   *final_output_shape->add_dim() = input_shape.dim(0);
   *final_output_shape->add_dim() =
-      ctx.getInputType(1)->tensor_type().shape().dim(1) *
+      weight_shape.dim(1) *
       group;  // channels should be the second dim of second input multiply
   // group.
 
@@ -1499,6 +1511,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Otherwise, there is no blocking and a whole column shares one scaling factor. ",
               AttributeProto::INT,
               OPTIONAL_VALUE)
+        .Attr("quant_type",
+              "Quantization type: 'int' for integer quantization (default), 'fp4' for MXFP4 quantization, "
+              "'fp8' for FP8 e4m3 weight-only quantization, "
+              "or 'wfp4afp8' for MXFP4 weight with FP8 activation. "
+              "When quant_type is 'fp4', weights are stored in MXFP4 format (2 values per byte), "
+              "fc*_scales inputs contain MXFP4 block scales, and fc*_global_scale inputs must be provided.",
+              AttributeProto::STRING,
+              std::string("int"))
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "
@@ -1515,9 +1535,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T1")
         .Input(3,
                "fc1_scales",
-               "2D tensor with shape (num_experts, fusion_size * inter_size), or "
-               "3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided.",
-               "T2")
+               "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
+               "(num_experts, fusion_size * inter_size), or a 3D tensor with shape "
+               "(num_experts, fusion_size * inter_size, hidden_size / block_size) when block_size is provided. "
+               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
+               "(num_experts, fusion_size * inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
+               "T2",
+               OpSchema::Optional)
         .Input(4,
                "fc1_experts_bias",
                "2D optional tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
@@ -1527,9 +1551,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T1")
         .Input(6,
                "fc2_scales",
-               "2D tensor with shape (num_experts, hidden_size), or "
-               "3D tensor with shape (num_experts, hidden_size, inter_size / block_size) when block_size is provided.",
-               "T2")
+               "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
+               "(num_experts, hidden_size), or a 3D tensor with shape "
+               "(num_experts, hidden_size, inter_size / block_size) when block_size is provided. "
+               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
+               "(num_experts, hidden_size, inter_size / 32). Not used for quant_type='fp8'.",
+               "T2",
+               OpSchema::Optional)
         .Input(7,
                "fc2_experts_bias",
                "2D optional tensor with shape (num_experts, hidden_size)",
@@ -1542,8 +1570,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(9,
                "fc3_scales",
-               "2D optional tensor with shape (num_experts, inter_size), or "
-               "3D optional tensor with shape (num_experts, inter_size, hidden_size / block_size) when block_size is provided.",
+               "Optional weight scales. For quant_type='int', this is a 2D tensor with shape "
+               "(num_experts, inter_size), or a 3D tensor with shape "
+               "(num_experts, inter_size, hidden_size / block_size) when block_size is provided. "
+               "For quant_type='fp4' or 'wfp4afp8', this is a float8e8m0 MXFP block-scale tensor with shape "
+               "(num_experts, inter_size, hidden_size / 32). Not used for quant_type='fp8'.",
                "T2",
                OpSchema::Optional)
         .Input(10,
@@ -1579,13 +1610,49 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "(backward compatible).",
                "T",
                OpSchema::Optional)
+        .Input(15,
+               "fc1_global_scale",
+               "1D optional tensor with shape (num_experts,). "
+               "Per-expert global weight scale for FC1. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.",
+               "T4",
+               OpSchema::Optional)
+        .Input(16,
+               "fc2_global_scale",
+               "1D optional tensor with shape (num_experts,). "
+               "Per-expert global weight scale for FC2. Required when quant_type is 'fp4', 'fp8', or 'wfp4afp8'.",
+               "T4",
+               OpSchema::Optional)
+        .Input(17,
+               "fc1_act_scale",
+               "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC1 FP8 activation modes.",
+               "T4",
+               OpSchema::Optional)
+        .Input(18,
+               "fc2_act_scale",
+               "1D optional tensor with shape (1,) or (num_experts,). Activation scale for FC2 FP8 activation modes.",
+               "T4",
+               OpSchema::Optional)
+        .Input(19,
+               "fc1_act_block_scale",
+               "3D optional float8e8m0 MXFP activation block-scale tensor for FC1 FP8 activation modes.",
+               "T2",
+               OpSchema::Optional)
+        .Input(20,
+               "fc2_act_block_scale",
+               "3D optional float8e8m0 MXFP activation block-scale tensor for FC2 FP8 activation modes.",
+               "T2",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "output tensor with same shape of input",
                 "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("T1", {"tensor(uint8)"}, "Constrain weights type to uint8 tensors.")
-        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain scales type to float tensors.")
+        .TypeConstraint("T1", {"tensor(uint8)", "tensor(float8e4m3fn)"},
+                        "Constrain quantized weight types. Integer and FP4 weights use uint8. FP8 weights use float8e4m3fn.")
+        .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)", "tensor(float8e8m0)"},
+                        "Constrain scale types. Float tensors are used for integer quantization scales. "
+                        "Float8e8m0 tensors are used for MXFP block scales.")
+        .TypeConstraint("T4", {"tensor(float)"}, "Constrain FP4 global scale type to float32 tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
@@ -3692,7 +3759,8 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
-  5. For uint8 data, the `gather_axis` must be 0.
+  5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
+     for `bits` < 8 the values are packed along the last dimension (low-order bits first).
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherBlockQuantized)
@@ -3712,7 +3780,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             AttributeProto::INT,
             static_cast<int64_t>(128))
       .Attr("bits",
-            "Number of bits used for weight quantization. Must be either 4 or 8. ",
+            "Number of bits used for weight quantization. Must be 2, 4 or 8. ",
             AttributeProto::INT,
             static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
@@ -3799,9 +3867,9 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             if (!zp_shape.dim(i).has_dim_value() ||
                 zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
               if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 &&
-                  bits == 4 &&
+                  components > 1 &&
                   i == quantize_axis &&
-                  zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + 1) / 2) {
+                  zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + components - 1) / components) {
                 continue;
               }
               fail_shape_inference("zero points shape and scales shape do not match");

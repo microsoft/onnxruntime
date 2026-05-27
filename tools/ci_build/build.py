@@ -205,6 +205,12 @@ def number_of_parallel_jobs(args):
     return os.cpu_count() if args.parallel == 0 else args.parallel
 
 
+def number_of_test_parallel_jobs(args):
+    if args.test_parallel is None:
+        return number_of_parallel_jobs(args)
+    return os.cpu_count() if args.test_parallel == 0 else args.test_parallel
+
+
 def number_of_nvcc_threads(args):
     if args.nvcc_threads >= 0:
         return args.nvcc_threads
@@ -1728,7 +1734,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 test_output = f"--gtest_output=xml:{cwd}/{exe}.{config}.results.xml"
                 run_subprocess([os.path.join(cwd, exe), test_output], cwd=cwd, dll_path=dll_path)
         else:
-            num_parallel_jobs = number_of_parallel_jobs(args)
+            num_parallel_jobs = number_of_test_parallel_jobs(args)
             ctest_cmd = [
                 ctest_path,
                 "--build-config",
@@ -2574,6 +2580,9 @@ def main():
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.targets)
 
     if args.test:
+        if args.test_parallel is not None and args.test_parallel < 0:
+            raise BuildError(f"Invalid test parallel job count: {args.test_parallel}")
+
         if args.enable_onnx_tests:
             source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
             setup_test_data(source_onnx_model_dir, "models", build_dir, configs)

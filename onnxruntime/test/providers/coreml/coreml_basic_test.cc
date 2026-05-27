@@ -12,6 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/graph_transformer_level.h"
 #include "core/providers/coreml/coreml_provider_factory_creator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
@@ -240,9 +241,10 @@ TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
 }
 
 TEST(CoreMLExecutionProviderTest, GatherWithScalarIndices) {
-  // For scalar inputs, the input shape is modified from [] -> [1] before passing the input to CoreML.
-  // This won't work for Gather because the output shape depends on the `indices` input shape which could be a scalar.
-  // Currently, we expect the CoreML EP to only take the Shape node in this graph (Gather -> Shape).
+  // The CoreML EP supports scalar 'indices' for Gather only when the 'data' input has a fully
+  // static shape (it needs to claim a static intermediate shape for the post-gather squeeze).
+  // This model's 'data' input is dynamic ([M, N, K]) so Gather still falls back to CPU and the
+  // CoreML EP only takes the Shape node.
   const auto model_file_name = ORT_TSTR("testdata/gather_with_scalar_indices_then_shape.onnx");
 
 #if defined(__APPLE__)
@@ -1164,6 +1166,453 @@ TEST(CoreMLExecutionProviderTest, QuickGeluTestFp16) {
 #endif
 }
 
+// Build a model: input -> Conv -> <op_chain...> -> output. The Conv anchors
+// the partition so the trivial-partition heuristic keeps it; the chained ops
+// land inside a single CoreML partition rather than fragmenting it.
+namespace {
+ONNX_NAMESPACE::ModelProto MakeConvWithTrivialChainModel(
+    const std::string& trivial_op,
+    bool tile_with_repeats /*for Tile only*/) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("conv_chain_test");
+
+  auto add_value = [&](auto* proto, const char* name, const std::vector<int64_t>& shape) {
+    proto->set_name(name);
+    auto* tt = proto->mutable_type()->mutable_tensor_type();
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int64_t d : shape) tt->mutable_shape()->add_dim()->set_dim_value(d);
+  };
+  const std::vector<int64_t> tile_reps =
+      (trivial_op == "Tile" && tile_with_repeats) ? std::vector<int64_t>{1, 1, 2, 2}
+                                                  : std::vector<int64_t>{1, 1, 1, 1};
+  const std::vector<int64_t> output_shape = {1, 3, 3 * tile_reps[2], 3 * tile_reps[3]};
+  add_value(graph_proto->add_input(), "X", {1, 2, 4, 4});
+  add_value(graph_proto->add_output(), "Y", output_shape);
+
+  // Conv weight initialiser
+  auto* w = graph_proto->add_initializer();
+  w->set_name("W");
+  w->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (int64_t d : {3, 2, 2, 2}) w->add_dims(d);
+  for (int i = 0; i < 24; ++i) w->add_float_data(0.05f * i - 0.4f);
+
+  auto* conv = graph_proto->add_node();
+  conv->set_op_type("Conv");
+  conv->add_input("X");
+  conv->add_input("W");
+  conv->add_output("conv_out");
+  auto* pads = conv->add_attribute();
+  pads->set_name("pads");
+  pads->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+  for (int64_t v : {0, 0, 0, 0}) pads->add_ints(v);
+
+  if (trivial_op == "Tile") {
+    auto* reps_init = graph_proto->add_initializer();
+    reps_init->set_name("reps");
+    reps_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    reps_init->add_dims(static_cast<int64_t>(tile_reps.size()));
+    for (int64_t v : tile_reps) reps_init->add_int64_data(v);
+    auto* node = graph_proto->add_node();
+    node->set_op_type("Tile");
+    node->add_input("conv_out");
+    node->add_input("reps");
+    node->add_output("Y");
+  } else {
+    auto* node = graph_proto->add_node();
+    node->set_op_type(trivial_op);
+    node->add_input("conv_out");
+    node->add_output("Y");
+  }
+  return model_proto;
+}
+
+void RunConvChainTest(const std::string& trivial_op, std::string_view log_id,
+                      bool tile_with_repeats = false) {
+  auto model_proto = MakeConvWithTrivialChainModel(trivial_op, tile_with_repeats);
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 2, 4, 4};
+  std::vector<float> x_data(32);
+  for (size_t i = 0; i < x_data.size(); ++i) x_data[i] = static_cast<float>(i) * 0.1f - 1.5f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, x_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_span, std::string(log_id),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+}  // namespace
+
+TEST(CoreMLExecutionProviderTest, IdentityWithConvAnchor) {
+  // Conv → Identity → output. Conv anchors the partition; Identity must be
+  // claimed (the trivial-partition heuristic keeps it because Conv is present).
+  RunConvChainTest("Identity", "IdentityWithConvAnchor_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, CeilWithConvAnchor) {
+  // Conv → Ceil → output. Same rationale; Ceil is also a unary MIL op.
+  RunConvChainTest("Ceil", "CeilWithConvAnchor_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, TileWithConvAnchor) {
+  // Conv → Tile(reps=[1,1,1,1]) → output. Validates the Tile builder claims
+  // the node alongside the Conv anchor.
+  RunConvChainTest("Tile", "TileWithConvAnchor_MLProgram");
+}
+
+TEST(CoreMLExecutionProviderTest, TileWithConvAnchorNonUnitRepeats) {
+  // Conv → Tile(reps=[1,1,2,2]) → output. Exercises the non-trivial tile path
+  // (output spatial dims doubled) end-to-end against the CPU reference.
+  RunConvChainTest("Tile", "TileWithConvAnchorNonUnitRepeats_MLProgram",
+                   /*tile_with_repeats=*/true);
+}
+
+// Helper for trivial-only chain tests. Builds a model with input X[dims] and
+// output Y[dims], populates the graph body via `populate_chain`, and asserts
+// the CoreML EP claims none of it. Graph optimisations are pinned to Default
+// so passes like IdentityElimination / CastElimination do not pre-empt the
+// trivial-partition heuristic in CoreMLExecutionProvider::GetCapability.
+namespace {
+void RunTrivialOnlyChainTest(
+    std::string_view log_id,
+    const std::vector<int64_t>& dims,
+    const std::vector<float>& x_data,
+    const std::function<void(ONNX_NAMESPACE::GraphProto*)>& populate_chain) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("trivial_only");
+
+  auto add_value = [&](auto* proto, const char* name, const std::vector<int64_t>& shape) {
+    proto->set_name(name);
+    auto* tt = proto->mutable_type()->mutable_tensor_type();
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int64_t d : shape) tt->mutable_shape()->add_dim()->set_dim_value(d);
+  };
+  add_value(graph_proto->add_input(), "X", dims);
+  add_value(graph_proto->add_output(), "Y", dims);
+
+  populate_chain(graph_proto);
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, x_data, &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  auto disable_optimizations = [](SessionOptions& so) {
+    so.graph_optimization_level = TransformerLevel::Default;
+  };
+
+  RunAndVerifyOutputsWithEP(model_span, std::string(log_id),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::None},
+                            disable_optimizations);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+#endif
+}
+}  // namespace
+
+TEST(CoreMLExecutionProviderTest, TrivialOnlyChainIsNotClaimedByCoreML) {
+  // 3 chained Identity nodes with no compute-heavy anchor → heuristic drops the
+  // partition so CPU runs it. Round-trip cost would exceed the saving otherwise.
+  RunTrivialOnlyChainTest(
+      "TrivialOnlyChainIsNotClaimedByCoreML_MLProgram",
+      {1, 8},
+      {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f},
+      [](ONNX_NAMESPACE::GraphProto* graph) {
+        auto* n1 = graph->add_node();
+        n1->set_op_type("Identity");
+        n1->add_input("X");
+        n1->add_output("a");
+        auto* n2 = graph->add_node();
+        n2->set_op_type("Identity");
+        n2->add_input("a");
+        n2->add_output("b");
+        auto* n3 = graph->add_node();
+        n3->set_op_type("Identity");
+        n3->add_input("b");
+        n3->add_output("Y");
+      });
+}
+
+TEST(CoreMLExecutionProviderTest, ReshapeOnlyChainIsNotClaimedByCoreML) {
+  RunTrivialOnlyChainTest(
+      "ReshapeOnlyChainIsNotClaimedByCoreML_MLProgram",
+      {1, 8},
+      {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f},
+      [](ONNX_NAMESPACE::GraphProto* graph) {
+        auto add_shape_init = [&](const char* name, const std::vector<int64_t>& shape) {
+          auto* init = graph->add_initializer();
+          init->set_name(name);
+          init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          init->add_dims(static_cast<int64_t>(shape.size()));
+          for (int64_t v : shape) init->add_int64_data(v);
+        };
+        add_shape_init("shape_a", {2, 4});
+        add_shape_init("shape_b", {1, 8});
+
+        auto* n1 = graph->add_node();
+        n1->set_op_type("Reshape");
+        n1->add_input("X");
+        n1->add_input("shape_a");
+        n1->add_output("a");
+        auto* n2 = graph->add_node();
+        n2->set_op_type("Reshape");
+        n2->add_input("a");
+        n2->add_input("shape_b");
+        n2->add_output("Y");
+      });
+}
+
+TEST(CoreMLExecutionProviderTest, TransposeOnlyChainIsNotClaimedByCoreML) {
+  RunTrivialOnlyChainTest(
+      "TransposeOnlyChainIsNotClaimedByCoreML_MLProgram",
+      {1, 8},
+      {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f},
+      [](ONNX_NAMESPACE::GraphProto* graph) {
+        auto add_transpose = [&](const char* name, const char* in, const char* out,
+                                 const std::vector<int64_t>& perm) {
+          auto* node = graph->add_node();
+          node->set_name(name);
+          node->set_op_type("Transpose");
+          node->add_input(in);
+          node->add_output(out);
+          auto* attr = node->add_attribute();
+          attr->set_name("perm");
+          attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+          for (int64_t v : perm) attr->add_ints(v);
+        };
+        // Two Transposes that compose back to the identity perm.
+        add_transpose("t0", "X", "a", {1, 0});
+        add_transpose("t1", "a", "Y", {1, 0});
+      });
+}
+
+TEST(CoreMLExecutionProviderTest, TileOnlyIsNotClaimedByCoreML) {
+  // Single Tile with reps=[1,1] — pure data movement, no compute anchor.
+  RunTrivialOnlyChainTest(
+      "TileOnlyIsNotClaimedByCoreML_MLProgram",
+      {1, 8},
+      {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f},
+      [](ONNX_NAMESPACE::GraphProto* graph) {
+        auto* reps = graph->add_initializer();
+        reps->set_name("reps");
+        reps->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+        reps->add_dims(2);
+        reps->add_int64_data(1);
+        reps->add_int64_data(1);
+        auto* n = graph->add_node();
+        n->set_op_type("Tile");
+        n->add_input("X");
+        n->add_input("reps");
+        n->add_output("Y");
+      });
+}
+
+TEST(CoreMLExecutionProviderTest, CeilOnlyIsNotClaimedByCoreML) {
+  // Single Ceil — supported by the new Unary builder but trivial; heuristic drops it.
+  RunTrivialOnlyChainTest(
+      "CeilOnlyIsNotClaimedByCoreML_MLProgram",
+      {1, 8},
+      {0.1f, 0.6f, 1.4f, 1.9f, -0.6f, -1.4f, 2.5f, 3.1f},
+      [](ONNX_NAMESPACE::GraphProto* graph) {
+        auto* n = graph->add_node();
+        n->set_op_type("Ceil");
+        n->add_input("X");
+        n->add_output("Y");
+      });
+}
+
+TEST(CoreMLExecutionProviderTest, MixedTrivialChainIsNotClaimedByCoreML) {
+  // Identity → Cast(float→float) → Reshape → Transpose. Different trivial ops in
+  // sequence; with no compute-heavy anchor the heuristic drops the whole partition.
+  RunTrivialOnlyChainTest(
+      "MixedTrivialChainIsNotClaimedByCoreML_MLProgram",
+      {1, 8},
+      {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f},
+      [](ONNX_NAMESPACE::GraphProto* graph) {
+        auto* shape_init = graph->add_initializer();
+        shape_init->set_name("reshape_shape");
+        shape_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+        shape_init->add_dims(2);
+        shape_init->add_int64_data(8);
+        shape_init->add_int64_data(1);
+
+        auto* identity = graph->add_node();
+        identity->set_op_type("Identity");
+        identity->add_input("X");
+        identity->add_output("a");
+
+        auto* cast = graph->add_node();
+        cast->set_op_type("Cast");
+        cast->add_input("a");
+        cast->add_output("b");
+        auto* to_attr = cast->add_attribute();
+        to_attr->set_name("to");
+        to_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+        to_attr->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+        auto* reshape = graph->add_node();
+        reshape->set_op_type("Reshape");
+        reshape->add_input("b");
+        reshape->add_input("reshape_shape");
+        reshape->add_output("c");
+
+        auto* transpose = graph->add_node();
+        transpose->set_op_type("Transpose");
+        transpose->add_input("c");
+        transpose->add_output("Y");
+        auto* perm_attr = transpose->add_attribute();
+        perm_attr->set_name("perm");
+        perm_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+        perm_attr->add_ints(1);
+        perm_attr->add_ints(0);
+      });
+}
+
+TEST(CoreMLExecutionProviderTest, ConvTrivialChainConvKeepsAllOnCoreML) {
+  // Sandwich test: Conv → Identity → Cast → Reshape → Conv. The two Convs
+  // make the partition non-trivial, so the heuristic keeps the trivial ops in
+  // the same partition rather than splitting them off to CPU. Verifies the
+  // "stay on GPU for GPU chains" half of the heuristic.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("conv_trivial_conv_sandwich");
+
+  auto add_value = [&](auto* proto, const char* name, const std::vector<int64_t>& shape) {
+    proto->set_name(name);
+    auto* tt = proto->mutable_type()->mutable_tensor_type();
+    tt->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (int64_t d : shape) tt->mutable_shape()->add_dim()->set_dim_value(d);
+  };
+  add_value(graph_proto->add_input(), "X", {1, 2, 4, 4});
+  add_value(graph_proto->add_output(), "Y", {1, 2, 3, 3});
+
+  // Conv1: weight [3, 2, 2, 2], output [1, 3, 3, 3]
+  auto* w1 = graph_proto->add_initializer();
+  w1->set_name("W1");
+  w1->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (int64_t d : {3, 2, 2, 2}) w1->add_dims(d);
+  for (int i = 0; i < 24; ++i) w1->add_float_data(0.05f * i - 0.4f);
+
+  // Conv2: weight [2, 3, 1, 1], output [1, 2, 3, 3]
+  auto* w2 = graph_proto->add_initializer();
+  w2->set_name("W2");
+  w2->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  for (int64_t d : {2, 3, 1, 1}) w2->add_dims(d);
+  for (int i = 0; i < 6; ++i) w2->add_float_data(0.1f * i - 0.25f);
+
+  // Reshape shape initializer (no-op reshape: [1,3,3,3] → [1,3,3,3])
+  auto* reshape_shape = graph_proto->add_initializer();
+  reshape_shape->set_name("reshape_shape");
+  reshape_shape->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  reshape_shape->add_dims(4);
+  for (int64_t v : {1, 3, 3, 3}) reshape_shape->add_int64_data(v);
+
+  auto add_pads_attr = [](ONNX_NAMESPACE::NodeProto* node) {
+    auto* pads = node->add_attribute();
+    pads->set_name("pads");
+    pads->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+    for (int64_t v : {0, 0, 0, 0}) pads->add_ints(v);
+  };
+
+  auto* conv1 = graph_proto->add_node();
+  conv1->set_op_type("Conv");
+  conv1->add_input("X");
+  conv1->add_input("W1");
+  conv1->add_output("conv1_out");
+  add_pads_attr(conv1);
+
+  auto* identity = graph_proto->add_node();
+  identity->set_op_type("Identity");
+  identity->add_input("conv1_out");
+  identity->add_output("ident_out");
+
+  auto* cast = graph_proto->add_node();
+  cast->set_op_type("Cast");
+  cast->add_input("ident_out");
+  cast->add_output("cast_out");
+  auto* to_attr = cast->add_attribute();
+  to_attr->set_name("to");
+  to_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  to_attr->set_i(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* reshape = graph_proto->add_node();
+  reshape->set_op_type("Reshape");
+  reshape->add_input("cast_out");
+  reshape->add_input("reshape_shape");
+  reshape->add_output("reshape_out");
+
+  auto* conv2 = graph_proto->add_node();
+  conv2->set_op_type("Conv");
+  conv2->add_input("reshape_out");
+  conv2->add_input("W2");
+  conv2->add_output("Y");
+  add_pads_attr(conv2);
+
+  std::string model_data;
+  ASSERT_TRUE(model_proto.SerializeToString(&model_data));
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 2, 4, 4};
+  std::vector<float> x_data(32);
+  for (size_t i = 0; i < x_data.size(); ++i) x_data[i] = static_cast<float>(i) * 0.1f - 1.5f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, x_data, &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  // Disable optimisations so the trivial ops survive into partitioning and we
+  // actually verify the heuristic (otherwise IdentityElimination / similar
+  // passes could remove them before CoreML's GetCapability runs).
+  auto disable_optimizations = [](SessionOptions& so) {
+    so.graph_optimization_level = TransformerLevel::Default;
+  };
+
+  RunAndVerifyOutputsWithEP(model_span, "ConvTrivialChainConvKeepsAllOnCoreML_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All},
+                            disable_optimizations);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 namespace {
 // Build a single-node com.microsoft:FusedConv model for the tests below.
 // Input X is {1, 2, 4, 4}, weight W is {3, 2, 2, 2} (constant initializer, set
@@ -1901,6 +2350,656 @@ TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
                              {&input_arg}, {&out0_arg});
   node.AddAttribute("axis", static_cast<int64_t>(1));
   node.AddAttribute("split", std::vector<int64_t>{5});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis1) {
+  // ai.onnx:Gather with rank-0 (scalar) 'indices'. ONNX output rank =
+  // data_rank + indices_rank - 1 = 2. The CoreML builder internally promotes
+  // indices to [1], runs gather, then squeezes the inserted axis. Pattern
+  // produced by StyleGAN-family generators (e.g. GFPGAN) that pick a
+  // per-layer style code with a scalar index.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_axis1", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // data X: {1, 4, 8} float
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_value(1);
+  data_shape->add_dim()->set_dim_value(4);
+  data_shape->add_dim()->set_dim_value(8);
+
+  // output Y: {1, 8}
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(8);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  // Scalar int64 index with value 2.
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  // No dims => rank-0 tensor.
+  idx_init.add_int64_data(2);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar", "Gather", "Gather with scalar indices",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4, 8};
+  std::vector<float> input_data(1 * 4 * 8);
+  for (size_t i = 0; i < input_data.size(); ++i) input_data[i] = static_cast<float>(i) * 0.25f - 1.0f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesAxis1_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesAxis1_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis0) {
+  // Scalar Gather along axis 0 — squeeze axis is 0; covers a different
+  // squeeze position than the axis=1 test.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_axis0", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // data X: {6, 5} float
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_value(6);
+  data_shape->add_dim()->set_dim_value(5);
+
+  // output Y: {5}
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(5);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(4);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_axis0", "Gather", "Gather scalar idx axis=0",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(0));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {6, 5};
+  std::vector<float> input_data(6 * 5);
+  for (size_t i = 0; i < input_data.size(); ++i) input_data[i] = static_cast<float>(i) - 12.5f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesAxis0_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesAxis0_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesNegativeAxis) {
+  // Scalar Gather with negative axis (-1) — verifies HandleNegativeAxis is
+  // applied when computing the squeeze axis.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_negative_axis", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  // data X: {2, 3, 4} float
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_value(2);
+  data_shape->add_dim()->set_dim_value(3);
+  data_shape->add_dim()->set_dim_value(4);
+
+  // output Y: {2, 3} (axis=-1 == axis 2; output drops that axis)
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(2);
+  output_shape->add_dim()->set_dim_value(3);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(1);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_neg_axis", "Gather", "Gather scalar idx axis=-1",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(-1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {2, 3, 4};
+  std::vector<float> input_data(2 * 3 * 4);
+  for (size_t i = 0; i < input_data.size(); ++i) input_data[i] = static_cast<float>(i) * 0.5f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesNegativeAxis_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesNegativeAxis_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesFloat16) {
+  // FLOAT16 'data' input. HasSupportedInputsImpl restricts fp16 Gather to
+  // MLProgram on CoreML 6+, so this test only runs the MLProgram path.
+  // Exercises the MLFloat16 branch of the static intermediate shape claim.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_fp16", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_value(1);
+  data_shape->add_dim()->set_dim_value(4);
+  data_shape->add_dim()->set_dim_value(8);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(1);
+  output_shape->add_dim()->set_dim_value(8);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(2);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_fp16", "Gather", "Gather scalar idx fp16 data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4, 8};
+  std::vector<MLFloat16> input_data;
+  input_data.reserve(1 * 4 * 8);
+  for (size_t i = 0; i < 1 * 4 * 8; ++i) {
+    input_data.emplace_back(static_cast<float>(i) * 0.25f - 1.0f);
+  }
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<MLFloat16>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesFloat16_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesInt64Data) {
+  // INT64 'data' input. HasSupportedInputsImpl allows int64 in both NN and
+  // MLProgram; verify both formats correctly route int64 through the
+  // expand/gather/squeeze chain.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_int64_data", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_value(3);
+  data_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  output_shape->add_dim()->set_dim_value(4);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(1);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_int64", "Gather", "Gather scalar idx int64 data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(0));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {3, 4};
+  std::vector<int64_t> input_data;
+  input_data.reserve(3 * 4);
+  for (int64_t i = 0; i < 3 * 4; ++i) input_data.push_back(i * 1000 - 5000);
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<int64_t>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesInt64Data_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesInt64Data_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesInt32Indices) {
+  // INT32 'indices'. The other scalar-indices tests use INT64 indices (the
+  // PyTorch default); this one exercises the INT32 branch through both the
+  // dtype gating in IsOpSupportedImpl and the indices_dtype path-through to
+  // the reshape's intermediate output dtype in AddToModelBuilderImpl.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_int32_indices", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_value(3);
+  data_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  idx_init.add_int32_data(2);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_int32_idx", "Gather", "Gather scalar int32 idx",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(0));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {3, 4};
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesInt32Indices_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesInt32Indices_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank4Data) {
+  // Rank-4 'data' input — the supported maximum for scalar Gather (the
+  // pre-squeeze intermediate is rank 4; CoreML's compiler rejects scalar
+  // Gather at rank 5 with "Invalid rank: 6"). Output is rank 3.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_rank4", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  for (int64_t d : {2, 5, 3, 4}) data_shape->add_dim()->set_dim_value(d);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  // Gather on axis=1 with scalar idx removes that axis: {2,3,4}
+  for (int64_t d : {2, 3, 4}) output_shape->add_dim()->set_dim_value(d);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(3);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_rank4", "Gather", "Gather scalar idx rank-4 data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {2, 5, 3, 4};
+  std::vector<float> input_data(2 * 5 * 3 * 4);
+  for (size_t i = 0; i < input_data.size(); ++i) input_data[i] = static_cast<float>(i) * 0.1f - 5.0f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesRank4Data_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesRank4Data_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank1Data) {
+  // Rank-1 'data' input with scalar indices — output is rank-0 (the pre-squeeze
+  // intermediate is rank 1, squeezed to a scalar). Confirms CoreML actually
+  // produces a rank-0 result on both NN and MLProgram paths.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_rank1", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  data_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(6);
+
+  // Output is rank-0: TypeProto with a shape that has no dims.
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_tensor_type()->mutable_shape();
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(2);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_rank1", "Gather", "Gather scalar idx rank-1 data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(0));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {6};
+  std::vector<float> input_data(6);
+  for (size_t i = 0; i < input_data.size(); ++i) input_data[i] = static_cast<float>(i) - 2.5f;
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesRank1Data_NN",
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+  RunAndVerifyOutputsWithEP(model_span, "GatherScalarIndicesRank1Data_MLProgram",
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesDynamicDataNotSupported) {
+  // The scalar-indices path emits a reshape-+squeeze chain whose intermediate
+  // shape we have to claim statically. IsOpSupportedImpl rejects the node
+  // when 'data' has any unknown dim so it falls back to CPU rather than
+  // produce an ill-formed CoreML program.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_dynamic_data", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  data_shape->add_dim()->set_dim_param("N");  // dynamic leading dim
+  data_shape->add_dim()->set_dim_value(4);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("N");
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(0);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_dyn", "Gather", "Gather scalar idx, dynamic data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(1));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()), model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
+  // Scalar-indices Gather caps data rank at 4 (CoreML compiler reports
+  // "Invalid rank: 6" on the rank-5 reshape+gather intermediate). Rank-5
+  // 'data' must fall back to CPU.
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gather_scalar_indices_rank5", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* data_shape = data_type.mutable_tensor_type()->mutable_shape();
+  for (int64_t d : {2, 3, 4, 5, 6}) data_shape->add_dim()->set_dim_value(d);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* output_shape = output_type.mutable_tensor_type()->mutable_shape();
+  // axis=2 with scalar idx removes that axis: {2,3,5,6}
+  for (int64_t d : {2, 3, 5, 6}) output_shape->add_dim()->set_dim_value(d);
+
+  auto& input_arg = graph.GetOrCreateNodeArg("X", &data_type);
+  auto& output_arg = graph.GetOrCreateNodeArg("Y", &output_type);
+
+  ONNX_NAMESPACE::TensorProto idx_init;
+  idx_init.set_name("idx");
+  idx_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx_init.add_int64_data(2);
+  graph.AddInitializedTensor(idx_init);
+  auto& idx_arg = graph.GetOrCreateNodeArg("idx", nullptr);
+
+  auto& node = graph.AddNode("gather_scalar_rank5", "Gather", "Gather scalar idx rank-5 data",
+                             {&input_arg, &idx_arg}, {&output_arg});
+  node.AddAttribute("axis", static_cast<int64_t>(2));
 
   ASSERT_STATUS_OK(graph.Resolve());
 

@@ -5027,6 +5027,96 @@ TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithZeroDim) {
   EXPECT_EQ(y_shape->dim(2).dim_value(), 3);
 }
 
+// Execution regression test: a chained Reshape with allowzero=1 on a zero-element tensor
+// must produce the correct output shape at runtime.
+// Input X: float[0, 8, 2] -> Reshape([4, 2, -1]) -> mid -> Reshape([0, 0, 4], allowzero=1) -> Y
+// Expected Y shape: (0, 0, 4).  Without the fix FuseContiguousReshapes would collapse the
+// two nodes into one (losing allowzero=1) and emit (0, 8, 4) instead.
+// See https://github.com/microsoft/onnxruntime/issues/28348.
+TEST_F(GraphTransformationTests, ReshapeFusionContiguousReshapesWithZeroDimExecution) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 18;
+  Model model("ReshapeFusionContiguousReshapesWithZeroDimExecution", false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), *logger_);
+  auto& graph = model.MainGraph();
+
+  // X: float[0, 8, 2]
+  TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(0);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(8);
+  x_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  TypeProto y_type;
+  y_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+
+  auto& X = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& mid = graph.GetOrCreateNodeArg("mid", &y_type);
+  auto& Y = graph.GetOrCreateNodeArg("Y", &y_type);
+
+  // shape1 = [4, 2, -1]  ->  mid shape (4, 2, 0)
+  ONNX_NAMESPACE::TensorProto shape1_proto;
+  shape1_proto.set_name("shape1");
+  shape1_proto.set_data_type(TensorProto_DataType_INT64);
+  shape1_proto.add_dims(3);
+  for (int64_t v : {4, 2, -1}) shape1_proto.add_int64_data(v);
+  graph.AddInitializedTensor(shape1_proto);
+
+  // shape2 = [0, 0, 4] with allowzero=1  ->  Y shape (0, 0, 4)
+  ONNX_NAMESPACE::TensorProto shape2_proto;
+  shape2_proto.set_name("shape2");
+  shape2_proto.set_data_type(TensorProto_DataType_INT64);
+  shape2_proto.add_dims(3);
+  for (int64_t v : {0, 0, 4}) shape2_proto.add_int64_data(v);
+  graph.AddInitializedTensor(shape2_proto);
+
+  auto& shape1 = graph.GetOrCreateNodeArg("shape1", nullptr);
+  auto& shape2 = graph.GetOrCreateNodeArg("shape2", nullptr);
+
+  graph.AddNode("reshape1", "Reshape", "first reshape", {&X, &shape1}, {&mid});
+  auto& reshape2 = graph.AddNode("reshape2", "Reshape", "second reshape (allowzero=1)",
+                                 {&mid, &shape2}, {&Y});
+  reshape2.AddAttribute("allowzero", static_cast<int64_t>(1));
+
+  graph.SetInputs({&X});
+  graph.SetOutputs({&Y});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Serialize and run via InferenceSession to exercise the full execution path.
+  auto model_proto = model.ToProto();
+  std::string serialized_model;
+  ASSERT_TRUE(model_proto.SerializeToString(&serialized_model));
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  std::stringstream model_stream(serialized_model);
+  ASSERT_STATUS_OK(session_object.Load(model_stream));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Input: zero-element float tensor with shape [0, 8, 2].
+  OrtValue input_val;
+  std::vector<int64_t> input_dims = {0, 8, 2};
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                       input_dims, std::vector<float>(), &input_val);
+
+  NameMLValMap feeds = {{"X", input_val}};
+  std::vector<std::string> output_names = {"Y"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  // Output shape must be (0, 0, 4), not (0, 8, 4).
+  ASSERT_EQ(fetches.size(), 1U);
+  const auto& output_tensor = fetches[0].Get<Tensor>();
+  const TensorShape& output_shape = output_tensor.Shape();
+  ASSERT_EQ(output_shape.NumDimensions(), 3U);
+  EXPECT_EQ(output_shape[0], 0);
+  EXPECT_EQ(output_shape[1], 0);
+  EXPECT_EQ(output_shape[2], 4);
+}
+
 TEST_F(GraphTransformationTests, ReshapeFusionWithSlice1) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/reshape_fusion_with_slice1.onnx";
   std::shared_ptr<Model> p_model;
