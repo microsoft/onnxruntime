@@ -1291,7 +1291,7 @@ bool NvExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
   return false;
 }
 
-Status NvExecutionProvider::ReplayGraph(int graph_annotation_id) {
+Status NvExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
   // This is hardcoded to always return OK because we are not allowing the ORT framework to have the CUDA graph control.
   (void)graph_annotation_id;
   return Status::OK();

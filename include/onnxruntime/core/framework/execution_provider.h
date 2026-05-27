@@ -287,8 +287,9 @@ class IExecutionProvider {
 
   /**
      Run the instantiated graph.
+     @param sync If true, synchronize the stream after replay. If false, the graph replay is async.
    */
-  virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
+  virtual common::Status ReplayGraph(int /*graph_annotation_id*/, bool /*sync*/ = true) {
     return Status::OK();
   }
 

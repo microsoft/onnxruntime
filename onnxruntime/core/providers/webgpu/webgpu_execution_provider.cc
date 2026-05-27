@@ -823,7 +823,7 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
   return is_graph_captured_ && graph_annotation_id != -1;
 }
 
-Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id) {
+Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
   // TODO: enable profiling in run level
   if (session_profiler_ && session_profiler_->Enabled()) {
