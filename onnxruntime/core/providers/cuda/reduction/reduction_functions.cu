@@ -549,6 +549,35 @@ void Impl_SaturatingAbs(cudaStream_t stream, const T* input_data, T* output_data
   UnaryElementWiseImpl(stream, input_data, output_data, OP_SaturatingAbs<T>(), count);
 }
 
+/**
+ * Saturating cast from double to integer type T.
+ *
+ * A plain C++ cast from double to an integer type is undefined behavior when the value
+ * exceeds the integer's representable range (C++ standard [conv.fpint]/1). While some
+ * CUDA compiler/PTX combinations may produce saturating behavior in practice, this is
+ * NOT guaranteed by the CUDA specification. This functor explicitly clamps the double
+ * to [numeric_limits<T>::min(), numeric_limits<T>::max()] before casting, making the
+ * result well-defined and matching the CPU side's explicit clamping logic.
+ */
+template <typename T>
+struct OP_SaturatingCastFromDouble {
+  __device__ __inline__ T operator()(const double& a) const {
+    constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+    constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+    if (a >= t_max) return std::numeric_limits<T>::max();
+    if (a <= t_min) return std::numeric_limits<T>::min();
+    // NaN: neither >= t_max nor <= t_min, falls through to cast.
+    // static_cast<T>(NaN) is UB in C++, but cuDNN reductions on finite inputs
+    // cannot produce NaN for norm/sum operations, so this path is unreachable.
+    return static_cast<T>(a);
+  }
+};
+
+template <typename T>
+void Impl_SaturatingCastFromDouble(cudaStream_t stream, const double* input_data, T* output_data, size_t count) {
+  UnaryElementWiseImpl(stream, input_data, output_data, OP_SaturatingCastFromDouble<T>(), count);
+}
+
 // Explicit instantiations for types used by ReduceL1/L2 on CUDA.
 // The SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL macro expands for int32_t, int64_t, int8_t, uint8_t.
 // Even though ReduceL1/L2 aren't registered for int64/int8/uint8, the runtime check
@@ -561,6 +590,11 @@ template void Impl_SaturatingAbs<int32_t>(cudaStream_t, const int32_t*, int32_t*
 template void Impl_SaturatingAbs<int64_t>(cudaStream_t, const int64_t*, int64_t*, size_t);
 template void Impl_SaturatingAbs<int8_t>(cudaStream_t, const int8_t*, int8_t*, size_t);
 template void Impl_SaturatingAbs<uint8_t>(cudaStream_t, const uint8_t*, uint8_t*, size_t);
+
+template void Impl_SaturatingCastFromDouble<int32_t>(cudaStream_t, const double*, int32_t*, size_t);
+template void Impl_SaturatingCastFromDouble<int64_t>(cudaStream_t, const double*, int64_t*, size_t);
+template void Impl_SaturatingCastFromDouble<int8_t>(cudaStream_t, const double*, int8_t*, size_t);
+template void Impl_SaturatingCastFromDouble<uint8_t>(cudaStream_t, const double*, uint8_t*, size_t);
 
 }  // namespace cuda
 }  // namespace onnxruntime

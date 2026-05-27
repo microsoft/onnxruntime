@@ -806,11 +806,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     CudnnTensor output_tensor;                                                                                            \
     CudnnReduceDescriptor reduce_desc;                                                                                    \
                                                                                                                           \
-    /* Use double for integer reductions: 53-bit mantissa makes int32 squaring/summation exact,      */                   \
-    /* and provides much better precision for int64 than float (24-bit mantissa).                     */                  \
-    /* Note: cuDNN handles summation order internally, so Kahan compensation is not applicable here.  */                  \
-    /* For int64 values > 2^53, precision loss during accumulation is inherent to cuDNN's approach.   */                  \
-    /* The double accumulator cannot overflow: even INT64_MAX^2 * N needs > 10^270 elements.         */                   \
+    /* Use double for integer reductions to avoid integer overflow UB and improve precision.       */                     \
+    /* double's 53-bit mantissa: int32 values are exactly representable, but their squares         */                     \
+    /* (up to ~2^62) may exceed 53 bits and lose precision for large values. Still, double         */                     \
+    /* provides vastly better precision than float (24-bit mantissa) for all integer types.        */                     \
+    /* Note: cuDNN handles summation order internally, so Kahan compensation is not applicable.    */                     \
+    /* For int64 values > 2^53, precision loss during accumulation is inherent to cuDNN's design.  */                     \
+    /* The double accumulator cannot overflow: even INT64_MAX^2 * N needs > 10^270 elements.      */                      \
     cudnnDataType_t cudnn_type_X = CUDNN_DATA_DOUBLE;                                                                     \
     IAllocatorUniquePtr<double> temp_X = GetScratchBuffer<double>(input_count, GetComputeStream(ctx));                    \
     Impl_Cast<CudaT, double>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()), temp_X.get(), X->Shape().Size()); \
@@ -831,14 +833,11 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(GetCudnnHandle(ctx), reduce_desc, indices_cuda.get(), indices_bytes,          \
                                             workspace_cuda.get(), workspace_bytes, &one, input_tensor, temp_X.get(),      \
                                             &zero, output_tensor, temp_Y.get()));                                         \
-    /* Cast double result back to integer type. CUDA's PTX cvt instruction (used by             */                        \
-    /* static_cast in device code) provides saturating semantics for float→int conversions:      */                       \
-    /*   - double values > numeric_limits<T>::max() → T_MAX                                     */                        \
-    /*   - double values < numeric_limits<T>::min() → T_MIN                                     */                        \
-    /*   - NaN → 0                                                                              */                        \
-    /* This matches the CPU side's explicit clamping behavior. See PTX ISA docs:                 */                       \
-    /* "For float-to-integer conversions, cvt.sat clips values to the range of the dest type."  */                        \
-    Impl_Cast<double, CudaT>(Stream(ctx), temp_Y.get(), reinterpret_cast<CudaT*>(Y->MutableData<T>()), output_count);     \
+    /* Cast double result back to integer with explicit saturation (clamping to [T_MIN, T_MAX]).    */                    \
+    /* A plain C++ cast from double to int is UB when out of range ([conv.fpint]/1). We use a     */                      \
+    /* dedicated saturating kernel that clamps before casting, matching the CPU's explicit logic.  */                     \
+    Impl_SaturatingCastFromDouble<CudaT>(Stream(ctx), temp_Y.get(),                                                       \
+                                         reinterpret_cast<CudaT*>(Y->MutableData<T>()), output_count);                    \
                                                                                                                           \
     return Status::OK();                                                                                                  \
   }
@@ -847,18 +846,20 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
 // cuDNN does not natively support integer tensor reductions, so the strategy is:
 //   1. Cast integer input → double (device kernel via Impl_Cast)
 //   2. Perform cuDNN reduction in double precision (CUDNN_DATA_DOUBLE)
-//   3. Cast double result → integer (device kernel via Impl_Cast, with PTX saturation)
+//   3. Cast double result → integer (device kernel via Impl_SaturatingCastFromDouble)
 //
 // Why double and not float?
-//   - double (53-bit mantissa) makes int32 arithmetic exact during reduction.
+//   - double avoids integer overflow UB and provides much better precision for all int types.
+//   - int32 values are exactly representable in double; their squares (up to ~2^62) may lose
+//     precision for |v| > 2^26, but this is at most 1 ULP error — far better than overflow.
 //   - float (24-bit mantissa) loses precision for int32 values > 16M and any int64 values.
 //   - For int64 values > 2^53, precision loss remains inherent (same limitation as CPU).
-//   - Memory cost: 2× scratch buffer vs float — acceptable for integer reductions (rare in practice).
+//   - Memory cost: 2× scratch buffer vs float — acceptable for integer reductions (rare).
 //
 // Saturation behavior:
-//   - When the reduction result exceeds the integer type's range (e.g., L2 norm of INT_MIN,
-//     or large summations), CUDA's PTX cvt instruction saturates to T_MAX/T_MIN rather than
-//     wrapping. This matches the CPU's explicit clamping logic.
+//   - Impl_SaturatingCastFromDouble explicitly clamps to [T_MIN, T_MAX] before casting,
+//     avoiding the undefined behavior of out-of-range double→int conversions in C++.
+//   - This matches the CPU's explicit clamping logic in ReduceAggregatorL1/L2.
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int32_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int64_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int8_t)

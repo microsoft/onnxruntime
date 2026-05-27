@@ -600,7 +600,8 @@ TEST(ReductionOpTest, ReduceL2_int32_squaring_overflow) {
   // sqrt(50000^2 + 50000^2) = 50000*sqrt(2) ≈ 70710
   test.AddInput<int32_t>("data", {2}, {50000, 50000});
   test.AddOutput<int32_t>("reduced", {}, {70710});
-  // Both CPU and CUDA use double accumulator, so squaring is exact for int32.
+  // Both CPU and CUDA use double accumulator to avoid integer overflow UB.
+  // For these test values (50000^2 = 2.5e9 < 2^53), squaring is exact in double.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }

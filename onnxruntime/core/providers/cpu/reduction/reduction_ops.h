@@ -822,9 +822,11 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
   //   - Range up to ~1.8e308 (sufficient for any sum of int64 squares). The accumulator
   //     cannot overflow to infinity: even summing INT64_MAX^2 for every element would
   //     require > 2.1e270 elements — physically impossible.
-  //   - 53-bit mantissa: int32 squares fit in 62 bits (max 46340^2 < 2^31), well within
-  //     double's 53-bit exact range, so naive accumulation is exact. Kahan summation
-  //     is unnecessary for int32 and would only add overhead.
+  //   - 53-bit mantissa: int32 values are exactly representable in double, but their
+  //     squares can require up to 62 bits (e.g., (2^31-1)^2 ≈ 2^62). For |v| > 2^26,
+  //     v*v exceeds 2^53 and loses precision. However, this is at most 1 ULP of error
+  //     per element — far better than integer overflow. Kahan summation is omitted for
+  //     int32 since the per-element squaring dominates error, not accumulation.
   //   - For int64, values > 2^53 lose precision in both squaring and accumulation.
   //     Kahan compensated summation is used for types >= 64 bits to reduce accumulation
   //     error from O(N) to O(1) ULPs (squaring precision loss remains inherent).
