@@ -2,23 +2,24 @@
 // SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // SPDX-License-Identifier: MIT
 
-#include "dynamic_quant_matmul_fp8.h"
-
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/graph/onnx_protobuf.h"
-#include "core/common/float16.h"
-#include "core/common/float8.h"
-#include "core/common/safeint.h"
-#include "core/platform/threadpool.h"
-#include "core/providers/cpu/math/matmul_helper.h"
+#include "contrib_ops/cpu/quantization/dynamic_quant_matmul_fp8.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <utility>
 #include <vector>
+
+#include "core/common/common.h"
+#include "core/common/float16.h"
+#include "core/common/float8.h"
+#include "core/common/safeint.h"
+#include "core/framework/op_kernel.h"
+#include "core/graph/onnx_protobuf.h"
+#include "core/platform/threadpool.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -936,7 +937,7 @@ Status DynamicQuantMatMulFp8::Compute(OpKernelContext* context) const {
   }
 
   ORT_RETURN_IF_ERROR(ReferenceFp8GemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms,
-                                                context->GetOperatorThreadPool()));
+                                            context->GetOperatorThreadPool()));
 
   if (y_float_buffer != nullptr) {
     if (y->IsDataType<MLFloat16>()) {
