@@ -288,7 +288,7 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
 #if defined(ORT_USE_EP_API_ADAPTERS)
     std::string normalized_key = key;
     std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
-    if (normalized_key.rfind(prefix, 0) == 0) {
+    if (normalized_key.starts_with(prefix)) {
       normalized_key.erase(0, prefix.length());
     }
     return normalized_key;
@@ -298,14 +298,12 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
   };
 
   // Disable storage buffer cache
-  ORT_ENFORCE(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
-                                            webgpu::options::kBufferCacheMode_Disabled)
-                  .IsOK());
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
+                                                   webgpu::options::kBufferCacheMode_Disabled));
   if (!is_nhwc) {
     // Enable NCHW support
-    ORT_ENFORCE(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),
-                                              webgpu::options::kPreferredLayout_NCHW)
-                    .IsOK());
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),
+                                                     webgpu::options::kPreferredLayout_NCHW));
   }
 
   return WebGpuExecutionProviderWithOptions(config_options);
@@ -322,10 +320,10 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
   const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
   for (const auto& [key, value] : config_options.GetConfigOptionsMap()) {
     std::string normalized_key = key;
-    if (normalized_key.rfind(prefix, 0) == 0) {
+    if (normalized_key.starts_with(prefix)) {
       normalized_key.erase(0, prefix.length());
     }
-    ORT_ENFORCE(normalized_config_options.AddConfigEntry(normalized_key.c_str(), value.c_str()).IsOK());
+    ORT_THROW_IF_ERROR(normalized_config_options.AddConfigEntry(normalized_key.c_str(), value.c_str()));
   }
 
   auto ep_name = dynamic_plugin_ep_infra::GetEpName();

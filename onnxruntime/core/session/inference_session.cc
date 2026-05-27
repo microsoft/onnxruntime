@@ -3821,6 +3821,8 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
 }
 
 common::Status InferenceSession::ReleaseCapturedGraph(int graph_annotation_id) {
+  // Acquire the same mutex used by Run() to prevent concurrent access to EP state.
+  std::lock_guard<std::mutex> lock(session_mutex_);
   return cached_execution_provider_for_graph_replay_.ReleaseCapturedGraph(graph_annotation_id);
 }
 

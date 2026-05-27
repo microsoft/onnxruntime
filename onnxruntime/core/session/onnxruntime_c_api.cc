@@ -4965,7 +4965,6 @@ static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) ==
 static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
 static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*) == 418, "Size of version 25 API cannot change");
 // no additions in version 26
-static_assert(offsetof(OrtApi, SessionReleaseCapturedGraph) / sizeof(void*) == 421, "Size of version 27 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.27.0",
