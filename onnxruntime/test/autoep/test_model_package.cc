@@ -1244,7 +1244,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
       "files": [{
         "filename": "mul_1.onnx",
         "session_options": {
-          "intra_op_num_threads": "not_an_int"
+          "session.intra_op_num_threads": "not_an_int"
         }
       }]
     })";
@@ -1288,12 +1288,14 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   // supplies their own session_options).
   OrtSession* raw_session = nullptr;
   OrtStatus* st = pkg_api->CreateSession(*ort_env, comp_ctx.get(), /*session_options=*/nullptr, &raw_session);
-  ASSERT_NE(st, nullptr) << "CreateSession unexpectedly succeeded with malformed intra_op_num_threads";
-  const std::string err_msg = Ort::GetApi().GetErrorMessage(st);
-  Ort::GetApi().ReleaseStatus(st);
+  // Clean up session first to avoid leaks if assertion fails.
   if (raw_session != nullptr) {
     Ort::GetApi().ReleaseSession(raw_session);
+    raw_session = nullptr;
   }
+  ASSERT_NE(st, nullptr) << "CreateSession unexpectedly succeeded with malformed session.intra_op_num_threads";
+  const std::string err_msg = Ort::GetApi().GetErrorMessage(st);
+  Ort::GetApi().ReleaseStatus(st);
 
   // Message should mention either AddSessionConfigEntry or the typed-int parse failure.
   const bool mentions_dispatch =
