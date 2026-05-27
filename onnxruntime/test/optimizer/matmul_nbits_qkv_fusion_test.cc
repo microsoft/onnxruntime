@@ -349,7 +349,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseSkipWebGpuPatter
 
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseWebGpuPatternWithNonDefaultAxis) {
   ASSERT_STATUS_OK(TestGraphTransformer(
-  BuildMatMulNBitsQkvWebGpuPatternWithNormAxisZero,
+      BuildMatMulNBitsQkvWebGpuPatternWithNormAxisZero,
       21,
       *logger_,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
