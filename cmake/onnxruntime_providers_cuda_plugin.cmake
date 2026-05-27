@@ -274,6 +274,11 @@ if(_cuda_plugin_flash_attention_srcs)
       NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
       COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
       SOURCES ${_cuda_plugin_flash_attention_srcs})
+  else()
+    # No SM80+ architectures available: compile flash sources in parent target so the
+    # linker can find the host-side symbols referenced by flash_api.cc. The kernels
+    # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
+    target_sources(onnxruntime_providers_cuda_plugin PRIVATE ${_cuda_plugin_flash_attention_srcs})
   endif()
 endif()
 

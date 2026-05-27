@@ -14,11 +14,11 @@ function(onnxruntime_filter_cuda_cu_sources CU_SRC_LIST)
   set(_list "${${CU_SRC_LIST}}")
 
   # Quick build mode: Filter flash attention kernels for faster development iteration.
-  #   - We keep only hdim128 fp16 flash attention kernels in quick build mode.
+  #   - We keep only hdim128 fp16 and bf16 flash attention kernels in quick build mode.
   #   - All other listed head dimensions are excluded (e.g., 32, 64, 96, 192, 256).
   #     If new head dimensions are added or removed, update this list to match the supported set.
   if(onnxruntime_QUICK_BUILD)
-    message(STATUS "Quick build mode enabled: Only building hdim128 fp16 flash attention kernels")
+    message(STATUS "Quick build mode enabled: Only building hdim128 fp16/bf16 flash attention kernels")
     list(FILTER _list EXCLUDE REGEX "flash_fwd.*hdim(32|64|96|192|256)")
   endif()
 
