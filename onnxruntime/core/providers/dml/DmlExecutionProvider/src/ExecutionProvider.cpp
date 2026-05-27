@@ -30,6 +30,7 @@
 #define ERROR 0
 
 #include "core/session/onnxruntime_c_api.h"
+#include <iomanip>
 #include <wil/wrl.h>
 #ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
@@ -48,7 +49,9 @@ namespace Dml
     {
         const StatusCode status_code = hr == E_INVALIDARG ? INVALID_ARGUMENT : FAIL;
         return Status(ONNXRUNTIME, status_code,
-                      onnxruntime::MakeString(operation, " failed with HRESULT ", hr, ": ", details));
+                      onnxruntime::MakeString(operation, " failed with HRESULT 0x",
+                                              std::setfill('0'), std::uppercase, std::hex, std::setw(8),
+                                              static_cast<uint32_t>(hr), ": ", details));
     }
 #endif
 
