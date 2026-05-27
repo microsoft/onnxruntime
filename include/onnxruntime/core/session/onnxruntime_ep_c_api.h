@@ -2581,6 +2581,11 @@ struct OrtEp {
    * \note Implementation of this function is optional. If set to NULL, ORT assumes
    *       no captured graph release is needed and treats it as a no-op success.
    *
+   * \note Thread safety: For EPs that support concurrent Run() calls, this method may be
+   *       called concurrently with Run(). The EP is responsible for ensuring thread safety
+   *       of its own state in that case. For non-concurrent EPs, the session serializes
+   *       calls via its internal mutex.
+   *
    * \since Version 1.27.
    */
   ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
