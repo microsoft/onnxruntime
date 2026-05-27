@@ -87,6 +87,26 @@ void ReferenceHalfGemm(
   }
 }
 
+void ReferenceHalfGemmTransposedB(
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLFp16* A,
+    const MLFp16* B,
+    size_t ldb,
+    const MLFp16* Bias,
+    MLFp16* C) {
+  for (size_t m = 0; m < M; ++m) {
+    for (size_t n = 0; n < N; ++n) {
+      float sum = Bias == nullptr ? 0.0f : float(Bias[n]);
+      for (size_t k = 0; k < K; ++k) {
+        sum += float(A[m * K + k]) * float(B[n * ldb + k]);
+      }
+      C[m * N + n] = MLFp16(sum);
+    }
+  }
+}
+
 struct HalfGemmOverrideGuard {
   explicit HalfGemmOverrideGuard(MLAS_HALF_GEMM_BATCH_OVERRIDE* replacement)
       : original_(GetMlasPlatform().MlasHalfGemmBatchOverride) {
@@ -197,6 +217,32 @@ TEST(HalfGemmKleidiAISelector, DisableKleidiAIInAnyBatchBypassesOverride) {
     ASSERT_TRUE(CloseEnough(float(C[i]), float(CReference[i]))) << "index=" << i;
   }
 }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(HalfGemmKleidiAISelector, TransposedBDoesNotReachGenericHalfGemm) {
+  constexpr size_t M = 2;
+  constexpr size_t N = 3;
+  constexpr size_t K = 4;
+
+  std::vector<MLFp16> A(M * K);
+  std::vector<MLFp16> B(N * K);
+  std::vector<MLFp16> C(M * N);
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG selector_config;
+  selector_config.use_kleidiai = false;
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = A.data();
+  data.B = B.data();
+  data.C = reinterpret_cast<MLAS_FP16*>(C.data());
+  data.lda = K;
+  data.ldb = K;
+  data.ldc = N;
+  data.BIsTransposed = true;
+  data.BackendKernelSelectorConfig = &selector_config;
+
+  EXPECT_THROW(MlasHalfGemmBatch(M, N, K, 1, &data, nullptr), std::runtime_error);
+}
+#endif
 #endif
 
 namespace {
@@ -883,7 +929,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBSizeRejectsUnsupportedTranspose) {
   constexpr size_t K = 9;
 
   EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasTrans, CblasNoTrans, N, K), size_t{0});
-  EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K), size_t{0});
+  EXPECT_EQ(ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasConjTrans, N, K), size_t{0});
 }
 
 TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsUnsupportedTranspose) {
@@ -904,7 +950,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsUnsupportedTranspose) {
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
       CblasTrans, CblasNoTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N, packed_b.data()));
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
-      CblasNoTrans, CblasTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N, packed_b.data()));
+      CblasNoTrans, CblasConjTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N, packed_b.data()));
 }
 
 TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsInvalidLeadingDimension) {
@@ -924,5 +970,85 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBRejectsInvalidLeadingDimension) {
   std::vector<std::byte> packed_b(packed_b_size);
   EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
       CblasNoTrans, CblasNoTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), N - 1, packed_b.data()));
+  EXPECT_FALSE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasTrans, N, K, reinterpret_cast<const MLAS_FP16*>(B.data()), K - 1, packed_b.data()));
+}
+
+TEST(HalfGemmKleidiAIPath, KleidiAIPackedTransBMatchesReference) {
+  if (GetMlasPlatform().MlasHalfGemmBatchOverride == nullptr) {
+    GTEST_SKIP() << "KleidiAI halfgemm override unavailable";
+  }
+
+  constexpr size_t M = 5;
+  constexpr size_t N = 7;
+  constexpr size_t K = 9;
+  constexpr size_t ldb = K + 3;
+
+  std::vector<MLFp16> A(M * K);
+  std::vector<MLFp16> BTransposed(N * ldb);
+  std::vector<MLFp16> C(M * N, MLFp16(0.0f));
+  std::vector<MLFp16> CReference(M * N, MLFp16(0.0f));
+  SmallFloatFill(A.data(), A.size());
+  SmallFloatFill(BTransposed.data(), BTransposed.size());
+
+  const size_t packed_b_size =
+      ArmKleidiAI::MlasHalfGemmKleidiAIPackBSize(CblasNoTrans, CblasTrans, N, K);
+  ASSERT_NE(packed_b_size, size_t{0});
+  std::vector<std::byte> packed_b(packed_b_size);
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmKleidiAIPackB(
+      CblasNoTrans, CblasTrans, N, K,
+      reinterpret_cast<const MLAS_FP16*>(BTransposed.data()), ldb, packed_b.data()));
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = A.data();
+  data.B = packed_b.data();
+  data.C = reinterpret_cast<MLAS_FP16*>(C.data());
+  data.lda = K;
+  data.ldb = 0;
+  data.ldc = N;
+  data.BIsBackendNativePacked = true;
+
+  ASSERT_TRUE(ArmKleidiAI::MlasHalfGemmBatch(M, N, K, 1, &data, nullptr));
+  ReferenceHalfGemmTransposedB(M, N, K, A.data(), BTransposed.data(), ldb, nullptr, CReference.data());
+  for (size_t i = 0; i < C.size(); ++i) {
+    ASSERT_TRUE(CloseEnough(float(C[i]), float(CReference[i]))) << "index=" << i;
+  }
+}
+
+TEST(HalfGemmKleidiAIPath, KleidiAIUnpackedTransBWithBiasMatchesReference) {
+  if (MlasHalfGemmNativePackBSize(CblasNoTrans, CblasTrans, 7, 9, nullptr) == 0) {
+    GTEST_SKIP() << "KleidiAI transposed RHS packing unavailable";
+  }
+
+  constexpr size_t M = 5;
+  constexpr size_t N = 7;
+  constexpr size_t K = 9;
+  constexpr size_t ldb = K + 3;
+
+  std::vector<MLFp16> A(M * K);
+  std::vector<MLFp16> BTransposed(N * ldb);
+  std::vector<MLFp16> Bias(N);
+  std::vector<MLFp16> C(M * N, MLFp16(0.0f));
+  std::vector<MLFp16> CReference(M * N, MLFp16(0.0f));
+  SmallFloatFill(A.data(), A.size());
+  SmallFloatFill(BTransposed.data(), BTransposed.size());
+  SmallFloatFill(Bias.data(), Bias.size());
+
+  MLAS_HALF_GEMM_DATA_PARAMS data{};
+  data.A = A.data();
+  data.B = BTransposed.data();
+  data.Bias = reinterpret_cast<const MLAS_FP16*>(Bias.data());
+  data.C = reinterpret_cast<MLAS_FP16*>(C.data());
+  data.lda = K;
+  data.ldb = ldb;
+  data.ldc = N;
+  data.BIsTransposed = true;
+
+  MlasHalfGemmBatch(M, N, K, 1, &data, nullptr);
+  ReferenceHalfGemmTransposedB(
+      M, N, K, A.data(), BTransposed.data(), ldb, Bias.data(), CReference.data());
+  for (size_t i = 0; i < C.size(); ++i) {
+    ASSERT_TRUE(CloseEnough(float(C[i]), float(CReference[i]))) << "index=" << i;
+  }
 }
 #endif

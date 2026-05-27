@@ -148,13 +148,19 @@ MlasHalfGemmBatch(
     }
 
     // BIsPacked denotes the generic MLAS halfgemm packed-B layout and can be
-    // consumed here. Backend-native packed layouts are separate and must not
-    // silently fall through to the generic kernels.
+    // consumed here. Backend-native packed layouts and transposed unpacked B
+    // require a backend override and must not silently reach generic kernels.
     for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
         if (DataParams[gemm_i].BIsBackendNativePacked) {
             MLAS_THROW_EX(
                 std::runtime_error,
                 "backend-native halfgemm packed B is not supported by generic MLAS halfgemm");
+        }
+        if (DataParams[gemm_i].BIsTransposed) {
+            MLAS_THROW_EX(
+                std::runtime_error,
+                "transposed unpacked B is not supported by generic MLAS halfgemm"
+            );
         }
     }
 

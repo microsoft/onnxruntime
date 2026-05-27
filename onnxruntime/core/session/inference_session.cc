@@ -71,6 +71,7 @@
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/session/abi_devices.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
@@ -1951,8 +1952,41 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
           kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
 
-      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", std::move(kernel_regs),
-                                                    on_partition_assignment_fn};
+      const std::string enable_cpu_fp16_config =
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableCpuFp16, "0");
+      if (enable_cpu_fp16_config != "0" && enable_cpu_fp16_config != "1") {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value for ",
+                               kOrtSessionOptionsEnableCpuFp16, ": ", enable_cpu_fp16_config,
+                               ". Valid values are \"0\" and \"1\".");
+      }
+
+      const std::string use_cpu_fp16_fp32_fallback_heuristic_config =
+          session_options_.config_options.GetConfigOrDefault(
+              kOrtSessionOptionsCpuFp16UseFp32FallbackHeuristic, "1");
+      if (use_cpu_fp16_fp32_fallback_heuristic_config != "0" &&
+          use_cpu_fp16_fp32_fallback_heuristic_config != "1") {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value for ",
+                               kOrtSessionOptionsCpuFp16UseFp32FallbackHeuristic, ": ",
+                               use_cpu_fp16_fp32_fallback_heuristic_config,
+                               ". Valid values are \"0\" and \"1\".");
+      }
+
+      const bool enable_cpu_fp16 = enable_cpu_fp16_config == "1";
+      const bool use_cpu_fp16_fp32_fallback_heuristic =
+          use_cpu_fp16_fp32_fallback_heuristic_config == "1";
+      const bool force_cpu_fp32 = !enable_cpu_fp16 || use_cpu_fp16_fp32_fallback_heuristic;
+
+      // Keep InsertCastTransformer's CPU fp16 profitability checks aligned with execution-time MLAS backend selection.
+      MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
+      SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config,
+                                                      session_options_.config_options);
+
+      InsertCastTransformer insert_cast_transformer{
+          "CastFloat16Transformer", std::move(kernel_regs),
+          /*enable_cpu_fp16*/ enable_cpu_fp16,
+          /*force_cpu_fp32*/ force_cpu_fp32,
+          &mlas_backend_kernel_selector_config,
+          on_partition_assignment_fn};
       ORT_RETURN_IF_ERROR_SESSIONID_(
           apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
                                  ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
