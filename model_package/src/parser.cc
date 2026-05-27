@@ -324,81 +324,79 @@ bool ParseVariantsFromComponent(const std::string& component_name,
 
     const std::filesystem::path variant_descriptor_path = variant_root / kVariantDescriptorFileName;
 
-    if (!std::filesystem::exists(variant_descriptor_path)) {
-      error = "Missing variant.json for variant '" + variant_name +
-              "' under component '" + component_name + "': " + variant_descriptor_path.string();
-      return false;
-    }
-
-    std::ifstream vf(variant_descriptor_path, std::ios::binary);
-    if (!vf) {
-      error = "Failed to open variant.json at " + variant_descriptor_path.string();
-      return false;
-    }
-
-    json variant_doc;
-    try {
-      variant_doc = json::parse(vf);
-    } catch (const std::exception& ex) {
-      error = "variant.json at " + variant_descriptor_path.string() + " is not valid JSON: " + ex.what();
-      return false;
-    }
-
-    VariantMetadataSchema variant_metadata;
-    try {
-      variant_metadata = variant_doc.get<VariantMetadataSchema>();
-    } catch (const std::exception& ex) {
-      error = "variant.json at " + variant_descriptor_path.string() + " has invalid schema: " + ex.what();
-      return false;
-    }
-
     Variant variant_info{};
     variant_info.name = variant_name;
     variant_info.folder_path = variant_root;
 
-    if (variant_metadata.consumer_metadata.has_value()) {
-      variant_info.consumer_metadata_json = variant_metadata.consumer_metadata->dump();
-    }
-
-    std::unordered_set<std::string> identifiers_seen;
-
-    for (const auto& file_schema : variant_metadata.files) {
-      if (!ValidatePathSegment(file_schema.filename, "File name", error)) return false;
-
-      if (!identifiers_seen.insert(file_schema.filename).second) {
-        error = "Duplicate file identifier '" + file_schema.filename +
-                "' in variant '" + variant_name + "'.";
+    // variant.json is optional. If present, it declares the file list,
+    // per-file session/provider options, and consumer metadata.
+    if (std::filesystem::exists(variant_descriptor_path)) {
+      std::ifstream vf(variant_descriptor_path, std::ios::binary);
+      if (!vf) {
+        error = "Failed to open variant.json at " + variant_descriptor_path.string();
         return false;
       }
 
-      const std::filesystem::path candidate_path = variant_root / file_schema.filename;
-      if (!ValidatePathConfinement(candidate_path, variant_root, "Variant file path", error)) return false;
-
-      if (!std::filesystem::exists(candidate_path)) {
-        error = "Variant '" + variant_name + "', file '" + file_schema.filename +
-                "' path does not exist: " + candidate_path.string();
+      json variant_doc;
+      try {
+        variant_doc = json::parse(vf);
+      } catch (const std::exception& ex) {
+        error = "variant.json at " + variant_descriptor_path.string() + " is not valid JSON: " + ex.what();
         return false;
       }
 
-      std::filesystem::path resolved_model_path;
-      if (std::filesystem::is_regular_file(candidate_path)) {
-        resolved_model_path = candidate_path;
-      } else if (std::filesystem::is_directory(candidate_path)) {
-        if (!FindSingleOnnxFile(candidate_path, resolved_model_path, error)) return false;
-      } else {
-        error = "Variant '" + variant_name + "', file '" + file_schema.filename +
-                "' path is neither a file nor directory: " + candidate_path.string();
+      VariantMetadataSchema variant_metadata;
+      try {
+        variant_metadata = variant_doc.get<VariantMetadataSchema>();
+      } catch (const std::exception& ex) {
+        error = "variant.json at " + variant_descriptor_path.string() + " has invalid schema: " + ex.what();
         return false;
       }
 
-      VariantFile file_info{};
-      file_info.filename = file_schema.filename;
-      file_info.resolved_path = std::move(resolved_model_path);
-      file_info.session_options = file_schema.session_options;
-      file_info.provider_options = file_schema.provider_options;
-      file_info.shared_files = file_schema.shared_files;
+      if (variant_metadata.consumer_metadata.has_value()) {
+        variant_info.consumer_metadata_json = variant_metadata.consumer_metadata->dump();
+      }
 
-      variant_info.files.push_back(std::move(file_info));
+      std::unordered_set<std::string> identifiers_seen;
+
+      for (const auto& file_schema : variant_metadata.files) {
+        if (!ValidatePathSegment(file_schema.filename, "File name", error)) return false;
+
+        if (!identifiers_seen.insert(file_schema.filename).second) {
+          error = "Duplicate file identifier '" + file_schema.filename +
+                  "' in variant '" + variant_name + "'.";
+          return false;
+        }
+
+        const std::filesystem::path candidate_path = variant_root / file_schema.filename;
+        if (!ValidatePathConfinement(candidate_path, variant_root, "Variant file path", error)) return false;
+
+        if (!std::filesystem::exists(candidate_path)) {
+          error = "Variant '" + variant_name + "', file '" + file_schema.filename +
+                  "' path does not exist: " + candidate_path.string();
+          return false;
+        }
+
+        std::filesystem::path resolved_model_path;
+        if (std::filesystem::is_regular_file(candidate_path)) {
+          resolved_model_path = candidate_path;
+        } else if (std::filesystem::is_directory(candidate_path)) {
+          if (!FindSingleOnnxFile(candidate_path, resolved_model_path, error)) return false;
+        } else {
+          error = "Variant '" + variant_name + "', file '" + file_schema.filename +
+                  "' path is neither a file nor directory: " + candidate_path.string();
+          return false;
+        }
+
+        VariantFile file_info{};
+        file_info.filename = file_schema.filename;
+        file_info.resolved_path = std::move(resolved_model_path);
+        file_info.session_options = file_schema.session_options;
+        file_info.provider_options = file_schema.provider_options;
+        file_info.shared_files = file_schema.shared_files;
+
+        variant_info.files.push_back(std::move(file_info));
+      }
     }
 
     // EP compatibility from metadata.json
