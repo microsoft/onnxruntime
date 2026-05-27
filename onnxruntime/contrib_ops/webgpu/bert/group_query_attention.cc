@@ -183,22 +183,56 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
-// Apply rotary embedding to Q only. Reuses RunFusedQKRotaryEmbedding with a 1-element
-// dummy K output and query_in as dummy K input. The shader skips K because k_global_dims[2]=0.
-Status RunRotaryEmbeddingQOnly(onnxruntime::webgpu::ComputeContext& context,
-                               const WebgpuAttentionParameters& params,
-                               const Tensor* query_in,
-                               const Tensor* seqlen_k,
-                               const Tensor* cos_cache,
-                               const Tensor* sin_cache,
-                               Tensor* query_out) {
-  Tensor k_dummy_out = context.CreateGPUTensor(query_in->DataType(), TensorShape({1}));
-  // Temporarily patch kv_num_heads to 0 so RunFusedQKRotaryEmbedding builds k_global_shape[2]=0.
-  WebgpuAttentionParameters params_q_only = params;
-  params_q_only.kv_num_heads_ = 0;
-  params_q_only.kv_hidden_size_ = 0;
-  return RunFusedQKRotaryEmbedding(context, params_q_only, query_in, query_in,
-                                   seqlen_k, cos_cache, sin_cache, query_out, &k_dummy_out);
+// Apply rotary embedding to a single tensor using RotaryEmbeddingWithOffsetProgram.
+// Position for each token = past_sequence_length + sequence_index.
+Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
+                          const Tensor* input,
+                          const Tensor* cos_cache,
+                          const Tensor* sin_cache,
+                          Tensor* output,
+                          int batch_size,
+                          int sequence_length,
+                          int hidden_size,
+                          int head_size,
+                          int past_sequence_length,
+                          float scale,
+                          bool rotary_interleaved) {
+  const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
+  const auto num_heads = hidden_size / head_size;
+
+  const TensorShape global_shape({static_cast<int64_t>(batch_size),
+                                  static_cast<int64_t>(sequence_length),
+                                  static_cast<int64_t>(num_heads),
+                                  static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
+  const auto rank = global_shape.NumDimensions();
+  std::vector<uint32_t> global_dims(rank);
+  std::vector<uint32_t> global_strides(rank);
+  for (size_t j = 0; j < rank; ++j) {
+    global_dims[j] = gsl::narrow_cast<uint32_t>(global_shape[j]);
+    global_strides[j] = gsl::narrow_cast<uint32_t>(global_shape.SizeFromDimension(j + 1));
+  }
+
+  const auto output_size = gsl::narrow_cast<uint32_t>(global_shape.Size());
+  const auto input_output_strides = std::vector<uint32_t>({
+      gsl::narrow_cast<uint32_t>(input->Shape().SizeFromDimension(1)),
+      gsl::narrow_cast<uint32_t>(hidden_size),
+      gsl::narrow_cast<uint32_t>(head_size),
+      1u});
+
+  RotaryEmbeddingWithOffsetProgram program(rotary_interleaved);
+  program
+      .CacheHint(rotary_interleaved)
+      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
+                  {cos_cache, ProgramTensorMetadataDependency::Rank},
+                  {sin_cache, ProgramTensorMetadataDependency::Rank}})
+      .AddOutput({output, ProgramTensorMetadataDependency::None})
+      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+      .AddUniformVariables({{scale},
+                            {gsl::make_span(global_dims)},
+                            {gsl::make_span(global_strides)},
+                            {gsl::make_span(input_output_strides)},
+                            {static_cast<uint32_t>(past_sequence_length)}});
+  return context.RunProgram(program);
 }
 
 Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -299,10 +333,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     if (do_rotary_) {
       // Apply RoPE to Q only — K doesn't need rotation since we reuse another layer's already-rotated KV cache.
       qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
-      ORT_RETURN_IF_ERROR(RunRotaryEmbeddingQOnly(context, parameters,
-                                                  query, seqlen_k,
-                                                  cos_cache, sin_cache,
-                                                  &qRotary));
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context,
+                                                  query, cos_cache, sin_cache, &qRotary,
+                                                  parameters.batch_size_, parameters.sequence_length_,
+                                                  parameters.hidden_size_, parameters.head_size_,
+                                                  parameters.past_sequence_length_,
+                                                  parameters.scale_, parameters.rotary_interleaved_));
       query = &qRotary;
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {
