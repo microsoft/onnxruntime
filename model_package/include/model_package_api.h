@@ -169,46 +169,6 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantFilePath(
     size_t file_idx,
     const char** out_path);
 
-/// Get session options declared for a specific model file.
-///
-/// Returns key/value arrays and count. If no session options are declared,
-/// out_count is set to 0 and out_keys/out_values are set to nullptr.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantFileSessionOptions(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t file_idx,
-    const char* const** out_keys,
-    const char* const** out_values,
-    size_t* out_count);
-
-/// Get provider options declared for a specific model file.
-///
-/// Returns key/value arrays and count. If no provider options are declared,
-/// out_count is set to 0 and out_keys/out_values are set to nullptr.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantFileProviderOptions(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t file_idx,
-    const char* const** out_keys,
-    const char* const** out_values,
-    size_t* out_count);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Consumer metadata
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Get the consumer_metadata JSON string for a variant.
-///
-/// Returns a serialized JSON string. If no consumer_metadata is declared,
-/// out_json is set to nullptr.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantConsumerMetadata(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    const char** out_json);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif

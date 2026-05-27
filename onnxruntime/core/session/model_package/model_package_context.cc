@@ -367,6 +367,18 @@ Status ModelPackageComponentContext::GetSelectedVariantConsumerMetadata(const st
   return Status::OK();
 }
 
+Status ModelPackageComponentContext::GetSelectedVariantName(const std::string*& out_name) const {
+  out_name = nullptr;
+
+  const VariantInfo* selected_variant = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantInfo(selected_variant));
+  ORT_RETURN_IF(selected_variant == nullptr,
+                "Selected variant is null for component: ", component_model_name_);
+
+  out_name = &selected_variant->variant_name;
+  return Status::OK();
+}
+
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
   // Use the standalone model_package library for parsing.
   model_package::PackageInfo pkg_info;
@@ -376,6 +388,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
   }
 
   // Convert standalone library types to ORT internal types.
+  model_package_info_.schema_version = pkg_info.schema_version;
   model_package_info_.components.clear();
   component_name_to_index_.clear();
 

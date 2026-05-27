@@ -67,6 +67,7 @@ struct ComponentInfo {
 };
 
 struct ModelPackageInfo {
+  int64_t schema_version{0};
   std::vector<ComponentInfo> components{};
 };
 
@@ -126,6 +127,8 @@ class ModelPackageComponentContext {
                                                   size_t& out_count) const;
 
   Status GetSelectedVariantConsumerMetadata(const std::string*& out_json_str) const;
+
+  Status GetSelectedVariantName(const std::string*& out_name) const;
 
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }

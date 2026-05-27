@@ -554,9 +554,10 @@ bool ParsePackage(const std::filesystem::path& package_root,
     }
 
     if (component_names.empty()) {
-      out_error = "manifest.json missing \"components\" and no component model folders with "
-                  "metadata.json were found under " +
-                  models_dir.string();
+      out_error =
+          "manifest.json missing \"components\" and no component model folders with "
+          "metadata.json were found under " +
+          models_dir.string();
       return false;
     }
   }

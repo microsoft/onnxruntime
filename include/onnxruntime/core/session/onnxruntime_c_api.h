@@ -8599,11 +8599,10 @@ struct OrtInteropApi {
  *    - ModelPackage_GetVariantNames()
  * 4) Select a component and resolve variant:
  *    - SelectComponent()
- * 5) Query selected files/options (optional):
+ * 5) Query selected variant info (optional):
  *    - ModelPackageComponent_GetSelectedVariantFileCount()
  *    - ModelPackageComponent_GetSelectedVariantFilePath()
- *    - ModelPackageComponent_GetSelectedVariantFileSessionOptions()
- *    - ModelPackageComponent_GetSelectedVariantFileProviderOptions()
+ *    - ModelPackageComponent_GetSelectedVariantName()
  * 6) Create session:
  *    - CreateSession()
  *
@@ -8617,6 +8616,20 @@ struct OrtInteropApi {
 struct OrtModelPackageApi {
   /// \name OrtModelPackageOptions
   /// @{
+
+  /** \brief Create model package options from an existing OrtSessionOptions.
+   *
+   * Captures EP configuration (registered execution providers and their devices) from
+   * the session options for use during variant selection. The resulting OrtModelPackageOptions
+   * is passed to SelectComponent() to resolve the best variant for the available EPs.
+   *
+   * \param[in] env The ORT environment.
+   * \param[in] session_options Session options containing registered EPs.
+   * \param[out] out Receives the newly created OrtModelPackageOptions. Must be released
+   *             with ReleaseModelPackageOptions().
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
                   _In_ const OrtEnv* env,
                   _In_ const OrtSessionOptions* session_options,
@@ -8626,31 +8639,107 @@ struct OrtModelPackageApi {
   /// @}
   /// \name OrtModelPackageContext
   /// @{
+
+  /** \brief Create a model package context by parsing the package at the given root path.
+   *
+   * Parses the manifest.json and component metadata from the specified directory.
+   * The returned context provides read-only access to the package structure (components,
+   * variants, EP declarations).
+   *
+   * \param[in] package_root Path to the model package root directory (containing manifest.json).
+   * \param[out] out Receives the newly created OrtModelPackageContext. Must be released
+   *             with ReleaseModelPackageContext().
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(CreateModelPackageContext,
                   _In_ const ORTCHAR_T* package_root,
                   _Outptr_ OrtModelPackageContext** out);
 
   ORT_CLASS_RELEASE(ModelPackageContext);
 
+  /** \brief Get the schema version declared in the model package manifest.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_version Receives the schema version number.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ModelPackage_GetSchemaVersion,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _Out_ int64_t* out_version);
+
+  /** \brief Get the number of components in the model package.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_count Receives the component count.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackage_GetComponentCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _Out_ size_t* out_count);
 
+  /** \brief Get the names of all components in the model package.
+   *
+   * Returns a pointer to an array of UTF-8 component name strings. The array and its
+   * strings are owned by `ctx` and remain valid until the context is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[out] out_names Receives a pointer to an array of component name strings.
+   * \param[out] out_count Receives the number of elements in the array.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackage_GetComponentNames,
                   _In_ const OrtModelPackageContext* ctx,
                   _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                   _Out_ size_t* out_count);
 
+  /** \brief Get the number of variants for a given component.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name Name of the component to query.
+   * \param[out] out_count Receives the variant count.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackage_GetVariantCount,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _Out_ size_t* out_count);
 
+  /** \brief Get the names of all variants for a given component.
+   *
+   * Returns a pointer to an array of UTF-8 variant name strings. The array and its
+   * strings are owned by `ctx` and remain valid until the context is released.
+   *
+   * \param[in] ctx The model package context.
+   * \param[in] component_name Name of the component to query.
+   * \param[out] out_variant_names Receives a pointer to an array of variant name strings.
+   * \param[out] out_count Receives the number of elements in the array.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackage_GetVariantNames,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
                   _Out_ size_t* out_count);
+
+  /** \brief Get the EP name declared for a (component, variant) pair.
+   *
+   * Each variant targets a single EP. `out_ep` receives the EP name string.
+   * When the variant does not declare an EP, the returned pointer is NULL.
+   * String memory is owned by `ctx` and remains valid until the context is released.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
+                  _In_ const OrtModelPackageContext* ctx,
+                  _In_ const char* component_name,
+                  _In_ const char* variant_name,
+                  _Outptr_result_maybenull_ const char** out_ep);
 
   /** \brief Select a component model and return an opaque component instance.
    *
@@ -8668,46 +8757,58 @@ struct OrtModelPackageApi {
 
   ORT_CLASS_RELEASE(ModelPackageComponentContext);
 
+  /** \brief Get the name of the selected variant after SelectComponent has been called.
+   *
+   * String memory is owned by `ctx` and remains valid until the context is released.
+   *
+   * \param[in] ctx The component context returned by SelectComponent().
+   * \param[out] out_name Receives the selected variant's name string.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantName,
+                  _In_ const OrtModelPackageComponentContext* ctx,
+                  _Outptr_ const char** out_name);
+
+  /** \brief Get the folder path of the selected variant.
+   *
+   * Returns the resolved absolute path to the variant's directory on disk.
+   * The string is owned by `ctx` and remains valid until the context is released.
+   *
+   * \param[in] ctx The component context returned by SelectComponent().
+   * \param[out] folder_path Receives the variant folder path string.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFolderPath,
                   _In_ const OrtModelPackageComponentContext* ctx,
                   _Outptr_ const ORTCHAR_T** folder_path);
 
+  /** \brief Get the number of model files in the selected variant.
+   *
+   * \param[in] ctx The component context returned by SelectComponent().
+   * \param[out] num_files Receives the file count.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFileCount,
                   _In_ const OrtModelPackageComponentContext* ctx,
                   _Out_ size_t* num_files);
 
+  /** \brief Get the resolved file path for a specific model file in the selected variant.
+   *
+   * The string is owned by `ctx` and remains valid until the context is released.
+   *
+   * \param[in] ctx The component context returned by SelectComponent().
+   * \param[in] file_idx Zero-based index of the file (must be < file count).
+   * \param[out] out_path Receives the resolved file path string.
+   *
+   * \since Version 1.27.
+   */
   ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFilePath,
                   _In_ const OrtModelPackageComponentContext* ctx,
                   _In_ size_t file_idx,
                   _Outptr_ const ORTCHAR_T** out_path);
-
-  /** \brief Get session options for the specific model file within the selected variant as flat key/value entries.
-   *
-   * Returns NULL/empty arrays when none specified.
-   * Memory is owned by `ctx` and valid until the next model-package query call on that context.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFileSessionOptions,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _In_ size_t file_idx,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                  _Out_ size_t* num_entries);
-
-  /** \brief Get provider options for the specific model file within the selected variant as flat key/value entries.
-   *
-   * Returns NULL/empty arrays when none specified.
-   * Memory is owned by `ctx` and valid until the next model-package query call on that context.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFileProviderOptions,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _In_ size_t file_idx,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                  _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                  _Out_ size_t* num_entries);
 
   /// @}
   /** \brief Create an OrtSession for a selected file within a component model variant.
@@ -8734,32 +8835,6 @@ struct OrtModelPackageApi {
                   _In_ OrtModelPackageComponentContext* context,
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtSession** session);
-
-  /** \brief Get the EP name declared for a (component, variant) pair.
-   *
-   * Each variant targets a single EP. `out_ep` receives the EP name string.
-   * When the variant does not declare an EP, the returned pointer is NULL.
-   * String memory is owned by `ctx` and remains valid until the context is released.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _Outptr_result_maybenull_ const char** out_ep);
-
-  /** \brief Returns the consumer_metadata JSON object (from variant.json) of the selected variant,
-   * serialized to a string.
-   *
-   * Returns an empty string when the variant did not declare consumer_metadata. String memory is
-   * owned by `ctx` and remains valid until the context is released.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantConsumerMetadata,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Outptr_ const char** out_json_str);
 
   // End of Version 1.27 - DO NOT MODIFY ABOVE
 };

@@ -1844,6 +1844,8 @@ struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
   const char* GetVariantEpName(const char* component_name,
                                const char* variant_name) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantEpName
 
+  int64_t GetSchemaVersion() const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetSchemaVersion
+
   ModelPackageComponentContext SelectComponent(const char* component_name,
                                                const ModelPackageOptions& options) const;  ///< Wraps OrtModelPackageApi::SelectComponent
 };
@@ -1851,7 +1853,7 @@ struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
 /** \brief Context for a selected component within a model package.
  *
  * Wraps ::OrtModelPackageComponentContext. Provides accessors for the selected variant's
- * folder path, file paths, session/provider options, and consumer metadata.
+ * folder path, file paths, and variant name.
  */
 struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentContext> {
   using Base = detail::Base<OrtModelPackageComponentContext>;
@@ -1863,17 +1865,7 @@ struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentConte
   size_t GetSelectedVariantFileCount() const;                                      ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileCount
   std::basic_string<ORTCHAR_T> GetSelectedVariantFilePath(size_t file_idx) const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFilePath
 
-  /// Get session options for a file as key/value arrays. Memory is owned by this context.
-  void GetSelectedVariantFileSessionOptions(size_t file_idx,
-                                            const char* const** keys, const char* const** values,
-                                            size_t* count) const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileSessionOptions
-
-  /// Get provider options for a file as key/value arrays. Memory is owned by this context.
-  void GetSelectedVariantFileProviderOptions(size_t file_idx,
-                                             const char* const** keys, const char* const** values,
-                                             size_t* count) const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileProviderOptions
-
-  std::string GetSelectedVariantConsumerMetadata() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantConsumerMetadata
+  std::string GetSelectedVariantName() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantName
 
   Session CreateSession(const Env& env);                                         ///< Wraps OrtModelPackageApi::CreateSession (default path, NULL session_options)
   Session CreateSession(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtModelPackageApi::CreateSession (advanced path)

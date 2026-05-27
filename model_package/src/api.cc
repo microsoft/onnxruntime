@@ -56,10 +56,10 @@ const Variant* ContextImpl::FindVariant(const char* component_name, const char* 
 // Validation macro
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define RETURN_IF_NULL(ptr, param_name)                                       \
-  do {                                                                        \
-    if ((ptr) == nullptr)                                                     \
-      return MakeError(std::string(param_name) + " must not be null.");       \
+#define RETURN_IF_NULL(ptr, param_name)                                 \
+  do {                                                                  \
+    if ((ptr) == nullptr)                                               \
+      return MakeError(std::string(param_name) + " must not be null."); \
   } while (0)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -288,121 +288,6 @@ ModelPackageStatus* ModelPackage_GetVariantFilePath(
     cached = variant->files[file_idx].resolved_path.string();
   }
   *out_path = cached.c_str();
-  return nullptr;
-}
-
-// Helper to build/retrieve options cache
-static ModelPackageStatus* GetOptionsFromMap(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t file_idx,
-    bool is_session_options,
-    const char* const** out_keys,
-    const char* const** out_values,
-    size_t* out_count) {
-  RETURN_IF_NULL(context, "context");
-  RETURN_IF_NULL(component_name, "component_name");
-  RETURN_IF_NULL(variant_name, "variant_name");
-  RETURN_IF_NULL(out_keys, "out_keys");
-  RETURN_IF_NULL(out_values, "out_values");
-  RETURN_IF_NULL(out_count, "out_count");
-
-  const auto* variant = context->impl.FindVariant(component_name, variant_name);
-  if (!variant) {
-    return MakeError(std::string("Variant '") + variant_name + "' not found in component '" +
-                     component_name + "'.");
-  }
-
-  if (file_idx >= variant->files.size()) {
-    return MakeError("file_idx out of range: " + std::to_string(file_idx));
-  }
-
-  const auto& opts = is_session_options
-                         ? variant->files[file_idx].session_options
-                         : variant->files[file_idx].provider_options;
-
-  if (!opts.has_value() || opts->empty()) {
-    *out_keys = nullptr;
-    *out_values = nullptr;
-    *out_count = 0;
-    return nullptr;
-  }
-
-  auto cache_key = model_package::ContextImpl::MakeCacheKey(component_name, variant_name, file_idx);
-  auto& cache_map = is_session_options
-                        ? const_cast<ModelPackageContext*>(context)->impl.session_options_cache
-                        : const_cast<ModelPackageContext*>(context)->impl.provider_options_cache;
-
-  auto it = cache_map.find(cache_key);
-  if (it == cache_map.end()) {
-    model_package::ContextImpl::OptionsCache cache{};
-    cache.keys.reserve(opts->size());
-    cache.values.reserve(opts->size());
-    for (const auto& kv : *opts) {
-      cache.keys.push_back(kv.first);
-      cache.values.push_back(kv.second);
-    }
-    cache.key_ptrs.reserve(cache.keys.size());
-    cache.value_ptrs.reserve(cache.values.size());
-    for (size_t i = 0; i < cache.keys.size(); ++i) {
-      cache.key_ptrs.push_back(cache.keys[i].c_str());
-      cache.value_ptrs.push_back(cache.values[i].c_str());
-    }
-    it = cache_map.emplace(std::move(cache_key), std::move(cache)).first;
-  }
-
-  *out_keys = it->second.key_ptrs.data();
-  *out_values = it->second.value_ptrs.data();
-  *out_count = it->second.key_ptrs.size();
-  return nullptr;
-}
-
-ModelPackageStatus* ModelPackage_GetVariantFileSessionOptions(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t file_idx,
-    const char* const** out_keys,
-    const char* const** out_values,
-    size_t* out_count) {
-  return GetOptionsFromMap(context, component_name, variant_name, file_idx,
-                           /*is_session_options=*/true, out_keys, out_values, out_count);
-}
-
-ModelPackageStatus* ModelPackage_GetVariantFileProviderOptions(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t file_idx,
-    const char* const** out_keys,
-    const char* const** out_values,
-    size_t* out_count) {
-  return GetOptionsFromMap(context, component_name, variant_name, file_idx,
-                           /*is_session_options=*/false, out_keys, out_values, out_count);
-}
-
-ModelPackageStatus* ModelPackage_GetVariantConsumerMetadata(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    const char** out_json) {
-  RETURN_IF_NULL(context, "context");
-  RETURN_IF_NULL(component_name, "component_name");
-  RETURN_IF_NULL(variant_name, "variant_name");
-  RETURN_IF_NULL(out_json, "out_json");
-
-  const auto* variant = context->impl.FindVariant(component_name, variant_name);
-  if (!variant) {
-    return MakeError(std::string("Variant '") + variant_name + "' not found in component '" +
-                     component_name + "'.");
-  }
-
-  if (!variant->consumer_metadata_json.has_value()) {
-    *out_json = nullptr;
-  } else {
-    *out_json = variant->consumer_metadata_json->c_str();
-  }
   return nullptr;
 }
 

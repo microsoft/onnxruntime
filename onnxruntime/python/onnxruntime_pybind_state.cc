@@ -3352,6 +3352,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           py::arg("component_name"), py::arg("variant_name"),
           R"pbdoc(Get the EP name for a variant. Returns None if not declared.)pbdoc")
       .def(
+          "get_schema_version",
+          [](PyModelPackageContext& self) -> int64_t {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            int64_t version = 0;
+            Ort::ThrowOnError(api->ModelPackage_GetSchemaVersion(self.ctx_, &version));
+            return version;
+          },
+          R"pbdoc(Get the schema version declared in the model package manifest.)pbdoc")
+      .def(
           "select_component",
           [](PyModelPackageContext& self, const std::string& component_name,
              PyModelPackageOptions& options) -> std::unique_ptr<PyModelPackageComponentContext> {
@@ -3411,52 +3420,15 @@ Provides access to the resolved variant's files, session options, and metadata.)
           py::arg("file_idx"),
           R"pbdoc(Get the file path for a specific model file in the selected variant.)pbdoc")
       .def(
-          "get_file_session_options",
-          [](PyModelPackageComponentContext& self, size_t file_idx) -> std::vector<std::pair<std::string, std::string>> {
-            const auto* api = Ort::GetApi().GetModelPackageApi();
-            const char* const* keys = nullptr;
-            const char* const* values = nullptr;
-            size_t count = 0;
-            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantFileSessionOptions(
-                self.ctx_, file_idx, &keys, &values, &count));
-            std::vector<std::pair<std::string, std::string>> result;
-            result.reserve(count);
-            for (size_t i = 0; i < count; ++i) {
-              result.emplace_back(std::string(keys[i]), std::string(values[i]));
-            }
-            return result;
-          },
-          py::arg("file_idx"),
-          R"pbdoc(Get per-file session options as a list of (key, value) pairs.)pbdoc")
-      .def(
-          "get_file_provider_options",
-          [](PyModelPackageComponentContext& self, size_t file_idx) -> std::vector<std::pair<std::string, std::string>> {
-            const auto* api = Ort::GetApi().GetModelPackageApi();
-            const char* const* keys = nullptr;
-            const char* const* values = nullptr;
-            size_t count = 0;
-            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantFileProviderOptions(
-                self.ctx_, file_idx, &keys, &values, &count));
-            std::vector<std::pair<std::string, std::string>> result;
-            result.reserve(count);
-            for (size_t i = 0; i < count; ++i) {
-              result.emplace_back(std::string(keys[i]), std::string(values[i]));
-            }
-            return result;
-          },
-          py::arg("file_idx"),
-          R"pbdoc(Get per-file provider options as a list of (key, value) pairs.)pbdoc")
-      .def(
-          "get_consumer_metadata",
+          "get_selected_variant_name",
           [](PyModelPackageComponentContext& self) -> std::string {
             const auto* api = Ort::GetApi().GetModelPackageApi();
-            const char* json_str = nullptr;
-            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantConsumerMetadata(
-                self.ctx_, &json_str));
-            return json_str ? std::string(json_str) : std::string();
+            const char* name = nullptr;
+            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantName(
+                self.ctx_, &name));
+            return name ? std::string(name) : std::string();
           },
-          R"pbdoc(Get the consumer_metadata JSON from the selected variant.
-Returns an empty string if no consumer_metadata was declared.)pbdoc")
+          R"pbdoc(Get the name of the selected variant.)pbdoc")
       .def(
           "create_session",
           [](PyModelPackageComponentContext& self, py::object session_options_obj) -> std::unique_ptr<PyInferenceSession> {

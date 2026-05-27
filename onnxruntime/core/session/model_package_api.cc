@@ -324,92 +324,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariant
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileSessionOptions,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _In_ size_t file_idx,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                    _Out_ size_t* num_entries) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || option_keys == nullptr || option_values == nullptr || num_entries == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid null argument.");
-  }
-
-  gsl::span<const std::string> keys;
-  gsl::span<const std::string> values;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileSessionOptions(
-          file_idx, keys, values));
-
-  ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Session options keys/values size mismatch.");
-
-  const char* const* key_ptrs_out = nullptr;
-  const char* const* value_ptrs_out = nullptr;
-  size_t count = 0;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileSessionOptionPtrs(
-          file_idx, key_ptrs_out, value_ptrs_out, count));
-
-  *option_keys = key_ptrs_out;
-  *option_values = value_ptrs_out;
-  *num_entries = count;
-
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(file_idx);
-  ORT_UNUSED_PARAMETER(option_keys);
-  ORT_UNUSED_PARAMETER(option_values);
-  ORT_UNUSED_PARAMETER(num_entries);
-  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
-#endif
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileProviderOptions,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _In_ size_t file_idx,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                    _Out_ size_t* num_entries) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || option_keys == nullptr || option_values == nullptr || num_entries == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid null argument.");
-  }
-
-  gsl::span<const std::string> keys;
-  gsl::span<const std::string> values;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileProviderOptions(
-          file_idx, keys, values));
-
-  ORT_API_RETURN_IF(keys.size() != values.size(), ORT_FAIL, "Provider options keys/values size mismatch.");
-
-  const char* const* key_ptrs_out = nullptr;
-  const char* const* value_ptrs_out = nullptr;
-  size_t count = 0;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)->GetSelectedVariantFileProviderOptionPtrs(
-          file_idx, key_ptrs_out, value_ptrs_out, count));
-
-  *option_keys = key_ptrs_out;
-  *option_values = value_ptrs_out;
-  *num_entries = count;
-
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(file_idx);
-  ORT_UNUSED_PARAMETER(option_keys);
-  ORT_UNUSED_PARAMETER(option_values);
-  ORT_UNUSED_PARAMETER(num_entries);
-  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
-#endif
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageComponentContext* ctx,
@@ -560,26 +474,45 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpName,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantConsumerMetadata,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _Outptr_ const char** out_json_str) {
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetSchemaVersion,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _Out_ int64_t* out_version) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || out_json_str == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_json_str must be non-null");
+  if (ctx == nullptr || out_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_version must be non-null");
   }
 
-  const std::string* s = nullptr;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx)
-          ->GetSelectedVariantConsumerMetadata(s));
-  ORT_API_RETURN_IF(s == nullptr, ORT_FAIL, "Consumer metadata accessor returned null.");
-
-  *out_json_str = s->c_str();
+  const auto& package_info = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetModelPackageInfo();
+  *out_version = package_info.schema_version;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(out_json_str);
+  ORT_UNUSED_PARAMETER(out_version);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantName,
+                    _In_ const OrtModelPackageComponentContext* ctx,
+                    _Outptr_ const char** out_name) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || out_name == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_name must be non-null");
+  }
+
+  const auto* mp_ctx = reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx);
+  const std::string* name = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(mp_ctx->GetSelectedVariantName(name));
+  ORT_API_RETURN_IF(name == nullptr, ORT_FAIL, "Selected variant name is null.");
+
+  *out_name = name->c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(out_name);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END
@@ -596,34 +529,29 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     &OrtModelPackageAPI::CreateModelPackageContext,
     &OrtModelPackageAPI::ReleaseModelPackageContext,
 
-    // Generic metadata queries
+    // Package-level queries
+    &OrtModelPackageAPI::ModelPackage_GetSchemaVersion,
     &OrtModelPackageAPI::ModelPackage_GetComponentCount,
     &OrtModelPackageAPI::ModelPackage_GetComponentNames,
     &OrtModelPackageAPI::ModelPackage_GetVariantCount,
     &OrtModelPackageAPI::ModelPackage_GetVariantNames,
+    &OrtModelPackageAPI::ModelPackage_GetVariantEpName,
 
-    // Variant selection and queries
+    // Variant selection and component queries
     &OrtModelPackageAPI::SelectComponent,
     &OrtModelPackageAPI::ReleaseModelPackageComponentContext,
+    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantName,
     &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFolderPath,
     &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileCount,
     &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFilePath,
-    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileSessionOptions,
-    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileProviderOptions,
 
     // Session
     &OrtModelPackageAPI::CreateSession,
 
-    // Pre-selection EP name query.
-    &OrtModelPackageAPI::ModelPackage_GetVariantEpName,
-
-    // Post-selection variant queries.
-    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantConsumerMetadata,
-
     // End of Version 1.27 - DO NOT MODIFY ABOVE
 };
 
-static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 15,
+static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 16,
               "Size of initial OrtModelPackageApi cannot change");
 
 ORT_API(const OrtModelPackageApi*, OrtModelPackageAPI::GetModelPackageApi) {

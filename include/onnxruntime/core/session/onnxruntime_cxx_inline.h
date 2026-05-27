@@ -1418,6 +1418,12 @@ inline const char* ModelPackageContext::GetVariantEpName(const char* component_n
   return ep;
 }
 
+inline int64_t ModelPackageContext::GetSchemaVersion() const {
+  int64_t version = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetSchemaVersion(this->p_, &version));
+  return version;
+}
+
 inline ModelPackageComponentContext ModelPackageContext::SelectComponent(
     const char* component_name, const ModelPackageOptions& options) const {
   OrtModelPackageComponentContext* out = nullptr;
@@ -1444,22 +1450,10 @@ inline std::basic_string<ORTCHAR_T> ModelPackageComponentContext::GetSelectedVar
   return std::basic_string<ORTCHAR_T>{path};
 }
 
-inline void ModelPackageComponentContext::GetSelectedVariantFileSessionOptions(
-    size_t file_idx, const char* const** keys, const char* const** values, size_t* count) const {
-  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFileSessionOptions(
-      this->p_, file_idx, keys, values, count));
-}
-
-inline void ModelPackageComponentContext::GetSelectedVariantFileProviderOptions(
-    size_t file_idx, const char* const** keys, const char* const** values, size_t* count) const {
-  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFileProviderOptions(
-      this->p_, file_idx, keys, values, count));
-}
-
-inline std::string ModelPackageComponentContext::GetSelectedVariantConsumerMetadata() const {
-  const char* json_str = nullptr;
-  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantConsumerMetadata(this->p_, &json_str));
-  return (json_str != nullptr) ? std::string{json_str} : std::string{};
+inline std::string ModelPackageComponentContext::GetSelectedVariantName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantName(this->p_, &name));
+  return (name != nullptr) ? std::string{name} : std::string{};
 }
 
 inline Session ModelPackageComponentContext::CreateSession(const Env& env) {

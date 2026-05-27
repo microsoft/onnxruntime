@@ -62,20 +62,6 @@ ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFilePath,
                     _In_ size_t file_idx,
                     _Outptr_ const ORTCHAR_T** out_path);
 
-ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFileSessionOptions,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _In_ size_t file_idx,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                    _Out_ size_t* num_entries);
-
-ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFileProviderOptions,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _In_ size_t file_idx,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_keys,
-                    _Outptr_result_buffer_maybenull_(*num_entries) const char* const** option_values,
-                    _Out_ size_t* num_entries);
-
 ORT_API_STATUS_IMPL(CreateSession,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageComponentContext* ctx,
@@ -88,8 +74,12 @@ ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpName,
                     _In_ const char* variant_name,
                     _Outptr_result_maybenull_ const char** out_ep);
 
-ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantConsumerMetadata,
+ORT_API_STATUS_IMPL(ModelPackage_GetSchemaVersion,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _Out_ int64_t* out_version);
+
+ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantName,
                     _In_ const OrtModelPackageComponentContext* ctx,
-                    _Outptr_ const char** out_json_str);
+                    _Outptr_ const char** out_name);
 
 }  // namespace OrtModelPackageAPI

@@ -374,56 +374,6 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
                                                                                 &selected_file_path));
   ASSERT_NE(selected_file_path, nullptr);
 
-  // Validate file session options from selected component context.
-  const char* const* session_option_keys = nullptr;
-  const char* const* session_option_values = nullptr;
-  size_t session_option_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileSessionOptions(
-      component_context.get(),
-      0,
-      &session_option_keys,
-      &session_option_values,
-      &session_option_count));
-
-  ASSERT_EQ(session_option_count, 2u);
-  ASSERT_NE(session_option_keys, nullptr);
-  ASSERT_NE(session_option_values, nullptr);
-
-  std::unordered_map<std::string, std::string> session_options_from_api;
-  for (size_t i = 0; i < session_option_count; ++i) {
-    ASSERT_NE(session_option_keys[i], nullptr);
-    ASSERT_NE(session_option_values[i], nullptr);
-    session_options_from_api.emplace(session_option_keys[i], session_option_values[i]);
-  }
-
-  EXPECT_EQ(session_options_from_api.at("session.disable_prepacking"), "1");
-  EXPECT_EQ(session_options_from_api.at("session.intra_op.allow_spinning"), "0");
-
-  // Validate file provider options from selected component context.
-  const char* const* provider_option_keys = nullptr;
-  const char* const* provider_option_values = nullptr;
-  size_t provider_option_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileProviderOptions(
-      component_context.get(),
-      0,
-      &provider_option_keys,
-      &provider_option_values,
-      &provider_option_count));
-
-  ASSERT_EQ(provider_option_count, 2u);
-  ASSERT_NE(provider_option_keys, nullptr);
-  ASSERT_NE(provider_option_values, nullptr);
-
-  std::unordered_map<std::string, std::string> provider_options_from_api;
-  for (size_t i = 0; i < provider_option_count; ++i) {
-    ASSERT_NE(provider_option_keys[i], nullptr);
-    ASSERT_NE(provider_option_values[i], nullptr);
-    provider_options_from_api.emplace(provider_option_keys[i], provider_option_values[i]);
-  }
-
-  EXPECT_EQ(provider_options_from_api.at("backend_path"), "example_backend");
-  EXPECT_EQ(provider_options_from_api.at("enable_htp"), "1");
-
   OrtSession* raw_session = nullptr;
   ASSERT_ORTSTATUS_OK(pkg_api->CreateSession(*ort_env,
                                              component_context.get(),
@@ -525,51 +475,10 @@ TEST(ModelPackageApiTest, MultiFileVariantInComponent_SelectComponentAndCreateSe
     ASSERT_NE(file_path, nullptr);
     EXPECT_EQ(std::filesystem::path(file_path).filename().string(), expected_filename);
 
-    const char* const* session_keys = nullptr;
-    const char* const* session_values = nullptr;
-    size_t session_options_count = 0;
-    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileSessionOptions(
-        component_context.get(), i, &session_keys, &session_values, &session_options_count));
-
-    const size_t expected_session_options_count =
-        (file_entry.contains("session_options") && file_entry["session_options"].is_object())
-            ? file_entry["session_options"].size()
-            : 0u;
-    EXPECT_EQ(session_options_count, expected_session_options_count);
-
-    const char* const* provider_keys = nullptr;
-    const char* const* provider_values = nullptr;
-    size_t provider_options_count = 0;
-    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileProviderOptions(
-        component_context.get(), i, &provider_keys, &provider_values, &provider_options_count));
-
-    const size_t expected_provider_options_count =
-        (file_entry.contains("provider_options") && file_entry["provider_options"].is_object())
-            ? file_entry["provider_options"].size()
-            : 0u;
-    EXPECT_EQ(provider_options_count, expected_provider_options_count);
-
-    // Build per-file session options and create a stage session from the resolved file path.
-    Ort::SessionOptions stage_session_options;
-
-    // Apply per-file session options (as config entries).
-    for (size_t k = 0; k < session_options_count; ++k) {
-      ASSERT_NE(session_keys[k], nullptr);
-      ASSERT_NE(session_values[k], nullptr);
-      ASSERT_NO_THROW(stage_session_options.AddConfigEntry(session_keys[k], session_values[k]));
-    }
-
-    // Apply per-file provider options.
-    std::unordered_map<std::string, std::string> stage_provider_options;
-    for (size_t k = 0; k < provider_options_count; ++k) {
-      ASSERT_NE(provider_keys[k], nullptr);
-      ASSERT_NE(provider_values[k], nullptr);
-      stage_provider_options.emplace(provider_keys[k], provider_values[k]);
-    }
-
-    stage_session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, stage_provider_options);
-
     // Create per-file stage session.
+    Ort::SessionOptions stage_session_options;
+    stage_session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, {});
+
     Ort::Session stage_session(*ort_env, file_path, stage_session_options);
 
     // Smoke-run to ensure created session is functional.
@@ -1218,89 +1127,6 @@ TEST(ModelPackageApiTest, GetVariantEpName_ReturnsSingleEp) {
 }
 
 // ------------------------------------------------------------------
-// Test for the consumer_metadata accessor on a selected variant.
-// ------------------------------------------------------------------
-TEST(ModelPackageApiTest, GetSelectedVariantConsumerMetadata) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_consumer_metadata";
-  std::error_code ec;
-  std::filesystem::remove_all(package_root, ec);
-
-  CreateManifestJson(package_root, MakeManifestJson("model_1"));
-
-  const auto variant_dir = package_root / "models" / "model_1" / "variant_1";
-  std::filesystem::create_directories(variant_dir);
-  std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "mul_1.onnx",
-                             std::filesystem::copy_options::overwrite_existing, ec);
-
-  constexpr std::string_view metadata_json = R"({
-    "component_name": "model_1",
-    "variants": {
-      "variant_1": {
-        "ep_compatibility": [{ "ep": "example_ep", "device": "cpu" }]
-      }
-    }
-  })";
-  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
-
-  // variant.json has a non-trivial consumer_metadata sub-object.
-  {
-    std::ofstream os(variant_dir / "variant.json", std::ios::binary);
-    os << R"({
-      "files": [{ "filename": "mul_1.onnx" }],
-      "consumer_metadata": {
-        "framework": "onnxruntime-genai",
-        "tokens": { "bos": 1, "eos": 2 }
-      }
-    })";
-  }
-
-  RegisteredEpDeviceUniquePtr example_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-
-  Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> ep_options;
-  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
-
-  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
-  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
-    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
-  };
-  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(nullptr, options_deleter);
-  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
-  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(nullptr, component_context_deleter);
-
-  OrtModelPackageOptions* raw_mp_opts = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
-  mp_opts.reset(raw_mp_opts);
-
-  OrtModelPackageContext* raw_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
-  ctx.reset(raw_ctx);
-
-  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
-  comp_ctx.reset(raw_comp_ctx);
-
-  const char* json_str = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantConsumerMetadata(comp_ctx.get(), &json_str));
-  ASSERT_NE(json_str, nullptr);
-
-  // The returned blob must be a parseable JSON object with the expected fields.
-  json parsed = json::parse(json_str);
-  ASSERT_TRUE(parsed.is_object());
-  EXPECT_EQ(parsed.value("framework", ""), "onnxruntime-genai");
-  ASSERT_TRUE(parsed.contains("tokens"));
-  EXPECT_EQ(parsed["tokens"].value("bos", 0), 1);
-  EXPECT_EQ(parsed["tokens"].value("eos", 0), 2);
-
-  std::filesystem::remove_all(package_root, ec);
-}
-
 // ------------------------------------------------------------------
 // Test: variant selector tie-break is deterministic across repeated invocations.
 // Two variants advertise compatibility for the same EP/device and EP returns the same
@@ -1529,16 +1355,9 @@ TEST(ModelPackageApiTest, CxxWrappers_SelectComponentAndQueryFileAccessors) {
   auto file_path = cix.GetSelectedVariantFilePath(0);
   EXPECT_FALSE(file_path.empty());
 
-  // Session/provider options should not throw (may be empty)
-  const char* const* keys = nullptr;
-  const char* const* values = nullptr;
-  size_t count = 0;
-  EXPECT_NO_THROW(cix.GetSelectedVariantFileSessionOptions(0, &keys, &values, &count));
-  EXPECT_NO_THROW(cix.GetSelectedVariantFileProviderOptions(0, &keys, &values, &count));
-
-  // Consumer metadata
-  auto metadata = cix.GetSelectedVariantConsumerMetadata();
-  // May be empty but should not throw
+  // Selected variant name should not throw
+  auto variant_name = cix.GetSelectedVariantName();
+  EXPECT_FALSE(variant_name.empty());
 
   // CreateSession via C++ wrapper
   auto session = cix.CreateSession(*ort_env, so);

@@ -71,16 +71,6 @@ struct ContextImpl {
   std::unordered_map<std::string, std::string> folder_path_strings_cache;
   std::unordered_map<std::string, std::string> file_path_strings_cache;
 
-  // Caches for options (key/value arrays for C API).
-  struct OptionsCache {
-    std::vector<std::string> keys;
-    std::vector<std::string> values;
-    std::vector<const char*> key_ptrs;
-    std::vector<const char*> value_ptrs;
-  };
-  std::unordered_map<std::string, OptionsCache> session_options_cache;
-  std::unordered_map<std::string, OptionsCache> provider_options_cache;
-
   // Helper to build a cache key from component + variant + file_idx.
   static std::string MakeCacheKey(const char* component, const char* variant, size_t idx) {
     std::string key;
