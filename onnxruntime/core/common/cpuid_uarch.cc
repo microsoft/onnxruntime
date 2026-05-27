@@ -292,6 +292,9 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_cortex_a55;
           break;
           // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+        case 0x001: /* Qualcomm Oryon (Snapdragon X Elite / X Plus) */
+          *uarch = cpuinfo_uarch_oryon;
+          break;
         case 0xC00:
           *uarch = cpuinfo_uarch_falkor;
           break;
