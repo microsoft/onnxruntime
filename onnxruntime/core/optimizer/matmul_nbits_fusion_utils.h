@@ -32,11 +32,32 @@ inline bool HasProducedOutput(const Node& node, size_t index) {
 }
 
 inline bool IsSupportedSimplifiedLayerNormalization(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SimplifiedLayerNormalization", {1});
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "SimplifiedLayerNormalization", {1})) {
+    return false;
+  }
+
+  // Fusion assumes the default normalization axis (-1).
+  const auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
+  return axis_attr == nullptr || axis_attr->i() == -1;
 }
 
 inline bool IsSupportedSkipSimplifiedLayerNormalization(const Node& node) {
-  return graph_utils::IsSupportedOptypeVersionAndDomain(node, "SkipSimplifiedLayerNormalization", {1}, kMSDomain);
+  // Must be the correct version and domain.
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "SkipSimplifiedLayerNormalization", {1}, kMSDomain)) {
+    return false;
+  }
+  // We only support the default form: inputs [x, skip, scale] without optional bias,
+  // and axis attribute must be default (-1) if present.
+  // Bias input at index 3 would be silently dropped by the fused kernel.
+  if (HasInput(node, 3)) {
+    return false;  // Has optional bias input; fusion would drop it.
+  }
+  // Check for non-default axis attribute.
+  const auto* axis_attr = graph_utils::GetNodeAttribute(node, "axis");
+  if (axis_attr != nullptr && axis_attr->i() != -1) {
+    return false;  // Non-default axis; fusion assumes axis=-1.
+  }
+  return true;
 }
 
 // Reads an integer attribute. If absent, returns \p default_value (or fails when \p required is true).
