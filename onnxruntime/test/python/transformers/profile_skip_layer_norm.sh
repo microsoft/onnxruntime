@@ -59,9 +59,13 @@ done
 EXTRA_ARGS="${BATCH_SIZE} ${SEQ_LEN} ${HIDDEN_SIZE} ${MODE} ${SIMPLIFIED}"
 
 # Check nvtx availability (optional, for NVTX range markers)
-if ! python -c "import nvtx" 2>/dev/null; then
+HAVE_NVTX=0
+if python -c "import nvtx" 2>/dev/null; then
+    HAVE_NVTX=1
+else
     echo "Note: 'nvtx' package not installed. NVTX range markers will be disabled."
     echo "      Install with: pip install nvtx"
+    echo "      Falling back to --skip-first to exclude warmup iterations."
 fi
 
 echo ""
@@ -73,7 +77,11 @@ nsys profile -o "${OUTPUT_NAME}" --export=sqlite \
     python profile_skip_layer_norm.py --warmup 5 --repeat 100 $EXTRA_ARGS
 echo ""
 echo "---- Kernel results ----"
-python parse_nsys.py "${OUTPUT_NAME}.sqlite" --nvtx-range benchmark
+if [[ "$HAVE_NVTX" -eq 1 ]]; then
+    python parse_nsys.py "${OUTPUT_NAME}.sqlite" --nvtx-range benchmark
+else
+    python parse_nsys.py "${OUTPUT_NAME}.sqlite" --skip-first 5
+fi
 
 echo ""
 echo "Done."
