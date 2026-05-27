@@ -2408,6 +2408,20 @@ TEST(CoreMLExecutionProviderTest, CastNonArgMaxNeuralNetworkNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
 }
 
+// Load-time partition check on the ML Program path: confirms the EP claims
+// both bool Casts (the relaxed "no preceding node" branch + the bool dtype
+// gate added in HasSupportedInputsImpl). Numerical verification isn't
+// possible here because CoreML fuses back-to-back cast ops and drops the
+// bool clamp; the positive numerical coverage lives in the dependent
+// Where/And (#28597) and GatherND (#28598) PRs, where a non-Cast op sits
+// between the int<->bool casts.
+TEST(CoreMLExecutionProviderTest, CastBoolMLProgramPartition) {
+  const std::string model_data = MakeCastBoolModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+}
+
 TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis1) {
   // ai.onnx:Gather with rank-0 (scalar) 'indices'. ONNX output rank =
   // data_rank + indices_rank - 1 = 2. The CoreML builder internally promotes
