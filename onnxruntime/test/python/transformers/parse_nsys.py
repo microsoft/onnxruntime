@@ -5,17 +5,20 @@
 # --------------------------------------------------------------------------
 
 """
-Parse nsys SQLite output to extract onnxruntime CUDA kernel timings.
+Parse nsys SQLite output to extract CUDA kernel timings.
 
 Usage:
   # First, profile with nsys:
   nsys profile -o sln_fp16 --export=sqlite python profile_skip_layer_norm.py --mode fp16 --warmup 5 --repeat 100
   nsys profile -o gqa_int8 --export=sqlite python profile_gqa.py --mode int8 --warmup 5 --repeat 10
 
-  # Then parse the results:
-  python parse_nsys.py sln_fp16.sqlite --skip-first 5
-  python parse_nsys.py gqa_int8.sqlite --output results.json
+  # Then parse the results (using NVTX marker to exclude warmup):
+  python parse_nsys.py sln_fp16.sqlite --nvtx-range benchmark
+  python parse_nsys.py gqa_int8.sqlite --nvtx-range benchmark --output results.json
   python parse_nsys.py gqa_int8.sqlite --format csv --output results.csv
+
+  # Alternative: skip first N calls per kernel to exclude warmup:
+  python parse_nsys.py sln_fp16.sqlite --skip-first 5
 """
 
 import argparse
@@ -25,14 +28,20 @@ import sys
 from pathlib import Path
 
 
-def parse_nsys_sqlite(db_path: str, kernel_patterns: list[str] | None = None, skip_first: int = 0) -> list[dict]:
+def parse_nsys_sqlite(
+    db_path: str,
+    kernel_patterns: list[str] | None = None,
+    skip_first: int = 0,
+    nvtx_range: str | None = None,
+) -> list[dict]:
     """
     Parse nsys SQLite database and extract kernel timing information.
 
     Args:
         db_path: Path to the .sqlite file exported by nsys
-        kernel_patterns: List of SQL LIKE patterns to filter kernels (default: flash attention patterns)
+        kernel_patterns: List of SQL LIKE patterns to filter kernels (default: onnxruntime patterns)
         skip_first: Number of initial kernel calls to skip per kernel type (e.g., to exclude warmup)
+        nvtx_range: If specified, only include kernels launched within this NVTX range
 
     Returns:
         List of dicts with kernel timing info
@@ -44,11 +53,58 @@ def parse_nsys_sqlite(db_path: str, kernel_patterns: list[str] | None = None, sk
 
     conn = sqlite3.connect(db_path)
 
-    # Build WHERE clause for kernel patterns
-    # nsys SQLite stores kernel names in StringIds table, referenced by integer IDs
-    pattern_conditions = " OR ".join([f"s.value LIKE '{p}'" for p in kernel_patterns])
+    # Build WHERE clause for kernel patterns using parameterized queries
+    pattern_placeholders = " OR ".join(["s.value LIKE ?" for _ in kernel_patterns])
+    params: list = list(kernel_patterns)
 
-    if skip_first > 0:
+    if nvtx_range:
+        # Filter kernels that launched within the specified NVTX range
+        if skip_first > 0:
+            query = f"""
+            WITH numbered AS (
+                SELECT
+                    s.value as kernel_name,
+                    k.end - k.start as duration_ns,
+                    ROW_NUMBER() OVER (PARTITION BY s.value ORDER BY k.start) as call_num
+                FROM CUPTI_ACTIVITY_KIND_KERNEL k
+                JOIN StringIds s ON k.demangledName = s.id
+                JOIN NVTX_EVENTS n ON k.start >= n.start AND k.start <= n.end
+                JOIN StringIds ns ON n.textId = ns.id
+                WHERE ({pattern_placeholders}) AND ns.value = ?
+            )
+            SELECT
+                kernel_name,
+                SUM(duration_ns) as total_ns,
+                COUNT(*) as call_count,
+                MIN(duration_ns) as min_ns,
+                MAX(duration_ns) as max_ns,
+                AVG(duration_ns) as avg_ns
+            FROM numbered
+            WHERE call_num > ?
+            GROUP BY kernel_name
+            ORDER BY total_ns DESC
+            """
+            params.append(nvtx_range)
+            params.append(skip_first)
+        else:
+            query = f"""
+            SELECT
+                s.value as kernel_name,
+                SUM(k.end - k.start) as total_ns,
+                COUNT(*) as call_count,
+                MIN(k.end - k.start) as min_ns,
+                MAX(k.end - k.start) as max_ns,
+                AVG(k.end - k.start) as avg_ns
+            FROM CUPTI_ACTIVITY_KIND_KERNEL k
+            JOIN StringIds s ON k.demangledName = s.id
+            JOIN NVTX_EVENTS n ON k.start >= n.start AND k.start <= n.end
+            JOIN StringIds ns ON n.textId = ns.id
+            WHERE ({pattern_placeholders}) AND ns.value = ?
+            GROUP BY s.value
+            ORDER BY total_ns DESC
+            """
+            params.append(nvtx_range)
+    elif skip_first > 0:
         # Use window function to number calls and skip first N per kernel type
         query = f"""
         WITH numbered AS (
@@ -58,7 +114,7 @@ def parse_nsys_sqlite(db_path: str, kernel_patterns: list[str] | None = None, sk
                 ROW_NUMBER() OVER (PARTITION BY s.value ORDER BY k.start) as call_num
             FROM CUPTI_ACTIVITY_KIND_KERNEL k
             JOIN StringIds s ON k.demangledName = s.id
-            WHERE {pattern_conditions}
+            WHERE {pattern_placeholders}
         )
         SELECT
             kernel_name,
@@ -68,10 +124,11 @@ def parse_nsys_sqlite(db_path: str, kernel_patterns: list[str] | None = None, sk
             MAX(duration_ns) as max_ns,
             AVG(duration_ns) as avg_ns
         FROM numbered
-        WHERE call_num > {skip_first}
+        WHERE call_num > ?
         GROUP BY kernel_name
         ORDER BY total_ns DESC
         """
+        params.append(skip_first)
     else:
         # Original query without skipping
         query = f"""
@@ -84,14 +141,14 @@ def parse_nsys_sqlite(db_path: str, kernel_patterns: list[str] | None = None, sk
             AVG(k.end - k.start) as avg_ns
         FROM CUPTI_ACTIVITY_KIND_KERNEL k
         JOIN StringIds s ON k.demangledName = s.id
-        WHERE {pattern_conditions}
+        WHERE {pattern_placeholders}
         GROUP BY s.value
         ORDER BY total_ns DESC
         """
 
     results = []
     try:
-        cursor = conn.execute(query)
+        cursor = conn.execute(query, params)
         rows = cursor.fetchall()
         for row in rows:
             results.append(
@@ -180,22 +237,22 @@ def format_csv(results: list[dict]) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Parse nsys SQLite output for flash attention kernel timings",
+        description="Parse nsys SQLite output for CUDA kernel timings",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Profile and parse:
-  nsys profile -o gqa --export=sqlite python profile_gqa.py --warmup 5 --repeat 10
-  python parse_nsys.py gqa.sqlite
+  # Profile and parse (using NVTX range to exclude warmup):
+  nsys profile -o sln --export=sqlite python profile_skip_layer_norm.py --warmup 5 --repeat 100
+  python parse_nsys.py sln.sqlite --nvtx-range benchmark
 
-  # Skip warmup iterations (e.g., 5 warmup calls per kernel):
-  python parse_nsys.py gqa.sqlite --skip-first 5
+  # Alternative: skip first N warmup calls per kernel:
+  python parse_nsys.py sln.sqlite --skip-first 5
 
   # Export to JSON:
-  python parse_nsys.py gqa.sqlite --format json --output results.json
+  python parse_nsys.py sln.sqlite --nvtx-range benchmark --format json --output results.json
 
   # List all kernels (for debugging):
-  python parse_nsys.py gqa.sqlite --list-kernels
+  python parse_nsys.py sln.sqlite --list-kernels
         """,
     )
     parser.add_argument("sqlite_file", help="Path to nsys SQLite export file")
@@ -206,6 +263,11 @@ Examples:
     parser.add_argument("--list-kernels", action="store_true", help="List all kernel names in the database")
     parser.add_argument("--pattern", action="append", help="Add custom kernel name pattern (SQL LIKE syntax)")
     parser.add_argument("--tag", default="", help="Tag for kernel name in output table. Example tag: 'fp16' or 'int8'")
+    parser.add_argument(
+        "--nvtx-range",
+        metavar="NAME",
+        help="Only include kernels launched within this NVTX range (e.g., 'benchmark')",
+    )
     parser.add_argument(
         "--skip-first",
         type=int,
@@ -229,9 +291,11 @@ Examples:
 
     # Parse kernel timings
     patterns = args.pattern if args.pattern else None
-    results = parse_nsys_sqlite(args.sqlite_file, patterns, skip_first=args.skip_first)
+    results = parse_nsys_sqlite(args.sqlite_file, patterns, skip_first=args.skip_first, nvtx_range=args.nvtx_range)
 
-    if args.skip_first > 0:
+    if args.nvtx_range:
+        print(f"(Filtering kernels within NVTX range: '{args.nvtx_range}')\n")
+    elif args.skip_first > 0:
         print(f"(Skipping first {args.skip_first} calls per kernel)\n")
 
     # Format output

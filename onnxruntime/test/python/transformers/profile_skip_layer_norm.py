@@ -12,7 +12,7 @@ Usage:
 
   # Profile with Nsight Systems (timeline analysis) and extract kernel timings:
   nsys profile -o sln_fp16 --export=sqlite python profile_skip_layer_norm.py --mode fp16 --warmup 5 --repeat 100
-  python parse_nsys.py sln_fp16.sqlite --skip-first 5
+  python parse_nsys.py sln_fp16.sqlite --nvtx-range benchmark
 
 """
 
@@ -22,8 +22,7 @@ import tempfile
 import time
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, save_model
 
 import onnxruntime as ort
 
@@ -109,7 +108,7 @@ def run_profiling(args):
 
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as f:
         model_path = f.name
-        onnx.save(model, model_path)
+        save_model(model, model_path)
 
     try:
         sess_opt = ort.SessionOptions()
