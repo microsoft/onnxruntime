@@ -291,7 +291,7 @@ void decodeMIDR(
         case 0x805: /* Low-performance Kryo 485 "Silver" -> Cortex-A55 */
           *uarch = cpuinfo_uarch_cortex_a55;
           break;
-          // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
+#if defined(_M_ARM64) || defined(__aarch64__)
         case 0x001: /* Qualcomm Oryon (Snapdragon X Elite / X Plus) */
           *uarch = cpuinfo_uarch_oryon;
           break;
@@ -301,7 +301,7 @@ void decodeMIDR(
         case 0xC01:
           *uarch = cpuinfo_uarch_saphira;
           break;
-          // #endif /* ARM64 && !defined(__ANDROID__) */
+#endif /* ARM64 */
           // default:
           // std::cerr << "unknown Qualcomm CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
