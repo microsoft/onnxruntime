@@ -1410,20 +1410,12 @@ inline std::vector<std::string> ModelPackageContext::GetVariantNames(const char*
   return result;
 }
 
-inline size_t ModelPackageContext::GetVariantEpCompatibilityCount(const char* component_name,
-                                                                  const char* variant_name) const {
-  size_t count = 0;
-  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantEpCompatibilityCount(
-      this->p_, component_name, variant_name, &count));
-  return count;
-}
-
-inline void ModelPackageContext::GetVariantEpCompatibility(const char* component_name,
-                                                           const char* variant_name, size_t ep_idx,
-                                                           const char** out_ep, const char** out_device,
-                                                           const char** out_compatibility_string) const {
-  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantEpCompatibility(
-      this->p_, component_name, variant_name, ep_idx, out_ep, out_device, out_compatibility_string));
+inline const char* ModelPackageContext::GetVariantEpName(const char* component_name,
+                                                         const char* variant_name) const {
+  const char* ep = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantEpName(
+      this->p_, component_name, variant_name, &ep));
+  return ep;
 }
 
 inline ModelPackageComponentContext ModelPackageContext::SelectComponent(

@@ -1146,8 +1146,8 @@ TEST(ModelPackageTest, ParserRejects_EpCompatibilityEmptyEp) {
 // ------------------------------------------------------------------
 // Tests for new pre-selection EP-compat traversal accessors.
 // ------------------------------------------------------------------
-TEST(ModelPackageApiTest, GetVariantEpCompatibility_ReturnsAllEntries) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_pre_selection_ep_compat";
+TEST(ModelPackageApiTest, GetVariantEpName_ReturnsSingleEp) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_pre_selection_ep_name";
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
 
@@ -1162,20 +1162,18 @@ TEST(ModelPackageApiTest, GetVariantEpCompatibility_ReturnsAllEntries) {
   std::filesystem::copy_file("testdata/mul_1.onnx", variant2_dir / "mul_1.onnx",
                              std::filesystem::copy_options::overwrite_existing, ec);
 
-  // variant_1 has two ep_compatibility entries (one with compatibility_string omitted).
-  // variant_2 has one entry with all fields populated.
+  // Each variant declares a single EP.
   constexpr std::string_view metadata_json = R"({
     "component_name": "model_1",
     "variants": {
       "variant_1": {
         "ep_compatibility": [
-          { "ep": "example_ep", "device": "cpu" },
-          { "ep": "other_ep",   "device": "gpu", "compatibility_string": "compat_a" }
+          { "ep": "example_ep", "device": "cpu" }
         ]
       },
       "variant_2": {
         "ep_compatibility": [
-          { "ep": "example_ep", "device": "npu", "compatibility_string": "compat_b" }
+          { "ep": "other_ep", "device": "npu" }
         ]
       }
     }
@@ -1198,96 +1196,24 @@ TEST(ModelPackageApiTest, GetVariantEpCompatibility_ReturnsAllEntries) {
   ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
   ctx.reset(raw_ctx);
 
-  // variant_1: 2 entries
-  size_t v1_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibilityCount(
-      ctx.get(), "model_1", "variant_1", &v1_count));
-  ASSERT_EQ(v1_count, 2u);
+  // variant_1 targets example_ep
+  const char* ep1 = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpName(
+      ctx.get(), "model_1", "variant_1", &ep1));
+  ASSERT_NE(ep1, nullptr);
+  EXPECT_STREQ(ep1, "example_ep");
 
-  // Aggregate the entries in a set since underlying storage may not preserve declaration order.
-  struct Entry {
-    std::string ep, device, compat;
-  };
-  std::vector<Entry> v1_entries;
-  for (size_t i = 0; i < v1_count; ++i) {
-    const char* ep = nullptr;
-    const char* dev = nullptr;
-    const char* compat = nullptr;
-    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibility(
-        ctx.get(), "model_1", "variant_1", i, &ep, &dev, &compat));
-    v1_entries.push_back({ep ? ep : "", dev ? dev : "", compat ? compat : ""});
-  }
+  // variant_2 targets other_ep
+  const char* ep2 = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpName(
+      ctx.get(), "model_1", "variant_2", &ep2));
+  ASSERT_NE(ep2, nullptr);
+  EXPECT_STREQ(ep2, "other_ep");
 
-  auto find_ep = [&](const std::string& ep_name) -> const Entry* {
-    for (const auto& e : v1_entries) {
-      if (e.ep == ep_name) return &e;
-    }
-    return nullptr;
-  };
-  const auto* example = find_ep("example_ep");
-  const auto* other = find_ep("other_ep");
-  ASSERT_NE(example, nullptr);
-  ASSERT_NE(other, nullptr);
-  EXPECT_EQ(example->device, "cpu");
-  EXPECT_EQ(example->compat, "");  // omitted -> empty / NULL
-  EXPECT_EQ(other->device, "gpu");
-  EXPECT_EQ(other->compat, "compat_a");
+  // Optional out-parameter: callers can pass NULL.
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpName(
+      ctx.get(), "model_1", "variant_1", nullptr));
 
-  // variant_2: 1 entry
-  size_t v2_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibilityCount(
-      ctx.get(), "model_1", "variant_2", &v2_count));
-  ASSERT_EQ(v2_count, 1u);
-
-  const char* ep = nullptr;
-  const char* dev = nullptr;
-  const char* compat = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibility(
-      ctx.get(), "model_1", "variant_2", 0, &ep, &dev, &compat));
-  ASSERT_NE(ep, nullptr);
-  EXPECT_STREQ(ep, "example_ep");
-  ASSERT_NE(dev, nullptr);
-  EXPECT_STREQ(dev, "npu");
-  ASSERT_NE(compat, nullptr);
-  EXPECT_STREQ(compat, "compat_b");
-
-  // Optional out-parameters: callers can pass NULL for fields they don't need.
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpCompatibility(
-      ctx.get(), "model_1", "variant_2", 0, nullptr, nullptr, nullptr));
-
-  std::filesystem::remove_all(package_root, ec);
-}
-
-TEST(ModelPackageApiTest, GetVariantEpCompatibility_OutOfRangeIsError) {
-  const auto package_root = MakeSingleComponentPackageWithMetadata(
-      "ort_mp_ep_compat_oor",
-      R"({
-        "component_name": "model_1",
-        "variants": {
-          "variant_1": {
-            "ep_compatibility": [{ "ep": "example_ep", "device": "cpu" }]
-          }
-        }
-      })");
-
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
-    if (p) pkg_api->ReleaseModelPackageContext(p);
-  };
-  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
-  OrtModelPackageContext* raw_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
-  ctx.reset(raw_ctx);
-
-  const char* ep = nullptr;
-  const char* dev = nullptr;
-  const char* compat = nullptr;
-  OrtStatus* st = pkg_api->ModelPackage_GetVariantEpCompatibility(
-      ctx.get(), "model_1", "variant_1", /*ep_idx*/ 5, &ep, &dev, &compat);
-  EXPECT_NE(st, nullptr);
-  if (st != nullptr) Ort::GetApi().ReleaseStatus(st);
-
-  std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
 }
 

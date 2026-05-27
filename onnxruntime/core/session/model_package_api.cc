@@ -526,39 +526,11 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
 
 // ---------- API table ------------------------------------------------------
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibilityCount,
+ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpName,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _In_ const char* variant_name,
-                    _Out_ size_t* out_count) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || component_name == nullptr || variant_name == nullptr || out_count == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "ctx, component_name, variant_name, and out_count must be non-null");
-  }
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibilityCount(
-          component_name, variant_name, *out_count));
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(component_name);
-  ORT_UNUSED_PARAMETER(variant_name);
-  ORT_UNUSED_PARAMETER(out_count);
-  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
-#endif
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibility,
-                    _In_ const OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _In_ const char* variant_name,
-                    _In_ size_t ep_idx,
-                    _Outptr_result_maybenull_ const char** out_ep,
-                    _Outptr_result_maybenull_ const char** out_device,
-                    _Outptr_result_maybenull_ const char** out_compatibility_string) {
+                    _Outptr_result_maybenull_ const char** out_ep) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   if (ctx == nullptr || component_name == nullptr || variant_name == nullptr) {
@@ -567,30 +539,22 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibility,
   }
 
   const onnxruntime::VariantEpCompatibilityInfo* info = nullptr;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibilityInfo(
-          component_name, variant_name, ep_idx, info));
+  auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibilityInfo(
+      component_name, variant_name, 0, info);
 
   if (out_ep != nullptr) {
-    *out_ep = (info->ep.has_value()) ? info->ep->c_str() : nullptr;
-  }
-  if (out_device != nullptr) {
-    *out_device = (info->device.has_value()) ? info->device->c_str() : nullptr;
-  }
-  if (out_compatibility_string != nullptr) {
-    *out_compatibility_string = (info->compatibility_string.has_value())
-                                    ? info->compatibility_string->c_str()
-                                    : nullptr;
+    if (status.IsOK() && info != nullptr && info->ep.has_value()) {
+      *out_ep = info->ep->c_str();
+    } else {
+      *out_ep = nullptr;
+    }
   }
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ctx);
   ORT_UNUSED_PARAMETER(component_name);
   ORT_UNUSED_PARAMETER(variant_name);
-  ORT_UNUSED_PARAMETER(ep_idx);
   ORT_UNUSED_PARAMETER(out_ep);
-  ORT_UNUSED_PARAMETER(out_device);
-  ORT_UNUSED_PARAMETER(out_compatibility_string);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END
@@ -650,10 +614,8 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     // Session
     &OrtModelPackageAPI::CreateSession,
 
-    // Pre-selection EP compatibility traversal (added after the initial 1.27 slots; appended to
-    // keep existing offsets stable).
-    &OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibilityCount,
-    &OrtModelPackageAPI::ModelPackage_GetVariantEpCompatibility,
+    // Pre-selection EP name query.
+    &OrtModelPackageAPI::ModelPackage_GetVariantEpName,
 
     // Post-selection variant queries.
     &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantConsumerMetadata,

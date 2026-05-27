@@ -1839,14 +1839,10 @@ struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
   size_t GetVariantCount(const char* component_name) const;                    ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantCount
   std::vector<std::string> GetVariantNames(const char* component_name) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantNames
 
-  size_t GetVariantEpCompatibilityCount(const char* component_name,
-                                        const char* variant_name) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantEpCompatibilityCount
-
-  /// Get a single EP compatibility entry. Any out-param may be nullptr if not needed.
-  /// Returned strings are owned by this context and valid until it is released.
-  void GetVariantEpCompatibility(const char* component_name, const char* variant_name, size_t ep_idx,
-                                 const char** out_ep, const char** out_device,
-                                 const char** out_compatibility_string) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantEpCompatibility
+  /// Get the EP name for a variant. Returns nullptr if not declared.
+  /// Returned string is owned by this context and valid until it is released.
+  const char* GetVariantEpName(const char* component_name,
+                               const char* variant_name) const;  ///< Wraps OrtModelPackageApi::ModelPackage_GetVariantEpName
 
   ModelPackageComponentContext SelectComponent(const char* component_name,
                                                const ModelPackageOptions& options) const;  ///< Wraps OrtModelPackageApi::SelectComponent

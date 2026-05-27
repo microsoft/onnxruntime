@@ -8735,35 +8735,19 @@ struct OrtModelPackageApi {
                   _In_opt_ const OrtSessionOptions* session_options,
                   _Outptr_ OrtSession** session);
 
-  /** \brief Returns the number of ep_compatibility entries declared for a (component, variant) pair.
+  /** \brief Get the EP name declared for a (component, variant) pair.
    *
-   * Use together with ModelPackage_GetVariantEpCompatibility() to inspect the (ep, device, compatibility_string)
-   * tuples a package advertises support for before any EP has been selected.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantEpCompatibilityCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get a single ep_compatibility entry from a (component, variant) pair.
-   *
-   * Each out parameter is optional. Any of `out_ep`, `out_device`, `out_compatibility_string` may be NULL if
-   * the caller doesn't need that field. When the underlying JSON omits a field, the returned pointer is NULL.
+   * Each variant targets a single EP. `out_ep` receives the EP name string.
+   * When the variant does not declare an EP, the returned pointer is NULL.
    * String memory is owned by `ctx` and remains valid until the context is released.
    *
    * \since Version 1.27.
    */
-  ORT_API2_STATUS(ModelPackage_GetVariantEpCompatibility,
+  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
                   _In_ const OrtModelPackageContext* ctx,
                   _In_ const char* component_name,
                   _In_ const char* variant_name,
-                  _In_ size_t ep_idx,
-                  _Outptr_result_maybenull_ const char** out_ep,
-                  _Outptr_result_maybenull_ const char** out_device,
-                  _Outptr_result_maybenull_ const char** out_compatibility_string);
+                  _Outptr_result_maybenull_ const char** out_ep);
 
   /** \brief Returns the consumer_metadata JSON object (from variant.json) of the selected variant,
    * serialized to a string.

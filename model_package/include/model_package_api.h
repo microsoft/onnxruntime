@@ -140,26 +140,15 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantFolderPath(
 // EP compatibility queries
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Get the number of EP compatibility entries for a variant.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantEpCompatibilityCount(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t* out_count);
-
-/// Get a single EP compatibility entry.
+/// Get the EP name declared for a variant.
 ///
-/// Any of out_ep, out_device, out_compatibility_string may be NULL if the caller
-/// doesn't need that field. When the underlying JSON omits a field, the returned
-/// pointer is set to nullptr.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantEpCompatibility(
+/// Each variant targets a single EP. When the variant does not declare an EP,
+/// the returned pointer is set to nullptr.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantEpName(
     const ModelPackageContext* context,
     const char* component_name,
     const char* variant_name,
-    size_t ep_idx,
-    const char** out_ep,
-    const char** out_device,
-    const char** out_compatibility_string);
+    const char** out_ep);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Variant file queries

@@ -82,20 +82,11 @@ ORT_API_STATUS_IMPL(CreateSession,
                     _In_opt_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtSession** session);
 
-ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpCompatibilityCount,
+ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpName,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _In_ const char* variant_name,
-                    _Out_ size_t* out_count);
-
-ORT_API_STATUS_IMPL(ModelPackage_GetVariantEpCompatibility,
-                    _In_ const OrtModelPackageContext* ctx,
-                    _In_ const char* component_name,
-                    _In_ const char* variant_name,
-                    _In_ size_t ep_idx,
-                    _Outptr_result_maybenull_ const char** out_ep,
-                    _Outptr_result_maybenull_ const char** out_device,
-                    _Outptr_result_maybenull_ const char** out_compatibility_string);
+                    _Outptr_result_maybenull_ const char** out_ep);
 
 ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantConsumerMetadata,
                     _In_ const OrtModelPackageComponentContext* ctx,

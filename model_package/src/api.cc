@@ -215,34 +215,11 @@ ModelPackageStatus* ModelPackage_GetVariantFolderPath(
   return nullptr;
 }
 
-ModelPackageStatus* ModelPackage_GetVariantEpCompatibilityCount(
+ModelPackageStatus* ModelPackage_GetVariantEpName(
     const ModelPackageContext* context,
     const char* component_name,
     const char* variant_name,
-    size_t* out_count) {
-  RETURN_IF_NULL(context, "context");
-  RETURN_IF_NULL(component_name, "component_name");
-  RETURN_IF_NULL(variant_name, "variant_name");
-  RETURN_IF_NULL(out_count, "out_count");
-
-  const auto* variant = context->impl.FindVariant(component_name, variant_name);
-  if (!variant) {
-    return MakeError(std::string("Variant '") + variant_name + "' not found in component '" +
-                     component_name + "'.");
-  }
-
-  *out_count = variant->ep_compatibility.size();
-  return nullptr;
-}
-
-ModelPackageStatus* ModelPackage_GetVariantEpCompatibility(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t ep_idx,
-    const char** out_ep,
-    const char** out_device,
-    const char** out_compatibility_string) {
+    const char** out_ep) {
   RETURN_IF_NULL(context, "context");
   RETURN_IF_NULL(component_name, "component_name");
   RETURN_IF_NULL(variant_name, "variant_name");
@@ -253,17 +230,12 @@ ModelPackageStatus* ModelPackage_GetVariantEpCompatibility(
                      component_name + "'.");
   }
 
-  if (ep_idx >= variant->ep_compatibility.size()) {
-    return MakeError("ep_idx out of range: " + std::to_string(ep_idx));
-  }
-
-  const auto& ec = variant->ep_compatibility[ep_idx];
-  if (out_ep) *out_ep = ec.ep.has_value() ? ec.ep->c_str() : nullptr;
-  if (out_device) *out_device = ec.device.has_value() ? ec.device->c_str() : nullptr;
-  if (out_compatibility_string) {
-    *out_compatibility_string = ec.compatibility_string.has_value()
-                                    ? ec.compatibility_string->c_str()
-                                    : nullptr;
+  if (out_ep) {
+    if (!variant->ep_compatibility.empty() && variant->ep_compatibility[0].ep.has_value()) {
+      *out_ep = variant->ep_compatibility[0].ep->c_str();
+    } else {
+      *out_ep = nullptr;
+    }
   }
   return nullptr;
 }

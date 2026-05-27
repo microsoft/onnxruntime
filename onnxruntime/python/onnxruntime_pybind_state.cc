@@ -3339,33 +3339,18 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           py::arg("component_name"),
           R"pbdoc(Get the variant names for a given component.)pbdoc")
       .def(
-          "get_variant_ep_compatibility",
+          "get_variant_ep_name",
           [](PyModelPackageContext& self, const std::string& component_name,
-             const std::string& variant_name) -> std::vector<py::dict> {
+             const std::string& variant_name) -> std::optional<std::string> {
             const auto* api = Ort::GetApi().GetModelPackageApi();
-            size_t count = 0;
-            Ort::ThrowOnError(api->ModelPackage_GetVariantEpCompatibilityCount(
-                self.ctx_, component_name.c_str(), variant_name.c_str(), &count));
-            std::vector<py::dict> result;
-            result.reserve(count);
-            for (size_t i = 0; i < count; ++i) {
-              const char* ep = nullptr;
-              const char* device = nullptr;
-              const char* compat_str = nullptr;
-              Ort::ThrowOnError(api->ModelPackage_GetVariantEpCompatibility(
-                  self.ctx_, component_name.c_str(), variant_name.c_str(), i,
-                  &ep, &device, &compat_str));
-              py::dict entry;
-              if (ep) entry["ep"] = std::string(ep);
-              if (device) entry["device"] = std::string(device);
-              if (compat_str) entry["compatibility_string"] = std::string(compat_str);
-              result.push_back(std::move(entry));
-            }
-            return result;
+            const char* ep = nullptr;
+            Ort::ThrowOnError(api->ModelPackage_GetVariantEpName(
+                self.ctx_, component_name.c_str(), variant_name.c_str(), &ep));
+            if (ep) return std::string(ep);
+            return std::nullopt;
           },
           py::arg("component_name"), py::arg("variant_name"),
-          R"pbdoc(Get EP compatibility info for a (component, variant) pair.
-Returns a list of dicts with keys 'ep', 'device', 'compatibility_string'.)pbdoc")
+          R"pbdoc(Get the EP name for a variant. Returns None if not declared.)pbdoc")
       .def(
           "select_component",
           [](PyModelPackageContext& self, const std::string& component_name,
