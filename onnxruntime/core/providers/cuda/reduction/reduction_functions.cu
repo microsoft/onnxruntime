@@ -4,6 +4,8 @@
 #include "core/providers/cuda/reduction/reduction_functions.h"
 
 #include <algorithm>
+#include <limits>
+#include <type_traits>
 
 #include <cuda.h>
 #include <cuda_fp16.h>

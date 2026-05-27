@@ -433,7 +433,7 @@ TEST(ReductionOpTest, ReduceL1_int32_INT_MIN) {
   test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
   // Exclude EPs that may not implement the CPU's saturating INT_MIN behavior.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // Summation overflow: summing large positive values should saturate to INT_MAX rather than wrap.
@@ -446,7 +446,7 @@ TEST(ReductionOpTest, ReduceL1_int32_summation_overflow) {
   test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
   // CUDA now uses double accumulation (same as CPU), so saturation matches.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_default_axes_keepdims) {
@@ -589,7 +589,7 @@ TEST(ReductionOpTest, ReduceL2_int32_INT_MIN) {
   // sqrt(INT_MIN^2) = |INT_MIN| which overflows int32; saturate to INT_MAX.
   test.AddOutput<int32_t>("reduced", {}, {std::numeric_limits<int32_t>::max()});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // Squaring overflow: large values squared exceed int32 range; double accumulator avoids UB.
@@ -603,7 +603,7 @@ TEST(ReductionOpTest, ReduceL2_int32_squaring_overflow) {
   // Both CPU and CUDA use double accumulator to avoid integer overflow UB.
   // For these test values (50000^2 = 2.5e9 < 2^53), squaring is exact in double.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceL2_keepdims) {

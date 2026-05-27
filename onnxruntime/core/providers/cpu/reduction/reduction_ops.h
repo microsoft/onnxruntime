@@ -4,6 +4,10 @@
 #ifndef CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 #define CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 
+#include <cmath>
+#include <limits>
+#include <type_traits>
+
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/optional.h"
@@ -16,9 +20,6 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/reduction/reduction_kernel_base.h"
 #include "core/common/safeint.h"
-#include <cmath>
-#include <limits>
-#include <type_traits>
 
 namespace onnxruntime {
 
