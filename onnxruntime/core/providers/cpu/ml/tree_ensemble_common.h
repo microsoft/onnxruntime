@@ -1022,9 +1022,11 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
   weights_are_all_positive_ = true;
   for (size_t i = 0, end = attributes.target_class_ids.size(); i < end; ++i) {
     weights_classes.insert(attributes.target_class_ids[i]);
-    if (weights_are_all_positive_ && (!attributes.target_class_weights.empty() ? attributes.target_class_weights[i]
-                                                                               : attributes.target_class_weights_as_tensor[i]) < 0)
+    if (weights_are_all_positive_ && (!attributes.target_class_weights.empty()
+                                          ? attributes.target_class_weights[i]
+                                          : attributes.target_class_weights_as_tensor[i]) < 0) {
       weights_are_all_positive_ = false;
+    }
   }
   binary_case_ = this->n_targets_or_classes_ == 2 && weights_classes.size() == 1;
   if (!classlabels_strings_.empty()) {
