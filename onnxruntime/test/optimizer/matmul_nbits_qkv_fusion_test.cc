@@ -356,7 +356,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseWebGpuPatternWit
       TransformerLevel::Level2,
       0,
       nullptr,
-  CheckMatMulNBitsQkvPatternNotFusedGraph));
+      CheckMatMulNBitsQkvPatternNotFusedGraph));
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
