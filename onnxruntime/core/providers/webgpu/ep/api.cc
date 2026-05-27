@@ -64,7 +64,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* /*registration_name*/, co
 
     try {
       // Manual init for the C++ API
-      onnxruntime::ep::ApiInit(ort_api_base);
+      onnxruntime::ep::ApiInit(ort_api_base, ORT_PLUGIN_EP_MIN_ORT_VERSION);
     } catch (const std::exception& e) {
       return report_error(ort_api_base, e.what());
     } catch (...) {
