@@ -536,6 +536,9 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
       "d3d_disable_ieee_strictness",
   };
 #ifndef NDEBUG
+  // validation_mode_explicitly_set_ only changes release behavior; mark it used in debug builds
+  // to avoid -Wunused-private-field on toolchains that treat warnings as errors.
+  ORT_UNUSED_PARAMETER(validation_mode_explicitly_set_);
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
                                       ? std::begin(toggles) + 1
                                       : std::begin(toggles),
