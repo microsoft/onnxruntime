@@ -500,7 +500,7 @@ static void BM_GQA_Flash(benchmark::State& state) {
   // Output [B, S, N, H]
   std::vector<float> output(static_cast<size_t>(batch_size) * seq_len * num_heads * head_size, 0.0f);
 
-  // Determine block sizes (same logic as operator)
+  // Fixed block sizes for reproducible benchmarks (operator computes from L2 cache size)
   int q_block_size = 64;
   int kv_block_size = 256;
 
@@ -525,15 +525,14 @@ static void BM_GQA_Flash(benchmark::State& state) {
     buffer_size_per_thread =
         (static_cast<size_t>(q_block_size) * 2 +                                   // l + m
          static_cast<size_t>(q_block_size) * static_cast<size_t>(kv_block_size) +  // scores
-         static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size) +      // temp_output
-         static_cast<size_t>(kv_block_size) * static_cast<size_t>(head_size)) *    // v_dequant
+         static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size)) *     // temp_output
         sizeof(float);
   }
   size_t total_buffer_floats = (buffer_size_per_thread * thread_count + partials_buffer_bytes) / sizeof(float);
   std::vector<float> buffer(total_buffer_floats);
   float* partials_ptr = use_flash_decoding
-      ? buffer.data() + (buffer_size_per_thread * thread_count) / sizeof(float)
-      : nullptr;
+                            ? buffer.data() + (buffer_size_per_thread * thread_count) / sizeof(float)
+                            : nullptr;
 
   MlasFlashAttentionQuantizedKVArgs args{};
   args.batch_size = batch_size;

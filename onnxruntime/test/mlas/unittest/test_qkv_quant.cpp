@@ -507,7 +507,9 @@ class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
 
     MlasFlashAttentionQuantizedKV(&args, nullptr);
 
-    // Compare
+    // Compare: flash uses ComputeSumExpF32Kernel (SIMD polynomial approx) while
+    // NaiveReference uses std::exp. Tolerance accounts for accumulation order
+    // differences across platforms/ISAs.
     float atol = IsInt4(quant_type) ? 1e-3f : 1e-4f;
     for (size_t i = 0; i < seq_len * head_size; i++) {
       float diff = std::fabs(output_flash[i] - output_ref[i]);
@@ -604,8 +606,9 @@ class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
 
     MlasFlashAttentionQuantizedKV(&args, nullptr);
 
-    // Compare
-    float atol = IsInt4(quant_type) ? 1e-4f : 1e-5f;
+    // Compare: flash decoding has an extra reduce phase with exp rescaling,
+    // so tolerance is slightly larger than the single-pass flash attention test.
+    float atol = IsInt4(quant_type) ? 1e-3f : 1e-4f;
     for (size_t i = 0; i < head_size; i++) {
       float diff = std::fabs(output_flash[i] - output_ref[i]);
       ASSERT_LE(diff, atol)

@@ -260,6 +260,9 @@ def run_benchmarks(args):
     warmup = args.warmup
     repeats = args.repeats
 
+    # Save and restore env var to avoid side effects on callers
+    saved_env = os.environ.get("ORT_GQA_DISABLE_FLASH_ATTENTION")
+
     print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
     print(f"Threads: {8}, Warmup: {warmup}, Repeats: {repeats}")
     print(f"{'Config':<25} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
@@ -279,8 +282,11 @@ def run_benchmarks(args):
         speedup = naive_ms / flash_ms if flash_ms > 0 else float("inf")
         print(f"{label:<25} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x")
 
-    # Cleanup
-    os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
+    # Restore original env state
+    if saved_env is not None:
+        os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = saved_env
+    else:
+        os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
     print()
 
 
