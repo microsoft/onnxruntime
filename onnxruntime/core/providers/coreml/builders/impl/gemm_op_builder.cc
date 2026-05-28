@@ -70,8 +70,9 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 // This is an internal function, requires input tensor to be 2d float/float16 tensor
 template <typename T>
 static Status GetTensorDataTransposed(const ONNX_NAMESPACE::TensorProto& tensor,
+                                      const std::filesystem::path& model_path,
                                       std::vector<T>& transposed_data) {
-  Initializer unpacked_tensor(tensor);
+  Initializer unpacked_tensor(tensor, model_path);
   const auto src_data = unpacked_tensor.DataAsSpan<T>();
   const auto& tensor_shape = tensor.dims();
   auto x_t = SafeInt<size_t>(tensor_shape[0]);
@@ -138,12 +139,16 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         // transpose from {K, N} to {N, K}
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
           std::vector<float> weight_nk;
-          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
+          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer,
+                                                      model_builder.GetGraphViewer().ModelPath(),
+                                                      weight_nk));
           AddOperationInput(*gemm_op, "weight",
                             model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
         } else {  // TensorProto_DataType_FLOAT16
           std::vector<MLFloat16> weight_nk;
-          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
+          ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer,
+                                                      model_builder.GetGraphViewer().ModelPath(),
+                                                      weight_nk));
           AddOperationInput(*gemm_op, "weight",
                             model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
         }
@@ -217,7 +222,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), *b_initializer));
     } else {
       std::vector<float> b_transposed;
-      ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, b_transposed));
+      ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer,
+                                                  model_builder.GetGraphViewer().ModelPath(),
+                                                  b_transposed));
       CreateCoreMLWeight(*coreml_inner_product->mutable_weights(), b_transposed);
     }
 

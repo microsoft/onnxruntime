@@ -1081,7 +1081,7 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
                                            const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::optional<gsl::span<const int64_t>> shape) {
   const auto data_type = tensor.data_type();
-  Initializer unpacked_tensor(tensor);
+  Initializer unpacked_tensor(tensor, graph_viewer_.ModelPath());
   std::string_view ret;
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
