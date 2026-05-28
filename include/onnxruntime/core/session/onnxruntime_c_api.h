@@ -8601,12 +8601,19 @@ struct OrtInteropApi {
 
 /** \brief API table for model package workflows.
  *
+ * A model package is a directory containing one or more *components* (logical models).
+ * Each component has one or more *variants*, where each variant targets a single
+ * execution provider (EP). The package manifest declares the EP name, device type,
+ * and an optional compatibility string for every variant so that the runtime can
+ * automatically select the best variant for the hardware and EPs available in the
+ * caller's session options.
+ *
  * Obtain this table from OrtApi::GetModelPackageApi(). The APIs support:
- * - creating model package options from OrtSessionOptions,
- * - loading a package context from a package root path,
- * - querying component and variant metadata,
- * - selecting a component and resolving its best variant,
- * - querying selected variant files and per-file options,
+ * - creating model package options that capture EP configuration from OrtSessionOptions,
+ * - loading a package context (manifest + metadata) from a package root path,
+ * - querying component/variant metadata including per-variant EP information,
+ * - selecting a component (which also resolves the best-matching variant),
+ * - querying the selected variant's name and folder path,
  * - creating an OrtSession from the selected component context.
  *
  * Typical flow:
@@ -8615,10 +8622,12 @@ struct OrtInteropApi {
  * 2) Load package metadata:
  *    - CreateModelPackageContext()
  * 3) Query metadata (optional):
+ *    - ModelPackage_GetSchemaVersion()
  *    - ModelPackage_GetComponentCount()
  *    - ModelPackage_GetComponentNames()
  *    - ModelPackage_GetVariantCount()
  *    - ModelPackage_GetVariantNames()
+ *    - ModelPackage_GetVariantEpName()
  * 4) Select a component and resolve variant:
  *    - SelectComponent()
  * 5) Query selected variant info (optional):
