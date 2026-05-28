@@ -1,0 +1,77 @@
+name: Nightly ONNX Runtime WebGPU Builds
+
+on:
+  schedule:
+  - cron: '0 9 * * *'  # Daily at 09:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webgpu_shader_key_validation:
+    runs-on: [
+      "self-hosted",
+      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "JobId=webgpu_shader_validation-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      ]
+    timeout-minutes: 90
+    env:
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: "0"
+      ONNXRUNTIME_TEST_GPU_DEVICE_ID: "0"
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        submodules: none
+
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+        architecture: x64
+
+    - name: Locate vcvarsall and Setup Env
+      uses: ./.github/actions/locate-vcvarsall-and-setup-env
+      with:
+        architecture: x64
+
+    - name: Install python modules
+      run: python -m pip install -r tools\ci_build\github\windows\python\requirements.txt
+      shell: cmd
+      working-directory: ${{ github.workspace }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: "24"
+
+    - name: Build and Test
+      shell: pwsh
+      run: |
+        $env:ORT_WEBGPU_EP_SHADER_DUMP_FILE = "${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\shader_dump.log"
+
+        python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+          --config RelWithDebInfo `
+          --build_dir ${{ github.workspace }} `
+          --use_binskim_compliant_compile_flags `
+          --cmake_generator "Visual Studio 17 2022" `
+          --build_shared_lib `
+          --use_webgpu `
+          --wgsl_template static `
+          --cmake_extra_defines onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON `
+          --update `
+          --build --parallel `
+          --test
+
+    - name: Check log file
+      shell: cmd
+      run: |
+        dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\shader_dump.log
+
+    - name: Validate shader keys
+      uses: ./.github/actions/webgpu-validate-shader-key
+      with:
+        log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\shader_dump.log

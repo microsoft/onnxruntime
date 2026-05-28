@@ -14,8 +14,15 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win2022-VS2022-webgpu-A10
-      os: windows
+      ${{ if eq(parameters.arch, 'arm64') }}:
+        name: onnxruntime-qnn-windows-vs-2022-arm64
+        os: windows
+        hostArchitecture: Arm64
+        demands:
+          - Agent.Version -equals 4.264.2
+      ${{ else }}:
+        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        os: windows
     steps:
     - checkout: self
       clean: true
@@ -31,9 +38,7 @@ stages:
       artifact: webgpu_plugin_python_win_${{ parameters.arch }}
       displayName: 'Download Python wheel'
 
-    - pwsh: |
-        $ErrorActionPreference = 'Stop'
-
+    - powershell: |
         echo "creating test_venv"
         python -m venv "$(Build.BinariesDirectory)\test_venv"
 
@@ -56,7 +61,7 @@ stages:
         python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
       displayName: 'Install and test Python package'
       env:
-        ORT_TEST_VERBOSE: $(System.Debug)
+        ORT_TEST_VERBOSE: $(OrtTestVerbose)
 
   # NuGet package test (x64 only — the NuGet package is multi-platform but
   # the test runs on a single Windows agent that exercises the WebGPU EP).
@@ -84,8 +89,7 @@ stages:
 
       # Set up local NuGet feed and extract the package version from the .nupkg filename
       # so the test project can pin to it (instead of resolving via a floating version).
-      - pwsh: |
-          $ErrorActionPreference = 'Stop'
+      - powershell: |
           $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
           New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
 
@@ -127,7 +131,7 @@ stages:
           Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
         displayName: 'Set up local NuGet feed'
 
-      - pwsh: |
+      - powershell: |
           dotnet build `
             "$(WebGpuTestProject)" `
             --configuration Release `
@@ -135,7 +139,7 @@ stages:
             -p:OrtCoreTestVersion=$(OrtCoreTestVersion)
         displayName: 'Build test project'
 
-      - pwsh: |
+      - powershell: |
           dotnet run `
             --project "$(WebGpuTestProject)" `
             --configuration Release `

@@ -4059,6 +4059,50 @@ TEST(MathOpTest, CosFloat16) {
   }
 }
 
+TEST(MathOpTest, Sin_Opset22) {
+  OpTester test("Sin", 22);
+  TrigFloatTest<::sinf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
+
+TEST(MathOpTest, Cos_Opset22) {
+  OpTester test("Cos", 22);
+  TrigFloatTest<::cosf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
+
+#ifdef USE_CUDA
+TEST(MathOpTest, Sin_BFloat16_Opset22_CUDA) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  OpTester test("Sin", 22);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("input", dims, MakeBFloat16({1.1f, -1.1f, 2.2f, -2.2f}));
+  test.AddOutput<BFloat16>("output", dims, MakeBFloat16({std::sin(1.1f), std::sin(-1.1f), std::sin(2.2f), std::sin(-2.2f)}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Cos_BFloat16_Opset22_CUDA) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  OpTester test("Cos", 22);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("input", dims, MakeBFloat16({1.1f, -1.1f, 2.2f, -2.2f}));
+  test.AddOutput<BFloat16>("output", dims, MakeBFloat16({std::cos(1.1f), std::cos(-1.1f), std::cos(2.2f), std::cos(-2.2f)}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<::tanf>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
@@ -4183,6 +4227,29 @@ TEST(MathOpTest, ErfMoreData) {
       -0.999433f, -0.00105786f, 0.00133995f};
   std::vector<int64_t> dims{static_cast<int64_t>(inputs.size())};
 
+  test.AddInput<float>("A", dims, inputs);
+  test.AddOutput<float>("B", dims, outputs);
+  test.Run();
+}
+
+TEST(MathOpTest, ErfNaN) {
+  // Regression for #28462: NaN inputs were clamped to 1.0 on the FMA3 path.
+  OpTester test("Erf", 9);
+  constexpr float qnan = std::numeric_limits<float>::quiet_NaN();
+  constexpr int64_t size = 36;
+  std::vector<int64_t> dims{size};
+  std::vector<float> inputs(size);
+  std::vector<float> outputs(size);
+  for (int64_t i = 0; i < size; ++i) {
+    if (i % 5 == 0) {
+      inputs[i] = qnan;
+      outputs[i] = qnan;
+    } else {
+      const float v = 0.1f * static_cast<float>(i - size / 2);
+      inputs[i] = v;
+      outputs[i] = std::erf(v);
+    }
+  }
   test.AddInput<float>("A", dims, inputs);
   test.AddOutput<float>("B", dims, outputs);
   test.Run();

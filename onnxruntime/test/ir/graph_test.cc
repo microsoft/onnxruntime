@@ -3101,5 +3101,307 @@ TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
   ASSERT_EQ(it->raw_data().size(), 32 * sizeof(int64_t));
 }
 
+// Test that a malformed model with an initializer that has no corresponding NodeArg
+// is properly rejected during graph loading.
+TEST_F(GraphTest, MalformedModelInitializerWithoutNodeArg) {
+  // Construct a model proto manually with ir_version < 4 where an initializer
+  // has no matching graph input (and therefore no NodeArg is created for it).
+  // The graph output references the orphaned initializer, but the output proto
+  // entry lacks type info so no NodeArg is created via the output loop either.
+  ModelProto model_proto;
+  model_proto.set_ir_version(3);  // ir_version < 4 requires initializers to be graph inputs
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Add a valid graph input with type
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Add a node
+  auto* node = graph_proto->add_node();
+  node->add_input("X");
+  node->add_output("Y");
+  node->set_op_type("Identity");
+
+  // Add a normal graph output with type
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Add an orphaned initializer (no matching graph input for ir_version < 4).
+  // This means no NodeArg is created for "orphan_init" in the constructor.
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("orphan_init");
+  initializer->set_data_type(TensorProto_DataType_FLOAT);
+  initializer->add_dims(2);
+  initializer->add_float_data(1.0f);
+  initializer->add_float_data(2.0f);
+
+  // Add a second output referencing the orphaned initializer.
+  // Intentionally omit type so that no NodeArg is created for it via the output loop.
+  auto* output2 = graph_proto->add_output();
+  output2->set_name("orphan_init");
+  // No type set - this means GetOrCreateNodeArg won't be called for this output
+
+  // Loading this model should fail with a proper error (not a crash)
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      Model::Load(std::move(model_proto), model, nullptr, *logger_),
+      "orphan_init");
+}
+
+// Test that a model with an If node containing empty subgraphs
+// (present but empty GraphProto) is properly rejected.
+TEST_F(GraphTest, MalformedModelEmptySubgraph) {
+  // Construct a model with an If node whose then_branch and else_branch
+  // subgraphs are present but completely empty (no inputs, no outputs, no nodes).
+  ModelProto model_proto;
+  model_proto.set_ir_version(9);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Add a boolean condition input for the If node
+  auto* cond_input = graph_proto->add_input();
+  cond_input->set_name("cond");
+  auto* cond_type = cond_input->mutable_type()->mutable_tensor_type();
+  cond_type->set_elem_type(TensorProto_DataType_BOOL);
+  cond_type->mutable_shape();  // scalar
+
+  // Add an If node with empty then_branch and else_branch subgraphs
+  auto* node = graph_proto->add_node();
+  node->add_input("cond");
+  node->add_output("Y");
+  node->set_op_type("If");
+
+  // Add then_branch attribute with an empty GraphProto
+  auto* then_attr = node->add_attribute();
+  then_attr->set_name("then_branch");
+  then_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  then_attr->mutable_g();  // allocate empty GraphProto
+
+  // Add else_branch attribute with an empty GraphProto
+  auto* else_attr = node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  else_attr->mutable_g();  // allocate empty GraphProto
+
+  // Add graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Loading the model should fail gracefully — not crash.
+  // The empty subgraphs have no outputs, which violates the If op spec.
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
+  EXPECT_FALSE(status.IsOK());
+}
+
+// Test for GitHub issue #24880: subgraph referencing an initializer from the outer graph
+// should resolve successfully even without explicit value_info in the subgraph.
+// Uses a custom op with a GRAPH attribute but NO type inference function, so subgraph
+// type inferencing is never invoked. This directly exercises the verification-time
+// propagation in VerifyNodeAndOpMatch.
+TEST_F(GraphTest, OuterScopeInitializerTypeInfoPropagatedToSubgraph) {
+  // Register a custom op with a GRAPH attribute but no type/shape inference function.
+  // This simulates ops like BeamSearch whose schema inference does not invoke subgraph
+  // inferencing, so InferAndVerifySubgraphTypes is never called during type inference.
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry =
+      std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schema = {
+      OpSchema()
+          .SetName("FakeSubgraphOp")
+          .SetDomain("FakeTestDomain")
+          .Input(0, "X", "Input tensor", "T")
+          .Output(0, "Y", "Output tensor", "T")
+          .Attr("body", "A subgraph", AttributeProto::GRAPH)
+          .TypeConstraint("T", OpSchema::all_tensor_types(),
+                          "Constrain input and output types to any tensor type.")};
+  ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
+
+  // Build the model proto.
+  // Main graph: float input "x" [2,3], float initializer "weight" [2,3],
+  //             FakeSubgraphOp node with a subgraph that references "weight".
+  // The subgraph uses "weight" via implicit capture (no value_info for it in the subgraph).
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  ImportOpset(model_proto, "", 16);
+  ImportOpset(model_proto, "FakeTestDomain", 1);
+
+  GraphProto& main_graph = *model_proto.mutable_graph();
+  main_graph.set_name("main_graph");
+
+  // Main graph input: float tensor "x"
+  ValueInfoProto* x_input = main_graph.add_input();
+  x_input->set_name("x");
+  SetTypeAndShape(x_input->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Initializer "weight" in the main graph (float [2,3]).
+  // Not added as a graph input — ORT relaxes the ONNX requirement that initializers
+  // must also be listed as graph inputs.
+  TensorProto* weight_init = main_graph.add_initializer();
+  weight_init->set_name("weight");
+  weight_init->set_data_type(TensorProto_DataType_FLOAT);
+  weight_init->add_dims(2);
+  weight_init->add_dims(3);
+  for (int i = 0; i < 6; ++i) {
+    weight_init->add_float_data(static_cast<float>(i));
+  }
+
+  // Build subgraph: Identity(weight) -> result
+  // "weight" is from the outer scope — deliberately NO value_info for it in this subgraph.
+  // It will be picked up as an implicit input by BuildConnections.
+  GraphProto subgraph;
+  subgraph.set_name("body_subgraph");
+
+  // Subgraph output
+  ValueInfoProto* sg_output = subgraph.add_output();
+  sg_output->set_name("result");
+  SetTypeAndShape(sg_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Identity node: result = Identity(weight)
+  NodeProto* identity_node = subgraph.add_node();
+  identity_node->set_op_type("Identity");
+  *identity_node->add_input() = "weight";  // outer scope initializer
+  *identity_node->add_output() = "result";
+
+  // FakeSubgraphOp node: takes "x" as input, has "body" subgraph attribute
+  NodeProto* fake_node = main_graph.add_node();
+  fake_node->set_op_type("FakeSubgraphOp");
+  fake_node->set_domain("FakeTestDomain");
+  fake_node->set_name("fake_subgraph_node");
+  *fake_node->add_input() = "x";
+  *fake_node->add_output() = "y";
+
+  AttributeProto* body_attr = fake_node->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  *body_attr->mutable_g() = subgraph;
+
+  // Main graph output
+  ValueInfoProto* main_output = main_graph.add_output();
+  main_output->set_name("y");
+  SetTypeAndShape(main_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Load the model — this calls Graph::Resolve internally.
+  // Without the fix, this fails with:
+  //   "input arg (weight) does not have type information set by parent node"
+  // because FakeSubgraphOp has no type inference that propagates types to the subgraph.
+  // The fix propagates type info from implicit_input_defs during VerifyNodeAndOpMatch.
+  std::shared_ptr<Model> model;
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *logger_));
+}
+
+// Negative companion to OuterScopeInitializerTypeInfoPropagatedToSubgraph.
+// The subgraph declares a value_info for the outer-scope initializer "weight"
+// with a conflicting element type (INT64 vs FLOAT).  Model::Load must fail and
+// the error message must identify the type conflict.
+TEST_F(GraphTest, OuterScopeInitializerConflictingTypeFails) {
+  // Same custom-op registration as the positive test.
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry =
+      std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schema = {
+      OpSchema()
+          .SetName("FakeSubgraphOp2")
+          .SetDomain("FakeTestDomain")
+          .Input(0, "X", "Input tensor", "T")
+          .Output(0, "Y", "Output tensor", "T")
+          .Attr("body", "A subgraph", AttributeProto::GRAPH)
+          .TypeConstraint("T", OpSchema::all_tensor_types(),
+                          "Constrain input and output types to any tensor type.")};
+  ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
+
+  // Build the model proto — identical outer graph to the positive test.
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  ImportOpset(model_proto, "", 16);
+  ImportOpset(model_proto, "FakeTestDomain", 1);
+
+  GraphProto& main_graph = *model_proto.mutable_graph();
+  main_graph.set_name("main_graph");
+
+  // Main graph input: float tensor "x" [2,3]
+  ValueInfoProto* x_input = main_graph.add_input();
+  x_input->set_name("x");
+  SetTypeAndShape(x_input->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Initializer "weight" in the main graph: FLOAT [2,3].
+  TensorProto* weight_init = main_graph.add_initializer();
+  weight_init->set_name("weight");
+  weight_init->set_data_type(TensorProto_DataType_FLOAT);
+  weight_init->add_dims(2);
+  weight_init->add_dims(3);
+  for (int i = 0; i < 6; ++i) {
+    weight_init->add_float_data(static_cast<float>(i));
+  }
+
+  // Build subgraph: Identity(weight) -> result.
+  // Unlike the positive test, we add a value_info for "weight" that declares
+  // it as INT64 [2,3] — conflicting with the outer-scope FLOAT type.
+  GraphProto subgraph;
+  subgraph.set_name("body_subgraph");
+
+  // Conflicting value_info: "weight" as INT64 [2,3] instead of FLOAT [2,3].
+  ValueInfoProto* weight_vi = subgraph.add_value_info();
+  weight_vi->set_name("weight");
+  SetTypeAndShape(weight_vi->mutable_type()->mutable_tensor_type(), TensorProto_DataType_INT64, {2, 3});
+
+  // Subgraph output
+  ValueInfoProto* sg_output = subgraph.add_output();
+  sg_output->set_name("result");
+  SetTypeAndShape(sg_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Identity node: result = Identity(weight)
+  NodeProto* identity_node = subgraph.add_node();
+  identity_node->set_op_type("Identity");
+  *identity_node->add_input() = "weight";
+  *identity_node->add_output() = "result";
+
+  // FakeSubgraphOp2 node
+  NodeProto* fake_node = main_graph.add_node();
+  fake_node->set_op_type("FakeSubgraphOp2");
+  fake_node->set_domain("FakeTestDomain");
+  fake_node->set_name("fake_subgraph_node");
+  *fake_node->add_input() = "x";
+  *fake_node->add_output() = "y";
+
+  AttributeProto* body_attr = fake_node->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  *body_attr->mutable_g() = subgraph;
+
+  // Main graph output
+  ValueInfoProto* main_output = main_graph.add_output();
+  main_output->set_name("y");
+  SetTypeAndShape(main_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Model::Load must fail because the subgraph declares "weight" as INT64
+  // while the outer-scope initializer is FLOAT.  The strict UpdateTypeAndShape
+  // call in VerifyNodeAndOpMatch returns "Tensor element type mismatch" which
+  // is then wrapped with the subgraph context "[subgraph:body]".
+  std::shared_ptr<Model> model;
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  auto status = Model::Load(std::move(model_proto), model, &regs, *logger_);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Tensor element type mismatch"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("[subgraph:body]"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

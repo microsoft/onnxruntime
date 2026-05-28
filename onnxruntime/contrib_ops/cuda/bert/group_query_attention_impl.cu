@@ -88,6 +88,7 @@ Status PrepareQKV(
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
+  const int kv_sequence_length = parameters.kv_sequence_length;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;
@@ -123,18 +124,54 @@ Status PrepareQKV(
                                       cudaMemcpyDeviceToDevice, stream));
   }
 
-  ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
-      parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
-      parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
-      q_out, k, v, data.k_scale, data.v_scale,
-      num_heads, kv_num_heads, head_size, sequence_length, batch_size,
-      max_cache_length, data.past_seq_lens,
-      reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
-      parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
-      is_cache_bnsh, parameters.k_quant_type,
-      stream, max_threads_per_block)));
+  // Shared KV path: K/V inputs are empty (kv_sequence_length == 0) and the
+  // past buffer already contains the full shared KV cache.  This requires
+  // past_key/past_value to be provided (with RoPE already applied to K).
+  // When past_present_share_buffer is true, present aliases past and no copy
+  // is needed.  When false (e.g., first prompt), the past→present memcpy
+  // above has already populated the present buffer with the shared KV data.
+  // In both cases, only Q processing (RoPE if configured) is needed here.
+  if (kv_sequence_length == 0) {
+    if (parameters.do_rotary && data.cos_cache != nullptr && data.sin_cache != nullptr) {
+      // Apply RoPE to Q only using the standalone rotary embedding kernel.
+      // Q is in BSNH format; the kernel writes rotated Q to q_out.
+      // position_ids_format: 1 = explicit per-token position_ids, 2 = past_seq_lens + s
+      // When position_ids is null, use format 2 (derives position from past_seq_lens).
+      const int pos_format = data.position_ids != nullptr ? 1 : 2;
+      if constexpr (std::is_same<T, __half>::value) {
+        ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<half>(
+            stream, reinterpret_cast<half*>(q_out), reinterpret_cast<const half*>(data.query),
+            data.position_ids, data.past_seq_lens,
+            reinterpret_cast<const half*>(data.cos_cache), reinterpret_cast<const half*>(data.sin_cache),
+            batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, max_cache_length,
+            pos_format, parameters.rotary_interleaved,
+            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
+      } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
+        ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<onnxruntime::BFloat16>(
+            stream, reinterpret_cast<onnxruntime::BFloat16*>(q_out), reinterpret_cast<const onnxruntime::BFloat16*>(data.query),
+            data.position_ids, data.past_seq_lens,
+            reinterpret_cast<const onnxruntime::BFloat16*>(data.cos_cache), reinterpret_cast<const onnxruntime::BFloat16*>(data.sin_cache),
+            batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, max_cache_length,
+            pos_format, parameters.rotary_interleaved,
+            max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
+      }
+    }
+    // If do_rotary is false, Q is used directly from data.query (q_out == nullptr).
+    // K/V present buffers already point to the shared past — no work needed.
+  } else {
+    ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
+        parameters.is_packed_qkv ? reinterpret_cast<const T*>(data.query) : nullptr,
+        parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.query),
+        parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.key),
+        parameters.is_packed_qkv ? nullptr : reinterpret_cast<const T*>(data.value),
+        q_out, k, v, data.k_scale, data.v_scale,
+        num_heads, kv_num_heads, head_size, sequence_length, batch_size,
+        max_cache_length, data.past_seq_lens,
+        reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
+        parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
+        is_cache_bnsh, parameters.k_quant_type,
+        stream, max_threads_per_block)));
+  }
 
   if (q_out != nullptr) {
     q = reinterpret_cast<const T*>(q_out);

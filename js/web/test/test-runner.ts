@@ -1074,7 +1074,7 @@ export class ProtoOpTestContext {
     this.loadedData = onnx.ModelProto.encode(model).finish().slice();
 
     if (this.downloadModel) {
-      const modelFile = new File([this.loadedData], `op_test_generated_model_${test.name}.onnx`, {
+      const modelFile = new File([this.loadedData as BlobPart], `op_test_generated_model_${test.name}.onnx`, {
         type: 'application/octet-stream',
       });
       const modelTempUrl = URL.createObjectURL(modelFile);

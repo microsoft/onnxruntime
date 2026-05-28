@@ -316,6 +316,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_weight_hash,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
+                                          const std::string& hardware_device_types,
+                                          const std::string& hardware_vendor_ids,
                                           bool use_fp16, bool captureState) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -370,7 +372,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
-                      TraceLoggingUInt8(0, "schemaVersion"),
+                      // schemaVersion 1: added hardwareDeviceTypes and hardwareVendorIds
+                      TraceLoggingUInt8(1, "schemaVersion"),
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
@@ -387,6 +390,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
+                      TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
                       TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   } else {
@@ -398,7 +403,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
-                      TraceLoggingUInt8(0, "schemaVersion"),
+                      // schemaVersion 1: added hardwareDeviceTypes and hardwareVendorIds
+                      TraceLoggingUInt8(1, "schemaVersion"),
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
@@ -415,6 +421,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
+                      TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
+                      TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
                       TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }
@@ -556,6 +564,41 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"),
                     TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
+}
+
+void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
+                                        const std::string& ep_type,
+                                        const std::string& hardware_device_type,
+                                        uint32_t hardware_vendor_id,
+                                        uint32_t hardware_device_id,
+                                        const std::string& hardware_vendor,
+                                        const std::string& ep_vendor,
+                                        int assigned_node_count,
+                                        uint32_t total_runs_since_last,
+                                        int64_t total_run_duration_since_last) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "EpDeviceUsage",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingString(ep_type.c_str(), "executionProviderType"),
+                    TraceLoggingString(hardware_device_type.c_str(), "hardwareDeviceType"),
+                    TraceLoggingUInt32(hardware_vendor_id, "hardwareVendorId"),
+                    TraceLoggingUInt32(hardware_device_id, "hardwareDeviceId"),
+                    TraceLoggingString(hardware_vendor.c_str(), "hardwareVendor"),
+                    TraceLoggingString(ep_vendor.c_str(), "epVendor"),
+                    TraceLoggingInt32(assigned_node_count, "assignedNodeCount"),
+                    TraceLoggingUInt32(total_runs_since_last, "totalRunsSinceLast"),
+                    TraceLoggingInt64(total_run_duration_since_last, "totalRunDurationSinceLast"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 

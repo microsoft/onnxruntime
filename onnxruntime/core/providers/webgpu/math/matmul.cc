@@ -164,7 +164,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   inputs[1] = b;
   if (has_bias) {
     const auto* bias = context.Input(2);
-    inputs.push_back(bias);
+    inputs[2] = bias;
   }
 
   if (intel::CanApplyMatMulIntel(context, helper.M(), helper.N(), helper.K())) {
