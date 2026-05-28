@@ -191,6 +191,19 @@ The flash kernel parallelizes across `(batch, head, q_block)` tiles using the OR
 
 The V dequantization temp buffer was eliminated by fusing dequantization into `MlasSVGemm` with `Beta=1.0` (accumulate mode). This reduces per-thread buffer size by `Bc × H × 4` bytes (e.g., 64 KB for Bc=128, H=128).
 
+### Flash Decoding (Decode Optimization)
+
+For decode steps (`sequence_length == 1`), the standard `(batch, head, q_block)` partitioning yields only `batch × num_heads` tasks, which can underutilize thread pools on machines with many cores (e.g., 96 threads with batch=1, num_heads=32 produces only 32 tasks).
+
+When `batch × num_heads < thread_count` and `kv_chunk_count > 1`, the kernel switches to a **flash decoding** strategy that also partitions along the KV sequence dimension:
+
+- **Phase 1** (parallel over `batch × num_heads × kv_chunk_count` tasks): Each thread computes partial attention for one KV chunk, producing per-chunk `(m, l, S_exp × V)` stored in a partials buffer.
+- **Phase 2** (parallel over `batch × num_heads` tasks): Merge partials using log-sum-exp rescaling: `output = Σ_c(exp(m_c − m_global) × partial_c) / Σ_c(exp(m_c − m_global) × l_c)`.
+
+The partials buffer is allocated alongside the per-thread scratch in a single allocation:
+- Per-thread scratch: `scores[Bc]` (one float per KV block element)
+- Partials: `batch × num_heads × kv_chunks × (2 + H)` floats (m, l, and partial output per chunk)
+
 ## MLAS Dispatch Paths
 
 MLAS selects the best available quantized KV-cache GEMM implementation through the platform dispatch table.
@@ -314,22 +327,7 @@ For comparison, the earlier PR description reported the approximate AVX512 VNNI 
 
 ### Flash Attention vs Naive benchmark results
 
-Measured on Intel Xeon Platinum 8480C, 96 CPUs. Shape: B=1, num_heads=16, kv_num_heads=8, head_size=128, INT8 per-tensor.
-
-These results are from the operator-level Python benchmark. To reproduce:
-
-```bash
-# Build ORT with Python enabled (CPU only)
-python tools/ci_build/build.py --build_dir build/cpu --config Release \
-  --parallel --build_wheel --skip_tests
-
-# Install the wheel, then run from a directory outside the ORT source tree:
-cd /tmp
-python <ort_src>/onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py \
-  --warmup 5 --repeats 20
-```
-
-The MLAS-level C++ benchmark (`bench_qkv_quant.cpp`) produces similar results without operator overhead:
+Measured on Intel Xeon Platinum 8480C, 96 CPUs. INT8 quantized KV cache. MLAS-level C++ benchmark (`bench_qkv_quant.cpp`):
 
 ```bash
 cd build/cpu/Release
@@ -342,25 +340,50 @@ cd build/cpu/Release
 
 #### Latency — Prefill (S = T, prompt phase)
 
-| Seq Length | Naive (ms) | Flash (ms) | Speedup | Threads |
-|---:|---:|---:|---:|---:|
-| 512 | 8.9 | 6.6 | 1.3x | 8 |
-| 1024 | 44.3 | 26.5 | 1.7x | 8 |
-| 2048 | 174.7 | 91.2 | 1.9x | 8 |
-| 4096 | 824.1 | 358.4 | 2.3x | 8 |
-| 512 | 60.7 | 45.9 | 1.3x | 1 |
-| 1024 | 310.0 | 177.3 | 1.7x | 1 |
-| 2048 | 1322.2 | 708.7 | 1.9x | 1 |
-| 4096 | 6335.7 | 2779.5 | 2.3x | 1 |
+Shape: B=1, num_heads=16, kv_num_heads=8, head_size=128, threads=8.
+
+| Seq Length | Naive (ms) | Flash (ms) | Speedup | Quant |
+|---:|---:|---:|---:|:---|
+| 512 | 9.9 | 8.1 | 1.2x | per-tensor |
+| 1024 | 44.4 | 27.0 | 1.6x | per-tensor |
+| 2048 | 190.9 | 116.9 | 1.6x | per-tensor |
+| 4096 | 1257.8 | 461.6 | 2.7x | per-tensor |
+| 512 | 10.7 | 10.8 | 1.0x | per-channel |
+| 1024 | 49.5 | 41.7 | 1.2x | per-channel |
+| 2048 | 212.1 | 164.1 | 1.3x | per-channel |
+| 4096 | 1223.9 | 607.8 | 2.0x | per-channel |
 
 #### Latency — Decode (S = 1, token generation)
 
-| Total Seqlen | Naive (ms) | Flash (ms) | Speedup | Threads |
-|---:|---:|---:|---:|---:|
-| 512 | 0.23 | 0.25 | 0.9x | 8 |
-| 1024 | 0.37 | 0.36 | 1.0x | 8 |
-| 2048 | 0.62 | 0.64 | 1.0x | 8 |
-| 4096 | 1.02 | 1.15 | 0.9x | 8 |
+Shape: B=1, num_heads=16, kv_num_heads=8, head_size=128, threads=8.
+Flash decoding is NOT active for this config (batch×heads=16 > threads=8).
+
+| Total Seqlen | Naive (us) | Flash (us) | Speedup | Quant |
+|---:|---:|---:|---:|:---|
+| 512 | 32 | 22 | 1.4x | per-tensor |
+| 1024 | 71 | 47 | 1.5x | per-tensor |
+| 2048 | 120 | 87 | 1.4x | per-tensor |
+| 4096 | 210 | 174 | 1.2x | per-tensor |
+| 512 | 53 | 31 | 1.7x | per-channel |
+| 1024 | 86 | 52 | 1.7x | per-channel |
+| 2048 | 172 | 97 | 1.8x | per-channel |
+| 4096 | 299 | 191 | 1.6x | per-channel |
+
+#### Latency — Flash Decoding (S = 1, KV partitioned across threads)
+
+Shape: B=1, num_heads=4, kv_num_heads=4 (MHA), head_size=128, threads=8.
+Flash decoding IS active (batch×heads=4 < threads=8, KV partitioned across idle threads).
+
+| Total Seqlen | Naive (us) | Flash (us) | Speedup | Quant |
+|---:|---:|---:|---:|:---|
+| 512 | 31 | 25 | 1.2x | per-tensor |
+| 1024 | 41 | 25 | 1.6x | per-tensor |
+| 2048 | 67 | 34 | 2.0x | per-tensor |
+| 4096 | 197 | 54 | 3.7x | per-tensor |
+| 512 | 25 | 28 | 0.9x | per-channel |
+| 1024 | 72 | 27 | 2.7x | per-channel |
+| 2048 | 144 | 37 | 3.9x | per-channel |
+| 4096 | 304 | 60 | 5.1x | per-channel |
 
 #### Peak Memory — Prefill (S = T, prompt phase)
 
@@ -370,7 +393,7 @@ cd build/cpu/Release
 | 4096 | +1107 | +82 | 13.5x |
 | 4096 (N=32) | +2131 | +87 | 24.5x |
 
-The flash path's primary benefit is **memory reduction**: avoiding the full O(N×S×T) attention matrix allocation. For S=4096 with 16 heads, the naive path allocates ~1 GB for the attention scores alone, while the flash path uses only ~80 MB of working memory regardless of sequence length. The latency speedup (1.3–2.3x) comes from improved cache locality — the tiled algorithm keeps working data within L2 cache. The speedup ratio is the same regardless of thread count, confirming it is purely algorithmic (not parallelism-driven). Decode (S=1) shows no benefit because the single-row attention vector is already small.
+**Summary**: The flash path's primary benefit for prefill is **memory reduction** — avoiding the full O(N×S×T) attention matrix. For S=4096 with 16 heads, the naive path allocates ~1 GB for attention scores while the flash path uses ~80 MB regardless of sequence length. The prefill latency speedup (1.2–2.7x) comes from improved cache locality. For decode, the tiled kernel alone provides 1.2–1.8x speedup from fused dequant+dot. When flash decoding is active (batch×heads < threads), KV partitioning across idle threads yields an additional 2–5x speedup for long sequences by parallelizing the KV scan.
 
 ## Current CPU Limitations
 

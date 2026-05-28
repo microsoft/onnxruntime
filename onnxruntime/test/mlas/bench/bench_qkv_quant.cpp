@@ -508,14 +508,32 @@ static void BM_GQA_Flash(benchmark::State& state) {
   auto* tp = GetBenchThreadPool();
   int thread_count = 8;
 
-  // Working buffer (must match operator's calculation)
-  size_t buffer_size_per_thread =
-      (static_cast<size_t>(q_block_size) * 2 +                                   // l + m
-       static_cast<size_t>(q_block_size) * static_cast<size_t>(kv_block_size) +  // scores
-       static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size) +      // temp_output
-       static_cast<size_t>(kv_block_size) * static_cast<size_t>(head_size)) *    // v_dequant
-      sizeof(float);
-  std::vector<float> buffer(buffer_size_per_thread / sizeof(float) * thread_count);
+  // Flash decoding: for decode (seq_len=1), partition KV across threads
+  int kv_chunk_count = (total_seqlen + kv_block_size - 1) / kv_block_size;
+  bool use_flash_decoding = (seq_len == 1 &&
+                             batch_size * num_heads < thread_count &&
+                             kv_chunk_count > 1);
+
+  // Working buffer
+  size_t buffer_size_per_thread;
+  size_t partials_buffer_bytes = 0;
+  if (use_flash_decoding) {
+    buffer_size_per_thread = static_cast<size_t>(kv_block_size) * sizeof(float);
+    partials_buffer_bytes = static_cast<size_t>(batch_size) * num_heads *
+                            kv_chunk_count * (2 + head_size) * sizeof(float);
+  } else {
+    buffer_size_per_thread =
+        (static_cast<size_t>(q_block_size) * 2 +                                   // l + m
+         static_cast<size_t>(q_block_size) * static_cast<size_t>(kv_block_size) +  // scores
+         static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size) +      // temp_output
+         static_cast<size_t>(kv_block_size) * static_cast<size_t>(head_size)) *    // v_dequant
+        sizeof(float);
+  }
+  size_t total_buffer_floats = (buffer_size_per_thread * thread_count + partials_buffer_bytes) / sizeof(float);
+  std::vector<float> buffer(total_buffer_floats);
+  float* partials_ptr = use_flash_decoding
+      ? buffer.data() + (buffer_size_per_thread * thread_count) / sizeof(float)
+      : nullptr;
 
   MlasFlashAttentionQuantizedKVArgs args{};
   args.batch_size = batch_size;
@@ -542,6 +560,12 @@ static void BM_GQA_Flash(benchmark::State& state) {
   args.k_scale = k_scale.data();
   args.v_scale = v_scale.data();
   args.output = output.data();
+  args.attention_bias = nullptr;
+  args.attention_bias_seqlen_stride = 0;
+  args.attention_bias_broadcast_batch = true;
+  args.attention_bias_broadcast_head = true;
+  args.flash_decoding_partials = partials_ptr;
+  args.kv_chunk_count = kv_chunk_count;
 
   // Warmup
   MlasFlashAttentionQuantizedKV(&args, tp);
@@ -572,6 +596,10 @@ static void FlashGQAArgs(benchmark::internal::Benchmark* b) {
     }
     // Larger batch decode
     b->Args({4, 16, 8, 1, 2048, 128, qt});
+    // Flash decoding cases: B*N < thread_count (8), triggers KV partitioning
+    for (int T : {512, 1024, 2048, 4096}) {
+      b->Args({1, 4, 4, 1, T, 128, qt});  // B=1, N=4, flash decoding enabled
+    }
   }
 }
 
