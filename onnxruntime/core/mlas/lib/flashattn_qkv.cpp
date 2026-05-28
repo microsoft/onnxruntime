@@ -14,7 +14,7 @@ Abstract:
 
     Adapts the online-softmax tiled algorithm from flashattn.cpp to operate
     on quantized K/V buffers using MlasQKGemm (for Q×K^T) and
-    MlasKVDequantize + SGEMM (for S×V accumulation).
+    MlasSVGemm with Beta=1.0 (for fused dequant + S×V accumulation).
 
     Supports causal masking and local window attention.
 
@@ -89,13 +89,11 @@ MlasFlashAttentionQuantizedKVThreaded(
         //   m[q_block_size]             - running max for online softmax
         //   scores[q_block_size * kv_block_size] - QK scores (S)
         //   temp_output[q_block_size * head_size] - accumulated output
-        //   v_dequant[kv_block_size * head_size]  - dequantized V block
         char* buffer_ptr = reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread;
         float* l = reinterpret_cast<float*>(buffer_ptr);
         float* m = l + q_block_size;
         float* scores = m + q_block_size;
         float* temp_output = scores + q_block_size * kv_block_size;
-        float* v_dequant = temp_output + q_block_size * head_size;
 
         // Initialize running state
         for (ptrdiff_t t = 0; t < q_block_size; ++t) {
@@ -217,34 +215,21 @@ MlasFlashAttentionQuantizedKVThreaded(
                 }
             }
 
-            // Step 4: Dequantize V block and accumulate O += S_exp * V_block
+            // Step 4: Accumulate O += S_exp * V_block using fused dequant+GEMM
             const uint8_t* v_block = v_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
-            MlasKVDequantize(
-                v_block,
-                v_dequant,
-                row_size_kv,                        // Rows
-                static_cast<size_t>(head_size),     // Cols
-                static_cast<size_t>(head_size),     // ldb
-                quant_type,
-                head_v_scale,
-                nullptr                             // no thread pool
-            );
-
-            // O += S_exp * V_dequant  (SGEMM with beta=1.0 for accumulation, beta=0.0 for first block)
-            MlasSgemmOperation(
-                CBLAS_TRANSPOSE::CblasNoTrans,
-                CBLAS_TRANSPOSE::CblasNoTrans,
+            MlasSVGemm(
                 row_size_q,                         // M
                 static_cast<size_t>(head_size),     // N
                 row_size_kv,                        // K
-                1.0f,                               // alpha
                 scores,                             // A (exp softmax scores)
                 row_size_kv,                        // lda
-                v_dequant,                          // B (dequantized V)
-                static_cast<size_t>(head_size),     // ldb
-                1.0f,                               // beta (accumulate)
+                v_block,                            // B (quantized V block)
+                quant_type,
+                head_v_scale,
                 temp_output,                        // C (accumulated output)
-                static_cast<size_t>(head_size)      // ldc
+                static_cast<size_t>(head_size),     // ldc
+                1.0f,                               // Beta (accumulate)
+                nullptr                             // no thread pool (already threaded)
             );
         }
 

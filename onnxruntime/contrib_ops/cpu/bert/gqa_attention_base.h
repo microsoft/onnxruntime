@@ -542,7 +542,7 @@ class GQAAttentionBase {
           MlasSVGemm(sequence_length, head_size, total_seqlen,
                      attention_probs + probs_offset, seqlen_present_kv_cache,
                      v_quantized, quant_type, head_v_scale,
-                     output_current, hidden_size, nullptr);
+                     output_current, hidden_size, 0.0f, nullptr);
         }
       });
     }
@@ -772,8 +772,7 @@ class GQAAttentionBase {
     size_t buffer_size_per_thread =
         (static_cast<size_t>(q_block_size) * 2 +                                   // l + m
          static_cast<size_t>(q_block_size) * static_cast<size_t>(kv_block_size) +  // scores
-         static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size) +      // temp_output
-         static_cast<size_t>(kv_block_size) * static_cast<size_t>(head_size)) *    // v_dequant
+         static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size)) *     // temp_output
         sizeof(float);
     size_t total_buffer_bytes = buffer_size_per_thread * thread_count;
     auto flash_buffer_alloc = allocator->Alloc(total_buffer_bytes);

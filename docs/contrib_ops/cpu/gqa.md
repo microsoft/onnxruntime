@@ -155,9 +155,8 @@ For each (batch, head, q_block) tile:
 1. **QK GEMM** — `MlasQKGemm` on a block slice of quantized K cache (Bc rows at a time)
 2. **Causal + local window masking** — Set masked positions to −∞ before softmax
 3. **Online softmax** — Track running max `m` and sum `l`, rescale accumulated output with `exp(m_old − m_new)`
-4. **V dequantize** — `MlasKVDequantize` the current V block to an FP32 temp buffer
-5. **SV accumulate** — `MlasSgemmOperation(beta=1.0)` to accumulate `softmax(QK_block) × V_block` into the output
-6. **Finalize** — Normalize accumulated output by `1/l` after all KV blocks are processed
+4. **Fused SV accumulate** — `MlasSVGemm(..., Beta=1.0)` dequantizes V on the fly and accumulates `softmax(QK_block) × V_block` into the output in a single pass (no intermediate FP32 buffer)
+5. **Finalize** — Normalize accumulated output by `1/l` after all KV blocks are processed
 
 ### Activation Conditions
 
@@ -187,7 +186,8 @@ The flash kernel parallelizes across `(batch, head, q_block)` tiles using the OR
 - `l[Br]` and `m[Br]` — running softmax statistics
 - `scores[Br × Bc]` — QK scores for current KV block
 - `temp_output[Br × H]` — accumulated output
-- `v_dequant[Bc × H]` — dequantized V block
+
+The V dequantization temp buffer was eliminated by fusing dequantization into `MlasSVGemm` with `Beta=1.0` (accumulate mode). This reduces per-thread buffer size by `Bc × H × 4` bytes (e.g., 64 KB for Bc=128, H=128).
 
 ## MLAS Dispatch Paths
 
@@ -387,7 +387,6 @@ The current CPU GroupQueryAttention implementation has a few important limitatio
 
 Further optimization opportunities include:
 
-- Fused `MlasSVGemmAccumulate(beta=1.0)` to avoid the V dequantization temporary buffer in the flash path, performing dequant-and-accumulate in one pass.
 - Extend the flash attention path to support attention bias within the tiled loop.
 - Improve the exact AVX512 INT8 per-tensor QK path without quantizing the FP32 query, for example by processing multiple K-cache rows per query row while keeping FP32 FMA semantics.
 - Add AVX512-specific exact micro-kernels for common decode shapes such as `M=1`, `N=512/2048`, and `K=64/128`.
@@ -421,7 +420,8 @@ CPU features that are limited or not implemented relative to the broader operato
 - `MlasQKGemm(...)`
   - computes FP32 query times quantized K cache transpose
 - `MlasSVGemm(...)`
-  - computes FP32 attention probabilities times quantized V cache
+  - computes `C = Beta*C + A*dequant(B)` where A is FP32 attention probabilities and B is quantized V cache
+  - `Beta=0` (overwrite) for naive path; `Beta=1.0` (accumulate) for flash path
 - `MlasFlashAttentionQuantizedKV(...)`
   - flash attention kernel with online softmax, tiled QK/SV over quantized KV cache
   - parallelizes across (batch, head, q_block) tiles via thread pool

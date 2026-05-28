@@ -128,10 +128,10 @@ static void BM_SVGemm(benchmark::State& state) {
   std::vector<float> C(M * N, 0.0f);
 
   // Warmup
-  MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+  MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
 
   for (auto _ : state) {
-    MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+    MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * M * N * K * 2);
@@ -226,10 +226,10 @@ static void BM_SVGemm_Scalar(benchmark::State& state) {
   auto* saved_dispatch = platform.KVQuantGemmDispatch;
   platform.KVQuantGemmDispatch = nullptr;
 
-  MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+  MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
 
   for (auto _ : state) {
-    MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+    MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
   }
 
   platform.KVQuantGemmDispatch = saved_dispatch;
@@ -306,10 +306,10 @@ static void BM_SVGemm_Avx2(benchmark::State& state) {
   auto* saved_dispatch = platform.KVQuantGemmDispatch;
   platform.KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx2;
 
-  MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+  MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
 
   for (auto _ : state) {
-    MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+    MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
   }
 
   platform.KVQuantGemmDispatch = saved_dispatch;
@@ -444,7 +444,7 @@ static void BM_GQA_Naive(benchmark::State& state) {
           MlasSVGemm(seq_len, head_size, total_seqlen,
                      my_scores, total_seqlen, v_ptr, qt,
                      per_channel ? v_scale.data() + kv_h * head_size : v_scale.data(),
-                     out_ptr, num_heads * head_size, nullptr);
+                     out_ptr, num_heads * head_size, 0.0f, nullptr);
         });
     benchmark::DoNotOptimize(output.data());
   }

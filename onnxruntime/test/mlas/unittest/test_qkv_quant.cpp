@@ -251,7 +251,7 @@ class MlasKVQuantTest : public MlasTestBase {
     RefSVGemm(A, BDequant, CRef, M, N, K, K, N);
 
     // Quantized: MlasSVGemm
-    MlasSVGemm(M, N, K, A, K, BQuant, QuantType, scales, C, N, nullptr);
+    MlasSVGemm(M, N, K, A, K, BQuant, QuantType, scales, C, N, 0.0f, nullptr);
 
     float atol = IsInt4(QuantType) ? 0.15f : 0.02f;
     float rtol = IsInt4(QuantType) ? 0.1f : 0.01f;

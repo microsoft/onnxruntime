@@ -268,7 +268,7 @@ QKGemm_Avx2(
 }
 
 //
-// SVGemm:  C[M,N] = A[M,K] * B[K,N]
+// SVGemm:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
 // B is [K,N] packed row-major.
 //
 // Fused approach: dequantize each B[k,:] element directly into the FMA with
@@ -285,7 +285,8 @@ SVGemm_Avx2(
     MLAS_KV_QUANT_TYPE QuantType,
     const float* Scales,
     float* C,
-    size_t ldc)
+    size_t ldc,
+    float Beta)
 {
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
     const auto* B_bytes = static_cast<const uint8_t*>(B);
@@ -298,13 +299,26 @@ SVGemm_Avx2(
         float* c_row = C + m * ldc;
         const float* a_row = A + m * lda;
 
-        // Zero output
-        size_t n = 0;
-        for (; n < vec_end_n; n += 8) {
-            _mm256_storeu_ps(c_row + n, _mm256_setzero_ps());
-        }
-        for (; n < N; ++n) {
-            c_row[n] = 0.0f;
+        // Initialize output
+        if (Beta == 0.0f) {
+            size_t n = 0;
+            for (; n < vec_end_n; n += 8) {
+                _mm256_storeu_ps(c_row + n, _mm256_setzero_ps());
+            }
+            for (; n < N; ++n) {
+                c_row[n] = 0.0f;
+            }
+        } else if (Beta != 1.0f) {
+            __m256 beta_vec = _mm256_broadcast_ss(&Beta);
+            size_t n = 0;
+            for (; n < vec_end_n; n += 8) {
+                __m256 c_vec = _mm256_loadu_ps(c_row + n);
+                c_vec = _mm256_mul_ps(c_vec, beta_vec);
+                _mm256_storeu_ps(c_row + n, c_vec);
+            }
+            for (; n < N; ++n) {
+                c_row[n] *= Beta;
+            }
         }
 
         if (!int4) {
@@ -315,7 +329,7 @@ SVGemm_Avx2(
                     const float a_val = a_row[k];
                     __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
 
-                    n = 0;
+                    size_t n = 0;
                     for (; n < vec_end_n; n += 8) {
                         __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + n));
                         __m256i i32 = _mm256_cvtepi8_epi32(raw);
@@ -331,35 +345,59 @@ SVGemm_Avx2(
                     }
                 }
             } else {
-                // Per-tensor: accumulate unscaled dot products, then scale the output row once.
-                for (size_t k = 0; k < K; ++k) {
-                    const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
-                    const float a_val = a_row[k];
-                    __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
+                // Per-tensor: when Beta==0, accumulate unscaled then scale once at end.
+                // When Beta!=0, C already has scaled values so fold scale into a_val.
+                if (Beta == 0.0f) {
+                    for (size_t k = 0; k < K; ++k) {
+                        const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
+                        const float a_val = a_row[k];
+                        __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
 
-                    n = 0;
+                        size_t n = 0;
+                        for (; n < vec_end_n; n += 8) {
+                            __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + n));
+                            __m256i i32 = _mm256_cvtepi8_epi32(raw);
+                            __m256 bf = _mm256_cvtepi32_ps(i32);
+                            __m256 c_vec = _mm256_loadu_ps(c_row + n);
+                            c_vec = _mm256_fmadd_ps(a_broadcast, bf, c_vec);
+                            _mm256_storeu_ps(c_row + n, c_vec);
+                        }
+                        for (; n < N; ++n) {
+                            c_row[n] += a_val * static_cast<float>(b_row[n]);
+                        }
+                    }
+
+                    __m256 scale_vec = _mm256_broadcast_ss(Scales);
+                    size_t n = 0;
                     for (; n < vec_end_n; n += 8) {
-                        __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + n));
-                        __m256i i32 = _mm256_cvtepi8_epi32(raw);
-                        __m256 bf = _mm256_cvtepi32_ps(i32);
                         __m256 c_vec = _mm256_loadu_ps(c_row + n);
-                        c_vec = _mm256_fmadd_ps(a_broadcast, bf, c_vec);
+                        c_vec = _mm256_mul_ps(c_vec, scale_vec);
                         _mm256_storeu_ps(c_row + n, c_vec);
                     }
                     for (; n < N; ++n) {
-                        c_row[n] += a_val * static_cast<float>(b_row[n]);
+                        c_row[n] *= Scales[0];
                     }
-                }
+                } else {
+                    // Beta!=0: fold scale into a_val to avoid separate pass
+                    const float tensor_scale = Scales[0];
+                    for (size_t k = 0; k < K; ++k) {
+                        const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
+                        const float a_val = a_row[k] * tensor_scale;
+                        __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
 
-                __m256 scale_vec = _mm256_broadcast_ss(Scales);
-                n = 0;
-                for (; n < vec_end_n; n += 8) {
-                    __m256 c_vec = _mm256_loadu_ps(c_row + n);
-                    c_vec = _mm256_mul_ps(c_vec, scale_vec);
-                    _mm256_storeu_ps(c_row + n, c_vec);
-                }
-                for (; n < N; ++n) {
-                    c_row[n] *= Scales[0];
+                        size_t n = 0;
+                        for (; n < vec_end_n; n += 8) {
+                            __m128i raw = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(b_row + n));
+                            __m256i i32 = _mm256_cvtepi8_epi32(raw);
+                            __m256 bf = _mm256_cvtepi32_ps(i32);
+                            __m256 c_vec = _mm256_loadu_ps(c_row + n);
+                            c_vec = _mm256_fmadd_ps(a_broadcast, bf, c_vec);
+                            _mm256_storeu_ps(c_row + n, c_vec);
+                        }
+                        for (; n < N; ++n) {
+                            c_row[n] += a_val * static_cast<float>(b_row[n]);
+                        }
+                    }
                 }
             }
         } else {
@@ -369,7 +407,7 @@ SVGemm_Avx2(
                 const float a_val = a_row[k];
                 __m256 a_broadcast = _mm256_broadcast_ss(&a_val);
 
-                n = 0;
+                size_t n = 0;
                 for (; n < vec_end_n; n += 8) {
                     __m256 bf = DequantInt4x8(b_row, n, per_channel, Scales);
                     __m256 c_vec = _mm256_loadu_ps(c_row + n);

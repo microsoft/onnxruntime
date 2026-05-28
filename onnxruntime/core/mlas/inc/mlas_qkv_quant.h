@@ -199,7 +199,7 @@ MlasQKGemm(
 /**
  * @brief Softmax-times-V GEMM with a quantized V cache.
  *
- *   C[M, N] = A[M, K] * B[K, N]
+ *   C[M, N] = Beta * C[M, N] + A[M, K] * B[K, N]
  *
  * where:
  *   - A is FP32 row-major, shape [M, K] (attention probabilities), stride lda.
@@ -207,8 +207,8 @@ MlasQKGemm(
  *     with K = total_sequence_length, N = head_size), packed row-major over
  *     rows. Each row occupies
  *     MlasKVQuantPackedRowBytes(QuantType, N) bytes.
- *   - C is FP32 row-major, shape [M, N], stride ldc (>= N). The kernel
- *     overwrites C (no accumulate).
+ *   - C is FP32 row-major, shape [M, N], stride ldc (>= N).
+ *     When Beta == 0, C is overwritten. When Beta != 0, C is accumulated.
  *   - PER_CHANNEL scales are length N and apply along the N (head_size) axis.
  *
  * @param M          Query token count.
@@ -221,6 +221,7 @@ MlasQKGemm(
  * @param Scales     Scale buffer (single scalar or length-N vector).
  * @param C          Output buffer (FP32).
  * @param ldc        Leading dimension of C in elements.
+ * @param Beta       Scalar multiplier for existing C values. 0 = overwrite.
  * @param ThreadPool Optional thread pool.
  */
 void
@@ -236,6 +237,7 @@ MlasSVGemm(
     const float* Scales,
     float* C,
     size_t ldc,
+    float Beta,
     MLAS_THREADPOOL* ThreadPool
     );
 

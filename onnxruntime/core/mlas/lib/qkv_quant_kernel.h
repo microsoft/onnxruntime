@@ -53,7 +53,7 @@ struct MLAS_KV_QUANT_GEMM_DISPATCH {
     QKGemm_Fn* QKGemm = nullptr;
 
     /**
-     * S*V GEMM kernel:  C[M,N] = A[M,K] * B[K,N]
+     * S*V GEMM kernel:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
      *
      * B is quantized (INT8 or INT4), logically [K, N] in packed row-major.
      */
@@ -67,7 +67,8 @@ struct MLAS_KV_QUANT_GEMM_DISPATCH {
         MLAS_KV_QUANT_TYPE QuantType,
         const float* Scales,
         float* C,
-        size_t ldc
+        size_t ldc,
+        float Beta
     );
 
     SVGemm_Fn* SVGemm = nullptr;
