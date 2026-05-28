@@ -1,0 +1,283 @@
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    flashattn_qkv.cpp
+
+Abstract:
+
+    Flash Attention kernel for quantized KV cache (INT8/INT4).
+
+    Adapts the online-softmax tiled algorithm from flashattn.cpp to operate
+    on quantized K/V buffers using MlasQKGemm (for Q×K^T) and
+    MlasKVDequantize + SGEMM (for S×V accumulation).
+
+    Supports causal masking and local window attention.
+
+--*/
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <limits>
+
+#include "mlasi.h"
+#include "mlas_qkv_quant.h"
+
+void
+MlasFlashAttentionQuantizedKVThreaded(
+    void* argptr,
+    std::ptrdiff_t thread_id
+)
+{
+    const MlasFlashAttentionQuantizedKVArgs* args =
+        reinterpret_cast<MlasFlashAttentionQuantizedKVArgs*>(argptr);
+
+    const ptrdiff_t q_block_size = static_cast<ptrdiff_t>(args->q_block_size);
+    const ptrdiff_t kv_block_size = static_cast<ptrdiff_t>(args->kv_block_size);
+    const ptrdiff_t batch_size = static_cast<ptrdiff_t>(args->batch_size);
+    const ptrdiff_t num_heads = static_cast<ptrdiff_t>(args->num_heads);
+    const ptrdiff_t kv_num_heads = static_cast<ptrdiff_t>(args->kv_num_heads);
+    const ptrdiff_t sequence_length = static_cast<ptrdiff_t>(args->sequence_length);
+    const ptrdiff_t total_seqlen = static_cast<ptrdiff_t>(args->total_seqlen);
+    const ptrdiff_t head_size = static_cast<ptrdiff_t>(args->head_size);
+    const ptrdiff_t past_seqlen = static_cast<ptrdiff_t>(args->past_seqlen);
+    const ptrdiff_t local_window_size = static_cast<ptrdiff_t>(args->local_window_size);
+    const float scale = args->scale;
+    const MLAS_KV_QUANT_TYPE quant_type = args->quant_type;
+
+    float* buffer = args->buffer;
+    const ptrdiff_t buffer_size_per_thread = static_cast<ptrdiff_t>(args->buffer_size_per_thread);
+    const ptrdiff_t thread_count = static_cast<ptrdiff_t>(args->thread_count);
+
+    const size_t packed_row_bytes = MlasKVQuantPackedRowBytes(quant_type, static_cast<size_t>(head_size));
+    const size_t kv_num_heads_factor = static_cast<size_t>(num_heads / kv_num_heads);
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
+    auto&& mlas_platform = GetMlasPlatform();
+#endif
+
+    // Total tasks: one per (batch, head, q_block)
+    const ptrdiff_t q_chunk_count = (sequence_length + q_block_size - 1) / q_block_size;
+    const ptrdiff_t total_task_count = batch_size * num_heads * q_chunk_count;
+
+    ptrdiff_t task_start = 0;
+    ptrdiff_t task_end = 0;
+    ptrdiff_t quotient = total_task_count / thread_count;
+    ptrdiff_t remainder = total_task_count % thread_count;
+    if (thread_id < remainder) {
+        task_start = (quotient + 1) * thread_id;
+        task_end = task_start + quotient + 1;
+    } else {
+        task_start = quotient * thread_id + remainder;
+        task_end = task_start + quotient;
+    }
+
+    for (ptrdiff_t task_index = task_start; task_index < task_end; ++task_index) {
+        ptrdiff_t batch_idx = task_index;
+        ptrdiff_t q_idx = (batch_idx % q_chunk_count) * q_block_size;
+        batch_idx /= q_chunk_count;
+        ptrdiff_t head_idx = batch_idx % num_heads;
+        batch_idx /= num_heads;
+
+        // Per-thread buffer layout:
+        //   l[q_block_size]             - running sum for online softmax
+        //   m[q_block_size]             - running max for online softmax
+        //   scores[q_block_size * kv_block_size] - QK scores (S)
+        //   temp_output[q_block_size * head_size] - accumulated output
+        //   v_dequant[kv_block_size * head_size]  - dequantized V block
+        char* buffer_ptr = reinterpret_cast<char*>(buffer) + thread_id * buffer_size_per_thread;
+        float* l = reinterpret_cast<float*>(buffer_ptr);
+        float* m = l + q_block_size;
+        float* scores = m + q_block_size;
+        float* temp_output = scores + q_block_size * kv_block_size;
+        float* v_dequant = temp_output + q_block_size * head_size;
+
+        // Initialize running state
+        for (ptrdiff_t t = 0; t < q_block_size; ++t) {
+            m[t] = std::numeric_limits<float>::lowest();
+            l[t] = 0.0f;
+        }
+        memset(temp_output, 0, static_cast<size_t>(q_block_size * head_size) * sizeof(float));
+
+        const size_t row_size_q = static_cast<size_t>(std::min(q_block_size, sequence_length - q_idx));
+
+        // Determine KV head index for GQA head sharing
+        const size_t kv_head_idx = static_cast<size_t>(head_idx) / kv_num_heads_factor;
+
+        // Pointers into quantized K/V caches
+        // K cache layout: [batch, kv_num_heads, seqlen_present, packed_head_bytes]
+        const size_t k_batch_head_offset =
+            (static_cast<size_t>(batch_idx) * static_cast<size_t>(kv_num_heads) + kv_head_idx) *
+            static_cast<size_t>(args->seqlen_present_kv) * packed_row_bytes;
+        const uint8_t* k_cache_head = args->k_cache + k_batch_head_offset;
+
+        const size_t v_batch_head_offset =
+            (static_cast<size_t>(batch_idx) * static_cast<size_t>(kv_num_heads) + kv_head_idx) *
+            static_cast<size_t>(args->seqlen_present_kv) * packed_row_bytes;
+        const uint8_t* v_cache_head = args->v_cache + v_batch_head_offset;
+
+        // K/V scale pointers
+        const float* head_k_scale = args->per_channel_k
+            ? args->k_scale + kv_head_idx * static_cast<size_t>(head_size)
+            : args->k_scale;
+        const float* head_v_scale = args->per_channel_v
+            ? args->v_scale + kv_head_idx * static_cast<size_t>(head_size)
+            : args->v_scale;
+
+        // Q pointer: layout [batch, num_heads, seq, head_size] or packed
+        const float* q_ptr = args->query +
+            (static_cast<size_t>(batch_idx) * static_cast<size_t>(num_heads) +
+             static_cast<size_t>(head_idx)) * static_cast<size_t>(sequence_length) * static_cast<size_t>(head_size) +
+            static_cast<size_t>(q_idx) * static_cast<size_t>(head_size);
+
+        // Iterate over KV blocks
+        for (ptrdiff_t ir = 0; ir < total_seqlen; ir += kv_block_size) {
+            const size_t row_size_kv = static_cast<size_t>(std::min(kv_block_size, total_seqlen - ir));
+
+            // Step 1: QK^T GEMM with quantized K block
+            // K cache at row offset ir: pointer arithmetic on packed rows
+            const uint8_t* k_block = k_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
+
+            MlasQKGemm(
+                row_size_q,                         // M
+                row_size_kv,                        // N
+                static_cast<size_t>(head_size),     // K
+                scale,                              // Alpha
+                q_ptr,                              // A (FP32 query)
+                static_cast<size_t>(head_size),     // lda
+                k_block,                            // B (quantized K block)
+                quant_type,
+                head_k_scale,
+                scores,                             // C (output scores)
+                row_size_kv,                        // ldc
+                nullptr                             // no thread pool (already threaded)
+            );
+
+            // Step 2: Apply causal mask and Step 3: Online softmax update
+            for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q); ++irow) {
+                float* p = scores + irow * static_cast<ptrdiff_t>(row_size_kv);
+                const ptrdiff_t global_q_pos = past_seqlen + q_idx + irow;
+                const ptrdiff_t causal_limit = global_q_pos + 1;  // can attend to positions [0, causal_limit)
+
+                // Apply causal masking
+                for (ptrdiff_t jcol = 0; jcol < static_cast<ptrdiff_t>(row_size_kv); ++jcol) {
+                    ptrdiff_t kv_pos = ir + jcol;
+                    if (kv_pos >= causal_limit) {
+                        p[jcol] = std::numeric_limits<float>::lowest();
+                    }
+                }
+
+                // Apply local window masking if enabled
+                if (local_window_size >= 0) {
+                    const ptrdiff_t window_start =
+                        (causal_limit > local_window_size) ? (causal_limit - local_window_size) : 0;
+                    for (ptrdiff_t jcol = 0; jcol < static_cast<ptrdiff_t>(row_size_kv); ++jcol) {
+                        ptrdiff_t kv_pos = ir + jcol;
+                        if (kv_pos < window_start) {
+                            p[jcol] = std::numeric_limits<float>::lowest();
+                        }
+                    }
+                }
+
+                // Online softmax: find row max, update running max
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
+                float rowmax = mlas_platform.ReduceMaximumF32Kernel(p, row_size_kv);
+#else
+                float rowmax = MlasReduceMaximumF32Kernel(p, row_size_kv);
+#endif
+                float m_old = m[irow];
+                m[irow] = std::max(m[irow], rowmax);
+                float m_diff = m_old - m[irow];  // <= 0
+
+                // Compute exp(score - m_new) for each element
+                float negmax = -m[irow];
+#if defined(MLAS_TARGET_AMD64)
+                float rowsum = mlas_platform.ComputeSumExpF32Kernel(p, p, row_size_kv, &negmax);
+#else
+                float rowsum = MlasComputeSumExpF32Kernel(p, p, row_size_kv, &negmax);
+#endif
+
+                // Rescale previous state
+                if (ir != 0) {
+                    float exp_diff = std::exp(m_diff);
+                    l[irow] = exp_diff * l[irow] + rowsum;
+
+                    // Rescale accumulated output
+                    float* out_row = temp_output + irow * head_size;
+                    for (ptrdiff_t icol = 0; icol < head_size; ++icol) {
+                        out_row[icol] *= exp_diff;
+                    }
+                } else {
+                    l[irow] = rowsum;
+                }
+            }
+
+            // Step 4: Dequantize V block and accumulate O += S_exp * V_block
+            const uint8_t* v_block = v_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
+            MlasKVDequantize(
+                v_block,
+                v_dequant,
+                row_size_kv,                        // Rows
+                static_cast<size_t>(head_size),     // Cols
+                static_cast<size_t>(head_size),     // ldb
+                quant_type,
+                head_v_scale,
+                nullptr                             // no thread pool
+            );
+
+            // O += S_exp * V_dequant  (SGEMM with beta=1.0 for accumulation, beta=0.0 for first block)
+            MlasSgemmOperation(
+                CBLAS_TRANSPOSE::CblasNoTrans,
+                CBLAS_TRANSPOSE::CblasNoTrans,
+                row_size_q,                         // M
+                static_cast<size_t>(head_size),     // N
+                row_size_kv,                        // K
+                1.0f,                               // alpha
+                scores,                             // A (exp softmax scores)
+                row_size_kv,                        // lda
+                v_dequant,                          // B (dequantized V)
+                static_cast<size_t>(head_size),     // ldb
+                1.0f,                               // beta (accumulate)
+                temp_output,                        // C (accumulated output)
+                static_cast<size_t>(head_size)      // ldc
+            );
+        }
+
+        // Final: normalize output by l (softmax denominator)
+        // Output layout: [batch, sequence_length, num_heads, head_size]
+        float* output_row = args->output +
+            (static_cast<size_t>(batch_idx) * static_cast<size_t>(sequence_length) +
+             static_cast<size_t>(q_idx)) * static_cast<size_t>(num_heads) * static_cast<size_t>(head_size) +
+            static_cast<size_t>(head_idx) * static_cast<size_t>(head_size);
+        const ptrdiff_t output_row_stride = num_heads * head_size;
+
+        for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q); ++irow) {
+            float inv_l = (l[irow] > 0.0f) ? (1.0f / l[irow]) : 0.0f;
+            float* src = temp_output + irow * head_size;
+            for (ptrdiff_t icol = 0; icol < head_size; ++icol) {
+                output_row[icol] = src[icol] * inv_l;
+            }
+            output_row += output_row_stride;
+        }
+    }
+}
+
+void
+MLASCALL
+MlasFlashAttentionQuantizedKV(
+    MlasFlashAttentionQuantizedKVArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    MlasExecuteThreaded(
+        MlasFlashAttentionQuantizedKVThreaded,
+        static_cast<void*>(args),
+        static_cast<std::ptrdiff_t>(args->thread_count),
+        ThreadPool
+    );
+}

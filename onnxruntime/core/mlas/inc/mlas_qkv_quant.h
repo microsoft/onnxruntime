@@ -238,3 +238,57 @@ MlasSVGemm(
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
     );
+
+/**
+ * @brief Arguments for the Flash Attention kernel with quantized KV cache.
+ *
+ * This kernel implements the online-softmax tiled Flash Attention algorithm
+ * operating directly on INT8/INT4 quantized K and V cache buffers.
+ * It avoids materializing the full [S, T] attention probability matrix.
+ */
+struct MlasFlashAttentionQuantizedKVArgs {
+    int batch_size;
+    int num_heads;           // Q heads
+    int kv_num_heads;        // KV heads (for GQA sharing)
+    int sequence_length;     // Q sequence length (new tokens)
+    int total_seqlen;        // Total KV sequence length (past + new)
+    int head_size;
+    int past_seqlen;         // For computing causal positions
+    int local_window_size;   // -1 = disabled
+    int seqlen_present_kv;   // Buffer dimension for present KV (may be > total_seqlen)
+    int q_block_size;        // Br (query block size)
+    int kv_block_size;       // Bc (KV block size)
+    float scale;             // 1/sqrt(head_size) or user-specified
+
+    MLAS_KV_QUANT_TYPE quant_type;
+    bool per_channel_k;      // Whether K uses per-channel scales
+    bool per_channel_v;      // Whether V uses per-channel scales
+
+    int thread_count;
+    float* buffer;
+    size_t buffer_size_per_thread;
+
+    const float* query;      // [B, N, S, H] FP32
+    const uint8_t* k_cache;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
+    const uint8_t* v_cache;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
+    const float* k_scale;    // Scalar or per-channel scales for K
+    const float* v_scale;    // Scalar or per-channel scales for V
+    float* output;           // [B, S, N, H] FP32
+};
+
+/**
+ * @brief Flash Attention with quantized KV cache.
+ *
+ * Implements tiled attention with online softmax, processing KV in blocks
+ * to avoid materializing the full attention matrix. Supports causal masking
+ * and local window attention.
+ *
+ * @param args       Pointer to argument structure.
+ * @param ThreadPool Optional thread pool for parallelization.
+ */
+void
+MLASCALL
+MlasFlashAttentionQuantizedKV(
+    MlasFlashAttentionQuantizedKVArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+    );
