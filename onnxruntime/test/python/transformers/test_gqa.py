@@ -2512,6 +2512,7 @@ class TestGQARegressions(unittest.TestCase):
             raise
 
     @unittest.skipIf(not has_cuda_device(89) or not has_fp8_kv_cache, "FP8 KV cache is not available, skipping tests.")
+    @unittest.skipIf(quick_build, "Quick build only has hdim128 flash attention kernels; head_size=48 needs hdim64.")
     def test_gqa_fp8_fallback_unsupported_head_size(self):
         """
         Test GQA with FP8 KV cache on a head size not supported by XQA.

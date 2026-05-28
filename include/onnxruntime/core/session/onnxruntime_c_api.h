@@ -91,8 +91,15 @@ extern "C" {
 #define ORT_MUST_USE_RESULT
 #define ORTCHAR_T wchar_t
 #else
-// To make symbols visible on macOS/iOS
-#ifdef __APPLE__
+// Make symbols visible on non-Windows platforms. The visibility attribute is
+// needed when ORT is built as a shared library without a version script
+// (e.g. when compiled within another project's build system). On non-Apple
+// platforms, the default ORT build uses a generated version script
+// (tools/ci_build/gen_def.py) that exports the needed symbols, so this was
+// previously only enabled for __APPLE__. Expanding to __GNUC__ (GCC/Clang)
+// covers additional embedding scenarios while remaining harmless when a
+// version script is also in use.
+#if defined(__GNUC__)
 #define ORT_EXPORT __attribute__((visibility("default")))
 #else
 #define ORT_EXPORT
@@ -7471,6 +7478,21 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
 
+  /** \brief Release a previously captured graph and its associated resources.
+   *
+   * When graph capture is enabled, the EP records information during initial runs (e.g., GPU commands)
+   * and replays them on subsequent runs. This function releases the captured resources for a specific
+   * graph annotation ID, freeing memory.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[in] graph_annotation_id The annotation ID of the captured graph to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
+  
   /** \brief Get the model package API table.
    *
    * Returns a pointer to the ::OrtModelPackageApi function table, which provides APIs to:

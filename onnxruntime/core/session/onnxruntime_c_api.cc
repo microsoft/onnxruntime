@@ -4370,6 +4370,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id) {
+  API_IMPL_BEGIN
+  auto* inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  return ToOrtStatus(inference_session->ReleaseCapturedGraph(graph_annotation_id));
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -4924,6 +4931,7 @@ static constexpr OrtApi ort_api_1_to_27 = {
 
     &OrtApis::GetMemPatternEnabled,
     &OrtApis::GetSessionExecutionMode,
+    &OrtApis::SessionReleaseCapturedGraph,  
     &OrtApis::GetModelPackageApi,
     // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
 };

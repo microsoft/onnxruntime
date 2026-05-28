@@ -361,9 +361,9 @@ TEST(EpLayeringMatcherTest, MatchSpecificGPU_Heuristic) {
 TEST(EpLayeringMatcherTest, MatchSpecificGPU_Index) {
   LayerAnnotation rule = {"gpu:1", "Anno1", false};
 
-  // Case 1: ID Match
+  // Case 1: ID Match via device_memory_info (runtime ordinal)
   {
-    auto test_ep = CreateHwEp("GPU1", OrtHardwareDeviceType_GPU, 0, 1);
+    auto test_ep = CreateMemEp("GPU1", OrtDevice::GPU, 1);
     OrtEpDevice ep_device = test_ep.Get();
     std::vector<const OrtEpDevice*> devices = {&ep_device};
 
@@ -372,9 +372,19 @@ TEST(EpLayeringMatcherTest, MatchSpecificGPU_Index) {
     EXPECT_EQ(*result, "GPU1");
   }
 
-  // Case 2: ID Mismatch
+  // Case 2: ID Mismatch via device_memory_info
   {
-    auto test_ep = CreateHwEp("GPU0", OrtHardwareDeviceType_GPU, 0, 0);
+    auto test_ep = CreateMemEp("GPU0", OrtDevice::GPU, 0);
+    OrtEpDevice ep_device = test_ep.Get();
+    std::vector<const OrtEpDevice*> devices = {&ep_device};
+    auto result = EpLayeringMatcher::Match(devices, rule);
+    EXPECT_FALSE(result.has_value());
+  }
+
+  // Case 3: HW-only device (no device_memory_info) must NOT match by index.
+  // OrtHardwareDevice::device_id is a PCI hardware-type ID, not an ordinal.
+  {
+    auto test_ep = CreateHwEp("GPU_HW_Only", OrtHardwareDeviceType_GPU, 0, 1);
     OrtEpDevice ep_device = test_ep.Get();
     std::vector<const OrtEpDevice*> devices = {&ep_device};
     auto result = EpLayeringMatcher::Match(devices, rule);
@@ -551,6 +561,25 @@ TEST(EpLayeringMatcherTest, MatchExecutionProviders_GPU_Specific) {
   auto result = EpLayeringMatcher::Match(providers, rule);
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(*result, kCudaExecutionProvider);
+}
+
+TEST(EpLayeringMatcherTest, MatchExecutionProviders_GPU_Index) {
+  LayerAnnotation rule = {"gpu:1", "Anno1", false};
+  ExecutionProviders providers;
+
+  // Add GPU provider with ordinal 0 (should not match gpu:1)
+  auto gpu0_ep = std::make_shared<MockExecutionProvider>("GPU_EP_0",
+                                                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
+  ASSERT_STATUS_OK(providers.Add("GPU_EP_0", gpu0_ep));
+
+  // Add GPU provider with ordinal 1 (should match gpu:1)
+  auto gpu1_ep = std::make_shared<MockExecutionProvider>("GPU_EP_1",
+                                                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 1));
+  ASSERT_STATUS_OK(providers.Add("GPU_EP_1", gpu1_ep));
+
+  auto result = EpLayeringMatcher::Match(providers, rule);
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(*result, "GPU_EP_1");
 }
 
 TEST(EpLayeringMatcherTest, MatchExecutionProviders_NoMatch) {

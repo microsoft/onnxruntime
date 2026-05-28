@@ -20,8 +20,6 @@ from onnxruntime.capi import _pybind_state as C
 if typing.TYPE_CHECKING:
     import numpy.typing as npt
 
-    import onnxruntime
-
 
 def get_ort_device_type(device_type: str) -> int:
     if device_type == "cuda":
@@ -205,35 +203,35 @@ class Session:
         self._sess = None
         self._enable_fallback = enable_fallback
 
-    def get_session_options(self) -> onnxruntime.SessionOptions:
+    def get_session_options(self) -> C.SessionOptions:
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
         return self._sess_options
 
-    def get_inputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_inputs(self) -> Sequence[C.NodeArg]:
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._inputs_meta
 
-    def get_outputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_outputs(self) -> Sequence[C.NodeArg]:
         "Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._outputs_meta
 
-    def get_overridable_initializers(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_overridable_initializers(self) -> Sequence[C.NodeArg]:
         "Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._overridable_initializers
 
-    def get_modelmeta(self) -> onnxruntime.ModelMetadata:
+    def get_modelmeta(self) -> C.ModelMetadata:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
 
-    def get_input_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_input_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
         "Return the memory info for the inputs."
         return self._input_meminfos
 
-    def get_output_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_output_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
         "Return the memory info for the outputs."
         return self._output_meminfos
 
-    def get_input_epdevices(self) -> Sequence[onnxruntime.OrtEpDevice]:
+    def get_input_epdevices(self) -> Sequence[C.OrtEpDevice]:
         "Return the execution providers for the inputs."
         return self._input_epdevices
 
@@ -245,7 +243,7 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
-    def get_provider_graph_assignment_info(self) -> Sequence[onnxruntime.OrtEpAssignedSubgraph]:
+    def get_provider_graph_assignment_info(self) -> Sequence[C.OrtEpAssignedSubgraph]:
         """
         Get information about the subgraphs assigned to each execution provider and the nodes within.
 
@@ -470,7 +468,7 @@ class InferenceSession(Session):
     def __init__(
         self,
         path_or_bytes: str | bytes | os.PathLike,
-        sess_options: onnxruntime.SessionOptions | None = None,
+        sess_options: C.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
@@ -741,7 +739,7 @@ class ModelCompiler:
 
     def __init__(
         self,
-        sess_options: onnxruntime.SessionOptions,
+        sess_options: C.SessionOptions,
         input_model_path_or_bytes: str | os.PathLike | bytes,
         embed_compiled_data_into_model: bool = False,
         external_initializers_file_path: str | os.PathLike | None = None,
