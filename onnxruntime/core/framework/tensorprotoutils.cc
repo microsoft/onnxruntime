@@ -2123,16 +2123,23 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
-// Validates the external data declaration on a sub-tensor of a SparseTensorProto (values or indices).
-// Validates that any file path stays within the model directory. In-memory address markers are
-// passed through here — they are an ORT-internal mechanism that legitimately appears on sparse
-// sub-tensors loaded from a trusted ORT-format flatbuffer (where the marker points into the trusted
-// mmap'd / loaded buffer). Rejection of untrusted markers on sparse sub-tensors coming from a raw
-// ONNX protobuf is enforced at the protobuf entry point (Graph ctor) before this function runs.
-// Returns Status::OK() (no-op) for sub-tensors that do not use external data.
+// Validates the external data declaration on a sub-tensor of a SparseTensorProto (values or
+// indices). Validates that any file path stays within the model directory.
+//
+// Gates on data_location == EXTERNAL (rather than HasExternalData()) so that path validation
+// runs even when data_type is UNDEFINED. A malicious model could set data_location=EXTERNAL with
+// data_type=UNDEFINED and an evil file path; downstream loading would also reject it, but we
+// validate here for defense-in-depth.
+//
+// In-memory address markers must never appear on sparse sub-tensors. The trusted .ort loader
+// materializes sparse sub-tensors as inline raw_data (see LoadSparseInitializerOrtFormat); the
+// untrusted .onnx protobuf path rejects markers at the Graph constructor; and
+// SparseTensorProtoToDenseTensorProto re-asserts the invariant before this function is reached.
+// The HasExternalDataInMemory early-return below is a paranoid backstop.
 static Status ValidateSparseSubTensorExternalDataPath(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                       const std::filesystem::path& model_path) {
-  if (!HasExternalData(tensor_proto) || HasExternalDataInMemory(tensor_proto)) {
+  if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL ||
+      HasExternalDataInMemory(tensor_proto)) {
     return Status::OK();
   }
 
@@ -2319,6 +2326,23 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
   const auto& sparse_values = sparse.values();
   const auto& name = sparse_values.name();
+
+  // In-memory address markers (pointing into mmap'd / heap buffers) are forbidden on sparse
+  // sub-tensors. The trusted .ort loader is required to materialize sparse sub-tensors as inline
+  // raw_data (see LoadSparseInitializerOrtFormat) so they never carry markers. Untrusted .onnx
+  // protobuf input is rejected at the Graph constructor before reaching this function; this is
+  // the function-level backstop. A marker here would otherwise trigger an arbitrary memory read
+  // in UnpackInitializerData.
+  if (HasExternalDataInMemory(sparse_values)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " values use an in-memory address marker which is not permitted on sparse sub-tensors.");
+  }
+  if (HasExternalDataInMemory(sparse.indices())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " indices use an in-memory address marker which is not permitted on sparse sub-tensors.");
+  }
 
   const auto values_rank = sparse_values.dims_size();
   if (values_rank != 1) {
