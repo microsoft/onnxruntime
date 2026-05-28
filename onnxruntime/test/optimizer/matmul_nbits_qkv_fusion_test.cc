@@ -29,6 +29,13 @@ enum class SkipNormVariant {
   kAxisZero,
 };
 
+enum class MatMulBiasVariant {
+  kNone,
+  kQOnly,
+  kKOnly,
+  kVOnly,
+};
+
 void SetWebGpuProvider(Node& node) {
   node.SetExecutionProviderType(kWebGpuExecutionProvider);
 }
@@ -58,7 +65,7 @@ Status CheckMatMulNBitsQkvFusedGraphImpl(const Graph& graph, bool expect_skip_sl
       ORT_RETURN_IF_NOT(node.Domain() == kMSDomain, "Fused node must be in com.microsoft domain.");
       ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == kWebGpuExecutionProvider,
                         "Fused node must be assigned to WebGPU EP.");
-      ORT_RETURN_IF_NOT(node.InputDefs().size() == 9, "Fused node must expose the 9-input contract.");
+      ORT_RETURN_IF_NOT(node.InputDefs().size() == 12, "Fused node must expose the 12-input contract.");
       ORT_RETURN_IF_NOT(node.OutputDefs().size() == (expect_skip_sln_output ? 4u : 3u),
                         "Fused node outputs did not match the expected simplified vs skip-simplified contract.");
       // skip is at input index 1; for the SkipSimplifiedLayerNormalization-anchored pattern it
@@ -116,7 +123,8 @@ Status CheckMatMulNBitsQkvPatternNotFusedGraph(Graph& graph) {
 }
 
 void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_skip_input, bool with_skip_output,
-                                          SkipNormVariant skip_norm_variant = SkipNormVariant::kDefault) {
+                                          SkipNormVariant skip_norm_variant = SkipNormVariant::kDefault,
+                                          MatMulBiasVariant matmul_bias_variant = MatMulBiasVariant::kNone) {
   constexpr int64_t k = 16;
   constexpr int64_t q_n = 8;
   constexpr int64_t kv_n = 4;
@@ -145,10 +153,19 @@ void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_s
   NodeArg* norm_scale = builder.MakeInitializer<MLFloat16>({k}, MLFloat16(1.0f), MLFloat16(1.0f));
   NodeArg* q_weight = builder.MakeInitializer<uint8_t>({q_n, 1, blob_size}, uint8_t{0}, uint8_t{15});
   NodeArg* q_scale = builder.MakeInitializer<MLFloat16>({q_n, 1}, MLFloat16(1.0f), MLFloat16(1.0f));
+  NodeArg* q_bias = (matmul_bias_variant == MatMulBiasVariant::kQOnly)
+                        ? builder.MakeInitializer<MLFloat16>({q_n}, MLFloat16(0.0f), MLFloat16(0.0f))
+                        : builder.MakeOptionalTensor();
   NodeArg* k_weight = builder.MakeInitializer<uint8_t>({kv_n, 1, blob_size}, uint8_t{0}, uint8_t{15});
   NodeArg* k_scale = builder.MakeInitializer<MLFloat16>({kv_n, 1}, MLFloat16(1.0f), MLFloat16(1.0f));
+  NodeArg* k_bias = (matmul_bias_variant == MatMulBiasVariant::kKOnly)
+                        ? builder.MakeInitializer<MLFloat16>({kv_n}, MLFloat16(0.0f), MLFloat16(0.0f))
+                        : builder.MakeOptionalTensor();
   NodeArg* v_weight = builder.MakeInitializer<uint8_t>({kv_n, 1, blob_size}, uint8_t{0}, uint8_t{15});
   NodeArg* v_scale = builder.MakeInitializer<MLFloat16>({kv_n, 1}, MLFloat16(1.0f), MLFloat16(1.0f));
+  NodeArg* v_bias = (matmul_bias_variant == MatMulBiasVariant::kVOnly)
+                        ? builder.MakeInitializer<MLFloat16>({kv_n}, MLFloat16(0.0f), MLFloat16(0.0f))
+                        : builder.MakeOptionalTensor();
   NodeArg* optional_tensor = builder.MakeOptionalTensor();
 
   NodeArg* norm_out = builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{1, k});
@@ -183,9 +200,9 @@ void BuildMatMulNBitsQkvWebGpuPatternImpl(ModelTestBuilder& builder, bool with_s
     norm.AddAttribute("axis", static_cast<int64_t>(0));
   }
 
-  Node& q_matmul = builder.AddNode("MatMulNBits", {norm_out, q_weight, q_scale, optional_tensor, optional_tensor, optional_tensor}, {q_output}, kMSDomain, &q_attrs);
-  Node& k_matmul = builder.AddNode("MatMulNBits", {norm_out, k_weight, k_scale, optional_tensor, optional_tensor, optional_tensor}, {k_output}, kMSDomain, &kv_attrs);
-  Node& v_matmul = builder.AddNode("MatMulNBits", {norm_out, v_weight, v_scale, optional_tensor, optional_tensor, optional_tensor}, {v_output}, kMSDomain, &kv_attrs);
+  Node& q_matmul = builder.AddNode("MatMulNBits", {norm_out, q_weight, q_scale, optional_tensor, optional_tensor, q_bias}, {q_output}, kMSDomain, &q_attrs);
+  Node& k_matmul = builder.AddNode("MatMulNBits", {norm_out, k_weight, k_scale, optional_tensor, optional_tensor, k_bias}, {k_output}, kMSDomain, &kv_attrs);
+  Node& v_matmul = builder.AddNode("MatMulNBits", {norm_out, v_weight, v_scale, optional_tensor, optional_tensor, v_bias}, {v_output}, kMSDomain, &kv_attrs);
 
   SetWebGpuProvider(norm);
   SetWebGpuProvider(q_matmul);
@@ -216,6 +233,24 @@ void BuildMatMulNBitsQkvSkipWebGpuPatternWithSkipNormBias(ModelTestBuilder& buil
 
 void BuildMatMulNBitsQkvWebGpuPatternWithNormAxisZero(ModelTestBuilder& builder) {
   BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false, SkipNormVariant::kAxisZero);
+}
+
+void BuildMatMulNBitsQkvWebGpuPatternWithQBias(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false,
+                                       SkipNormVariant::kDefault,
+                                       MatMulBiasVariant::kQOnly);
+}
+
+void BuildMatMulNBitsQkvWebGpuPatternWithKBias(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false,
+                                       SkipNormVariant::kDefault,
+                                       MatMulBiasVariant::kKOnly);
+}
+
+void BuildMatMulNBitsQkvWebGpuPatternWithVBias(ModelTestBuilder& builder) {
+  BuildMatMulNBitsQkvWebGpuPatternImpl(builder, false, false,
+                                       SkipNormVariant::kDefault,
+                                       MatMulBiasVariant::kVOnly);
 }
 
 }  // namespace
@@ -346,6 +381,42 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseSkipWebGpuPatter
 TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseWebGpuPatternWithNonDefaultAxis) {
   ASSERT_STATUS_OK(TestGraphTransformer(
       BuildMatMulNBitsQkvWebGpuPatternWithNormAxisZero,
+      21,
+      *logger_,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2,
+      0,
+      nullptr,
+      CheckMatMulNBitsQkvPatternNotFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseWebGpuPatternWithQMatMulBias) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildMatMulNBitsQkvWebGpuPatternWithQBias,
+      21,
+      *logger_,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2,
+      0,
+      nullptr,
+      CheckMatMulNBitsQkvPatternNotFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseWebGpuPatternWithKMatMulBias) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildMatMulNBitsQkvWebGpuPatternWithKBias,
+      21,
+      *logger_,
+      std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      TransformerLevel::Level2,
+      0,
+      nullptr,
+      CheckMatMulNBitsQkvPatternNotFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionDoesNotFuseWebGpuPatternWithVMatMulBias) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildMatMulNBitsQkvWebGpuPatternWithVBias,
       21,
       *logger_,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
