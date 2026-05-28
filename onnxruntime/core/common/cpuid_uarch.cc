@@ -301,7 +301,7 @@ void decodeMIDR(
         case 0xC01:
           *uarch = cpuinfo_uarch_saphira;
           break;
-#endif /* ARM64 */
+#endif    /* ARM64 */
           // default:
           // std::cerr << "unknown Qualcomm CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
