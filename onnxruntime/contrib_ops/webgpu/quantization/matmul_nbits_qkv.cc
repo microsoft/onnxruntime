@@ -149,10 +149,16 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const Tensor* norm_scale = context.Input(2);
   const Tensor* q_b = context.Input(3);
   const Tensor* q_scales = context.Input(4);
-  const Tensor* k_b = context.Input(5);
-  const Tensor* k_scales = context.Input(6);
-  const Tensor* v_b = context.Input(7);
-  const Tensor* v_scales = context.Input(8);
+  const Tensor* q_bias = context.Input(5);
+  const Tensor* k_b = context.Input(6);
+  const Tensor* k_scales = context.Input(7);
+  const Tensor* k_bias = context.Input(8);
+  const Tensor* v_b = context.Input(9);
+  const Tensor* v_scales = context.Input(10);
+  const Tensor* v_bias = context.Input(11);
+
+  ORT_RETURN_IF(q_bias != nullptr || k_bias != nullptr || v_bias != nullptr,
+                "MatMulNBitsQkv does not support q_bias/k_bias/v_bias inputs yet.");
 
   ORT_ENFORCE(bits_ == 4, "MatMulNBitsQkv currently supports 4-bit weights only.");
   ORT_ENFORCE(block_size_ == 32, "MatMulNBitsQkv currently supports block_size=32 only.");

@@ -3805,9 +3805,9 @@ or SkipSimplifiedLayerNormalization with three MatMulNBits projections that shar
 same normalized activation.
 
   A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
-  Q = MatMulNBits(A_norm, q_weight)
-  K = MatMulNBits(A_norm, k_weight)
-  V = MatMulNBits(A_norm, v_weight)
+  Q = MatMulNBits(A_norm, q_weight) + q_bias
+  K = MatMulNBits(A_norm, k_weight) + k_bias
+  V = MatMulNBits(A_norm, v_weight) + v_bias
 
 If skip is provided, the operator computes the SkipSimplifiedLayerNormalization variant
 and may also return the input+skip residual sum as output 3.
@@ -3835,10 +3835,13 @@ This operator is intended as a decode-oriented QKV fusion primitive.
       .Input(2, "norm_scale", "Scale input for the simplified layer norm with shape [K].", "T1")
       .Input(3, "q_B", "Packed uint8 tensor for the Q projection weights.", "T2")
       .Input(4, "q_scales", "Per-block scaling factors for the Q projection.", "T1")
-      .Input(5, "k_B", "Packed uint8 tensor for the K projection weights.", "T2")
-      .Input(6, "k_scales", "Per-block scaling factors for the K projection.", "T1")
-      .Input(7, "v_B", "Packed uint8 tensor for the V projection weights.", "T2")
-      .Input(8, "v_scales", "Per-block scaling factors for the V projection.", "T1")
+      .Input(5, "q_bias", "Optional bias for the Q projection with shape [Nq].", "T1", OpSchema::Optional)
+      .Input(6, "k_B", "Packed uint8 tensor for the K projection weights.", "T2")
+      .Input(7, "k_scales", "Per-block scaling factors for the K projection.", "T1")
+      .Input(8, "k_bias", "Optional bias for the K projection with shape [Nkv].", "T1", OpSchema::Optional)
+      .Input(9, "v_B", "Packed uint8 tensor for the V projection weights.", "T2")
+      .Input(10, "v_scales", "Per-block scaling factors for the V projection.", "T1")
+      .Input(11, "v_bias", "Optional bias for the V projection with shape [Nkv].", "T1", OpSchema::Optional)
       .Output(0, "Q", "The Q projection output tensor.", "T1")
       .Output(1, "K", "The K projection output tensor.", "T1")
       .Output(2, "V", "The V projection output tensor.", "T1")
@@ -3875,6 +3878,36 @@ This operator is intended as a decode-oriented QKV fusion primitive.
         if (ctx.getNumOutputs() > 3) {
           auto* output_shape = getOutputShape(ctx, 3);
           *output_shape = input_shape;
+        }
+
+        if (ctx.hasInput(5)) {
+          if (!hasInputShape(ctx, 5)) {
+            fail_shape_inference("q_bias shape must be known");
+          }
+
+          const auto& q_bias_shape = getInputShape(ctx, 5);
+          if (q_bias_shape.dim_size() != 1 ||
+              !q_bias_shape.dim(0).has_dim_value() ||
+              q_bias_shape.dim(0).dim_value() != q_out_features) {
+            fail_shape_inference("q_bias shape must be [Nq] where Nq = ", q_out_features);
+          }
+        }
+
+        for (int bias_input_index : {8, 11}) {
+          if (!ctx.hasInput(bias_input_index)) {
+            continue;
+          }
+
+          if (!hasInputShape(ctx, bias_input_index)) {
+            fail_shape_inference("bias shape must be known");
+          }
+
+          const auto& bias_shape = getInputShape(ctx, bias_input_index);
+          if (bias_shape.dim_size() != 1 ||
+              !bias_shape.dim(0).has_dim_value() ||
+              bias_shape.dim(0).dim_value() != kv_out_features) {
+            fail_shape_inference("bias shape must be [Nkv] where Nkv = ", kv_out_features);
+          }
         }
       });
 

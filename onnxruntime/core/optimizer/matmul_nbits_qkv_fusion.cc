@@ -246,10 +246,13 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         const_cast<NodeArg*>(node.InputDefs()[is_skip_sln ? 2 : 1]),
         const_cast<NodeArg*>(qkv_nodes->q->InputDefs()[1]),
         const_cast<NodeArg*>(qkv_nodes->q->InputDefs()[2]),
+        &empty_arg,
         const_cast<NodeArg*>(qkv_nodes->k->InputDefs()[1]),
         const_cast<NodeArg*>(qkv_nodes->k->InputDefs()[2]),
+        &empty_arg,
         const_cast<NodeArg*>(qkv_nodes->v->InputDefs()[1]),
         const_cast<NodeArg*>(qkv_nodes->v->InputDefs()[2]),
+        &empty_arg,
     };
 
     InlinedVector<NodeArg*> fused_outputs{
@@ -320,12 +323,12 @@ Status MatMulNBitsQkvFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
     };
 
-    add_input_edge_if_present(q_input_edges, 1, 3);  // q_weight
-    add_input_edge_if_present(q_input_edges, 2, 4);  // q_scales
-    add_input_edge_if_present(k_input_edges, 1, 5);  // k_weight
-    add_input_edge_if_present(k_input_edges, 2, 6);  // k_scales
-    add_input_edge_if_present(v_input_edges, 1, 7);  // v_weight
-    add_input_edge_if_present(v_input_edges, 2, 8);  // v_scales
+    add_input_edge_if_present(q_input_edges, 1, 3);   // q_weight
+    add_input_edge_if_present(q_input_edges, 2, 4);   // q_scales
+    add_input_edge_if_present(k_input_edges, 1, 6);   // k_weight
+    add_input_edge_if_present(k_input_edges, 2, 7);   // k_scales
+    add_input_edge_if_present(v_input_edges, 1, 9);   // v_weight
+    add_input_edge_if_present(v_input_edges, 2, 10);  // v_scales
 
     for (const auto& output_edge : q_output_edges) {
       graph.AddEdge(fused_node.Index(), output_edge.dst_node, 0, output_edge.dst_arg_index);
