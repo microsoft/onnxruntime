@@ -16,9 +16,10 @@ Usage:
 Example:
     python compile_contributors.py --base origin/rel-1.23.2 --target origin/rel-1.24.1 --dir rel-1.24.1_report
 
-    # Limit to commits that touch specific directories (e.g. for a per-component release note):
+    # Limit to commits that touch selected areas (replace with your paths):
+    # Using git pathspec syntax, ":(top)" anchors each path at repository root.
     python compile_contributors.py --base origin/main~500 --target origin/main \
-        --paths onnxruntime/core/providers/webgpu onnxruntime/contrib_ops/webgpu plugin-ep-webgpu
+        --paths ":(top)path/to/component_a" ":(top)path/to/component_b"
 
 Outputs:
     - detail.csv: Detailed breakdown of PRs, authors, and commit links.
