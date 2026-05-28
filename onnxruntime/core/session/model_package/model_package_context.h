@@ -47,7 +47,8 @@ struct VariantInfo {
   std::string component_name;
   std::string variant_name;
 
-  // from metadata.json: variants.<variant_name>.ep_compatibility
+  // from metadata.json: variants.<variant_name> EP fields (ep, device, compatibility_string)
+  // Internally kept as a vector for code compatibility, but schema enforces a single entry per variant.
   std::vector<VariantEpCompatibilityInfo> ep_compatibility;
 
   // selected ep_compatibility entry index after variant matching

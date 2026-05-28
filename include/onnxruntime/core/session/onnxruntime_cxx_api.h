@@ -1861,7 +1861,7 @@ struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentConte
 
   explicit ModelPackageComponentContext(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used.
 
-  std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;               ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFolderPath
+  std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFolderPath
 
   std::string GetSelectedVariantName() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantName
 

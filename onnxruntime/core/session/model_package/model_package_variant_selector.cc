@@ -141,9 +141,9 @@ VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectio
       continue;
     }
 
-    // 3. Check ep compatibility string for this entry. Each ep_compatibility entry carries one
-    //    opaque compatibility string owned by the EP; if the EP needs to encode multiple
-    //    sub-targets it does so internally (e.g. comma-joined) and parses the value itself.
+    // 3. Check compatibility string. Each variant carries one opaque compatibility string
+    //    owned by the EP; if the EP needs to encode multiple sub-targets it does so internally
+    //    (e.g. comma-joined) and parses the value itself.
     const std::string& compat_str =
         ec.compatibility_string.has_value() ? *ec.compatibility_string : std::string{};
 
@@ -205,26 +205,28 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
 
   // EP/device compatibility pass.
   //
-  // Each ep_compatibility entry must declare a target EP (parser-enforced) and carries one opaque
-  // compatibility string owned by that EP. ORT does not parse it, decompose it, or aggregate scores
-  // across multiple strings -- if the EP needs to encode multiple sub-targets (e.g. several QNN SoC
-  // models), it does so internally in this single string and validates the full value itself.
+  // Each variant declares a single target EP and carries one opaque compatibility string owned
+  // by that EP. ORT does not parse it, decompose it, or aggregate scores across multiple strings
+  // -- if the EP needs to encode multiple sub-targets (e.g. several QNN SoC models), it does so
+  // internally in this single string and validates the full value itself.
+  //
+  // If multiple execution providers are needed, separate variants should be created (preferably
+  // with shared weights).
   //
   // We do not currently support a "portable" / wildcard variant. If that need arises later, the
-  // planned shape is: a variant with the entire "ep_compatibility" array omitted is treated as the
-  // portable fallback (and likely pinned to CPU at load time). Per-entry wildcards stay disallowed.
+  // planned shape is: a variant with EP info omitted is treated as the portable fallback (and
+  // likely pinned to CPU at load time).
   //
   // Current implementation:
-  //   For each ep_compatibility entry whose ep/device constraints match the selected EP, call
+  //   For each variant whose ep/device constraints match the selected EP, call
   //   OrtEpFactory::ValidateCompiledModelCompatibilityInfo() and map the returned
-  //   OrtCompiledModelCompatibility enum to a numeric score. Pick the highest-scoring entry per
-  //   variant, then the highest-scoring variant overall.
+  //   OrtCompiledModelCompatibility enum to a numeric score. Pick the highest-scoring variant.
   //
   // Planned fallback ladder (not yet wired -- TODO):
   //   a) If the EP implements OrtEpFactory::SelectBestCompiledModelCandidate() (PR #28387), gather
-  //      every (variant, ep_compatibility-entry) pair into a candidate list and let the EP pick the
-  //      best index. SIZE_MAX means "none acceptable", fall through to (b).
-  //   b) Otherwise, use ValidateCompiledModelCompatibilityInfo() per entry as we do today and pick
+  //      every variant into a candidate list and let the EP pick the best index. SIZE_MAX means
+  //      "none acceptable", fall through to (b).
+  //   b) Otherwise, use ValidateCompiledModelCompatibilityInfo() per variant as we do today and pick
   //      the highest-ranked one.
   //   c) If neither ABI is implemented, return the first variant whose ep/device constraints match.
   if (selected_ep_info != nullptr) {

@@ -69,7 +69,7 @@ package_root/
 ├── manifest.json              # schema_version, components list
 └── models/
     └── <component_name>/
-        ├── metadata.json      # variants + ep_compatibility declarations
+        ├── metadata.json      # variants + EP compatibility declarations
         └── <variant_name>/
             ├── variant.json   # files list, consumer_metadata
             └── model.onnx     # (or other model files)

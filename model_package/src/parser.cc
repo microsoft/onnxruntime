@@ -31,7 +31,6 @@ constexpr const char* kComponentsKey = "components";
 constexpr const char* kComponentNameKey = "component_name";
 constexpr const char* kVariantsKey = "variants";
 
-constexpr const char* kEpCompatibilityKey = "ep_compatibility";
 constexpr const char* kEpKey = "ep";
 constexpr const char* kDeviceKey = "device";
 constexpr const char* kCompatibilityStringKey = "compatibility_string";
@@ -54,7 +53,8 @@ struct EpCompatibilitySchema {
 };
 
 struct VariantSchema {
-  std::vector<EpCompatibilitySchema> ep_compatibility;
+  // Single EP compatibility info, parsed from fields directly on the variant object.
+  EpCompatibilitySchema ep_info;
 };
 
 struct VariantFileSchema {
@@ -154,10 +154,9 @@ void from_json(const json& j, EpCompatibilitySchema& c) {
 }
 
 void from_json(const json& j, VariantSchema& v) {
-  v.ep_compatibility = j.at(kEpCompatibilityKey).get<std::vector<EpCompatibilitySchema>>();
-  if (v.ep_compatibility.empty()) {
-    throw std::invalid_argument(std::string("\"") + kEpCompatibilityKey + "\" must contain at least one entry");
-  }
+  // EP fields (ep, device, compatibility_string) are now directly on the variant object.
+  // "ep" is required.
+  v.ep_info = j.get<EpCompatibilitySchema>();
 }
 
 void from_json(const json& j, VariantFileSchema& f) {
@@ -399,15 +398,12 @@ bool ParseVariantsFromComponent(const std::string& component_name,
       }
     }
 
-    // EP compatibility from metadata.json
-    variant_info.ep_compatibility.reserve(variant_schema.ep_compatibility.size());
-    for (const auto& ec_schema : variant_schema.ep_compatibility) {
-      EpCompatibility ec{};
-      ec.ep = ec_schema.ep;
-      ec.device = ec_schema.device;
-      ec.compatibility_string = ec_schema.compatibility_string;
-      variant_info.ep_compatibility.push_back(std::move(ec));
-    }
+    // EP compatibility from metadata.json (single entry per variant in new schema)
+    EpCompatibility ec{};
+    ec.ep = variant_schema.ep_info.ep;
+    ec.device = variant_schema.ep_info.device;
+    ec.compatibility_string = variant_schema.ep_info.compatibility_string;
+    variant_info.ep_compatibility.push_back(std::move(ec));
 
     out_variants.push_back(std::move(variant_info));
   }

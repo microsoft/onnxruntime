@@ -136,25 +136,21 @@ std::string MakeMetadataJsonTwoVariants(std::string_view component_name,
     "variants": {
       ")"
       << variant_name_1 << R"(": {
-        "ep_compatibility": [{
-          "ep": ")"
+        "ep": ")"
       << variant_ep_1 << R"(",
-          "device": ")"
+        "device": ")"
       << variant_device_1 << R"(",
-          "compatibility_string": ")"
+        "compatibility_string": ")"
       << variant_compatibility_string_1 << R"("
-        }]
       },
       ")"
       << variant_name_2 << R"(": {
-        "ep_compatibility": [{
-          "ep": ")"
+        "ep": ")"
       << variant_ep_2 << R"(",
-          "device": ")"
+        "device": ")"
       << variant_device_2 << R"(",
-          "compatibility_string": ")"
+        "compatibility_string": ")"
       << variant_compatibility_string_2 << R"("
-        }]
       }
     }
   })";
@@ -179,18 +175,14 @@ std::filesystem::path CreateModelPackageApiTestPackage(bool multi_file_variant =
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [{
-          "ep": "example_ep",
-          "device": "cpu",
-          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1"
-        }]
+        "ep": "example_ep",
+        "device": "cpu",
+        "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch1"
       },
       "variant_2": {
-        "ep_compatibility": [{
-          "ep": "example_ep",
-          "device": "npu",
-          "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2"
-        }]
+        "ep": "example_ep",
+        "device": "npu",
+        "compatibility_string": "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2"
       }
     }
   })";
@@ -714,16 +706,12 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [{
-          "ep": "example_ep",
-          "device": "cpu"
-        }]
+        "ep": "example_ep",
+        "device": "cpu"
       },
       "variant_2": {
-        "ep_compatibility": [{
-          "ep": "example_ep",
-          "device": "npu"
-        }]
+        "ep": "example_ep",
+        "device": "npu"
       }
     }
   })";
@@ -791,10 +779,8 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [{
-          "ep": "example_ep",
-          "device": "cpu"
-        }]
+        "ep": "example_ep",
+        "device": "cpu"
       }
     }
   })";
@@ -828,13 +814,13 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
 }
 
 // ------------------------------------------------------------------
-// Tests for descriptor parser: enforced "ep" field in ep_compatibility entries.
+// Tests for descriptor parser: enforced "ep" field in variant EP metadata.
 // ------------------------------------------------------------------
 namespace {
 
 // Make a single-component, single-variant package on disk where metadata.json is written
 // directly at the package root (the "single-component metadata flow" of the parser).
-// In this flow ep_compatibility schema validation errors are propagated, instead of being
+// In this flow variant EP metadata schema validation errors are propagated, instead of being
 // swallowed by the manifest-driven discovery path which falls back to "Missing metadata variants".
 // Returns the package_root.
 std::filesystem::path MakeSingleComponentPackageWithMetadata(std::string_view subdir,
@@ -866,16 +852,14 @@ std::filesystem::path MakeSingleComponentPackageWithMetadata(std::string_view su
 }  // namespace
 
 TEST(ModelPackageTest, ParserRejects_EpCompatibilityMissingEp) {
-  // The "ep" field is required in every ep_compatibility entry.
+  // The "ep" field is required in every variant descriptor.
   // Omitting it must yield a parse error (not silently accept a wildcard / portable variant).
   constexpr std::string_view metadata_json = R"({
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [{
-          "device": "cpu",
-          "compatibility_string": "anything"
-        }]
+        "device": "cpu",
+        "compatibility_string": "anything"
       }
     }
   })";
@@ -898,10 +882,8 @@ TEST(ModelPackageTest, ParserRejects_EpCompatibilityNullEp) {
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [{
-          "ep": null,
-          "device": "cpu"
-        }]
+        "ep": null,
+        "device": "cpu"
       }
     }
   })";
@@ -924,10 +906,8 @@ TEST(ModelPackageTest, ParserRejects_EpCompatibilityEmptyEp) {
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [{
-          "ep": "",
-          "device": "cpu"
-        }]
+        "ep": "",
+        "device": "cpu"
       }
     }
   })";
@@ -969,14 +949,12 @@ TEST(ModelPackageApiTest, GetVariantEpName_ReturnsSingleEp) {
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [
-          { "ep": "example_ep", "device": "cpu" }
-        ]
+        "ep": "example_ep",
+        "device": "cpu"
       },
       "variant_2": {
-        "ep_compatibility": [
-          { "ep": "other_ep", "device": "npu" }
-        ]
+        "ep": "other_ep",
+        "device": "npu"
       }
     }
   })";
@@ -1122,7 +1100,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
     "component_name": "model_1",
     "variants": {
       "variant_1": {
-        "ep_compatibility": [{ "ep": "example_ep", "device": "cpu" }]
+        "ep": "example_ep", "device": "cpu"
       }
     }
   })";

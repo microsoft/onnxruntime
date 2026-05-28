@@ -7492,7 +7492,7 @@ struct OrtApi {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
-  
+
   /** \brief Get the model package API table.
    *
    * Returns a pointer to the ::OrtModelPackageApi function table, which provides APIs to:
