@@ -228,6 +228,12 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--skip_winml_tests", action="store_true", help="Explicitly disable WinML related tests.")
     parser.add_argument("--skip_nodejs_tests", action="store_true", help="Explicitly disable Node.js binding tests.")
     parser.add_argument("--ctest_timeout", default="10800", help="Timeout provided to CTest --timeout (seconds).")
+    parser.add_argument(
+        "--test_parallel",
+        default=None,
+        type=int,
+        help="Max CTest parallel jobs. Defaults to --parallel. Optional value 0 uses num CPUs.",
+    )
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test.")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
@@ -646,10 +652,15 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cuda_group.add_argument("--enable_cuda_minimal_build", action="store_true", help="Enable CUDA minimal build.")
     cuda_group.add_argument(
         "--nvcc_threads",
-        nargs="?",
-        default=-1,  # -1 signifies auto-detect based on jobs/memory
+        default=4,
         type=int,
-        help="Max NVCC threads per parallel job (-1=auto).",
+        help="Max NVCC threads per parallel job (default is 4).",
+    )
+    cuda_group.add_argument(
+        "--flash_nvcc_threads",
+        default=-1,
+        type=int,
+        help="Max NVCC threads per parallel job for flash attention (default is same value of --nvcc_threads).",
     )
     # CUDA-specific profiling
     cuda_group.add_argument(

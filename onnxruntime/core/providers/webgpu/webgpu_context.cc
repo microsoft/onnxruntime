@@ -303,9 +303,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
                                       metadata,
                                       inputs_segments,
                                       outputs_segments,
-#ifndef NDEBUG  // if debug build
                                       key,
-#endif
                                       x,
                                       y,
                                       z,

@@ -56,10 +56,22 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   int64_t group = getAttribute(ctx, "group", 1);
+  if (group <= 0) {
+    fail_shape_inference("group attribute must be positive. Got: ", group);
+  }
 
   auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-  if (input_shape.dim_size() < 2) {
-    return;  // Input tensor should have at least two dimensions.
+  // ConvTranspose requires X=(N x C x D1...Dn) and W=(C x M/group x k1...kn), both rank >= 3.
+  // The upstream ONNX ConvTranspose shape inference only checks rank >= 2, which allows rank-2
+  // inputs to pass shape inference but crash at kernel execution time. We tighten the check here
+  // to fail early at model load with a clear error. Fixing ONNX upstream is tracked separately.
+  if (input_shape.dim_size() < 3) {
+    fail_shape_inference("Input tensor must have at least 3 dimensions. Got: ", input_shape.dim_size());
+  }
+
+  auto weight_shape = ctx.getInputType(1)->tensor_type().shape();
+  if (weight_shape.dim_size() < 3) {
+    fail_shape_inference("Weight tensor must have at least 3 dimensions. Got: ", weight_shape.dim_size());
   }
 
   // first dim is the batch axis and the next is the number of channels.
@@ -147,7 +159,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 
   *final_output_shape->add_dim() = input_shape.dim(0);
   *final_output_shape->add_dim() =
-      ctx.getInputType(1)->tensor_type().shape().dim(1) *
+      weight_shape.dim(1) *
       group;  // channels should be the second dim of second input multiply
   // group.
 
@@ -3617,7 +3629,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .SetDoc(MatMulNBits_ver1_doc)
       .Attr("K", "Input feature dimension of the weight matrix.", AttributeProto::INT)
       .Attr("N", "Output feature dimension of the weight matrix.", AttributeProto::INT)
-      .Attr("bits", "Bit-width used to quantize the weights (valid range: 2~8)", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("bits", "Bit-width used to quantize the weights (supported values: 2, 4, 8)", AttributeProto::INT, static_cast<int64_t>(4))
       .Attr("block_size",
             "Size of each quantization block along the K (input feature) dimension. "
             "Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).",
@@ -3670,6 +3682,243 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
               !bias_shape.dim(0).has_dim_value() ||
               bias_shape.dim(0).dim_value() != out_features) {
             fail_shape_inference("bias shape must be [N] where N = ", out_features);
+          }
+        }
+      });
+
+  static const char* MatMulNBitsMlp_ver1_doc = R"DOC(
+MatMulNBitsMlp fuses two MatMulNBits projections that share the same input and computes
+
+    gate = MatMulNBits(A, gate_weight) + gate_bias
+    up = MatMulNBits(A, up_weight) + up_bias
+    Y = activation(gate) * up
+
+It can also optionally fuse SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization before the
+two projections:
+
+  A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
+    gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+    up = MatMulNBits(A_norm, up_weight) + up_bias
+    Y = activation(gate) * up
+
+  A_norm = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
+    gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+    up = MatMulNBits(A_norm, up_weight) + up_bias
+    Y = activation(gate) * up
+
+This operator is intended for decoder MLP patterns such as Qwen-style gate and up projections, but it remains
+semantically valid for both prefill and decode because the output shape is the standard MatMul result shape
+derived from the runtime shape of A and the shared attributes K and N.
+
+The operator contract includes a string attribute describing the fused gate activation.
+
+When fused from SkipSimplifiedLayerNormalization, the optional residual-sum output may also be materialized:
+
+  A_norm, input_skip_bias_sum = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
+  gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+  up = MatMulNBits(A_norm, up_weight) + up_bias
+  Y = activation(gate) * up
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsMlp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulNBitsMlp_ver1_doc)
+      .Attr("K", "Input feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
+      .Attr("N", "Output feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
+      .Attr("bits", "Bit-width used to quantize both weight matrices. Currently only bits=4 is supported by the WebGPU kernel.", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("block_size",
+            "Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.",
+            AttributeProto::INT)
+      .Attr("accuracy_level",
+            "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("activation",
+            "Activation applied to the gate projection.",
+            AttributeProto::STRING)
+      .Attr("epsilon",
+            "Epsilon used by the optional fused (Skip)SimplifiedLayerNormalization. Defaults to 1e-5.",
+            AttributeProto::FLOAT, 1e-5f)
+      .Input(0, "A", "The shared input tensor.", "T1")
+      .Input(1, "skip", "Optional skip input used by SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(2, "norm_scale", "Optional RMSNorm scale with shape [K] used by SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(3, "gate_B", "Packed uint8 tensor for the gate projection weights.", "T2")
+      .Input(4, "gate_scales", "Per-block scaling factors for the gate projection.", "T1")
+      .Input(5, "gate_bias", "Optional bias for the gate projection with shape [N].", "T1", OpSchema::Optional)
+      .Input(6, "up_B", "Packed uint8 tensor for the up projection weights.", "T2")
+      .Input(7, "up_scales", "Per-block scaling factors for the up projection.", "T1")
+      .Input(8, "up_bias", "Optional bias for the up projection with shape [N].", "T1", OpSchema::Optional)
+      .Output(0, "Y", "The fused gated MLP output tensor.", "T1")
+      .Output(1, "input_skip_bias_sum", "Optional residual-sum output for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (ctx.getNumOutputs() > 1) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+        }
+
+        const int64_t in_features = getAttribute(ctx, "K", -1);
+        const int64_t out_features = getAttribute(ctx, "N", -1);
+        MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, true);
+
+        if (ctx.hasInput(1) && !ctx.hasInput(2)) {
+          fail_shape_inference("norm_scale input must be present when skip input is provided");
+        }
+
+        if (ctx.hasOutput(1)) {
+          if (!ctx.hasInput(1)) {
+            fail_shape_inference("skip input must be present when input_skip_bias_sum output is requested");
+          }
+
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+
+          auto* skip_sum_shape = getOutputShape(ctx, 1);
+          *skip_sum_shape = getInputShape(ctx, 0);
+        }
+
+        if (ctx.hasInput(2)) {
+          if (!hasInputShape(ctx, 2)) {
+            fail_shape_inference("norm_scale shape must be known");
+          }
+
+          const auto& norm_scale_shape = getInputShape(ctx, 2);
+          if (norm_scale_shape.dim_size() != 1 ||
+              !norm_scale_shape.dim(0).has_dim_value() ||
+              norm_scale_shape.dim(0).dim_value() != in_features) {
+            fail_shape_inference("norm_scale shape must be [K] where K = ", in_features);
+          }
+        }
+
+        for (size_t bias_input_index : {5U, 8U}) {
+          if (!ctx.hasInput(static_cast<int>(bias_input_index))) {
+            continue;
+          }
+
+          if (!hasInputShape(ctx, static_cast<int>(bias_input_index))) {
+            fail_shape_inference("bias shape must be known");
+          }
+
+          const auto& bias_shape = getInputShape(ctx, static_cast<int>(bias_input_index));
+          if (bias_shape.dim_size() != 1 ||
+              !bias_shape.dim(0).has_dim_value() ||
+              bias_shape.dim(0).dim_value() != out_features) {
+            fail_shape_inference("bias shape must be [N] where N = ", out_features);
+          }
+        }
+      });
+
+  static const char* MatMulNBitsQkv_ver1_doc = R"DOC(
+MatMulNBitsQkv fuses either SimplifiedLayerNormalization (RMSNorm)
+or SkipSimplifiedLayerNormalization with three MatMulNBits projections that share the
+same normalized activation.
+
+  A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
+  Q = MatMulNBits(A_norm, q_weight) + q_bias
+  K = MatMulNBits(A_norm, k_weight) + k_bias
+  V = MatMulNBits(A_norm, v_weight) + v_bias
+
+If skip is provided, the operator computes the SkipSimplifiedLayerNormalization variant
+and may also return the input+skip residual sum as output 3.
+
+This operator is intended as a decode-oriented QKV fusion primitive.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBitsQkv)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(MatMulNBitsQkv_ver1_doc)
+      .Attr("K", "Input feature dimension shared by the normalized input and all projection weights.", AttributeProto::INT)
+      .Attr("Nq", "Output feature dimension of the Q projection.", AttributeProto::INT)
+      .Attr("Nkv", "Output feature dimension shared by the K and V projections.", AttributeProto::INT)
+      .Attr("bits", "Bit-width used to quantize all weight matrices. Currently only bits=4 is supported by the WebGPU kernel.", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("block_size",
+            "Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.",
+            AttributeProto::INT)
+      .Attr("accuracy_level",
+            "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("epsilon", "Epsilon used by the simplified layer norm reduction.", AttributeProto::FLOAT, 1e-6f)
+      .Input(0, "A", "The shared input tensor.", "T1")
+      .Input(1, "skip", "Optional residual input for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .Input(2, "norm_scale", "Scale input for the simplified layer norm with shape [K].", "T1")
+      .Input(3, "q_B", "Packed uint8 tensor for the Q projection weights.", "T2")
+      .Input(4, "q_scales", "Per-block scaling factors for the Q projection.", "T1")
+      .Input(5, "q_bias", "Optional bias for the Q projection with shape [Nq].", "T1", OpSchema::Optional)
+      .Input(6, "k_B", "Packed uint8 tensor for the K projection weights.", "T2")
+      .Input(7, "k_scales", "Per-block scaling factors for the K projection.", "T1")
+      .Input(8, "k_bias", "Optional bias for the K projection with shape [Nkv].", "T1", OpSchema::Optional)
+      .Input(9, "v_B", "Packed uint8 tensor for the V projection weights.", "T2")
+      .Input(10, "v_scales", "Per-block scaling factors for the V projection.", "T1")
+      .Input(11, "v_bias", "Optional bias for the V projection with shape [Nkv].", "T1", OpSchema::Optional)
+      .Output(0, "Q", "The Q projection output tensor.", "T1")
+      .Output(1, "K", "The K projection output tensor.", "T1")
+      .Output(2, "V", "The V projection output tensor.", "T1")
+      .Output(3, "input_skip_bias_sum", "Optional residual-sum output for SkipSimplifiedLayerNormalization.", "T1", OpSchema::Optional)
+      .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain quantized weight types to uint8.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        for (size_t output_index = 0; output_index < ctx.getNumOutputs(); ++output_index) {
+          propagateElemTypeFromInputToOutput(ctx, 0, output_index);
+        }
+
+        if (!hasInputShape(ctx, 0)) {
+          return;
+        }
+
+        const auto& input_shape = getInputShape(ctx, 0);
+        if (input_shape.dim_size() == 0) {
+          fail_shape_inference("A must have rank >= 1");
+        }
+
+        const int64_t q_out_features = getAttribute(ctx, "Nq", -1);
+        const int64_t kv_out_features = getAttribute(ctx, "Nkv", -1);
+
+        auto set_output_shape = [&](int output_index, int64_t out_features) {
+          auto* output_shape = getOutputShape(ctx, output_index);
+          *output_shape = input_shape;
+          output_shape->mutable_dim(output_shape->dim_size() - 1)->set_dim_value(out_features);
+        };
+
+        set_output_shape(0, q_out_features);
+        set_output_shape(1, kv_out_features);
+        set_output_shape(2, kv_out_features);
+        if (ctx.getNumOutputs() > 3) {
+          auto* output_shape = getOutputShape(ctx, 3);
+          *output_shape = input_shape;
+        }
+
+        if (ctx.hasInput(5)) {
+          if (!hasInputShape(ctx, 5)) {
+            fail_shape_inference("q_bias shape must be known");
+          }
+
+          const auto& q_bias_shape = getInputShape(ctx, 5);
+          if (q_bias_shape.dim_size() != 1 ||
+              !q_bias_shape.dim(0).has_dim_value() ||
+              q_bias_shape.dim(0).dim_value() != q_out_features) {
+            fail_shape_inference("q_bias shape must be [Nq] where Nq = ", q_out_features);
+          }
+        }
+
+        for (int bias_input_index : {8, 11}) {
+          if (!ctx.hasInput(bias_input_index)) {
+            continue;
+          }
+
+          if (!hasInputShape(ctx, bias_input_index)) {
+            fail_shape_inference("bias shape must be known");
+          }
+
+          const auto& bias_shape = getInputShape(ctx, bias_input_index);
+          if (bias_shape.dim_size() != 1 ||
+              !bias_shape.dim(0).has_dim_value() ||
+              bias_shape.dim(0).dim_value() != kv_out_features) {
+            fail_shape_inference("bias shape must be [Nkv] where Nkv = ", kv_out_features);
           }
         }
       });

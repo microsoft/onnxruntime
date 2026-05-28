@@ -476,13 +476,17 @@ struct AttentionKernel {
             kNumWarpsPerBlock,
         "");
 
-    // used for efficient load of bias tile Bij from global to shared memory
+    // used for efficient load of bias tile Bij from global to shared memory.
+    // Use kAlignmentA so the unaligned kernel path (kIsAligned=false) uses
+    // narrower vectorized loads (64-bit instead of 128-bit), matching the
+    // relaxed alignment requirement for Q/K/V. This allows bias_strideM
+    // (= total_kv_length) to be any multiple of 4 elements (fp16) rather
+    // than requiring a multiple of 8.
     using BiasLoader = TileSmemLoader<
         scalar_t,
         cutlass::MatrixShape<kQueriesPerBlock, kKeysPerBlock>,
         MmaCore::kThreads,
-        // input restriction: kv_len has to be a multiple of this value
-        128 / cutlass::sizeof_bits<scalar_t>::value>;
+        kAlignmentA>;
 
     // Epilogue to store to shared-memory in a format that we can use later for
     // the second matmul
