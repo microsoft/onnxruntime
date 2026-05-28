@@ -2005,6 +2005,14 @@ struct SessionImpl : ConstSessionImpl<T> {
 
   void FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
                                   OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
+
+  /** \brief Release a previously captured graph.
+   *
+   * Wraps OrtApi::SessionReleaseCapturedGraph
+   *
+   * \param[in] graph_annotation_id The annotation ID of the captured graph to release.
+   */
+  void ReleaseCapturedGraph(int graph_annotation_id);
 };
 
 }  // namespace detail

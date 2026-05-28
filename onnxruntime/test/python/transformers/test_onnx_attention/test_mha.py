@@ -2949,6 +2949,127 @@ class TestONNXAttentionFlashSoftcap(unittest.TestCase):
         )
 
 
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping MHA tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1"})
+class TestONNXAttentionMHACutlassBiasAlignment(unittest.TestCase):
+    """Test CUTLASS BiasLoader alignment with unaligned total_kv lengths.
+
+    CUTLASS Memory Efficient Attention (MEA) uses vectorized loads for the
+    attention bias. Before the fix in PR #28369, the BiasLoader hardcoded
+    128-bit (8 x fp16) alignment, causing wrong results or crashes when
+    total_kv_length % 8 != 0. The fix uses kAlignmentA which respects the
+    unaligned kernel path.
+
+    These tests verify that both aligned (% 8 == 0) and unaligned (% 8 != 0)
+    sequence lengths produce correct results with additive float masks.
+    """
+
+    @parameterized.expand(
+        [
+            ("unaligned_5", 4, 5),
+            ("unaligned_7", 6, 7),
+            ("unaligned_9", 8, 9),
+            ("unaligned_13", 12, 13),
+            ("unaligned_27", 26, 27),
+            ("aligned_8", 7, 8),
+            ("aligned_16", 15, 16),
+            ("aligned_32", 31, 32),
+        ]
+    )
+    def test_mha_bias_alignment_decode(self, name, past_kv_len, total_kv_len):
+        """Decode step (q_seq=1) with additive float mask at various total_kv lengths."""
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=past_kv_len,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(
+        [
+            ("unaligned_5", 5),
+            ("unaligned_7", 7),
+            ("unaligned_13", 13),
+            ("aligned_8", 8),
+            ("aligned_16", 16),
+        ]
+    )
+    def test_mha_bias_alignment_prompt(self, name, kv_seq_len):
+        """Prompt (no past) with additive float mask at various kv_seq lengths."""
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=kv_seq_len,
+            kv_sequence_length=kv_seq_len,
+            q_num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            is_causal=1,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(
+        [
+            ("unaligned_5", 4, 5),
+            ("unaligned_9", 8, 9),
+            ("aligned_16", 15, 16),
+        ]
+    )
+    def test_gqa_bias_alignment_decode(self, name, past_kv_len, total_kv_len):
+        """GQA decode (q_heads != kv_heads) with additive mask at various lengths."""
+        config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=past_kv_len,
+            q_num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            is_causal=1,
+            has_attn_mask=True,
+            attn_mask_dims=4,
+            attn_mask_type="additive",
+        )
+        parity_check_mha_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
 # NOTE: GQA fully-masked batch fix (ZeroOutputForFullyMaskedBatches) is validated by
 # C++ test Attention_NonPadKVSeqLen_AllMasked_FP16_GQA. Python graph-level test omitted
 # because the fix is a CUDA kernel in the MEA path — a CPU-only test cannot validate it,
