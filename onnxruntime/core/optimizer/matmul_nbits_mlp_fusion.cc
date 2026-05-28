@@ -264,7 +264,7 @@ Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     const auto& node_ep = node.GetExecutionProviderType();
-    if (!node_ep.empty() && node_ep != kWebGpuExecutionProvider) {
+    if (node_ep != kWebGpuExecutionProvider) {
       continue;
     }
 

@@ -3562,7 +3562,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .SetDoc(MatMulNBits_ver1_doc)
       .Attr("K", "Input feature dimension of the weight matrix.", AttributeProto::INT)
       .Attr("N", "Output feature dimension of the weight matrix.", AttributeProto::INT)
-      .Attr("bits", "Bit-width used to quantize the weights (valid range: 2~8)", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("bits", "Bit-width used to quantize the weights (supported values: 2, 4, 8)", AttributeProto::INT, static_cast<int64_t>(4))
       .Attr("block_size",
             "Size of each quantization block along the K (input feature) dimension. "
             "Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).",
@@ -3659,9 +3659,9 @@ When fused from SkipSimplifiedLayerNormalization, the optional residual-sum outp
       .SetDoc(MatMulNBitsMlp_ver1_doc)
       .Attr("K", "Input feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
       .Attr("N", "Output feature dimension shared by both quantized weight matrices.", AttributeProto::INT)
-      .Attr("bits", "Bit-width used to quantize both weight matrices (valid range: 2~8)", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("bits", "Bit-width used to quantize both weight matrices. Currently only bits=4 is supported by the WebGPU kernel.", AttributeProto::INT, static_cast<int64_t>(4))
       .Attr("block_size",
-            "Size of each quantization block along the K dimension. Must be a power of two and >= 16.",
+            "Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.",
             AttributeProto::INT)
       .Attr("accuracy_level",
             "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
@@ -3767,9 +3767,9 @@ This operator is intended as a decode-oriented QKV fusion primitive.
       .Attr("K", "Input feature dimension shared by the normalized input and all projection weights.", AttributeProto::INT)
       .Attr("Nq", "Output feature dimension of the Q projection.", AttributeProto::INT)
       .Attr("Nkv", "Output feature dimension shared by the K and V projections.", AttributeProto::INT)
-      .Attr("bits", "Bit-width used to quantize all weight matrices (valid range: 2~8)", AttributeProto::INT, static_cast<int64_t>(4))
+      .Attr("bits", "Bit-width used to quantize all weight matrices. Currently only bits=4 is supported by the WebGPU kernel.", AttributeProto::INT, static_cast<int64_t>(4))
       .Attr("block_size",
-            "Size of each quantization block along the K dimension. Must be a power of two and >= 16.",
+            "Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.",
             AttributeProto::INT)
       .Attr("accuracy_level",
             "The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.",
