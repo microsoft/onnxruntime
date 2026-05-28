@@ -12,6 +12,11 @@
 #include "test/util/include/test_environment.h"
 #include "default_providers.h"
 
+#include <array>
+#include <cmath>
+#include <limits>
+#include <numeric>
+
 #if defined(__aarch64__) && defined(__linux__)
 
 namespace onnxruntime {
@@ -170,62 +175,67 @@ void RunMatMulTest(int32_t opset_version) {
   RunMatMulTest<T>(opset_version, false, false, false);
 }
 
-TEST(MathOpTest, MatMulFloatTypeFastMathKTailFallsBackToSgemm) {
+TEST(MathOpTest, MatMulFloatTypeFastMathKTailDoesNotReadPaddedA) {
   constexpr int64_t M = 1;
   constexpr int64_t N = 8;
-  constexpr int64_t K = 13;
 
-  OpTester test("MatMul", 7);
+  for (const int64_t K : std::array<int64_t, 5>{13, 14, 15, 16, 17}) {
+    SCOPED_TRACE("K=" + std::to_string(K));
 
-  std::vector<float> input0_vals(K);
-  std::iota(input0_vals.begin(), input0_vals.end(), 1.0f);
-  test.AddInput<float>("A", {M, K}, input0_vals);
+    OpTester test("MatMul", 7);
 
-  std::vector<float> input1_vals(K * N, 1.0f);
-  test.AddInput<float>("B", {K, N}, input1_vals, true);
+    std::vector<float> input0_vals(K);
+    std::iota(input0_vals.begin(), input0_vals.end(), 1.0f);
+    test.AddInput<float>("A", {M, K}, input0_vals);
 
-  std::vector<float> expected_vals(N, 91.0f);
-  test.AddOutput<float>("Y", {M, N}, expected_vals);
+    std::vector<float> input1_vals(K * N, 1.0f);
+    test.AddInput<float>("B", {K, N}, input1_vals, true);
 
-  Model& model = test.BuildModel();
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    std::vector<float> expected_vals(N, std::accumulate(input0_vals.begin(), input0_vals.end(), 0.0f));
+    test.AddOutput<float>("Y", {M, N}, expected_vals);
 
-  std::string serialized_model;
-  ASSERT_TRUE(model.ToProto().SerializeToString(&serialized_model));
+    Model& model = test.BuildModel();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
-  SessionOptions so;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-      kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16, "1"));
+    std::string serialized_model;
+    ASSERT_TRUE(model.ToProto().SerializeToString(&serialized_model));
 
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16, "1"));
 
-  std::stringstream model_stream(serialized_model);
-  ASSERT_STATUS_OK(session_object.Load(model_stream));
-  ASSERT_STATUS_OK(session_object.Initialize());
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCpuExecutionProvider()));
 
-  std::vector<float> input0_backing(input0_vals.begin(), input0_vals.end());
-  input0_backing.resize(K + 3, std::numeric_limits<float>::quiet_NaN());
+    std::stringstream model_stream(serialized_model);
+    ASSERT_STATUS_OK(session_object.Load(model_stream));
+    ASSERT_STATUS_OK(session_object.Initialize());
 
-  OrtValue input0;
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({M, K}), input0_backing.data(),
-                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), input0);
+    std::vector<float> input0_backing(input0_vals.begin(), input0_vals.end());
+    // Poison a full 4-float NEON load past the logical A row to verify that
+    // SBGemm K-tail handling does not consume overread values.
+    input0_backing.resize(K + 4, std::numeric_limits<float>::quiet_NaN());
 
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair(std::string("A"), input0));
+    OrtValue input0;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({M, K}), input0_backing.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), input0);
 
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session_object.Run(RunOptions{}, feeds, AsSpan({std::string("Y")}), &fetches));
-  ASSERT_EQ(fetches.size(), 1u);
-  ASSERT_TRUE(fetches[0].IsTensor());
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair(std::string("A"), input0));
 
-  const auto& output_tensor = fetches[0].Get<Tensor>();
-  ASSERT_EQ(output_tensor.Shape(), TensorShape({M, N}));
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session_object.Run(RunOptions{}, feeds, AsSpan({std::string("Y")}), &fetches));
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
 
-  const auto* output_data = output_tensor.Data<float>();
-  for (int64_t i = 0; i < N; ++i) {
-    ASSERT_TRUE(std::isfinite(output_data[i])) << "Output " << i << " should not include padded A tail values.";
-    ASSERT_EQ(output_data[i], expected_vals[i]) << "Output " << i;
+    const auto& output_tensor = fetches[0].Get<Tensor>();
+    ASSERT_EQ(output_tensor.Shape(), TensorShape({M, N}));
+
+    const auto* output_data = output_tensor.Data<float>();
+    for (int64_t i = 0; i < N; ++i) {
+      ASSERT_TRUE(std::isfinite(output_data[i])) << "Output " << i << " should not include padded A tail values.";
+      ASSERT_EQ(output_data[i], expected_vals[i]) << "Output " << i;
+    }
   }
 }
 
