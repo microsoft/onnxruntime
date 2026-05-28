@@ -107,5 +107,26 @@ Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output
 template <typename T>
 void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count);
 
+/**
+ * Saturating absolute value for norm no-op reductions.
+ *
+ * Unlike Impl_Abs, this handles the minimum value of signed integer types
+ * (e.g., INT32_MIN) by saturating to numeric_limits<T>::max() instead of
+ * invoking undefined behavior via signed overflow.
+ */
+template <typename T>
+void Impl_SaturatingAbs(cudaStream_t stream, const T* input_data, T* output_data, size_t count);
+
+/**
+ * Saturating cast from double to integer type T.
+ *
+ * Clamps the double value to [numeric_limits<T>::min(), numeric_limits<T>::max()] before
+ * casting to T. This avoids undefined behavior from out-of-range float-to-integer conversions
+ * (C++ standard [conv.fpint]/1) and provides well-defined saturation semantics matching
+ * the CPU reduction's explicit clamping logic.
+ */
+template <typename T>
+void Impl_SaturatingCastFromDouble(cudaStream_t stream, const double* input_data, T* output_data, size_t count);
+
 }  // namespace cuda
 }  // namespace onnxruntime
