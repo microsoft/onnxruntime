@@ -140,7 +140,10 @@ std::vector<CutlassTileConfig> get_candidate_tiles(
 #ifdef ORT_QUICK_BUILD
   // Quick build: restrict SM80 tile shapes to the 3 instantiated tile sizes only.
   // This matches the reduced instantiations in fused_moe_gemm_sm80_f16.generated.cu.
-  (void)gemm_type;
+  // SIMT (float) kernels use a different tile shape that must still be returned.
+  if (gemm_type == CutlassGemmType::Simt) {
+    return {CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8};
+  }
   return base_configs;
 #endif
 

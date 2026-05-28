@@ -16,6 +16,14 @@ typedef void* cudnnStatus_t;
 #include "core/providers/cuda/cuda_graph.h"
 #include "tensorrt_execution_provider_info.h"
 
+// These types used to come from NvOnnxParser.h, but they've been removed.
+#if NV_TENSORRT_MAJOR >= 11
+#include <utility>
+#include <vector>
+using SubGraph_t = std::pair<std::vector<size_t>, bool>;
+using SubGraphCollection_t = std::vector<SubGraph_t>;
+#endif
+
 namespace onnxruntime {
 
 namespace tensorrt_env_vars {

@@ -9,7 +9,7 @@ type LogLevelType = Env['logLevel'];
 let logLevelValue: Required<LogLevelType> = 'warning';
 
 export const env: Env = {
-  wasm: {} as Env.WebAssemblyFlags,
+  wasm: {},
   webgl: {} as Env.WebGLFlags,
   webgpu: {} as Env.WebGpuFlags,
   versions: { common: version },

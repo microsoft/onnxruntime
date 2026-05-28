@@ -4,6 +4,10 @@
 #ifndef CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 #define CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 
+#include <cmath>
+#include <limits>
+#include <type_traits>
+
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/optional.h"
@@ -16,7 +20,6 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/reduction/reduction_kernel_base.h"
 #include "core/common/safeint.h"
-#include <cmath>
 
 namespace onnxruntime {
 
@@ -717,14 +720,90 @@ class ReduceAggregatorProd : public ReduceAggregator<T, T> {
   }
 };
 
+// Saturating absolute value for norm reductions.
+// For signed integer types, abs(MIN_VALUE) overflows because -MIN_VALUE > MAX_VALUE.
+// This returns MAX_VALUE (the closest representable value) instead of invoking UB.
+template <typename T>
+inline T saturating_abs(const T& v) {
+  if constexpr (std::is_signed_v<T> && std::is_integral_v<T>) {
+    if (v == std::numeric_limits<T>::min()) {
+      return std::numeric_limits<T>::max();
+    }
+  }
+  return v > T(0) ? v : -v;
+}
+
 template <typename T>
 class ReduceAggregatorL1 : public ReduceAggregator<T, T> {
+  // For integer types, accumulate sum-of-absolute-values in double to avoid overflow UB.
+  //
+  // Problem: ReduceL1 computes sum(|x_i|). For integer types, the sum can overflow:
+  //   - int32: just 3 elements of value 1,000,000,000 sum to 3×10^9 > INT32_MAX
+  //   - The abs step itself overflows for INT_MIN (handled by saturating_abs)
+  //
+  // Solution: Accumulate in double (range ~1.8e308), then clamp when casting back to T.
+  // The double accumulator cannot overflow to infinity: even summing INT64_MAX for every
+  // element, overflow requires > 1.9e289 elements — physically impossible.
+  // For int32 inputs, double accumulation is exact: |x_i| fits in 31 bits, and double's
+  // 53-bit mantissa can represent sums exactly up to 2^53 (~4.5 million max-magnitude
+  // elements). Kahan summation is unnecessary and would only add overhead.
+  // For int64 inputs, values > 2^53 and large reductions may lose precision when
+  // accumulated in double. Kahan compensated summation is used for types >= 64 bits
+  // to reduce accumulation error from O(N) to O(1) ULPs.
+  double double_accumulator_ = 0.0;
+  double kahan_compensation_ = 0.0;  // Kahan compensation term for int64+
+
  public:
   inline ReduceAggregatorL1(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
   inline T aggall(const T* from_data) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).cwiseAbs().sum();
+    if constexpr (std::is_integral_v<T>) {
+      double sum = 0.0;
+      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+        // Kahan compensated summation for int64+ to minimize precision loss.
+        double comp = 0.0;
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          double y = std::abs(static_cast<double>(from_data[i])) - comp;
+          double t = sum + y;
+          comp = (t - sum) - y;
+          sum = t;
+        }
+      } else {
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          sum += std::abs(static_cast<double>(from_data[i]));
+        }
+      }
+      // Saturate to max representable value if the L1-norm exceeds T's range.
+      constexpr double max_val = static_cast<double>(std::numeric_limits<T>::max());
+      if (sum >= max_val) return std::numeric_limits<T>::max();
+      return static_cast<T>(sum);
+    } else {
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).cwiseAbs().sum();
+    }
   }
-  inline void update(const T& v) { this->accumulator_ += v > 0 ? v : -v; }
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+        // Kahan compensated summation for int64+.
+        double y = std::abs(static_cast<double>(v)) - kahan_compensation_;
+        double t = double_accumulator_ + y;
+        kahan_compensation_ = (t - double_accumulator_) - y;
+        double_accumulator_ = t;
+      } else {
+        double_accumulator_ += std::abs(static_cast<double>(v));
+      }
+    } else {
+      this->accumulator_ += saturating_abs(v);
+    }
+  }
+  inline T get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      constexpr double max_val = static_cast<double>(std::numeric_limits<T>::max());
+      if (double_accumulator_ >= max_val) return std::numeric_limits<T>::max();
+      return static_cast<T>(double_accumulator_);
+    } else {
+      return this->accumulator_;
+    }
+  }
 
   static void fill_for_empty_set(Tensor& output) {
     EigenMap<T>(output).array() = static_cast<T>(0);
@@ -733,13 +812,88 @@ class ReduceAggregatorL1 : public ReduceAggregator<T, T> {
 
 template <typename T>
 class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
+  // For integer types, accumulate sum-of-squares in double to avoid signed overflow UB.
+  //
+  // Problem: ReduceL2 computes sqrt(sum(x_i^2)). For integer types, squaring can overflow:
+  //   - int32: any |v| > 46340 causes v*v > INT32_MAX (signed overflow = UB)
+  //   - int64: any |v| > 3,037,000,499 causes v*v > INT64_MAX
+  //   - INT_MIN: (-2^31)^2 = 2^62 which wraps to 0 in int32, giving sqrt(0) = 0 (wrong)
+  //
+  // Solution: Promote each element to double before squaring. Double has:
+  //   - Range up to ~1.8e308 (sufficient for any sum of int64 squares). The accumulator
+  //     cannot overflow to infinity: even summing INT64_MAX^2 for every element would
+  //     require > 2.1e270 elements — physically impossible.
+  //   - 53-bit mantissa: int32 values are exactly representable in double, but their
+  //     squares can require up to 62 bits (e.g., (2^31-1)^2 ≈ 2^62). For |v| > 2^26,
+  //     v*v exceeds 2^53 and loses precision. However, this is at most 1 ULP of error
+  //     per element — far better than integer overflow. Kahan summation is omitted for
+  //     int32 since the per-element squaring dominates error, not accumulation.
+  //   - For int64, values > 2^53 lose precision in both squaring and accumulation.
+  //     Kahan compensated summation is used for types >= 64 bits to reduce accumulation
+  //     error from O(N) to O(1) ULPs (squaring precision loss remains inherent).
+  //
+  // The final cast back to T is clamped to numeric_limits<T>::max() to avoid UB when the
+  // L2-norm exceeds the representable range (e.g., ReduceL2([INT_MIN]) ≈ 2^31 > INT32_MAX).
+  double double_accumulator_ = 0.0;
+  double kahan_compensation_ = 0.0;  // Kahan compensation term for int64+
+
  public:
   inline ReduceAggregatorL2(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
   inline T aggall(const T* from_data) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).norm();
+    if constexpr (std::is_integral_v<T>) {
+      double sum = 0.0;
+      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+        // Kahan compensated summation for int64+ to minimize precision loss.
+        double comp = 0.0;
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          double dv = static_cast<double>(from_data[i]);
+          double y = dv * dv - comp;
+          double t = sum + y;
+          comp = (t - sum) - y;
+          sum = t;
+        }
+      } else {
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          double dv = static_cast<double>(from_data[i]);
+          sum += dv * dv;
+        }
+      }
+      double result = std::sqrt(sum);
+      // Saturate to max representable value if the norm exceeds T's range.
+      constexpr double max_val = static_cast<double>(std::numeric_limits<T>::max());
+      if (result >= max_val) return std::numeric_limits<T>::max();
+      return static_cast<T>(result);
+    } else {
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).norm();
+    }
   }
-  inline void update(const T& v) { this->accumulator_ += v * v; }
-  inline T get_value() { return reduce_sqrt<T>(this->accumulator_); }
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      double dv = static_cast<double>(v);
+      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+        // Kahan compensated summation for int64+.
+        double y = dv * dv - kahan_compensation_;
+        double t = double_accumulator_ + y;
+        kahan_compensation_ = (t - double_accumulator_) - y;
+        double_accumulator_ = t;
+      } else {
+        double_accumulator_ += dv * dv;
+      }
+    } else {
+      this->accumulator_ += v * v;
+    }
+  }
+  inline T get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      double result = std::sqrt(double_accumulator_);
+      // Saturate to max representable value to avoid UB when casting back to integer.
+      constexpr double max_val = static_cast<double>(std::numeric_limits<T>::max());
+      if (result >= max_val) return std::numeric_limits<T>::max();
+      return static_cast<T>(result);
+    } else {
+      return reduce_sqrt<T>(this->accumulator_);
+    }
+  }
   static void fill_for_empty_set(Tensor& output) {
     EigenMap<T>(output).array() = static_cast<T>(0);
   }
