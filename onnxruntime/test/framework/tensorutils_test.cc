@@ -1153,6 +1153,68 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroNNZ)
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+// Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when
+// called with an empty model_path (e.g. from training checkpoint or custom-op init paths).
+// Previously, ValidateExternalDataPath was only invoked from Graph::ConvertInitializersIntoOrtValues,
+// so direct callers of GetExtDataFromTensorProto could load arbitrary files.
+TEST(GetExtDataFromTensorProtoTest, RejectsAbsoluteExternalPathWithEmptyModelPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("abs_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+#ifdef _WIN32
+  loc->set_value("C:\\data.bin");
+#else
+  loc->set_value("/etc/passwd");
+#endif
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), {}, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Absolute external path must be rejected even with empty model_path.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+}
+
+// Defense-in-depth: GetExtDataFromTensorProto must reject directory-escaping external paths even
+// when the caller passes a non-empty model_path. This guards callers outside Graph::Resolve.
+TEST(GetExtDataFromTensorProtoTest, RejectsEscapingExternalPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("escape_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value("../escape.bin");
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  // Pass a synthetic model_path so the validator has a model directory to compare against.
+  std::filesystem::path model_path = std::filesystem::temp_directory_path() / "sub" / "model.onnx";
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), model_path, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Directory-escaping external path must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
+
 TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
   // Case 1: Annotation exists
   {

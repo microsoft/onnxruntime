@@ -1265,6 +1265,21 @@ Graph::Graph(const Model& owning_model,
       continue;
     }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+    // Reject ORT in-memory address markers on a sparse-tensor Constant attribute before the
+    // sparse-to-dense conversion runs — those markers are an in-process ORT sentinel and must
+    // never appear in a deserialized protobuf. See note on the dense initializer loop below.
+    if (node.attribute_size() > 0 &&
+        node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
+      const auto& s = node.attribute(0).sparse_tensor();
+      ORT_ENFORCE(!utils::HasExternalDataInMemory(s.values()) &&
+                      !utils::HasExternalDataInMemory(s.indices()),
+                  "Constant node '", node.name(),
+                  "' sparse-tensor attribute references an ORT in-memory address marker, "
+                  "which is not allowed in a model protobuf.");
+    }
+#endif
+
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     ORT_THROW_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor));
 
@@ -1304,6 +1319,16 @@ Graph::Graph(const Model& owning_model,
   if (graph_proto_->sparse_initializer_size() > 0) {
     for (const auto& sparse_tensor : graph_proto_->sparse_initializer()) {
       ORT_ENFORCE(utils::HasName(sparse_tensor), "Sparse initializer must have a name. This model is invalid");
+      // Reject ORT's in-memory address markers on sparse sub-tensors arriving via the protobuf
+      // path. Such markers are an internal ORT optimization set by trusted loaders (e.g. ORT-format
+      // flatbuffer load) and must never appear in a SparseTensorProto deserialized from an .onnx
+      // protobuf; if they do, the model is crafted and would cause ORT to dereference an
+      // attacker-supplied pointer during sparse-to-dense conversion.
+      for (const auto* sub : {&sparse_tensor.values(), &sparse_tensor.indices()}) {
+        ORT_ENFORCE(!utils::HasExternalDataInMemory(*sub),
+                    "Sparse initializer '", sparse_tensor.values().name(),
+                    "' references an ORT in-memory address marker, which is not allowed in a model protobuf.");
+      }
       const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
       auto status = utils::SparseTensorProtoToDenseTensorProto(sparse_tensor, model_path, *tensor);
       ORT_ENFORCE(status.IsOK(), status.ToString());
@@ -1345,6 +1370,14 @@ Graph::Graph(const Model& owning_model,
 
   // Copy initial tensors to a map.
   for (auto& tensor : graph_proto_->initializer()) {
+    // ORT in-memory address markers are an in-process sentinel: they can only be planted by ORT
+    // itself (e.g. when constructing a TensorProto that aliases an mmap'd .ort buffer or an OrtValue).
+    // They must never appear in a TensorProto deserialized from an .onnx protobuf — if they do, the
+    // model is crafted and would cause ORT to dereference an attacker-supplied pointer when
+    // resolving the initializer.
+    ORT_ENFORCE(!utils::HasExternalDataInMemory(tensor),
+                "Initializer '", tensor.name(),
+                "' references an ORT in-memory address marker, which is not allowed in a model protobuf.");
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
     if (!p.second) {
       LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << tensor.name()
