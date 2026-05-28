@@ -169,7 +169,6 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
         state.current_column += start_idx + length
 
         caller: str | None = None
-        name = matched
 
         ptype = pattern.type
 
@@ -495,13 +494,6 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         line_number=state.current_line + 1,
                     )
                 state.current_parentheses_state = cached_paren
-                if fn_call:
-                    raise WgslTemplateGenerateError(
-                        f"Incomplete function call at line {state.current_line + 1}",
-                        "code-generation-failed",
-                        file_path=state.file_path,
-                        line_number=state.current_line + 1,
-                    )
                 state.result.extend(pre_processor_expression)
                 pre_processor_expression = None
                 output("raw", ") {\n")
@@ -570,13 +562,6 @@ def _generate_impl(state: _GeneratorState, preserve_code_reference: bool) -> Non
                         line_number=state.current_line + 1,
                     )
                 state.current_parentheses_state = cached_paren
-                if fn_call:
-                    raise WgslTemplateGenerateError(
-                        f"Incomplete function call at line {state.current_line + 1}",
-                        "code-generation-failed",
-                        file_path=state.file_path,
-                        line_number=state.current_line + 1,
-                    )
                 state.result.extend(pre_processor_expression)
                 pre_processor_expression = None
                 output("raw", ") {\n")
