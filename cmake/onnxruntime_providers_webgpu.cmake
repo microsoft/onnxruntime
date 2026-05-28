@@ -90,7 +90,20 @@
     endif()
 
     # Set preprocessor definition for plugin EP version
-    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+                               ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+
+    # Bake the minimum compatible ORT version (the single source of truth lives in
+    # plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime.
+    # Format is strict "MAJOR.MINOR.PATCH".
+    set(_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION")
+    file(STRINGS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION LIMIT_COUNT 1)
+    if(NOT _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
+      message(FATAL_ERROR "WebGPU plugin EP minimum ORT version file is missing or empty: "
+                          "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}")
+    endif()
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+                               ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}")
 
     # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
     if(WIN32)

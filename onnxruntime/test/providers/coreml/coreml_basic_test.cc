@@ -2360,6 +2360,55 @@ TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+namespace {
+// Single-input model with both Sin and Cos consuming `X`, used by the
+// Sin/Cos tests below.
+std::string MakeSinCosModelData() {
+  onnxruntime::Model model("sin_cos_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  auto* shape = float_tensor.mutable_tensor_type()->mutable_shape();
+  shape->add_dim()->set_dim_value(1);
+  shape->add_dim()->set_dim_value(6);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &float_tensor);
+  auto& sin_out = graph.GetOrCreateNodeArg("Sin_out", &float_tensor);
+  auto& cos_out = graph.GetOrCreateNodeArg("Cos_out", &float_tensor);
+  graph.AddNode("sin", "Sin", "sin node", {&x}, {&sin_out});
+  graph.AddNode("cos", "Cos", "cos node", {&x}, {&cos_out});
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// Sin and Cos are lowered to the ML Program 'sin' / 'cos' ops.
+TEST(CoreMLExecutionProviderTest, SinCos_MLProgram) {
+  const std::string model_data = MakeSinCosModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 6};
+  std::vector<float> values = {-2.0f, -0.5f, 0.0f, 0.5f, 1.0f, 2.0f};
+  OrtValue x_val;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, values, &x_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis1) {
   // ai.onnx:Gather with rank-0 (scalar) 'indices'. ONNX output rank =
   // data_rank + indices_rank - 1 = 2. The CoreML builder internally promotes
@@ -2435,6 +2484,16 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis1) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
 #endif
+}
+
+// Sin/Cos only have an ML Program lowering (the NeuralNetwork
+// UnaryFunctionLayerParams has no sin/cos), so on the NeuralNetwork format
+// they must fall back to CPU rather than be claimed.
+TEST(CoreMLExecutionProviderTest, SinCosNeuralNetworkNotSupported) {
+  const std::string model_data = MakeSinCosModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
 }
 
 TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis0) {

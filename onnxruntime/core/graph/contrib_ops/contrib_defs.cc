@@ -56,10 +56,22 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   int64_t group = getAttribute(ctx, "group", 1);
+  if (group <= 0) {
+    fail_shape_inference("group attribute must be positive. Got: ", group);
+  }
 
   auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-  if (input_shape.dim_size() < 2) {
-    return;  // Input tensor should have at least two dimensions.
+  // ConvTranspose requires X=(N x C x D1...Dn) and W=(C x M/group x k1...kn), both rank >= 3.
+  // The upstream ONNX ConvTranspose shape inference only checks rank >= 2, which allows rank-2
+  // inputs to pass shape inference but crash at kernel execution time. We tighten the check here
+  // to fail early at model load with a clear error. Fixing ONNX upstream is tracked separately.
+  if (input_shape.dim_size() < 3) {
+    fail_shape_inference("Input tensor must have at least 3 dimensions. Got: ", input_shape.dim_size());
+  }
+
+  auto weight_shape = ctx.getInputType(1)->tensor_type().shape();
+  if (weight_shape.dim_size() < 3) {
+    fail_shape_inference("Weight tensor must have at least 3 dimensions. Got: ", weight_shape.dim_size());
   }
 
   // first dim is the batch axis and the next is the number of channels.
@@ -147,7 +159,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 
   *final_output_shape->add_dim() = input_shape.dim(0);
   *final_output_shape->add_dim() =
-      ctx.getInputType(1)->tensor_type().shape().dim(1) *
+      weight_shape.dim(1) *
       group;  // channels should be the second dim of second input multiply
   // group.
 

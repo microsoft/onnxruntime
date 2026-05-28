@@ -2674,14 +2674,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scale tensor for past_value.</dd>
 </dl>
 
-#### Outputs (3 - 4)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>present_key</tt> : T_CACHE</dt>
+<dt><tt>present_key</tt> (optional) : T_CACHE</dt>
 <dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
-<dt><tt>present_value</tt> : T_CACHE</dt>
+<dt><tt>present_value</tt> (optional) : T_CACHE</dt>
 <dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>output_qk</tt> (optional) : T</dt>
 <dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>
@@ -3149,7 +3149,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>accuracy_level</tt> : int</dt>
 <dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
 <dt><tt>bits</tt> : int</dt>
-<dd>Bit-width used to quantize the weights (valid range: 2~8)</dd>
+<dd>Bit-width used to quantize the weights (supported values: 2, 4, 8)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
 </dl>
@@ -3242,9 +3242,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>activation</tt> : string (required)</dt>
 <dd>Activation applied to the gate projection.</dd>
 <dt><tt>bits</tt> : int</dt>
-<dd>Bit-width used to quantize both weight matrices (valid range: 2~8)</dd>
+<dd>Bit-width used to quantize both weight matrices. Currently only bits=4 is supported by the WebGPU kernel.</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
-<dd>Size of each quantization block along the K dimension. Must be a power of two and >= 16.</dd>
+<dd>Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon used by the optional fused (Skip)SimplifiedLayerNormalization. Defaults to 1e-5.</dd>
 </dl>
@@ -3298,9 +3298,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   same normalized activation.
   
     A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
-    Q = MatMulNBits(A_norm, q_weight)
-    K = MatMulNBits(A_norm, k_weight)
-    V = MatMulNBits(A_norm, v_weight)
+    Q = MatMulNBits(A_norm, q_weight) + q_bias
+    K = MatMulNBits(A_norm, k_weight) + k_bias
+    V = MatMulNBits(A_norm, v_weight) + v_bias
   
   If skip is provided, the operator computes the SkipSimplifiedLayerNormalization variant
   and may also return the input+skip residual sum as output 3.
@@ -3323,14 +3323,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>accuracy_level</tt> : int</dt>
 <dd>The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.</dd>
 <dt><tt>bits</tt> : int</dt>
-<dd>Bit-width used to quantize all weight matrices (valid range: 2~8)</dd>
+<dd>Bit-width used to quantize all weight matrices. Currently only bits=4 is supported by the WebGPU kernel.</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
-<dd>Size of each quantization block along the K dimension. Must be a power of two and >= 16.</dd>
+<dd>Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon used by the simplified layer norm reduction.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (11 - 12)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
@@ -3343,14 +3343,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Packed uint8 tensor for the Q projection weights.</dd>
 <dt><tt>q_scales</tt> : T1</dt>
 <dd>Per-block scaling factors for the Q projection.</dd>
+<dt><tt>q_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the Q projection with shape [Nq].</dd>
 <dt><tt>k_B</tt> : T2</dt>
 <dd>Packed uint8 tensor for the K projection weights.</dd>
 <dt><tt>k_scales</tt> : T1</dt>
 <dd>Per-block scaling factors for the K projection.</dd>
+<dt><tt>k_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the K projection with shape [Nkv].</dd>
 <dt><tt>v_B</tt> : T2</dt>
 <dd>Packed uint8 tensor for the V projection weights.</dd>
 <dt><tt>v_scales</tt> : T1</dt>
 <dd>Per-block scaling factors for the V projection.</dd>
+<dt><tt>v_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the V projection with shape [Nkv].</dd>
 </dl>
 
 #### Outputs (3 - 4)
