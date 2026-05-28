@@ -137,8 +137,7 @@ std::optional<QkvNodes> GetQkvNodes(const Graph& graph, const Node& norm) {
 }
 
 bool HasSupportedExecutionProvider(const Node& node) {
-  const auto& node_ep = node.GetExecutionProviderType();
-  return node_ep.empty() || node_ep == kWebGpuExecutionProvider;
+  return node.GetExecutionProviderType() == kWebGpuExecutionProvider;
 }
 
 bool IsFuseCandidate(const Node& norm, const QkvNodes& qkv) {

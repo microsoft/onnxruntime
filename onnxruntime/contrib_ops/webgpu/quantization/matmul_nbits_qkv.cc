@@ -315,16 +315,8 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   // through the layer-norm op, so the decode program runs with skip_input/skip_output disabled.
   const bool decode_has_norm = !exceeds_storage_buffer_limit;
   const bool decode_has_skip_input = !exceeds_storage_buffer_limit && skip != nullptr;
-  std::optional<Tensor> input_skip_bias_sum_scratch;
-  Tensor* decode_input_skip_bias_sum = nullptr;
-  if (decode_has_skip_input) {
-    decode_input_skip_bias_sum = input_skip_bias_sum;
-    if (decode_input_skip_bias_sum == nullptr) {
-      input_skip_bias_sum_scratch.emplace(context.CreateGPUTensor(a->DataType(), a->Shape()));
-      decode_input_skip_bias_sum = &*input_skip_bias_sum_scratch;
-    }
-  }
-  const bool decode_has_skip_output = decode_input_skip_bias_sum != nullptr;
+  const bool decode_has_skip_output = !exceeds_storage_buffer_limit && input_skip_bias_sum != nullptr;
+  Tensor* decode_input_skip_bias_sum = decode_has_skip_output ? input_skip_bias_sum : nullptr;
 
   uint32_t k_unroll_tiles = 1;
   if ((K % tile_size_k) == 0) {
