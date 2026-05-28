@@ -69,19 +69,6 @@ struct ContextImpl {
   std::vector<std::string> component_names_cache;
   std::unordered_map<std::string, std::vector<std::string>> variant_names_cache;
   std::unordered_map<std::string, std::string> folder_path_strings_cache;
-  std::unordered_map<std::string, std::string> file_path_strings_cache;
-
-  // Helper to build a cache key from component + variant + file_idx.
-  static std::string MakeCacheKey(const char* component, const char* variant, size_t idx) {
-    std::string key;
-    key.reserve(128);
-    key += component;
-    key += '\0';
-    key += variant;
-    key += '\0';
-    key += std::to_string(idx);
-    return key;
-  }
 
   // Lookup helpers.
   const Component* FindComponent(const char* name) const;

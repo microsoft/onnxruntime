@@ -8600,9 +8600,8 @@ struct OrtInteropApi {
  * 4) Select a component and resolve variant:
  *    - SelectComponent()
  * 5) Query selected variant info (optional):
- *    - ModelPackageComponent_GetSelectedVariantFileCount()
- *    - ModelPackageComponent_GetSelectedVariantFilePath()
  *    - ModelPackageComponent_GetSelectedVariantName()
+ *    - ModelPackageComponent_GetSelectedVariantFolderPath()
  * 6) Create session:
  *    - CreateSession()
  *
@@ -8783,32 +8782,6 @@ struct OrtModelPackageApi {
   ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFolderPath,
                   _In_ const OrtModelPackageComponentContext* ctx,
                   _Outptr_ const ORTCHAR_T** folder_path);
-
-  /** \brief Get the number of model files in the selected variant.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[out] num_files Receives the file count.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFileCount,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Out_ size_t* num_files);
-
-  /** \brief Get the resolved file path for a specific model file in the selected variant.
-   *
-   * The string is owned by `ctx` and remains valid until the context is released.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[in] file_idx Zero-based index of the file (must be < file count).
-   * \param[out] out_path Receives the resolved file path string.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFilePath,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _In_ size_t file_idx,
-                  _Outptr_ const ORTCHAR_T** out_path);
 
   /// @}
   /** \brief Create an OrtSession for a selected file within a component model variant.

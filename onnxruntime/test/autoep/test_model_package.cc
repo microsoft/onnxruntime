@@ -363,17 +363,6 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
                                                &raw_component_context));
   component_context.reset(raw_component_context);
 
-  size_t selected_file_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileCount(component_context.get(),
-                                                                                 &selected_file_count));
-  ASSERT_EQ(selected_file_count, 1u);
-
-  const ORTCHAR_T* selected_file_path = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(component_context.get(),
-                                                                                0,
-                                                                                &selected_file_path));
-  ASSERT_NE(selected_file_path, nullptr);
-
   OrtSession* raw_session = nullptr;
   ASSERT_ORTSTATUS_OK(pkg_api->CreateSession(*ort_env,
                                              component_context.get(),
@@ -399,103 +388,6 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
-}
-
-TEST(ModelPackageApiTest, MultiFileVariantInComponent_SelectComponentAndCreateSession) {
-  const auto package_root = CreateModelPackageApiTestPackage(/*multi_file_variant*/ true);
-
-  RegisteredEpDeviceUniquePtr example_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-
-  Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> ep_options;
-  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
-
-  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) {
-    if (p) pkg_api->ReleaseModelPackageOptions(p);
-  };
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
-    if (p) pkg_api->ReleaseModelPackageContext(p);
-  };
-  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
-    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
-  };
-
-  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> model_pkg_options(nullptr, options_deleter);
-  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> model_pkg_context(nullptr, context_deleter);
-  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> component_context(nullptr, component_context_deleter);
-
-  OrtModelPackageOptions* raw_options = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
-  model_pkg_options.reset(raw_options);
-
-  OrtModelPackageContext* raw_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
-  model_pkg_context.reset(raw_context);
-
-  OrtModelPackageComponentContext* raw_component_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(model_pkg_context.get(),
-                                               "model_1",
-                                               model_pkg_options.get(),
-                                               &raw_component_context));
-  component_context.reset(raw_component_context);
-
-  size_t file_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFileCount(component_context.get(), &file_count));
-  ASSERT_GT(file_count, 1u);
-
-  const ORTCHAR_T* folder = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFolderPath(component_context.get(), &folder));
-  ASSERT_NE(folder, nullptr);
-
-  const auto variant_json_path = std::filesystem::path(folder) / "variant.json";
-  ASSERT_TRUE(std::filesystem::exists(variant_json_path));
-
-  std::ifstream vf(variant_json_path, std::ios::binary);
-  ASSERT_TRUE(vf.good());
-
-  json vm = json::parse(vf);
-  ASSERT_TRUE(vm.contains("files"));
-  ASSERT_TRUE(vm["files"].is_array());
-  ASSERT_EQ(vm["files"].size(), file_count);
-
-  for (size_t i = 0; i < file_count; ++i) {
-    const auto& file_entry = vm["files"][i];
-    ASSERT_TRUE(file_entry.contains("filename"));
-    ASSERT_TRUE(file_entry["filename"].is_string());
-
-    const std::string expected_filename = file_entry["filename"].get<std::string>();
-
-    const ORTCHAR_T* file_path = nullptr;
-    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(component_context.get(), i, &file_path));
-    ASSERT_NE(file_path, nullptr);
-    EXPECT_EQ(std::filesystem::path(file_path).filename().string(), expected_filename);
-
-    // Create per-file stage session.
-    Ort::SessionOptions stage_session_options;
-    std::unordered_map<std::string, std::string> empty_opts;
-    stage_session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, empty_opts);
-
-    Ort::Session stage_session(*ort_env, file_path, stage_session_options);
-
-    // Smoke-run to ensure created session is functional.
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-    std::vector<int64_t> shape = {3, 2};
-    std::vector<float> input_data = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
-    Ort::Value input = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_data.size(),
-                                                       shape.data(), shape.size());
-    const char* input_names[] = {"X"};
-    const char* output_names[] = {"Y"};
-    std::vector<Ort::Value> inputs;
-    inputs.push_back(std::move(input));
-
-    auto outputs = stage_session.Run(Ort::RunOptions{nullptr}, input_names, inputs.data(), inputs.size(), output_names, 1);
-    ASSERT_EQ(outputs.size(), 1u);
-  }
 }
 
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
@@ -1188,12 +1080,12 @@ TEST(ModelPackageTest, VariantSelector_TieBreakIsDeterministic) {
     ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
     comp_ctx.reset(raw_comp_ctx);
 
-    const ORTCHAR_T* selected_path = nullptr;
-    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFilePath(comp_ctx.get(), 0, &selected_path));
-    ASSERT_NE(selected_path, nullptr);
+    const ORTCHAR_T* selected_folder = nullptr;
+    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFolderPath(comp_ctx.get(), &selected_folder));
+    ASSERT_NE(selected_folder, nullptr);
 
-    // Path looks like .../models/model_1/<variant_x>/mul_1.onnx -- the parent dir name is the variant.
-    const auto selected_variant_dir = std::filesystem::path(selected_path).parent_path().filename().string();
+    // Path looks like .../models/model_1/<variant_x> -- the folder name is the variant.
+    const auto selected_variant_dir = std::filesystem::path(selected_folder).filename().string();
     ASSERT_TRUE(selected_variant_dir == "variant_a" || selected_variant_dir == "variant_b")
         << "unexpected variant dir: " << selected_variant_dir;
 
@@ -1244,7 +1136,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
       "files": [{
         "filename": "mul_1.onnx",
         "session_options": {
-          "session.intra_op_num_threads": "not_an_int"
+          "intra_op_num_threads": "not_an_int"
         }
       }]
     })";
@@ -1293,7 +1185,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
     Ort::GetApi().ReleaseSession(raw_session);
     raw_session = nullptr;
   }
-  ASSERT_NE(st, nullptr) << "CreateSession unexpectedly succeeded with malformed session.intra_op_num_threads";
+  ASSERT_NE(st, nullptr) << "CreateSession unexpectedly succeeded with malformed intra_op_num_threads";
   const std::string err_msg = Ort::GetApi().GetErrorMessage(st);
   Ort::GetApi().ReleaseStatus(st);
 
@@ -1349,14 +1241,6 @@ TEST(ModelPackageApiTest, CxxWrappers_SelectComponentAndQueryFileAccessors) {
   // Folder path should be non-empty
   auto folder = cix.GetSelectedVariantFolderPath();
   EXPECT_FALSE(folder.empty());
-
-  // Should have at least one file
-  size_t file_count = cix.GetSelectedVariantFileCount();
-  EXPECT_GE(file_count, 1u);
-
-  // File path should be non-empty
-  auto file_path = cix.GetSelectedVariantFilePath(0);
-  EXPECT_FALSE(file_path.empty());
 
   // Selected variant name should not throw
   auto variant_name = cix.GetSelectedVariantName();

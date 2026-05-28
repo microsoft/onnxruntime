@@ -1438,18 +1438,6 @@ inline std::basic_string<ORTCHAR_T> ModelPackageComponentContext::GetSelectedVar
   return std::basic_string<ORTCHAR_T>{path};
 }
 
-inline size_t ModelPackageComponentContext::GetSelectedVariantFileCount() const {
-  size_t count = 0;
-  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFileCount(this->p_, &count));
-  return count;
-}
-
-inline std::basic_string<ORTCHAR_T> ModelPackageComponentContext::GetSelectedVariantFilePath(size_t file_idx) const {
-  const ORTCHAR_T* path = nullptr;
-  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFilePath(this->p_, file_idx, &path));
-  return std::basic_string<ORTCHAR_T>{path};
-}
-
 inline std::string ModelPackageComponentContext::GetSelectedVariantName() const {
   const char* name = nullptr;
   ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantName(this->p_, &name));

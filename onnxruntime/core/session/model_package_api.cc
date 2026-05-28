@@ -269,61 +269,6 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariant
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileCount,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _Out_ size_t* num_files) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || num_files == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and num_files must be non-null");
-  }
-
-  const auto* cxx_ctx = reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx);
-
-  gsl::span<const std::filesystem::path> file_paths;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(cxx_ctx->GetSelectedVariantFilePaths(file_paths));
-
-  *num_files = file_paths.size();
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(num_files);
-  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
-#endif
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFilePath,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _In_ size_t file_idx,
-                    _Outptr_ const ORTCHAR_T** out_path) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
-  if (ctx == nullptr || out_path == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx and out_path must be non-null");
-  }
-
-  const auto* cxx_ctx = reinterpret_cast<const onnxruntime::ModelPackageComponentContext*>(ctx);
-
-  gsl::span<const std::filesystem::path> file_paths;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(cxx_ctx->GetSelectedVariantFilePaths(file_paths));
-
-  if (file_idx >= file_paths.size()) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "file_idx out of range");
-  }
-
-  // Pointer lifetime is owned by ModelPackageComponentContext cache.
-  *out_path = file_paths[file_idx].c_str();
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ctx);
-  ORT_UNUSED_PARAMETER(file_idx);
-  ORT_UNUSED_PARAMETER(out_path);
-  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
-#endif
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageComponentContext* ctx,
@@ -339,9 +284,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
   auto& mp_ctx = *reinterpret_cast<onnxruntime::ModelPackageComponentContext*>(ctx);
 
   // 1) Get the selected variant model file path.
-  //    Note: This API only supports single-file variants. For multi-file variants, the caller
-  //          should use ModelPackageComponent_GetSelectedVariantFilePath to get individual file paths
-  //          and create sessions accordingly.
+  //    ORT only supports a single ONNX file per variant folder.
   std::filesystem::path selected_file_path;
   ORT_API_RETURN_IF_STATUS_NOT_OK(mp_ctx.GetSelectedVariantFilePath(selected_file_path));
 
@@ -542,8 +485,6 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     &OrtModelPackageAPI::ReleaseModelPackageComponentContext,
     &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantName,
     &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFolderPath,
-    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFileCount,
-    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFilePath,
 
     // Session
     &OrtModelPackageAPI::CreateSession,
@@ -551,7 +492,7 @@ static constexpr OrtModelPackageApi ort_model_package_api = {
     // End of Version 1.27 - DO NOT MODIFY ABOVE
 };
 
-static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 16,
+static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 14,
               "Size of initial OrtModelPackageApi cannot change");
 
 ORT_API(const OrtModelPackageApi*, OrtModelPackageAPI::GetModelPackageApi) {

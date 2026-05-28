@@ -323,6 +323,24 @@ bool LookupKnownSessionOption(const char* key, SessionOptionSetterKind& out) {
       return true;
     }
   }
+
+  // Also accept short keys without the "session." prefix.
+  // e.g., "intra_op_num_threads" matches "session.intra_op_num_threads".
+  constexpr std::string_view kPrefix = "session.";
+  std::string prefixed_key = std::string(kPrefix) + key;
+  for (const auto& entry : kKnownSessionOptions) {
+    if (prefixed_key == entry.key) {
+      out = entry.kind;
+      return true;
+    }
+  }
+
+  // Handle "logid" as an alias for "session.log_id".
+  if (std::strcmp(key, "logid") == 0) {
+    out = SessionOptionSetterKind::kSessionLogId;
+    return true;
+  }
+
   return false;
 }
 

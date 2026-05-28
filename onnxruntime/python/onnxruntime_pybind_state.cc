@@ -3401,25 +3401,6 @@ Provides access to the resolved variant's files, session options, and metadata.)
           },
           R"pbdoc(Get the folder path of the selected variant.)pbdoc")
       .def(
-          "get_file_count",
-          [](PyModelPackageComponentContext& self) -> size_t {
-            const auto* api = Ort::GetApi().GetModelPackageApi();
-            size_t count = 0;
-            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantFileCount(self.ctx_, &count));
-            return count;
-          },
-          R"pbdoc(Get the number of model files in the selected variant.)pbdoc")
-      .def(
-          "get_file_path",
-          [](PyModelPackageComponentContext& self, size_t file_idx) -> std::string {
-            const auto* api = Ort::GetApi().GetModelPackageApi();
-            const ORTCHAR_T* path = nullptr;
-            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantFilePath(self.ctx_, file_idx, &path));
-            return PathToUTF8String(PathString(path));
-          },
-          py::arg("file_idx"),
-          R"pbdoc(Get the file path for a specific model file in the selected variant.)pbdoc")
-      .def(
           "get_selected_variant_name",
           [](PyModelPackageComponentContext& self) -> std::string {
             const auto* api = Ort::GetApi().GetModelPackageApi();

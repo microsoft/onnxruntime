@@ -53,15 +53,6 @@ ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFolderPath,
                     _In_ const OrtModelPackageComponentContext* ctx,
                     _Outptr_ const ORTCHAR_T** folder_path);
 
-ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFileCount,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _Out_ size_t* num_files);
-
-ORT_API_STATUS_IMPL(ModelPackageComponent_GetSelectedVariantFilePath,
-                    _In_ const OrtModelPackageComponentContext* ctx,
-                    _In_ size_t file_idx,
-                    _Outptr_ const ORTCHAR_T** out_path);
-
 ORT_API_STATUS_IMPL(CreateSession,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageComponentContext* ctx,

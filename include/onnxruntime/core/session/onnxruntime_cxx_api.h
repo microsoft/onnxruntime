@@ -1853,7 +1853,7 @@ struct ModelPackageContext : detail::Base<OrtModelPackageContext> {
 /** \brief Context for a selected component within a model package.
  *
  * Wraps ::OrtModelPackageComponentContext. Provides accessors for the selected variant's
- * folder path, file paths, and variant name.
+ * folder path and variant name.
  */
 struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentContext> {
   using Base = detail::Base<OrtModelPackageComponentContext>;
@@ -1862,8 +1862,6 @@ struct ModelPackageComponentContext : detail::Base<OrtModelPackageComponentConte
   explicit ModelPackageComponentContext(std::nullptr_t) {}  ///< Create an empty object, must be assigned a valid one to be used.
 
   std::basic_string<ORTCHAR_T> GetSelectedVariantFolderPath() const;               ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFolderPath
-  size_t GetSelectedVariantFileCount() const;                                      ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFileCount
-  std::basic_string<ORTCHAR_T> GetSelectedVariantFilePath(size_t file_idx) const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantFilePath
 
   std::string GetSelectedVariantName() const;  ///< Wraps OrtModelPackageApi::ModelPackageComponent_GetSelectedVariantName
 

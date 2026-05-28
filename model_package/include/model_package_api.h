@@ -150,25 +150,6 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantEpName(
     const char* variant_name,
     const char** out_ep);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Variant file queries
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Get the number of model files in a variant.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantFileCount(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t* out_count);
-
-/// Get the resolved file path for a model file within a variant.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantFilePath(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    size_t file_idx,
-    const char** out_path);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif
