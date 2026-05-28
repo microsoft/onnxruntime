@@ -2108,7 +2108,8 @@ This version of the operator has been available since version 1 of the 'com.micr
     3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
-    5. For uint8 data, the `gather_axis` must be 0.
+    5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
+       for `bits` < 8 the values are packed along the last dimension (low-order bits first).
 
 #### Version
 
@@ -2118,7 +2119,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>bits</tt> : int</dt>
-<dd>Number of bits used for weight quantization. Must be either 4 or 8. </dd>
+<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. </dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>gather_axis</tt> : int</dt>
@@ -2671,14 +2672,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scale tensor for past_value.</dd>
 </dl>
 
-#### Outputs (3 - 4)
+#### Outputs (1 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
-<dt><tt>present_key</tt> : T_CACHE</dt>
+<dt><tt>present_key</tt> (optional) : T_CACHE</dt>
 <dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
-<dt><tt>present_value</tt> : T_CACHE</dt>
+<dt><tt>present_value</tt> (optional) : T_CACHE</dt>
 <dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>output_qk</tt> (optional) : T</dt>
 <dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>

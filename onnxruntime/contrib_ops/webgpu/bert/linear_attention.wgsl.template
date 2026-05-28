@@ -90,9 +90,6 @@ $MAIN {
 
   // Initialize state tile in private memory
   var state: array<vtype, TILE_V>;
-  for (var j = 0u; j < TILE_V; j++) {
-    state[j] = vtype(0.0);
-  }
 
   // Load initial state if provided
 #if has_initial_state

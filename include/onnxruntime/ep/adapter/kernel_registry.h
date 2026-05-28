@@ -35,7 +35,7 @@ struct KernelCreateInfo {
                    KernelCreatePtrFn create_func)
       : kernel_def(std::move(definition)),
         kernel_create_func(create_func) {
-    assert(kernel_def != nullptr);
+    assert(kernel_def == nullptr || kernel_create_func != nullptr);
   }
 
   KernelCreateInfo(KernelCreateInfo&& other) noexcept
