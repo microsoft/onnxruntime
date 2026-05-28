@@ -622,8 +622,16 @@ class TestGQACPUQuantizedKV(unittest.TestCase):
 
 
 def run_quantized_gqa_bias_test(
-    batch_size, seq_len, num_heads, kv_num_heads, head_size, quant_type, bit_width,
-    bias_broadcast_batch=False, bias_broadcast_head=False, atol=None
+    batch_size,
+    seq_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    quant_type,
+    bit_width,
+    bias_broadcast_batch=False,
+    bias_broadcast_head=False,
+    atol=None,
 ):
     """Run a quantized GQA test with attention bias and compare against reference."""
     np.random.seed(123)
@@ -674,8 +682,16 @@ def run_quantized_gqa_bias_test(
 
     # Build and run ONNX model
     onnx_model_str = create_quantized_gqa_graph_with_bias(
-        batch_size, seq_len, num_heads, kv_num_heads, head_size, quant_type, bit_width,
-        bias_batch_size=bias_batch, bias_num_heads=bias_heads, total_seqlen=seq_len,
+        batch_size,
+        seq_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        quant_type,
+        bit_width,
+        bias_batch_size=bias_batch,
+        bias_num_heads=bias_heads,
+        total_seqlen=seq_len,
     )
     sess_options = SessionOptions()
     sess = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
@@ -720,8 +736,9 @@ def run_quantized_gqa_bias_test(
     else:
         raise ValueError(f"Unsupported config: bit_width={bit_width}, quant_type={quant_type}")
 
-    out_ref = reference_gqa(query, k_deq, v_deq, num_heads, kv_num_heads, head_size,
-                            causal=True, attention_bias=attention_bias)
+    out_ref = reference_gqa(
+        query, k_deq, v_deq, num_heads, kv_num_heads, head_size, causal=True, attention_bias=attention_bias
+    )
 
     if atol is None:
         atol = 0.15 if bit_width == 4 else 0.05
@@ -745,64 +762,110 @@ class TestGQACPUQuantizedKVWithBias(unittest.TestCase):
 
     def test_int8_per_tensor_bias(self):
         run_quantized_gqa_bias_test(
-            batch_size=1, seq_len=8, num_heads=2, kv_num_heads=1,
-            head_size=16, quant_type="PER_TENSOR", bit_width=8,
+            batch_size=1,
+            seq_len=8,
+            num_heads=2,
+            kv_num_heads=1,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=8,
         )
 
     def test_int8_per_channel_bias(self):
         run_quantized_gqa_bias_test(
-            batch_size=1, seq_len=8, num_heads=2, kv_num_heads=1,
-            head_size=16, quant_type="PER_CHANNEL", bit_width=8,
+            batch_size=1,
+            seq_len=8,
+            num_heads=2,
+            kv_num_heads=1,
+            head_size=16,
+            quant_type="PER_CHANNEL",
+            bit_width=8,
         )
 
     def test_int4_per_tensor_bias(self):
         run_quantized_gqa_bias_test(
-            batch_size=1, seq_len=8, num_heads=2, kv_num_heads=1,
-            head_size=16, quant_type="PER_TENSOR", bit_width=4,
+            batch_size=1,
+            seq_len=8,
+            num_heads=2,
+            kv_num_heads=1,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=4,
         )
 
     def test_int4_per_channel_bias(self):
         run_quantized_gqa_bias_test(
-            batch_size=1, seq_len=8, num_heads=2, kv_num_heads=1,
-            head_size=16, quant_type="PER_CHANNEL", bit_width=4,
+            batch_size=1,
+            seq_len=8,
+            num_heads=2,
+            kv_num_heads=1,
+            head_size=16,
+            quant_type="PER_CHANNEL",
+            bit_width=4,
         )
 
     def test_int8_bias_broadcast_batch(self):
         """Bias shape [1, N, S, T] with batch_size > 1."""
         run_quantized_gqa_bias_test(
-            batch_size=2, seq_len=8, num_heads=4, kv_num_heads=2,
-            head_size=16, quant_type="PER_TENSOR", bit_width=8,
+            batch_size=2,
+            seq_len=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=8,
             bias_broadcast_batch=True,
         )
 
     def test_int8_bias_broadcast_head(self):
         """Bias shape [B, 1, S, T] with num_heads > 1."""
         run_quantized_gqa_bias_test(
-            batch_size=1, seq_len=8, num_heads=4, kv_num_heads=2,
-            head_size=16, quant_type="PER_TENSOR", bit_width=8,
+            batch_size=1,
+            seq_len=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=8,
             bias_broadcast_head=True,
         )
 
     def test_int8_bias_broadcast_both(self):
         """Bias shape [1, 1, S, T] with batch_size > 1 and num_heads > 1."""
         run_quantized_gqa_bias_test(
-            batch_size=2, seq_len=8, num_heads=4, kv_num_heads=2,
-            head_size=16, quant_type="PER_TENSOR", bit_width=8,
-            bias_broadcast_batch=True, bias_broadcast_head=True,
+            batch_size=2,
+            seq_len=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=8,
+            bias_broadcast_batch=True,
+            bias_broadcast_head=True,
         )
 
     def test_int8_bias_large(self):
         """Larger test to exercise flash attention path with bias."""
         run_quantized_gqa_bias_test(
-            batch_size=2, seq_len=32, num_heads=4, kv_num_heads=2,
-            head_size=64, quant_type="PER_TENSOR", bit_width=8,
+            batch_size=2,
+            seq_len=32,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=64,
+            quant_type="PER_TENSOR",
+            bit_width=8,
         )
 
     def test_int4_bias_large(self):
         """Larger test with INT4 to exercise flash attention path with bias."""
         run_quantized_gqa_bias_test(
-            batch_size=2, seq_len=32, num_heads=4, kv_num_heads=2,
-            head_size=64, quant_type="PER_CHANNEL", bit_width=4,
+            batch_size=2,
+            seq_len=32,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=64,
+            quant_type="PER_CHANNEL",
+            bit_width=4,
         )
 
 

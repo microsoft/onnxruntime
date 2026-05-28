@@ -555,15 +555,15 @@ class GQAAttentionBase {
   // Avoids materializing the full [B, N, S, T] attention probability matrix.
   // Uses online softmax with KV block tiling for reduced memory usage.
   Status ApplyAttentionQuantizedFlash(
-      const float* Q,            // Q data [B, N, S, H] BNSH
-      const float* K,            // K data [B, N_kv, L, H] or nullptr for packed_qkv
-      const float* V,            // V data [B, N_kv, L, H] or nullptr for packed_qkv
+      const float* Q,                // Q data [B, N, S, H] BNSH
+      const float* K,                // K data [B, N_kv, L, H] or nullptr for packed_qkv
+      const float* V,                // V data [B, N_kv, L, H] or nullptr for packed_qkv
       const Tensor* attention_bias,  // additive bias [B|1, N|1, S, T] or nullptr
-      const Tensor* past_key,    // past K (uint8_t)
-      const Tensor* past_value,  // past V (uint8_t)
-      Tensor* output,            // output [B, S, N*H] float
-      Tensor* present_key,       // present K (uint8_t)
-      Tensor* present_value,     // present V (uint8_t)
+      const Tensor* past_key,        // past K (uint8_t)
+      const Tensor* past_value,      // past V (uint8_t)
+      Tensor* output,                // output [B, S, N*H] float
+      Tensor* present_key,           // present K (uint8_t)
+      Tensor* present_value,         // present V (uint8_t)
       const Tensor* seqlens_k,
       const float* k_scale,
       const float* v_scale,
