@@ -276,6 +276,13 @@ struct MlasFlashAttentionQuantizedKVArgs {
     const float* k_scale;    // Scalar or per-channel scales for K
     const float* v_scale;    // Scalar or per-channel scales for V
     float* output;           // [B, S, N, H] FP32
+
+    // Attention bias (additive, applied after QK GEMM before masking/softmax).
+    // Shape: [B|1, N|1, S, T] where dimensions of size 1 are broadcast.
+    const float* attention_bias;              // nullptr if no bias
+    int attention_bias_seqlen_stride;         // stride along the T (total_seqlen) dimension = shape[3]
+    bool attention_bias_broadcast_batch;      // true if shape[0] == 1
+    bool attention_bias_broadcast_head;       // true if shape[1] == 1
 };
 
 /**

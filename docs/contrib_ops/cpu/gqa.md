@@ -153,6 +153,7 @@ The flash attention path (`MlasFlashAttentionQuantizedKV`) processes K/V in bloc
 For each (batch, head, q_block) tile:
 
 1. **QK GEMM** — `MlasQKGemm` on a block slice of quantized K cache (Bc rows at a time)
+1b. **Attention bias** — Add the corresponding tile of the bias tensor (if present) to QK scores
 2. **Causal + local window masking** — Set masked positions to −∞ before softmax
 3. **Online softmax** — Track running max `m` and sum `l`, rescale accumulated output with `exp(m_old − m_new)`
 4. **Fused SV accumulate** — `MlasSVGemm(..., Beta=1.0)` dequantizes V on the fly and accumulates `softmax(QK_block) × V_block` into the output in a single pass (no intermediate FP32 buffer)
@@ -164,11 +165,12 @@ The flash path is selected when ALL of the following hold:
 
 - `ORT_GQA_DISABLE_FLASH_ATTENTION` environment variable is not set (or set to `0`)
 - `total_sequence_length > 1`
-- No attention bias
 - No softcap
 - No smooth softmax
 - No head sink
 - No output QK capture
+
+Attention bias is fully supported in the flash path (applied per-tile after QK GEMM). The bias tensor shape `[B|1, N|1, S, T]` supports broadcast along both batch and head dimensions.
 
 When any condition is not met, the kernel falls back to the naive full-materialization path.
 
@@ -387,7 +389,6 @@ The current CPU GroupQueryAttention implementation has a few important limitatio
 
 Further optimization opportunities include:
 
-- Extend the flash attention path to support attention bias within the tiled loop.
 - Improve the exact AVX512 INT8 per-tensor QK path without quantizing the FP32 query, for example by processing multiple K-cache rows per query row while keeping FP32 FMA semantics.
 - Add AVX512-specific exact micro-kernels for common decode shapes such as `M=1`, `N=512/2048`, and `K=64/128`.
 - Add dedicated accuracy/performance tests for the approximate VNNI opt-in path before enabling it in any production configuration.

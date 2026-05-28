@@ -557,6 +557,7 @@ class GQAAttentionBase {
       const float* Q,            // Q data [B, N, S, H] BNSH
       const float* K,            // K data [B, N_kv, L, H] or nullptr for packed_qkv
       const float* V,            // V data [B, N_kv, L, H] or nullptr for packed_qkv
+      const Tensor* attention_bias,  // additive bias [B|1, N|1, S, T] or nullptr
       const Tensor* past_key,    // past K (uint8_t)
       const Tensor* past_value,  // past V (uint8_t)
       Tensor* output,            // output [B, S, N*H] float
@@ -621,6 +622,19 @@ class GQAAttentionBase {
                               quant_type == MLAS_KV_QUANT_TYPE::S4_PerChannel);
 
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+
+    // Attention bias setup
+    const float* attention_bias_data = nullptr;
+    int attention_bias_seqlen_stride = 0;
+    bool attention_bias_broadcast_batch = true;
+    bool attention_bias_broadcast_head = true;
+    if (attention_bias != nullptr) {
+      attention_bias_data = attention_bias->Data<float>();
+      auto bias_shape = attention_bias->Shape().GetDims();
+      attention_bias_seqlen_stride = static_cast<int>(bias_shape[3]);
+      attention_bias_broadcast_batch = (bias_shape[0] == 1);
+      attention_bias_broadcast_head = (bias_shape[1] == 1);
+    }
 
     // K/V base pointers (FP32, new tokens)
     const float* k_base = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
@@ -806,6 +820,10 @@ class GQAAttentionBase {
       args.k_scale = k_scale;
       args.v_scale = v_scale;
       args.output = output->MutableData<float>();
+      args.attention_bias = attention_bias_data;
+      args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
+      args.attention_bias_broadcast_batch = attention_bias_broadcast_batch;
+      args.attention_bias_broadcast_head = attention_bias_broadcast_head;
 
       MlasFlashAttentionQuantizedKV(&args, tp);
     } else {
@@ -844,6 +862,10 @@ class GQAAttentionBase {
         args.v_scale = v_scale;
         args.output = output->MutableData<float>() +
                       static_cast<size_t>(b) * sequence_length * hidden_size;
+        args.attention_bias = attention_bias_data;
+        args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
+        args.attention_bias_broadcast_batch = attention_bias_broadcast_batch;
+        args.attention_bias_broadcast_head = attention_bias_broadcast_head;
 
         MlasFlashAttentionQuantizedKV(&args, tp);
       }

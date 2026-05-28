@@ -298,10 +298,9 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
       // Use flash attention path when:
       // 1. Total sequence length is long enough to benefit from tiling
-      // 2. No features that flash path doesn't support (attention bias, softcap, smooth softmax, output_qk)
+      // 2. No features that flash path doesn't support (softcap, smooth softmax, output_qk)
       const bool use_flash = !disable_gqa_flash_ &&
                              parameters.total_sequence_length > 1 &&
-                             attention_bias == nullptr &&
                              softcap_ == 0.0f &&
                              !use_smooth_softmax_ &&
                              head_sink_data == nullptr &&
@@ -310,6 +309,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       if (use_flash) {
         return ApplyAttentionQuantizedFlash(
             q_rotary, k_data_q, v_data_q,
+            attention_bias,
             past_key, past_value,
             output, present_k, present_v, seqlens_k,
             k_scale->Data<float>(), v_scale->Data<float>(),

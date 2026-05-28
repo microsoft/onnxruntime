@@ -156,6 +156,31 @@ MlasFlashAttentionQuantizedKVThreaded(
                 nullptr                             // no thread pool (already threaded)
             );
 
+            // Step 1b: Apply attention bias (additive) if present
+            if (args->attention_bias != nullptr) {
+                const ptrdiff_t bias_seqlen_stride =
+                    static_cast<ptrdiff_t>(args->attention_bias_seqlen_stride);
+                const ptrdiff_t bias_matrix_size =
+                    static_cast<ptrdiff_t>(sequence_length) * bias_seqlen_stride;
+                ptrdiff_t bias_offset = 0;
+                if (!args->attention_bias_broadcast_batch) {
+                    bias_offset += static_cast<ptrdiff_t>(batch_idx) *
+                                   static_cast<ptrdiff_t>(num_heads) * bias_matrix_size;
+                }
+                if (!args->attention_bias_broadcast_head) {
+                    bias_offset += static_cast<ptrdiff_t>(head_idx) * bias_matrix_size;
+                }
+                // Add bias tile: bias[q_idx + irow, ir + jcol]
+                for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q); ++irow) {
+                    const float* bias_row = args->attention_bias + bias_offset +
+                        (q_idx + irow) * bias_seqlen_stride + ir;
+                    float* s_row = scores + irow * static_cast<ptrdiff_t>(row_size_kv);
+                    for (ptrdiff_t jcol = 0; jcol < static_cast<ptrdiff_t>(row_size_kv); ++jcol) {
+                        s_row[jcol] += bias_row[jcol];
+                    }
+                }
+            }
+
             // Step 2: Apply causal mask and Step 3: Online softmax update
             for (ptrdiff_t irow = 0; irow < static_cast<ptrdiff_t>(row_size_q); ++irow) {
                 float* p = scores + irow * static_cast<ptrdiff_t>(row_size_kv);
