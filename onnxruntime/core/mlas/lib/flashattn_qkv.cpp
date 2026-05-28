@@ -213,6 +213,14 @@ MlasFlashAttentionQuantizedKVThreaded(
 #else
                 float rowmax = MlasReduceMaximumF32Kernel(p, row_size_kv);
 #endif
+
+                // If the entire row is masked (all scores are -inf), zero the scores
+                // so SVGemm contributes nothing and skip the softmax state update.
+                if (rowmax == std::numeric_limits<float>::lowest()) {
+                    memset(p, 0, row_size_kv * sizeof(float));
+                    continue;
+                }
+
                 float m_old = m[irow];
                 m[irow] = std::max(m[irow], rowmax);
                 float m_diff = m_old - m[irow];  // <= 0

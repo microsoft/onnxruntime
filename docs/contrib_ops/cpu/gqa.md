@@ -382,7 +382,7 @@ The current CPU GroupQueryAttention implementation has a few important limitatio
 - INT4 cache storage uses packed `uint8` bytes and requires consumers to use the packed head dimension.
 - The default AVX512 quantized KV-cache GEMM path preserves FP32 query and attention-probability operands; the approximate VNNI QK path is opt-in only.
 - Hardware dispatch affects performance, but should not change default numeric semantics.
-- The flash attention path does not support attention bias, softcap, smooth softmax, head sink, or QK output capture. These features fall back to the naive path.
+- The flash attention path does not support softcap, smooth softmax, head sink, or QK output capture. These features fall back to the naive path.
 - The MLAS quantized GEMM helpers operate on one per-batch/per-head tile at a time; outer parallelism is managed by the GQA kernel (or by the flash attention kernel internally).
 
 ## Future Work

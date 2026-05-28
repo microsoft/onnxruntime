@@ -755,11 +755,14 @@ class GQAAttentionBase {
     }
     const bool ragged_seqlens = (max_total_seqlen != min_total_seqlen);
 
-    if (past_key == nullptr || is_prompt) {
+    if (ragged_seqlens) {
+      // Ragged seqlens: each batch item has its own total_seqlen (and therefore
+      // past_seqlen). Must use per-batch invocation regardless of past_key/prompt state.
+      common_past_seqlen = -1;  // sentinel: per-batch
+    } else if (past_key == nullptr || is_prompt) {
       common_past_seqlen = 0;
-    } else if (kv_sequence_length == 0 || ragged_seqlens) {
-      // Shared buffer mode or ragged seqlens: each batch item has its own
-      // past_seqlen — must use per-batch invocation below.
+    } else if (kv_sequence_length == 0) {
+      // Shared buffer mode: each batch item has its own past_seqlen.
       common_past_seqlen = -1;  // sentinel: per-batch
     } else {
       common_past_seqlen = max_total_seqlen - sequence_length;
@@ -816,10 +819,13 @@ class GQAAttentionBase {
 
       MlasFlashAttentionQuantizedKV(&args, tp);
     } else {
-      // Per-batch handling for variable past_seqlen (shared KV buffer mode)
+      // Per-batch handling for variable past_seqlen (shared KV buffer mode or ragged seqlens)
       for (int b = 0; b < batch_size; ++b) {
         int total_sl = seqlens_k_data[b] + 1;
-        int batch_past_seqlen = total_sl;  // shared buffer: all tokens already in cache
+        // For prompt/no-past cases, past_seqlen is 0; otherwise derive from total_sl.
+        int batch_past_seqlen = (past_key == nullptr || is_prompt)
+                                    ? 0
+                                    : std::max(0, total_sl - sequence_length);
 
         MlasFlashAttentionQuantizedKVArgs args;
         args.batch_size = 1;
@@ -828,7 +834,7 @@ class GQAAttentionBase {
         args.sequence_length = sequence_length;
         args.total_seqlen = total_sl;
         args.head_size = head_size;
-        args.past_seqlen = batch_past_seqlen - sequence_length;
+        args.past_seqlen = batch_past_seqlen;
         args.local_window_size = local_window_size_;
         args.seqlen_present_kv = seqlen_present_kv_cache;
         args.q_block_size = q_block_size;
@@ -851,9 +857,15 @@ class GQAAttentionBase {
         args.v_scale = v_scale;
         args.output = output->MutableData<float>() +
                       static_cast<size_t>(b) * sequence_length * hidden_size;
-        args.attention_bias = attention_bias_data;
+
+        // Slice attention bias for this batch (the kernel sees batch_size=1, so batch_idx=0 inside)
+        const float* batch_bias = attention_bias_data;
+        if (attention_bias_data != nullptr && !attention_bias_broadcast_batch) {
+          batch_bias += static_cast<size_t>(b) * num_heads_ * sequence_length * attention_bias_seqlen_stride;
+        }
+        args.attention_bias = batch_bias;
         args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
-        args.attention_bias_broadcast_batch = attention_bias_broadcast_batch;
+        args.attention_bias_broadcast_batch = true;  // batch offset handled above
         args.attention_bias_broadcast_head = attention_bias_broadcast_head;
 
         MlasFlashAttentionQuantizedKV(&args, tp);
