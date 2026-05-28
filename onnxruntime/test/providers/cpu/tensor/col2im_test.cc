@@ -165,5 +165,24 @@ TEST(Col2ImOpTest, Simple5dNCHWD) {
   test.Run();
 }
 
+// Regression test for a heap buffer over-read in Col2Im when 'image_shape' implies more
+// sliding-block positions than the column tensor actually contains. The kernel must reject
+// the inputs instead of reading past the column allocation.
+TEST(Col2ImOpTest, ImageShapeLargerThanColumnTensor) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  // col holds only 4 spatial positions but image_shape implies 4*4=16.
+  test.AddInput<float>("input", {1, 1, 4}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{4, 4});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{1, 1});
+
+  test.AddOutput<float>("output", {1, 1, 4, 4}, std::vector<float>(16, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "does not match the number of sliding blocks");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
