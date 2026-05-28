@@ -283,6 +283,12 @@ struct MlasFlashAttentionQuantizedKVArgs {
     int attention_bias_seqlen_stride;         // stride along the T (total_seqlen) dimension = shape[3]
     bool attention_bias_broadcast_batch;      // true if shape[0] == 1
     bool attention_bias_broadcast_head;       // true if shape[1] == 1
+
+    // Flash decoding fields (used when sequence_length == 1 and KV is split across threads).
+    // Partials buffer stores per-(batch, head, kv_chunk) intermediate results:
+    //   [m_partial, l_partial, output_partial[head_size]] for each chunk.
+    float* flash_decoding_partials;  // nullptr to disable flash decoding
+    int kv_chunk_count;              // number of KV chunks = ceil(total_seqlen / kv_block_size)
 };
 
 /**

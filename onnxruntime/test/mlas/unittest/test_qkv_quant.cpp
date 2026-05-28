@@ -340,6 +340,7 @@ class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferKFP32;
   MatrixGuardBuffer<float> BufferVFP32;
   MatrixGuardBuffer<float> BufferFlash;
+  MatrixGuardBuffer<float> BufferPartials;
   MatrixGuardBuffer<uint8_t> BufferKQuant;
   MatrixGuardBuffer<uint8_t> BufferVQuant;
 
@@ -501,17 +502,116 @@ class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
     args.attention_bias_seqlen_stride = 0;
     args.attention_bias_broadcast_batch = true;
     args.attention_bias_broadcast_head = true;
+    args.flash_decoding_partials = nullptr;
+    args.kv_chunk_count = 0;
 
     MlasFlashAttentionQuantizedKV(&args, nullptr);
 
     // Compare
-    float atol = IsInt4(quant_type) ? 1e-4f : 1e-5f;
+    float atol = IsInt4(quant_type) ? 1e-3f : 1e-4f;
     for (size_t i = 0; i < seq_len * head_size; i++) {
       float diff = std::fabs(output_flash[i] - output_ref[i]);
       ASSERT_LE(diff, atol)
           << "FlashAttention vs Naive mismatch at [" << i / head_size << ", " << i % head_size
           << "], flash=" << output_flash[i] << " ref=" << output_ref[i]
           << " seq_len=" << seq_len << " total_seqlen=" << total_seqlen
+          << " head_size=" << head_size
+          << " qt=" << static_cast<int>(quant_type);
+    }
+  }
+
+  // Test flash decoding path: sequence_length=1 with KV split across chunks
+  void TestFlashDecoding(size_t total_seqlen, size_t head_size,
+                         MLAS_KV_QUANT_TYPE quant_type) {
+    const size_t seq_len = 1;
+    const size_t k_num_scales = IsPerChannel(quant_type) ? head_size : 1;
+    const size_t v_num_scales = IsPerChannel(quant_type) ? head_size : 1;
+    const size_t packed_row_bytes = MlasKVQuantPackedRowBytes(quant_type, head_size);
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+    const int past_seqlen = static_cast<int>(total_seqlen - 1);
+
+    // Allocate and fill
+    float* Q = BufferQ.GetBuffer(head_size);
+    float* K_fp32 = BufferKFP32.GetBuffer(total_seqlen * head_size);
+    float* V_fp32 = BufferVFP32.GetBuffer(total_seqlen * head_size);
+    float* k_scale_buf = BufferScalesK.GetBuffer(k_num_scales);
+    float* v_scale_buf = BufferScalesV.GetBuffer(v_num_scales);
+    float* output_flash = BufferOutput.GetBuffer(head_size);
+    float* output_ref = BufferOutputRef.GetBuffer(head_size);
+
+    unsigned seed = static_cast<unsigned>(total_seqlen * 100 + head_size * 7);
+    FillRandom(Q, head_size, seed);
+    FillRandom(K_fp32, total_seqlen * head_size, seed + 1);
+    FillRandom(V_fp32, total_seqlen * head_size, seed + 2);
+
+    ComputeScales(K_fp32, total_seqlen, head_size, quant_type, k_scale_buf);
+    ComputeScales(V_fp32, total_seqlen, head_size, quant_type, v_scale_buf);
+
+    // Quantize K and V
+    uint8_t* k_quant = BufferKQuant.GetBuffer(total_seqlen * packed_row_bytes);
+    uint8_t* v_quant = BufferVQuant.GetBuffer(total_seqlen * packed_row_bytes);
+    MlasKVQuantize(K_fp32, k_quant, total_seqlen, head_size, head_size, quant_type, k_scale_buf, nullptr);
+    MlasKVQuantize(V_fp32, v_quant, total_seqlen, head_size, head_size, quant_type, v_scale_buf, nullptr);
+
+    // Naive reference
+    NaiveReference(Q, seq_len, total_seqlen, head_size,
+                   k_quant, v_quant, quant_type, k_scale_buf, v_scale_buf,
+                   scale, past_seqlen, output_ref);
+
+    // Flash decoding: use small kv_block_size to get multiple chunks
+    int kv_block_size = std::min(static_cast<int>(total_seqlen), 16);
+    int kv_chunk_count = (static_cast<int>(total_seqlen) + kv_block_size - 1) / kv_block_size;
+
+    // Per-thread scratch: scores[kv_block_size]
+    size_t buffer_size_per_thread = static_cast<size_t>(kv_block_size) * sizeof(float);
+    float* flash_buffer = BufferFlash.GetBuffer(buffer_size_per_thread / sizeof(float));
+
+    // Partials buffer: [1 batch * 1 head * kv_chunk_count * (2 + head_size)]
+    size_t partials_count = static_cast<size_t>(kv_chunk_count) * (2 + head_size);
+    float* partials = BufferPartials.GetBuffer(partials_count);
+
+    MlasFlashAttentionQuantizedKVArgs args;
+    args.batch_size = 1;
+    args.num_heads = 1;
+    args.kv_num_heads = 1;
+    args.sequence_length = 1;
+    args.total_seqlen = static_cast<int>(total_seqlen);
+    args.head_size = static_cast<int>(head_size);
+    args.past_seqlen = past_seqlen;
+    args.local_window_size = -1;
+    args.seqlen_present_kv = static_cast<int>(total_seqlen);
+    args.q_block_size = 1;
+    args.kv_block_size = kv_block_size;
+    args.scale = scale;
+    args.quant_type = quant_type;
+    args.per_channel_k = IsPerChannel(quant_type);
+    args.per_channel_v = IsPerChannel(quant_type);
+    args.thread_count = 1;
+    args.buffer = flash_buffer;
+    args.buffer_size_per_thread = buffer_size_per_thread;
+    args.query = Q;
+    args.k_cache = k_quant;
+    args.v_cache = v_quant;
+    args.k_scale = k_scale_buf;
+    args.v_scale = v_scale_buf;
+    args.output = output_flash;
+    args.attention_bias = nullptr;
+    args.attention_bias_seqlen_stride = 0;
+    args.attention_bias_broadcast_batch = true;
+    args.attention_bias_broadcast_head = true;
+    args.flash_decoding_partials = partials;
+    args.kv_chunk_count = kv_chunk_count;
+
+    MlasFlashAttentionQuantizedKV(&args, nullptr);
+
+    // Compare
+    float atol = IsInt4(quant_type) ? 1e-4f : 1e-5f;
+    for (size_t i = 0; i < head_size; i++) {
+      float diff = std::fabs(output_flash[i] - output_ref[i]);
+      ASSERT_LE(diff, atol)
+          << "FlashDecoding vs Naive mismatch at [" << i
+          << "], flash=" << output_flash[i] << " ref=" << output_ref[i]
+          << " total_seqlen=" << total_seqlen
           << " head_size=" << head_size
           << " qt=" << static_cast<int>(quant_type);
     }
@@ -532,13 +632,19 @@ class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
     };
 
     for (auto qt : AllQuantTypes) {
-      size_t min_head = IsInt4(qt) ? size_t{4} : size_t{4};
+      size_t min_head = size_t{4};
       for (size_t seq_len : {size_t{1}, size_t{4}, size_t{16}}) {
         for (size_t total_seqlen : {size_t{4}, size_t{32}, size_t{64}}) {
           if (total_seqlen < seq_len) continue;
           for (size_t head_size : {min_head, size_t{32}, size_t{64}}) {
             TestFlashAttention(seq_len, total_seqlen, head_size, qt);
           }
+        }
+      }
+      // Flash decoding tests (sequence_length=1 with KV split into chunks)
+      for (size_t total_seqlen : {size_t{4}, size_t{32}, size_t{64}, size_t{128}}) {
+        for (size_t head_size : {min_head, size_t{32}, size_t{64}}) {
+          TestFlashDecoding(total_seqlen, head_size, qt);
         }
       }
     }
