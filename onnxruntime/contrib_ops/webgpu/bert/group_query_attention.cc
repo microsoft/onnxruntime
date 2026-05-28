@@ -224,10 +224,14 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   // The current fused prologue only supports the Qwen3-style configuration that
   // GroupQueryAttentionPreNormFusion targets: do_rotary, non-packed Q/K/V. Reject any
   // other configuration so downstream rewrites cannot land silently.
-  ORT_RETURN_IF(((q_norm_weight != nullptr) ^ (k_norm_weight != nullptr)),
-                "GroupQueryAttention: q_norm_weight and k_norm_weight must be provided together.");
-  ORT_RETURN_IF(has_qk_norm && !do_rotary_,
-                "GroupQueryAttention: q_norm_weight / k_norm_weight require do_rotary=1.");
+  if ((q_norm_weight != nullptr) ^ (k_norm_weight != nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention: q_norm_weight and k_norm_weight must be provided together.");
+  }
+  if (has_qk_norm && !do_rotary_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention: q_norm_weight / k_norm_weight require do_rotary=1.");
+  }
 
   GroupQueryAttentionParameters params = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -259,22 +263,40 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       static_cast<int>(Info().GetAttrOrDefault<int64_t>("qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT)))));
 
   WebgpuAttentionParameters parameters(params);
-  ORT_RETURN_IF(has_qk_norm && parameters.is_packed_qkv_,
-                "GroupQueryAttention: q_norm_weight / k_norm_weight are not supported when QKV is packed.");
+  if (has_qk_norm && parameters.is_packed_qkv_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention: q_norm_weight / k_norm_weight are not supported when QKV is packed.");
+  }
   if (has_qk_norm) {
+    // The fused rotary shader multiplies q/k elements by q/k_norm_weight values without
+    // inserting casts between storage element types. Enforce dtype parity so hand-authored
+    // models fail with a clear INVALID_ARGUMENT instead of a shader compile error.
+    if (q_norm_weight->DataType() != query->DataType()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "GroupQueryAttention: q_norm_weight element type must match query element type.");
+    }
+    if (k_norm_weight->DataType() != key->DataType()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "GroupQueryAttention: k_norm_weight element type must match key element type.");
+    }
+
     // The fused prologue indexes q/k_norm_weight as a 1-D tensor of length head_size. Validate
     // shape here so a hand-authored model with a wrong shape fails with INVALID_ARGUMENT instead
     // of silently reading the wrong offsets (or out of bounds).
     const auto& q_norm_shape = q_norm_weight->Shape();
-    ORT_RETURN_IF_NOT(q_norm_shape.NumDimensions() == 1 &&
-                          q_norm_shape[0] == static_cast<int64_t>(parameters.head_size_),
-                      "GroupQueryAttention: q_norm_weight must be a 1-D tensor of shape [head_size=",
-                      parameters.head_size_, "], got ", q_norm_shape.ToString(), ".");
+    if (!(q_norm_shape.NumDimensions() == 1 &&
+          q_norm_shape[0] == static_cast<int64_t>(parameters.head_size_))) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "GroupQueryAttention: q_norm_weight must be a 1-D tensor of shape [head_size=",
+                             parameters.head_size_, "], got ", q_norm_shape.ToString(), ".");
+    }
     const auto& k_norm_shape = k_norm_weight->Shape();
-    ORT_RETURN_IF_NOT(k_norm_shape.NumDimensions() == 1 &&
-                          k_norm_shape[0] == static_cast<int64_t>(parameters.head_size_),
-                      "GroupQueryAttention: k_norm_weight must be a 1-D tensor of shape [head_size=",
-                      parameters.head_size_, "], got ", k_norm_shape.ToString(), ".");
+    if (!(k_norm_shape.NumDimensions() == 1 &&
+          k_norm_shape[0] == static_cast<int64_t>(parameters.head_size_))) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "GroupQueryAttention: k_norm_weight must be a 1-D tensor of shape [head_size=",
+                             parameters.head_size_, "], got ", k_norm_shape.ToString(), ".");
+    }
   }
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);

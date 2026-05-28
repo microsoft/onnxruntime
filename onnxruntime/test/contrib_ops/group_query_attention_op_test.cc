@@ -93,6 +93,115 @@ static void RunGQASeqlensKTest(
   tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
 }
 
+// CPU GroupQueryAttention does not implement the WebGPU-only fused Q/K RMS-norm prologue
+// inputs (q_norm_weight/k_norm_weight at indices 14/15). Ensure we reject these explicitly.
+TEST(GroupQueryAttentionTest, CpuRejectsQKNormWeightInputs) {
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(batch_size * sequence_length * hidden_size, 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.1f));
+  tester.AddInput<float>("value", {batch_size, sequence_length, kv_hidden_size},
+                         std::vector<float>(batch_size * sequence_length * kv_hidden_size, 0.1f));
+
+  tester.AddOptionalInputEdge<float>();  // past_key
+  tester.AddOptionalInputEdge<float>();  // past_value
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
+
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+  tester.AddOptionalInputEdge<float>();    // k_scale
+  tester.AddOptionalInputEdge<float>();    // v_scale
+
+  tester.AddInput<float>("q_norm_weight", {head_size}, std::vector<float>(head_size, 1.0f));
+  tester.AddInput<float>("k_norm_weight", {head_size}, std::vector<float>(head_size, 1.0f));
+
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          std::vector<float>(batch_size * sequence_length * hidden_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * sequence_length * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "q_norm_weight / k_norm_weight inputs are not supported",
+             {}, nullptr, &execution_providers);
+}
+
+// CUDA GroupQueryAttention also does not implement the WebGPU-only fused Q/K RMS-norm
+// prologue inputs (q_norm_weight/k_norm_weight at indices 14/15). Ensure the guard is covered.
+TEST(GroupQueryAttentionTest, CudaRejectsQKNormWeightInputs) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
+                             std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(batch_size * sequence_length * kv_hidden_size, MLFloat16(0.1f)));
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size},
+                             std::vector<MLFloat16>(batch_size * sequence_length * kv_hidden_size, MLFloat16(0.1f)));
+
+  tester.AddOptionalInputEdge<MLFloat16>();  // past_key
+  tester.AddOptionalInputEdge<MLFloat16>();  // past_value
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {1});
+
+  tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+  tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();    // position_ids
+  tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+  tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  tester.AddOptionalInputEdge<MLFloat16>();  // k_scale
+  tester.AddOptionalInputEdge<MLFloat16>();  // v_scale
+
+  tester.AddInput<MLFloat16>("q_norm_weight", {head_size}, std::vector<MLFloat16>(head_size, MLFloat16(1.0f)));
+  tester.AddInput<MLFloat16>("k_norm_weight", {head_size}, std::vector<MLFloat16>(head_size, MLFloat16(1.0f)));
+
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * kv_num_heads * sequence_length * head_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
+                              std::vector<MLFloat16>(batch_size * kv_num_heads * sequence_length * head_size, MLFloat16(0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "q_norm_weight / k_norm_weight inputs are not supported",
+             {}, nullptr, &execution_providers);
+}
+
 // Regression: negative seqlens_k wraps to huge size_t, causing GEMM OOB.
 TEST(GroupQueryAttentionTest, NegativeSeqlensK_OOB) {
   RunGQASeqlensKTest(
