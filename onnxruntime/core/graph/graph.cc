@@ -3588,6 +3588,28 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     auto& node = *GetNode(node_index);
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
+
+      // Propagate type info from outer scope implicit inputs to the subgraph's NodeArgs.
+      // This is needed when the op's type/shape inference function does not invoke subgraph
+      // inferencing (e.g., some contrib ops like BeamSearch), so InferAndVerifySubgraphTypes
+      // may not have been called to propagate type info from outer scope values such as
+      // initializers declared in the parent graph.
+      // When InferAndVerifySubgraphTypes was already called, UpdateTypeAndShape with strict=true
+      // validates that the existing type is consistent with the outer-scope type.
+      const auto& implicit_input_defs = node.GetDefinitions().implicit_input_defs;
+      for (const auto* implicit_node_arg : implicit_input_defs) {
+        auto* subgraph_nodearg = subgraph->GetNodeArg(implicit_node_arg->Name());
+        if (subgraph_nodearg != nullptr &&
+            implicit_node_arg->TypeAsProto() != nullptr) {
+          auto status = subgraph_nodearg->UpdateTypeAndShape(
+              *implicit_node_arg, /*strict=*/true, options.override_types, subgraph->logger_);
+          if (!status.IsOK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Node:", node.Name(), " [subgraph:", entry.first, "] ", status.ErrorMessage());
+          }
+        }
+      }
+
       ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
     }
   }

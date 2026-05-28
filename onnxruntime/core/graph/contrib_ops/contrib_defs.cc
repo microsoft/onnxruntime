@@ -56,10 +56,22 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
   }
 
   int64_t group = getAttribute(ctx, "group", 1);
+  if (group <= 0) {
+    fail_shape_inference("group attribute must be positive. Got: ", group);
+  }
 
   auto input_shape = ctx.getInputType(0)->tensor_type().shape();
-  if (input_shape.dim_size() < 2) {
-    return;  // Input tensor should have at least two dimensions.
+  // ConvTranspose requires X=(N x C x D1...Dn) and W=(C x M/group x k1...kn), both rank >= 3.
+  // The upstream ONNX ConvTranspose shape inference only checks rank >= 2, which allows rank-2
+  // inputs to pass shape inference but crash at kernel execution time. We tighten the check here
+  // to fail early at model load with a clear error. Fixing ONNX upstream is tracked separately.
+  if (input_shape.dim_size() < 3) {
+    fail_shape_inference("Input tensor must have at least 3 dimensions. Got: ", input_shape.dim_size());
+  }
+
+  auto weight_shape = ctx.getInputType(1)->tensor_type().shape();
+  if (weight_shape.dim_size() < 3) {
+    fail_shape_inference("Weight tensor must have at least 3 dimensions. Got: ", weight_shape.dim_size());
   }
 
   // first dim is the batch axis and the next is the number of channels.
@@ -147,7 +159,7 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 
   *final_output_shape->add_dim() = input_shape.dim(0);
   *final_output_shape->add_dim() =
-      ctx.getInputType(1)->tensor_type().shape().dim(1) *
+      weight_shape.dim(1) *
       group;  // channels should be the second dim of second input multiply
   // group.
 
@@ -3747,7 +3759,8 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
-  5. For uint8 data, the `gather_axis` must be 0.
+  5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
+     for `bits` < 8 the values are packed along the last dimension (low-order bits first).
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherBlockQuantized)
@@ -3767,7 +3780,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             AttributeProto::INT,
             static_cast<int64_t>(128))
       .Attr("bits",
-            "Number of bits used for weight quantization. Must be either 4 or 8. ",
+            "Number of bits used for weight quantization. Must be 2, 4 or 8. ",
             AttributeProto::INT,
             static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
@@ -3854,9 +3867,9 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             if (!zp_shape.dim(i).has_dim_value() ||
                 zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
               if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 &&
-                  bits == 4 &&
+                  components > 1 &&
                   i == quantize_axis &&
-                  zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + 1) / 2) {
+                  zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + components - 1) / components) {
                 continue;
               }
               fail_shape_inference("zero points shape and scales shape do not match");

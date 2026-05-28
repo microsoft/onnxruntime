@@ -38,6 +38,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateUnaryOpBuilder("Round", op_registrations);
   CreateUnaryOpBuilder("Sqrt", op_registrations);
   CreateUnaryOpBuilder("Exp", op_registrations);
+  CreateUnaryOpBuilder("Sin", op_registrations);
+  CreateUnaryOpBuilder("Cos", op_registrations);
   CreateUnaryOpBuilder("Ceil", op_registrations);
 
   // Binary elementwise ops
