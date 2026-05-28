@@ -32,8 +32,10 @@ A plugin EP package should contain the plugin EP shared library file and any oth
 
 A plugin EP package should NOT contain the ORT shared library or other core ORT libraries (e.g., onnxruntime.dll or libonnxruntime.so). Users should obtain the ORT library separately, most likely via installing the separate ONNX Runtime package.
 
-A plugin EP package should specify a dependency on the ONNX Runtime package, using a minimum version constraint for the version that the plugin EP requires to be functional. Although this dependency may not be technically required (since the plugin EP library is loaded by ORT, which is already present at runtime), it is recommended to help users identify a compatible ORT version.
-For example, if a plugin EP implementation requires at least ORT 1.23, the plugin EP package should depend on the ORT package with version 1.23 or higher.
+#### Dependency on ONNX Runtime
+A plugin EP package should NOT specify an explicit dependency on an ONNX Runtime package. Such a dependency should not be required since the plugin EP library is loaded by ORT, which is already present at runtime. Additionally, there may be multiple flavors of ONNX Runtime package (e.g., `onnxruntime` and `onnxruntime-gpu` for Python) and an explicit dependency on one could be overly constraining.
+
+However, the plugin EP library itself should validate that the version of the ONNX Runtime library loading it at runtime is compatible and fail gracefully otherwise.
 
 #### Additional Information to Provide
 
