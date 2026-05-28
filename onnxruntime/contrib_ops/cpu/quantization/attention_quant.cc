@@ -7,6 +7,7 @@
 #include "core/util/math.h"
 #include "core/util/qmath.h"
 #include "core/util/math_cpuonly.h"
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas.h"
@@ -71,8 +72,8 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
     return Status::OK();
   }
 
-  const size_t input_hidden_size = static_cast<size_t>(weights_dims[0]);
-  const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
+  const size_t input_hidden_size = narrow<size_t>(weights_dims[0]);
+  const size_t hidden_size_x3 = narrow<size_t>(weights_dims[1]);
   const size_t hidden_size = hidden_size_x3 / 3;
   const size_t head_size = hidden_size / num_heads_;
 
@@ -89,8 +90,8 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
     return Status::OK();
   }
 
-  const size_t loop_len = 3 * static_cast<size_t>(num_heads_);
-  size_t packed_weights_data_size = packed_weights_size_ * loop_len;
+  const size_t loop_len = SafeInt<size_t>(3) * num_heads_;
+  size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size_) * loop_len;
 
   packed_weights_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weights_data_size, true);
   std::byte* packed_weights_data = static_cast<std::byte*>(packed_weights_.get());
@@ -171,12 +172,6 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   T input_scale = *(input_scale_tensor->Data<T>());
 
   bool is_weight_scale_per_column = !IsScalarOr1ElementVector(weight_scale_tensor);
-  const T* weight_scale_data = weight_scale_tensor->Data<T>();
-
-  std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
-  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
-    return dequant_scale *= input_scale;
-  });
 
   uint8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
@@ -194,13 +189,41 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   const auto& shape = input->Shape();
-  const int batch_size = static_cast<int>(shape[0]);
-  const int sequence_length = static_cast<int>(shape[1]);
-  const int input_hidden_size = static_cast<int>(shape[2]);
+  const int batch_size = narrow<int>(shape[0]);
+  const int sequence_length = narrow<int>(shape[1]);
+  const int input_hidden_size = narrow<int>(shape[2]);
 
-  const auto hidden_size_x3 = weights_shape.GetDims()[1];
-  const int hidden_size = static_cast<int>(hidden_size_x3) / 3;
+  const int hidden_size_x3 = narrow<int>(weights_shape.GetDims()[1]);
+  // AttentionBase::CheckInputs verifies that weights_dims[1] (== bias_dims[0]) is a multiple of 3
+  // and that hidden_size = bias_dims[0] / 3 is divisible by num_heads_.
+  const int hidden_size = hidden_size_x3 / 3;
   const int head_size = hidden_size / num_heads_;
+
+  // Validate per-column 'weight_scale' / 'weight_zero_point' shapes against the expected
+  // 3 * hidden_size. Without this check, a malicious or malformed model can supply a
+  // smaller per-column tensor and cause an out-of-bounds read in the GEMM loop below
+  // (which indexes scales/zero-points using offsets up to ~3 * hidden_size - head_size).
+  if (is_weight_scale_per_column) {
+    ORT_RETURN_IF_NOT(weight_scale_tensor->Shape().NumDimensions() == 1 &&
+                          weight_scale_tensor->Shape().Size() == hidden_size_x3,
+                      "Input 'weight_scale' must be a scalar or a 1D tensor of size 3 * hidden_size (= ",
+                      hidden_size_x3, "), got shape ", weight_scale_tensor->Shape().ToString());
+  }
+
+  if (is_weight_zp_per_column) {
+    ORT_RETURN_IF_NOT(w_zp_tensor->Shape().NumDimensions() == 1 &&
+                          w_zp_tensor->Shape().Size() == hidden_size_x3,
+                      "Input 'weight_zero_point' must be a scalar or a 1D tensor of size 3 * hidden_size (= ",
+                      hidden_size_x3, "), got shape ", w_zp_tensor->Shape().ToString());
+  }
+
+  // Build the dequantization scales after shape validation so that malformed
+  // inputs are rejected before any allocation/copy work.
+  const T* weight_scale_data = weight_scale_tensor->Data<T>();
+  std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
+  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](T& dequant_scale) {
+    return dequant_scale *= input_scale;
+  });
 
   std::vector<int64_t> output_shape(3);
   output_shape[0] = shape[0];
@@ -216,16 +239,17 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   auto* tp = context->GetOperatorThreadPool();
   // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, D) x weights(D, 3NH)) + bias(3NH)
   // D is hidden dimension of input, where input_hidden_size (D) could be larger than hidden_size (NH) when model is pruned.
-  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
+  const auto batch_size_x_sequence_length_x_hidden_size = SafeInt<size_t>(batch_size) * sequence_length * hidden_size;
+  void* gemm_data = allocator->Alloc(batch_size_x_sequence_length_x_hidden_size * 3 * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
-  auto V = K + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size_x_sequence_length_x_hidden_size);
+  auto V = K + static_cast<size_t>(batch_size_x_sequence_length_x_hidden_size);
   T* QKV[3] = {Q, K, V};
 
   {
-    const int loop_len = 3 * batch_size * num_heads_;
+    const int loop_len = SafeInt<int>(3) * batch_size * num_heads_;
     const auto* input_data = input->Data<uint8_t>();
     const auto* bias_data = bias->Data<T>();
 
@@ -243,16 +267,17 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     scale_bias_procs.reserve(loop_len);
 
     for (int i = 0; i < loop_len; i++) {
-      const int batch_index = static_cast<int>((i / 3) / num_heads_);
-      const int head_index = static_cast<int>((i / 3) % num_heads_);
-      const int qkv_index = static_cast<int>(i % 3);
+      const int batch_index = (i / 3) / num_heads_;
+      const int head_index = (i / 3) % num_heads_;
+      const int qkv_index = i % 3;
 
-      int input_offset = batch_index * sequence_length * input_hidden_size;
+      int input_offset = SafeInt<int>(batch_index) * sequence_length * input_hidden_size;
       int weights_offset = qkv_index * hidden_size + head_index * head_size;
       int weights_scale_offset = is_weight_scale_per_column ? weights_offset : 0;
       int weights_zp_offset = is_weight_zp_per_column ? weights_offset : 0;
       float* qkv_dest = QKV[qkv_index];
-      int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+      int qkv_offset = (SafeInt<int>(batch_index) * num_heads_ + head_index) *
+                       (SafeInt<int>(sequence_length) * head_size);
 
       //                   original           transposed            iteration
       // A: input          (BxSxD)            (B.)S x D             S x D
