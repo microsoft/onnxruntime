@@ -215,7 +215,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
-    std::string ep_name = node.GetEpName();
+    const std::string& ep_name = node.GetEpName();
     if (!ep_name.empty()) {
       if (ep_name == ep->name_) {
         candidate_nodes.push_back(node);
@@ -234,7 +234,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
       // Emit a diagnostic when an NHWC-domain node has no matching kernel.
       // This helps identify gaps between the layout conversion allowlist and
       // the actually-registered NHWC kernels in the plugin build.
-      std::string node_domain = node.GetDomain();
+      const std::string& node_domain = node.GetDomain();
       if (node_domain == kMSInternalNHWCDomain) {
         ORT_CXX_LOGF(Ort::Logger(&ep->logger_), ORT_LOGGING_LEVEL_WARNING,
                      "NHWC kernel miss: op=%s domain=%s version=%d node=%s - "
