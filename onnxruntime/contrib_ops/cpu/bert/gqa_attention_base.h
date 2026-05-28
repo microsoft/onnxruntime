@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstring>
+#include <limits>
 #include <string>
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -741,36 +742,24 @@ class GQAAttentionBase {
     kv_block_size = std::max(kv_block_size, 1);
     int q_block_size = std::min(kv_block_size, 2 * head_size);
 
-    // For each batch item, we process all heads. But total_seqlen varies per batch item
-    // when using ragged sequences. For simplicity with flash kernel, we use the first
-    // batch item's seqlen. The kernel handles per-batch via its task decomposition.
-    // Actually, the flash kernel uses a single total_seqlen for all batch items.
-    // For variable-length sequences, we use max total_seqlen = seqlen_present_kv_cache
-    // and rely on causal masking to handle the actual boundaries.
-    // This is safe because positions beyond actual total_seqlen are causally masked anyway.
-
-    // However, batch items may have different total_seqlen values. For correctness,
-    // we need to handle this. For now, use the simplest approach: run flash attention
-    // per batch item when seqlens differ.
-    // Actually, a simpler approach: the kernel's causal masking with past_seqlen
-    // handles the varying sequence lengths automatically - positions beyond the real
-    // total_seqlen are all causally masked.
-
-    // For the batch, we'll use the maximum total_seqlen for the flash kernel
-    // and let causal masking handle the rest.
+    // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
+    // When batch items have different seqlens_k (ragged), we must fall back to per-batch
+    // invocation so each batch item gets its own correct causal offset.
     int max_total_seqlen = 0;
+    int min_total_seqlen = std::numeric_limits<int>::max();
     int common_past_seqlen = 0;
     for (int b = 0; b < batch_size; ++b) {
       int total_sl = seqlens_k_data[b] + 1;
       max_total_seqlen = std::max(max_total_seqlen, total_sl);
+      min_total_seqlen = std::min(min_total_seqlen, total_sl);
     }
+    const bool ragged_seqlens = (max_total_seqlen != min_total_seqlen);
 
     if (past_key == nullptr || is_prompt) {
       common_past_seqlen = 0;
-    } else if (kv_sequence_length == 0) {
-      // Shared buffer mode: past_seqlen = total_seqlen (already written)
-      // Flash kernel will use past_seqlen for causal offset
-      // Each batch item has its own past_seqlen - handle in loop below
+    } else if (kv_sequence_length == 0 || ragged_seqlens) {
+      // Shared buffer mode or ragged seqlens: each batch item has its own
+      // past_seqlen — must use per-batch invocation below.
       common_past_seqlen = -1;  // sentinel: per-batch
     } else {
       common_past_seqlen = max_total_seqlen - sequence_length;
