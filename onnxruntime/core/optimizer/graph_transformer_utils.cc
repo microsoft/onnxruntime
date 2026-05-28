@@ -450,6 +450,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
       transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
       transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
