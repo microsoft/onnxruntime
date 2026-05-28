@@ -17,6 +17,9 @@ static uint32_t MakeMIDR(uint32_t implementer, uint32_t part,
   return (implementer << 24) | (variant << 20) | (0xF << 16) | (part << 4) | revision;
 }
 
+// ARM64-only part numbers (guarded by #if in cpuid_uarch.cc)
+#if defined(_M_ARM64) || defined(__aarch64__)
+
 TEST(CpuidUarch, QualcommOryon) {
   // Qualcomm Oryon: implementer = 'Q' (0x51), part = 0x001
   uint32_t uarch = cpuinfo_uarch_unknown;
@@ -35,6 +38,8 @@ TEST(CpuidUarch, QualcommSaphira) {
   decodeMIDR(MakeMIDR('Q', 0xC01), &uarch);
   EXPECT_EQ(uarch, static_cast<uint32_t>(cpuinfo_uarch_saphira));
 }
+
+#endif  // ARM64
 
 TEST(CpuidUarch, ArmCortexA76) {
   uint32_t uarch = cpuinfo_uarch_unknown;
