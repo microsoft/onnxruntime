@@ -2567,6 +2567,28 @@ struct OrtEp {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(OnSessionInitializationEnd, _In_ OrtEp* this_ptr);
+
+  /** \brief Release a previously captured graph and its associated resources.
+   *
+   * Called when the caller no longer needs the captured graph for the given annotation ID.
+   * This allows the EP to free buffers and other resources tied to this graph.
+   *
+   * \param[in] this_ptr The EP instance.
+   * \param[in] graph_annotation_id The annotation ID of the graph to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes
+   *       no captured graph release is needed and treats it as a no-op success.
+   *
+   * \note Thread safety: For EPs that support concurrent Run() calls, this method may be
+   *       called concurrently with Run(). The EP is responsible for ensuring thread safety
+   *       of its own state in that case. For non-concurrent EPs, the session serializes
+   *       calls via its internal mutex.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

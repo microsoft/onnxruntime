@@ -186,10 +186,6 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   auto* mean = context.Output(1, mean_shape);
   auto* inv_std_dev = context.Output(2, mean_shape);
 
-  if (x_shape.Size() == 0) {
-    return Status::OK();
-  }
-
   return RunLayerNormProgram(context, x, scale, bias, epsilon_, norm_count, norm_size,
                              simplified, y, mean, inv_std_dev);
 }
@@ -208,7 +204,6 @@ Status RunLayerNormProgram(ComputeContext& context,
   if (x->Shape().Size() == 0) {
     return Status::OK();
   }
-
   const int components = GetMaxComponents(norm_size);
   const uint32_t norm_size_vectorized = onnxruntime::narrow<uint32_t>((norm_size + components - 1) / components);
 
