@@ -296,6 +296,14 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_plugin_sm90_all_srcs})
+      if(MSVC)
+        # CUTLASS SM90 TMA kernels have parameters with alignas(128) (TMA descriptors).
+        # NVCC-generated host stubs pass these by value, triggering MSVC C2719.
+        # Enabling separable compilation (RDC) changes stub generation to use
+        # pointer-based argument passing, which avoids the alignment constraint.
+        set_target_properties(onnxruntime_providers_cuda_plugin_sm90_tma PROPERTIES
+          CUDA_SEPARABLE_COMPILATION ON)
+      endif()
     endif()
   endif()
 
@@ -309,6 +317,10 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_cuda_plugin_sm120_tma_srcs})
+      if(MSVC)
+        set_target_properties(onnxruntime_providers_cuda_plugin_sm120_tma PROPERTIES
+          CUDA_SEPARABLE_COMPILATION ON)
+      endif()
     endif()
   endif()
 
