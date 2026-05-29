@@ -1730,7 +1730,9 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-Status Graph::BuildConnectionsSubgraph(Node* node, Graph* subgraph, std::unordered_set<std::string>& outer_scope_node_args_consumed, bool& removed_node_with_subgraph) {
+Status Graph::BuildConnectionsSubgraph(Node* node, Graph* subgraph,
+                                       std::unordered_set<std::string>& outer_scope_node_args_consumed,
+                                       bool& removed_node_with_subgraph) {
   std::unordered_set<std::string> node_args_consumed;
   ORT_RETURN_IF_ERROR(subgraph->BuildConnections(node_args_consumed, removed_node_with_subgraph));
 
@@ -1811,7 +1813,8 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
       for (auto& subgraph : node->MutableSubgraphs()) {
-        ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(node, subgraph.get(), outer_scope_node_args_consumed, removed_node_with_subgraph));
+        ORT_RETURN_IF_ERROR(BuildConnectionsSubgraph(node, subgraph.get(), outer_scope_node_args_consumed,
+                                                     removed_node_with_subgraph));
       }
     }
   }
