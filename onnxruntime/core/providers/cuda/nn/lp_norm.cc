@@ -9,24 +9,24 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_LPNORM_VERSIONED_KERNEL(type, sinceVersion, endVersion)                   \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      LpNormalization,                                                                     \
-      kOnnxDomain,                                                                         \
-      sinceVersion,                                                                        \
-      endVersion,                                                                          \
-      type,                                                                                \
-      kCudaExecutionProvider,                                                              \
+#define REGISTER_LPNORM_VERSIONED_KERNEL(type, sinceVersion, endVersion)                      \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                    \
+      LpNormalization,                                                                        \
+      kOnnxDomain,                                                                            \
+      sinceVersion,                                                                           \
+      endVersion,                                                                             \
+      type,                                                                                   \
+      kCudaExecutionProvider,                                                                 \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       LpNorm<type>);
 
-#define REGISTER_LPNORM_KERNEL(type, sinceVersion)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      LpNormalization,                                                                     \
-      kOnnxDomain,                                                                         \
-      sinceVersion,                                                                        \
-      type,                                                                                \
-      kCudaExecutionProvider,                                                              \
+#define REGISTER_LPNORM_KERNEL(type, sinceVersion)                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                              \
+      LpNormalization,                                                                        \
+      kOnnxDomain,                                                                            \
+      sinceVersion,                                                                           \
+      type,                                                                                   \
+      kCudaExecutionProvider,                                                                 \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       LpNorm<type>);
 
