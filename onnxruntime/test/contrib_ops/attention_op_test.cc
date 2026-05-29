@@ -521,8 +521,12 @@ TEST(ContribOpAttentionTest, AttentionBatch1_Float16) {
       3.154296875, 0.1082763671875, 4.25, 5.6484375,
       3.970703125, 0.072998046875, 4.25, 5.6484375};
 
+  // WebGPU Attention does not support mask_index input.
+  constexpr bool disable_webgpu = true;
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads, true);
+                   batch_size, sequence_length, hidden_size, number_of_heads, true /*use_float16*/,
+                   false, false, 0, nullptr, nullptr, AttentionMaskType::MASK_1D_KEY_SEQ_LEN, 0, 0,
+                   false /*disable_cpu*/, false /*disable_cuda*/, false /*disable_dml*/, disable_webgpu);
 }
 
 TEST(ContribOpAttentionTest, AttentionBatch2) {
