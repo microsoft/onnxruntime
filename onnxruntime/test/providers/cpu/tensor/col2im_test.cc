@@ -206,7 +206,10 @@ TEST(Col2ImOpTest, ImageShapeLargerThanColumnTensor) {
   test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{1, 1});
 
   test.AddOutput<float>("output", {1, 1, 4, 4}, std::vector<float>(16, 0.0f));
-  test.Run(OpTester::ExpectResult::kExpectFailure, "does not match the number of sliding blocks");
+  // Restrict to the CPU kernel: other execution providers (e.g. DML) reject the
+  // inconsistent shapes during graph partitioning with a different message.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "does not match the number of sliding blocks",
+           {kDmlExecutionProvider});
 }
 
 }  // namespace test
