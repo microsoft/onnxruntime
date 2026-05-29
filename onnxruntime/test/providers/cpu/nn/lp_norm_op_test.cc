@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 using namespace std;
@@ -169,6 +170,105 @@ void L2NormalizationWithZeroNorm() {
 TEST(LpNormalizationTest, L2NormalizationWithZeroNorm) {
   L2NormalizationWithZeroNorm<float>();
   L2NormalizationWithZeroNorm<double>();
+}
+
+TEST(LpNormalizationTest, L2Normalization_FP16) {
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("p", (int64_t)2);
+
+  vector<float> input_f = {5.93932154F, 7.4367043F, 6.42487038F, 5.90394865F,
+                           4.81289319F, 6.81304702F, 4.9382849F, 9.02595701F,
+                           9.67296484F, 4.45097367F, 8.12552534F, 5.76005428F,
+
+                           6.11240105F, 9.33036974F, 1.63932452F, 1.7841637F,
+                           1.18196558F, 8.49357861F, 8.00341076F, 8.83010933F,
+                           9.80756508F, 8.19242708F, 5.15331426F, 8.02476259F};
+  vector<int64_t> input_dims = {2, 3, 4};
+
+  vector<MLFloat16> input(input_f.size());
+  for (size_t i = 0; i < input_f.size(); ++i) input[i] = MLFloat16(input_f[i]);
+  test.AddInput<MLFloat16>("input", input_dims, input);
+
+  vector<float> expected_f = {
+      0.48173351F, 0.67457895F, 0.55987147F, 0.48285641F,
+      0.39036983F, 0.61800737F, 0.4303285F, 0.73819091F,
+      0.78456626F, 0.40374513F, 0.70806873F, 0.47108796F,
+
+      0.52617536F, 0.62021826F, 0.16971778F, 0.14788607F,
+      0.10174744F, 0.56459419F, 0.82858584F, 0.73191164F,
+      0.8442671F, 0.54457572F, 0.53351794F, 0.66515792F};
+  vector<MLFloat16> expected(expected_f.size());
+  for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
+  test.AddOutput<MLFloat16>("Y", input_dims, expected);
+
+  // FP16 is only on CUDA/ROCM EPs; exclude CPU (no fp16 kernel) and others that don't support it
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCpuExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(LpNormalizationTest, L1Normalization_FP16) {
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("p", (int64_t)1);
+
+  vector<float> input_f = {5.93932154F, 7.4367043F, 6.42487038F, 5.90394865F,
+                           4.81289319F, 6.81304702F, 4.9382849F, 9.02595701F,
+                           9.67296484F, 4.45097367F, 8.12552534F, 5.76005428F};
+  vector<int64_t> input_dims = {1, 3, 4};
+
+  vector<MLFloat16> input(input_f.size());
+  for (size_t i = 0; i < input_f.size(); ++i) input[i] = MLFloat16(input_f[i]);
+  test.AddInput<MLFloat16>("input", input_dims, input);
+
+  vector<float> expected_f = {0.2907843F, 0.3976693F, 0.3296719F, 0.28535331F,
+                              0.23563529F, 0.36431994F, 0.25339247F, 0.43624816F,
+                              0.47358041F, 0.23801075F, 0.41693563F, 0.27839852F};
+  vector<MLFloat16> expected(expected_f.size());
+  for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
+  test.AddOutput<MLFloat16>("Y", input_dims, expected);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCpuExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(LpNormalizationTest, L2Normalization_LastAxis) {
+  // Test normalization along the last axis (axis=-1), which is the most common
+  // use case for LpNormalization in attention patterns (e.g. Qwen3.5 L2-norm).
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", (int64_t)-1);
+  test.AddAttribute("p", (int64_t)2);
+
+  // 2x4 input, normalize each row
+  vector<float> input = {3.0f, 4.0f, 0.0f, 0.0f,
+                         1.0f, 2.0f, 2.0f, 0.0f};
+  vector<int64_t> dims = {2, 4};
+  test.AddInput<float>("input", dims, input);
+
+  // Row 0: norm = 5, Row 1: norm = 3
+  vector<float> expected = {0.6f, 0.8f, 0.0f, 0.0f,
+                            1.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 0.0f};
+  test.AddOutput<float>("Y", dims, expected);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
+TEST(LpNormalizationTest, L2Normalization_Axis0) {
+  // Test normalization along axis 0
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("p", (int64_t)2);
+
+  vector<float> input = {3.0f, 1.0f,
+                         4.0f, 2.0f};
+  vector<int64_t> dims = {2, 2};
+  test.AddInput<float>("input", dims, input);
+
+  // Col 0: norm = 5, Col 1: norm = sqrt(5)
+  float s5 = std::sqrt(5.0f);
+  vector<float> expected = {3.0f / 5.0f, 1.0f / s5,
+                            4.0f / 5.0f, 2.0f / s5};
+  test.AddOutput<float>("Y", dims, expected);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 }  // namespace test
