@@ -396,8 +396,8 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpName,
   }
 
   const onnxruntime::VariantEpCompatibilityInfo* info = nullptr;
-  auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibilityInfo(
-      component_name, variant_name, 0, info);
+  auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibility(
+      component_name, variant_name, info);
 
   if (out_ep != nullptr) {
     if (status.IsOK() && info != nullptr && info->ep.has_value()) {

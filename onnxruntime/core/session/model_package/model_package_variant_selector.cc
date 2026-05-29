@@ -20,7 +20,6 @@ namespace {
 struct VariantMatchResult {
   bool matched{false};
   int score{std::numeric_limits<int>::min()};
-  std::optional<size_t> selected_ep_compatibility_index{};
 };
 
 std::string ToLower(std::string_view s) {
@@ -106,72 +105,55 @@ Status ValidateCompatibilityString(const VariantSelectionEpInfo& ep_info,
   return Status::OK();
 }
 
+// Checks whether a variant's single EP compatibility entry matches the given EP.
+// Returns a match result with a score derived from ValidateCompiledModelCompatibilityInfo().
 VariantMatchResult MatchVariantForEp(VariantInfo& variant, const VariantSelectionEpInfo& ep_info) {
   VariantMatchResult result{};
-  if (variant.ep_compatibility.empty()) {
+  const auto& ec = variant.ep_compatibility;
+
+  // 1. Match EP name. Required and non-empty per schema.
+  if (!ec.ep.has_value() || *ec.ep != ep_info.ep_name) {
     return result;
   }
 
-  for (size_t ec_idx = 0; ec_idx < variant.ep_compatibility.size(); ++ec_idx) {
-    auto& ec = variant.ep_compatibility[ec_idx];
+  // 2. Match device constraint.
+  bool device_ok = !ec.device.has_value() || ec.device->empty();
+  std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
 
-    // 1. Match EP. Parser enforces that "ep" is required and non-empty in every entry, so this is
-    //    a straightforward string compare.
-    if (!ec.ep.has_value() || *ec.ep != ep_info.ep_name) {
-      continue;
+  if (!device_ok) {
+    if (ep_info.hardware_devices.empty()) {
+      return result;
     }
-
-    // 2. Match device
-    bool device_ok = !ec.device.has_value() || ec.device->empty();
-    std::vector<const OrtHardwareDevice*> constraint_devices = ep_info.hardware_devices;
-
-    if (!device_ok) {
-      // If the EP exposes no hardware devices but the variant declares a device constraint,
-      // we cannot verify the constraint, so treat it as non-matching.
-      if (ep_info.hardware_devices.empty()) {
-        continue;
-      }
-      if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
-        device_ok = true;
-        constraint_devices = {matched_hd};
-      }
-    }
-
-    if (!device_ok) {
-      continue;
-    }
-
-    // 3. Check compatibility string. Each variant carries one opaque compatibility string
-    //    owned by the EP; if the EP needs to encode multiple sub-targets it does so internally
-    //    (e.g. comma-joined) and parses the value itself.
-    const std::string& compat_str =
-        ec.compatibility_string.has_value() ? *ec.compatibility_string : std::string{};
-
-    OrtCompiledModelCompatibility compat = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
-    auto st = ValidateCompatibilityString(ep_info, compat_str, constraint_devices, compat);
-    if (!st.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "Failed to validate compiled model compatibility for variant '"
-                            << variant.variant_name << "', ep compatibility index " << ec_idx
-                            << ". Error: " << st.ErrorMessage()
-                            << " Skip this ep compatibility.";
-      continue;
-    }
-
-    ec.compiled_model_compatibility = compat;
-
-    if (compat == OrtCompiledModelCompatibility_EP_UNSUPPORTED) {
-      continue;
-    }
-
-    const int score = CompatibilityToScore(compat);
-
-    if (!result.matched || score > result.score) {
-      result.matched = true;
-      result.score = score;
-      result.selected_ep_compatibility_index = ec_idx;
+    if (const auto* matched_hd = FindMatchingHardwareDevice(*ec.device, ep_info.hardware_devices)) {
+      device_ok = true;
+      constraint_devices = {matched_hd};
     }
   }
 
+  if (!device_ok) {
+    return result;
+  }
+
+  // 3. Validate compatibility string via EP callback.
+  const std::string& compat_str =
+      ec.compatibility_string.has_value() ? *ec.compatibility_string : std::string{};
+
+  OrtCompiledModelCompatibility compat = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  auto st = ValidateCompatibilityString(ep_info, compat_str, constraint_devices, compat);
+  if (!st.IsOK()) {
+    LOGS_DEFAULT(WARNING) << "Failed to validate compiled model compatibility for variant '"
+                          << variant.variant_name << "'. Error: " << st.ErrorMessage();
+    return result;
+  }
+
+  variant.ep_compatibility.compiled_model_compatibility = compat;
+
+  if (compat == OrtCompiledModelCompatibility_EP_UNSUPPORTED) {
+    return result;
+  }
+
+  result.matched = true;
+  result.score = CompatibilityToScore(compat);
   return result;
 }
 
@@ -192,8 +174,7 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
     // For now we only consider the first captured EP for variant matching.
     //
     // ModelPackageOptions may capture multiple EPs (e.g. when EP selection comes from a policy that
-    // returns a ranked list such as [CUDA, WebGPU, CPU]). The full v4 design ranks variants across
-    // that list in priority order; until that lands here, we use only the first EP. Callers that
+    // returns a ranked list such as [CUDA, WebGPU, CPU]). We use only the first EP. Callers that
     // need a specific EP should put it first in the captured order.
     // TODO: extend to rank variants across the full EP list, honoring captured priority order.
     selected_ep_info = &ep_infos[0];
@@ -205,34 +186,25 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
 
   // EP/device compatibility pass.
   //
-  // Each variant declares a single target EP and carries one opaque compatibility string owned
-  // by that EP. ORT does not parse it, decompose it, or aggregate scores across multiple strings
-  // -- if the EP needs to encode multiple sub-targets (e.g. several QNN SoC models), it does so
-  // internally in this single string and validates the full value itself.
+  // Each variant declares a single target EP (ep, device, compatibility_string). ORT does not
+  // parse or decompose the compatibility string -- EP validates the compatibility string and
+  // returns an OrtCompiledModelCompatibility enum indicating the level of compatibility.
   //
-  // If multiple execution providers are needed, separate variants should be created (preferably
-  // with shared weights).
-  //
-  // We do not currently support a "portable" / wildcard variant. If that need arises later, the
-  // planned shape is: a variant with EP info omitted is treated as the portable fallback (and
-  // likely pinned to CPU at load time).
-  //
-  // Current implementation:
-  //   For each variant whose ep/device constraints match the selected EP, call
+  // Selection algorithm:
+  //   For each variant whose single EP/device declaration matches the selected EP, call
   //   OrtEpFactory::ValidateCompiledModelCompatibilityInfo() and map the returned
   //   OrtCompiledModelCompatibility enum to a numeric score. Pick the highest-scoring variant.
+  //   On ties, the first variant in manifest declaration order wins.
   //
   // Planned fallback ladder (not yet wired -- TODO):
   //   a) If the EP implements OrtEpFactory::SelectBestCompiledModelCandidate() (PR #28387), gather
-  //      every variant into a candidate list and let the EP pick the best index. SIZE_MAX means
-  //      "none acceptable", fall through to (b).
-  //   b) Otherwise, use ValidateCompiledModelCompatibilityInfo() per variant as we do today and pick
-  //      the highest-ranked one.
-  //   c) If neither ABI is implemented, return the first variant whose ep/device constraints match.
+  //      every matching variant into a candidate list and let the EP pick the best index. SIZE_MAX
+  //      means "none acceptable", fall through to (b).
+  //   b) Otherwise, use ValidateCompiledModelCompatibilityInfo() per variant as we do today.
+  //   c) If neither ABI is implemented, return the first variant whose ep/device matches.
   if (selected_ep_info != nullptr) {
     int best_score = std::numeric_limits<int>::min();
     std::optional<size_t> best_index;
-    std::optional<size_t> best_ec_index;
 
     for (size_t i = 0, end = variants.size(); i < end; ++i) {
       VariantMatchResult m = MatchVariantForEp(variants[i], *selected_ep_info);
@@ -244,13 +216,11 @@ Status VariantSelector::SelectVariant(const ModelPackageComponentContext& contex
       if (!best_index.has_value() || m.score > best_score) {
         best_score = m.score;
         best_index = i;
-        best_ec_index = m.selected_ep_compatibility_index;
       }
     }
 
     if (best_index.has_value()) {
       selected_variant = std::move(variants[*best_index]);
-      selected_variant->selected_ep_compatibility_index = best_ec_index;
       return Status::OK();
     }
   }

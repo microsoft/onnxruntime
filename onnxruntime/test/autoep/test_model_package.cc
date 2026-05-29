@@ -751,14 +751,12 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
   ASSERT_EQ(by_file.count("mul_16.onnx"), 1u);
 
   const auto* v1 = by_file.at("mul_1.onnx");
-  ASSERT_FALSE(v1->ep_compatibility.empty());
-  EXPECT_EQ(v1->ep_compatibility[0].ep.value_or(""), "example_ep");
-  EXPECT_EQ(v1->ep_compatibility[0].device.value_or(""), "cpu");
+  EXPECT_EQ(v1->ep_compatibility.ep.value_or(""), "example_ep");
+  EXPECT_EQ(v1->ep_compatibility.device.value_or(""), "cpu");
 
   const auto* v2 = by_file.at("mul_16.onnx");
-  ASSERT_FALSE(v2->ep_compatibility.empty());
-  EXPECT_EQ(v2->ep_compatibility[0].ep.value_or(""), "example_ep");
-  EXPECT_EQ(v2->ep_compatibility[0].device.value_or(""), "npu");
+  EXPECT_EQ(v2->ep_compatibility.ep.value_or(""), "example_ep");
+  EXPECT_EQ(v2->ep_compatibility.device.value_or(""), "npu");
 
   std::filesystem::remove_all(package_root, ec);
 }
@@ -806,9 +804,8 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
   ASSERT_EQ(variants[0].files.size(), 1u);
   EXPECT_EQ(variants[0].files[0].model_file_path.filename().string(), "mul_1.onnx");
 
-  ASSERT_FALSE(variants[0].ep_compatibility.empty());
-  EXPECT_EQ(variants[0].ep_compatibility[0].ep.value_or(""), "example_ep");
-  EXPECT_EQ(variants[0].ep_compatibility[0].device.value_or(""), "cpu");
+  EXPECT_EQ(variants[0].ep_compatibility.ep.value_or(""), "example_ep");
+  EXPECT_EQ(variants[0].ep_compatibility.device.value_or(""), "cpu");
 
   std::filesystem::remove_all(component_root, ec);
 }

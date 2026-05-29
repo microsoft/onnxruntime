@@ -231,8 +231,8 @@ ModelPackageStatus* ModelPackage_GetVariantEpName(
   }
 
   if (out_ep) {
-    if (!variant->ep_compatibility.empty() && variant->ep_compatibility[0].ep.has_value()) {
-      *out_ep = variant->ep_compatibility[0].ep->c_str();
+    if (variant->ep_compatibility.ep.has_value()) {
+      *out_ep = variant->ep_compatibility.ep->c_str();
     } else {
       *out_ep = nullptr;
     }

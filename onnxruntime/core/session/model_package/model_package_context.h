@@ -47,12 +47,8 @@ struct VariantInfo {
   std::string component_name;
   std::string variant_name;
 
-  // from metadata.json: variants.<variant_name> EP fields (ep, device, compatibility_string)
-  // Internally kept as a vector for code compatibility, but schema enforces a single entry per variant.
-  std::vector<VariantEpCompatibilityInfo> ep_compatibility;
-
-  // selected ep_compatibility entry index after variant matching
-  std::optional<size_t> selected_ep_compatibility_index{};
+  // from metadata.json: single EP target per variant (ep, device, compatibility_string)
+  VariantEpCompatibilityInfo ep_compatibility;
 
   // from variant.json: files[]
   std::vector<VariantModelInfo> files;
@@ -191,16 +187,12 @@ class ModelPackageContext {
   Status GetVariantNames(const std::string& component_name,
                          gsl::span<const std::string>& out_variant_names) const;
 
-  // Pre-selection traversal of the (ep, device, compatibility_string) tuples declared on a variant.
-  // Lets callers (e.g. GenAI defaulting logic) inspect what EPs a package advertises support for
+  // Get the EP compatibility info declared on a variant.
+  // Lets callers (e.g. GenAI defaulting logic) inspect what EP a variant targets
   // before any EP has been resolved / before SelectComponent has been called.
-  Status GetVariantEpCompatibilityCount(const std::string& component_name,
-                                        const std::string& variant_name,
-                                        size_t& out_count) const;
-  Status GetVariantEpCompatibilityInfo(const std::string& component_name,
-                                       const std::string& variant_name,
-                                       size_t ep_idx,
-                                       const VariantEpCompatibilityInfo*& out_info) const;
+  Status GetVariantEpCompatibility(const std::string& component_name,
+                                   const std::string& variant_name,
+                                   const VariantEpCompatibilityInfo*& out_info) const;
 
   const ModelPackageInfo& GetModelPackageInfo() const noexcept {
     return model_package_info_;

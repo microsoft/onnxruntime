@@ -46,17 +46,6 @@ constexpr const char* kConsumerMetadataKey = "consumer_metadata";
 // Internal schema types for deserialization
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct EpCompatibilitySchema {
-  std::optional<std::string> ep;
-  std::optional<std::string> device;
-  std::optional<std::string> compatibility_string;
-};
-
-struct VariantSchema {
-  // Single EP compatibility info, parsed from fields directly on the variant object.
-  EpCompatibilitySchema ep_info;
-};
-
 struct VariantFileSchema {
   std::string filename;
   std::optional<std::unordered_map<std::string, std::string>> session_options;
@@ -67,6 +56,16 @@ struct VariantFileSchema {
 struct VariantMetadataSchema {
   std::vector<VariantFileSchema> files;
   std::optional<json> consumer_metadata;
+};
+
+struct EpCompatibilitySchema {
+  std::optional<std::string> ep;
+  std::optional<std::string> device;
+  std::optional<std::string> compatibility_string;
+};
+
+struct VariantSchema {
+  EpCompatibilitySchema ep_info;
 };
 
 struct ComponentSchema {
@@ -398,12 +397,10 @@ bool ParseVariantsFromComponent(const std::string& component_name,
       }
     }
 
-    // EP compatibility from metadata.json (single entry per variant in new schema)
-    EpCompatibility ec{};
-    ec.ep = variant_schema.ep_info.ep;
-    ec.device = variant_schema.ep_info.device;
-    ec.compatibility_string = variant_schema.ep_info.compatibility_string;
-    variant_info.ep_compatibility.push_back(std::move(ec));
+    // EP compatibility from metadata.json (single entry per variant)
+    variant_info.ep_compatibility.ep = variant_schema.ep_info.ep;
+    variant_info.ep_compatibility.device = variant_schema.ep_info.device;
+    variant_info.ep_compatibility.compatibility_string = variant_schema.ep_info.compatibility_string;
 
     out_variants.push_back(std::move(variant_info));
   }

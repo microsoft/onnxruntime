@@ -109,7 +109,7 @@ Status ModelPackageComponentContext::ResolveVariantImpl(gsl::span<const VariantS
   for (size_t i = 0; i < component_model_info_.variants.size(); ++i) {
     if (component_model_info_.variants[i].variant_name == selected_variant->variant_name) {
       component_model_info_.selected_variant_index = i;
-      component_model_info_.variants[i] = *selected_variant;  // persist selected_ep_compatibility_index
+      component_model_info_.variants[i] = *selected_variant;
       ++matched_variants;
     }
   }
@@ -406,15 +406,11 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
       ort_variant.component_name = name;
       ort_variant.variant_name = variant.name;
 
-      // Convert EP compatibility entries.
-      for (const auto& ec : variant.ep_compatibility) {
-        VariantEpCompatibilityInfo ort_ec{};
-        ort_ec.ep = ec.ep;
-        ort_ec.device = ec.device;
-        ort_ec.compatibility_string = ec.compatibility_string;
-        ort_ec.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
-        ort_variant.ep_compatibility.push_back(std::move(ort_ec));
-      }
+      // Convert EP compatibility (single entry per variant).
+      ort_variant.ep_compatibility.ep = variant.ep_compatibility.ep;
+      ort_variant.ep_compatibility.device = variant.ep_compatibility.device;
+      ort_variant.ep_compatibility.compatibility_string = variant.ep_compatibility.compatibility_string;
+      ort_variant.ep_compatibility.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
 
       // Convert file entries.
       for (const auto& file : variant.files) {
@@ -544,30 +540,14 @@ Status FindVariant(const ModelPackageInfo& model_package_info,
 }
 }  // namespace
 
-Status ModelPackageContext::GetVariantEpCompatibilityCount(const std::string& component_name,
-                                                           const std::string& variant_name,
-                                                           size_t& out_count) const {
-  out_count = 0;
-  const VariantInfo* variant = nullptr;
-  ORT_RETURN_IF_ERROR(FindVariant(model_package_info_, component_name_to_index_,
-                                  component_name, variant_name, variant));
-  out_count = variant->ep_compatibility.size();
-  return Status::OK();
-}
-
-Status ModelPackageContext::GetVariantEpCompatibilityInfo(const std::string& component_name,
-                                                          const std::string& variant_name,
-                                                          size_t ep_idx,
-                                                          const VariantEpCompatibilityInfo*& out_info) const {
+Status ModelPackageContext::GetVariantEpCompatibility(const std::string& component_name,
+                                                      const std::string& variant_name,
+                                                      const VariantEpCompatibilityInfo*& out_info) const {
   out_info = nullptr;
   const VariantInfo* variant = nullptr;
   ORT_RETURN_IF_ERROR(FindVariant(model_package_info_, component_name_to_index_,
                                   component_name, variant_name, variant));
-  if (ep_idx >= variant->ep_compatibility.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "ep_idx ", ep_idx, " out of range (size=", variant->ep_compatibility.size(), ").");
-  }
-  out_info = &variant->ep_compatibility[ep_idx];
+  out_info = &variant->ep_compatibility;
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
