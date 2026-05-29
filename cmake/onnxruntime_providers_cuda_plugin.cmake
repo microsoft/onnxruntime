@@ -241,9 +241,11 @@ if(ORT_HAS_SM90_OR_LATER)
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
     "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
-  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+  if(NOT MSVC)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+  endif()
 endif()
-if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG AND NOT MSVC)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
 endif()
 
@@ -297,10 +299,9 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_plugin_sm90_all_srcs})
       if(MSVC)
-        # CUTLASS SM90 TMA kernels have parameters with alignas(128) (TMA descriptors).
-        # NVCC-generated host stubs pass these by value, triggering MSVC C2719.
-        # Enabling separable compilation (RDC) changes stub generation to use
-        # pointer-based argument passing, which avoids the alignment constraint.
+        # Keep RDC for SM90-specific non-grouped TMA sources on Windows. Grouped
+        # MoE TMA instantiations are disabled for MSVC above because CUDA 13 still
+        # emits host stubs with over-aligned by-value parameters (C2719).
         set_target_properties(onnxruntime_providers_cuda_plugin_sm90_tma PROPERTIES
           CUDA_SEPARABLE_COMPILATION ON)
       endif()
