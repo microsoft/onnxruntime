@@ -351,6 +351,7 @@ namespace Dml
             return m_impl->GraphCaptured(graph_annotation_id);
         }
 
+        // The sync parameter is ignored: DML EP always replays synchronously.
         Status ReplayGraph(int graph_annotation_id, bool /*sync*/ = true) override
         {
             return m_impl->ReplayGraph(graph_annotation_id);

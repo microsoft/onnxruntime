@@ -1916,6 +1916,7 @@ bool TensorrtExecutionProvider::IsGraphCaptured(int) const {
 }
 
 Status TensorrtExecutionProvider::ReplayGraph(int, bool /*sync*/) {
+  // The sync parameter is ignored: TRT EP always replays synchronously under a lock_guard in compute_func().
   ORT_ENFORCE(IsGraphCaptured(0));
   // Please note that CUDAGraph::Replay() is not thread safe.
   // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),

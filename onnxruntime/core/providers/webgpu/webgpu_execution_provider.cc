@@ -851,6 +851,7 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
 }
 
 Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+  // The sync parameter is ignored: WebGPU EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
   // TODO: enable profiling in run level
   if (session_profiler_ && session_profiler_->Enabled()) {
