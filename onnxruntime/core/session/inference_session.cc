@@ -3895,6 +3895,18 @@ common::Status InferenceSession::Run(IOBinding& io_binding) {
   return Run(run_options, io_binding);
 }
 
+common::Status InferenceSession::ReleaseCapturedGraph(int graph_annotation_id) {
+  // Acquire session_mutex_ only when concurrent run is not supported, matching the
+  // locking pattern in Run(). For concurrent EPs the mutex is not held by Run(),
+  // so acquiring it here would not synchronize with in-flight runs; those EPs are
+  // responsible for their own thread safety in ReleaseCapturedGraph.
+  std::optional<std::lock_guard<std::mutex>> lock;
+  if (!is_concurrent_run_supported_) {
+    lock.emplace(session_mutex_);
+  }
+  return cached_execution_provider_for_graph_replay_.ReleaseCapturedGraph(graph_annotation_id);
+}
+
 template <typename T>
 void InferenceSession::StartProfiling(const std::basic_string<T>& file_prefix) {
   std::basic_ostringstream<T> ss;

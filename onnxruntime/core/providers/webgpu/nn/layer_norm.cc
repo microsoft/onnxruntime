@@ -162,8 +162,6 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   const size_t axis = NormalizeAxis(axis_, x_shape.NumDimensions());
   const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.SizeToDimension(axis));
   const int64_t norm_size = x_shape.SizeFromDimension(axis);
-  const int components = GetMaxComponents(norm_size);
-  const uint32_t norm_size_vectorized = onnxruntime::narrow<uint32_t>((norm_size + components - 1) / components);
 
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias) ? bias->Shape().Size() : 0;
@@ -188,9 +186,27 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
   auto* mean = context.Output(1, mean_shape);
   auto* inv_std_dev = context.Output(2, mean_shape);
 
-  if (x_shape.Size() == 0) {
+  return RunLayerNormProgram(context, x, scale, bias, epsilon_, norm_count, norm_size,
+                             simplified, y, mean, inv_std_dev);
+}
+
+Status RunLayerNormProgram(ComputeContext& context,
+                           const Tensor* x,
+                           const Tensor* scale,
+                           const Tensor* bias,
+                           float epsilon,
+                           uint32_t norm_count,
+                           int64_t norm_size,
+                           bool simplified,
+                           Tensor* y,
+                           Tensor* mean,
+                           Tensor* inv_std_dev) {
+  if (x->Shape().Size() == 0) {
     return Status::OK();
   }
+
+  const int components = GetMaxComponents(norm_size);
+  const uint32_t norm_size_vectorized = onnxruntime::narrow<uint32_t>((norm_size + components - 1) / components);
 
   // Check if we should use split norm dimension optimization
   const bool split_norm_dim = norm_size % 512 == 0 && norm_count == 1;
@@ -215,7 +231,7 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
           {static_cast<uint32_t>(norm_size_vectorized)},
       })
       .AddUniformVariables({
-          {static_cast<float>(epsilon_)},
+          {static_cast<float>(epsilon)},
       });
 
   if (split_norm_dim) {

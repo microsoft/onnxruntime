@@ -2107,6 +2107,11 @@ inline void SessionImpl<T>::FinalizeModelEditorSession(const Model& model, const
 }
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
+template <typename T>
+inline void SessionImpl<T>::ReleaseCapturedGraph(int graph_annotation_id) {
+  ThrowOnError(GetApi().SessionReleaseCapturedGraph(this->p_, graph_annotation_id));
+}
+
 }  // namespace detail
 
 inline SessionOptions::SessionOptions() {

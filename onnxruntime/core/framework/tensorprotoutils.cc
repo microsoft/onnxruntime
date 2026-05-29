@@ -1565,12 +1565,34 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 }
 #endif
 
+// Backstop validation for callers that load external data outside Graph::Resolve (e.g. training
+// checkpoints, custom-op initializers). Passes through ORT's in-memory address markers — those are
+// validated at higher layers (Graph::ConvertInitializersIntoOrtValues for dense; markers on sparse
+// sub-tensors are rejected outright in SparseTensorProtoToDenseTensorProto). For declared file paths,
+// defers to ValidateExternalDataPath, which rejects absolute paths and paths that escape the model
+// directory. Callers must have already verified the tensor has external data.
+static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                const std::filesystem::path& model_path) {
+  if (HasExternalDataInMemory(tensor_proto)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+  return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
+}
+
 Status GetExtDataFromTensorProto(const Env& env,
                                  const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info) {
   ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
               tensor_proto.name(), "Expected to have external data");
+
+  // Defense-in-depth: reject absolute or directory-escaping external data paths even when this
+  // function is reached outside Graph::Resolve (e.g. training checkpoint load, custom-op init).
+  // In-memory address markers are passed through; their validity is enforced upstream.
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -1735,6 +1757,9 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
                                           const IExternalDataLoader& ext_data_loader,
                                           Tensor& tensor) {
   ORT_ENFORCE(HasExternalData(tensor_proto));
+  // Defense-in-depth path validation for callers reaching this function outside Graph::Resolve.
+  // In-memory markers are passed through; rejected explicitly below as unsupported for this path.
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
@@ -2098,30 +2123,29 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 
-// Validates that a TensorProto's external data path does not escape the model directory.
-// Also validates that the file exists when filesystem access is available (skipped on WASM without a virtual FS).
-// Returns Status::OK() (no-op) for tensors that do not use file-based external data.
-static Status ValidateExternalDataPathForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                const std::filesystem::path& model_path) {
-  // Gates on data_location == EXTERNAL directly instead of using HasExternalData()/HasExternalDataInFile(),
-  // which also require data_type != UNDEFINED. That check is appropriate for data processing (can't unpack
-  // without a type), but too narrow for security validation: we must validate any declared external path
-  // regardless of data_type.
-  if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
+// Validates the external data declaration on a sub-tensor of a SparseTensorProto (values or
+// indices). Validates that any file path stays within the model directory.
+//
+// Gates on data_location == EXTERNAL (rather than HasExternalData()) so that path validation
+// runs even when data_type is UNDEFINED. A malicious model could set data_location=EXTERNAL with
+// data_type=UNDEFINED and an evil file path; downstream loading would also reject it, but we
+// validate here for defense-in-depth.
+//
+// In-memory address markers must never appear on sparse sub-tensors. The trusted .ort loader
+// materializes sparse sub-tensors as inline raw_data (see LoadSparseInitializerOrtFormat); the
+// untrusted .onnx protobuf path rejects markers at the Graph constructor; and
+// SparseTensorProtoToDenseTensorProto re-asserts the invariant before this function is reached.
+// The HasExternalDataInMemory early-return below is a paranoid backstop.
+static Status ValidateSparseSubTensorExternalDataPath(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                      const std::filesystem::path& model_path) {
+  if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL ||
+      HasExternalDataInMemory(tensor_proto)) {
     return Status::OK();
   }
 
   std::unique_ptr<ExternalDataInfo> external_data_info;
   ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-  const auto& rel_path = external_data_info->GetRelPath();
-
-  // In-memory external data uses special marker locations — skip file path validation for those.
-  if (rel_path == kTensorProtoLittleEndianMemoryAddressTag ||
-      rel_path == kTensorProtoNativeEndianMemoryAddressTag) {
-    return Status::OK();
-  }
-
-  return utils::ValidateExternalDataPath(model_path, rel_path);
+  return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
 }
 
 static Status CopySparseData(const std::string& name,
@@ -2303,6 +2327,23 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   const auto& sparse_values = sparse.values();
   const auto& name = sparse_values.name();
 
+  // In-memory address markers (pointing into mmap'd / heap buffers) are forbidden on sparse
+  // sub-tensors. The trusted .ort loader is required to materialize sparse sub-tensors as inline
+  // raw_data (see LoadSparseInitializerOrtFormat) so they never carry markers. Untrusted .onnx
+  // protobuf input is rejected at the Graph constructor before reaching this function; this is
+  // the function-level backstop. A marker here would otherwise trigger an arbitrary memory read
+  // in UnpackInitializerData.
+  if (HasExternalDataInMemory(sparse_values)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " values use an in-memory address marker which is not permitted on sparse sub-tensors.");
+  }
+  if (HasExternalDataInMemory(sparse.indices())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " indices use an in-memory address marker which is not permitted on sparse sub-tensors.");
+  }
+
   const auto values_rank = sparse_values.dims_size();
   if (values_rank != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
@@ -2371,8 +2412,8 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   // Validate external data paths before any early returns or allocations.
   // This ensures malicious paths are rejected even for zero-element tensors,
   // and prevents large allocations before an invalid path is caught.
-  ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(sparse_values, model_path));
-  ORT_RETURN_IF_ERROR(ValidateExternalDataPathForTensor(indices, model_path));
+  ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(sparse_values, model_path));
+  ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(indices, model_path));
 
   if (dense_elements == 0) {
     // if there are no elements in the dense tensor, we can return early with an empty tensor proto
