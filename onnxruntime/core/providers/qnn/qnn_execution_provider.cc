@@ -1011,8 +1011,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       if (ep_cache_context_value.empty()) {
         continue;
       }
-      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(
-          std::filesystem::path(context_model_path), std::filesystem::path(ep_cache_context_value)));
+      auto validate_status = utils::ValidateExternalDataPath(
+          std::filesystem::path(context_model_path), std::filesystem::path(ep_cache_context_value));
+      if (!validate_status.IsOK()) {
+        ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, validate_status.ErrorMessage()));
+      }
       std::string context_bin_filepath(parent_path.string());
       context_bin_filepath.append("/").append(ep_cache_context_value);
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {

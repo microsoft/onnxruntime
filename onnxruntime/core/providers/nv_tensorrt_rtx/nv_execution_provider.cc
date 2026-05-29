@@ -2284,7 +2284,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
     } else {
       // Validate that the ONNX model path does not escape the model directory.
       if (path_check && !onnx_model_filename.empty()) {
-        ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPath(
+        ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
             std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
 

@@ -353,7 +353,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
     // Validate that the cache path does not escape the model directory.
     // Rejects absolute paths, ".." traversal, and symlink-based escapes.
     std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
-    ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPath(ctx_model_dir, std::filesystem::path(cache_path)));
+    ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(ctx_model_dir, std::filesystem::path(cache_path)));
 
     // The engine cache and context model (current model) should be in the same directory
     auto engine_cache_path = ctx_model_dir.append(cache_path);

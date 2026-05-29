@@ -106,8 +106,11 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
 
   // Validate that the cache path does not escape the model directory.
   // Rejects absolute paths, ".." traversal, and symlink-based escapes.
-  ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPath(
-      std::filesystem::path(ctx_onnx_model_path), std::filesystem::path(external_qnn_ctx_binary_file_name)));
+  auto validate_status = ::onnxruntime::utils::ValidateExternalDataPath(
+      std::filesystem::path(ctx_onnx_model_path), std::filesystem::path(external_qnn_ctx_binary_file_name));
+  if (!validate_status.IsOK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, validate_status.ErrorMessage());
+  }
 
   std::filesystem::path context_binary_path = folder_path / external_qnn_ctx_binary_file_name;
   if (!std::filesystem::is_regular_file(context_binary_path)) {
