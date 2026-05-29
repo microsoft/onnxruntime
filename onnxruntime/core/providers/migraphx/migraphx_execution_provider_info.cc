@@ -72,6 +72,17 @@ MIGraphXExecutionProviderInfo::MIGraphXExecutionProviderInfo(const ProviderOptio
           .AddAssignmentToReference(migraphx_provider_option::kExhaustiveTune, exhaustive_tune)
           .AddAssignmentToReference(migraphx_provider_option::kMemLimit, mem_limit)
           .AddAssignmentToEnumReference(migraphx_provider_option::kArenaExtendStrategy, arena_extend_strategy_mapping, arena_extend_strategy)
+          .AddValueParser(
+              migraphx_provider_option::kUserComputeStream,
+              [this](const std::string& value_str) -> Status {
+                if (!value_str.empty() && value_str != "0") {
+                  std::uintptr_t address;
+                  ORT_RETURN_IF_ERROR(
+                      ParseStringWithClassicLocale(value_str, address));
+                  user_compute_stream = reinterpret_cast<void*>(address);
+                }
+                return Status::OK();
+              })
           .Parse(options));
 }
 
@@ -101,6 +112,8 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions() const {
       {std::string{migraphx_provider_option::kGpuExternalFree}, MakeStringWithClassicLocale(external_free)},
       {std::string{migraphx_provider_option::kGpuExternalEmptyCache}, MakeStringWithClassicLocale(external_empty_cache)},
       {std::string{migraphx_provider_option::kModelCacheDir}, MakeStringWithClassicLocale(model_cache_dir)},
+      {std::string{migraphx_provider_option::kUserComputeStream},
+       MakeStringWithClassicLocale(reinterpret_cast<std::uintptr_t>(user_compute_stream))},
   };
 }
 

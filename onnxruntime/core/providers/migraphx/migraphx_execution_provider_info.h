@@ -33,6 +33,7 @@ constexpr auto kArenaExtendStrategy = "migraphx_arena_extend_strategy"sv;
 constexpr auto kGpuExternalAlloc = "migraphx_external_alloc"sv;
 constexpr auto kGpuExternalFree = "migraphx_external_free"sv;
 constexpr auto kGpuExternalEmptyCache = "migraphx_external_empty_cache"sv;
+constexpr auto kUserComputeStream = "user_compute_stream"sv;
 constexpr auto kModelCacheDir = "migraphx_model_cache_dir"sv;
 }  // namespace migraphx_provider_option
 
@@ -59,6 +60,7 @@ struct MIGraphXExecutionProviderInfo {
   void* external_alloc{nullptr};
   void* external_free{nullptr};
   void* external_empty_cache{nullptr};
+  void* user_compute_stream{nullptr};  // external HIP stream for HIP graph capture
 
   bool UseExternalAlloc() const {
     return external_alloc != nullptr && external_free != nullptr;
@@ -99,6 +101,7 @@ struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_alloc), value);
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_free), value);
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_empty_cache), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);
 
     // The default memory arena cfg is not used in hashing right now.
     return value;
