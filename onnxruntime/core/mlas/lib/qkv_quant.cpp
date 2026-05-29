@@ -356,14 +356,23 @@ MlasSVGemm(
     const float* Scales,
     float* C,
     size_t ldc,
+    float Beta,
     MLAS_THREADPOOL* ThreadPool)
 {
     if (M == 0 || N == 0) {
         return;
     }
     if (K == 0) {
-        for (size_t m = 0; m < M; ++m) {
-            std::memset(C + m * ldc, 0, N * sizeof(float));
+        if (Beta == 0.0f) {
+            for (size_t m = 0; m < M; ++m) {
+                std::memset(C + m * ldc, 0, N * sizeof(float));
+            }
+        } else if (Beta != 1.0f) {
+            for (size_t m = 0; m < M; ++m) {
+                for (size_t n = 0; n < N; ++n) {
+                    C[m * ldc + n] *= Beta;
+                }
+            }
         }
         return;
     }
@@ -373,7 +382,7 @@ MlasSVGemm(
     //
     const auto* Dispatch = GetMlasPlatform().KVQuantGemmDispatch;
     if (Dispatch != nullptr && Dispatch->SVGemm != nullptr) {
-        Dispatch->SVGemm(M, N, K, A, lda, B, QuantType, Scales, C, ldc);
+        Dispatch->SVGemm(M, N, K, A, lda, B, QuantType, Scales, C, ldc, Beta);
         return;
     }
 
@@ -393,7 +402,13 @@ MlasSVGemm(
             const size_t m = static_cast<size_t>(m_idx);
             const float* a_row = A + m * lda;
             float* c_row = C + m * ldc;
-            std::memset(c_row, 0, N * sizeof(float));
+            if (Beta == 0.0f) {
+                std::memset(c_row, 0, N * sizeof(float));
+            } else if (Beta != 1.0f) {
+                for (size_t n = 0; n < N; ++n) {
+                    c_row[n] *= Beta;
+                }
+            }
 
             // Per-row scratch for one dequantized B row of length N.
             float b_dequant[1024];

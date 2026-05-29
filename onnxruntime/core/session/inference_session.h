@@ -414,6 +414,12 @@ class InferenceSession {
   [[nodiscard]] virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding);
   [[nodiscard]] common::Status Run(IOBinding& io_binding);
 
+  /**
+   * Release a previously captured graph and its associated resources.
+   * @param graph_annotation_id The annotation ID of the captured graph to release.
+   */
+  [[nodiscard]] common::Status ReleaseCapturedGraph(int graph_annotation_id);
+
 #ifdef ENABLE_TRAINING
   /**
    * Partially run a pre-loaded and pre-intialized model.
@@ -1108,6 +1114,13 @@ class InferenceSession {
         return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
+    }
+
+    Status ReleaseCapturedGraph(int graph_annotation_id) {
+      if (cached_execution_provider_for_graph_replay_) {
+        return cached_execution_provider_for_graph_replay_->ReleaseCapturedGraph(graph_annotation_id);
+      }
+      return Status::OK();
     }
 
     const std::string& Type() const {
