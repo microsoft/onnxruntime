@@ -2361,13 +2361,20 @@ TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
 }
 
 namespace {
-// int64 -> Cast(bool) -> Cast(float); the first Cast is fed directly by a
-// graph input (no preceding node). Used by the NeuralNetwork negative test
-// below. Positive bool-Cast coverage lives in the dependent Where/And and
-// GatherND PRs, where a non-Cast op sits between the int<->bool casts -- a
-// standalone bool round-trip can't be numerically verified here because
-// CoreML fuses back-to-back cast ops (dropping the bool clamp).
-std::string MakeCastBoolModelData() {
+// int64 -> Cast(bool) -> Cast(float) [-> Sqrt]; the first Cast is fed directly
+// by a graph input (no preceding node).
+//
+// With append_nontrivial=false this is the all-Cast graph used by the
+// NeuralNetwork negative test below. With append_nontrivial=true a non-trivial
+// Sqrt is appended so the ML Program partition survives the all-trivial drop in
+// CoreMLExecutionProvider::GetCapability (Cast is marked IsTrivial, and a
+// partition made up only of trivial ops is dropped because it can't amortise
+// the CPU<->CoreML marshalling cost). That lets the partition test below assert
+// the bool Casts are actually claimed. A standalone bool round-trip still can't
+// be verified numerically here because CoreML fuses back-to-back cast ops
+// (dropping the bool clamp); positive numerical coverage lives in the dependent
+// Where/And (#28597) and GatherND (#28598) PRs.
+std::string MakeCastBoolModelData(bool append_nontrivial = false) {
   onnxruntime::Model model("cast_bool_test", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
@@ -2390,6 +2397,11 @@ std::string MakeCastBoolModelData() {
   auto& to_float = graph.AddNode("cast_to_float", "Cast", "bool -> float", {&b}, {&y});
   to_float.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
 
+  if (append_nontrivial) {
+    auto& z = graph.GetOrCreateNodeArg("Z", &float_type);
+    graph.AddNode("sqrt", "Sqrt", "float -> float", {&y}, {&z});
+  }
+
   ORT_THROW_IF_ERROR(graph.Resolve());
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
@@ -2410,13 +2422,15 @@ TEST(CoreMLExecutionProviderTest, CastNonArgMaxNeuralNetworkNotSupported) {
 
 // Load-time partition check on the ML Program path: confirms the EP claims
 // both bool Casts (the relaxed "no preceding node" branch + the bool dtype
-// gate added in HasSupportedInputsImpl). Numerical verification isn't
-// possible here because CoreML fuses back-to-back cast ops and drops the
-// bool clamp; the positive numerical coverage lives in the dependent
-// Where/And (#28597) and GatherND (#28598) PRs, where a non-Cast op sits
-// between the int<->bool casts.
+// gate added in HasSupportedInputsImpl). A non-trivial Sqrt is appended so the
+// partition isn't dropped as all-trivial (see MakeCastBoolModelData); all three
+// nodes -- both Casts and the Sqrt -- must land on CoreML. Numerical
+// verification isn't possible here because CoreML fuses back-to-back cast ops
+// and drops the bool clamp; the positive numerical coverage lives in the
+// dependent Where/And (#28597) and GatherND (#28598) PRs, where a non-Cast op
+// sits between the int<->bool casts.
 TEST(CoreMLExecutionProviderTest, CastBoolMLProgramPartition) {
-  const std::string model_data = MakeCastBoolModelData();
+  const std::string model_data = MakeCastBoolModelData(/*append_nontrivial=*/true);
   gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
                                         model_data.size()};
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
