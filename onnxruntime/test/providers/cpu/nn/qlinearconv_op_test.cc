@@ -1542,7 +1542,9 @@ TEST(QLinearConvTest, Conv2D_U8U8_InvalidWeightZeroPointSize) {
 
   test.AddOutput<uint8_t>("y", {1, 4, 3, 3}, std::vector<uint8_t>(4 * 3 * 3, 128));
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "filter zero point shape invalid");
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "filter zero point shape invalid", {}, nullptr, &execution_providers);
 }
 
 // Tests per-channel weight zero points with different values (the fix for the reported bug).
