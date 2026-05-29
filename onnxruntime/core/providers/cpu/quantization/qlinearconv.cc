@@ -616,6 +616,9 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   // Test for depthwise convolution.
   // Depthwise path requires a single (uniform) filter zero point because
   // MlasConvDepthwise accepts only a scalar FilterZeroPoint.
+  // Note: is_symmetric_conv_ already implies uniform-zero (TryConvSymPrepack rejects
+  // non-zero ZP elements), so the W_zero_point_is_uniform check is defense-in-depth
+  // in case future prepack paths admit non-zero uniform ZPs.
   const bool is_depthwise_conv = (W_zero_point_is_uniform &&
                                   (is_symmetric_conv_ || reordered_W != nullptr) &&
                                   group_input_channels == 1 && group_output_channels == 1);

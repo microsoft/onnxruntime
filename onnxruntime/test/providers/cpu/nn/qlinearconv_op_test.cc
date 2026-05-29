@@ -1520,6 +1520,31 @@ TEST(QLinearConvTest, Conv2D_S8S8_Requantize_Bias_PerChannel) {
   }
 }
 
+// Negative test: w_zero_point tensor size must be 1 or M. A 2-element tensor for M=4 is invalid.
+TEST(QLinearConvTest, Conv2D_U8U8_InvalidWeightZeroPointSize) {
+  OpTester test("QLinearConv", 10);
+
+  // 4 output channels (M=4), input: 1x2x3x3, weight: 4x2x1x1
+  std::vector<uint8_t> X_data(1 * 2 * 3 * 3, 128);
+  std::vector<uint8_t> W_data(4 * 2 * 1 * 1, 128);
+
+  test.AddInput<uint8_t>("x", {1, 2, 3, 3}, X_data);
+  test.AddInput<float>("x_scale", {}, {0.1f}, true);
+  test.AddInput<uint8_t>("x_zero_point", {}, {128}, true);
+
+  test.AddInput<uint8_t>("w", {4, 2, 1, 1}, W_data, true);
+  test.AddInput<float>("w_scale", {4}, {0.1f, 0.1f, 0.1f, 0.1f}, true);
+  // Invalid: 2-element zero point for M=4
+  test.AddInput<uint8_t>("w_zero_point", {2}, {128, 130}, true);
+
+  test.AddInput<float>("y_scale", {}, {0.5f}, true);
+  test.AddInput<uint8_t>("y_zero_point", {}, {128}, true);
+
+  test.AddOutput<uint8_t>("y", {1, 4, 3, 3}, std::vector<uint8_t>(4 * 3 * 3, 128));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "filter zero point shape invalid");
+}
+
 // Tests per-channel weight zero points with different values (the fix for the reported bug).
 TEST(QLinearConvTest, Conv2D_U8U8_PerChannelZeroPoints) {
   // TODO: Unskip when fixed #41968513
