@@ -410,94 +410,93 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // Skip full dequant when chunked path will handle it in the GEMM loop
   if (!will_use_chunked) {
-
-  if (nbits_ == 8) {
-    if (column_wise_quant_blk_) {
-      if (reorder_idx) {
-        ORT_ENFORCE(K_padded == reorder_idx->Shape()[0], "K_padded != g_idx->Shape()[0]");
-      }
-      if (zero_points && zero_points->IsDataType<T>()) {
-        ORT_RETURN_IF_ERROR(Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const CudaT*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            stream));
-      } else {
-        ORT_RETURN_IF_ERROR(Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const uint8_t*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            stream));
-      }
-    } else {  // row-wise block
-      ORT_RETURN_IF_ERROR(DequantizeBlockwise8b(
-          reinterpret_cast<CudaT*>(b_data),
-          blob_data,
-          reinterpret_cast<const CudaT*>(scales_data),
-          (const uint8_t*)zero_points_data,
-          SafeInt<int>(block_size_),
-          column_wise_quant_blk_,
-          SafeInt<int>(K_),
-          SafeInt<int>(N_),
-          stream));
-    }
-  } else {  // 4 bits
-    if (column_wise_quant_blk_) {
-      if (reorder_idx) {
-        ORT_ENFORCE(K_padded == reorder_idx->Shape()[0], "K_padded != g_idx->Shape()[0]");
-      }
-      // column-wise block
-      if ((zero_points && zero_points->IsDataType<T>())) {
-        ORT_RETURN_IF_ERROR(Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const CudaT*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            stream));
-      } else {
-        ORT_RETURN_IF_ERROR(Dequantize4Bits(
+    if (nbits_ == 8) {
+      if (column_wise_quant_blk_) {
+        if (reorder_idx) {
+          ORT_ENFORCE(K_padded == reorder_idx->Shape()[0], "K_padded != g_idx->Shape()[0]");
+        }
+        if (zero_points && zero_points->IsDataType<T>()) {
+          ORT_RETURN_IF_ERROR(Dequantize8Bits(
+              reinterpret_cast<CudaT*>(b_data),
+              blob_data,
+              reinterpret_cast<const CudaT*>(scales_data),
+              (const CudaT*)zero_points_data,
+              reorder_idx_data,
+              SafeInt<int>(K_padded),
+              SafeInt<int>(N_),
+              SafeInt<int>(block_size_),
+              stream));
+        } else {
+          ORT_RETURN_IF_ERROR(Dequantize8Bits(
+              reinterpret_cast<CudaT*>(b_data),
+              blob_data,
+              reinterpret_cast<const CudaT*>(scales_data),
+              (const uint8_t*)zero_points_data,
+              reorder_idx_data,
+              SafeInt<int>(K_padded),
+              SafeInt<int>(N_),
+              SafeInt<int>(block_size_),
+              stream));
+        }
+      } else {  // row-wise block
+        ORT_RETURN_IF_ERROR(DequantizeBlockwise8b(
             reinterpret_cast<CudaT*>(b_data),
             blob_data,
             reinterpret_cast<const CudaT*>(scales_data),
             (const uint8_t*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
             SafeInt<int>(block_size_),
+            column_wise_quant_blk_,
+            SafeInt<int>(K_),
+            SafeInt<int>(N_),
             stream));
       }
-    } else {
-      // row-wise block
-      K_padded = K_;
+    } else {  // 4 bits
+      if (column_wise_quant_blk_) {
+        if (reorder_idx) {
+          ORT_ENFORCE(K_padded == reorder_idx->Shape()[0], "K_padded != g_idx->Shape()[0]");
+        }
+        // column-wise block
+        if ((zero_points && zero_points->IsDataType<T>())) {
+          ORT_RETURN_IF_ERROR(Dequantize4Bits(
+              reinterpret_cast<CudaT*>(b_data),
+              blob_data,
+              reinterpret_cast<const CudaT*>(scales_data),
+              (const CudaT*)zero_points_data,
+              reorder_idx_data,
+              SafeInt<int>(K_padded),
+              SafeInt<int>(N_),
+              SafeInt<int>(block_size_),
+              stream));
+        } else {
+          ORT_RETURN_IF_ERROR(Dequantize4Bits(
+              reinterpret_cast<CudaT*>(b_data),
+              blob_data,
+              reinterpret_cast<const CudaT*>(scales_data),
+              (const uint8_t*)zero_points_data,
+              reorder_idx_data,
+              SafeInt<int>(K_padded),
+              SafeInt<int>(N_),
+              SafeInt<int>(block_size_),
+              stream));
+        }
+      } else {
+        // row-wise block
+        K_padded = K_;
 
-      ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
-          reinterpret_cast<CudaT*>(b_data),
-          blob_data,
-          reinterpret_cast<const CudaT*>(scales_data),
-          (const uint8_t*)zero_points_data,
-          SafeInt<int>(block_size_),
-          column_wise_quant_blk_,
-          SafeInt<int>(K_),
-          SafeInt<int>(N_),
-          stream));
+        ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
+            reinterpret_cast<CudaT*>(b_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            (const uint8_t*)zero_points_data,
+            SafeInt<int>(block_size_),
+            column_wise_quant_blk_,
+            SafeInt<int>(K_),
+            SafeInt<int>(N_),
+            stream));
+      }
     }
-  }
 
-  } // end if (!will_use_chunked)
+  }  // end if (!will_use_chunked)
 
   DUMP_TENSOR_D("DeQuantized", b_data, static_cast<int>(N_), static_cast<int>(K_padded));
 
@@ -601,17 +600,17 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             GetCublasHandle(ctx),
             CUBLAS_OP_T,
             CUBLAS_OP_N,
-            this_chunk,                                     // n (output columns for this chunk)
-            SafeInt<int>(helper.M()),                       // m
-            SafeInt<int>(helper.K()),                       // k
+            this_chunk,                // n (output columns for this chunk)
+            SafeInt<int>(helper.M()),  // m
+            SafeInt<int>(helper.K()),  // k
             &alpha,
-            reinterpret_cast<const CudaT*>(b_data),        // B_chunk [chunk_n, K_padded]
+            reinterpret_cast<const CudaT*>(b_data),  // B_chunk [chunk_n, K_padded]
             SafeInt<int>(K_padded),
-            reinterpret_cast<const CudaT*>(a_data),         // A [M, K]
+            reinterpret_cast<const CudaT*>(a_data),  // A [M, K]
             helper.Lda(transa),
             &zero,
-            out_data + n_start,                              // C[:, n_start] — strided output
-            SafeInt<int>(helper.Ldc()),                      // ldc = N (full output stride)
+            out_data + n_start,          // C[:, n_start] — strided output
+            SafeInt<int>(helper.Ldc()),  // ldc = N (full output stride)
             GetDeviceProp(),
             UseTF32()));
       }
