@@ -40,7 +40,10 @@
       "name": "mimalloc",
       "platform": "windows"
     },
-    "ms-gsl",
+    {
+      "name": "ms-gsl",
+      "version>=": "4.2.1"
+    },
     "nlohmann-json",
     "onnx",
     {
