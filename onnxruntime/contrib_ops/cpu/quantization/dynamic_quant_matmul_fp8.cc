@@ -98,35 +98,31 @@ Status RestorePackedBMetadata(const void* metadata_buffer,
 }
 
 // Reject invalid scales before quantization divides by them or the GEMM dequantizes with them.
-Status ValidatePositiveFiniteScaleTensor(const Tensor& scale, const char* scale_name) {
+template <typename T>
+Status ValidatePositiveFiniteScaleTensorImpl(const Tensor& scale, const char* scale_name) {
+  const auto* data = scale.Data<T>();
   const size_t count = static_cast<size_t>(scale.Shape().Size());
+
+  for (size_t i = 0; i < count; ++i) {
+    const float value = static_cast<float>(data[i]);
+    ORT_RETURN_IF(!std::isfinite(value) || value <= 0.0f,
+                  "DynamicQuantMatMulFp8 requires ", scale_name, " values to be finite and positive.");
+  }
+
+  return Status::OK();
+}
+
+Status ValidatePositiveFiniteScaleTensor(const Tensor& scale, const char* scale_name) {
   if (scale.IsDataType<float>()) {
-    const auto* data = scale.Data<float>();
-    for (size_t i = 0; i < count; ++i) {
-      ORT_RETURN_IF(!std::isfinite(data[i]) || data[i] <= 0.0f,
-                    "DynamicQuantMatMulFp8 requires ", scale_name, " values to be finite and positive.");
-    }
-    return Status::OK();
+    return ValidatePositiveFiniteScaleTensorImpl<float>(scale, scale_name);
   }
 
   if (scale.IsDataType<MLFloat16>()) {
-    const auto* data = scale.Data<MLFloat16>();
-    for (size_t i = 0; i < count; ++i) {
-      const float value = static_cast<float>(data[i]);
-      ORT_RETURN_IF(!std::isfinite(value) || value <= 0.0f,
-                    "DynamicQuantMatMulFp8 requires ", scale_name, " values to be finite and positive.");
-    }
-    return Status::OK();
+    return ValidatePositiveFiniteScaleTensorImpl<MLFloat16>(scale, scale_name);
   }
 
   if (scale.IsDataType<BFloat16>()) {
-    const auto* data = scale.Data<BFloat16>();
-    for (size_t i = 0; i < count; ++i) {
-      const float value = static_cast<float>(data[i]);
-      ORT_RETURN_IF(!std::isfinite(value) || value <= 0.0f,
-                    "DynamicQuantMatMulFp8 requires ", scale_name, " values to be finite and positive.");
-    }
-    return Status::OK();
+    return ValidatePositiveFiniteScaleTensorImpl<BFloat16>(scale, scale_name);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -548,10 +544,7 @@ Status DynamicQuantMatMulFp8::PrePack(const Tensor& tensor, int input_idx, Alloc
 
   b_type_ = fp8_type_;
   has_b_type_ = true;
-  if (K == 0) {
-    return Status::OK();
-  }
-  if (N == 0) {
+  if (K == 0 || N == 0) {
     return Status::OK();
   }
 
