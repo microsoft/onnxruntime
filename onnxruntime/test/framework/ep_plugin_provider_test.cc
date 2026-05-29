@@ -1785,7 +1785,7 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
   const auto& compile_api = Ort::GetCompileApi();
   ExpectOrtStatus(compile_api.ModelCompilationOptions_SetEpContextDataWriteFunc(nullptr, EpContextWriteCallback,
                                                                                 nullptr),
-                  ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
+                  ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is null");
   ExpectOrtStatus(compile_api.ModelCompilationOptions_SetEpContextDataWriteFunc(compilation_options, nullptr,
                                                                                 nullptr),
                   ORT_INVALID_ARGUMENT, "OrtWriteEpContextDataFunc function is null");
@@ -1936,14 +1936,12 @@ TEST(PluginExecutionProviderTest, EpContextDataWriteFuncIsCalledViaEpApi) {
 
 TEST(PluginExecutionProviderTest, EpContextDataFallsBackToDisk) {
   const auto& ep_api = Ort::GetEpApi();
-  const std::filesystem::path test_dir = std::filesystem::temp_directory_path() / "ort_ep_context_data_test";
-  std::filesystem::create_directories(test_dir);
+  const std::filesystem::path test_dir = MakeEpContextDataTestDir("ort_ep_context_data_test");
   const std::filesystem::path data_path = test_dir / "context.bin";
   const std::string data_path_utf8 = PathToUTF8String(data_path.native());
   auto cleanup = gsl::finally([&]() {
     std::error_code ec;
-    std::filesystem::remove(data_path, ec);
-    std::filesystem::remove(test_dir, ec);
+    std::filesystem::remove_all(test_dir, ec);
   });
 
   const std::vector<char> payload{'d', 'i', 's', 'k'};

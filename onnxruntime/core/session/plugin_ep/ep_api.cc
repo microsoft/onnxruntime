@@ -53,19 +53,63 @@ namespace OrtExecutionProviderApi {
 
 namespace {
 
-std::filesystem::path ResolveEpContextDataPath(const char* file_name, const OrtGraph* graph) {
+// Deleter that frees a buffer allocated via an OrtAllocator. Used to make the read path exception-safe.
+struct OrtAllocatorBufferDeleter {
+  OrtAllocator* allocator;
+  void operator()(void* p) const {
+    if (p != nullptr) {
+      allocator->Free(allocator, p);
+    }
+  }
+};
+
+// Resolves the on-disk path for EPContext binary data. A relative file_name is joined to the directory
+// of the model referenced by graph. To prevent path traversal (e.g., a malicious model influencing an
+// EP-derived file name like "../../secret"), the joined path is canonicalized and verified to stay within
+// the model directory.
+Status ResolveEpContextDataPath(const char* file_name, const OrtGraph* graph,
+                                std::filesystem::path& resolved_path) {
   std::filesystem::path data_path{ToPathString(file_name)};
   if (data_path.is_absolute() || graph == nullptr) {
-    return data_path;
+    resolved_path = std::move(data_path);
+    return Status::OK();
   }
 
   const ORTCHAR_T* model_path = graph->GetModelPath();
   if (model_path == nullptr || model_path[0] == 0) {
-    return data_path;
+    resolved_path = std::move(data_path);
+    return Status::OK();
   }
 
-  std::filesystem::path model_file_path{model_path};
-  return model_file_path.parent_path() / data_path;
+  const std::filesystem::path base_dir = std::filesystem::path{model_path}.parent_path();
+  const std::filesystem::path joined = base_dir / data_path;
+
+  // Canonicalize lexically/with the filesystem so ".." segments are collapsed before the containment check.
+  // weakly_canonical does not require the target to exist (the file may not yet be written).
+  std::error_code ec;
+  std::filesystem::path canonical_base = std::filesystem::weakly_canonical(base_dir, ec);
+  if (ec) {
+    canonical_base = base_dir.lexically_normal();
+    ec.clear();
+  }
+  std::filesystem::path canonical_joined = std::filesystem::weakly_canonical(joined, ec);
+  if (ec) {
+    canonical_joined = joined.lexically_normal();
+  }
+
+  // The resolved path must be the model directory itself or a descendant of it.
+  auto base_it = canonical_base.begin();
+  auto joined_it = canonical_joined.begin();
+  for (; base_it != canonical_base.end(); ++base_it, ++joined_it) {
+    if (joined_it == canonical_joined.end() || *joined_it != *base_it) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "EPContext data file name '", file_name,
+                             "' resolves to a location outside the model directory");
+    }
+  }
+
+  resolved_path = std::move(canonical_joined);
+  return Status::OK();
 }
 
 }  // namespace
@@ -1287,7 +1331,8 @@ ORT_API_STATUS_IMPL(ReadEpContextData,
     return nullptr;
   }
 
-  const std::filesystem::path data_path = ResolveEpContextDataPath(file_name, graph);
+  std::filesystem::path data_path;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ResolveEpContextDataPath(file_name, graph, data_path));
   size_t file_size = 0;
   ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetFileLength(data_path.native().c_str(), file_size));
 
@@ -1295,17 +1340,15 @@ ORT_API_STATUS_IMPL(ReadEpContextData,
     return nullptr;
   }
 
-  void* allocated_buffer = allocator->Alloc(allocator, file_size);
+  std::unique_ptr<void, OrtAllocatorBufferDeleter> allocated_buffer(
+      allocator->Alloc(allocator, file_size), OrtAllocatorBufferDeleter{allocator});
   ORT_API_RETURN_IF(allocated_buffer == nullptr, ORT_FAIL, "Failed to allocate buffer for EPContext data");
 
-  const auto read_status = Env::Default().ReadFileIntoBuffer(
-      data_path.native().c_str(), 0, file_size, gsl::make_span(static_cast<char*>(allocated_buffer), file_size));
-  if (!read_status.IsOK()) {
-    allocator->Free(allocator, allocated_buffer);
-    ORT_API_RETURN_IF_STATUS_NOT_OK(read_status);
-  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().ReadFileIntoBuffer(
+      data_path.native().c_str(), 0, file_size,
+      gsl::make_span(static_cast<char*>(allocated_buffer.get()), file_size)));
 
-  *buffer = allocated_buffer;
+  *buffer = allocated_buffer.release();
   *buffer_size = file_size;
   return nullptr;
   API_IMPL_END
@@ -1326,13 +1369,17 @@ ORT_API_STATUS_IMPL(WriteEpContextData,
     return config->write_func(config->write_state, file_name, buffer, buffer_size);
   }
 
-  const std::filesystem::path data_path = ResolveEpContextDataPath(file_name, graph);
+  std::filesystem::path data_path;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ResolveEpContextDataPath(file_name, graph, data_path));
   std::ofstream output_stream(data_path, std::ios::binary);
   ORT_API_RETURN_IF(!output_stream, ORT_FAIL, "Failed to open EPContext data file for write: ",
                     PathToUTF8String(data_path.native()));
 
   if (buffer_size != 0) {
-    ORT_API_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<std::streamsize>::max()),
+    // Compare in a common unsigned wide type to avoid signed/unsigned and width mismatches between
+    // size_t and std::streamsize across platforms.
+    constexpr auto max_stream_size = static_cast<uintmax_t>(std::numeric_limits<std::streamsize>::max());
+    ORT_API_RETURN_IF(static_cast<uintmax_t>(buffer_size) > max_stream_size,
                       ORT_INVALID_ARGUMENT, "EPContext data buffer is too large to write");
     output_stream.write(static_cast<const char*>(buffer), static_cast<std::streamsize>(buffer_size));
     ORT_API_RETURN_IF(!output_stream, ORT_FAIL, "Failed to write EPContext data file: ",

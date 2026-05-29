@@ -168,14 +168,14 @@ struct EpContextNodeComputeInfo : NodeComputeInfoBase {
 };
 
 ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
-                     OrtEpContextConfig* ep_context_config)
+                     Ort::EpContextConfig ep_context_config)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
       name_{name},
       config_{config},
       logger_{logger},
-      ep_context_config_{ep_context_config} {
+      ep_context_config_{std::move(ep_context_config)} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 
   // Initialize the execution provider's function table
@@ -194,9 +194,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
                                              ORT_FILE, __LINE__, __FUNCTION__));
 }
 
-ExampleEp::~ExampleEp() {
-  ep_api.ReleaseEpContextConfig(ep_context_config_);
-}
+ExampleEp::~ExampleEp() = default;
 
 /*static*/
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
@@ -541,6 +539,9 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
       int64_t embed_mode = config_.embed_ep_context_in_model ? 1 : 0;
 
       // Create node attributes. The CreateNode() function copies the attributes.
+      // The "ep_cache_context" attribute holds the raw EPContext binary data only when embed_mode != 0.
+      // When embed_mode == 0, it instead holds the EPContext file name; the binary data is written out
+      // separately via WriteEpContextData below.
       std::array<Ort::OpAttr, 6> attributes = {};
       std::string ep_ctx = config_.embed_ep_context_in_model ? "binary_data" : fused_node_name + ".ctx";
       if (!config_.embed_ep_context_in_model) {

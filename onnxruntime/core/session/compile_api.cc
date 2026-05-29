@@ -267,7 +267,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWrite
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 
   if (model_compile_options == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is null");
   }
 
   if (write_func == nullptr) {
