@@ -902,6 +902,71 @@ TEST(QDQTransformerTests, Gemm_S8S8U8) {
   QDQTransformerGemmTests<int8_t, int8_t, uint8_t, uint8_t>();
 }
 
+// Verify that DQ nodes with rank > 1 scale/zero_point are not fused into QGemm.
+TEST(QDQTransformerTests, Gemm_NoQGemmFusionWithHighRankScaleZp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    // Shapes: A is [2, 4], B is [4, 6]
+    auto* input_a = builder.MakeInput<float>({2, 4}, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+
+    // DQ for A: scalar scale/zp (compatible with QGemm)
+    auto* q1_output = builder.MakeIntermediate();
+    auto* dq1_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input_a, .039f, 128, q1_output);
+    builder.AddDequantizeLinearNode<uint8_t>(q1_output, .039f, 128, dq1_output);
+
+    // DQ for B: rank-2 scale and zero_point (blockwise quantization, NOT compatible with QGemm)
+    // Weight shape [4, 6], block_size=2 along axis 0 => scale/zp shape [2, 6]
+    auto* weight_b = builder.MakeInitializer<uint8_t>({4, 6}, 0, 255);
+    auto* dq2_output = builder.MakeIntermediate();
+
+    // Create rank-2 scale and zero_point with shape [2, 6]
+    std::vector<float> scales_data(2 * 6, 0.04f);
+    std::vector<uint8_t> zp_data(2 * 6, 128);
+    NodeArg* scale_arg = builder.MakeInitializer<float>({2, 6}, scales_data);
+    NodeArg* zp_arg = builder.MakeInitializer<uint8_t>({2, 6}, zp_data);
+
+    std::vector<NodeArg*> dq_inputs = {weight_b, scale_arg, zp_arg};
+    NodeAttributes dq_attrs;
+    ONNX_NAMESPACE::AttributeProto axis_attr;
+    axis_attr.set_name("axis");
+    axis_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    axis_attr.set_i(0);
+    dq_attrs["axis"] = axis_attr;
+    ONNX_NAMESPACE::AttributeProto block_size_attr;
+    block_size_attr.set_name("block_size");
+    block_size_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    block_size_attr.set_i(2);
+    dq_attrs["block_size"] = block_size_attr;
+    builder.AddNode("DequantizeLinear", dq_inputs, {dq2_output}, "", &dq_attrs);
+
+    // Gemm node
+    auto* gemm_output = builder.MakeIntermediate();
+    builder.AddNode("Gemm", {dq1_output, dq2_output}, {gemm_output});
+
+    // Q for output
+    auto* q_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(gemm_output, .039f, 128, q_out);
+    builder.AddDequantizeLinearNode<uint8_t>(q_out, .039f, 128, output_arg);
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // QGemm should not be created because DQ B has rank-2 scale/zero_point
+    EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 0);
+    EXPECT_EQ(op_to_count["Gemm"], 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    0.01 /*per_sample_tolerance*/,
+                    0.01 /*relative_per_sample_tolerance*/,
+                    std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+}
+
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Gather -> Q.
 template <typename QuantType>
 static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
