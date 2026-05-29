@@ -675,7 +675,7 @@ TEST(SliceTest, InvalidAxesOutOfBounds) {
   testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
   testv10.Run(OpTester::ExpectResult::kExpectFailure,
               "axis outside of the tensor dimension count",
-              {kTensorrtExecutionProvider});
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(SliceTest, InvalidAxesDuplicates) {
@@ -687,7 +687,7 @@ TEST(SliceTest, InvalidAxesDuplicates) {
   testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
   testv10.Run(OpTester::ExpectResult::kExpectFailure,
               "'axes' has duplicates",
-              {kTensorrtExecutionProvider});
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
