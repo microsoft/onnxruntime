@@ -74,11 +74,12 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  let num_head_id = output_indices[1];\n"
                                "  let batch = output_indices[0];\n";
   if (use_seqlen_k_) {
-    shader.MainFunctionBody() << "  let total_seq_length = u32(seqlen_k[0u]) + 1u;\n";
+    shader.MainFunctionBody() << "  let raw_total_seq_length = u32(seqlen_k[0u]) + 1u;\n"
+                              << "  let total_seq_length = min(max(raw_total_seq_length, uniforms.kv_sequence_length), uniforms.present_sequence_length);\n";
   } else {
     shader.MainFunctionBody() << "  let total_seq_length = uniforms.total_sequence_length;\n";
   }
-  shader.MainFunctionBody() << "  let past_sequence_length = total_seq_length - uniforms.kv_sequence_length;\n";
+  shader.MainFunctionBody() << "  let past_sequence_length = select(0u, total_seq_length - uniforms.kv_sequence_length, total_seq_length >= uniforms.kv_sequence_length);\n";
   if (past_present_share_buffer_) {
     shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n";
   } else {
@@ -175,6 +176,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+                            {gsl::narrow_cast<uint32_t>(present_key->Shape()[2])},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.num_heads_)}});
 

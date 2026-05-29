@@ -18,7 +18,7 @@ const num_heads : u32 = qkv_num_heads;
 #if use_seqlen_k
 // When graph capture is enabled, total_sequence_length is read from GPU buffer
 fn get_total_sequence_length() -> u32 {
-  return u32(seqlens_k[0]) + 1u;
+  return min(max(u32(seqlens_k[0]) + 1u, uniforms.new_sequence_length), uniforms.present_sequence_length);
 }
 #else
 // When graph capture is disabled, total_sequence_length comes from uniforms

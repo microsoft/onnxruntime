@@ -37,9 +37,9 @@ $MAIN {
 #else
     let base_position = 0u;
 #endif
+    let max_rotary_position = uniforms.cos_cache_shape[0];
+    let valid_rotary_position = base_position < max_rotary_position && position_id < max_rotary_position - base_position;
     // Process a rotary pair (i, j)
-    let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
-    let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
 
     // Calculate actual indices in the head for i and j
 #if interleaved
@@ -56,8 +56,14 @@ $MAIN {
     let q_j_offset = q_base + idx_j;
     let q_i = packed_qkv.getByOffset(q_i_offset);
     let q_j = packed_qkv.getByOffset(q_j_offset);
-    let q_re = q_i * cos_v - q_j * sin_v;
-    let q_im = q_i * sin_v + q_j * cos_v;
+    var q_re = q_i;
+    var q_im = q_j;
+    if (valid_rotary_position) {
+      let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+      let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+      q_re = q_i * cos_v - q_j * sin_v;
+      q_im = q_i * sin_v + q_j * cos_v;
+    }
     query.setByIndices(vec3<u32>(batch_idx, seq_idx, head_idx * uniforms.head_size + idx_i), q_re);
     query.setByIndices(vec3<u32>(batch_idx, seq_idx, head_idx * uniforms.head_size + idx_j), q_im);
 
@@ -68,8 +74,14 @@ $MAIN {
       let k_j_offset = k_base + idx_j;
       let k_i = packed_qkv.getByOffset(k_i_offset);
       let k_j = packed_qkv.getByOffset(k_j_offset);
-      let k_re = k_i * cos_v - k_j * sin_v;
-      let k_im = k_i * sin_v + k_j * cos_v;
+      var k_re = k_i;
+      var k_im = k_j;
+      if (valid_rotary_position) {
+        let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+        let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+        k_re = k_i * cos_v - k_j * sin_v;
+        k_im = k_i * sin_v + k_j * cos_v;
+      }
       key.setByIndices(vec3<u32>(batch_idx, seq_idx, head_idx * uniforms.head_size + idx_i), k_re);
       key.setByIndices(vec3<u32>(batch_idx, seq_idx, head_idx * uniforms.head_size + idx_j), k_im);
 
