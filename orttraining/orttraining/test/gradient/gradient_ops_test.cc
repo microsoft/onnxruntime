@@ -2246,7 +2246,8 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
 
 // Verify the kernel rejects mismatched shapes between accumulation_buffer and value
 // instead of performing an out-of-bounds copy. Exercises both overwrite and accumulate branches.
-static void RunInPlaceAccumulatorV2ShapeMismatch(bool overwrite_flag) {
+static void RunInPlaceAccumulatorV2ShapeMismatch(bool overwrite_flag,
+                                                 std::unique_ptr<IExecutionProvider> provider) {
   OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
 
   test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
@@ -2257,18 +2258,28 @@ static void RunInPlaceAccumulatorV2ShapeMismatch(bool overwrite_flag) {
   test.AddOutput<float>("new_sum", {3}, {0.f, 0.f, 0.f});
 
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.emplace_back(DefaultCpuExecutionProvider());
+  providers.emplace_back(std::move(provider));
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "accumulation_buffer shape", {}, nullptr, &providers);
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Overwrite) {
-  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/true);
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/true, DefaultCpuExecutionProvider());
 }
 
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Accumulate) {
-  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/false);
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/false, DefaultCpuExecutionProvider());
 }
+
+#if defined(USE_CUDA)
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Overwrite_GPU) {
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/true, DefaultCudaExecutionProvider());
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Accumulate_GPU) {
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/false, DefaultCudaExecutionProvider());
+}
+#endif
 
 // Exercise the path where the optional accumulation_buffer_out output is omitted.
 // The kernel must still update the in-place accumulation_buffer and produce updated_flag.
