@@ -716,6 +716,68 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
 
+// Tests for ValidateExternalDataPathFromDir (directory-based overload used by EPs).
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_ValidSubpath) {
+  // A valid relative path under the given directory should pass.
+  CreateEmptyFile(base_dir_ / "engine.cache");
+  CreateDirectories(base_dir_ / "subdir");
+  CreateEmptyFile(base_dir_ / "subdir" / "engine.cache");
+
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "engine.cache"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "subdir/engine.cache"));
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "subdir\\engine.cache"));
+#endif
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EscapeViaDotDot) {
+  // A path with ".." that escapes the directory must fail.
+  CreateEmptyFile(outside_dir_ / "data.bin");
+
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "../data.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("external data path"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_AbsolutePathRejected) {
+  // Absolute paths must be rejected.
+#ifdef _WIN32
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "C:\\data.bin");
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+#endif
+  Status status_unix = utils::ValidateExternalDataPathFromDir(base_dir_, "/data.bin");
+  ASSERT_THAT(status_unix.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EmptyPathRejected) {
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "");
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Empty external data path"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EmptyDirFallsToCwd) {
+  // When directory is empty, should fall back to current working directory.
+  std::filesystem::path cwd = std::filesystem::current_path();
+  CreateEmptyFile(cwd / "fromdir_test_data.bin");
+  other_files_.push_back(cwd / "fromdir_test_data.bin");
+
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir("", "fromdir_test_data.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_SymlinkOutsideRejected) {
+  // A symlink that resolves outside the given directory must be rejected.
+  auto outside_target = outside_dir_ / "outside_engine.bin";
+  try {
+    std::ofstream{outside_target};
+    auto symlink_path = base_dir_ / "escape_link.bin";
+    std::filesystem::create_symlink(outside_target, symlink_path);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "escape_link.bin");
+  ASSERT_FALSE(status.IsOK());
+}
+
 #if defined(_WIN32)
 // Direct tests for the Windows AppContainer fallback used by
 // WindowsEnv::GetWeaklyCanonicalPath. The AppContainer trigger itself can't be
