@@ -1096,6 +1096,144 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   ASSERT_TRUE(!st.IsOK());
 }
 
+// Test that setting kOrtSessionOptionsConfigDisableInputValidation bypasses input type/shape checks.
+// MODEL_URI (mul_1.onnx) expects a float input "X" of shape [3,2].
+// We feed an int64 tensor (wrong type) and verify:
+//   - Without the flag: Run() fails with a type mismatch error from ValidateInputs.
+//   - With the flag:    Run() does NOT fail due to input validation (it may fail at execution,
+//                       but the error will not be the "Unexpected input data type" validation error).
+TEST(InferenceSessionTests, DisableInputValidation) {
+  const std::vector<int64_t> dims_mul_x = {3, 2};
+  const std::vector<int64_t> values_mul_x = {1, 2, 3, 4, 5, 6};
+
+  auto make_int64_feed = [&]() {
+    OrtValue ml_value;
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                           dims_mul_x, values_mul_x, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("X", ml_value));
+    return feeds;
+  };
+
+  const std::vector<std::string> output_names = {"Y"};
+
+  // Part 1: Without the flag, wrong type should fail validation.
+  {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.DisableInputValidation.WithValidation";
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    RunOptions run_options;
+    std::vector<OrtValue> fetches;
+    auto feeds = make_int64_feed();
+    common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+    ASSERT_FALSE(st.IsOK()) << "Expected Run() to fail with type mismatch when validation is enabled";
+    ASSERT_TRUE(st.ErrorMessage().find("Unexpected input data type") != std::string::npos ||
+                st.ErrorMessage().find("tensor") != std::string::npos)
+        << "Unexpected error message: " << st.ErrorMessage();
+  }
+
+  // Part 2: With the flag set, input validation is skipped entirely.
+  {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.DisableInputValidation.WithoutValidation";
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigDisableInputValidation, "1"));
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    RunOptions run_options;
+    std::vector<OrtValue> fetches;
+    auto feeds = make_int64_feed();
+    common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+    // The run may succeed or fail at execution, but must NOT fail with the
+    // "Unexpected input data type" validation error from ValidateInputs.
+    if (!st.IsOK()) {
+      ASSERT_TRUE(st.ErrorMessage().find("Unexpected input data type") == std::string::npos)
+          << "Run() should not fail with input type validation error when "
+          << kOrtSessionOptionsConfigDisableInputValidation << " is set to '1'. "
+          << "Actual error: " << st.ErrorMessage();
+    }
+  }
+}
+
+// Test that setting kOrtSessionOptionsConfigDisableOutputValidation bypasses output shape checks.
+// MODEL_URI (mul_1.onnx) produces a float output "Y" of shape [3,2].
+// We pre-allocate an output tensor of wrong shape [2,3] and verify:
+//   - Without the flag: Run() fails with a shape mismatch error from ValidateOutputs.
+//   - With the flag:    Run() does NOT fail due to output validation.
+TEST(InferenceSessionTests, DisableOutputValidation) {
+  // Prepare a valid float input "X" of shape [3,2].
+  const std::vector<int64_t> input_dims = {3, 2};
+  const std::vector<float> input_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  auto make_valid_feed = [&]() {
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                         input_dims, input_values, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("X", ml_value));
+    return feeds;
+  };
+
+  // Pre-allocate an output tensor with wrong shape [2,3] (model expects [3,2]).
+  const std::vector<int64_t> wrong_output_dims = {2, 3};
+  const std::vector<std::string> output_names = {"Y"};
+
+  auto make_wrong_shape_fetch = [&]() {
+    std::vector<OrtValue> fetches(1);
+    AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                           wrong_output_dims, &fetches[0]);
+    return fetches;
+  };
+
+  // Part 1: Without the flag, wrong output shape should fail validation.
+  {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.DisableOutputValidation.WithValidation";
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    RunOptions run_options;
+    auto feeds = make_valid_feed();
+    auto fetches = make_wrong_shape_fetch();
+    common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+    ASSERT_FALSE(st.IsOK()) << "Expected Run() to fail with shape mismatch when validation is enabled";
+    ASSERT_TRUE(st.ErrorMessage().find("invalid dimensions") != std::string::npos ||
+                st.ErrorMessage().find("shape") != std::string::npos ||
+                st.ErrorMessage().find("Got invalid") != std::string::npos)
+        << "Unexpected error message: " << st.ErrorMessage();
+  }
+
+  // Part 2: With the flag set, output validation is skipped entirely.
+  {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.DisableOutputValidation.WithoutValidation";
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigDisableOutputValidation, "1"));
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    RunOptions run_options;
+    auto feeds = make_valid_feed();
+    auto fetches = make_wrong_shape_fetch();
+    common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+    // The run may succeed or fail at execution, but must NOT fail with the
+    // shape mismatch validation error from ValidateOutputs.
+    if (!st.IsOK()) {
+      ASSERT_TRUE(st.ErrorMessage().find("Got invalid dimensions") == std::string::npos)
+          << "Run() should not fail with output shape validation error when "
+          << kOrtSessionOptionsConfigDisableOutputValidation << " is set to '1'. "
+          << "Actual error: " << st.ErrorMessage();
+    }
+  }
+}
+
 TEST(InferenceSessionTests, ModelWithoutOpset) {
   SessionOptions so;
 
