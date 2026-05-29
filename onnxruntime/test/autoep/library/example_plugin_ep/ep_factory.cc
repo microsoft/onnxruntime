@@ -62,7 +62,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
   GetNumCustomOpDomains = GetNumCustomOpDomainsImpl;
   GetCustomOpDomains = GetCustomOpDomainsImpl;
   ValidateCompiledModelCompatibilityInfo = ValidateCompiledModelCompatibilityInfoImpl;
-  SelectBestCompiledModelCandidate = SelectBestCompiledModelCandidateImpl;
+  SelectBestModelCandidate = SelectBestModelCandidateImpl;
 
   // setup the OrtMemoryInfo instances required by the EP.
   // We pretend the device the EP is running on is GPU.
@@ -533,11 +533,11 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL ExampleEpFactory::SelectBestCompiledModelCandidateImpl(
+OrtStatus* ORT_API_CALL ExampleEpFactory::SelectBestModelCandidateImpl(
     OrtEpFactory* this_ptr,
     const OrtHardwareDevice* const* devices,
     size_t num_devices,
-    const OrtCompiledModelCandidateMetadata* candidates,
+    const OrtKeyValuePairs* const* candidates,
     size_t num_candidates,
     size_t* selected_index) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
@@ -552,23 +552,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::SelectBestCompiledModelCandidateImpl(
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "candidates cannot be nullptr or empty");
   }
 
-  auto find_value_for_key = [](const OrtCompiledModelCandidateMetadata& candidate, const char* key) -> const char* {
-    if (candidate.keys == nullptr || candidate.values == nullptr) return nullptr;
-    for (size_t i = 0; i < candidate.num_entries; ++i) {
-      if (candidate.keys[i] != nullptr && candidate.values[i] != nullptr &&
-          std::strcmp(candidate.keys[i], key) == 0) {
-        return candidate.values[i];
-      }
-    }
-    return nullptr;
-  };
-
   int best_rank = -1;
   size_t best_idx = std::numeric_limits<size_t>::max();
 
   for (size_t i = 0; i < num_candidates; ++i) {
     const char* compatibility_info =
-        find_value_for_key(candidates[i], "ep_compatibility_info");
+        factory.ort_api.GetKeyValue(candidates[i], "ep_compatibility_info");
 
     if (compatibility_info == nullptr) {
       return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,

@@ -106,14 +106,14 @@ struct ForwardToFactoryImpl {
     return static_cast<TFactory*>(this_ptr)->DeinitGraphicsInterop(ep_device);
   }
 
-  static OrtStatus* ORT_API_CALL SelectBestCompiledModelCandidate(
+  static OrtStatus* ORT_API_CALL SelectBestModelCandidate(
       OrtEpFactory* this_ptr,
       _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
       size_t num_devices,
-      _In_reads_(num_candidates) const OrtCompiledModelCandidateMetadata* candidates,
+      _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
       size_t num_candidates,
       size_t* selected_index) noexcept {
-    return static_cast<TFactory*>(this_ptr)->SelectBestCompiledModelCandidate(
+    return static_cast<TFactory*>(this_ptr)->SelectBestModelCandidate(
         devices, num_devices, candidates, num_candidates, selected_index);
   }
 

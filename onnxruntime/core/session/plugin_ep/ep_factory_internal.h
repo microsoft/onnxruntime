@@ -106,14 +106,14 @@ class EpFactoryInternal : public OrtEpFactory {
     return impl_->DeinitGraphicsInterop(ep_device);
   }
 
-  OrtStatus* SelectBestCompiledModelCandidate(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
-                                              _In_ size_t num_devices,
-                                              _In_reads_(num_candidates) const OrtCompiledModelCandidateMetadata* candidates,
-                                              _In_ size_t num_candidates,
-                                              _Out_ size_t* selected_index) noexcept {
-    return impl_->SelectBestCompiledModelCandidate(devices, num_devices,
-                                                   candidates, num_candidates,
-                                                   selected_index);
+  OrtStatus* SelectBestModelCandidate(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                      _In_ size_t num_devices,
+                                      _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+                                      _In_ size_t num_candidates,
+                                      _Out_ size_t* selected_index) noexcept {
+    return impl_->SelectBestModelCandidate(devices, num_devices,
+                                           candidates, num_candidates,
+                                           selected_index);
   }
 
   // Function ORT calls to release an EP instance.

@@ -106,11 +106,11 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
       const char* compatibility_info,
       OrtCompiledModelCompatibility* model_compatibility) noexcept;
 
-  static OrtStatus* ORT_API_CALL SelectBestCompiledModelCandidateImpl(
+  static OrtStatus* ORT_API_CALL SelectBestModelCandidateImpl(
       OrtEpFactory* this_ptr,
       const OrtHardwareDevice* const* devices,
       size_t num_devices,
-      const OrtCompiledModelCandidateMetadata* candidates,
+      const OrtKeyValuePairs* const* candidates,
       size_t num_candidates,
       size_t* selected_index) noexcept;
 

@@ -13,7 +13,7 @@
 
 using namespace onnxruntime;
 
-TEST(EpCompatibilitySelectBestTest, SelectBestCompiledModelCandidate_UsesHardwareDevices) {
+TEST(EpCompatibilitySelectBestTest, SelectBestModelCandidate_UsesHardwareDevices) {
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpCompatSelectBestExampleEp"};
 
   onnxruntime::test::RegisteredEpDeviceUniquePtr example_ep;
@@ -25,7 +25,7 @@ TEST(EpCompatibilitySelectBestTest, SelectBestCompiledModelCandidate_UsesHardwar
   const OrtEpDevice* ep_device = example_ep.get();
   OrtEpFactory* factory = ep_device->GetMutableFactory();
   ASSERT_NE(factory, nullptr);
-  ASSERT_NE(factory->SelectBestCompiledModelCandidate, nullptr);
+  ASSERT_NE(factory->SelectBestModelCandidate, nullptr);
 
   const OrtHardwareDevice* devices[] = {ep_device->device};
 
@@ -40,24 +40,30 @@ TEST(EpCompatibilitySelectBestTest, SelectBestCompiledModelCandidate_UsesHardwar
   const std::string unsupported =
       "SomeOtherEp;version=0.1.0;ort_api_version=" + std::to_string(ORT_API_VERSION) + ";hardware_architecture=arch1";
 
-  const char* keys[] = {"ep_compatibility_info"};
-  const char* values0[] = {unsupported.c_str()};
-  const char* values1[] = {prefer_recompile.c_str()};
-  const char* values2[] = {optimal.c_str()};
-
-  const OrtCompiledModelCandidateMetadata candidates[] = {
-      {keys, values0, 1},
-      {keys, values1, 1},
-      {keys, values2, 1},
-  };
-
-  size_t selected_index = std::numeric_limits<size_t>::max();
-  OrtStatus* st = factory->SelectBestCompiledModelCandidate(
-      factory, devices, 1, candidates, 3, &selected_index);
-
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   ASSERT_NE(api, nullptr);
+
+  OrtKeyValuePairs* kvp0 = nullptr;
+  OrtKeyValuePairs* kvp1 = nullptr;
+  OrtKeyValuePairs* kvp2 = nullptr;
+  api->CreateKeyValuePairs(&kvp0);
+  api->CreateKeyValuePairs(&kvp1);
+  api->CreateKeyValuePairs(&kvp2);
+  api->AddKeyValuePair(kvp0, "ep_compatibility_info", unsupported.c_str());
+  api->AddKeyValuePair(kvp1, "ep_compatibility_info", prefer_recompile.c_str());
+  api->AddKeyValuePair(kvp2, "ep_compatibility_info", optimal.c_str());
+
+  const OrtKeyValuePairs* candidates[] = {kvp0, kvp1, kvp2};
+
+  size_t selected_index = std::numeric_limits<size_t>::max();
+  OrtStatus* st = factory->SelectBestModelCandidate(
+      factory, devices, 1, candidates, 3, &selected_index);
+
   ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
 
   EXPECT_EQ(selected_index, 2u);
+
+  api->ReleaseKeyValuePairs(kvp0);
+  api->ReleaseKeyValuePairs(kvp1);
+  api->ReleaseKeyValuePairs(kvp2);
 }

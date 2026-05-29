@@ -2111,19 +2111,6 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
   OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES = 1,
 } OrtGraphCaptureNodeAssignmentPolicy;
 
-/** \brief Per-candidate metadata passed to SelectBestCompiledModelCandidate.
- *
- * Required key:
- *   - "ep_compatibility_info"
- *
- * \since Version 1.27.
- */
-typedef struct OrtCompiledModelCandidateMetadata {
-  _In_reads_(num_entries) const char* const* keys;
-  _In_reads_(num_entries) const char* const* values;
-  size_t num_entries;
-} OrtCompiledModelCandidateMetadata;
-
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
@@ -2983,8 +2970,8 @@ struct OrtEpFactory {
    *
    * Evaluates each candidate metadata against the given hardware devices and returns the selected index.
    *
-   * Each candidate metadata can have multiple entrys and the entry with "ep_compatibility_info" key is required,
-   * it's associated value is the compatibility information stored in onnx model metadata.
+   * Each candidate's OrtKeyValuePairs can have multiple entries and the entry with "ep_compatibility_info" key is
+   * required; its associated value is the compatibility information stored in onnx model metadata.
    *
    * Context about having this function:
    * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
@@ -2995,10 +2982,13 @@ struct OrtEpFactory {
    *
    * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
    *
+   * \note The implementer should validate the compatibility of each candidate (e.g., by calling
+   * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] devices Target hardware devices.
    * \param[in] num_devices Number of devices.
-   * \param[in] candidates Array of candidate metadata entries (one per model variant).
+   * \param[in] candidates Array of OrtKeyValuePairs pointers (one per model variant).
    * \param[in] num_candidates Number of candidates.
    * \param[out] selected_index Selected candidate index, or SIZE_MAX if all unsupported.
    *
@@ -3006,10 +2996,10 @@ struct OrtEpFactory {
    *
    * \since Version 1.27.
    */
-  ORT_API2_STATUS(SelectBestCompiledModelCandidate, _In_ OrtEpFactory* this_ptr,
+  ORT_API2_STATUS(SelectBestModelCandidate, _In_ OrtEpFactory* this_ptr,
                   _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                   _In_ size_t num_devices,
-                  _In_reads_(num_candidates) const OrtCompiledModelCandidateMetadata* candidates,
+                  _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
                   _In_ size_t num_candidates,
                   _Out_ size_t* selected_index);
 };
