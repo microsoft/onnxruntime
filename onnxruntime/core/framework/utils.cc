@@ -172,12 +172,17 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
 static void PopulateDeviceFetches(gsl::span<const MLValueCopyInfo> fetch_copy_info,
                                   const std::vector<OrtValue>& fetches,
                                   std::vector<OrtValue>& device_fetches) {
-  ORT_ENFORCE(fetch_copy_info.size() >= fetches.size());
+  ORT_ENFORCE(fetch_copy_info.size() == fetches.size());
   device_fetches.clear();
   device_fetches.reserve(fetches.size());
   for (size_t i = 0; i < fetches.size(); ++i) {
     const auto& src = fetch_copy_info[i].source_device;
     const auto& tgt = fetch_copy_info[i].target_device;
+
+    // The swapped order is intentional. We're checking if a user's fetch buffer (tgt)
+    // can be reused for EP's output (src) buffer — i.e. CanSourceSatisfyTarget(tgt, src).
+    // Example: A user provided CPU buffer cannot satisfy a non-CPU host accessible EP output device so a copy should be
+    // inserted.
     if (CanSourceSatisfyTarget(tgt, src) && fetches[i].IsAllocated()) {
       device_fetches.push_back(fetches[i]);
     } else {
