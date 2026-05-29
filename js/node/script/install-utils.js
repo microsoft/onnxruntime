@@ -15,16 +15,46 @@ const REDIRECT_STATUS_CODES = [301, 302, 303, 307, 308];
 
 async function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      try {
+        fs.unlinkSync(dest);
+      } catch {
+        // ignore if the file was never created or already removed
+      }
+    };
+    const fail = (err) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      file.destroy();
+      cleanup();
+      reject(err);
+    };
+    const succeed = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
+
     const file = fs.createWriteStream(dest);
+    // Attach the error handler immediately so that stream creation failures
+    // (e.g. ENOENT or permission errors) reject the promise instead of
+    // crashing the install with an unhandled 'error' event.
+    file.on('error', (err) => {
+      fail(err);
+    });
+
     const doRequest = (currentUrl, redirectsLeft) => {
       https
         .get(currentUrl, (res) => {
           if (REDIRECT_STATUS_CODES.includes(res.statusCode) && res.headers.location) {
             res.resume();
             if (redirectsLeft <= 0) {
-              file.close();
-              fs.unlinkSync(dest);
-              reject(new Error(`Failed to download from ${url}. Too many redirects (>${MAX_REDIRECTS}).`));
+              fail(new Error(`Failed to download from ${url}. Too many redirects (>${MAX_REDIRECTS}).`));
               return;
             }
             const nextUrl = new URL(res.headers.location, currentUrl).toString();
@@ -32,25 +62,20 @@ async function downloadFile(url, dest) {
             return;
           }
           if (res.statusCode !== 200) {
-            file.close();
-            fs.unlinkSync(dest);
-            reject(new Error(`Failed to download from ${url}. HTTP status code = ${res.statusCode}`));
+            res.resume();
+            fail(new Error(`Failed to download from ${url}. HTTP status code = ${res.statusCode}`));
             return;
           }
 
-          res.pipe(file);
           file.on('finish', () => {
-            file.close();
-            resolve();
+            file.close(() => {
+              succeed();
+            });
           });
-          file.on('error', (err) => {
-            fs.unlinkSync(dest);
-            reject(err);
-          });
+          res.pipe(file);
         })
         .on('error', (err) => {
-          fs.unlinkSync(dest);
-          reject(err);
+          fail(err);
         });
     };
     doRequest(url, MAX_REDIRECTS);
@@ -66,7 +91,8 @@ async function downloadJson(url) {
           const contentType = res.headers['content-type'];
 
           if (!statusCode) {
-            reject(new Error('No response statud code from server.'));
+            res.resume();
+            reject(new Error('No response status code from server.'));
             return;
           }
           if (REDIRECT_STATUS_CODES.includes(statusCode) && res.headers.location) {
@@ -80,13 +106,16 @@ async function downloadJson(url) {
             return;
           }
           if (statusCode >= 400 && statusCode < 500) {
+            res.resume();
             resolve(null);
             return;
           } else if (statusCode !== 200) {
+            res.resume();
             reject(new Error(`Failed to download build list. HTTP status code = ${statusCode}`));
             return;
           }
           if (!contentType || !/^application\/json/.test(contentType)) {
+            res.resume();
             reject(new Error(`unexpected content type: ${contentType}`));
             return;
           }
