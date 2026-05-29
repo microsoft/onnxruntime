@@ -1526,6 +1526,49 @@ TEST(PluginExecutionProviderTest, ReplayGraph) {
   }
 }
 
+TEST(PluginExecutionProviderTest, ReleaseCapturedGraph) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return OK (default behavior).
+    ort_ep->ReleaseCapturedGraph = nullptr;
+    ASSERT_STATUS_OK(ep->ReleaseCapturedGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning OK.
+    auto release_ok = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->ReleaseCapturedGraph = release_ok;
+    ASSERT_STATUS_OK(ep->ReleaseCapturedGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning an error.
+    auto release_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Release captured graph failed");
+    };
+    ort_ep->ReleaseCapturedGraph = release_fail;
+    auto status = ep->ReleaseCapturedGraph(0);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Release captured graph failed"));
+  }
+
+  {
+    // Backward compatibility: version < 27 should return OK even if function pointer is set.
+    auto release_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Should not be called");
+    };
+    ort_ep->ReleaseCapturedGraph = release_fail;
+    ort_ep->ort_version_supported = 26;
+    ASSERT_STATUS_OK(ep->ReleaseCapturedGraph(0));
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
+
 TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 

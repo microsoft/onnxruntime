@@ -103,6 +103,16 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   TensorShape output_qk_shape(output_qk_dims);
   Tensor* output_qk = context.Output(3, output_qk_shape);
 
+  // Match CPU EP semantics: when no present_key/present_value output is requested,
+  // ignore past_key/past_value. The CPU EP sets past_sequence_length=0 in this case,
+  // effectively treating the input as if there is no KV cache.
+  if (present_key == nullptr && present_value == nullptr) {
+    past_key = nullptr;
+    past_value = nullptr;
+    parameters.past_sequence_length_ = 0;
+    parameters.total_sequence_length_ = parameters.kv_sequence_length_;
+  }
+
   if (output_qk == nullptr &&  // Flash attention does not output QK scores
       CanApplyFlashAttention(parameters, context)) {
     if (bias != nullptr) {
