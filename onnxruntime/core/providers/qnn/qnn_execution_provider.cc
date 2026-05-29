@@ -1007,8 +1007,14 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
     for (auto& ep_ctx_node : ep_ctx_nodes) {
       NodeAttrHelper node_helper(*ep_ctx_node);
+      std::string ep_cache_context_value = node_helper.Get(qnn::EP_CACHE_CONTEXT, "");
+      if (ep_cache_context_value.empty()) {
+        continue;
+      }
+      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(
+          std::filesystem::path(context_model_path), std::filesystem::path(ep_cache_context_value)));
       std::string context_bin_filepath(parent_path.string());
-      context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
+      context_bin_filepath.append("/").append(ep_cache_context_value);
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
         context_bin_map.emplace(context_bin_filepath, std::make_unique<std::vector<std::string>>());
         // Push context bin filepath for lookup between sessions
