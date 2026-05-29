@@ -33,13 +33,12 @@ _SUPPORTED_GENERATORS = {"static-cpp", "static-cpp-literal"}
 #
 # build-directories with static-cpp:
 #   The fixture has multiple templates across multiple aliased source
-#   directories. The Node reference emits __str_N IDs in readdir order;
-#   the Python port emits them in sorted-by-path order. The WGSL string
-#   contents are byte-identical, but the integer IDs renumber, which
-#   makes a naive byte-for-byte comparison fail. Per the design doc the
-#   ID values are explicitly *not* part of the contract; skip this case
-#   until we add a smarter comparator that resolves __str_N -> string
-#   before diffing.
+#   directories. __str_N IDs are emitted in sorted-by-path order. The
+#   WGSL string contents are byte-identical, but the integer IDs
+#   renumber, which makes a naive byte-for-byte comparison fail. Per
+#   the design doc the ID values are explicitly *not* part of the
+#   contract; skip this case until we add a smarter comparator that
+#   resolves __str_N -> string before diffing.
 _FIXTURE_SKIPS = {
     ("build-directories", "static-cpp"),
 }

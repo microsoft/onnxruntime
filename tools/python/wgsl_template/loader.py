@@ -134,8 +134,7 @@ def load_from_directories(
     """Load all template files matching ``ext`` from each directory.
 
     Returns a :class:`TemplateRepository` whose ``templates`` map is
-    sorted by template name (the Python port goes one better than Node
-    on determinism — see the design doc's Determinism section).
+    sorted by template name.
     """
 
     if not directories:

@@ -1,7 +1,4 @@
-"""WGSL template engine — Python port of @fs-eire/wgsl-template.
-
-This package implements the in-tree replacement for the Node.js
-wgsl-template tool. See ../DESIGN_python_port.md for context.
+"""WGSL template engine.
 
 The public entry point is :func:`build`, which orchestrates the
 load -> parse -> generate -> emit pipeline.
