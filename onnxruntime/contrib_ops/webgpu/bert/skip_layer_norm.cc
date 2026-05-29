@@ -154,8 +154,22 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   auto* output = context.Output(0, x_shape);
   auto* input_skip_bias_sum = context.Output(3, x_shape);
 
-  int64_t data_size = x_shape.Size();
-  if (data_size == 0) {
+  return RunSkipLayerNormProgram(context, x, skip, gamma, beta, bias, epsilon_, simplified,
+                                 output, input_skip_bias_sum);
+}
+
+Status RunSkipLayerNormProgram(ComputeContext& context,
+                               const Tensor* x,
+                               const Tensor* skip,
+                               const Tensor* gamma,
+                               const Tensor* beta,
+                               const Tensor* bias,
+                               float epsilon,
+                               bool simplified,
+                               Tensor* output,
+                               Tensor* input_skip_bias_sum) {
+  const auto& x_shape = x->Shape();
+  if (x_shape.Size() == 0) {
     return Status::OK();
   }
 
@@ -165,18 +179,17 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
   const uint32_t norm_count = onnxruntime::narrow<uint32_t>(x_shape.SizeToDimension(x_shape.NumDimensions() - 1));
   const bool split_hidden_dim = hidden_size % 512 == 0 && norm_count == 1;
 
-  const auto skip_shape = skip->Shape();
-  const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip_shape.Size());
+  const uint32_t skip_size = onnxruntime::narrow<uint32_t>(skip->Shape().Size());
 
   SkipLayerNormProgram program{
-      beta != nullptr, bias != nullptr, epsilon_, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
+      beta != nullptr, bias != nullptr, epsilon, hidden_size, has_input_skip_bias_sum, simplified, split_hidden_dim};
   program
       .CacheHint(simplified, beta != nullptr, bias != nullptr, has_input_skip_bias_sum, split_hidden_dim)
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{skip, ProgramTensorMetadataDependency::Type, components}})
       .AddInputs({{gamma, ProgramTensorMetadataDependency::Type, components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::None, components}})
-      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(ceil(1.0 * data_size / hidden_size)))
+      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(ceil(1.0 * x_shape.Size() / hidden_size)))
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
       })
@@ -184,7 +197,7 @@ Status SkipLayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeCo
           {static_cast<uint32_t>(hidden_size)},
       })
       .AddUniformVariables({
-          {static_cast<float>(epsilon_)},
+          {static_cast<float>(epsilon)},
       })
       .AddUniformVariables({
           {static_cast<uint32_t>(skip_size)},
