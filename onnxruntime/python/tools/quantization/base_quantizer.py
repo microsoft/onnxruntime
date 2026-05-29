@@ -104,6 +104,7 @@ class BaseQuantizer:
         # the symmetry (i.e., signed integer types will use symmetric quantization). See `def is_weight_symmetric()`
         self._is_weight_symmetric: bool | None = self.extra_options.get("WeightSymmetric", None)
         self.is_activation_symmetric = self.extra_options.get("ActivationSymmetric", False)
+        self.is_activation_restricted_asymmetric = self.extra_options.get("ActivationRestrictedAsymmetric", False)
         self.min_real_range = self.extra_options.get("MinimumRealRange")
 
         self.activation_qType = getattr(activation_qType, "tensor_type", activation_qType)

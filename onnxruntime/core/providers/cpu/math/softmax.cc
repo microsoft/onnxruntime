@@ -111,18 +111,20 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
 // opset-12 and below
 template <typename T>
 Status Softmax<T>::ComputeImpl(const Tensor& input, Tensor& output, size_t axis,
-                               concurrency::ThreadPool* thread_pool) const {
+                               concurrency::ThreadPool* thread_pool,
+                               const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) const {
   const auto& X_shape = input.Shape();
   const size_t N = onnxruntime::narrow<size_t>(X_shape.SizeToDimension(axis));
   const size_t D = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(axis));
 
-  return SoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(), log_softmax_, thread_pool);
+  return SoftmaxCPU<T>(N, D, input.Data<T>(), output.MutableData<T>(), log_softmax_, thread_pool, mlas_backend_kernel_selector_config);
 }
 
 // opset-13 and above
 template <typename T>
 Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_t axis,
-                                      concurrency::ThreadPool* thread_pool, OpKernelContext* ctx) const {
+                                      concurrency::ThreadPool* thread_pool, OpKernelContext* ctx,
+                                      const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) const {
   const auto& X_shape = input.Shape();
   size_t rank = X_shape.NumDimensions();
 
@@ -177,7 +179,7 @@ Status Softmax<T>::ComputeImplOpset13(const Tensor& input, Tensor& output, size_
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(N, D,
                                     is_transpose_required ? transposed_input.Data<T>() : input.Data<T>(),
                                     is_transpose_required ? intermediate_output.MutableData<T>() : output.MutableData<T>(),
-                                    log_softmax_, thread_pool));
+                                    log_softmax_, thread_pool, mlas_backend_kernel_selector_config));
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
@@ -204,9 +206,9 @@ Status Softmax<T>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
 
   if (opset_ < 13) {
-    return ComputeImpl(*X, *Y, axis, thread_pool);
+    return ComputeImpl(*X, *Y, axis, thread_pool, &mlas_backend_kernel_selector_config_);
   } else {
-    return ComputeImplOpset13(*X, *Y, axis, thread_pool, ctx);
+    return ComputeImplOpset13(*X, *Y, axis, thread_pool, ctx, &mlas_backend_kernel_selector_config_);
   }
 }
 

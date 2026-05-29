@@ -495,7 +495,7 @@ std::tuple<int64_t, int64_t> ComputeRepeatAndRepeatStride(
     const std::vector<int64_t>& device_elements) {
   int64_t first_device_id = device_elements.at(0);
   int64_t first_device_id_count = 0;
-  for (size_t i = 0; i < device_elements.size(); ++i) {
+  for (size_t i = 0; i < static_cast<size_t>(device_elements.size()); ++i) {
     if (device_elements.at(i) == first_device_id) {
       ++first_device_id_count;
     }
@@ -505,8 +505,8 @@ std::tuple<int64_t, int64_t> ComputeRepeatAndRepeatStride(
   // Check if the device mesh pattern is supported.
   // Supported examples: [0, 1, 2] and [0, 1, 0, 1, 0, 1].
   // Unsupported examples: [0, 1, 2, 1, 2, 0] and [0, 1, 2, 0].
-  for (size_t repeat = 0; repeat < first_device_id_count; ++repeat) {
-    for (size_t device_id = 0; device_id < repeat_stride; ++device_id) {
+  for (size_t repeat = 0; repeat < static_cast<size_t>(first_device_id_count); ++repeat) {
+    for (size_t device_id = 0; device_id < static_cast<size_t>(repeat_stride); ++device_id) {
       ORT_ENFORCE(
           device_elements.at(repeat * repeat_stride + device_id) == device_elements.at(device_id),
           "Unsupported device mesh pattern.");
@@ -556,7 +556,7 @@ std::tuple<bool, TensorPartitionSpec> ComputeNativeSpecForTwoAxisDecomposition(
       // S[0], shape=[16], device=[0, 1] -> S[0]R, shape=[4, 4], device=[0, 1]
       std::vector<AxisPartitionSpec> dst_axis_specs;
       for (size_t src_axis = 0; src_axis < src_shape.size(); ++src_axis) {
-        if (src_axis != decomposed_axis_in_src) {
+        if (src_axis != static_cast<size_t>(decomposed_axis_in_src)) {
           // Sharding spec is copied if the axis is not decomposed.
           // E.g, shape [5, 6] -> Reshape -> shape [5, 3, 2]
           // The spec for "5" is copied.
@@ -606,7 +606,7 @@ std::tuple<bool, TensorPartitionSpec> ComputeNativeSpecForTwoAxisDecomposition(
       DeviceMesh dst_device_mesh;
       std::tie(repeats, repeat_stride) = ComputeRepeatAndRepeatStride(src_spec.device_mesh.device_mesh_elements);
       for (size_t src_axis = 0; src_axis < src_shape.size(); ++src_axis) {
-        if (src_axis != decomposed_axis_in_src) {
+        if (src_axis != static_cast<size_t>(decomposed_axis_in_src)) {
           dst_axis_specs.push_back(AxisPartitionSpec::CreateCopy(src_spec.GetAxisSpec(src_axis)));
         } else if (dst_shape[decomposition_axis_in_dst] == 1) {
           // S[0] -> RS[0]
@@ -660,7 +660,7 @@ std::tuple<bool, TensorPartitionSpec> ComputeNativeSpecForTwoAxisDecomposition(
     // Source tensor is sharded on non-decomposed axis.
     std::vector<AxisPartitionSpec> dst_axis_specs;
     for (size_t src_axis = 0; src_axis < src_shape.size(); ++src_axis) {
-      if (src_axis != decomposed_axis_in_src) {
+      if (src_axis != static_cast<size_t>(decomposed_axis_in_src)) {
         dst_axis_specs.push_back(AxisPartitionSpec::CreateCopy(src_spec.GetAxisSpec(src_axis)));
       } else {
         // R -> RR

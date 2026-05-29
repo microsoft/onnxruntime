@@ -30,6 +30,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Cos | ai.onnx(7+) | cos | |
 | CumSum | ai.onnx(11-13, 14+) | cumulativeSum | 'axis' input should be a constant |
 | Div | ai.onnx(7-12, 13, 14+) | div | |
+| DepthToSpace | ai.onnx(7-10, 11-12, 13+) | reshape, transpose | |
 | DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear, reshape | |
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | Only supports test mode |
 | DynamicQuantizeLinear | ai.onnx(11+) | cast, clamp, div, div, max, min, quantizeLinear, reduceMax, reduceMin, reshape, roundEven, sub | |
@@ -52,7 +53,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | GlobalLpPool| ai.onnx(7+) | l2Pool2d | Only supports 4-D input, 'p' value is 2 |
 | Greater | ai.onnx(7-8, 9-12, 13+) | greater | |
 | GreaterOrEqual | ai.onnx(12-15, 16+) | greaterOrEqual | |
-| GroupQueryAttention | com.microsoft(1+) | add, cast, concat, constant, cumulativeSum, div, expand, lesser, matmul, reshape, scatterND, softmax, transpose, where | Only supports input total_sequence_length is constant and past_sequence_length of past kv equals to present_sequence_length of present kv. Does not support cos_cache and sin_cache inputs |
+| GroupQueryAttention | com.microsoft(1+) | add, cast, concat, constant, cumulativeSum, div, expand, lesser, matmul, reshape, scatterND, softmax, transpose, where | Only supports input total_sequence_length is constant and past_sequence_length of past kv equals to present_sequence_length of present kv. |
 | GRU | ai.onnx(7-13, 14-21, 22+) | gru | Only supports 'layout' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | HardSigmoid | ai.onnx(7+) | hardSigmoid | |
 | HardSwish | ai.onnx(14+) | hardSwish | |

@@ -588,6 +588,7 @@ struct ArenaAllocator : BaseAllocator {
     Info = InfoImpl;
     GetStats = GetStatsImpl;
     AllocOnStream = AllocOnStreamImpl;
+    Shrink = nullptr;
   }
 
   // remove the OrtSyncStream* from any chunks that were using the stream

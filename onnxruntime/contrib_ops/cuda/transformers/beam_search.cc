@@ -7,6 +7,7 @@
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
+#if !defined(DISABLE_GENERATION_OPS)
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -161,3 +162,4 @@ Status WhisperBeamSearch::Compute(OpKernelContext* context) const {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+#endif  // !defined(DISABLE_GENERATION_OPS)

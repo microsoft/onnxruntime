@@ -18,7 +18,6 @@ limitations under the License.
 // It uses two temporary matrix of BxNxSxS, and consumes more memory when sequence length is large.
 // Its logic is simpler with less constraints (like number of global tokens could be larger than attention windows).
 
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>

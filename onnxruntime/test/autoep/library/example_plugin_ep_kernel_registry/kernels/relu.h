@@ -10,7 +10,7 @@ class Relu : public OrtKernelImpl {
   struct PrivateTag {};
 
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<Relu>& kernel) noexcept;
+  static OrtStatus* CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
   Relu(const OrtKernelInfo* info, void* state, PrivateTag);
 
   // Static functions assigned to the OrtKernelImpl fields:

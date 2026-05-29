@@ -35,6 +35,14 @@ struct OrtRunOptions {
   // So it is possible that only some of the nodes are executed.
   bool only_execute_path_to_fetches = false;
 
+  // Set to 'true' to enable profiling for this run.
+  bool enable_profiling = false;
+
+  // File prefix for profiling result for this run.
+  // The actual filename will be: <profile_file_prefix>_<timestamp>.json
+  // Only used when enable_profiling is true.
+  std::basic_string<ORTCHAR_T> profile_file_prefix = ORT_TSTR("onnxruntime_run_profile");
+
 #ifdef ENABLE_TRAINING
   // Used by onnxruntime::training::TrainingSession. This class is now deprecated.
   // Delete training_mode when TrainingSession is deleted.
@@ -50,6 +58,11 @@ struct OrtRunOptions {
   onnxruntime::ConfigOptions config_options;
 
   onnxruntime::InlinedVector<const onnxruntime::lora::LoraAdapter*> active_adapters;
+
+  // Optional sync stream for external resource import.
+  // When set, the EP uses this stream for execution, enabling proper
+  // synchronization with imported external semaphores.
+  OrtSyncStream* sync_stream = nullptr;
 
   OrtRunOptions() = default;
   ~OrtRunOptions() = default;

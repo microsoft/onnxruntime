@@ -4,6 +4,9 @@ description: "This is a reusable workflow for Linux WASM CI pipelines to build a
 on:
   workflow_call:
     inputs:
+      job_name: # workflow-scope unique key
+        required: true
+        type: string
       build_config:
         required: true
         type: string
@@ -36,13 +39,14 @@ jobs:
   build-wasm:
     runs-on: [
         "self-hosted",
-        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
-        "JobId=build-wasm-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        "1ES.Pool=onnxruntime-github-linux-large",
+        "JobId=build-wasm-${{inputs.job_name}}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     env:
       buildArch: x64
       common_build_args: >-
         --parallel
+        --use_cache
         ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }}
         --config ${{ inputs.build_config }}
         --skip_submodule_sync
@@ -50,6 +54,12 @@ jobs:
         --enable_wasm_simd
         ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }}
         ${{ inputs.extra_build_args }}
+      reduced_size_build_args: >-
+        --disable_ml_ops
+        --disable_generation_ops
+        --disable_types string float4 float8 optional sparsetensor
+        --include_ops_by_config onnxruntime/wasm/reduced_types.config
+        --enable_reduced_operator_type_support
 
     steps:
       - name: Checkout code
@@ -68,8 +78,26 @@ jobs:
           python-version: "3.12"
           architecture: ${{ env.buildArch }}
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - name: Install python dependencies
+        run: python -m pip install flatbuffers
+
+      - name: Setup CCache
+        uses: actions/cache@v5
         with:
+          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          key: ccache | web.yml | ${{ inputs.job_name }}
+          path: ~/.cache/ccache
+
+      - name: Setup VCPKG Cache
+        uses: actions/cache@v5
+        with:
+          key: vcpkg-cache | web.yml | ${{ inputs.job_name }}
+          path: ~/.cache/vcpkg
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          ccache-version: 4.13.1
+          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
           vcpkg-version: '2025.08.27'
           vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
@@ -109,6 +137,7 @@ jobs:
             --use_webnn \
             --target onnxruntime_webassembly \
             ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
+            ${{ env.reduced_size_build_args }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 
@@ -122,6 +151,7 @@ jobs:
             --use_webnn \
             --enable_wasm_jspi \
             --target onnxruntime_webassembly \
+            ${{ env.reduced_size_build_args }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
 

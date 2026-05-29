@@ -75,17 +75,22 @@ class TestGeluFusions(unittest.TestCase):
         dummy_input = torch.ones(3, dtype=torch.float32)
         test_name = f"{operator}_{source}"
         onnx_path = f"{test_name}.onnx"
+
+        # For Torch 2.10+, torch.nn.functional.gelu(approximate="tanh") exports as Gelu node.
+        # So we force opset_version=18 here.
         torch.onnx.export(
             model,
             (dummy_input,),
             onnx_path,
             input_names=["input"],
             output_names=["output"],
-            dynamo=dynamo,
+            opset_version=18,
+            dynamo=False,
             optimize=True,  # Only meaningful when dynamo is True
         )
         optimizer = optimize_model(onnx_path, "bert")
         # optimizer.save_model_to_file(f"{operator}_{source}_opt.onnx")
+
         os.remove(onnx_path)
         # Remove the associated .data file (dynamo)
         data_path = onnx_path + ".data"

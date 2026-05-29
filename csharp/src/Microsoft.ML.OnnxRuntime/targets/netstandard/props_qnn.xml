@@ -28,14 +28,7 @@
    </Link>
   </ItemDefinitionGroup>
 
-  <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')">
-   <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-x86/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
-   </Link>
-  </ItemDefinitionGroup>
-
   <PropertyGroup>
-    <EnginePlatform Condition="'$(Platform)' == 'Win32'">x86</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' == 'ARM64'">arm64</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' == 'ARM'">arm</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' != 'Win32' AND '$(Platform)' != 'ARM64'">$(Platform)</EnginePlatform>
@@ -88,14 +81,6 @@
           Condition="'$(PlatformTarget)' == 'ARM' AND
                      Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm\native\onnxruntime_providers_shared.dll')">
       <Link>onnxruntime_providers_shared.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-
-    <!-- x86 -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\onnxruntime.dll"
-          Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true'))">
-      <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

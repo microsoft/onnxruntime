@@ -109,9 +109,13 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   bool model_status = IsStateful(model);
   LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
+  // Flag to add Gather+ScatterElementsUpdate subgraph to reorder KV cache for LLM speculative decoding
+  bool should_add_kvcache_reorder = false;
   if (!model_status) {
     LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
-    PatchStatefulDecoder(model);
+    // TO-DO: extend to NPU device when OpenVINO NPU has related optimization
+    should_add_kvcache_reorder = hw_target.find("GPU") != std::string::npos;
+    PatchStatefulDecoder(model, should_add_kvcache_reorder);
   }
 
   if (onnxruntime::openvino_ep::backend_utils::IsDebugEnabled()) {
@@ -152,7 +156,7 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
 
   LOGS_DEFAULT(INFO) << log_tag << "Compiling OV Model using Stateful Transformation flow";
   compiled_model = OVCore::Get()->core.compile_model(model, hw_target, config);
-  OVExeNetwork exe(compiled_model, hw_target, true);
+  OVExeNetwork exe(compiled_model, hw_target, true, should_add_kvcache_reorder);
   return exe;
 }
 
@@ -203,11 +207,13 @@ OVExeNetwork OVCore::ImportModel(ModelBlobWrapper& model_blob,
                                  std::string name) {
   return OvExceptionBoundary<true>([&]() {
     ov::CompiledModel obj;
+    // Import from tensor enables file mapping and should be used as primary option. Import from stream is only used for OV versions prior to OV25.3.
+    // TODO: Remove import from stream when OV26.0 support is added and OV 2025.2 support is removed.
 #if (OPENVINO_VERSION_MAJOR > 2025 || (OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR >= 3))
-    if (model_blob.stream_) {
-      obj = core.import_model(*model_blob.stream_, hw_target, device_config);
-    } else {
+    if (model_blob.tensor_) {
       obj = core.import_model(model_blob.tensor_, hw_target, device_config);
+    } else {
+      obj = core.import_model(*model_blob.stream_, hw_target, device_config);
     }
 #else
       obj = core.import_model(*model_blob.stream_, hw_target, device_config);
@@ -226,7 +232,8 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
                                                   std::string& hw_target,
                                                   const ov::AnyMap& device_config,
                                                   bool enable_causallm,
-                                                  std::filesystem::path model_file_path) {
+                                                  std::filesystem::path model_file_path,
+                                                  const SessionContext& session_context) {
   return OvExceptionBoundary<false>([&]() {
     OVExeNetwork exe;
 
@@ -258,6 +265,11 @@ OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
 
       // Load the model explicitly with XML contents
       std::shared_ptr<ov::Model> model = core.read_model(xml_file_path.string());
+
+      if (!session_context.reshape.empty()) {
+        LOGS_DEFAULT(INFO) << log_tag << "Reshaping OV-IR model to specified shape";
+        model->reshape(session_context.reshape);
+      }
 
       if (enable_causallm) {
         exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
@@ -326,7 +338,7 @@ std::shared_ptr<OVInferRequest> OVExeNetwork::CreateInferRequest() {
     auto infReq = compiled_model_obj.create_infer_request();
     std::shared_ptr<OVInferRequest> ovInfReq;
     if (is_stateful_causallm) {
-      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device);
+      ovInfReq = std::make_shared<StatefulOVInferRequest>(std::move(infReq), target_device, is_kvcache_reorder_added);
     } else {
       ovInfReq = std::make_shared<OVInferRequest>(std::move(infReq));
     }
@@ -371,8 +383,8 @@ void OVInferRequest::Infer() {
                              "In Error Couldn't start Inference");
 }
 
-StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device)
-    : OVInferRequest(std::move(infer_request)), target_device(device) {
+StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, std::string device, bool kvcache_reorder_added)
+    : OVInferRequest(std::move(infer_request)), target_device(device), is_kvcache_reorder_added(kvcache_reorder_added) {
   bool gpu_or_npu = ((device.find("NPU") != std::string::npos) || (device.find("GPU") != std::string::npos));
 
   _npu_logits_slice_required = IsNPULogitsSliceRequired();
@@ -459,9 +471,67 @@ std::optional<ov::Tensor> StatefulOVInferRequest::FindTensor(const std::string& 
 }
 
 void StatefulOVInferRequest::PreProcessInferRequest() {
-  // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
-  // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
-  FillTensor("beam_idx", ov::element::i32, {1}, 0);
+  if (is_kvcache_reorder_added) {
+    ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+    if (dst_idx_shape.size() < 4) {
+      ORT_THROW(log_tag + "dst_idx tensor shape must have at least 4 dimensions, but got " +
+                std::to_string(dst_idx_shape.size()) + " dimensions");
+    }
+    const auto kv_num_heads = dst_idx_shape[1];
+    const auto kv_head_size = dst_idx_shape[3];
+    if (kv_src_indices.size() > 0) {
+      ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
+      const auto src_idx_ptr = src_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_src_indices.size(); ++i) {
+        src_idx_ptr[i] = static_cast<int32_t>(kv_src_indices[i]);
+      }
+      ovInfReq.set_tensor("src_idx", src_idx_tensor);
+
+      ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
+      const auto dst_idx_ptr = dst_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_num_heads; ++i) {
+        for (size_t j = 0; j < kv_dst_indices.size(); ++j) {
+          std::fill_n(dst_idx_ptr + (i * kv_dst_indices.size() + j) * kv_head_size, kv_head_size, kv_dst_indices[j]);
+        }
+      }
+      ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
+    } else {
+      FillTensor("src_idx", ov::element::i32, {0}, 0);
+      FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
+    }
+  }
+
+  if (FindTensor("beam_idx")) {
+    // Workaround: Setting the value here as it cannot be set at the ORT GenAI layer currently.
+    // TODO(ankit): Address this issue and implement the fix at the appropriate layer.
+    FillTensor("beam_idx", ov::element::i32, {1}, 0);
+  }
+
+  if (is_kvcache_reorder_added) {
+    ov::Shape dst_idx_shape = ovInfReq.get_tensor("dst_idx").get_shape();
+    const auto kv_num_heads = dst_idx_shape[1];
+    const auto kv_head_size = dst_idx_shape[3];
+    if (kv_src_indices.size() > 0) {
+      ov::Tensor src_idx_tensor = ov::Tensor(ov::element::i32, {kv_src_indices.size()});
+      const auto src_idx_ptr = src_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_src_indices.size(); ++i) {
+        src_idx_ptr[i] = static_cast<int32_t>(kv_src_indices[i]);
+      }
+      ovInfReq.set_tensor("src_idx", src_idx_tensor);
+
+      ov::Tensor dst_idx_tensor = ov::Tensor(ov::element::i32, {1, kv_num_heads, kv_dst_indices.size(), kv_head_size});
+      const auto dst_idx_ptr = dst_idx_tensor.data<int32_t>();
+      for (size_t i = 0; i < kv_num_heads; ++i) {
+        for (size_t j = 0; j < kv_dst_indices.size(); ++j) {
+          std::fill_n(dst_idx_ptr + (i * kv_dst_indices.size() + j) * kv_head_size, kv_head_size, kv_dst_indices[j]);
+        }
+      }
+      ovInfReq.set_tensor("dst_idx", dst_idx_tensor);
+    } else {
+      FillTensor("src_idx", ov::element::i32, {0}, 0);
+      FillTensor("dst_idx", ov::element::i32, {1, kv_num_heads, 0, kv_head_size}, 0);
+    }
+  }
 
   // If 'prefill use full chat history' mode is enabled, we need to cache input_ids and position_ids.
   if (prefill_use_full_chat_history) {
@@ -499,10 +569,48 @@ void StatefulOVInferRequest::PreProcessInferRequest() {
 void StatefulOVInferRequest::Infer() {
   PreProcessInferRequest();
   OVInferRequest::Infer();
+  PostProcessInferRequest();
+}
+
+void StatefulOVInferRequest::PostProcessInferRequest() {
+  CleanReorderKVCacheStatus();
+}
+
+void StatefulOVInferRequest::CleanReorderKVCacheStatus() {
+  if (is_kvcache_reorder_added) {
+    kv_src_indices.clear();
+    kv_dst_indices.clear();
+  }
+}
+
+void StatefulOVInferRequest::SetReorderKVCacheStatus(const std::vector<int32_t>& src_indices, const std::vector<int32_t>& dst_indices) {
+  // Validate input parameters
+  if (src_indices.size() != dst_indices.size()) {
+    ORT_THROW(log_tag +
+              "SetReorderKVCacheStatus: src_indices and dst_indices must have the same size. "
+              "Got src_indices.size()=" +
+              std::to_string(src_indices.size()) +
+              ", dst_indices.size()=" + std::to_string(dst_indices.size()));
+  }
+
+  LOGS_DEFAULT(INFO) << log_tag << "SetReorderKVCacheStatus: Reordering OpenVINO-internal KVCache state with "
+                     << src_indices.size() << " index pairs";
+
+  kv_src_indices = src_indices;
+  kv_dst_indices = dst_indices;
 }
 
 void StatefulOVInferRequest::RewindKVCache(size_t index) {
   LOGS_DEFAULT(INFO) << log_tag << "RewindKVCache: Rewinding OpenVINO-internal KVCache state to index=" << index;
+
+  if (is_kvcache_reorder_added) {
+    if (index > 0) {
+      // TODO: Trigger a KVCache eviction inference pass here to physically compact the KV cache
+      // by running infer_request with the src_idx/dst_idx reorder tensors set.
+      ORT_THROW(log_tag + "KVCache eviction via reorder inference is not yet implemented which is required to rewind KVCache with index > 0 when KVCache reorder optimization is enabled. Requested index: " + std::to_string(index));
+    }
+    CleanReorderKVCacheStatus();
+  }
 
   if (prefill_use_full_chat_history) {
     // Clear the internal KVCache state. For NPU device, this operation is a no-op.

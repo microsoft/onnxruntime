@@ -1,6 +1,8 @@
 name: Update C/C++ API Docs
 
-# Run when the C API changes or every month so that the artifact does not expire
+# Run when the C API changes or every week so that the artifact does not expire.
+# Also runs on pull requests that touch relevant files so doc generation errors
+# are caught early. The artifact is only published on the main branch.
 on:
   push:
     branches:
@@ -8,13 +10,19 @@ on:
     paths:
       - include/onnxruntime/core/session/**
       - orttraining/orttraining/training_api/include/**
+      - docs/c_cxx/**
+  pull_request:
+    paths:
+      - include/onnxruntime/core/session/**
+      - orttraining/orttraining/training_api/include/**
+      - docs/c_cxx/**
   schedule:
-    - cron: '0 0 1,15 * *'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 concurrency:
-  group: "apidocs-c"
-  cancel-in-progress: false
+  group: "apidocs-c-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
@@ -46,11 +54,12 @@ jobs:
       - name: Move C/C++ docs into site
         run: |
           mkdir -p _site/docs/api
-          rm -rf site/docs/api/c
+          rm -rf _site/docs/api/c
           mv build/doxygen/html _site/docs/api/c
       - name: Upload new site
+        if: github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v6
         with:
           name: onnxruntime-c-apidocs
           path: _site
-          retention-days: 30
+          retention-days: 10

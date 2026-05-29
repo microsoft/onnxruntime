@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <chrono>
 #include <gsl/span>
 #include <sstream>
+#include <utility>
 #include "binary_op.h"
 #include "utils.h"
 #include "../ep.h"
+#include "../ep_profiling.h"
 
 // Defines a kernel creation function for version 14 of Mul.
 ONNX_OPERATOR_KERNEL_EX(
@@ -27,7 +30,7 @@ ONNX_OPERATOR_KERNEL_EX(
     BinaryOp)
 
 BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
-    : OrtKernelImpl{},  // Initialize all OrtKernelImpl functions to NULL
+    : OrtKernelImpl{},  // Initialize all OrtKernelImpl members to NULL/zero
       info_{info},
       data_transfer_impl_{reinterpret_cast<OrtDataTransferImpl*>(state)} {
   ort_version_supported = ORT_API_VERSION;
@@ -41,8 +44,7 @@ BinaryOp::BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag)
 }
 
 /*static*/
-OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state,
-                            /*out*/ std::unique_ptr<BinaryOp>& result) noexcept {
+OrtStatus* BinaryOp::CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& result) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   Ort::ConstKernelInfo kernel_info(info);
 
@@ -58,7 +60,8 @@ OrtStatus* BinaryOp::Create(const OrtKernelInfo* info, void* state,
     return Ort::GetApi().CreateStatus(ORT_EP_FAIL, oss.str().c_str());
   }
 
-  result = std::make_unique<BinaryOp>(kernel_info, state, PrivateTag{});
+  auto binary_op = std::make_unique<BinaryOp>(kernel_info, state, PrivateTag{});
+  result = binary_op.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -72,6 +75,14 @@ void ORT_API_CALL BinaryOp::ReleaseImpl(OrtKernelImpl* this_ptr) noexcept {
 OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernelContext* kernel_ctx) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   BinaryOp* binary_op_kernel = static_cast<BinaryOp*>(this_ptr);
+
+  std::optional<uint64_t> active_profiler_id = EpEventManager::GetActiveProfilerId();
+  std::chrono::high_resolution_clock::time_point kernel_start_ts;
+  std::chrono::high_resolution_clock::time_point kernel_end_ts;
+
+  if (active_profiler_id.has_value()) {
+    kernel_start_ts = std::chrono::high_resolution_clock::now();
+  }
 
   Ort::KernelContext kernel_context(kernel_ctx);
 
@@ -121,6 +132,16 @@ OrtStatus* ORT_API_CALL BinaryOp::ComputeImpl(OrtKernelImpl* this_ptr, OrtKernel
     }
   }
 
+  if (active_profiler_id.has_value()) {
+    kernel_end_ts = std::chrono::high_resolution_clock::now();
+
+    auto& ep_event_manager = EpEventManager::GetInstance();
+    std::string event_name = "ExampleKernelEp_";
+    event_name += op_type;
+
+    EpEventManager::Event event(std::move(event_name), kernel_start_ts, kernel_end_ts);
+    ep_event_manager.AddEpEvent(*active_profiler_id, std::move(event));
+  }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

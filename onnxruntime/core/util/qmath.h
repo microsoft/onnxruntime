@@ -229,6 +229,93 @@ ParQuantizeLinearStd(const float* Input,
 DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdS4, Int4x2, MlasQuantizeLinearS4)
 DEFINE_PAR_QUANT_LINEAR_STD_4BIT(ParQuantizeLinearStdU4, UInt4x2, MlasQuantizeLinearU4)
 
+// TODO: add MLAS kernels for 2-bit types and generalize DEFINE_PAR_QUANT_LINEAR_STD_4BIT macro
+// For 2-bit types, we need a generic implementation since MLAS kernels don't support 2-bit yet.
+// Define a generic quantization function that doesn't rely on MLAS.
+#define DEFINE_PAR_QUANT_LINEAR_STD_2BIT_GENERIC(FUNC_NAME, SUB_BYTE_TYPE)                                    \
+  inline void FUNC_NAME(const float* Input,                                                                   \
+                        SUB_BYTE_TYPE* Output,                                                                \
+                        size_t out_start,                                                                     \
+                        size_t out_end,                                                                       \
+                        float Scale,                                                                          \
+                        SUB_BYTE_TYPE ZeroPoint,                                                              \
+                        concurrency::ThreadPool* thread_pool) {                                               \
+    constexpr int32_t low = static_cast<int32_t>(SUB_BYTE_TYPE::min_val);                                     \
+    constexpr int32_t high = static_cast<int32_t>(SUB_BYTE_TYPE::max_val);                                    \
+    const int32_t zp = static_cast<int32_t>(ZeroPoint.GetElem(0));                                            \
+    size_t inp_start = 0;                                                                                     \
+    size_t inp_end = out_end - out_start;                                                                     \
+                                                                                                              \
+    /* If starting at a 2-bit element not at the start of a byte, quantize those elements by themselves. */   \
+    /* For 2-bit: 4 elements per byte, so check if out_start % 4 != 0 */                                      \
+    size_t start_offset = out_start & 0x3;                                                                    \
+    if (start_offset != 0) {                                                                                  \
+      size_t output_index = out_start >> 2;                                                                   \
+      size_t num_boundary = 4 - start_offset; /* Number of elements until byte boundary */                    \
+      num_boundary = std::min(num_boundary, inp_end - inp_start);                                             \
+      for (size_t i = 0; i < num_boundary; ++i) {                                                             \
+        int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_start + i] / Scale)) + zp;              \
+        SUB_BYTE_TYPE::UnpackedType quant_val =                                                               \
+            static_cast<SUB_BYTE_TYPE::UnpackedType>(std::min(high, std::max(low, ival)));                    \
+        Output[output_index].SetElem((start_offset + i) & 0x3, quant_val);                                    \
+      }                                                                                                       \
+      out_start += num_boundary;                                                                              \
+      inp_start += num_boundary;                                                                              \
+    }                                                                                                         \
+                                                                                                              \
+    /* If ending at a 2-bit element not at the end of a byte, quantize those elements by themselves. */       \
+    size_t end_offset = out_end & 0x3;                                                                        \
+    if (end_offset != 0) {                                                                                    \
+      size_t output_index = (out_end - end_offset) >> 2;                                                      \
+      size_t num_boundary = end_offset;                                                                       \
+      for (size_t i = 0; i < num_boundary; ++i) {                                                             \
+        int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_end - num_boundary + i] / Scale)) + zp; \
+        SUB_BYTE_TYPE::UnpackedType quant_val =                                                               \
+            static_cast<SUB_BYTE_TYPE::UnpackedType>(std::min(high, std::max(low, ival)));                    \
+        Output[output_index].SetElem(i, quant_val);                                                           \
+      }                                                                                                       \
+      out_end -= num_boundary;                                                                                \
+      inp_end -= num_boundary;                                                                                \
+    }                                                                                                         \
+                                                                                                              \
+    if (out_start == out_end) {                                                                               \
+      return;                                                                                                 \
+    }                                                                                                         \
+                                                                                                              \
+    /* At this point, should only need to quantize a number of 2-bit elements that are multiples of 4 */      \
+    /* and start/end at byte boundaries. This ensures no two threads write to the same byte. */               \
+    size_t N = out_end - out_start;                                                                           \
+    assert(N % 4 == 0); /* Should be guaranteed by previous code that quantizes boundary elements. */         \
+                                                                                                              \
+    constexpr std::ptrdiff_t block_size = 128;                                                                \
+    static_assert(block_size % 4 == 0,                                                                        \
+                  "Block size must be a multiple of 4 to ensure no two threads write to the same byte.");     \
+                                                                                                              \
+    const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;                                      \
+    const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)),                             \
+                                 static_cast<double>(block_size * sizeof(SUB_BYTE_TYPE::UnpackedType)) / 4.0, \
+                                 static_cast<double>(block_size) * 2.0};                                      \
+                                                                                                              \
+    concurrency::ThreadPool::TryParallelFor(                                                                  \
+        thread_pool, num_blocks, unit_cost,                                                                   \
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {                                                       \
+          auto begin_idx = begin * block_size;                                                                \
+          auto end_idx = std::min(static_cast<std::ptrdiff_t>(N), end * block_size);                          \
+                                                                                                              \
+          for (auto idx = begin_idx; idx < end_idx; ++idx) {                                                  \
+            size_t inp_idx = inp_start + idx;                                                                 \
+            size_t out_idx = out_start + idx;                                                                 \
+            int32_t ival = static_cast<int32_t>(std::nearbyintf(Input[inp_idx] / Scale)) + zp;                \
+            SUB_BYTE_TYPE::UnpackedType quant_val =                                                           \
+                static_cast<SUB_BYTE_TYPE::UnpackedType>(std::min(high, std::max(low, ival)));                \
+            Output[out_idx >> 2].SetElem(out_idx & 0x3, quant_val);                                           \
+          }                                                                                                   \
+        });                                                                                                   \
+  }
+
+DEFINE_PAR_QUANT_LINEAR_STD_2BIT_GENERIC(ParQuantizeLinearStdS2, Int2x4)
+DEFINE_PAR_QUANT_LINEAR_STD_2BIT_GENERIC(ParQuantizeLinearStdU2, UInt2x4)
+
 // This implementation could be more efficient however the cast from float16 to other types
 // usually happens on GPU.
 template <typename OutputType>
@@ -833,6 +920,195 @@ struct BlockedQuantizeLinear<MLFloat16, TOut, 2> {
                 auto v1 = std::clamp(
                     static_cast<int32_t>(std::nearbyint(input[out_start + 1].ToFloat() / sc)) + zp, low, high);
                 output_t[out_start >> 1] = static_cast<typename TOut::UnpackedType>((v0 & 0xF) | ((v1 & 0xF) << 4));
+              }
+            }
+          }
+        });
+  }
+};
+
+// Template specializations for 2-bit types (group 3: Int2x4, UInt2x4)
+template <typename TOut>
+struct BlockedQuantizeLinear<float, TOut, 3> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    ORT_UNUSED_PARAMETER(thread_block_size);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    // to avoid a byte being written from multiple threads, use 4 * N as thread block (4 elements per byte for 2-bit)
+    auto size_thread_block = 4 * N;
+    auto num_thread_block = (M * K + 3) / 4;
+    auto num_quant_block_K = (K + quant_block_size - 1) / quant_block_size;
+    auto num_quant_block_KN = num_quant_block_K * N;
+    auto MK = M * K;
+    const TensorOpCost unit_cost{static_cast<double>(size_thread_block * sizeof(float) * 2),
+                                 static_cast<double>(size_thread_block * sizeof(typename TOut::UnpackedType)),
+                                 static_cast<double>(size_thread_block) * 2.0};
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          begin <<= 2, end = std::min(end << 2, MK);
+          auto output_idx = begin * N;
+          auto m = begin / K, k = begin % K;
+          auto zp_idx = m * num_quant_block_KN + k / quant_block_size * N;
+
+          for (; begin < end; ++begin) {
+            auto zp_idx_t = zp_idx;
+            // auto output_idx_end = output_idx + N;
+
+            for (; zp_idx_t < zp_idx + N; ++zp_idx_t, ++output_idx) {
+              auto zp = zero_point
+                            ? static_cast<int32_t>(zero_point[zp_idx_t >> 2].GetElem(zp_idx_t & 0x3))
+                            : 0;
+              auto sc = scale[zp_idx_t];
+              auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[output_idx] / sc)) + zp, low, high);
+              output[output_idx >> 2].SetElem(output_idx & 0x3, static_cast<typename TOut::UnpackedType>(v));
+            }
+
+            ++k;
+            if (k == K) {
+              k = 0;
+              zp_idx += N;
+            } else if (k % quant_block_size == 0) {
+              zp_idx += N;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const float* input, const float* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    // to avoid a byte being written from multiple threads, use 4 * K as thread block (4 elements per byte for 2-bit)
+    auto size_thread_block = 4 * K;
+    auto quant_block_num_K = (K + quant_block_size - 1) / quant_block_size;
+    auto num_thread_block = (M + 3) / 4;
+    TensorOpCost unit_cost{static_cast<double>(size_thread_block * sizeof(float)),
+                           static_cast<double>(size_thread_block * sizeof(typename TOut::UnpackedType)),
+                           static_cast<double>(size_thread_block) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          begin <<= 2, end = std::min(end << 2, M);
+          auto output_idx = begin * K;
+          auto zp_idx = begin * quant_block_num_K;
+
+          for (; begin < end; ++begin, output_idx += K) {
+            auto output_row_idx_start = output_idx;
+            auto output_row_idx_end = output_row_idx_start + K;
+
+            for (; output_row_idx_start < output_row_idx_end; output_row_idx_start += quant_block_size, ++zp_idx) {
+              auto zp = zero_point ? static_cast<int32_t>(zero_point[zp_idx >> 2].GetElem(zp_idx & 0x3)) : 0;
+              auto sc = scale[zp_idx];
+
+              for (auto idx = output_row_idx_start; idx < std::min(output_row_idx_start + quant_block_size, output_row_idx_end); ++idx) {
+                auto v = std::clamp(static_cast<int32_t>(std::nearbyint(input[idx] / sc)) + zp, low, high);
+                output[idx >> 2].SetElem(idx & 0x3, static_cast<typename TOut::UnpackedType>(v));
+              }
+            }
+          }
+        });
+  }
+};
+
+template <typename TOut>
+struct BlockedQuantizeLinear<MLFloat16, TOut, 3> {
+  static void opNotLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                            const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                            std::ptrdiff_t N, const std::ptrdiff_t quant_block_size,
+                            const std::ptrdiff_t thread_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    ORT_UNUSED_PARAMETER(thread_block_size);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    auto size_thread_block = 4 * N;
+    auto num_thread_block = (M * K + 3) / 4;
+    auto num_quant_block_K = (K + quant_block_size - 1) / quant_block_size;
+    auto num_quant_block_KN = num_quant_block_K * N;
+    auto MK = M * K;
+    const TensorOpCost unit_cost{static_cast<double>(size_thread_block * sizeof(MLFloat16) * 2),
+                                 static_cast<double>(size_thread_block * sizeof(typename TOut::UnpackedType)),
+                                 static_cast<double>(size_thread_block) * 2.0};
+
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          begin <<= 2, end = std::min(end << 2, MK);
+          auto output_idx = begin * N;
+          auto m = begin / K, k = begin % K;
+          auto zp_idx = m * num_quant_block_KN + k / quant_block_size * N;
+
+          for (; begin < end; ++begin) {
+            auto zp_idx_t = zp_idx;
+            // auto output_idx_end = output_idx + N;
+
+            for (; zp_idx_t < zp_idx + N; ++zp_idx_t, ++output_idx) {
+              auto zp = zero_point
+                            ? static_cast<int32_t>(zero_point[zp_idx_t >> 2].GetElem(zp_idx_t & 0x3))
+                            : 0;
+              auto sc = scale[zp_idx_t].ToFloat();
+              auto v = std::clamp(
+                  static_cast<int32_t>(std::nearbyint(input[output_idx].ToFloat() / sc)) + zp, low, high);
+              output[output_idx >> 2].SetElem(output_idx & 0x3, static_cast<typename TOut::UnpackedType>(v));
+            }
+
+            ++k;
+            if (k == K) {
+              k = 0;
+              zp_idx += N;
+            } else if (k % quant_block_size == 0) {
+              zp_idx += N;
+            }
+          }
+        });
+  }
+
+  static void opLastAxis(concurrency::ThreadPool* thread_pool, const MLFloat16* input, const MLFloat16* scale,
+                         const TOut* zero_point, TOut* output, std::ptrdiff_t M, std::ptrdiff_t K,
+                         const std::ptrdiff_t quant_block_size, bool saturate) {
+    ORT_UNUSED_PARAMETER(saturate);
+    constexpr auto low = static_cast<int32_t>(TOut::min_val);
+    constexpr auto high = static_cast<int32_t>(TOut::max_val);
+    auto size_thread_block = 4 * K;
+    auto quant_block_num_K = (K + quant_block_size - 1) / quant_block_size;
+    auto num_thread_block = (M + 3) / 4;
+    TensorOpCost unit_cost{static_cast<double>(size_thread_block * sizeof(MLFloat16)),
+                           static_cast<double>(size_thread_block * sizeof(typename TOut::UnpackedType)),
+                           static_cast<double>(size_thread_block) * 2.0};
+    concurrency::ThreadPool::TryParallelFor(
+        thread_pool,
+        num_thread_block,
+        unit_cost,
+        [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          begin <<= 2, end = std::min(end << 2, M);
+          auto output_idx = begin * K;
+          auto zp_idx = begin * quant_block_num_K;
+
+          for (; begin < end; ++begin, output_idx += K) {
+            auto output_row_idx_start = output_idx;
+            auto output_row_idx_end = output_row_idx_start + K;
+
+            for (; output_row_idx_start < output_row_idx_end; output_row_idx_start += quant_block_size, ++zp_idx) {
+              auto zp = zero_point ? static_cast<int32_t>(zero_point[zp_idx >> 2].GetElem(zp_idx & 0x3)) : 0;
+              auto sc = scale[zp_idx].ToFloat();
+
+              for (auto idx = output_row_idx_start; idx < std::min(output_row_idx_start + quant_block_size, output_row_idx_end); ++idx) {
+                auto v = std::clamp(
+                    static_cast<int32_t>(std::nearbyint(input[idx].ToFloat() / sc)) + zp, low, high);
+                output[idx >> 2].SetElem(idx & 0x3, static_cast<typename TOut::UnpackedType>(v));
               }
             }
           }

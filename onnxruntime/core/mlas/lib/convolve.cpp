@@ -42,6 +42,53 @@ struct MLAS_CONV_WORK_BLOCK {
     ptrdiff_t TargetThreadCount;
 };
 
+static
+void
+MlasDepthwiseMultiplierGreaterThan1Threaded(
+    void* Context,
+    ptrdiff_t Index
+    )
+{
+    MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
+
+    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
+    const float* Zeros = nullptr;
+
+    const size_t GroupCount = Parameters->GroupCount;
+    const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+
+    size_t BatchGroupStart;
+    size_t BatchGroupRemaining;
+
+    MlasPartitionWork(Index, WorkBlock->TargetThreadCount, BatchGroupCount,
+        &BatchGroupStart, &BatchGroupRemaining);
+
+    const size_t BatchGroupEnd = BatchGroupStart + BatchGroupRemaining;
+
+    const size_t FilterCount = Parameters->FilterCount;
+    const size_t OutputSize = Parameters->OutputSize;
+    const size_t K = Parameters->K;
+
+    const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
+    const size_t OutputGroupSize = FilterCount * OutputSize;
+    const size_t FilterGroupSize = FilterCount * K;
+
+    for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
+        size_t group = bg % GroupCount;
+
+        const float* input = WorkBlock->Input + bg * InputGroupSize;
+        const float* filter = WorkBlock->Filter + group * FilterGroupSize;
+        float* output = WorkBlock->Output + bg * OutputGroupSize;
+        const float* bias = WorkBlock->Bias;
+        if (bias != nullptr) {
+            bias += group * FilterCount;
+        }
+
+        MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, input, filter, output, Zeros);
+        MlasActivation(Parameters->Activation, output, bias, FilterCount, OutputSize, OutputSize);
+    }
+}
+
 void
 MlasConvIm2Col(
     const MLAS_CONV_PARAMETERS* Parameters,
@@ -698,13 +745,13 @@ Return Value:
     const size_t OutputGroupSize = FilterCount * OutputSize;
     const size_t FilterGroupSize = FilterCount * K;
 
+    const float* input = WorkBlock->Input + BatchGroupStart * InputGroupSize;
+    float* output = WorkBlock->Output + BatchGroupStart * OutputGroupSize;
+
     for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
 
         size_t group = bg % GroupCount;
-
-        const float* input = WorkBlock->Input + bg * InputGroupSize;
         const float* filter = WorkBlock->Filter + group * FilterGroupSize;
-        float* output = WorkBlock->Output + bg * OutputGroupSize;
 
         //
         // Invoke the non-threaded GEMM directly with the input tensor.
@@ -726,6 +773,9 @@ Return Value:
 
         MlasActivation(Parameters->Activation, output, bias, FilterCount,
             OutputSize, OutputSize);
+
+        input += InputGroupSize;
+        output += OutputGroupSize;
     }
 }
 
@@ -799,11 +849,95 @@ Return Value:
         if (bias != nullptr) {
             bias += group * FilterCount;
         }
-        float* ColumnBuffer = WorkBlock->WorkingBuffer + Index * OutputSize * K;
+        float* ColumnBuffer = WorkBlock->WorkingBuffer + Index * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
 
         MlasConvOperation(Parameters, input, filter, bias, ColumnBuffer, output, 0, OutputSize);
     }
 }
+
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
+
+void
+MlasDepthwiseThreaded(
+    void* Context,
+    ptrdiff_t Index
+)
+
+/*++
+
+Routine Description:
+
+    This routine is invoked from a worker thread to execute a segment of a
+    convolution operation.
+
+    If using this, the entire convolution operation is parallelized on the
+    (batch size * group count) parameter and this routine has logic to
+    perform a specific thread's shard of the entire Convolution operation.
+
+Arguments:
+
+    Context - Supplies the pointer to the context for the threaded operation.
+
+    Index - Supplies the current index of the threaded operation.
+
+Return Value:
+
+    None.
+
+--*/
+
+{
+
+    MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
+
+    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
+
+    const size_t GroupCount = Parameters->GroupCount;
+    const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+
+    const size_t TargetThreadCount = WorkBlock->TargetThreadCount;
+
+    const size_t BatchGroupCountPerThread = BatchGroupCount / TargetThreadCount;
+    const size_t BatchGroupCountExtra = BatchGroupCount % TargetThreadCount;
+
+    size_t BatchGroupStart;
+    size_t BatchGroupEnd;
+
+    if (static_cast<size_t>(Index) < BatchGroupCountExtra) {
+        BatchGroupStart = (BatchGroupCountPerThread + 1) * Index;
+        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread + 1;
+    } else {
+        BatchGroupStart = BatchGroupCountPerThread * Index + BatchGroupCountExtra;
+        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread;
+    }
+
+    const size_t FilterCount = Parameters->FilterCount;
+    const size_t OutputSize = Parameters->OutputSize;
+    const size_t K = Parameters->K;
+
+    const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
+    const size_t OutputGroupSize = FilterCount * OutputSize;
+    const size_t FilterGroupSize = FilterCount * K;
+
+    for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
+        size_t group = bg % GroupCount;
+
+        const float* input = WorkBlock->Input + bg * InputGroupSize;
+        const float* filter = WorkBlock->Filter + group * FilterGroupSize;
+        float* output = WorkBlock->Output + bg * OutputGroupSize;
+        const float* bias = WorkBlock->Bias;
+        if (bias != nullptr) {
+            bias += group * FilterCount;
+        }
+
+        float* WorkingBuffer = WorkBlock->WorkingBuffer;
+
+        MlasConvDepthwiseFloat_CHW(Parameters, input, filter, output, WorkingBuffer);
+        MlasActivation(Parameters->Activation, output, bias, FilterCount, OutputSize, OutputSize);
+    }
+}
+
+#endif
 
 inline
 bool
@@ -985,7 +1119,7 @@ Return Value:
         return;
     }
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 
     if (Algorithm == MlasConvAlgorithmDepthwise) {
         // Fill the Working Buffer with Zero for use by the depthwise kernel.
@@ -1019,6 +1153,59 @@ Return Value:
         return;
     }
 
+    if (Algorithm == MlasConvAlgorithmDepthwiseMultiplierGreaterThan1 && ((BatchCount > 1) || (GroupCount > 1))) {
+        const size_t BatchGroupCount = BatchCount * GroupCount;
+
+        ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+        if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
+            TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
+        }
+
+        MLAS_CONV_WORK_BLOCK WorkBlock;
+
+        WorkBlock.Parameters = Parameters;
+        WorkBlock.Input = Input;
+        WorkBlock.Filter = Filter;
+        WorkBlock.Bias = Bias;
+        WorkBlock.WorkingBuffer = nullptr;
+        WorkBlock.Output = Output;
+        WorkBlock.TargetThreadCount = TargetThreadCount;
+
+        MlasExecuteThreaded(MlasDepthwiseMultiplierGreaterThan1Threaded, &WorkBlock, TargetThreadCount, ThreadPool);
+
+        return;
+    }
+
+
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
+
+    if (Algorithm == MlasConvAlgorithmDepthwise && ((BatchCount > 1) || (GroupCount > 1))) {
+        const size_t BatchGroupCount = BatchCount * GroupCount;
+
+        ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+        if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
+            TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
+        }
+
+        MLAS_CONV_WORK_BLOCK WorkBlock;
+
+        WorkBlock.Parameters = Parameters;
+        WorkBlock.Input = Input;
+        WorkBlock.Filter = Filter;
+        WorkBlock.Bias = Bias;
+        WorkBlock.WorkingBuffer = WorkingBuffer;
+        WorkBlock.Output = Output;
+        WorkBlock.TargetThreadCount = TargetThreadCount;
+
+        MlasExecuteThreaded(MlasDepthwiseThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
+
+        return;
+    }
+
+#endif
+
     //
     // Iterate over each batch and group.
     //
@@ -1043,7 +1230,7 @@ Return Value:
 
                     MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
                              K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
-                             Parameters->Beta, Output, OutputSize, ThreadPool);
+                             Parameters->Beta, Output, OutputSize, ThreadPool, Parameters->BackendKernelSelectorConfig);
 
                     //
                     // Apply the activation with optional bias.
@@ -1070,7 +1257,7 @@ Return Value:
 
                     MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
                              K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
-                             ThreadPool);
+                             ThreadPool, Parameters->BackendKernelSelectorConfig);
 
                     //
                     // Apply the activation with optional bias.
@@ -1082,7 +1269,15 @@ Return Value:
                     break;
                 }
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+                case MlasConvAlgorithmDepthwiseMultiplierGreaterThan1:
+                {
+                    const float* Zeros = nullptr;
+                    MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, Input, filter, Output, Zeros);
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
+                    break;
+                }
+
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 
                 case MlasConvAlgorithmDepthwise:
                 {
@@ -1129,6 +1324,85 @@ Return Value:
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
+
+namespace {
+
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+static constexpr size_t ComputeChannelsLastDilatedKernelSize(size_t dilation, size_t kernel) {
+    return (dilation * kernel) - (dilation - 1);
+}
+
+static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kernel, size_t padding, size_t stride) {
+    if (stride > 0 && (input + 2 * padding) >= kernel) {
+        return (((input - kernel) + (2 * padding)) / stride) + 1;
+    }
+
+    return 0;
+}
+#endif
+
+}  // namespace
+
+bool
+MLASCALL
+MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta)
+{
+#if !defined(USE_KLEIDIAI) || !defined(MLAS_TARGET_ARM64)
+    MLAS_UNREFERENCED_PARAMETER(Dimensions);
+    MLAS_UNREFERENCED_PARAMETER(BatchCount);
+    MLAS_UNREFERENCED_PARAMETER(GroupCount);
+    MLAS_UNREFERENCED_PARAMETER(InputShape);
+    MLAS_UNREFERENCED_PARAMETER(KernelShape);
+    MLAS_UNREFERENCED_PARAMETER(DilationShape);
+    MLAS_UNREFERENCED_PARAMETER(Padding);
+    MLAS_UNREFERENCED_PARAMETER(StrideShape);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(Beta);
+    return false;
+#else
+    // Channels-last float convolution is only implemented by the KleidiAI
+    // override. The generic MLAS convolution path assumes NCHW layout.
+    if (GetMlasPlatform().MlasConvPrepareOverride == nullptr ||
+        GetMlasPlatform().MlasConvOverride == nullptr) {
+        return false;
+    }
+
+    if (Dimensions != 2 || BatchCount != 1 || GroupCount != 1 || Beta != 0.0f) {
+        return false;
+    }
+
+    if (Padding[0] != Padding[2] || Padding[1] != Padding[3]) {
+        return false;
+    }
+
+    const size_t output_h =
+        ComputeChannelsLastConvOutSize(InputShape[0], ComputeChannelsLastDilatedKernelSize(DilationShape[0], KernelShape[0]),
+                                       Padding[0], StrideShape[0]);
+    const size_t output_w =
+        ComputeChannelsLastConvOutSize(InputShape[1], ComputeChannelsLastDilatedKernelSize(DilationShape[1], KernelShape[1]),
+                                       Padding[1], StrideShape[1]);
+    if (output_h == 0 || output_w == 0) {
+        return false;
+    }
+
+    if (FilterCount <= 1 || KernelShape[0] < 3 || KernelShape[1] < 3) {
+        return false;
+    }
+
+    return true;
+#endif
+}
+
 void
 MLASCALL
 MlasConvPrepare(
@@ -1146,6 +1420,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    bool ChannelsLast,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     )
@@ -1204,7 +1479,7 @@ Return Value:
     if (GetMlasPlatform().MlasConvPrepareOverride != nullptr &&
         GetMlasPlatform().MlasConvPrepareOverride(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
         InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
-        Activation, WorkingBufferSize, Beta, ThreadPool)){
+        Activation, WorkingBufferSize, ChannelsLast, Beta, ThreadPool)){
         return;
     }
     //
@@ -1215,6 +1490,7 @@ Return Value:
     Parameters->BatchCount = BatchCount;
     Parameters->GroupCount = GroupCount;
     Parameters->InputChannels = InputChannels;
+    Parameters->ChannelsLast = ChannelsLast;
     Parameters->FilterCount = FilterCount;
     Parameters->Beta = Beta;
 
@@ -1337,17 +1613,42 @@ Return Value:
 
     } else {
 
-#if defined(MLAS_TARGET_WASM_SCALAR)
+#if defined(MLAS_TARGET_AMD64)
 
-        // Scalar direct conv for depthwise convolution.
-        // Currently only support 3x3 kernel with padding <=1 and dilations = 1.
+    if (Dimensions == 2
+        && GroupCount > 1
+        && Parameters->FilterCount == 2 && Parameters->InputChannels == 1
+        && Parameters->KernelShape[0] == 7 && Parameters->KernelShape[1] == 7
+        && Parameters->Padding[0] == 3 && Parameters->Padding[1] == 3
+        && Parameters->Padding[2] == 3 && Parameters->Padding[3] == 3
+        && Parameters->StrideShape[0] == 2 && Parameters->StrideShape[1] == 2
+        && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1
+        && GetMlasPlatform().ConvNchwFloatKernel == MlasConvNchwFloatKernelAvx512F) {
+
+        Parameters->Algorithm = MlasConvAlgorithmDepthwiseMultiplierGreaterThan1;
+        return;
+    }
+#endif
+
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
+
+        // Scalar (WASM_SCALAR) / vectorized (ARM64/RISCV64) direct conv for depthwise convolution.
+        // Currently only support 3x3 kernel with padding <=1 and dilations = 1
+        // and on ARM64/RISCV64, it is further restricted to strides = 1.
         // TODO: support more general depthwise convolution.
+
+    #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
+        bool depthwise_conv_stride_support_check = Parameters->StrideShape[0] == 1 && Parameters->StrideShape[1] == 1;
+    #else
+        bool depthwise_conv_stride_support_check = true;
+    #endif
 
         if (Dimensions == 2
                 && Parameters->FilterCount == 1 && Parameters->InputChannels == 1
                 && Parameters->KernelShape[0] == 3 && Parameters->KernelShape[1] == 3
                 && Parameters->Padding[0] <= 1 && Parameters->Padding[1] <= 1
                 && Parameters->Padding[2] <= 1 && Parameters->Padding[3] <= 1
+                && depthwise_conv_stride_support_check
                 && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1) {
 
             *WorkingBufferSize = Parameters->InputShape[1] + 2;
@@ -1411,14 +1712,11 @@ Return Value:
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
-            size_t WorkingBufferSizePerThread = std::max({Parameters->OutputSize * Parameters->K, 
-                                                          Parameters->FilterCount * Parameters->OutputSize, 
-                                                          static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)});
             TargetThreadCount = MaximumThreadCount;
             if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
                 TargetThreadCount = static_cast<ptrdiff_t>(Parameters->BatchCount * Parameters->GroupCount);
             }
-            *WorkingBufferSize = TargetThreadCount * WorkingBufferSizePerThread;
+            *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
         }
     }
 }

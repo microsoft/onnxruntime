@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 47995579..1542b11f 100644
+index 4a7df7d71..257d77e61 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -169,6 +169,7 @@ if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
+@@ -159,6 +159,7 @@ if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
  endif()
  
@@ -11,14 +11,14 @@ index 47995579..1542b11f 100644
  if(NOT ONNX_BUILD_CUSTOM_PROTOBUF)
    if((ONNX_USE_LITE_PROTO AND TARGET protobuf::libprotobuf-lite) OR ((NOT ONNX_USE_LITE_PROTO) AND TARGET protobuf::libprotobuf))
 diff --git a/cmake/ONNXConfig.cmake.in b/cmake/ONNXConfig.cmake.in
-index a5129bfd..d450b51e 100644
+index aa1ef47d9..d450b51e5 100644
 --- a/cmake/ONNXConfig.cmake.in
 +++ b/cmake/ONNXConfig.cmake.in
 @@ -4,9 +4,8 @@
  # library version information
  set(ONNX_VERSION "@ONNX_VERSION@")
  
--if((NOT @@ONNX_USE_PROTOBUF_SHARED_LIBS@@) AND @@Build_Protobuf@@)
+-if(NOT @ONNX_USE_PROTOBUF_SHARED_LIBS@)
 -  find_package(Protobuf REQUIRED CONFIG)
 -endif()
 +include(CMakeFindDependencyMacro)

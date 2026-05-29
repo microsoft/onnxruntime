@@ -656,7 +656,7 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   std::vector<const Tensor*> matmul_inputs = {input, weights, bias};
 
   // Call MatMul: packed_qkv = input * weights + bias
-  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(&context, Activation(), matmul_inputs, &packed_qkv, true));
+  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(&context, Activation(), matmul_inputs, &packed_qkv));
 
   // Output Q, K, V in BSD format
   return SplitPackedQKV(context, parameters, &packed_qkv, q, k, v, parameters.hidden_size_);
@@ -726,7 +726,7 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention
-  if (CanApplyFlashAttention(nullptr, parameters, context)) {
+  if (CanApplyFlashAttention(parameters, context)) {
     // FlashAttention supports Q_K_V_BSNH format directly
     return ApplyFlashAttention(&Q_bsd, &K_bsd, &V_bsd, attention_bias, output, nullptr, nullptr, nullptr, nullptr,
                                parameters, context, nullptr);

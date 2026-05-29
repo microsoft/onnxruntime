@@ -1,12 +1,9 @@
 #pragma once
+#include <cstdio>
 #include "core/common/make_string.h"
 
-// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
-
-#ifdef DEBUG_GENERATION
-#define DUMP_TENSOR_LEVEL 2
-#else
-#define DUMP_TENSOR_LEVEL 0  // change it to 1 or 2 if want to enable dumping for code not in generation.
+#if !defined(DUMP_TENSOR_LEVEL)
+#define DUMP_TENSOR_LEVEL 0
 #endif
 
 #define DUMP_CPU_TENSOR_LEVEL DUMP_TENSOR_LEVEL
@@ -47,4 +44,13 @@
 #define DUMP_TENSOR_D(...) dumper.Print(__VA_ARGS__)
 #else
 #define DUMP_TENSOR_D(...)
+#endif
+
+#if (defined(__GNUC__) || defined(__clang__)) && (DUMP_TENSOR_LEVEL > 0)
+#define DUMP_PRINTF(fmt, ...) \
+  std::printf("[DEBUG] " fmt "\n", ##__VA_ARGS__)
+#else
+#define DUMP_PRINTF(fmt, ...) \
+  do {                        \
+  } while (0)
 #endif

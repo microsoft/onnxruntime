@@ -35,13 +35,20 @@ class TypeHelper:
     @staticmethod
     def ort_type_to_numpy_type(ort_type: str):
         ort_type_to_numpy_type_map = {
-            "tensor(int64)": numpy.longlong,
-            "tensor(int32)": numpy.intc,
+            "tensor(int64)": numpy.int64,
+            "tensor(int32)": numpy.int32,
             "tensor(float)": numpy.float32,
             "tensor(float16)": numpy.float16,
             "tensor(bool)": bool,
             "tensor(uint8)": numpy.uint8,
             "tensor(int8)": numpy.int8,
+            "tensor(double)": numpy.float64,
+            "tensor(int16)": numpy.int16,
+            "tensor(uint16)": numpy.uint16,
+            "tensor(uint32)": numpy.uint32,
+            "tensor(uint64)": numpy.uint64,
+            "tensor(complex64)": numpy.complex64,
+            "tensor(complex128)": numpy.complex128,
         }
         if ort_type not in ort_type_to_numpy_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -59,6 +66,19 @@ class TypeHelper:
             "tensor(bool)": torch.bool,
             "tensor(uint8)": torch.uint8,
             "tensor(int8)": torch.int8,
+            "tensor(double)": torch.float64,
+            "tensor(int16)": torch.int16,
+            "tensor(uint16)": torch.uint16,
+            "tensor(uint32)": torch.uint32,
+            "tensor(uint64)": torch.uint64,
+            "tensor(complex64)": torch.complex64,
+            "tensor(complex128)": torch.complex128,
+            "tensor(float8e4m3fn)": torch.float8_e4m3fn,
+            "tensor(float8e4m3fnuz)": torch.float8_e4m3fnuz,
+            "tensor(float8e5m2)": torch.float8_e5m2,
+            "tensor(float8e5m2fnuz)": torch.float8_e5m2fnuz,
+            "tensor(int4)": torch.int4,
+            "tensor(uint4)": torch.uint4,
         }
         if ort_type not in ort_type_to_torch_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -87,6 +107,21 @@ class TypeHelper:
             "tensor(bool)": TensorProto.BOOL,
             "tensor(uint8)": TensorProto.UINT8,
             "tensor(int8)": TensorProto.INT8,
+            "tensor(double)": TensorProto.DOUBLE,
+            "tensor(int16)": TensorProto.INT16,
+            "tensor(uint16)": TensorProto.UINT16,
+            "tensor(uint32)": TensorProto.UINT32,
+            "tensor(uint64)": TensorProto.UINT64,
+            "tensor(complex64)": TensorProto.COMPLEX64,
+            "tensor(complex128)": TensorProto.COMPLEX128,
+            "tensor(float8e4m3fn)": TensorProto.FLOAT8E4M3FN,
+            "tensor(float8e4m3fnuz)": TensorProto.FLOAT8E4M3FNUZ,
+            "tensor(float8e5m2)": TensorProto.FLOAT8E5M2,
+            "tensor(float8e5m2fnuz)": TensorProto.FLOAT8E5M2FNUZ,
+            "tensor(float4e2m1)": TensorProto.FLOAT4E2M1,
+            "tensor(int4)": TensorProto.INT4,
+            "tensor(uint4)": TensorProto.UINT4,
+            "tensor(string)": TensorProto.STRING,
         }
         if ort_type not in ort_type_to_onnx_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -96,15 +131,22 @@ class TypeHelper:
     @staticmethod
     def numpy_type_to_torch_type(numpy_type: numpy.dtype):
         numpy_type_to_torch_type_map = {
-            numpy.longlong: torch.int64,
-            numpy.intc: torch.int32,
+            numpy.int64: torch.int64,
             numpy.int32: torch.int32,
             numpy.float32: torch.float32,
             numpy.float16: torch.float16,
             bool: torch.bool,
             numpy.uint8: torch.uint8,
             numpy.int8: torch.int8,
+            numpy.float64: torch.float64,
+            numpy.int16: torch.int16,
+            numpy.uint16: torch.uint16,
+            numpy.uint32: torch.uint32,
+            numpy.uint64: torch.uint64,
+            numpy.complex64: torch.complex64,
+            numpy.complex128: torch.complex128,
         }
+
         if numpy_type not in numpy_type_to_torch_type_map:
             raise ValueError(f"{numpy_type} not found in map")
 
@@ -113,13 +155,22 @@ class TypeHelper:
     @staticmethod
     def torch_type_to_numpy_type(torch_type: torch.dtype):
         torch_type_to_numpy_type_map = {
-            torch.int64: numpy.longlong,
-            torch.int32: numpy.intc,
+            torch.int64: numpy.int64,
+            torch.int32: numpy.int32,
             torch.float32: numpy.float32,
             torch.float16: numpy.float16,
             torch.bool: bool,
             torch.uint8: numpy.uint8,
+            torch.int8: numpy.int8,
+            torch.float64: numpy.float64,
+            torch.int16: numpy.int16,
+            torch.uint16: numpy.uint16,
+            torch.uint32: numpy.uint32,
+            torch.uint64: numpy.uint64,
+            torch.complex64: numpy.complex64,
+            torch.complex128: numpy.complex128,
         }
+
         if torch_type not in torch_type_to_numpy_type_map:
             raise ValueError(f"{torch_type} not found in map")
 

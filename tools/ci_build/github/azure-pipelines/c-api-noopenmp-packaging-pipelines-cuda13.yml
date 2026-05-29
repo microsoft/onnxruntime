@@ -1,0 +1,145 @@
+parameters:
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+- name: UseIncreasedTimeoutForTests
+  displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
+  type: boolean
+  default: false
+
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
+
+- name: AdditionalBuildFlag
+  displayName: Build flags to append to build command
+  type: string
+  default: '--use_azure'
+
+- name: NugetPackageSuffix
+  displayName: Suffix to append to nuget package
+  type: string
+  default: 'NONE'
+
+# these 2 parameters are used for debugging.
+- name: SpecificArtifact
+  displayName: Use Specific Artifact (Debugging only)
+  type: boolean
+  default: false
+
+- name: BuildId
+  displayName: Pipeline BuildId, you could find it in the URL
+  type: string
+  default: '0'
+
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '13.0'
+  values:
+  - 13.0
+
+resources:
+  repositories:
+  - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
+    type: github
+    endpoint: ort-examples
+    name: microsoft/onnxruntime-inference-examples
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
+variables:
+- template: templates/common-variables.yml
+- name: win_trt_home
+  value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda13 }}
+- name: win_cuda_home
+  value: $(Agent.TempDirectory)\v13.0
+- name: win_cudnn_home
+  value: $(Agent.TempDirectory)\9.14.0.64_cuda13
+- name: CudaArchs
+  value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
+
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    settings:
+      networkIsolationPolicy: Permissive
+    featureFlags:
+      binskimScanAllExtensions: true
+    sdl:
+      binskim:
+        enabled: true
+        scanOutputDirectoryOnly: true
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-VS2022-Latest
+        os: windows
+      componentgovernance:
+        ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
+      sourceRepositoriesToScan:
+        exclude:
+        - repository: onnxruntime-inference-examples
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+
+    stages:
+    - template: stages/set_packaging_variables_stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+
+    - template: templates/linux-cpu-packaging-pipeline.yml
+
+    - template: stages/nuget-combine-cuda-stage.yml
+      parameters:
+        CudaVersion: ${{ parameters.CudaVersion }}
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+        win_trt_home: ${{ variables.win_trt_home }}
+        win_cuda_home: ${{ variables.win_cuda_home }}
+        DoEsrp: true
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        buildJava: true
+        buildNodejs: true
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
+        CudaArchs: ${{ variables.CudaArchs }}
+        win_cudnn_home: ${{ variables.win_cudnn_home }}

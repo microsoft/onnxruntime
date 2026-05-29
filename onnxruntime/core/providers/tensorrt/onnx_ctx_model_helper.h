@@ -17,6 +17,7 @@ static const std::string EMBED_MODE = "embed_mode";
 static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
 static const std::string ONNX_MODEL_FILENAME = "onnx_model_filename";
+static const std::string SOURCE = "source";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 static const std::string EPCONTEXT_WARNING =
     "It's suggested to set the ORT graph optimization level to 0 and  \

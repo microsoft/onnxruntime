@@ -1246,17 +1246,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds the ARM Neural Net library as an execution backend.
-     *
-     * @param useArena If true use the arena memory allocator.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addArmNN(boolean useArena) throws OrtException {
-      checkClosed();
-      addArmNN(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
-    }
-
-    /**
      * Adds Apple's CoreML as an execution backend. Uses the default empty flag.
      *
      * @throws OrtException If there was an error in native code.
@@ -1498,9 +1487,6 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addACL(long apiHandle, long nativeHandle, boolean enableFastMath)
-        throws OrtException;
-
-    private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
         throws OrtException;
 
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)

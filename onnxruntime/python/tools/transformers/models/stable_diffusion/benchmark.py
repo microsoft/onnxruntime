@@ -5,13 +5,12 @@
 
 import argparse
 import csv
+import logging
 import os
 import statistics
 import sys
 import time
 from pathlib import Path
-
-import coloredlogs
 
 # import torch before onnxruntime so that onnxruntime uses the cuDNN in the torch package.
 import torch
@@ -1332,7 +1331,7 @@ def main():
             if version.parse(ort_version) < version.parse("1.16"):
                 raise ValueError("CUDA graph requires ONNX Runtime 1.16 or later")
 
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+    logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO, force=True)
 
     memory_monitor_type = "cuda"
 

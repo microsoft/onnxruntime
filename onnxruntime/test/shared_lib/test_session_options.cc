@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/framework/config_options.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -21,11 +22,41 @@ TEST(CApiTest, session_options_deterministic_compute) {
   options.SetDeterministicCompute(true);
 }
 
+TEST(CApiTest, session_options_get_mem_pattern_enabled) {
+  Ort::SessionOptions options;
+
+  // Memory pattern is enabled by default
+  ASSERT_TRUE(options.GetMemPatternEnabled());
+
+  // Disable and verify
+  options.DisableMemPattern();
+  ASSERT_FALSE(options.GetMemPatternEnabled());
+
+  // Re-enable and verify
+  options.EnableMemPattern();
+  ASSERT_TRUE(options.GetMemPatternEnabled());
+}
+
+TEST(CApiTest, session_options_get_execution_mode) {
+  Ort::SessionOptions options;
+
+  // Default is sequential
+  ASSERT_EQ(options.GetExecutionMode(), ORT_SEQUENTIAL);
+
+  // Set to parallel and verify
+  options.SetExecutionMode(ORT_PARALLEL);
+  ASSERT_EQ(options.GetExecutionMode(), ORT_PARALLEL);
+
+  // Set back to sequential and verify
+  options.SetExecutionMode(ORT_SEQUENTIAL);
+  ASSERT_EQ(options.GetExecutionMode(), ORT_SEQUENTIAL);
+}
+
 #if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD) && !defined(ORT_NO_EXCEPTIONS)
 
 TEST(CApiTest, session_options_oversized_affinity_string) {
   Ort::SessionOptions options;
-  std::string long_affinity_str(onnxruntime::kMaxStrLen + 1, '0');
+  std::string long_affinity_str(ConfigOptions::kMaxValueLength + 1, '0');
   try {
     options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, long_affinity_str.c_str());
     ASSERT_TRUE(false) << "Creation of config should have thrown exception";

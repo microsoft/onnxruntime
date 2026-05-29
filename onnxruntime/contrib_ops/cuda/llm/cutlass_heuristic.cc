@@ -28,6 +28,7 @@
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/numeric_types.h"
 #include "core/common/common.h"
+#include "onnxruntime_config.h"
 
 #include <cuda_runtime_api.h>
 #include <set>
@@ -136,6 +137,16 @@ std::vector<CutlassTileConfig> get_candidate_tiles(
     base_configs.push_back(CutlassTileConfig::CtaShape128x128x64_WarpShape64x32x64);
   }
 
+#ifdef ORT_QUICK_BUILD
+  // Quick build: restrict SM80 tile shapes to the 3 instantiated tile sizes only.
+  // This matches the reduced instantiations in fused_moe_gemm_sm80_f16.generated.cu.
+  // SIMT (float) kernels use a different tile shape that must still be returned.
+  if (gemm_type == CutlassGemmType::Simt) {
+    return {CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8};
+  }
+  return base_configs;
+#endif
+
   switch (gemm_type) {
     case CutlassGemmType::Simt:
       return {CutlassTileConfig::CtaShape128x128x8_WarpShape64x64x8};
@@ -195,8 +206,13 @@ std::vector<CutlassTileConfig> get_candidate_tiles(
 }
 
 std::vector<CutlassTileConfigSM90> get_candidate_tiles_sm90(CutlassGemmConfig::CandidateConfigTypeParam const config) {
-#ifdef FAST_BUILD
-  // Fast build disables all configs except this one for SM90
+#ifdef ORT_QUICK_BUILD
+  (void)config;
+  // Quick build: restrict to 128x{16,32,64,128} tiles only (matching instantiated kernels)
+  // return {CutlassTileConfigSM90::CtaShape128x16x128B, CutlassTileConfigSM90::CtaShape128x32x128B,
+  //         CutlassTileConfigSM90::CtaShape128x64x128B, CutlassTileConfigSM90::CtaShape128x128x128B};
+
+  // Quick build: disables all configs except this one for SM90
   return {CutlassTileConfigSM90::CtaShape128x128x128B};
 #else
   if (config & CutlassGemmConfig::GROUPED_GEMM) {
@@ -216,7 +232,7 @@ std::vector<CutlassTileConfigSM90> get_candidate_tiles_sm90(CutlassGemmConfig::C
 // We only compile CUTLASS kernels with multi-cast along M if the M tile is >= 128. This is purely to improve
 // compilation speed.
 bool sm90_supports_mcast_along_m(CutlassTileConfigSM90 const tile) {
-#ifdef FAST_BUILD
+#if defined(ORT_QUICK_BUILD)
   return false;
 #else
   std::set<CutlassTileConfigSM90> valid_tiles{CutlassTileConfigSM90::CtaShape128x16x128B,
@@ -230,7 +246,7 @@ bool sm90_supports_mcast_along_m(CutlassTileConfigSM90 const tile) {
 // We only compile CUTLASS kernels with multi-cast along N if the N tile is >= 128. This is purely to improve
 // compilation speed.
 bool sm90_supports_mcast_along_n(CutlassTileConfigSM90 const tile) {
-#ifdef FAST_BUILD
+#if defined(ORT_QUICK_BUILD)
   return false;
 #else
   std::set<CutlassTileConfigSM90> valid_tiles{CutlassTileConfigSM90::CtaShape64x128x128B,
@@ -281,7 +297,7 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm90(CutlassGemmConfig::Can
 }
 
 std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::CandidateConfigTypeParam const config) {
-#ifdef FAST_BUILD
+#ifdef ORT_QUICK_BUILD
   // Fast build disables all configs except this one for SM100
   return {CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x128x128B, MainloopScheduleType::AUTO,
                             EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x1x1}};
@@ -295,8 +311,29 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_2x1x1});
       // candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x256x128B,
       //                                               MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x1x1});
+
+      // Suppressing this warning from a Release build with GCC:
+      //
+      //  In function ‘constexpr decltype (::new(void*(0)) _Tp) std::construct_at(_Tp*, _Args&& ...) [with _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}]’,
+      //     inlined from ‘static constexpr void std::allocator_traits<std::allocator<_CharT> >::construct(allocator_type&, _Up*, _Args&& ...) [with _Up = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}; _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/alloc_traits.h:577:21,
+      //     inlined from ‘constexpr std::vector<_Tp, _Alloc>::reference std::vector<_Tp, _Alloc>::emplace_back(_Args&& ...) [with _Args = {onnxruntime::llm::cutlass_extensions::CutlassGemmConfig}; _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Alloc = std::allocator<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/vector.tcc:117:30,
+      //     inlined from ‘constexpr void std::vector<_Tp, _Alloc>::push_back(value_type&&) [with _Tp = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig; _Alloc = std::allocator<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>]’ at /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_vector.h:1301:21,
+      //     inlined from ‘std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> onnxruntime::llm::kernels::cutlass_kernels::get_candidate_configs_sm100(onnxruntime::llm::cutlass_extensions::CutlassGemmConfig::CandidateConfigTypeParam)’ at /onnxruntime_src/onnxruntime/contrib_ops/cuda/llm/cutlass_heuristic.cc:298:34:
+      // /opt/rh/gcc-toolset-14/root/usr/include/c++/14/bits/stl_construct.h:97:14: error: writing 1 byte into a region of size 0 [-Werror=stringop-overflow=]
+      //    97 |     { return ::new((void*)__location) _Tp(std::forward<_Args>(__args)...); }
+      //       |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#if defined(HAS_STRINGOP_OVERFLOW)
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif  // defined(HAS_STRINGOP_OVERFLOW)
+#endif  // __GNUC__
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x256x128B,
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x2x1});
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif  // __GNUC__
+
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape256x64x128B,
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_2x1x1});
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x64x128B,
@@ -353,8 +390,18 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
     ORT_THROW("Not Implemented: SM100 GEMM candidates have not been defined.");
   }
 #endif
+}
 
-}  // namespace kernels
+std::vector<CutlassGemmConfig> get_candidate_configs_sm120(CutlassGemmConfig::CandidateConfigTypeParam const config) {
+  if (config & CutlassGemmConfig::GROUPED_GEMM) {
+    if ((config & CutlassGemmConfig::FP4_ONLY) != 0) {
+      return {CutlassGemmConfig{CutlassTileConfigSM120::CtaShape128x128x128B,
+                                MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x1x1}};
+    }
+  }
+
+  return {};
+}
 
 std::vector<CutlassGemmConfig> get_candidate_configs(
     int sm, int const max_split_k, CutlassGemmConfig::CandidateConfigTypeParam const config_type_param) {
@@ -369,6 +416,9 @@ std::vector<CutlassGemmConfig> get_candidate_configs(
   if (sm >= 100 && sm != 120 && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
     return get_candidate_configs_sm100(config_type_param);
   }
+  if (sm == 120 && (config_type_param & CutlassGemmConfig::BLACKWELL)) {
+    return get_candidate_configs_sm120(config_type_param);
+  }
 
   std::vector<CutlassTileConfig> tiles = get_candidate_tiles(sm, config_type_param);
 
@@ -376,8 +426,14 @@ std::vector<CutlassGemmConfig> get_candidate_configs(
   bool const int8_configs_only = config_type_param & CutlassGemmConfig::INT8_ONLY;
   int const min_stages = int8_configs_only ? 3 : 2;
   int const max_stages = int8_configs_only ? 6 : (sm >= 80 ? 4 : 2);
+#ifdef ORT_QUICK_BUILD
+  // Quick build: only use stages=4 for SM80+ to match reduced kernel instantiations.
+  int const actual_min_stages = (sm >= 80 && !int8_configs_only) ? 4 : min_stages;
+#else
+  int const actual_min_stages = min_stages;
+#endif
   for (auto const& tile_config : tiles) {
-    for (int stages = min_stages; stages <= max_stages; ++stages) {
+    for (int stages = actual_min_stages; stages <= max_stages; ++stages) {
       CutlassGemmConfig config(tile_config, SplitKStyle::NO_SPLIT_K, 1, stages);
       candidate_configs.push_back(config);
       if (sm >= 75) {

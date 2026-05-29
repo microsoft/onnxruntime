@@ -135,6 +135,12 @@ class CPUIDInfo {
 
 #endif  // defined(CPUIDINFO_ARCH_ARM)
 
+#if defined(CPUIDINFO_ARCH_RISCV64)
+#if defined(__linux__)
+  void RiscvLinuxInit();
+#endif
+#endif  // defined(CPUIDINFO_ARCH_RISCV64)
+
 #if defined(CPUINFO_SUPPORTED)
   bool pytorch_cpuinfo_init_{false};
 #endif  // defined(CPUINFO_SUPPORTED)
@@ -168,7 +174,7 @@ class CPUIDInfo {
   bool has_arm_sme2_{false};
 
   std::string vendor_;
-  uint32_t vendor_id_;
+  uint32_t vendor_id_{0};
 };
 
 }  // namespace onnxruntime

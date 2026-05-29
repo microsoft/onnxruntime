@@ -3,6 +3,11 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
+#include "core/common/common.h"
+#endif
+#include "core/common/narrow.h"
+
 #include <stdint.h>
 
 #ifdef __NVCC__
@@ -41,6 +46,98 @@ struct SelectedIndex {
   int64_t batch_index_ = 0;
   int64_t class_index_ = 0;
   int64_t box_index_ = 0;
+};
+
+template <typename TKernelInfo, typename TOpKernelContext>
+class NonMaxSuppressionBaseImpl {
+ protected:
+  explicit NonMaxSuppressionBaseImpl(const TKernelInfo& info) {
+    center_point_box_ = info.template GetAttrOrDefault<int64_t>("center_point_box", 0);
+    ORT_ENFORCE(0 == center_point_box_ || 1 == center_point_box_, "center_point_box only support 0 or 1");
+  }
+
+  int64_t GetCenterPointBox() const {
+    return center_point_box_;
+  }
+
+ public:
+  // This works for both CPU and GPU.
+  // CUDA kernel declare OrtMemTypeCPUInput for max_output_boxes_per_class(2), iou_threshold(3) and score_threshold(4)
+  static Status PrepareCompute(TOpKernelContext* ctx, PrepareContext& pc) {
+    const auto* boxes_tensor = ctx->template Input<Tensor>(0);
+    ORT_ENFORCE(boxes_tensor);
+    pc.boxes_data_ = boxes_tensor->template Data<float>();
+
+    const auto* scores_tensor = ctx->template Input<Tensor>(1);
+    ORT_ENFORCE(scores_tensor);
+    pc.scores_data_ = scores_tensor->template Data<float>();
+
+    const auto num_inputs = ctx->InputCount();
+
+    if (num_inputs > 2) {
+      const auto* max_output_boxes_per_class_tensor = ctx->template Input<Tensor>(2);
+      if (max_output_boxes_per_class_tensor != nullptr) {
+        pc.max_output_boxes_per_class_ = max_output_boxes_per_class_tensor->template Data<int64_t>();
+      }
+    }
+
+    if (num_inputs > 3) {
+      const auto* iou_threshold_tensor = ctx->template Input<Tensor>(3);
+      if (iou_threshold_tensor != nullptr) {
+        pc.iou_threshold_ = iou_threshold_tensor->template Data<float>();
+      }
+    }
+
+    if (num_inputs > 4) {
+      const auto* score_threshold_tensor = ctx->template Input<Tensor>(4);
+      if (score_threshold_tensor != nullptr) {
+        pc.score_threshold_ = score_threshold_tensor->template Data<float>();
+      }
+    }
+
+    const auto& boxes_shape = boxes_tensor->Shape();
+    pc.boxes_size_ = boxes_shape.Size();
+    const auto& scores_shape = scores_tensor->Shape();
+    pc.scores_size_ = scores_shape.Size();
+
+    ORT_RETURN_IF_NOT(boxes_shape.NumDimensions() == 3, "boxes must be a 3D tensor.");
+    ORT_RETURN_IF_NOT(scores_shape.NumDimensions() == 3, "scores must be a 3D tensor.");
+
+    const auto& boxes_dims = boxes_shape.GetDims();
+    const auto& scores_dims = scores_shape.GetDims();
+    ORT_RETURN_IF_NOT(boxes_dims[0] == scores_dims[0], "boxes and scores should have same num_batches.");
+    ORT_RETURN_IF_NOT(boxes_dims[1] == scores_dims[2], "boxes and scores should have same spatial_dimension.");
+    ORT_RETURN_IF_NOT(boxes_dims[2] == 4, "The most inner dimension in boxes must have 4 data.");
+
+    pc.num_batches_ = boxes_dims[0];
+    pc.num_classes_ = scores_dims[1];
+    pc.num_boxes_ = narrow<int>(boxes_dims[1]);
+
+    return Status::OK();
+  }
+
+  static Status GetThresholdsFromInputs(const PrepareContext& pc,
+                                        int64_t& max_output_boxes_per_class,
+                                        float& iou_threshold,
+                                        float& score_threshold) {
+    if (pc.max_output_boxes_per_class_ != nullptr) {
+      max_output_boxes_per_class = std::max<int64_t>(*pc.max_output_boxes_per_class_, 0);
+    }
+
+    if (pc.iou_threshold_ != nullptr) {
+      iou_threshold = *pc.iou_threshold_;
+      ORT_RETURN_IF_NOT((iou_threshold >= 0 && iou_threshold <= 1.f), "iou_threshold must be in range [0, 1].");
+    }
+
+    if (pc.score_threshold_ != nullptr) {
+      score_threshold = *pc.score_threshold_;
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  int64_t center_point_box_;
 };
 
 #ifdef __NVCC__

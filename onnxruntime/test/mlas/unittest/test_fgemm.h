@@ -52,7 +52,7 @@ class FgemmPackedContext<float, false> {
       data[i].alpha = alpha;
       data[i].beta = beta;
     }
-    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool, nullptr);
   }
 };
 
@@ -112,11 +112,11 @@ class FgemmPackedContext<float, true> {
       float* C,
       size_t ldc,
       MLAS_THREADPOOL* threadpool) {
-    size_t PackedBSize = MlasGemmPackBSize(TransA, TransB, N, K);
+    size_t PackedBSize = MlasGemmPackBSize(TransA, TransB, N, K, nullptr);
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize * BatchSize, true);
     std::vector<MLAS_SGEMM_DATA_PARAMS> data(BatchSize);
     for (size_t i = 0; i < BatchSize; i++) {
-      MlasGemmPackB(TransA, TransB, N, K, B + K * N * i, ldb, (uint8_t*)PackedB + PackedBSize * i);
+      MlasGemmPackB(TransA, TransB, N, K, B + K * N * i, ldb, (uint8_t*)PackedB + PackedBSize * i, nullptr);
       data[i].BIsPacked = true;
       data[i].A = A + M * K * i;
       data[i].lda = lda;
@@ -127,7 +127,7 @@ class FgemmPackedContext<float, true> {
       data[i].alpha = alpha;
       data[i].beta = beta;
     }
-    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool);
+    MlasGemmBatch(TransA, TransB, M, N, K, data.data(), BatchSize, threadpool, nullptr);
   }
 
  private:

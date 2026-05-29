@@ -55,7 +55,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.41.0.251128
+  default: 2.42.0.251225
 
 - name: CudaVersion
   displayName: CUDA version
@@ -88,6 +88,11 @@ variables:
     value: $(Agent.TempDirectory)\v12.8
   ${{ if eq(parameters.CudaVersion, '13.0') }}:
     value: $(Agent.TempDirectory)\v13.0
+- name: win_cudnn_home
+  ${{ if eq(parameters.CudaVersion, '12.8') }}:
+    value: ''
+  ${{ if eq(parameters.CudaVersion, '13.0') }}:
+    value: $(Agent.TempDirectory)\9.14.0.64_cuda13
 - name: CudaArchs
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
     value: '75-real;86-real;89-real;90-virtual'
@@ -171,6 +176,7 @@ extends:
         PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         CudaArchs: ${{ variables.CudaArchs }}
+        win_cudnn_home: ${{ variables.win_cudnn_home }}
 
     - template: stages/nodejs-win-packaging-stage.yml
       parameters:

@@ -49,7 +49,9 @@ RUN apt-get update && \
     libnvonnxparsers-dev=${TRT_VERSION} \
     libnvonnxparsers10=${TRT_VERSION} \
     tensorrt-dev=${TRT_VERSION} \
-    libnvinfer-bin=${TRT_VERSION} && \
+    libnvinfer-bin=${TRT_VERSION} \
+    libnvinfer-headers-python-plugin-dev=${TRT_VERSION} \
+    libnvinfer-win-builder-resource10=${TRT_VERSION} && \
     rm -rf /var/lib/apt/lists/*
 
 COPY scripts /tmp/scripts

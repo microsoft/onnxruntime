@@ -3,6 +3,7 @@
 
 #include "core/providers/webgpu/math/gemm.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm.h"
 
 #include <vector>
 
@@ -145,6 +146,10 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
                               {alpha_},
                               {beta_}});
     return context.RunProgram(program);
+  }
+
+  if (intel::CanApplyGemmIntel(context, M, N, K, transA_, transB_)) {
+    return intel::ApplyGemmIntel(A, B, C, transA_, transB_, alpha_, beta_, context);
   }
 
   return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);

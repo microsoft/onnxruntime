@@ -12,6 +12,16 @@ from helper import get_name
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, RunOptions
 
+available_providers = [
+    (
+        ep,
+        {"enable_cann_subgraph": True},
+    )
+    if ep == "CANNExecutionProvider"
+    else ep
+    for ep in onnxrt.get_available_providers()
+]
+
 
 class TestSparseToDenseMatmul(unittest.TestCase):
     def test_run_sparse_output_ort_value_vector(self):
@@ -407,10 +417,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
             np.float32,
         ).reshape(common_shape)
 
-        sess = onnxrt.InferenceSession(
-            get_name("sparse_to_dense_matmul.onnx"),
-            providers=onnxrt.get_available_providers(),
-        )
+        sess = onnxrt.InferenceSession(get_name("sparse_to_dense_matmul.onnx"), providers=available_providers)
         res = sess.run_with_ort_values(["dense_Y"], {"sparse_A": A_ort_value, "dense_B": B_ort_value})
         self.assertEqual(len(res), 1)
         ort_value = res[0]

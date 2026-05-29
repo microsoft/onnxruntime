@@ -252,10 +252,20 @@ export class WebGpuBackend {
     }
     requireFeatureIfAvailable('shader-f16');
     // Try subgroups
-    requireFeatureIfAvailable('subgroups' as GPUFeatureName);
+    requireFeatureIfAvailable('subgroups');
 
     this.device = await adapter.requestDevice(deviceDescriptor);
-    this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
+    const adapterWithRequestInfo = adapter as GPUAdapter & {
+      requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+    };
+    const adapterInfo =
+      adapter.info ??
+      (typeof adapterWithRequestInfo.requestAdapterInfo === 'function'
+        ? await adapterWithRequestInfo.requestAdapterInfo()
+        : undefined);
+    // adapterInfo is optional and may not be available in all browsers.
+    // AdapterInfoImpl will handle the case when adapterInfo is undefined.
+    this.adapterInfo = new AdapterInfoImpl(adapterInfo);
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
@@ -278,7 +288,7 @@ export class WebGpuBackend {
       value: this.device,
       writable: false,
       enumerable: true,
-      configurable: false,
+      configurable: true, // Allow deletion when device is destroyed
     });
     Object.defineProperty(this.env.webgpu, 'adapter', {
       value: adapter,
@@ -296,6 +306,14 @@ export class WebGpuBackend {
       this.querySet.destroy();
     }
     this.gpuDataManager.dispose();
+
+    // Clear the device reference when it's lost to allow new sessions to create a fresh device
+    // This handles the case where preserve_device=false (default) causes the C++ side to destroy the device
+    if (this.device && this.env?.webgpu) {
+      void this.device.lost.then(() => {
+        delete (this.env.webgpu as unknown as Record<string, unknown>).device;
+      });
+    }
   }
 
   getCommandEncoder(): GPUCommandEncoder {
@@ -818,7 +836,7 @@ export class WebGpuBackend {
   ): () => Promise<Tensor.DataType> {
     return async () => {
       const data = await downloadGpuData(this, gpuBuffer, size);
-      return createView(data.buffer, type);
+      return createView(data.buffer as ArrayBuffer, type);
     };
   }
   // #endregion

@@ -95,7 +95,7 @@ describe('UnitTests - InferenceSession.create()', () => {
       async () => {
         await InferenceSession.create(new Uint8Array(0));
       },
-      { name: 'Error', message: /No graph was found in the protobuf/ },
+      { name: 'Error', message: /Model data pointer is null./ },
     );
   });
   // #endregion

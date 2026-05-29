@@ -8,6 +8,7 @@
 #include "contrib_ops/webgpu/bert/rotary_embedding.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 
+#include "core/common/narrow.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/shader_helper.h"
 
@@ -32,6 +33,8 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
+                             WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
+                             WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
                              WGSL_TEMPLATE_VARIABLE(key, key),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
@@ -74,9 +77,10 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
   const auto work_per_head_vec = head_size_vec - half_rotary_embedding_dim_vec;
   auto dispatch_size = static_cast<uint32_t>(params.batch_size_ * params.sequence_length_ * params.num_heads_ * work_per_head_vec);
 
-  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_);
+  const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
+  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_, multi_rotary_cache_concat_offset);
   program
-      .CacheHint(params.rotary_interleaved_)
+      .CacheHint(params.rotary_interleaved_, multi_rotary_cache_concat_offset)
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
@@ -207,7 +211,9 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 seqlen_k,
                                                                 total_seqlen_tensor,
                                                                 scale_,
-                                                                softcap_));
+                                                                softcap_,
+                                                                0,
+                                                                onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup)));
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
@@ -234,7 +240,15 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
-  parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
+
+  // WebGPU flash attention requires present_key/present_value as working KV buffers.
+  if (present_key == nullptr || present_value == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "WebGPU GroupQueryAttention requires present_key and present_value outputs. "
+                           "Optional present outputs are supported on CPU and CUDA EPs only.");
+  }
+
+  parameters.past_present_share_buffer_ = past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
 
@@ -248,11 +262,11 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   // Use a sliding window if the total sequence exceeds the window's length.
   bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
   bool will_use_flash_attention = false;
-  if (head_sink == nullptr && !use_smooth_softmax_ && !use_sliding_window) {
+  if (!use_smooth_softmax_ && !use_sliding_window) {
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
-    will_use_flash_attention = CanApplyFlashAttention(nullptr, temp_params, context);
+    will_use_flash_attention = CanApplyFlashAttention(temp_params, context);
   }
 
   if (parameters.is_packed_qkv_ && do_rotary_) {
@@ -261,7 +275,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
-                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache);
+                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink);
     }
     // Fused: splitQKV + rotary QK
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
@@ -305,7 +319,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-                               present_value, parameters, context, seqlen_k);
+                               present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink);
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,

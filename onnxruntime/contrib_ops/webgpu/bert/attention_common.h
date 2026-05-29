@@ -103,7 +103,6 @@ struct WebgpuAttentionParameters {
   int num_splits_ = 0;  // number of splits for splitkv
   int rotary_dim_ = 0;  // rotary embedding dimension
   int local_window_size_ = 0;
-  bool kv_share_buffer_ = false;
   bool is_packed_qkv_ = false;
   bool is_subsequent_prompt_ = false;  // indicates whether we have past context and seqlen > 1
   bool is_first_prompt_ = false;       // indicates whether this is first decoding step

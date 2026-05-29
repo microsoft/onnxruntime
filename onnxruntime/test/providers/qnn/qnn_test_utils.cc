@@ -408,12 +408,28 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
   // Create QNN EP and call GetCapability().
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
-  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", "htp"}, {"offload_graph_io_quantization", "0"}});
-  GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
 
-  qnn_ep->SetLogger(&logger);
-  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep;
+  try {
+    qnn_ep = QnnExecutionProviderWithOptions(
+        {{"backend_type", "htp"}, {"offload_graph_io_quantization", "0"}, {"enable_htp_shared_memory_allocator", "1"}});
+    GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
+
+    qnn_ep->SetLogger(&logger);
+    result = qnn_ep->GetCapability(graph_viewer, kernel_lookup, graph_optimizer_registry, nullptr);
+  } catch (const std::exception& e) {
+    // handle exception that indicates that the libcdsprpc.so / dll can't be loaded
+    std::string_view error_message = e.what();
+    std::string_view expected_error_message = "Failed to initialize RPCMEM dynamic library handle";
+
+    if (error_message.find(expected_error_message) != std::string_view::npos) {
+      return BackendSupport::UNSUPPORTED;
+    }
+
+    // propagate other exceptions
+    throw;
+  }
 
   return result.empty() ? BackendSupport::UNSUPPORTED : BackendSupport::SUPPORTED;
 }

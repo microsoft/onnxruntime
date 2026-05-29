@@ -700,6 +700,10 @@ class BaseTester {
           const int64_t expected_values_count = T::CalcNumInt4Pairs(shape.Size());
           ORT_ENFORCE(expected_values_count == values_count, values_count,
                       " input values doesn't match tensor size of ", expected_values_count);
+        } else if constexpr (std::is_same_v<T, Int2x4> || std::is_same_v<T, UInt2x4>) {
+          const int64_t expected_values_count = T::CalcNumInt2Quads(shape.Size());
+          ORT_ENFORCE(expected_values_count == values_count, values_count,
+                      " input values doesn't match tensor size of ", expected_values_count);
         }
 #if !defined(DISABLE_FLOAT4_TYPES)
         else if constexpr (std::is_same_v<T, Float4E2M1x2>) {

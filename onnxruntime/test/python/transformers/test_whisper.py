@@ -471,8 +471,9 @@ class TestFusion(unittest.TestCase):
             input_names=input_names,
             output_names=output_names,
             dynamic_axes=dynamic_axes,
-            opset_version=17,
+            opset_version=18,
             do_constant_folding=True,
+            dynamo=False,
             verbose=False,
         )
 
@@ -530,9 +531,7 @@ class TestFusion(unittest.TestCase):
             use_gpu=True,
             only_onnxruntime=False,
         )
-        name = f"hf_{precision}_encoder_self_attention.onnx"
-        # optimized_model.save_model_to_file(name)  # Uncomment for debugging purposes
-        self.verify_fusion(optimized_model, name)
+        self.verify_fusion(optimized_model, f"hf_{precision}_encoder_self_attention.onnx")
 
     @parameterized.expand(
         [

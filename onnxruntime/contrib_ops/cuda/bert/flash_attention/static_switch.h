@@ -1,5 +1,6 @@
 // Inspired by https://github.com/NVIDIA/DALI/blob/main/include/dali/core/static_switch.h
 // and https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/Dispatch.h
+
 #pragma once
 
 /// @param COND       - a boolean expression to switch by
@@ -12,6 +13,7 @@
 ///     some_function<BoolConst>(...);
 /// });
 /// ```
+
 #define BOOL_SWITCH(COND, CONST_NAME, ...)      \
   [&] {                                         \
     if (COND) {                                 \
@@ -64,14 +66,6 @@
 #define LOCAL_SWITCH BOOL_SWITCH
 #endif
 
-#ifdef ORT_QUICK_BUILD
-// Quick build mode: only fp16 kernels are compiled
-#define FP16_SWITCH(COND, ...)         \
-  [&] {                                \
-    using elem_type = cutlass::half_t; \
-    return __VA_ARGS__();              \
-  }()
-#else
 #define FP16_SWITCH(COND, ...)               \
   [&] {                                      \
     if (COND) {                              \
@@ -82,7 +76,6 @@
       return __VA_ARGS__();                  \
     }                                        \
   }()
-#endif
 
 #ifdef ORT_QUICK_BUILD
 // Quick build mode: only hdim128 kernels are compiled

@@ -64,7 +64,7 @@ class FusionOptions:
         self.enable_gemm_fast_gelu = False
         self.group_norm_channels_last = True
 
-        if model_type == "clip":
+        if model_type in ["clip", "qwen3"]:
             self.enable_embed_layer_norm = False
 
         # Set default to sequence length for BERT model to use fused attention to speed up.
@@ -72,7 +72,7 @@ class FusionOptions:
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
         if model_type == "bert":
             self.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
-        elif model_type == "vit":
+        elif model_type in ["vit", "qwen3"]:
             self.attention_mask_format = AttentionMaskFormat.NoMask
 
         self.attention_op_type = None

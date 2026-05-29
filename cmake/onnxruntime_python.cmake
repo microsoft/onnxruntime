@@ -88,10 +88,16 @@ if(MSVC)
   target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
 
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/bigobj>")
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
+endif()
+# pybind11 3.0 headers trigger -Wmaybe-uninitialized in GCC's flow analysis
+# of property accessor lambdas. Suppress it for this target only.
+# See https://github.com/microsoft/onnxruntime/issues/25681
+if(HAS_MAYBE_UNINITIALIZED)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-maybe-uninitialized")
 endif()
 
 # We export symbols using linker and the compiler does not know anything about it
@@ -113,7 +119,10 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      target_include_directories(onnxruntime_pybind11_state PRIVATE ${CUDNN_INCLUDE_DIR})
+    endif()
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
@@ -190,7 +199,6 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
 )
@@ -198,7 +206,7 @@ set(onnxruntime_pybind11_state_static_providers
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)
@@ -222,6 +230,23 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${pybind11_lib}
     Python::NumPy
 )
+
+# Starting with Python 3.8 on Windows, PATH environment variable are no longer used to resolve DLL dependencies
+# for extension modules or libraries loaded via ctypes.
+# To avoid package import issues, we do not link pybind module against the CUDA runtime on Windows, instead of
+# os.add_dll_directory() to deal with CUDA paths.
+if (onnxruntime_USE_CUDA AND NOT WIN32)
+  target_sources(onnxruntime_pybind11_state PRIVATE
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
+  )
+  include(cutlass)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${cutlass_SOURCE_DIR}/include)
+endif()
+if (onnxruntime_USE_CUDA AND WIN32)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE ORT_NO_CUDA_IN_PYBIND)
+endif()
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
@@ -297,8 +322,22 @@ if (WIN32)
   if (onnxruntime_USE_CUDA)
     file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
     if(onnxruntime_CUDNN_HOME)
-      file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
-      if (NOT CUDNN_DLL_PATH)
+      # may have x64 in the path
+      # may have a path with CUDA toolkit version if multiple installed on the machine
+      set(CUDNN_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
+      )
+      set(CUDNN_DLL_PATH "")
+      foreach(search_path ${CUDNN_SEARCH_PATHS})
+        file(GLOB CUDNN_DLL_PATH "${search_path}")
+        if(CUDNN_DLL_PATH)
+          break()
+        endif()
+      endforeach()
+      if(NOT CUDNN_DLL_PATH)
         message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
       endif()
     else()
@@ -454,6 +493,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
   )
+  file(GLOB onnxruntime_python_transformers_test_onnx_attention_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_onnx_attention/*.py"
+  )
   file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
   )
@@ -607,6 +649,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/eager_test
@@ -807,6 +850,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_onnx_attention_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/

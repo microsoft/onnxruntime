@@ -112,7 +112,7 @@ MlasSBGemmKernel(const size_t CountM, const size_t CountN, const size_t CountK, 
 
 template <typename KernelType>
 MLAS_FORCEINLINE void
-MlasSBGemmPackedOperation(size_t M, size_t RangeStartN, size_t RangeCountN, size_t AlignedN, size_t K, const float* A, size_t lda, const void* PackedB, float* C, size_t ldc, const float* Bias, void* PostProcessor)
+MlasSBGemmPackedOperation(size_t M, size_t RangeStartN, size_t RangeCountN, size_t AlignedN, size_t K, const float* A, size_t lda, const void* PackedB, float* C, size_t ldc, const float* Bias, void* PostProcessor, bool InitialZeroMode)
 {
     constexpr MLAS_SBGEMM_STRIDES Strides = KernelType::Strides;
     size_t PackedStrideN = Strides.N;
@@ -131,7 +131,7 @@ MlasSBGemmPackedOperation(size_t M, size_t RangeStartN, size_t RangeCountN, size
         //
         size_t CountK;
         for (size_t k = 0; k < K; k += CountK) {
-            bool ZeroMode = (k == 0);
+            bool ZeroMode = (k == 0) && InitialZeroMode;
             CountK = std::min(K - k, PackedStrideK);
 
             const bfloat16_t* pb = (const bfloat16_t*)PackedB + AlignedN * k + CountK * SliceStartN;
@@ -148,7 +148,7 @@ MlasSBGemmPackedOperation(size_t M, size_t RangeStartN, size_t RangeCountN, size
 
 template <typename KernelType>
 void
-MlasSBGemmNonPackedOperation(size_t M, size_t N, size_t K, const float* A, size_t lda, const float* B, size_t ldb, float* C, size_t ldc, const float* Bias, void* PostProcessor)
+MlasSBGemmNonPackedOperation(size_t M, size_t N, size_t K, const float* A, size_t lda, const float* B, size_t ldb, float* C, size_t ldc, const float* Bias, void* PostProcessor, bool InitialZeroMode)
 {
     //
     // Compute the strides to step through slices of the input matrices.
@@ -201,7 +201,7 @@ MlasSBGemmNonPackedOperation(size_t M, size_t N, size_t K, const float* A, size_
             const float* pbias =
                 ((nullptr == Bias) ? nullptr : Bias + n);  // TODO: check the SliceNStart
 
-            bool ZeroMode = (k == 0);
+            bool ZeroMode = (k == 0) && InitialZeroMode;
             MlasSBGemmKernel<KernelType>(M, CountN, CountK, A + k, lda, PanelB, c, ldc, ZeroMode ? pbias : nullptr, ZeroMode);
         }
         if (PostProcessor != nullptr) {
@@ -249,16 +249,17 @@ MlasSBGemmOperation(const ptrdiff_t ThreadCountM, const ptrdiff_t ThreadCountN, 
     const float* A = (const float*)DataParams->A + RangeStartM * lda;
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
     const float* bias = DataParams->Bias;
+    const bool zeroMode = DataParams->ZeroMode;
 
     if (!DataParams->BIsfp32) {
         MlasSBGemmPackedOperation<KernelType>(
             RangeCountM, RangeStartN, RangeCountN, BlockedN * MLAS_SGEMM_STRIDEN_THREAD_ALIGN, K, A,
-            lda, DataParams->B, C, ldc, bias, (void*)DataParams->OutputProcessor
+            lda, DataParams->B, C, ldc, bias, (void*)DataParams->OutputProcessor, zeroMode
         );
     } else {
         const size_t ldb = DataParams->ldb;
         const float* B = (const float*)DataParams->B + RangeStartN;
-        MlasSBGemmNonPackedOperation<KernelType>(RangeCountM, RangeCountN, K, A, lda, B, ldb, C, ldc, bias, (void*)DataParams->OutputProcessor);
+        MlasSBGemmNonPackedOperation<KernelType>(RangeCountM, RangeCountN, K, A, lda, B, ldb, C, ldc, bias, (void*)DataParams->OutputProcessor, zeroMode);
     }
 }
 
@@ -298,11 +299,36 @@ MlasSBGemmGetDispatch()
 }
 
 size_t MLASCALL
-MlasSBGemmPackBSize(size_t N, size_t K)
+MlasSBGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N,
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
 {
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+#if defined(USE_KLEIDIAI)
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSBGemmPackBSizeOverride != nullptr &&
+        TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
+        TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
+        BIsfp32) {
+        size_t bytes_required;
+        bytes_required = GetMlasPlatform().MlasSBGemmPackBSizeOverride(TransA, TransB, N, K);
+        if (bytes_required != 0){ // If ArmKleidiAI::MlasSBGemmPackBSize ran to completion
+            return bytes_required;
+        }
+    }
+#endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BIsfp32);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return 0;
 
@@ -321,8 +347,33 @@ MlasSBGemmPackBSize(size_t N, size_t K)
 }
 
 void MLASCALL
-MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB)
+MlasSBGemmConvertPackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    bool BIsfp32,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
 {
+#if defined(USE_KLEIDIAI)
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSBGemmPackBOverride != nullptr &&
+        TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
+        TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
+        BIsfp32 &&
+        GetMlasPlatform().MlasSBGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+        return;
+    }
+#endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BIsfp32);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
     const auto* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 
@@ -330,8 +381,33 @@ MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* Pac
 }
 
 void MLASCALL
-MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t BatchN, const MLAS_SBGEMM_DATA_PARAMS* Data, MLAS_THREADPOOL* ThreadPool)
+MlasSBGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_SBGEMM_DATA_PARAMS* Data,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+)
 {
+#if defined(USE_KLEIDIAI)
+    if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
+        GetMlasPlatform().MlasSBGemmBatchOverride != nullptr &&
+        TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
+        TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
+        Data->AIsfp32 &&
+        (Data->BIsPacked || Data->BIsfp32) &&
+        GetMlasPlatform().MlasSBGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchN, ThreadPool)){
+        return;
+    }
+#endif
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+
     const MLAS_SBGEMM_DISPATCH* dispatch = MlasSBGemmGetDispatch();
     if (dispatch == nullptr) return;
 

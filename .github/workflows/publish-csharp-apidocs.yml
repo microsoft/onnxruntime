@@ -1,19 +1,24 @@
 name: Update C# API Docs
 
-# Run when the C# API changes or every month so that the artifact does not expire
+# Run when the C# API changes or every week so that the artifact does not expire.
+# Also runs on pull requests that touch relevant files so doc generation errors
+# are caught early. The artifact is only published on the main branch.
 on:
   push:
     branches:
       - main
     paths:
       - csharp/**
+  pull_request:
+    paths:
+      - csharp/**
   schedule:
-    - cron: '0 0 1,15 * *'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 concurrency:
-  group: "apidocs-csharp"
-  cancel-in-progress: false
+  group: "apidocs-csharp-${{ github.ref }}"
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
@@ -60,8 +65,9 @@ jobs:
         if (Test-Path $OutputDirectory) { Remove-Item -Recurse -Force $OutputDirectory }
         Move-Item -Path csharp\ApiDocs\csharp -Destination $OutputDirectory
     - name: Upload docs artifact
+      if: github.ref == 'refs/heads/main'
       uses: actions/upload-artifact@v6
       with:
         name: onnxruntime-csharp-apidocs
         path: _site
-        retention-days: 30
+        retention-days: 10

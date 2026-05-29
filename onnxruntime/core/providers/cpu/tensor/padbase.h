@@ -5,6 +5,11 @@
 
 #include "core/common/inlined_containers.h"
 
+#ifndef SHARED_PROVIDER
+#include "core/providers/common.h"
+#include "core/framework/tensor.h"
+#endif
+
 namespace onnxruntime {
 
 enum class Mode : int {
@@ -30,7 +35,42 @@ class PadBase {
   /// <param name="input_shape">actual input shape</param>
   /// <param name="output_shape">output_shape</param>
   /// <returns>Error if current mode padding can not be achieved with zero dim values</returns>
+#ifdef SHARED_PROVIDER
   static Status HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape);
+#else
+  static inline Status HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
+    switch (mode) {
+      case Mode::Constant: {
+        // default behavior is fine
+        break;
+      }
+      case Mode::Edge: {
+        for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+          if (input_shape[i] == 0 && output_shape[i] > 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Cannot use 'edge' mode to pad dimension with a value of 0. Input shape:",
+                                   input_shape);
+          }
+        }
+        break;
+      }
+      case Mode::Reflect: {
+        for (size_t i = 0, end = input_shape.NumDimensions(); i < end; ++i) {
+          if (input_shape[i] == 0 && output_shape[i] > 0) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Cannot use 'reflect' mode to pad dimension with a value of 0. Input shape:",
+                                   input_shape);
+          }
+        }
+        break;
+      }
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode of ", static_cast<int>(mode));
+    }
+
+    return Status::OK();
+  }
+#endif  // SHARED_PROVIDER
 
   /// <summary>
   /// Compute Pads by applying axes if specified otherwise copy the supplied pads.
@@ -43,8 +83,57 @@ class PadBase {
   /// <param name="data_rank">input rank</param>
   /// <param name="pads_data">pads data from pads input</param>
   /// <param name="pads">resulting pads</param>
+  template <typename KernelContextType>
+  static void ComputePadsImpl(KernelContextType& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                              PadsVector& pads) {
+    pads.reserve(2 * data_rank);
+    const Tensor* axes_tensor = ctx.template Input<Tensor>(3);
+    if (axes_tensor) {
+      const size_t num_axes_dims = axes_tensor->Shape().NumDimensions();
+      ORT_ENFORCE(num_axes_dims == 1, "Axes tensor should be a 1D tensor ");
+
+      const int64_t num_axes = axes_tensor->Shape().Size();
+      ORT_ENFORCE(pads_data.size() == narrow<size_t>(2 * num_axes),
+                  "Pads tensor size should be equal to twice the number of explicitly provided axes.");
+
+      pads.resize(2 * data_rank, 0);
+      if (axes_tensor->IsDataType<int32_t>()) {
+        auto axes_data = axes_tensor->DataAsSpan<int32_t>();
+        ComputePadWithAxes(
+            pads_data,
+            [axes_data](size_t idx) -> int64_t {
+              return axes_data[idx];
+            },
+            axes_data.size(),
+            data_rank,
+            pads);
+      } else if (axes_tensor->IsDataType<int64_t>()) {
+        auto axes_data = axes_tensor->DataAsSpan<int64_t>();
+        ComputePadWithAxes(
+            pads_data,
+            [axes_data](size_t idx) {
+              return axes_data[idx];
+            },
+            axes_data.size(),
+            data_rank,
+            pads);
+      }
+    } else {
+      ORT_ENFORCE(pads_data.size() == 2 * data_rank,
+                  "Pads tensor size should be equal to twice the input dimension count ");
+      pads.assign(pads_data.begin(), pads_data.end());
+    }
+  }
+
+#ifdef SHARED_PROVIDER
   static void ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
                           PadsVector& pads);
+#else
+  static inline void ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                                 PadsVector& pads) {
+    ComputePadsImpl(ctx, data_rank, pads_data, pads);
+  }
+#endif  // SHARED_PROVIDER
 
   /// <summary>
   /// Separates negative pad values to slices and zeros them out in original pads.
@@ -131,7 +220,8 @@ class PadBase {
                           size_t inner_no_pad_size, PadsVector& reshaped_pad);
 
  protected:
-  PadBase(const OpKernelInfo& info) : value_(info.GetAttrOrDefault("value", 0.f)) {
+  template <typename KernelInfoType>
+  PadBase(const KernelInfoType& info) : value_(info.GetAttrOrDefault("value", 0.f)) {
     std::string mode;
     if (info.GetAttr("mode", &mode).IsOK()) {
       if (mode == "constant")
@@ -148,19 +238,16 @@ class PadBase {
 
     const auto& kernel_def = info.GetKernelDef();
 
-    int start_ver, end_ver;
-    kernel_def.SinceVersion(&start_ver, &end_ver);
-
     // kMSDomain contrib kernel AND OnnxDomain start version >= 11 => DynamicPad
-    if (start_ver >= 11 || kernel_def.Domain() == kMSDomain) {
+    if (info.node().SinceVersion() >= 11 || kernel_def.Domain() == kMSDomain) {
       is_dynamic_ = true;
     }
 
     if (!is_dynamic_) {
-      gsl::span<const int64_t> pads_span;
-      if (!info.GetAttrsAsSpan("pads", pads_span).IsOK())
+      std::vector<int64_t> pads_attr;
+      if (!info.GetAttrs("pads", pads_attr).IsOK())
         ORT_THROW("Invalid 'pads' attribute value");
-      pads_.assign(pads_span.begin(), pads_span.end());
+      pads_.assign(pads_attr.begin(), pads_attr.end());
       // Separate out any negative pads_ into the slices_ array
       slices_.resize(pads_.size(), 0);
       for (size_t index = 0; index < pads_.size(); index++) {
@@ -173,6 +260,19 @@ class PadBase {
   }
 
   ~PadBase() = default;
+
+  static void ComputePadWithAxes(
+      gsl::span<const int64_t> pads_tensor_raw_data,
+      std::function<int64_t(size_t)> get_axis,
+      size_t axes_size,
+      size_t data_rank,
+      PadsVector& pads) {
+    for (size_t i = 0; i < axes_size; ++i) {
+      const size_t axis = onnxruntime::narrow<size_t>(HandleNegativeAxis(get_axis(i), data_rank));
+      pads[axis] = pads_tensor_raw_data[i];                          // xi_begin
+      pads[data_rank + axis] = pads_tensor_raw_data[axes_size + i];  // xi_end
+    }
+  }
 
   Mode mode_{Mode::Constant};
   PadsVector pads_;    // After construction, only >=0 values are in here

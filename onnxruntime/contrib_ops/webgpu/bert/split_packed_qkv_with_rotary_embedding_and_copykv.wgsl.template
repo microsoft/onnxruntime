@@ -1,5 +1,7 @@
 #param interleaved
+#param multi_rotary_cache_concat_offset
 #param prepare_indirect_dispatch
+#param use_multi_rotary_cache_concat
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
 #use .setByIndices .getByIndices .getByOffset
@@ -32,6 +34,11 @@ $MAIN {
   let past_seqlen = total_seqlen - uniforms.sequence_length;
   // `position_id` is used to get cos/sin cache and also as the time step index in present_key/present_value
   let position_id = past_seqlen + seq_idx;
+#if use_multi_rotary_cache_concat
+  let base_position = select(0u, multi_rotary_cache_concat_offset, total_seqlen > multi_rotary_cache_concat_offset);
+#else
+  let base_position = 0u;
+#endif
 
 #if prepare_indirect_dispatch
   // Prepare indirect dispatch buffer for thread 0
@@ -45,8 +52,8 @@ $MAIN {
 
   if (in_head_idx < uniforms.half_rotary_dim) {
     // Process a rotary pair (i, j)
-    let cos_v = cos_cache.getByIndices(vec2<u32>(position_id, in_head_idx));
-    let sin_v = sin_cache.getByIndices(vec2<u32>(position_id, in_head_idx));
+    let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+    let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
 
     // Calculate actual indices in the head for i and j
 #if interleaved

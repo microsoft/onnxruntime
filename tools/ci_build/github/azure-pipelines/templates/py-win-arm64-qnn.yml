@@ -7,11 +7,11 @@ parameters:
 - name: PYTHON_VERSION
   type: string
   default: '3.11'
-  
+
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.41.0.251128
+  default: 2.42.0.251225
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -32,6 +32,8 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
     os: windows
     hostArchitecture: Arm64
+    demands:
+      - Agent.Version -equals 4.264.2
   templateContext:
     sdl:
       codeSignValidation:

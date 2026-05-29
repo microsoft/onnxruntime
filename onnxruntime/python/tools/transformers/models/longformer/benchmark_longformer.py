@@ -11,7 +11,7 @@
 #   conda create -n gpu_env python=3.8
 #   conda activate gpu_env
 #   pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
-#   pip3 install onnx transformers onnxruntime-gpu numpy sympy coloredlogs psutil py3nvml
+#   pip3 install onnx transformers onnxruntime-gpu numpy sympy psutil py3nvml
 #   python benchmark_longformer.py
 #
 # When there is no parameter, pre-defined tests will run on the longformer-base-4096 model.

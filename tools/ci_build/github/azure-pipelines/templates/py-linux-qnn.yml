@@ -26,7 +26,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.41.0.251128
+  default: 2.42.0.251225
 
 - name: is1ES
   displayName: 'Whether the pipeline is running in 1ES'
@@ -79,3 +79,4 @@ jobs:
       arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
     env:
       ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)

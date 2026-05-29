@@ -47,6 +47,9 @@ parameters:
 
 - name: CudaArchs
   type: string
+- name: win_cudnn_home
+  type: string
+  default: ''
 
 stages:
 - template: nuget-linux-cuda-packaging-stage.yml
@@ -54,6 +57,7 @@ stages:
     CudaVersion: ${{ parameters.CudaVersion }}
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
 - ${{ if eq(parameters.buildNodejs, 'true') }}:
   - template: nodejs-linux-packaging-stage.yml
@@ -68,9 +72,11 @@ stages:
     win_trt_home: ${{ parameters.win_trt_home }}
     win_cuda_home: ${{ parameters.win_cuda_home }}
     buildJava: ${{ parameters.buildJava }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     CudaArchs: ${{ parameters.CudaArchs }}
+    win_cudnn_home: ${{ parameters.win_cudnn_home }}
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:

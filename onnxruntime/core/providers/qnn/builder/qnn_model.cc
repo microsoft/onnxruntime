@@ -161,6 +161,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   const bool build_json_graph = !json_qnn_graph_path.empty();
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(build_json_graph), "Failed to compose Qnn graph.");
 
+  LogTensorDetails(qnn_model_wrapper, graph_name, json_qnn_graph_path, logger);
+
   if (build_json_graph) {
     const nlohmann::json& json_graph = qnn_model_wrapper.GetQnnJSONGraph();
     std::ofstream ofs(json_qnn_graph_path);
@@ -179,6 +181,184 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   }
   LOGS(logger, VERBOSE) << "GetGraphInfoFromModel completed.";
   return Status::OK();
+}
+
+void QnnModel::LogTensorDetails(QnnModelWrapper& qnn_model_wrapper,
+                                const std::string& graph_name,
+                                const std::string& json_qnn_graph_path,
+                                const logging::Logger& logger) const {
+  // Only generate tensor details if we have a path to write to
+  if (json_qnn_graph_path.empty()) {
+    return;
+  }
+
+  // Helper lambda to convert Qnn_DataType_t to string
+#define QNN_DATATYPE_CASE(type) \
+  case type:                    \
+    return #type
+
+  auto QnnDataTypeToString = [](Qnn_DataType_t data_type) -> std::string_view {
+    switch (data_type) {
+      QNN_DATATYPE_CASE(QNN_DATATYPE_INT_8);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_INT_16);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_INT_32);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_INT_64);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UINT_8);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UINT_16);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UINT_32);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UINT_64);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_FLOAT_16);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_FLOAT_32);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_SFIXED_POINT_8);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_SFIXED_POINT_16);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_SFIXED_POINT_32);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UFIXED_POINT_8);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UFIXED_POINT_16);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UFIXED_POINT_32);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_BOOL_8);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_SFIXED_POINT_4);
+      QNN_DATATYPE_CASE(QNN_DATATYPE_UFIXED_POINT_4);
+      default:
+        return "QNN_DATATYPE_UNDEFINED";
+    }
+  };
+
+#undef QNN_DATATYPE_CASE
+
+  // Build JSON log structure
+  nlohmann::json tensor_log;
+  tensor_log["graph_name"] = graph_name;
+  tensor_log["inputs"] = nlohmann::json::array();
+  tensor_log["initializers"] = nlohmann::json::array();
+
+  size_t total_input_size = 0;
+  size_t num_inputs = 0;
+  size_t total_initializer_size = 0;
+  size_t num_initializers = 0;
+
+  // Collect input tensor information
+  const auto& model_graph_viewer = qnn_model_wrapper.GetGraphViewer();
+  for (const auto& input : model_graph_viewer.GetInputs()) {
+    const std::string& input_name = input->Name();
+
+    // Skip if it's an initializer
+    if (qnn_model_wrapper.IsConstantInput(input_name)) {
+      continue;
+    }
+
+    // Check if this tensor exists in the QNN model
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
+      const auto& tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_name);
+      const auto& qnn_tensor = tensor_wrapper.GetQnnTensor();
+
+      Qnn_DataType_t data_type = tensor_wrapper.GetTensorDataType();
+      const auto& dims = tensor_wrapper.GetTensorDims();
+      size_t size_bytes = utils::GetQnnTensorDataSizeInBytes(dims, data_type);
+      uint32_t num_elements = CalcQnnTensorNumElems(qnn_tensor);
+
+      nlohmann::json input_info;
+      input_info["name"] = input_name;
+      input_info["datatype"] = QnnDataTypeToString(data_type);
+      input_info["num_elements"] = num_elements;
+      input_info["size_bytes"] = size_bytes;
+
+      tensor_log["inputs"].push_back(input_info);
+      total_input_size += size_bytes;
+      num_inputs++;
+    }
+  }
+
+  // Build a map of initializer names to the operators that use them
+  std::unordered_map<std::string, std::vector<std::string>> initializer_to_ops;
+  const std::vector<NodeIndex>& sorted_node_indices = model_graph_viewer.GetNodesInTopologicalOrder();
+
+  for (NodeIndex node_index : sorted_node_indices) {
+    const Node* node = model_graph_viewer.GetNode(node_index);
+    if (node == nullptr) {
+      continue;
+    }
+
+    const std::string& op_type = node->OpType();
+    const std::string& node_name = node->Name();
+
+    // Check each input of the node
+    const auto& input_defs = node->InputDefs();
+    for (const auto* input_def : input_defs) {
+      if (input_def == nullptr) {
+        continue;
+      }
+
+      const std::string& input_name = input_def->Name();
+
+      // Check if this input is an initializer
+      if (qnn_model_wrapper.IsConstantInput(input_name)) {
+        // Add this operator to the list of operators using this initializer
+        std::string op_info = op_type + " (" + node_name + ")";
+        initializer_to_ops[input_name].push_back(op_info);
+      }
+    }
+  }
+
+  // Collect initializer tensor information with operator usage
+  const auto& initializers = qnn_model_wrapper.GetInitializerTensors();
+  for (const auto& initializer_pair : initializers) {
+    const std::string& initializer_name = initializer_pair.first;
+
+    // Check if this tensor exists in the QNN model
+    if (qnn_model_wrapper.IsQnnTensorWrapperExist(initializer_name)) {
+      const auto& tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(initializer_name);
+      const auto& qnn_tensor = tensor_wrapper.GetQnnTensor();
+
+      Qnn_DataType_t data_type = tensor_wrapper.GetTensorDataType();
+      const auto& dims = tensor_wrapper.GetTensorDims();
+      size_t size_bytes = utils::GetQnnTensorDataSizeInBytes(dims, data_type);
+      uint32_t num_elements = CalcQnnTensorNumElems(qnn_tensor);
+
+      nlohmann::json init_info;
+      init_info["name"] = initializer_name;
+      init_info["datatype"] = QnnDataTypeToString(data_type);
+      init_info["num_elements"] = num_elements;
+      init_info["size_bytes"] = size_bytes;
+
+      // Add operator information if available
+      auto it = initializer_to_ops.find(initializer_name);
+      if (it != initializer_to_ops.end() && !it->second.empty()) {
+        init_info["used_by_operators"] = it->second;
+      } else {
+        init_info["used_by_operators"] = nlohmann::json::array();
+      }
+
+      tensor_log["initializers"].push_back(init_info);
+      total_initializer_size += size_bytes;
+      num_initializers++;
+    }
+  }
+
+  // Add summary statistics
+  tensor_log["summary"]["num_inputs"] = num_inputs;
+  tensor_log["summary"]["total_input_size_bytes"] = total_input_size;
+  tensor_log["summary"]["num_initializers"] = num_initializers;
+  tensor_log["summary"]["total_initializer_size_bytes"] = total_initializer_size;
+  tensor_log["summary"]["total_graph_size_bytes"] = total_input_size + total_initializer_size;
+  tensor_log["summary"]["total_graph_size_mb"] = (total_input_size + total_initializer_size) / 1024.0 / 1024.0;
+
+  // Write JSON log to file
+  std::string tensor_log_path = json_qnn_graph_path;
+  size_t ext_pos = tensor_log_path.find_last_of('.');
+  if (ext_pos != std::string::npos) {
+    tensor_log_path = tensor_log_path.substr(0, ext_pos) + "_tensor_log.json";
+  } else {
+    tensor_log_path += "_tensor_log.json";
+  }
+
+  std::ofstream tensor_log_file(tensor_log_path);
+  if (tensor_log_file.is_open()) {
+    tensor_log_file << tensor_log.dump(2);  // Pretty print with 2-space indentation
+    tensor_log_file.close();
+    LOGS(logger, INFO) << "Tensor log saved to: " << tensor_log_path;
+  } else {
+    LOGS(logger, WARNING) << "Could not open tensor log file: " << tensor_log_path;
+  }
 }
 
 Status QnnModel::FinalizeGraphs(const logging::Logger& logger) {

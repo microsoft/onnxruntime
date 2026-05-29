@@ -10,6 +10,7 @@
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "core/util/qmath.h"
+#include "core/mlas/lib/mlasi.h"  // for MLAS_CPUIDINFO
 
 #include <chrono>
 #include <random>
@@ -263,6 +264,206 @@ TEST(DynamicQuantizeMatMul, UInt8_test_with_empty_input) {
   test.Run();
 }
 
+#if defined(USE_KLEIDIAI)
+
+static bool HasArmSME() {
+  return (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME() || MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2());
+}
+
+// Helper to build a tiny 2x3×4 case we reuse.
+struct KleidiDynMatMulData {
+  static constexpr int64_t M = 2;
+  static constexpr int64_t K = 4;
+  static constexpr int64_t N = 3;
+
+  std::vector<float> a = {
+      1.f, 2.f, 3.f, 4.f,
+      -1.f, -2.f, -3.f, -4.f};
+  std::vector<int8_t> b = {
+      1, 0, -1,
+      2, -1, 0,
+      0, 1, 2,
+      -2, 0, 1};
+  std::vector<float> b_scale = {0.5f, 0.25f, 0.125f};
+  std::vector<int8_t> b_zp = {0, 0, 0};
+
+  std::vector<float> Reference(float bias0, float bias1, float bias2) const {
+    std::vector<float> out(M * N, 0.f);
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
+        float sum = 0.f;
+        for (int64_t k = 0; k < K; ++k) {
+          const float b_val = (static_cast<int32_t>(b[k * N + n]) - b_zp[n]) * b_scale[n];
+          sum += a[m * K + k] * b_val;
+        }
+        const float bias = (n == 0 ? bias0 : n == 1 ? bias1
+                                                    : bias2);
+        out[m * N + n] = sum + bias;
+      }
+    }
+    return out;
+  }
+
+  std::vector<float> Reference3D(float bias0, float bias1, float bias2, int64_t leading = 1) const {
+    auto base = Reference(bias0, bias1, bias2);
+    std::vector<float> out;
+    out.reserve(leading * M * N);
+    for (int64_t i = 0; i < leading; ++i) {
+      out.insert(out.end(), base.begin(), base.end());
+    }
+    return out;
+  }
+};
+
+// 1. Bias provided as initializer -> Kleidi packs bias and skips runtime add.
+TEST(DynamicQuantizeMatMul, KleidiBiasInitializer) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  const std::vector<float> bias = {0.25f, -0.5f, 1.125f};
+  auto expected = data.Reference(bias[0], bias[1], bias[2]);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true /*initializer*/);
+  test.AddInput<float>("bias", {data.N}, bias, true /*initializer*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 2. Bias as runtime tensor -> exercise deferred bias add branch.
+TEST(DynamicQuantizeMatMul, KleidiBiasRuntime) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  const std::vector<float> bias = {1.0f, 0.0f, -0.75f};
+  auto expected = data.Reference(bias[0], bias[1], bias[2]);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {data.N}, bias, false /*runtime*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 3. Non-zero zero-points -> Kleidi pack rejected, falls back to generic path.
+TEST(DynamicQuantizeMatMul, KleidiRejectsNonZeroZeroPoint) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  data.b_zp = {1, 0, 0};                          // violates symmetry, Kleidi path disabled
+  auto expected = data.Reference(0.f, 0.f, 0.f);  // still compare to reference
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp);
+  test.AddOptionalInputEdge<float>();  // no bias
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();  // succeeds, but exercises the “fallback” branch
+}
+
+// 4. Invalid scales -> Kleidi pack rejected.
+TEST(DynamicQuantizeMatMul, KleidiRejectsInvalidScale) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  data.b_scale[1] = 0.f;  // invalid
+  auto expected = data.Reference(0.f, 0.f, 0.f);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 5. Unsupported B-shape (e.g., 3D) -> Kleidi pack rejected.
+TEST(DynamicQuantizeMatMul, KleidiRejectsUnsupportedBShape) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  std::vector<int8_t> b_3d;
+  b_3d.reserve(2 * data.b.size());
+  b_3d.insert(b_3d.end(), data.b.begin(), data.b.end());
+  b_3d.insert(b_3d.end(), data.b.begin(), data.b.end());
+  std::vector<int64_t> b_shape = {2, data.K, data.N};
+
+  std::vector<float> b_scale_3d;
+  b_scale_3d.reserve(2 * data.N);
+  b_scale_3d.insert(b_scale_3d.end(), data.b_scale.begin(), data.b_scale.end());
+  b_scale_3d.insert(b_scale_3d.end(), data.b_scale.begin(), data.b_scale.end());
+
+  std::vector<int8_t> b_zp_3d;
+  b_zp_3d.reserve(2 * data.N);
+  b_zp_3d.insert(b_zp_3d.end(), data.b_zp.begin(), data.b_zp.end());
+  b_zp_3d.insert(b_zp_3d.end(), data.b_zp.begin(), data.b_zp.end());
+
+  auto expected = data.Reference3D(0.f, 0.f, 0.f, /*leading=*/2);
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", b_shape, b_3d, true);
+  test.AddInput<float>("b_scale", {2, 1, data.N}, b_scale_3d, true);
+  test.AddInput<int8_t>("b_zero_point", {2, 1, data.N}, b_zp_3d, true);
+
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {2, data.M, data.N}, expected);
+  test.SetOutputAbsErr("Y", 0.03f);
+  test.Run();
+}
+
+// 6. Mismatched bias (runtime tensor) -> must be rejected at compute time.
+TEST(DynamicQuantizeMatMul, KleidiBiasRuntimeShapeMismatch) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  // Bias has only 1 element but N=3 — this must be rejected.
+  const std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {1}, bad_bias, false /*runtime*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
+// 7. Mismatched bias (constant initializer) -> KleidiAI pre-pack rejects -> falls back to ComputeCommon
+// -> rejected
+TEST(DynamicQuantizeMatMul, KleidiBiasInitializerShapeMismatch) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  // Bias has only 1 element but N=3 — this must be rejected.
+  const std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {1}, bad_bias, true /*initializer*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
+#endif  // USE_KLEIDIAI
+
 TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& weights_shape,
@@ -324,6 +525,36 @@ TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
 
   // ND B per-column
   test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
+}
+
+// Test that a bias tensor with length mismatched to B's last dimension is rejected.
+// This reproduces a heap OOB read when bias is shorter than N.
+TEST(DynamicQuantizeMatMul, BiasShapeMismatch) {
+  constexpr int64_t M = 2;
+  constexpr int64_t K = 4;
+  constexpr int64_t N = 8;
+
+  std::vector<float> A_data(M * K, 1.0f);
+  std::vector<uint8_t> B_data(K * N, 128);
+  std::vector<float> B_scale = {0.5f};
+  std::vector<uint8_t> B_zero_point = {128};
+
+  // Bias has only 1 element but N=8 — this must be rejected.
+  std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("A", {M, K}, A_data);
+  test.AddInput<uint8_t>("B", {K, N}, B_data);
+  test.AddInput<float>("b_scale", {1}, B_scale);
+  test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
+  test.AddInput<float>("bias", {1}, bad_bias);
+
+  test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
 }
 
 }  // namespace test

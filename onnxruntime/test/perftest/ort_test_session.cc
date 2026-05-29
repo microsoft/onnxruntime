@@ -11,6 +11,7 @@
 #include <list>
 #include <type_traits>
 #include <core/framework/allocator.h>
+#include <core/platform/threadpool_config.h>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
@@ -21,6 +22,7 @@
 #include "providers.h"
 #include "TestCase.h"
 #include "strings_helper.h"
+#include "utils.h"
 
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
@@ -53,7 +55,6 @@ RunTiming OnnxRuntimeTestSession::Run() {
 
   RunTiming timing;
   if (CUDA == device_memory_name_) {
-    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
     Ort::IoBinding io_binding(session_);
     auto mem_info = allocator_.GetInfo();
 
@@ -63,6 +64,10 @@ RunTiming OnnxRuntimeTestSession::Run() {
     for (auto& name : output_names_) {
       io_binding.BindOutput(name.c_str(), mem_info);
     }
+
+    // Use async execution and rely on IO binding's SynchronizeOutputs to synchronize.
+    run_options.AddConfigEntry(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "1");
+
     // do not time IO binding creation
     start = std::chrono::high_resolution_clock::now();
     session_.Run(run_options, io_binding);
@@ -70,6 +75,14 @@ RunTiming OnnxRuntimeTestSession::Run() {
     io_binding.SynchronizeOutputs();
     timing.total_timing = std::chrono::high_resolution_clock::now() - start;
   } else {
+    // For outputs with data-dependent shapes (e.g. NonZero), the shape changes
+    // between runs. ORT caches the allocated tensor and fails shape verification
+    // on the next run. Reset outputs so ORT always allocates fresh buffers.
+    // Only do this for models with dynamic output shapes to avoid the allocation
+    // overhead on fixed-shape models.
+    if (has_dynamic_output_shapes_) {
+      for (auto& output : outputs_) output = Ort::Value(nullptr);
+    }
     session_.Run(run_options, input_names_.data(), input.data(), input_names_.size(),
                  output_names_raw_ptr.data(), outputs_.data(), output_names_raw_ptr.size());
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
@@ -90,106 +103,18 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   // Add EP devices if any (created by plugin EP)
   if (!performance_test_config.registered_plugin_eps.empty()) {
-    std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
-    // EP -> associated EP devices (All OrtEpDevice instances must be from the same execution provider)
-    std::unordered_map<std::string, std::vector<Ort::ConstEpDevice>> added_ep_devices;
-    std::unordered_set<int> added_ep_device_index_set;
+    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config);
 
-    auto& ep_list = performance_test_config.machine_config.plugin_provider_type_list;
-    std::unordered_set<std::string> ep_set(ep_list.begin(), ep_list.end());
-
-    // Select EP devices by provided device index
-    if (!performance_test_config.selected_ep_device_indices.empty()) {
-      std::vector<int> device_list;
-      device_list.reserve(performance_test_config.selected_ep_device_indices.size());
-      ParseEpDeviceIndexList(performance_test_config.selected_ep_device_indices, device_list);
-      for (auto index : device_list) {
-        if (static_cast<size_t>(index) > (ep_devices.size() - 1)) {
-          fprintf(stderr, "%s", "The device index provided is not correct. Will skip this device id.");
-          continue;
-        }
-
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          if (added_ep_device_index_set.find(index) == added_ep_device_index_set.end()) {
-            added_ep_devices[device.EpName()].push_back(device);
-            added_ep_device_index_set.insert(index);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
-          }
-        } else {
-          std::string err_msg = "[Plugin EP] [WARNING] : The EP device index and its corresponding OrtEpDevice is not created from " +
-                                performance_test_config.machine_config.provider_type_name + ". Will skip adding this device.\n";
-          fprintf(stderr, "%s", err_msg.c_str());
-        }
-      }
-    } else if (!performance_test_config.filter_ep_device_kv_pairs.empty()) {
-      // Find and select the OrtEpDevice associated with the EP in "--filter_ep_devices".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        auto device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) == ep_set.end())
-          continue;
-
-        // Check both EP metadata and device metadata for a match
-        auto ep_metadata_kv_pairs = device.EpMetadata().GetKeyValuePairs();
-        auto device_metadata_kv_pairs = device.Device().Metadata().GetKeyValuePairs();
-        for (const auto& kv : performance_test_config.filter_ep_device_kv_pairs) {
-          auto ep_metadata_itr = ep_metadata_kv_pairs.find(kv.first);
-          auto device_metadata_itr = device_metadata_kv_pairs.find(kv.first);
-
-          if ((ep_metadata_itr != ep_metadata_kv_pairs.end() && kv.second == ep_metadata_itr->second) ||
-              (device_metadata_itr != device_metadata_kv_pairs.end() && kv.second == device_metadata_itr->second)) {
-            added_ep_devices[device.EpName()].push_back(device);
-            fprintf(stdout, "[Plugin EP] EP Device [Index: %d, Name: %s, Type: %d] has been added to session.\n", static_cast<int>(index), device.EpName(), device.Device().Type());
-            break;
-          }
-        }
-      }
-    } else {
-      // Find and select the OrtEpDevice associated with the EP in "--plugin_eps".
-      for (size_t index = 0; index < ep_devices.size(); ++index) {
-        Ort::ConstEpDevice& device = ep_devices[index];
-        if (ep_set.find(std::string(device.EpName())) != ep_set.end()) {
-          added_ep_devices[device.EpName()].push_back(device);
-          fprintf(stdout, "EP Device [Index: %d, Name: %s] has been added to session.\n", static_cast<int>(index), device.EpName());
-        }
-      }
-    }
-
-    if (added_ep_devices.empty()) {
-      ORT_THROW("[ERROR] [Plugin EP]: No matching EP devices found.");
-    }
-
-    std::string ep_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-
-    // EP's associated provider option lists
-    std::vector<std::unordered_map<std::string, std::string>> ep_options_list;
-    ParseEpOptions(ep_option_string, ep_options_list);
-
-    // If user only provide the EPs' provider option lists for the first several EPs,
-    // add empty provider option lists for the rest EPs.
-    if (ep_options_list.size() < ep_list.size()) {
-      for (size_t i = ep_options_list.size(); i < ep_list.size(); ++i) {
-        ep_options_list.emplace_back();  // Adds a new empty map
-      }
-    } else if (ep_options_list.size() > ep_list.size()) {
-      ORT_THROW("[ERROR] [Plugin EP]: Too many EP provider option lists provided.");
-    }
-
-    // EP -> associated provider options
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> ep_options_map;
-    for (size_t i = 0; i < ep_list.size(); ++i) {
-      ep_options_map.emplace(ep_list[i], ep_options_list[i]);
-    }
-
-    for (auto& ep_and_devices : added_ep_devices) {
-      auto& ep = ep_and_devices.first;
-      auto& devices = ep_and_devices.second;
-      session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
+    if (performance_test_config.run_config.enable_cuda_io_binding &&
+        perftest::utils::UsesNvidiaDevice(env, performance_test_config) &&
+        device_memory_name_.empty()) {
+      device_memory_name_ = CUDA;
     }
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   std::unordered_map<std::string, std::string> provider_options;
+
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
@@ -352,7 +277,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                          "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
                          "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
                          "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
-                         "json_qnn_graph_dir"});
+                         "json_qnn_graph_dir", "disable_file_mapped_weights", "htp_bf16_enable", "enable_vtcm_backup_buffer_sharing", "extended_udma"});
+
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -404,7 +330,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
       } else if (key == "htp_arch") {
-        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "81"};
         if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
           std::ostringstream str_stream;
           std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
@@ -416,7 +342,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                  key == "offload_graph_io_quantization" ||
                  key == "enable_htp_spill_fill_buffer" ||
                  key == "enable_htp_shared_memory_allocator" ||
-                 key == "dump_json_qnn_graph") {
+                 key == "dump_json_qnn_graph" ||
+                 key == "extended_udma" ||
+                 key == "disable_file_mapped_weights" ||
+                 key == "enable_vtcm_backup_buffer_sharing") {
         std::set<std::string> supported_options = {"0", "1"};
         if (supported_options.find(value) == supported_options.end()) {
           std::ostringstream str_stream;
@@ -655,13 +584,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Acl is not supported in this build\n");
 #endif
-  } else if (provider_name_ == onnxruntime::kArmNNExecutionProvider) {
-#ifdef USE_ARMNN
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(session_options,
-                                                                     performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
-#else
-    ORT_THROW("ArmNN is not supported in this build\n");
-#endif
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
@@ -743,6 +665,43 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     warn_dup_config_entry(kOrtSessionOptionsConfigAllowIntraOpSpinning);
     fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
     session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
+  }
+
+  if (performance_test_config.run_config.spin_duration_us >= 0) {
+    if (performance_test_config.run_config.disable_spinning) {
+      fprintf(stdout, "Ignoring intra-op spin duration because spinning is disabled\n");
+    } else {
+      warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinDurationUs);
+      auto val = std::to_string(performance_test_config.run_config.spin_duration_us);
+      fprintf(stdout, "Setting intra-op spin duration to %s us\n", val.c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinDurationUs, val.c_str());
+    }
+  }
+
+  if (performance_test_config.run_config.spin_backoff_max_set &&
+      performance_test_config.run_config.spin_backoff_max >= 1) {
+    if (performance_test_config.run_config.disable_spinning) {
+      fprintf(stdout, "Ignoring intra-op spin backoff max because spinning is disabled\n");
+    } else {
+      warn_dup_config_entry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax);
+      const auto requested_spin_backoff_max = performance_test_config.run_config.spin_backoff_max;
+      const auto effective_spin_backoff_max =
+          std::min(static_cast<unsigned int>(requested_spin_backoff_max), concurrency::kSpinBackoffMaxLimit);
+      if (effective_spin_backoff_max != static_cast<unsigned int>(requested_spin_backoff_max)) {
+        fprintf(stdout,
+                "Requested intra-op spin backoff max %d exceeds the runtime limit %u; clamping to %u\n",
+                requested_spin_backoff_max,
+                concurrency::kSpinBackoffMaxLimit,
+                effective_spin_backoff_max);
+      }
+      auto val = std::to_string(effective_spin_backoff_max);
+      fprintf(stdout, "Setting intra-op spin backoff max to %s\n", val.c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpSpinBackoffMax, val.c_str());
+    }
+  } else if (performance_test_config.run_config.spin_backoff_max_set) {
+    fprintf(stderr,
+            "Warning: --spin_backoff_max must be >= 1; got %d. Ignoring (using default).\n",
+            performance_test_config.run_config.spin_backoff_max);
   }
 
   if (performance_test_config.run_config.disable_spinning_between_run) {
@@ -1016,14 +975,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     input_names_[i] = input_names_str_[i].c_str();
   }
 
-  auto transform_fcn = std::function<int64_t(int64_t)>();
-  auto new_value = std::function<Ort::Value(OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&)>();
-  if (device_memory_name_.empty()) {
-    transform_fcn = [](int64_t input) { return input; };
-    new_value = [](OrtAllocator*, const std::vector<int64_t>&, Ort::ConstTensorTypeAndShapeInfo&) {
-      return Ort::Value(nullptr);
-    };
-  } else {
+  if (!device_memory_name_.empty()) {
     Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
     if (device_memory_name_ == CUDA) {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
@@ -1031,22 +983,23 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
-    // Switch to custom
+    // Switch to custom allocator
     allocator_ = Ort::UnownedAllocator(custom_allocator_);
-
-    // free dimensions are treated as 1 if not overridden
-    transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
-    new_value = [](OrtAllocator* allocator, const std::vector<int64_t>& output_shape, Ort::ConstTensorTypeAndShapeInfo& tensor_info) {
-      return Ort::Value::CreateTensor(allocator, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
-    };
   }
-
   for (size_t i = 0; i < output_names_raw_ptr.size(); i++) {
     Ort::TypeInfo type_info = session_.GetOutputTypeInfo(i);
     auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
     std::vector<int64_t> output_shape = tensor_info.GetShape();
-    std::transform(output_shape.begin(), output_shape.end(), output_shape.begin(), transform_fcn);
-    outputs_.emplace_back(new_value(allocator_, output_shape, tensor_info));
+    auto is_dynamic = std::find(output_shape.begin(), output_shape.end(), -1) != output_shape.end();
+    if (is_dynamic) {
+      has_dynamic_output_shapes_ = true;
+    }
+    if (is_dynamic || device_memory_name_.empty()) {
+      outputs_.emplace_back(Ort::Value(nullptr));
+    } else {
+      auto new_value = Ort::Value::CreateTensor(allocator_, output_shape.data(), output_shape.size(), tensor_info.GetElementType());
+      outputs_.emplace_back(std::move(new_value));
+    }
   }
 }
 

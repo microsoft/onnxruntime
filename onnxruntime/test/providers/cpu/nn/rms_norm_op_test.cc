@@ -346,13 +346,13 @@ TEST(RMSNormalizationOpTest, RMSNorm_Scale_1xCx1x1_Axis1) {
                        {1.1f, 1.2f, 1.3f, 1.4f},
                        true);
 
-  test.AddOutput<float>("Y", {1, 4, 2, 2}, {0.0000000, 0.1249516, 0.2499032, 0.3748548,
+  test.AddOutput<float>("Y", {1, 4, 2, 2}, {0.0000000f, 0.1249516f, 0.2499032f, 0.3748548f,
 
-                                            0.5452434, 0.6815542, 0.8178651, 0.9541759,
+                                            0.5452434f, 0.6815542f, 0.8178651f, 0.9541759f,
 
-                                            1.1813605, 1.3290305, 1.4767007, 1.6243708,
+                                            1.1813605f, 1.3290305f, 1.4767007f, 1.6243708f,
 
-                                            1.9083518, 2.0673811, 2.2264102, 2.3854396});
+                                            1.9083518f, 2.0673811f, 2.2264102f, 2.3854396f});
   test.SetOutputAbsErr("Y", 1e-4f);
   auto cpu = DefaultCpuExecutionProvider();
   if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";

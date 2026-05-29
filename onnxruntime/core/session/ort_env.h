@@ -14,6 +14,9 @@ namespace onnxruntime {
 class Environment;
 }
 
+// Managed pointer type for OrtEnv that calls OrtEnv::Release as its deleter.
+using OrtEnvPtr = std::unique_ptr<OrtEnv, void (*)(OrtEnv*)>;
+
 struct OrtEnv {
  public:
   struct LoggingManagerConstructionInfo {
@@ -31,9 +34,24 @@ struct OrtEnv {
     const char* logid{};
   };
 
-  static OrtEnv* GetInstance(const LoggingManagerConstructionInfo& lm_info,
-                             onnxruntime::common::Status& status,
-                             const OrtThreadingOptions* tp_options = nullptr);
+  /// <summary>
+  /// Gets or creates the global OrtEnv instance. Arguments are ignored if the instance has already been created.
+  /// </summary>
+  /// <param name="lm_info">Configuration for the logging manager.</param>
+  /// <param name="status">Output parameter that indicates if an error occurred during environment creation.</param>
+  /// <param name="tp_options">Optional threading options.</param>
+  /// <param name="config_entries">Optional configuration entries.</param>
+  /// <returns>The OrtEnv instance.</returns>
+  static OrtEnvPtr GetOrCreateInstance(const LoggingManagerConstructionInfo& lm_info,
+                                       onnxruntime::common::Status& status,
+                                       const OrtThreadingOptions* tp_options = nullptr,
+                                       const OrtKeyValuePairs* config_entries = nullptr);
+
+  /// <summary>
+  /// Gets the global OrtEnv instance. Returns nullptr if the instance has not yet been created.
+  /// </summary>
+  /// <returns>The OrtEnv instance or nullptr.</returns>
+  static OrtEnvPtr TryGetInstance();
 
   static void Release(OrtEnv* env_ptr);
 
@@ -58,7 +76,7 @@ struct OrtEnv {
   // Using a smart pointer like std::unique_ptr would complicate this specific
   // shutdown scenario, as it would attempt to deallocate the memory even if
   // Release() hasn't been called or if a leak is desired.
-  // Management is handled by GetInstance() and Release(), with ref_count_
+  // Management is handled by GetOrCreateInstance(), TryGetInstance(), and Release(), with ref_count_
   // tracking active users. It is set to nullptr when the last reference is released
   // (and not shutting down).
   static OrtEnv* p_instance_;

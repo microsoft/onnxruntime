@@ -29,7 +29,7 @@ class BinaryOp : public OrtKernelImpl {
   };
 
  public:
-  static OrtStatus* Create(const OrtKernelInfo* info, void* state, /*out*/ std::unique_ptr<BinaryOp>& kernel) noexcept;
+  static OrtStatus* CreateKernelImpl(const OrtKernelInfo* info, void* state, /*out*/ OrtKernelImpl*& kernel) noexcept;
   BinaryOp(Ort::ConstKernelInfo info, void* state, PrivateTag);
 
   // Static functions assigned to the OrtKernelImpl fields:

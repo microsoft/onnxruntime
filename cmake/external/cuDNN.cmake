@@ -3,7 +3,7 @@ add_library(CUDNN::cudnn_all INTERFACE IMPORTED)
 find_path(
     CUDNN_INCLUDE_DIR cudnn.h
     HINTS $ENV{CUDNN_PATH} ${CUDNN_PATH} ${Python_SITEARCH}/nvidia/cudnn ${CUDAToolkit_INCLUDE_DIRS}
-    PATH_SUFFIXES include
+    PATH_SUFFIXES include include/${onnxruntime_CUDA_VERSION}
     REQUIRED
 )
 
@@ -15,7 +15,7 @@ function(find_cudnn_library NAME)
     find_library(
         ${NAME}_LIBRARY ${NAME} "lib${NAME}.so.${CUDNN_MAJOR_VERSION}"
         HINTS $ENV{CUDNN_PATH} ${CUDNN_PATH} ${Python_SITEARCH}/nvidia/cudnn ${CUDAToolkit_LIBRARY_DIR}
-        PATH_SUFFIXES lib64 lib/x64 lib
+        PATH_SUFFIXES lib64 lib/x64 lib lib/${onnxruntime_CUDA_VERSION}/x64
         REQUIRED
     )
 

@@ -20,9 +20,9 @@ import logging
 import os
 import shutil
 import tempfile
+import warnings
 from pathlib import Path
 
-import coloredlogs
 import onnx
 from fusion_options import FusionOptions
 from onnx_model_clip import ClipOnnxModel
@@ -569,6 +569,12 @@ def parse_arguments(argv: list[str] | None = None):
 
 
 def main(argv: list[str] | None = None):
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     args = parse_arguments(argv)
 
     logger.info("Arguments: %s", str(args))
@@ -580,5 +586,5 @@ def main(argv: list[str] | None = None):
 
 
 if __name__ == "__main__":
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+    logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO)
     main()

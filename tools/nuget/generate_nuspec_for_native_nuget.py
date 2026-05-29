@@ -238,6 +238,9 @@ def add_common_dependencies(xml_text, package_name, version):
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Windows"' + ' version="' + version + '"/>')
         xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Linux"' + ' version="' + version + '"/>')
 
+    if package_name == "Microsoft.ML.OnnxRuntime.Foundry":
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Gpu.Linux"' + ' version="' + version + '"/>')
+
 
 def generate_dependencies(xml_text, package_name, version):
     dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.15.4"/>'

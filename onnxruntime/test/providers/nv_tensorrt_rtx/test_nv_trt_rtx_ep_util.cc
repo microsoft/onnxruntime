@@ -14,6 +14,7 @@
 #include "test/util/include/api_asserts.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/model.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/model_saving_options.h"
 #include "core/graph/schema_registry.h"
@@ -24,7 +25,6 @@
 
 namespace onnxruntime {
 namespace test {
-#ifdef _WIN32
 
 Utils::NvTensorRtRtxEpInfo Utils::nv_tensorrt_rtx_ep_info;
 
@@ -61,7 +61,6 @@ void Utils::RegisterAndGetNvTensorRtRtxEp(Ort::Env& env, RegisteredEpDeviceUniqu
     c_api.UnregisterExecutionProviderLibrary(env, nv_tensorrt_rtx_ep_info.registration_name.c_str());
   });
 }
-#endif  // _WIN32
 
 void CreateBaseModel(const PathString& model_name,
                      std::string graph_name,

@@ -6,9 +6,11 @@
 #param single_scale_weights
 #param sub_tile_count
 #param n_bits
+#param broadcast_a_row
 #param has_zero_points
 #param has_bias
 #param has_weight_idx
+#param has_weight_idx_indirect
 
 #use .getByOffset .setByOffset
 
@@ -61,11 +63,18 @@ fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
 }
 
 $MAIN {
-    let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
+    let batch = workgroup_idx / (uniforms.dispatch_M * uniforms.num_N_tile);
     if (batch >= uniforms.batch_count) {
         return;
     }
-    let a_global = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.M);
+    let a_global = u32((workgroup_idx / uniforms.num_N_tile) % uniforms.dispatch_M);
+    // When broadcast_a_row is true, A has only 1 row but M=k for dispatch.
+    // Always read from A row 0; a_global is used for output row and weight selection.
+#if broadcast_a_row
+    let a_row = 0u;
+#else
+    let a_row = a_global;
+#endif
     let b_global_base = (workgroup_idx % uniforms.num_N_tile) * tile_size;
     // Handle each workgroup threads as a block of [sub_tile_count][tile_size_k_vec]
     let local_col = local_idx % tile_size_k_vec;
@@ -73,22 +82,43 @@ $MAIN {
 
 #if has_bias
 #if has_weight_idx
-    let b_bias_offset = uniforms.weight_idx * uniforms.N;
+#if has_weight_idx_indirect
+    let actual_weight_idx_bias = weight_index_indirect[a_global];
+#else
+    let actual_weight_idx_bias = uniforms.weight_idx;
+#endif
+    let b_bias_offset = actual_weight_idx_bias * uniforms.N;
 #else
     const b_bias_offset : u32 = 0;
 #endif
 #endif
 
 #if n_bits == 2
+#if has_zero_points
+    // The workgroup size is 128, LoadDequantizationTable needs to load 1024 entries.
+    LoadDequantizationTable(local_idx);
+    LoadDequantizationTable(local_idx + 128);
+    LoadDequantizationTable(local_idx + 256);
+    LoadDequantizationTable(local_idx + 384);
+    LoadDequantizationTable(local_idx + 512);
+    LoadDequantizationTable(local_idx + 640);
+    LoadDequantizationTable(local_idx + 768);
+    LoadDequantizationTable(local_idx + 896);
+#else
     // The workgroup size is 128, LoadDequantizationTable needs to be called twice.
     LoadDequantizationTable(local_idx);
-    LoadDequantizationTable(local_idx+127);
+    LoadDequantizationTable(local_idx+128);
+#endif
     workgroupBarrier();
 #endif
 #if single_scale_weights
     let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #if has_weight_idx
+#if has_weight_idx_indirect
+    let own_scale_b = scales_b.getByOffset(weight_index_indirect[a_global]);
+#else
     let own_scale_b = scales_b.getByOffset(uniforms.weight_idx);
+#endif
 #else
     let own_scale_b = scales_b.getByOffset(0);
 #endif
@@ -99,7 +129,7 @@ $MAIN {
         // Load Phase: Populate shared memory for the workgroup.
         if (local_idx < double_tile_size_k_vec)
         {
-        loadSHMA(batch, a_global, kidx_v * 2, local_idx);
+        loadSHMA(batch, a_row, kidx_v * 2, local_idx);
         }
         workgroupBarrier();
         var own_a: vec4<u32> = tile_A[local_col * 2];
@@ -114,9 +144,14 @@ $MAIN {
             if (b_global < uniforms.N && k_offset < uniforms.K32)
             {
 #if has_weight_idx
-                let b_weight_offset = uniforms.weight_idx * uniforms.N * uniforms.K32;
+#if has_weight_idx_indirect
+                let actual_weight_idx = weight_index_indirect[a_global];
+#else
+                let actual_weight_idx = uniforms.weight_idx;
+#endif
+                let b_weight_offset = actual_weight_idx * uniforms.N * uniforms.K32;
                 let b_offset = b_weight_offset + b_global * uniforms.K32 + k_offset;
-                let b_scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
+                let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / uniforms.block_size);
                 let own_scale_b = scales_b.getByOffset(b_scale_offset + b_global * uniforms.K / uniforms.block_size + block_idx);
 #else
                 let b_offset = b_global * uniforms.K32 + k_offset;
@@ -141,8 +176,13 @@ $MAIN {
 
 #elif n_bits == 2
                 let b_value = b.getByOffset(b_offset);
+#if has_zero_points
+                let own_b = DequantizedFrom2BitsTo8Bits(b_value.x, zero);
+                let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y, zero);
+#else
                 let own_b = DequantizedFrom2BitsTo8Bits(b_value.x);
                 let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y);
+#endif
                 inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
             }
@@ -157,7 +197,7 @@ $MAIN {
         output_value += inter_results[local_idx][b];
       }
       let b_global =  b_global_base + local_idx;
-      let output_idx = batch * uniforms.M * uniforms.N + a_global * uniforms.N + b_global;
+      let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
       if (b_global < uniforms.N) {
 #if has_bias
         let bias_value = bias[b_global + b_bias_offset];

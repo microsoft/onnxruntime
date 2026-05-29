@@ -1407,5 +1407,174 @@ TEST(TensorrtExecutionProviderTest, TestSessionOutputs) {
     ASSERT_TRUE(output_count == 1);
   }
 }
+
+/*
+ * Helper to create a synthetic EPContext ONNX model with a specific "source" attribute.
+ * Uses raw ONNX protobuf to bypass schema validation (EPContext is a contrib op).
+ */
+void CreateSyntheticEPContextModel(const std::string& model_path_str,
+                                   const std::string& source_attr,
+                                   bool include_source_attr = true) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(11);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain("com.microsoft");
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("EPContextSourceTest");
+
+  // Input
+  auto* input = graph->add_input();
+  input->set_name("input");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(1);
+  input_type->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // Output
+  auto* output = graph->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+  output_type->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // EPContext node
+  auto* node = graph->add_node();
+  node->set_op_type("EPContext");
+  node->set_domain("com.microsoft");
+  node->set_name("ep_context_node");
+  node->add_input("input");
+  node->add_output("output");
+
+  // embed_mode attribute
+  auto* attr_embed = node->add_attribute();
+  attr_embed->set_name("embed_mode");
+  attr_embed->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  attr_embed->set_i(1);
+
+  // ep_cache_context attribute (dummy data)
+  auto* attr_cache = node->add_attribute();
+  attr_cache->set_name("ep_cache_context");
+  attr_cache->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+  attr_cache->set_s("dummy_context_data");
+
+  // source attribute (conditionally added)
+  if (include_source_attr) {
+    auto* attr_source = node->add_attribute();
+    attr_source->set_name("source");
+    attr_source->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+    attr_source->set_s(source_attr);
+  }
+
+  // Save to file
+  PathString model_path = ToPathString(model_path_str);
+  std::ofstream ofs(model_path, std::ios::binary);
+  ASSERT_TRUE(ofs.is_open());
+  ASSERT_TRUE(model.SerializeToOstream(&ofs));
+}
+
+/*
+ * Test: Classic TensorRT EP should NOT claim an EPContext node whose "source"
+ * attribute belongs to a different EP (e.g., OpenVINO).
+ *
+ * Expected: Session initialization fails because no EP claims the node.
+ */
+TEST(TensorrtExecutionProviderTest, EPContextNode_ForeignSourceSkipped) {
+  std::string model_path_str = "ep_context_foreign_source_trt.onnx";
+  PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, "OpenVINOExecutionProvider");
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_ForeignSourceSkipped";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session.Load(model_path);
+  ASSERT_TRUE(status.IsOK());
+
+  // Initialization should fail because TRT EP correctly skips the foreign EPContext node
+  // and no other EP can handle it.
+  status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_TRUE(status.ErrorMessage().find("EPContext") != std::string::npos)
+      << "Error should mention EPContext. Actual: " << status.ErrorMessage();
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
+/*
+ * Test: Classic TensorRT EP should NOT claim an EPContext node whose "source"
+ * attribute is set to the NvTensorRTRTX EP name.
+ */
+TEST(TensorrtExecutionProviderTest, EPContextNode_NvRtxSourceSkipped) {
+  std::string model_path_str = "ep_context_nv_rtx_source_trt.onnx";
+  PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, "NvTensorRTRTXExecutionProvider");
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_NvRtxSourceSkipped";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session.Load(model_path);
+  ASSERT_TRUE(status.IsOK());
+
+  // Initialization should fail because TRT EP correctly skips the foreign EPContext node.
+  status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_TRUE(status.ErrorMessage().find("EPContext") != std::string::npos)
+      << "Error should mention EPContext. Actual: " << status.ErrorMessage();
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
+/*
+ * Test: Classic TensorRT EP should still claim an EPContext node that has NO
+ * "source" attribute (backward compatibility with legacy context models).
+ *
+ * Expected: The EP claims the node. It may fail later during engine
+ * deserialization (since context data is synthetic), but the error must NOT
+ * be "is not compatible with any execution provider", which would indicate
+ * the node was not claimed at all.
+ */
+TEST(TensorrtExecutionProviderTest, EPContextNode_NoSourceAttribute_BackwardCompat) {
+  std::string model_path_str = "ep_context_no_source_trt.onnx";
+  PathString model_path = ToPathString(model_path_str);
+  CreateSyntheticEPContextModel(model_path_str, "", /*include_source_attr=*/false);
+
+  SessionOptions so;
+  so.session_logid = "EPContextNode_NoSourceAttribute_BackwardCompat";
+  InferenceSession session{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params;
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+
+  auto status = session.Load(model_path);
+  ASSERT_TRUE(status.IsOK());
+
+  // The EP should claim the node. It may fail during engine deserialization
+  // (since context data is synthetic), but the error must NOT be the
+  // "not compatible" error that indicates no EP claimed the node.
+  status = session.Initialize();
+  if (!status.IsOK()) {
+    EXPECT_TRUE(status.ErrorMessage().find("is not compatible with any execution provider") == std::string::npos)
+        << "Legacy EPContext node without source should still be claimed by EP. Error: " << status.ErrorMessage();
+  }
+
+  // Clean up
+  std::filesystem::remove(model_path);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

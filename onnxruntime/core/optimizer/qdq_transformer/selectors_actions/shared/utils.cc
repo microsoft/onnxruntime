@@ -18,6 +18,20 @@
 namespace onnxruntime {
 namespace QDQ {
 
+// Out-of-line constructor/destructor definitions so NodeGroupSelector is
+// complete when unique_ptr<NodeGroupSelector> is destroyed (required by libc++).
+OpVersionsAndSelector::OpVersionsAndSelector(const OpVersionsMap& ops_and_versions_in,
+                                             std::unique_ptr<NodeGroupSelector> selector_in)
+    : op_versions_map{ops_and_versions_in},
+      selector{std::move(selector_in)} {}
+
+OpVersionsAndSelector::~OpVersionsAndSelector() = default;
+
+Selectors::Selectors() = default;
+Selectors::~Selectors() = default;
+
+SelectorManager::~SelectorManager() = default;
+
 void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops_and_versions_in,
                                  std::unique_ptr<NodeGroupSelector> selector_in) {
   auto entry = std::make_unique<OpVersionsAndSelector>(
@@ -159,6 +173,10 @@ static const OpVersionsAndSelector::OpVersionsMap GetCumSumOpVersionsMap() {
 
 static const OpVersionsAndSelector::OpVersionsMap GetScatterElementsOpVersionsMap() {
   return {{"ScatterElements", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetRMSNormalizationOpVersionsMap() {
+  return {{"RMSNormalization", {}}};
 }
 
 /* Selector rules registration related */
@@ -310,6 +328,13 @@ void RegisterScatterElementsSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterRMSNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for RMSNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<RMSNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetRMSNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -332,6 +357,7 @@ void SelectorManager::CreateSelectors() {
   RegisterTopKSelector(qdq_selectors_);
   RegisterCumSumSelector(qdq_selectors_);
   RegisterScatterElementsSelector(qdq_selectors_);
+  RegisterRMSNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

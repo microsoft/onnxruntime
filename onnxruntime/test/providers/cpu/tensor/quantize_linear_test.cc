@@ -6,9 +6,34 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
+
+#ifdef USE_CUDA
+static void RunQDQOp25CudaOnly(OpTester& test) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  SessionOptions so;
+  auto status = so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(cuda_ep));
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Keep backward-compatible alias used by existing QuantizeLinear tests.
+static void RunQuantizeLinearOp25CudaOnly(OpTester& test) {
+  RunQDQOp25CudaOnly(test);
+}
+#endif  // USE_CUDA
+
 // scalar zero & scale with uint8
 TEST(DequantizeLinearOpTest, Uint8) {
   OpTester test("DequantizeLinear", 10);
@@ -57,6 +82,48 @@ TEST(DequantizeLinearOpTest, Int8_Large) {
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
   // Disable WebGPU EP because it requires dims.Size() to be multiple of 4. Fails with error: needs at least component size 4.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(DequantizeLinearOpTest, Int4_LargeInitializerInput) {
+  OpTester test("DequantizeLinear", 21);
+  std::vector<int64_t> dims{1024};
+
+  std::vector<Int4x2> x_vals(Int4x2::CalcNumInt4Pairs(static_cast<size_t>(dims[0])), Int4x2{});
+  std::vector<float> expected_y_vals(static_cast<size_t>(dims[0]), 0.f);
+
+  test.AddInput<Int4x2>("x", dims, x_vals, true);
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<Int4x2>("x_zero_point", {}, {Int4x2(0, 0)});
+  test.AddOutput<float>("y", dims, expected_y_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Regression test: int8 tensor whose byte size is not a multiple of 4.
+// DML graph fusion rounds tensor sizes to a multiple of 4 via AlignToPow2.
+// If the original buffer is not padded, the subsequent memcpy reads past the
+// allocation boundary (heap-buffer-overflow detectable with ASan).
+// Mirrors the WebNN PoC: dequantizeLinear with int8[135] (135 % 4 != 0).
+TEST(DequantizeLinearOpTest, Int8_NonAlignedSize_Initializer) {
+  OpTester test("DequantizeLinear", 10);
+  constexpr int64_t kNumElements = 135;  // 135 bytes, AlignToPow2(135,4)=136
+
+  std::vector<int8_t> x_data(kNumElements);
+  std::vector<float> y_expected(kNumElements);
+  const float scale = 0.5f;
+  const int8_t zero_point = 0;
+  for (int64_t i = 0; i < kNumElements; ++i) {
+    x_data[i] = static_cast<int8_t>(i % 127);
+    y_expected[i] = (x_data[i] - zero_point) * scale;
+  }
+
+  // Mark all inputs as initializers so they go through DML's ProcessInputData
+  // → UnpackInitializer → AlignToPow2 code path during graph fusion.
+  test.AddInput<int8_t>("x", {kNumElements}, x_data, /*is_initializer=*/true);
+  test.AddInput<float>("x_scale", {1}, {scale}, /*is_initializer=*/true);
+  test.AddInput<int8_t>("x_zero_point", {1}, {zero_point}, /*is_initializer=*/true);
+  test.AddOutput<float>("y", {kNumElements}, y_expected);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // scalar zero & scale with int4
@@ -110,6 +177,79 @@ TEST(DequantizeLinearOpTest, UInt4NoZeroPoint) {
   test.AddInput<UInt4x2>("x", dims, {UInt4x2(0, 1), UInt4x2(3, 15), UInt4x2(2, unused_val)});
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddOutput<float>("y", dims, {0.0f, 2.0f, 6.0f, 30.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// scalar zero & scale with int2
+// INT2 range: [-2, 1] (2-bit signed two's complement)
+TEST(DequantizeLinearOpTest, Int2) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{5};
+  constexpr int unused_val = 0;
+
+  // 5 int2 values: -2, 1, 0, -1, 1 (requires 2 Int2x4 packed values)
+  // Pack: (-2, 1, 0, -1) and (1, unused, unused, unused)
+  test.AddInput<Int2x4>("x", dims, {Int2x4(-2, 1, 0, -1), Int2x4(1, unused_val, unused_val, unused_val)});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<Int2x4>("x_zero_point", {}, {Int2x4(-1, unused_val, unused_val, unused_val)});
+  // y = (x - zp) * scale = ([-2, 1, 0, -1, 1] - (-1)) * 2 = [-1, 2, 1, 0, 2] * 2 = [-2, 4, 2, 0, 4]
+  test.AddOutput<float>("y", dims, {-2.0f, 4.0f, 2.0f, 0.0f, 4.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(DequantizeLinearOpTest, Int2_LargeInitializerInput) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{4096};
+  std::vector<Int2x4> x_vals(Int2x4::CalcNumInt2Quads(static_cast<size_t>(dims[0])), Int2x4());
+
+  test.AddInput<Int2x4>("x", dims, x_vals, true);
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<Int2x4>("x_zero_point", {}, {Int2x4()});
+  test.AddOutput<float>("y", dims, std::vector<float>(static_cast<size_t>(dims[0]), 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// scalar scale with int2 (no zero point)
+TEST(DequantizeLinearOpTest, Int2NoZeroPoint) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{5};
+  constexpr int unused_val = 0;
+
+  // 5 int2 values: -2, 1, 0, -1, 1
+  test.AddInput<Int2x4>("x", dims, {Int2x4(-2, 1, 0, -1), Int2x4(1, unused_val, unused_val, unused_val)});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  // y = x * scale = [-2, 1, 0, -1, 1] * 2 = [-4, 2, 0, -2, 2]
+  test.AddOutput<float>("y", dims, {-4.0f, 2.0f, 0.0f, -2.0f, 2.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// scalar zero & scale with uint2
+// UINT2 range: [0, 3]
+TEST(DequantizeLinearOpTest, UInt2) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{5};
+  constexpr int unused_val = 0;
+
+  // 5 uint2 values: 0, 1, 2, 3, 1
+  test.AddInput<UInt2x4>("x", dims, {UInt2x4(0, 1, 2, 3), UInt2x4(1, unused_val, unused_val, unused_val)});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<UInt2x4>("x_zero_point", {}, {UInt2x4(1, unused_val, unused_val, unused_val)});
+  // y = (x - zp) * scale = ([0, 1, 2, 3, 1] - 1) * 2 = [-1, 0, 1, 2, 0] * 2 = [-2, 0, 2, 4, 0]
+  test.AddOutput<float>("y", dims, {-2.0f, 0.0f, 2.0f, 4.0f, 0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// scalar scale with uint2 (no zero point)
+TEST(DequantizeLinearOpTest, UInt2NoZeroPoint) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{5};
+  constexpr int unused_val = 0;
+
+  // 5 uint2 values: 0, 1, 2, 3, 1
+  test.AddInput<UInt2x4>("x", dims, {UInt2x4(0, 1, 2, 3), UInt2x4(1, unused_val, unused_val, unused_val)});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  // y = x * scale = [0, 1, 2, 3, 1] * 2 = [0, 2, 4, 6, 2]
+  test.AddOutput<float>("y", dims, {0.0f, 2.0f, 4.0f, 6.0f, 2.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -428,6 +568,90 @@ TEST(QuantizeLinearOpTest, Int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// Repro for new-delete-type-mismatch in DML EP during graph fusion.
+// QuantizeLinear float32→int8 with 5D input triggers a type-size
+// mismatch (192 bytes allocated, 1 byte deallocated) visible under ASan.
+TEST(QuantizeLinearOpTest, Int8_5D_DML_TypeMismatch) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Same as above but with per-axis quantization along axis 0 to exercise
+// the DML graph fusion path with per-channel int8 quantization.
+TEST(QuantizeLinearOpTest, Int8_5D_PerAxis_DML_TypeMismatch) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 13);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {6}, {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<int8_t>("y_zero_point", {6}, {0, 0, 0, 0, 0, 0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Opset 21 QuantizeLinear float32→uint8 WITHOUT zero_point.
+// Without zero_point, the output type defaults to uint8.
+TEST(QuantizeLinearOpTest, Uint8_5D_NoZeroPoint_Opset21_DML) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {0.0f, 51.0f, 102.0f, 153.0f, 204.0f, 255.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddOutput<uint8_t>("y", dims, {0, 51, 102, 153, 204, 255});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
+// Opset 21 QuantizeLinear float32→int8 with zero_point (the customer's exact scenario).
+TEST(QuantizeLinearOpTest, Int8_5D_WithZeroPoint_Opset21_DML) {
+  auto dml_ep = DefaultDmlExecutionProvider();
+  if (!dml_ep) {
+    GTEST_SKIP() << "Skipping because DML EP is not available.";
+  }
+
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{6, 1, 1, 1, 1};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("y_scale", {}, {1.0f});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, 2, 3, 4, 5, 6});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(std::move(dml_ep));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+
 // Test uint16 QuantizeLinear (per tensor)
 TEST(QuantizeLinearOpTest, Uint16) {
   OpTester test("QuantizeLinear", 21);
@@ -449,9 +673,42 @@ TEST(QuantizeLinearOpTest, Uint16) {
                             65535, 0,
                             65535, 0});
 
+  std::unordered_set<std::string> excluded_providers;
   // Disable Tensorrt EP due to error: unsupported data type
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(QuantizeLinearOpTest, OVEP_Uint16) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{12};
+  test.AddInput<float>("x", dims, {
+                                      0.f, -128.f, 3.f, -3.f,  // rounding half to even
+                                      2.9f, -2.9f,             // round < .5
+                                      3.1f, -3.1f,             // round > .5
+                                      65536.f, -65534.f,       // critical point
+                                      70000.f, -70000.f        // saturate case
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<uint16_t>("zero_point", {}, {32767}, true);
+  test.AddOutput<uint16_t>("y", dims,
+                           {32767, 32703,
+                            32768, 32766,
+                            32768, 32766,
+                            32769, 32765,
+                            65535, 0,
+                            65535, 0});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif  // USE_OPENVINO
 
 // Test int16 QuantizeLinear (per tensor)
 TEST(QuantizeLinearOpTest, Int16) {
@@ -502,8 +759,40 @@ TEST(QuantizeLinearOpTest, Int4) {
                          {Int4x2(-8, -7), Int4x2(-1, 1), Int4x2(2, 7),
                           Int4x2(7, unused_val)});
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::unordered_set<std::string> excluded_providers;
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(QuantizeLinearOpTest, OVEP_Int4) {
+  OpTester test("QuantizeLinear", 21);
+  std::vector<int64_t> dims{7};
+  constexpr int8_t unused_val = 0;
+  test.AddInput<float>("x", dims, {
+                                      -20.0f,  // Clamp to qmin
+                                      -16.0f,  // Close to qmin
+                                      -3.0f,   // round
+                                      0.0f,    // Zero-point
+                                      2.9f,    // round
+                                      12.0f,   // qmax
+                                      20.0f,   // Clamp to qmax
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<Int4x2>("zero_point", {}, {Int4x2(1, unused_val)}, true);
+  test.AddOutput<Int4x2>("y", dims,
+                         {Int4x2(-8, -7), Int4x2(0, 1), Int4x2(2, 7),
+                          Int4x2(7, unused_val)});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif  // USE_OPENVINO
 
 // Test uint4 QuantizeLinear (per tensor)
 TEST(QuantizeLinearOpTest, UInt4) {
@@ -528,6 +817,128 @@ TEST(QuantizeLinearOpTest, UInt4) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#ifdef USE_CUDA
+TEST(QuantizeLinearOpTest, Opset25_Uint8_Cuda) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{6};
+  test.AddInput<float>("x", dims, {0, 2, 3, 1000, -254, -1000});
+  test.AddInput<float>("y_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {128});
+  test.AddOutput<uint8_t>("y", dims, {128, 129, 130, 255, 1, 0});
+
+  RunQuantizeLinearOp25CudaOnly(test);
+}
+
+TEST(QuantizeLinearOpMLFloat16Test, Opset25_PerAxisInt8_Cuda) {
+  constexpr int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    GTEST_SKIP() << "CUDA compute capability " << min_cuda_architecture << " or higher is required.";
+  }
+
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<MLFloat16>("x", dims,
+                           {MLFloat16(-4.0f), MLFloat16(-2.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                            MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(8.0f), MLFloat16(10.0f)});
+  test.AddInput<MLFloat16>("y_scale", {4},
+                           {MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(4.0f), MLFloat16(4.0f)});
+  test.AddInput<int8_t>("y_zero_point", {4}, {0, 0, 0, 0});
+  test.AddOutput<int8_t>("y", dims, {-2, -1, 0, 0, 2, 3, 2, 2});
+
+  RunQuantizeLinearOp25CudaOnly(test);
+}
+
+TEST(QuantizeLinearOpTest, Opset25_BlockedUInt4_Cuda) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<float>("x", dims, {0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f});
+  test.AddInput<float>("y_scale", {2, 2}, {2.0f, 2.0f, 2.0f, 2.0f});
+  test.AddInput<UInt4x2>("y_zero_point", {2, 2}, {UInt4x2(0, 0), UInt4x2(0, 0)});
+  test.AddOutput<UInt4x2>("y", dims,
+                          {UInt4x2(0, 1), UInt4x2(2, 3), UInt4x2(4, 5), UInt4x2(6, 7)});
+
+  RunQuantizeLinearOp25CudaOnly(test);
+}
+
+// DequantizeLinear opset 25 CUDA tests (exercises T1/T2/T3 type constraints)
+
+TEST(DequantizeLinearOpTest, Opset25_Uint8_Cuda) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint8_t>("x", dims, {0, 3, 128, 255});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<uint8_t>("x_zero_point", {}, {128});
+  test.AddOutput<float>("y", dims, {-256.0f, -250.0f, 0.0f, 254.0f});
+
+  RunQDQOp25CudaOnly(test);
+}
+
+TEST(DequantizeLinearOpTest, Opset25_Int8_Cuda) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int8_t>("x", dims, {-30, -3, 100, 127});
+  test.AddInput<float>("x_scale", {}, {2.0f});
+  test.AddInput<int8_t>("x_zero_point", {}, {-10});
+  test.AddOutput<float>("y", dims, {-40.0f, 14.0f, 220.0f, 274.0f});
+
+  RunQDQOp25CudaOnly(test);
+}
+
+TEST(DequantizeLinearOpMLFloat16Test, Opset25_PerAxisInt8_Cuda) {
+  constexpr int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    GTEST_SKIP() << "CUDA compute capability " << min_cuda_architecture << " or higher is required.";
+  }
+
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<int8_t>("x", dims, {-2, -1, 0, 1, 2, 3, 4, 5});
+  test.AddInput<MLFloat16>("x_scale", {4},
+                           {MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(4.0f), MLFloat16(4.0f)});
+  test.AddInput<int8_t>("x_zero_point", {4}, {0, 0, 0, 0});
+  // y = (x - zp) * scale
+  test.AddOutput<MLFloat16>("y", dims,
+                            {MLFloat16(-4.0f), MLFloat16(-2.0f), MLFloat16(0.0f), MLFloat16(4.0f),
+                             MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(16.0f), MLFloat16(20.0f)});
+
+  RunQDQOp25CudaOnly(test);
+}
+
+TEST(DequantizeLinearOpTest, Opset25_BlockedInt4_Cuda) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  // int4 values: 0,1,2,3, 4,5,6,7
+  test.AddInput<Int4x2>("x", dims,
+                        {Int4x2(0, 1), Int4x2(2, 3), Int4x2(4, 5), Int4x2(6, 7)});
+  test.AddInput<float>("x_scale", {2, 2}, {2.0f, 2.0f, 2.0f, 2.0f});
+  test.AddInput<Int4x2>("x_zero_point", {2, 2}, {Int4x2(0, 0), Int4x2(0, 0)});
+  // y = (x - 0) * 2
+  test.AddOutput<float>("y", dims, {0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f});
+
+  RunQDQOp25CudaOnly(test);
+}
+
+TEST(DequantizeLinearOpTest, Opset25_BlockedUInt4_Cuda) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{2, 4};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<UInt4x2>("x", dims,
+                         {UInt4x2(0, 1), UInt4x2(2, 3), UInt4x2(4, 5), UInt4x2(6, 7)});
+  test.AddInput<float>("x_scale", {2, 2}, {2.0f, 2.0f, 2.0f, 2.0f});
+  test.AddInput<UInt4x2>("x_zero_point", {2, 2}, {UInt4x2(0, 0), UInt4x2(0, 0)});
+  test.AddOutput<float>("y", dims, {0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f});
+
+  RunQDQOp25CudaOnly(test);
+}
+#endif  // USE_CUDA
+
 template <bool Signed>
 static void GetExpectedInt4Quant(const float* input, Int4x2Base<Signed>* output, size_t num_elems, float scale,
                                  int8_t zero_point) {
@@ -544,6 +955,172 @@ static void GetExpectedInt4Quant(const float* input, Int4x2Base<Signed>* output,
     size_t j = n & 0x1;
     output[i].SetElem(j, int_val);
   }
+}
+
+template <bool Signed>
+static void GetExpectedInt2Quant(const float* input, Int2x4Base<Signed>* output, size_t num_elems, float scale,
+                                 int8_t zero_point) {
+  using UnpackedType = typename Int2x4Base<Signed>::UnpackedType;
+
+  for (size_t n = 0; n < num_elems; n++) {
+    float float_val = std::nearbyintf(input[n] / scale) + static_cast<float>(zero_point);
+    float_val = std::max(float_val, static_cast<float>(Int2x4Base<Signed>::min_val));
+    float_val = std::min(float_val, static_cast<float>(Int2x4Base<Signed>::max_val));
+
+    UnpackedType int_val = static_cast<UnpackedType>(float_val);
+
+    size_t i = n >> 2;   // n / 4
+    size_t j = n & 0x3;  // n % 4
+    output[i].SetElem(j, int_val);
+  }
+}
+
+// Test int2 QuantizeLinear (per tensor)
+// INT2 range: [-2, 1]
+TEST(QuantizeLinearOpTest, Int2) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{5};
+  constexpr int8_t unused_val = 0;
+  test.AddInput<float>("x", dims, {
+                                      -6.0f,  // Clamp to qmin (-2)
+                                      -4.0f,  // qmin
+                                      -1.0f,  // round to 0 with zp=0
+                                      0.0f,   // Zero-point
+                                      4.0f,   // Clamp to qmax (1)
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<Int2x4>("zero_point", {}, {Int2x4(0, unused_val, unused_val, unused_val)}, true);
+  // y = clamp(round(x / scale) + zp, -2, 1)
+  // = clamp([-3, -2, -0.5, 0, 2] + 0, -2, 1) = [-2, -2, 0, 0, 1]
+  test.AddOutput<Int2x4>("y", dims,
+                         {Int2x4(-2, -2, 0, 0), Int2x4(1, unused_val, unused_val, unused_val)});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint2 QuantizeLinear (per tensor)
+// UINT2 range: [0, 3]
+TEST(QuantizeLinearOpTest, UInt2) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{5};
+  constexpr uint8_t unused_val = 0;
+  test.AddInput<float>("x", dims, {
+                                      -4.0f,  // Clamp to qmin (0)
+                                      -2.0f,  // zp - 1 = 0
+                                      0.0f,   // zp
+                                      2.0f,   // zp + 1
+                                      8.0f,   // Clamp to qmax (3)
+                                  });
+  test.AddInput<float>("scale", {}, {2.0f}, true);
+  test.AddInput<UInt2x4>("zero_point", {}, {UInt2x4(1, unused_val, unused_val, unused_val)}, true);
+  // y = clamp(round(x / scale) + zp, 0, 3)
+  // = clamp([-2, -1, 0, 1, 4] + 1, 0, 3) = clamp([-1, 0, 1, 2, 5], 0, 3) = [0, 0, 1, 2, 3]
+  test.AddOutput<UInt2x4>("y", dims,
+                          {UInt2x4(0, 0, 1, 2), UInt2x4(3, unused_val, unused_val, unused_val)});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test int2 QuantizeLinear (per tensor) with a "large" number of input elements.
+// This exercises the TryParallelFor call which splits the input into blocks.
+TEST(QuantizeLinearOpTest, Large_Int2) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{1017};
+  constexpr int8_t unused_val = 0;
+  constexpr std::array<float, 4> pattern = {-4.0f, -2.0f, 0.0f, 2.0f};
+  std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
+  std::vector<Int2x4> output(Int2x4::CalcNumInt2Quads(input_f32s.size()));
+
+  for (size_t i = 0; i < input_f32s.size(); ++i) {
+    input_f32s[i] = pattern[i % pattern.size()];
+  }
+
+  float scale = 2.0f;
+  int8_t zp = 0;
+  GetExpectedInt2Quant(input_f32s.data(), &output[0], input_f32s.size(), scale, zp);
+
+  test.AddInput<float>("x", dims, input_f32s);
+  test.AddInput<float>("scale", {}, {scale}, true);
+  test.AddInput<Int2x4>("zero_point", {}, {Int2x4(zp, unused_val, unused_val, unused_val)}, true);
+  test.AddOutput<Int2x4>("y", dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint2 QuantizeLinear (per tensor) with a "large" number of input elements.
+TEST(QuantizeLinearOpTest, Large_UInt2) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{1017};
+  constexpr uint8_t unused_val = 0;
+  constexpr std::array<float, 4> pattern = {-2.0f, 0.0f, 2.0f, 4.0f};
+  std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
+  std::vector<UInt2x4> output(UInt2x4::CalcNumInt2Quads(input_f32s.size()));
+
+  for (size_t i = 0; i < input_f32s.size(); ++i) {
+    input_f32s[i] = pattern[i % pattern.size()];
+  }
+
+  float scale = 2.0f;
+  uint8_t zp = 1;
+  GetExpectedInt2Quant(input_f32s.data(), &output[0], input_f32s.size(), scale, zp);
+
+  test.AddInput<float>("x", dims, input_f32s);
+  test.AddInput<float>("scale", {}, {scale}, true);
+  test.AddInput<UInt2x4>("zero_point", {}, {UInt2x4(zp, unused_val, unused_val, unused_val)}, true);
+  test.AddOutput<UInt2x4>("y", dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test int2 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
+// This exercises the TryParallelFor call which splits the input into blocks.
+TEST(QuantizeLinearOpTest, OddLarge_Int2) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{1019};  // Odd number, not multiple of 4
+  constexpr int8_t unused_val = 0;
+  constexpr std::array<float, 4> pattern = {-4.0f, -2.0f, 0.0f, 2.0f};
+  std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
+  std::vector<Int2x4> output(Int2x4::CalcNumInt2Quads(input_f32s.size()));
+
+  for (size_t i = 0; i < input_f32s.size(); ++i) {
+    input_f32s[i] = pattern[i % pattern.size()];
+  }
+
+  float scale = 2.0f;
+  int8_t zp = 0;
+  GetExpectedInt2Quant(input_f32s.data(), &output[0], input_f32s.size(), scale, zp);
+
+  test.AddInput<float>("x", dims, input_f32s);
+  test.AddInput<float>("scale", {}, {scale}, true);
+  test.AddInput<Int2x4>("zero_point", {}, {Int2x4(zp, unused_val, unused_val, unused_val)}, true);
+  test.AddOutput<Int2x4>("y", dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// Test uint2 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
+TEST(QuantizeLinearOpTest, OddLarge_UInt2) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{1019};  // Odd number, not multiple of 4
+  constexpr uint8_t unused_val = 0;
+  constexpr std::array<float, 4> pattern = {-2.0f, 0.0f, 2.0f, 4.0f};
+  std::vector<float> input_f32s(static_cast<size_t>(dims[0]));
+  std::vector<UInt2x4> output(UInt2x4::CalcNumInt2Quads(input_f32s.size()));
+
+  for (size_t i = 0; i < input_f32s.size(); ++i) {
+    input_f32s[i] = pattern[i % pattern.size()];
+  }
+
+  float scale = 2.0f;
+  uint8_t zp = 1;
+  GetExpectedInt2Quant(input_f32s.data(), &output[0], input_f32s.size(), scale, zp);
+
+  test.AddInput<float>("x", dims, input_f32s);
+  test.AddInput<float>("scale", {}, {scale}, true);
+  test.AddInput<UInt2x4>("zero_point", {}, {UInt2x4(zp, unused_val, unused_val, unused_val)}, true);
+  test.AddOutput<UInt2x4>("y", dims, output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // Test int4 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
@@ -569,7 +1146,12 @@ TEST(QuantizeLinearOpTest, OddLarge_Int4) {
   test.AddInput<Int4x2>("zero_point", {}, {Int4x2(zp, unused_val)}, true);
   test.AddOutput<Int4x2>("y", dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::unordered_set<std::string> excluded_providers;
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
 
 // Test uint4 QuantizeLinear (per tensor) with a "large" and odd number of input elements.
@@ -595,7 +1177,12 @@ TEST(QuantizeLinearOpTest, OddLarge_UInt4) {
   test.AddInput<UInt4x2>("zero_point", {}, {UInt4x2(zp, unused_val)}, true);
   test.AddOutput<UInt4x2>("y", dims, output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::unordered_set<std::string> excluded_providers;
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
 
 // quantize with scalar zero point and scale
@@ -611,9 +1198,29 @@ TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {-23});
   test.AddOutput<int8_t>("y", dims, {-23, 28, 53, 104, 127, -74, -128, -128});
+  std::unordered_set<std::string> excluded_providers;
   // Disable Tensorrt EP due to the error, node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(QuantizeLinearOpTest, OVEP_Int8_NegativeZeroPoint) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{8};
+  test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
+  test.AddInput<float>("y_scale", {}, {.039215686f});
+  test.AddInput<int8_t>("y_zero_point", {}, {-23});
+  test.AddOutput<int8_t>("y", dims, {-23, 28, 54, 105, 127, -74, -128, -128});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif  // USE_OPENVINO
 
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
@@ -628,9 +1235,29 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {23});
   test.AddOutput<int8_t>("y", dims, {23, 74, 99, 127, 127, -28, -104, -128});
+  std::unordered_set<std::string> excluded_providers;
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  excluded_providers.insert(kTensorrtExecutionProvider);
+  // Disable OV EP due to different formulation for QuantizeLinear
+  excluded_providers.insert(kOpenVINOExecutionProvider);
+  test.ConfigExcludeEps(excluded_providers)
+      .RunWithConfig();
 }
+
+#ifdef USE_OPENVINO
+TEST(QuantizeLinearOpTest, OVEP_Int8_PositiveZeroPoint) {
+  OpTester test("QuantizeLinear", 10);
+  std::vector<int64_t> dims{8};
+  test.AddInput<float>("x", dims, {0, 2, 3, 5, 6, -2, -5, -6});
+  test.AddInput<float>("y_scale", {}, {.039215686f});
+  test.AddInput<int8_t>("y_zero_point", {}, {23});
+  test.AddOutput<int8_t>("y", dims, {23, 74, 100, 127, 127, -28, -104, -128});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultOpenVINOExecutionProvider());
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif  // USE_OPENVINO
 
 // quantize with 2D data
 TEST(QuantizeLinearOpTest, 2D) {
@@ -828,7 +1455,7 @@ void QuantizeLinearOp19Test(bool saturate) {
     y.push_back(OutT(it, saturate));
   }
   test.AddOutput<OutT>("y", dims, y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(QuantizeLinearOpTest, Float8) {
@@ -870,7 +1497,7 @@ void QuantizeLinearOp19F16Test(bool saturate) {
     y.push_back(OutT(it, saturate));
   }
   test.AddOutput<OutT>("y", dims, y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(QuantizeLinearOpMLFloat16Test, Float8) {
@@ -911,6 +1538,11 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
+
   eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -956,6 +1588,12 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Int4(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  if (!ep) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep) {
+      eps.push_back(std::move(webgpu_ep));
+    }
+  }
   eps.push_back(ep ? std::move(ep) : DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1001,6 +1639,10 @@ void DequantizeLinearOp21BlockedTest_InvalidBlockSize_Float8(int64_t block_size,
   SessionOptions so;
   std::vector<std::string> log_msgs;  // redirect error messages
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
   so.user_logging_function = [](void* param, OrtLoggingLevel severity, const char* category,
                                 const char* logid, const char* code_location, const char* message) {
@@ -1189,7 +1831,14 @@ void DequantizeLinearOp21BlockedTest_Int4_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  if (!ep) {
+    auto webgpu_ep = DefaultWebGpuExecutionProvider();
+    if (webgpu_ep) {
+      eps.push_back(std::move(webgpu_ep));
+    }
+  }
   eps.push_back(ep ? std::move(ep) : DefaultCpuExecutionProvider());
+
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
   bool use_zero_point = !x_zero_point_.empty();
 
@@ -1233,6 +1882,10 @@ void DequantizeLinearOp21BlockedTest_Int_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;
@@ -1269,6 +1922,10 @@ void DequantizeLinearOp21BlockedTest_Float8_Succeed(std::vector<int64_t>&& dims,
   std::vector<Tout> x_scale, y;
   std::vector<Tin> x, x_zero_point;
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep) {
+    eps.push_back(std::move(webgpu_ep));
+  }
   eps.push_back(DefaultCpuExecutionProvider());
 
   int64_t non_neg_axis = axis < 0 ? axis + dims.size() : axis;

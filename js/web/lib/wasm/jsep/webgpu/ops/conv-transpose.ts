@@ -132,7 +132,7 @@ export const parseConvTransposeAttributes = (attributes: Record<string, unknown>
     typeof attributes.autoPad == 'undefined' ? 0 : (attributes.autoPad as number)
   ];
   const dilations = attributes.dilations as [number, number];
-  const group = attributes.group as number;
+  const group = (attributes.group as number) ?? 1; // default to 1 per ONNX spec
   const kernelShape = attributes.kernelShape as [number, number];
   const pads = attributes.pads as [number, number, number, number];
   const strides = attributes.strides as [number, number];

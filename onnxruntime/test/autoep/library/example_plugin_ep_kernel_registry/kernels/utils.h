@@ -106,11 +106,11 @@ static constexpr const char* kOnnxDomain = "";
                                                                                                     \
       auto kernel_create_func = [](void* state, const OrtKernelInfo* info,                          \
                                    OrtKernelImpl** kernel_out) noexcept -> OrtStatus* {             \
-        *kernel_out = nullptr;                                                                      \
+        RETURN_IF(kernel_out == nullptr, Ort::GetApi(),                                             \
+                  "OrtKernelCreateFunc received a NULL kernel_out argument");                       \
                                                                                                     \
-        std::unique_ptr<kernel_class> kernel;                                                       \
-        RETURN_IF_ERROR(kernel_class::Create(info, state, kernel));                                 \
-        *kernel_out = kernel.release();                                                             \
+        *kernel_out = nullptr;                                                                      \
+        RETURN_IF_ERROR(kernel_class::CreateKernelImpl(info, state, *kernel_out));                  \
         return nullptr;                                                                             \
       };                                                                                            \
                                                                                                     \

@@ -39,7 +39,7 @@ Condition -> Where ->
           v0----|
  */
 bool NotWhereFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Where", {9})) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Where", {9, 16})) {
     return false;
   }
 
@@ -54,7 +54,7 @@ bool NotWhereFusion::SatisfyCondition(const Graph& graph, const Node& node, cons
   if (p_not_node->GetOutputEdgesCount() > 1) {
     // all consumers of not must be where
     for (auto it = p_not_node->OutputNodesBegin(); it != p_not_node->OutputNodesEnd(); ++it) {
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(*it, "Where", {9})) {
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(*it, "Where", {9, 16})) {
         return false;
       }
     }

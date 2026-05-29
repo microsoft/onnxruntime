@@ -23,7 +23,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import coloredlogs
 from fusion_options import FusionOptions
 from onnx import ModelProto, load_model
 from onnx_model import OnnxModel
@@ -59,6 +58,7 @@ MODEL_TYPES = {
     "gpt2_tf": (Gpt2OnnxModel, "tf2onnx", 0),  # might add a class for GPT2OnnxModel for TF later.
     "gpt_neox": (BertOnnxModel, "pytorch", 0),  # GPT-NeoX
     "phi": (PhiOnnxModel, "pytorch", 0),
+    "qwen3": (Gpt2OnnxModel, "pytorch", 0),  # Qwen3 (decoder-only with RoPE, GQA, RMSNorm)
     "sam2": (Sam2OnnxModel, "pytorch", 1),
     "swin": (BertOnnxModel, "pytorch", 1),
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
@@ -562,12 +562,11 @@ def _parse_arguments():
 
 def _setup_logger(verbose):
     if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        logging.basicConfig(
+            format="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s", level=logging.DEBUG, force=True
         )
     else:
-        coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+        logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO, force=True)
 
 
 def main():

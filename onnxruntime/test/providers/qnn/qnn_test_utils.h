@@ -542,7 +542,15 @@ class QNNTestEnvironment {
 
   // Helper function to check if an environment variable is set
   bool IsEnvVarSet(const char* name) {
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     const char* value = std::getenv(name);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
     if (value == nullptr) {
       return false;
     }

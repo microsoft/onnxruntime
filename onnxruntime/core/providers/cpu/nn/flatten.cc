@@ -63,10 +63,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Flatten);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Flatten,
+    24,
+    24,
+    KernelDefBuilder()
+        .Alias(0, 0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Flatten);
+
 // Opset 24
 ONNX_CPU_OPERATOR_KERNEL(
     Flatten,
-    24,
+    25,
     KernelDefBuilder()
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),

@@ -103,6 +103,15 @@ struct FloatInitializer {
   std::vector<float> data;
 };
 
+// Returns a lower case version of the input string.
+inline std::string GetLowercaseString(std::string str) {
+  // https://en.cppreference.com/w/cpp/string/byte/tolower
+  std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return str;
+}
+
 // Returns an entry in the session option configurations, or a default value if not present.
 inline OrtStatus* GetSessionConfigEntryOrDefault(const OrtSessionOptions& session_options,
                                                  const char* config_key, const std::string& default_val,

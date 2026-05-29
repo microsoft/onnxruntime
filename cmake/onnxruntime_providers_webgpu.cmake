@@ -6,9 +6,6 @@
   endif()
 
   add_compile_definitions(USE_WEBGPU=1)
-  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
-    add_compile_definitions(BUILD_WEBGPU_EP_STATIC_LIB=1)
-  endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
@@ -33,7 +30,7 @@
     list(APPEND onnxruntime_providers_webgpu_cc_srcs ${onnxruntime_webgpu_contrib_ops_cc_srcs})
   endif()
 
-  if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  if(NOT onnxruntime_USE_EP_API_ADAPTERS)
     #
     # Build WebGPU EP as a static library
     #
@@ -59,7 +56,7 @@
     endif()
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
 
-    onnxruntime_add_shared_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+    onnxruntime_add_shared_library_module(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
         ${REPO_ROOT}/include/onnxruntime/core/session
         onnxruntime_common
@@ -86,6 +83,27 @@
     add_definitions("-DONNX_ML=1")
     add_definitions("-DONNX_NAMESPACE=onnx")
     add_definitions("-DONNX_USE_LITE_PROTO=1")
+
+    # Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
+    if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
+      set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
+    endif()
+
+    # Set preprocessor definition for plugin EP version
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+                               ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+
+    # Bake the minimum compatible ORT version (the single source of truth lives in
+    # plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime.
+    # Format is strict "MAJOR.MINOR.PATCH".
+    set(_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION")
+    file(STRINGS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION LIMIT_COUNT 1)
+    if(NOT _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
+      message(FATAL_ERROR "WebGPU plugin EP minimum ORT version file is missing or empty: "
+                          "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}")
+    endif()
+    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+                               ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION}")
 
     # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
     if(WIN32)
@@ -122,6 +140,12 @@
     if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       message(FATAL_ERROR "WebGPU EP shared library build is not supported on Emscripten. Please use static library build.")
     endif()
+
+    # Configure precompiled headers for shared library build
+    # PCH ensures ep/adapters.h is included first and improves compilation speed
+    target_precompile_headers(onnxruntime_providers_webgpu PRIVATE
+      "${REPO_ROOT}/include/onnxruntime/ep/adapters.h"
+    )
   endif()
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
@@ -245,7 +269,6 @@
     endif()
   endif()
 
-  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
   add_dependencies(onnxruntime_providers_webgpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   if (onnxruntime_WGSL_TEMPLATE)
