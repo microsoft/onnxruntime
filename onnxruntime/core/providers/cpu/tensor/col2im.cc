@@ -62,6 +62,7 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   SafeInt<int64_t> kernel_shape_size = 1;
   SafeInt<int64_t> expected_col_blocks = 1;
   TensorShapeVector adjusted_kernel_shape_dims;
+  TensorShapeVector sliding_block_shape_dims;
   auto image_dims = image_shape->Data<int64_t>();
   auto kernel_dims = kernel_shape->Data<int64_t>();
   for (size_t i = 0; i < image_dim_number; ++i) {
@@ -74,7 +75,9 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
     const int64_t padded_extent = SafeInt<int64_t>(image_dims[i]) + pads[i] + pads[i + image_dim_number];
     ORT_RETURN_IF_NOT(padded_extent >= adjusted_kernel,
                       "Padded image extent is smaller than the dilated kernel for spatial dimension ", i, ".");
-    expected_col_blocks *= (padded_extent - adjusted_kernel) / strides[i] + 1;
+    const int64_t sliding_blocks = (padded_extent - adjusted_kernel) / strides[i] + 1;
+    sliding_block_shape_dims.push_back(sliding_blocks);
+    expected_col_blocks *= sliding_blocks;
   }
   ORT_RETURN_IF_NOT(kernel_shape_size > 0, "kernel_shape_size must be positive");
 
@@ -95,11 +98,10 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   TensorShape adjusted_kernel_shape(adjusted_kernel_shape_dims);
   const int64_t col_data_stride = col_shape.SizeFromDimension(1);
 
-  TensorShapeVector batched_image_shape_dims, adjusted_image_shape_dims;
+  TensorShapeVector batched_image_shape_dims;
   batched_image_shape_dims.insert(batched_image_shape_dims.begin(), {N, C});
   for (size_t i = 0; i < image_dim_number; ++i) {
     batched_image_shape_dims.push_back(image_dims[i]);
-    adjusted_image_shape_dims.push_back(image_dims[i] - adjusted_kernel_shape[i] + 1);
   }
   TensorShape batched_image_shape(batched_image_shape_dims);
   T* image_data = context->Output(0, batched_image_shape)->template MutableData<T>();
@@ -128,7 +130,7 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
       math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
           col_data + image_id * col_data_stride,
           image_dims,
-          adjusted_image_shape_dims.data(),
+          sliding_block_shape_dims.data(),
           kernel_shape_size * C,
           image_shape_size * C,
           adjusted_kernel_shape.GetDims().data(),
