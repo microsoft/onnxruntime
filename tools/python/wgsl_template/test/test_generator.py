@@ -143,8 +143,7 @@ _FIXTURE_SKIPS = {
     # The fixture expects the engine to raise "Main function context
     # started but not ended at the end of processing" but the TS engine's
     # end-of-file validations check for unmatched brackets first, so the
-    # actual error is "Unmatched brackets at the end of processing". The
-    # Python port preserves the TS order, so it produces the same message.
+    # actual error is "Unmatched brackets at the end of processing".
     "generator-main-invalid-unclosed",
 }
 
