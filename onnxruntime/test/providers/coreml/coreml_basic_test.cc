@@ -282,6 +282,55 @@ TEST(CoreMLExecutionProviderTest, ShapeThenSliceAndGather) {
 #endif
 }
 
+// GatherND on the ML Program path is only claimed when 'indices' is a constant initializer
+// (see GatherNDOpBuilder::IsOpSupportedImpl -- CoreML's gather_nd miscomputes some shapes with a
+// runtime indices input). This is the supported path: a multi-dimensional slice gather (index depth 1
+// on rank-3 data) with constant indices must run on CoreML and match the CPU result.
+TEST(CoreMLExecutionProviderTest, GatherNDConstantIndicesMLProgram) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gnd_const", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  auto make_type = [](int32_t et, std::vector<int64_t> dims) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(et);
+    for (auto d : dims) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto data_t = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2, 2, 2});
+  const auto out_t = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2, 1, 2, 2});
+  auto& data = graph.GetOrCreateNodeArg("data", &data_t);
+  auto& out = graph.GetOrCreateNodeArg("Y", &out_t);
+  ONNX_NAMESPACE::TensorProto idx;
+  idx.set_name("indices");
+  idx.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx.add_dims(2);
+  idx.add_dims(1);
+  idx.add_dims(1);
+  idx.add_int64_data(1);
+  idx.add_int64_data(0);
+  graph.AddInitializedTensor(idx);
+  auto& idx_arg = graph.GetOrCreateNodeArg("indices", nullptr);
+  graph.AddNode("gnd", "GatherND", "", {&data, &idx_arg}, {&out});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string md;
+  model.ToProto().SerializeToString(&md);
+  gsl::span<const std::byte> span{reinterpret_cast<const std::byte*>(md.data()), md.size()};
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {2, 2, 2};
+  std::vector<int64_t> vals = {0, 1, 2, 3, 4, 5, 6, 7};
+  OrtValue dv;
+  CreateMLValue<int64_t>(CPUAllocator::DefaultInstance(), dims, vals, &dv);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data", dv));
+  RunAndVerifyOutputsWithEP(span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#endif
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {

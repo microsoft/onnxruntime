@@ -108,6 +108,17 @@ bool GatherNDOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInput
     LOGS(logger, VERBOSE) << "GatherND only supports batch_dims == 0. Got: " << batch_dims;
     return false;
   }
+
+  // CoreML's gather_nd miscomputes the result for some data/indices shape combinations when 'indices'
+  // is a non-constant (runtime) input -- it returns slice 0 regardless of the actual index value. With
+  // a constant 'indices' the op is correct (verified on-device), and constant indices is the common case
+  // (e.g. transformer attention-mask gathers). Require a constant 'indices' so we never silently emit
+  // wrong results; non-constant cases fall back to CPU.
+  if (!input_params.graph_viewer.IsConstantInitializer(node.InputDefs()[1]->Name(), /*check_outer_scope*/ true)) {
+    LOGS(logger, VERBOSE) << "GatherND: 'indices' must be a constant initializer for the CoreML EP.";
+    return false;
+  }
+
   return true;
 }
 
