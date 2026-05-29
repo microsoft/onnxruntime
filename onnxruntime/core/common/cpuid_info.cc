@@ -364,11 +364,7 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
   // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
-  // On Wasm/Emscripten, cpuinfo cannot detect the CPU vendor so skip to avoid
-  // an unhelpful "Unknown CPU vendor" warning.
-#if !defined(__wasm__)
   VendorInfoInit();
-#endif
 
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();
