@@ -133,8 +133,8 @@ static OrtStatus* ORT_API_CALL EpContextReadCallbackFailsAfterAlloc(void* state,
 }
 
 static OrtStatus* ORT_API_CALL EpContextNonEmptyNullBufferReadCallback(void* /*state*/, const char* /*file_name*/,
-                                                                        OrtAllocator* /*allocator*/, void** buffer,
-                                                                        size_t* data_size) {
+                                                                       OrtAllocator* /*allocator*/, void** buffer,
+                                                                       size_t* data_size) {
   *buffer = nullptr;
   *data_size = 4;
   return nullptr;
