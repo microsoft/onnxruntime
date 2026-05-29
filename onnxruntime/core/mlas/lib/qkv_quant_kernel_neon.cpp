@@ -244,7 +244,7 @@ QKGemm_Neon(
 }
 
 //
-// SVGemm:  C[M,N] = A[M,K] * B[K,N]
+// SVGemm:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
 //
 void
 SVGemm_Neon(
@@ -257,7 +257,8 @@ SVGemm_Neon(
     MLAS_KV_QUANT_TYPE QuantType,
     const float* Scales,
     float* C,
-    size_t ldc)
+    size_t ldc,
+    float Beta)
 {
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
     const auto* B_bytes = static_cast<const uint8_t*>(B);
@@ -277,23 +278,40 @@ SVGemm_Neon(
         float* c_row = C + m * ldc;
         const float* a_row = A + m * lda;
 
-        // Zero output
-        size_t n = 0;
-        for (; n < vec_end_n; n += 4) {
-            vst1q_f32(c_row + n, vdupq_n_f32(0.0f));
+        // Initialize output
+        if (Beta == 0.0f) {
+            size_t n = 0;
+            for (; n < vec_end_n; n += 4) {
+                vst1q_f32(c_row + n, vdupq_n_f32(0.0f));
+            }
+            for (; n < N; ++n) {
+                c_row[n] = 0.0f;
+            }
+        } else if (Beta != 1.0f) {
+            float32x4_t beta_vec = vdupq_n_f32(Beta);
+            size_t n = 0;
+            for (; n < vec_end_n; n += 4) {
+                float32x4_t c_vec = vld1q_f32(c_row + n);
+                c_vec = vmulq_f32(c_vec, beta_vec);
+                vst1q_f32(c_row + n, c_vec);
+            }
+            for (; n < N; ++n) {
+                c_row[n] *= Beta;
+            }
         }
-        for (; n < N; ++n) {
-            c_row[n] = 0.0f;
-        }
+
+        // When Beta != 0 and per-tensor, we must apply scale inline during
+        // dequantization (can't defer scaling since C already has scaled values).
+        const bool apply_scale_inline = per_channel || (Beta != 0.0f);
 
         for (size_t k = 0; k < K; ++k) {
             const uint8_t* b_row_packed = B_bytes + k * row_bytes;
-            DequantRow_Neon(b_row_packed, b_buf, N, QuantType, Scales, per_channel);
+            DequantRow_Neon(b_row_packed, b_buf, N, QuantType, Scales, apply_scale_inline);
 
             const float a_val = a_row[k];
             float32x4_t a_broadcast = vdupq_n_f32(a_val);
 
-            n = 0;
+            size_t n = 0;
             for (; n < vec_end_n; n += 4) {
                 float32x4_t c_vec = vld1q_f32(c_row + n);
                 float32x4_t b_vec = vld1q_f32(b_buf + n);
@@ -305,9 +323,9 @@ SVGemm_Neon(
             }
         }
 
-        if (!per_channel) {
+        if (!apply_scale_inline) {
             const float32x4_t scale_vec = vdupq_n_f32(Scales[0]);
-            n = 0;
+            size_t n = 0;
             for (; n < vec_end_n; n += 4) {
                 float32x4_t c_vec = vld1q_f32(c_row + n);
                 c_vec = vmulq_f32(c_vec, scale_vec);

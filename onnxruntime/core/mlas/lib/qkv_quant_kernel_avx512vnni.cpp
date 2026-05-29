@@ -512,7 +512,7 @@ QKGemm_Avx512Vnni(
 }
 
 // ============================================================================
-// SVGemm:  C[M,N] = A[M,K] * B[K,N]
+// SVGemm:  C[M,N] = Beta * C[M,N] + A[M,K] * B[K,N]
 // B is [K,N] packed row-major.
 //
 // For SVGemm, A is attention weights (FP32) and B is V-cache (quantized).
@@ -532,7 +532,8 @@ SVGemm_Avx512Vnni(
     MLAS_KV_QUANT_TYPE QuantType,
     const float* Scales,
     float* C,
-    size_t ldc)
+    size_t ldc,
+    float Beta)
 {
     const size_t row_bytes = MlasKVQuantPackedRowBytes(QuantType, N);
     const auto* B_bytes = static_cast<const uint8_t*>(B);
@@ -545,13 +546,26 @@ SVGemm_Avx512Vnni(
         float* c_row = C + m * ldc;
         const float* a_row = A + m * lda;
 
-        // Zero output using 512-bit stores
-        size_t n = 0;
-        for (; n < vec_end_n; n += 16) {
-            _mm512_storeu_ps(c_row + n, _mm512_setzero_ps());
-        }
-        for (; n < N; ++n) {
-            c_row[n] = 0.0f;
+        // Initialize output
+        if (Beta == 0.0f) {
+            size_t n = 0;
+            for (; n < vec_end_n; n += 16) {
+                _mm512_storeu_ps(c_row + n, _mm512_setzero_ps());
+            }
+            for (; n < N; ++n) {
+                c_row[n] = 0.0f;
+            }
+        } else if (Beta != 1.0f) {
+            __m512 beta_vec = _mm512_set1_ps(Beta);
+            size_t n = 0;
+            for (; n < vec_end_n; n += 16) {
+                __m512 c_vec = _mm512_loadu_ps(c_row + n);
+                c_vec = _mm512_mul_ps(c_vec, beta_vec);
+                _mm512_storeu_ps(c_row + n, c_vec);
+            }
+            for (; n < N; ++n) {
+                c_row[n] *= Beta;
+            }
         }
 
         if (!int4) {
@@ -562,7 +576,7 @@ SVGemm_Avx512Vnni(
                     const float a_val = a_row[k];
                     __m512 a_broadcast = _mm512_set1_ps(a_val);
 
-                    n = 0;
+                    size_t n = 0;
                     for (; n < vec_end_n; n += 16) {
                         __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + n));
                         __m512i i32 = _mm512_cvtepi8_epi32(raw);
@@ -578,35 +592,59 @@ SVGemm_Avx512Vnni(
                     }
                 }
             } else {
-                // Per-tensor: accumulate unscaled dot products, then scale the output row once.
-                for (size_t k = 0; k < K; ++k) {
-                    const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
-                    const float a_val = a_row[k];
-                    __m512 a_broadcast = _mm512_set1_ps(a_val);
+                // Per-tensor: when Beta==0, accumulate unscaled then scale once at end.
+                // When Beta!=0, fold scale into a_val.
+                if (Beta == 0.0f) {
+                    for (size_t k = 0; k < K; ++k) {
+                        const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
+                        const float a_val = a_row[k];
+                        __m512 a_broadcast = _mm512_set1_ps(a_val);
 
-                    n = 0;
+                        size_t n = 0;
+                        for (; n < vec_end_n; n += 16) {
+                            __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + n));
+                            __m512i i32 = _mm512_cvtepi8_epi32(raw);
+                            __m512 bf = _mm512_cvtepi32_ps(i32);
+                            __m512 c_vec = _mm512_loadu_ps(c_row + n);
+                            c_vec = _mm512_fmadd_ps(a_broadcast, bf, c_vec);
+                            _mm512_storeu_ps(c_row + n, c_vec);
+                        }
+                        for (; n < N; ++n) {
+                            c_row[n] += a_val * static_cast<float>(b_row[n]);
+                        }
+                    }
+
+                    __m512 scale_vec = _mm512_set1_ps(Scales[0]);
+                    size_t n = 0;
                     for (; n < vec_end_n; n += 16) {
-                        __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + n));
-                        __m512i i32 = _mm512_cvtepi8_epi32(raw);
-                        __m512 bf = _mm512_cvtepi32_ps(i32);
                         __m512 c_vec = _mm512_loadu_ps(c_row + n);
-                        c_vec = _mm512_fmadd_ps(a_broadcast, bf, c_vec);
+                        c_vec = _mm512_mul_ps(c_vec, scale_vec);
                         _mm512_storeu_ps(c_row + n, c_vec);
                     }
                     for (; n < N; ++n) {
-                        c_row[n] += a_val * static_cast<float>(b_row[n]);
+                        c_row[n] *= Scales[0];
                     }
-                }
+                } else {
+                    // Beta!=0: fold scale into a_val
+                    const float tensor_scale = Scales[0];
+                    for (size_t k = 0; k < K; ++k) {
+                        const int8_t* b_row = reinterpret_cast<const int8_t*>(B_bytes + k * row_bytes);
+                        const float a_val = a_row[k] * tensor_scale;
+                        __m512 a_broadcast = _mm512_set1_ps(a_val);
 
-                __m512 scale_vec = _mm512_set1_ps(Scales[0]);
-                n = 0;
-                for (; n < vec_end_n; n += 16) {
-                    __m512 c_vec = _mm512_loadu_ps(c_row + n);
-                    c_vec = _mm512_mul_ps(c_vec, scale_vec);
-                    _mm512_storeu_ps(c_row + n, c_vec);
-                }
-                for (; n < N; ++n) {
-                    c_row[n] *= Scales[0];
+                        size_t n = 0;
+                        for (; n < vec_end_n; n += 16) {
+                            __m128i raw = _mm_loadu_si128(reinterpret_cast<const __m128i*>(b_row + n));
+                            __m512i i32 = _mm512_cvtepi8_epi32(raw);
+                            __m512 bf = _mm512_cvtepi32_ps(i32);
+                            __m512 c_vec = _mm512_loadu_ps(c_row + n);
+                            c_vec = _mm512_fmadd_ps(a_broadcast, bf, c_vec);
+                            _mm512_storeu_ps(c_row + n, c_vec);
+                        }
+                        for (; n < N; ++n) {
+                            c_row[n] += a_val * static_cast<float>(b_row[n]);
+                        }
+                    }
                 }
             }
         } else {
@@ -616,7 +654,7 @@ SVGemm_Avx512Vnni(
                 const float a_val = a_row[k];
                 __m512 a_broadcast = _mm512_set1_ps(a_val);
 
-                n = 0;
+                size_t n = 0;
                 for (; n < vec_end_n; n += 16) {
                     __m512 bf = DequantInt4x16_Avx512(b_row, n, per_channel, Scales);
                     __m512 c_vec = _mm512_loadu_ps(c_row + n);

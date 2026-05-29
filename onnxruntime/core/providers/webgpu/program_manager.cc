@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <fstream>
+#include <memory>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/env_var.h"
 
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -17,6 +20,17 @@ ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeli
     : name{program.Name()},
       compute_pipeline{compute_pipeline},
       shape_uniform_ranks{shape_uniform_ranks} {}
+
+ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
+    : webgpu_context_{webgpu_context} {
+  if (std::string dump_file_path = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_SHADER_DUMP_FILE");
+      !dump_file_path.empty()) {
+    auto dump_file = std::make_shared<std::ofstream>(dump_file_path.c_str(), std::ios::app);
+    shader_dump_fn_ = [dump_file = std::move(dump_file)](std::string_view shader_content) {
+      *dump_file << shader_content << "\n";
+    };
+  }
+}
 
 Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const {
   ORT_RETURN_IF(x == 0 || y == 0 || z == 0, "Invalid dispatch group size (", x, ", ", y, ", ", z, ")");
@@ -66,9 +80,7 @@ Status ProgramManager::Build(const ProgramBase& program,
                              const ProgramMetadata& program_metadata,
                              const std::span<uint32_t> inputs_segments,
                              const std::span<uint32_t> outputs_segments,
-#ifndef NDEBUG  // if debug build
                              const std::string& program_key,
-#endif
                              uint32_t normalized_dispatch_x,
                              uint32_t normalized_dispatch_y,
                              uint32_t normalized_dispatch_z,
@@ -100,17 +112,24 @@ Status ProgramManager::Build(const ProgramBase& program,
   std::string code;
   ORT_RETURN_IF_ERROR(shader_helper.GenerateSourceCode(code, shape_uniform_ranks));
 
-  LOGS_DEFAULT(VERBOSE) << "\n=== WebGPU Shader code [" << program.Name()
-#ifndef NDEBUG  // if debug build
-                        << ", Key=\"" << program_key << "\""
-#endif
-                        << "] Start ===\n\n"
-                        << code
-                        << "\n=== WebGPU Shader code [" << program.Name()
-#ifndef NDEBUG  // if debug build
-                        << ", Key=\"" << program_key << "\""
-#endif
-                        << "] End ===\n";
+  // Dump shader code, if requested. It is dumped to `shader_dump_fn_` if set or VERBOSE logging otherwise.
+  {
+    const auto shader_content = [&program, &program_key, &code]() {
+      return MakeString("\n=== WebGPU Shader code [", program.Name(),
+                        ", Key=\"", program_key, "\"",
+                        "] Start ===\n\n",
+                        code,
+                        "\n=== WebGPU Shader code [", program.Name(),
+                        ", Key=\"", program_key, "\"",
+                        "] End ===\n");
+    };
+
+    if (shader_dump_fn_) {
+      shader_dump_fn_(shader_content());
+    } else {
+      LOGS_DEFAULT(VERBOSE) << shader_content();
+    }
+  }
 
   wgpu::ShaderSourceWGSL wgsl_source{};
   wgsl_source.code = code.c_str();
