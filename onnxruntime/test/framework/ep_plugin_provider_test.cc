@@ -509,9 +509,8 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
     ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), OrtDevice());
   }
 
-#if !defined(ORT_NO_EXCEPTIONS)
-  // 2 OrtEpDevice instances with DIFFERENT device_memory_info instances.
-  // Should throw an exception on construction of PluginExecutionProvider.
+  // 2 OrtEpDevice instances with DIFFERENT device_memory_info instances, no GetDefaultMemoryDevice.
+  // PluginExecutionProvider falls back to the first OrtEpDevice's device_memory_info.
   {
     auto ort_device_gpu = test_plugin_ep::MakeTestOrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT);
     auto ort_memory_info_gpu = std::make_unique<OrtMemoryInfo>("TestOrtEp GPU", OrtAllocatorType::OrtDeviceAllocator,
@@ -527,9 +526,9 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
     auto ort_ep_device_npu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_npu.get(), ort_memory_info_npu.get());
     std::vector<const OrtEpDevice*> ep_devices{ort_ep_device_gpu.get(), ort_ep_device_npu.get()};
 
-    ASSERT_THROW(test_plugin_ep::MakeTestOrtEp(ep_devices), OnnxRuntimeException);
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+    ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device_gpu);
   }
-#endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
 // When the EP implements GetDefaultMemoryDevice, the result seeds default_device_ at
