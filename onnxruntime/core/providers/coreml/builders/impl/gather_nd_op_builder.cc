@@ -4,6 +4,7 @@
 #include <optional>
 #include <vector>
 
+#include "core/optimizer/initializer.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
@@ -16,6 +17,8 @@ namespace coreml {
 
 // ONNX GatherND(data, indices) maps to the CoreML ML Program 'gather_nd' op.
 class GatherNDOpBuilder : public BaseOpBuilder {
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
 
@@ -58,12 +61,46 @@ Status GatherNDOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
     gather_x_name = cast_x_name;
   }
 
+  // ONNX GatherND permits negative indices (wrapped by the corresponding data dim); CoreML's gather_nd
+  // does not. The indices are a constant and the indexed data dims are static (both gated in
+  // IsOpSupportedImpl), so wrap any negatives now and re-emit them as an int32 'indices' constant. The
+  // original initializer is skipped (see AddInitializersToSkip).
+  std::string indices_name;
+  {
+    std::vector<int64_t> data_shape, indices_shape;
+    ORT_RETURN_IF_NOT(GetShape(*input_defs[0], data_shape, logger) &&
+                          GetShape(*input_defs[1], indices_shape, logger) && !indices_shape.empty(),
+                      "GatherND: failed to get data/indices shape");
+    const size_t depth = static_cast<size_t>(indices_shape.back());
+    const Initializer unpacked(*model_builder.GetConstantInitializer(input_defs[1]->Name()));
+    int32_t indices_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    GetType(*input_defs[1], indices_type, logger);
+
+    std::vector<int64_t> normalized;
+    const auto wrap = [&](auto src) {
+      normalized.reserve(src.size());
+      for (size_t i = 0; i < src.size(); ++i) {
+        int64_t v = static_cast<int64_t>(src[i]);
+        if (v < 0) v += data_shape[i % depth];
+        normalized.push_back(v);
+      }
+    };
+    if (indices_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+      wrap(unpacked.DataAsSpan<int32_t>());
+    } else {
+      wrap(unpacked.DataAsSpan<int64_t>());
+    }
+    // AddConstant with int64 values emits an int32 'const' (CoreML uses int32 indices).
+    indices_name = model_builder.AddConstant(node.OpType(), "indices", normalized,
+                                             gsl::span<const int64_t>(indices_shape));
+  }
+
   // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.scatter_gather.gather_nd
   // The iOS15 gather_nd has no batch_dims parameter and is equivalent to ONNX
   // GatherND with batch_dims == 0 (other values are gated in IsOpSupportedImpl).
   std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "gather_nd");
   AddOperationInput(*op, "x", gather_x_name);
-  AddOperationInput(*op, "indices", input_defs[1]->Name());
+  AddOperationInput(*op, "indices", indices_name);
   // CoreML docs mark validate_indices as optional, but the ML Program parser
   // rejects gather_nd without it (same as the 'gather' op builder).
   AddOperationInput(*op, "validate_indices",
@@ -119,7 +156,32 @@ bool GatherNDOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInput
     return false;
   }
 
+  // Negative indices are normalized to positive at build time (AddToModelBuilderImpl), which needs the
+  // indexed data dims -- the first indices.shape[-1] dims -- to be statically known.
+  std::vector<int64_t> data_shape, indices_shape;
+  if (!GetShape(*node.InputDefs()[0], data_shape, logger) ||
+      !GetShape(*node.InputDefs()[1], indices_shape, logger) || indices_shape.empty()) {
+    LOGS(logger, VERBOSE) << "GatherND: data or indices shape is unknown.";
+    return false;
+  }
+  const size_t depth = static_cast<size_t>(indices_shape.back());
+  if (depth > data_shape.size()) {
+    LOGS(logger, VERBOSE) << "GatherND: index tuple depth " << depth << " exceeds data rank " << data_shape.size();
+    return false;
+  }
+  for (size_t k = 0; k < depth; ++k) {
+    if (data_shape[k] < 0) {
+      LOGS(logger, VERBOSE) << "GatherND: indexed data dims must be static.";
+      return false;
+    }
+  }
+
   return true;
+}
+
+void GatherNDOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // 'indices' is re-emitted as a normalized int32 constant in AddToModelBuilderImpl, so skip the original.
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
 bool GatherNDOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
