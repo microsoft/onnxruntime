@@ -2364,16 +2364,11 @@ namespace {
 // int64 -> Cast(bool) -> Cast(float) [-> Sqrt]; the first Cast is fed directly
 // by a graph input (no preceding node).
 //
-// With append_nontrivial=false this is the all-Cast graph used by the
-// NeuralNetwork negative test below. With append_nontrivial=true a non-trivial
-// Sqrt is appended so the ML Program partition survives the all-trivial drop in
-// CoreMLExecutionProvider::GetCapability (Cast is marked IsTrivial, and a
-// partition made up only of trivial ops is dropped because it can't amortise
-// the CPU<->CoreML marshalling cost). That lets the partition test below assert
-// the bool Casts are actually claimed. A standalone bool round-trip still can't
-// be verified numerically here because CoreML fuses back-to-back cast ops
-// (dropping the bool clamp); positive numerical coverage lives in the dependent
-// Where/And (#28597) and GatherND (#28598) PRs.
+// append_nontrivial=false gives the all-Cast graph used by the NeuralNetwork
+// negative test below. append_nontrivial=true appends a Sqrt: a CoreML partition
+// made up only of trivial ops (Cast is marked trivial) is dropped, so the extra
+// non-trivial op keeps the partition and lets the test below assert the bool
+// Casts are claimed.
 std::string MakeCastBoolModelData(bool append_nontrivial = false) {
   onnxruntime::Model model("cast_bool_test", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -2444,15 +2439,10 @@ TEST(CoreMLExecutionProviderTest, CastNonArgMaxNeuralNetworkNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
 }
 
-// Load-time partition check on the ML Program path: confirms the EP claims
-// both bool Casts (the relaxed "no preceding node" branch + the bool dtype
-// gate added in HasSupportedInputsImpl). A non-trivial Sqrt is appended so the
-// partition isn't dropped as all-trivial (see MakeCastBoolModelData); all three
-// nodes -- both Casts and the Sqrt -- must land on CoreML. Numerical
-// verification isn't possible here because CoreML fuses back-to-back cast ops
-// and drops the bool clamp; the positive numerical coverage lives in the
-// dependent Where/And (#28597) and GatherND (#28598) PRs, where a non-Cast op
-// sits between the int<->bool casts.
+// Load-time partition check on the ML Program path: confirms the EP claims both
+// bool Casts. A non-trivial Sqrt is appended so the partition isn't dropped as
+// all-trivial (see MakeCastBoolModelData); all three nodes -- both Casts and the
+// Sqrt -- must land on CoreML.
 TEST(CoreMLExecutionProviderTest, CastBoolMLProgramPartition) {
   const std::string model_data = MakeCastBoolModelData(/*append_nontrivial=*/true);
   gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
