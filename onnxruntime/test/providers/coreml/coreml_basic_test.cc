@@ -2361,12 +2361,8 @@ TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
 }
 
 namespace {
-// int64 -> Cast(bool) -> Cast(float); the first Cast is fed directly by a
-// graph input (no preceding node). Used by the NeuralNetwork negative test
-// below. Positive bool-Cast coverage lives in the dependent Where/And and
-// GatherND PRs, where a non-Cast op sits between the int<->bool casts -- a
-// standalone bool round-trip can't be numerically verified here because
-// CoreML fuses back-to-back cast ops (dropping the bool clamp).
+// int64 -> Cast(bool) -> Cast(float); the first Cast is fed directly by a graph
+// input (no preceding node). Used by the NeuralNetwork negative test below.
 std::string MakeCastBoolModelData() {
   onnxruntime::Model model("cast_bool_test", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
