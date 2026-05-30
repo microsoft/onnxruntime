@@ -132,7 +132,10 @@ bool GatherNDOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilder
 
   // gather_nd itself is type-agnostic over 'x' but rejects bool; bool 'data'
   // (transformer mask graphs) is supported via a cast round-trip in
-  // AddToModelBuilderImpl.
+  // AddToModelBuilderImpl. INT64 'data' is accepted because the CoreML EP
+  // implicitly narrows int64 to int32 at the model boundary (the int64->int32
+  // input conversion in model.mm and the matching INT32 feature/output handling
+  // in ModelBuilder::RegisterModelInputOutput), so CoreML never sees int64.
   if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
       data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
       data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
