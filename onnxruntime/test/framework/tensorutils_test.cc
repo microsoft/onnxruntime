@@ -736,7 +736,7 @@ TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EscapeViaDotDot) {
 
   Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "../data.bin");
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("external data path"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("External data path escapes model directory"));
 }
 
 TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_AbsolutePathRejected) {

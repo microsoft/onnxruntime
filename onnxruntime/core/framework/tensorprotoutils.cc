@@ -440,7 +440,7 @@ Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "External data path escapes allowed directory. ",
+                         "External data path escapes model directory. ",
                          "External data path: ", external_data_path, " resolved path: ",
                          external_data_path_canonical, " ", "allowed directory: ", resolved_dir);
 }
