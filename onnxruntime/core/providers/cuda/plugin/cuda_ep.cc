@@ -20,6 +20,7 @@
 #include <unordered_set>
 
 #include "core/graph/constants.h"
+#include "core/providers/cuda/cuda_nhwc_ops.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -214,7 +215,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
-    std::string ep_name = node.GetEpName();
+    const std::string& ep_name = node.GetEpName();
     if (!ep_name.empty()) {
       if (ep_name == ep->name_) {
         candidate_nodes.push_back(node);
@@ -229,6 +230,18 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
     if (kernel_def != nullptr) {
       candidate_nodes.push_back(node);
       tentative_nodes.push_back(node);
+    } else {
+      // Emit a diagnostic when an NHWC-domain node has no matching kernel.
+      // This helps identify gaps between the layout conversion allowlist and
+      // the actually-registered NHWC kernels in the plugin build.
+      const std::string& node_domain = node.GetDomain();
+      if (node_domain == kMSInternalNHWCDomain) {
+        ORT_CXX_LOGF(Ort::Logger(&ep->logger_), ORT_LOGGING_LEVEL_WARNING,
+                     "NHWC kernel miss: op=%s domain=%s version=%d node=%s - "
+                     "no matching kernel registered in the CUDA plugin EP.",
+                     node.GetOperatorType().c_str(), node_domain.c_str(),
+                     node.GetSinceVersion(), node.GetName().c_str());
+      }
     }
   }
 
@@ -308,36 +321,11 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
     return nullptr;
   }
 
-  // ONNX domain ops that have NHWC kernel registrations.
-  static const std::unordered_set<std::string_view> cuda_nhwc_onnx_ops{
-      "BatchNormalization",
-      "Conv",
-      "ConvTranspose",
-      "GlobalMaxPool",
-      "MaxPool",
-      "GlobalAveragePool",
-      "AveragePool",
-      "GridSample",
-      "DepthToSpace",
-      "SpaceToDepth",
-      "LRN",
-  };
-
-  // Check ONNX domain (empty string) or MS domain (com.microsoft)
-  bool is_onnx_domain = (safe_domain[0] == '\0');
-  bool is_ms_domain = (std::strcmp(safe_domain, "com.microsoft") == 0);
-
-  if (is_onnx_domain && cuda_nhwc_onnx_ops.count(safe_op_type) > 0) {
+  if (cuda::IsNhwcEligible(safe_domain, safe_op_type)) {
     *should_convert = 1;  // Convert
-    return nullptr;
+  } else {
+    *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   }
-
-  if (is_ms_domain && std::strcmp(safe_op_type, "GridSample") == 0) {
-    *should_convert = 1;  // Convert
-    return nullptr;
-  }
-
-  *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   return nullptr;
 #endif
 }
