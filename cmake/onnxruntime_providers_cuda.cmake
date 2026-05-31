@@ -323,7 +323,9 @@
     endif()
 
     if(MSVC)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
@@ -504,13 +506,6 @@
             CUDA_ARCHITECTURES "90a-real"
             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
             SOURCES ${_ort_sm90_all_srcs})
-          if(MSVC)
-            # Keep RDC for SM90-specific non-grouped TMA sources on Windows. Grouped
-            # MoE TMA instantiations are disabled for MSVC above because CUDA 13 still
-            # emits host stubs with over-aligned by-value parameters (C2719).
-            set_target_properties(onnxruntime_providers_cuda_sm90_tma PROPERTIES
-              CUDA_SEPARABLE_COMPILATION ON)
-          endif()
         endif()
       endif()
 
@@ -523,10 +518,6 @@
             CUDA_ARCHITECTURES "${_ort_sm120_cuda_architectures}"
             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
             SOURCES ${onnxruntime_cuda_sm120_tma_srcs})
-          if(MSVC)
-            set_target_properties(onnxruntime_providers_cuda_sm120_tma PROPERTIES
-              CUDA_SEPARABLE_COMPILATION ON)
-          endif()
         endif()
       endif()
 

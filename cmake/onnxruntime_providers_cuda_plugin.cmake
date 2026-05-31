@@ -172,10 +172,12 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>"
         # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
         "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
         # /permissive disables C++ alternative tokens (or, and, not, etc.).
@@ -228,6 +230,7 @@ if (MSVC)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 endif()
@@ -298,13 +301,6 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_plugin_sm90_all_srcs})
-      if(MSVC)
-        # Keep RDC for SM90-specific non-grouped TMA sources on Windows. Grouped
-        # MoE TMA instantiations are disabled for MSVC above because CUDA 13 still
-        # emits host stubs with over-aligned by-value parameters (C2719).
-        set_target_properties(onnxruntime_providers_cuda_plugin_sm90_tma PROPERTIES
-          CUDA_SEPARABLE_COMPILATION ON)
-      endif()
     endif()
   endif()
 
@@ -318,10 +314,6 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_cuda_plugin_sm120_tma_srcs})
-      if(MSVC)
-        set_target_properties(onnxruntime_providers_cuda_plugin_sm120_tma PROPERTIES
-          CUDA_SEPARABLE_COMPILATION ON)
-      endif()
     endif()
   endif()
 
@@ -383,6 +375,9 @@ onnxruntime_add_include_to_target(
     ${PROTOBUF_LIB}
     flatbuffers::flatbuffers
 )
+
+# Ensure generated headers (e.g. onnx-ml.pb.h) are available before compiling.
+add_dependencies(onnxruntime_providers_cuda_plugin ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 # Link libraries
 target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
