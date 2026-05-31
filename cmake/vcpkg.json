@@ -92,7 +92,12 @@
     },
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
-      "dependencies": []
+      "dependencies": [
+        {
+          "name": "dawn",
+          "platform": "!emscripten"
+        }
+      ]
     },
     "webgpu-ep-wgsl-template-dynamic": {
       "description": "Build with WebGPU EP with dynamic WGSL template code generator",

@@ -638,11 +638,7 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
-  # TODO: the following code is used to disable building Dawn using vcpkg temporarily
-  # until we figure out how to resolve the packaging pipeline failures
-  #
-  # if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  if (FALSE)
+  if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # vcpkg does not support Emscripten yet
     find_package(dawn REQUIRED)
   else()
@@ -828,7 +824,7 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY OR onnxruntime_USE_VCPKG)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)

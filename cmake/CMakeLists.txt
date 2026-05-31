@@ -961,14 +961,9 @@ if (onnxruntime_USE_WEBGPU)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_WEBGPU=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES webgpu)
 
-  # TODO: the following code is used to disable building Dawn using vcpkg temporarily
-  # until we figure out how to resolve the packaging pipeline failures
-  #
-  # if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-  if (FALSE)
-    if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
-      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
-    endif()
+  if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # When using vcpkg, the Dawn port always builds a monolithic shared library.
+    # onnxruntime_BUILD_DAWN_SHARED_LIBRARY is redundant but harmless.
     if (onnxruntime_USE_EXTERNAL_DAWN)
       message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_USE_EXTERNAL_DAWN=ON")
     endif()
@@ -988,11 +983,11 @@ if (onnxruntime_USE_WEBGPU)
     endif()
   endif()
 
-  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+  if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY OR onnxruntime_USE_VCPKG)
     if (NOT onnxruntime_USE_EP_API_ADAPTERS)
       list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_SHARED_LIBRARY=1)
     else()
-      message(FATAL_ERROR "onnxruntime_USE_EP_API_ADAPTERS=ON is not supported with onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON")
+      message(FATAL_ERROR "onnxruntime_USE_EP_API_ADAPTERS=ON is not supported with Dawn monolithic shared library (onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON or onnxruntime_USE_VCPKG=ON)")
     endif()
   endif()
 
