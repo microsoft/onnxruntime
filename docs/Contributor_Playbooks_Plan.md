@@ -27,6 +27,7 @@ The first three playbooks have been drafted:
 2. [02 Build, Test, and Debug Locally](playbooks/02-build-test-and-debug-locally.md)
 3. [03 First PR and Environment Setup](playbooks/03-first-pr-and-environment-setup.md)
 4. [04 Session Lifecycle from Load to Run](playbooks/04-session-lifecycle-from-load-to-run.md)
+5. [05 Adding or Changing a Kernel](playbooks/05-adding-or-changing-a-kernel.md)
 
 ## Proposed Playbooks
 
