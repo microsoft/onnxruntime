@@ -172,7 +172,10 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
 static void PopulateDeviceFetches(gsl::span<const MLValueCopyInfo> fetch_copy_info,
                                   const std::vector<OrtValue>& fetches,
                                   std::vector<OrtValue>& device_fetches) {
-  ORT_ENFORCE(fetch_copy_info.size() == fetches.size());
+  // fetches is empty on the subgraph path, where control-flow nodes such as Loop pass an empty fetches vector
+  // and let ExecuteThePlan allocate the outputs; in that case device_fetches stays empty. A partially sized
+  // fetches vector indicates a bug.
+  ORT_ENFORCE(fetches.empty() || fetch_copy_info.size() == fetches.size());
   device_fetches.clear();
   device_fetches.reserve(fetches.size());
   for (size_t i = 0; i < fetches.size(); ++i) {
