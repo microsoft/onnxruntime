@@ -1,0 +1,66 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Runtime implementation for experimental C API functions.
+// See docs/design/Experimental_C_API.md for the design and lifecycle rules.
+
+#include <string_view>
+
+#include "core/framework/error_code_helper.h"
+#include "core/session/onnxruntime_c_api.h"
+#include "core/session/ort_apis.h"
+
+// ---------------------------------------------------------------------------
+// Experimental function implementations
+// ---------------------------------------------------------------------------
+
+namespace OrtExperimentalApis {
+
+// Test-only experimental function that writes a known sentinel value.
+// Exists to exercise the experimental API mechanism end-to-end and
+// to serve as a template for future experimental functions.
+ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_ExpSinceV27,
+                    _Out_ int64_t* out) {
+  API_IMPL_BEGIN
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "out is null");
+  }
+  *out = 12345;
+  return nullptr;
+  API_IMPL_END
+}
+
+}  // namespace OrtExperimentalApis
+
+// ---------------------------------------------------------------------------
+// Registration table (auto-generated from .inc)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct ExperimentalEntry {
+  std::string_view name;
+  OrtExperimentalFnPtr fn;
+};
+
+static const ExperimentalEntry kExperimentalFunctions[] = {
+#define ORT_EXPERIMENTAL_FUNC(VER, NAME, ...) \
+  {#NAME "_ExpSinceV" #VER, reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_ExpSinceV##VER)},
+#include "onnxruntime_experimental_c_api.inc"
+#undef ORT_EXPERIMENTAL_FUNC
+};
+
+}  // anonymous namespace
+
+// ---------------------------------------------------------------------------
+// Lookup implementation (wired into OrtApi via ort_apis.h)
+// ---------------------------------------------------------------------------
+
+ORT_API(OrtExperimentalFnPtr, OrtApis::GetExperimentalFunction, _In_ const char* name) {
+  if (name == nullptr) return nullptr;
+  std::string_view target(name);
+  for (const auto& entry : kExperimentalFunctions) {
+    if (entry.name == target) return entry.fn;
+  }
+  return nullptr;
+}

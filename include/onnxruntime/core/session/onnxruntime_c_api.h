@@ -355,6 +355,13 @@ typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 typedef OrtStatus* OrtStatusPtr;
 #endif
 
+/** \brief Generic function pointer type for experimental API lookup.
+ *
+ * Returned by OrtApi::GetExperimentalFunction. Cast to the correct function pointer type before calling.
+ * The experimental API function pointer types are defined in onnxruntime_experimental_c_api.h.
+ */
+typedef void(ORT_API_CALL* OrtExperimentalFnPtr)(void);
+
 /** \brief Memory allocation interface
  *
  * Structure of function pointers that defines a memory allocator. This can be created and filled in by the user for custom allocators.
@@ -7486,6 +7493,24 @@ struct OrtApi {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
+
+  /** \brief Retrieve an experimental function pointer by name.
+   *
+   * Experimental functions are not part of the stable ABI and may be added, changed, or removed
+   * between releases without notice. Use the companion header onnxruntime_experimental_c_api.h for
+   * typedefs, name constants, and (for C++) typed accessors.
+   *
+   * \param[in] name The null-terminated name of the experimental function to look up.
+   *                 Names follow the pattern \<TargetStruct\>_\<Name\>_ExpSinceV\<APIVersion\>.
+   *                 Name constants are defined in onnxruntime_experimental_c_api.h.
+   * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the name is null
+   *         or the function is not available in this build. The caller must cast the returned
+   *         pointer to the correct function pointer type before calling.
+   *         Function pointer typedefs are defined in onnxruntime_experimental_c_api.h.
+   *
+   * \since Version 1.27.
+   */
+  OrtExperimentalFnPtr(ORT_API_CALL* GetExperimentalFunction)(_In_ const char* name) NO_EXCEPTION;
 };
 
 /*
