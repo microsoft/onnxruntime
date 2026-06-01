@@ -65,7 +65,11 @@ Status QMoE<T>::QuantizedMoEImpl(OpKernelContext* context,
                                                                            activation_type_,
                                                                            fc3_experts_weights_optional != nullptr,
                                                                            normalize_routing_weights_,
-                                                                           use_sparse_mixer_);
+                                                                           use_sparse_mixer_,
+                                                                           activation_alpha_,
+                                                                           activation_beta_,
+                                                                           swiglu_limit_,
+                                                                           swiglu_fusion_ == 1);
 
   size_t ws_size = moe_runner.getWorkspaceSize(
       static_cast<size_t>(moe_params.num_rows), static_cast<size_t>(moe_params.hidden_size),

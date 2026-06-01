@@ -48,9 +48,13 @@ static constexpr int WARP_SIZE = 32;
 //   dim = x.shape[-1]
 //   x = x.view(-1, dim // 2, 2)
 //   x_glu, x_linear = x[..., 0], x[..., 1]
-//   y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + 1)
-template <typename T, bool HasLimit>
-__global__ void swiglu_kernel_interleaved(T* output, T const* input, int intermediate_size, int num_rows, float alpha, float limit) {
+//   y = x_glu * torch.sigmoid(alpha * x_glu) * (x_linear + beta)
+// Interleaved version. Set ``has_limit=false`` (or pass ``limit <= 0``)
+// to skip clamping; ``beta`` controls the additive bias on the linear
+// branch (1.0 for GPT-OSS-style SwiGLU, 0.0 for standard SwiGLU).
+template <typename T>
+__global__ void swiglu_kernel_interleaved(T* output, T const* input, int intermediate_size, int num_rows,
+                                          float alpha, float beta, float limit, bool has_limit) {
   int const row = blockIdx.x;
   if (row >= num_rows) {
     return;
@@ -63,7 +67,7 @@ __global__ void swiglu_kernel_interleaved(T* output, T const* input, int interme
     float glu = static_cast<float>(row_input[2 * i]);
     float linear = static_cast<float>(row_input[2 * i + 1]);
 
-    if constexpr (HasLimit) {
+    if (has_limit) {
       glu = fminf(glu, limit);
       linear = fminf(fmaxf(linear, -limit), limit);
     }
@@ -72,13 +76,14 @@ __global__ void swiglu_kernel_interleaved(T* output, T const* input, int interme
     float sigmoid_out = 1.f / (1.f + expf(-sigmoid_arg));
 
     float swish_out = glu * sigmoid_out;
-    row_output[i] = static_cast<T>(swish_out * (linear + 1.f));
+    row_output[i] = static_cast<T>(swish_out * (linear + beta));
   }
 }
 
 // Non interleaved version of SwiGLU kernel, which splits each row into two chunks of same size.
-template <typename T, bool HasLimit>
-__global__ void swiglu_kernel_chunked(T* output, T const* input, int intermediate_size, int num_rows, float alpha, float limit) {
+template <typename T>
+__global__ void swiglu_kernel_chunked(T* output, T const* input, int intermediate_size, int num_rows,
+                                      float alpha, float beta, float limit, bool has_limit) {
   int const row = blockIdx.x;
   if (row >= num_rows) {
     return;
@@ -91,7 +96,7 @@ __global__ void swiglu_kernel_chunked(T* output, T const* input, int intermediat
     float glu = static_cast<float>(row_input[i]);
     float linear = static_cast<float>(row_input[i + intermediate_size]);
 
-    if constexpr (HasLimit) {
+    if (has_limit) {
       glu = fminf(glu, limit);
       linear = fminf(fmaxf(linear, -limit), limit);
     }
@@ -100,25 +105,29 @@ __global__ void swiglu_kernel_chunked(T* output, T const* input, int intermediat
     float sigmoid_out = 1.f / (1.f + expf(-sigmoid_arg));
 
     float swish_out = glu * sigmoid_out;
-    row_output[i] = static_cast<T>(swish_out * (linear + 1.f));
+    row_output[i] = static_cast<T>(swish_out * (linear + beta));
   }
 }
 
-template <typename T, bool IsInterLeaved, bool HasLimit>
-void invokeSwiGLU(T* output, T const* input, int intermediate_size, int num_rows, float alpha, float limit, cudaStream_t stream) {
+template <typename T>
+void invokeSwiGLU(T* output, T const* input, int intermediate_size, int num_rows,
+                  float alpha, float beta, float limit, bool interleaved, cudaStream_t stream) {
   if (num_rows == 0) {
     return;
   }
+  const bool has_limit = limit > 0.f;
   dim3 block(std::min(intermediate_size, 1024));
   dim3 grid(num_rows);
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("swiglu input", input, num_rows, 2 * intermediate_size);
 
-  if constexpr (IsInterLeaved) {
-    swiglu_kernel_interleaved<T, HasLimit><<<grid, block, 0, stream>>>(output, input, intermediate_size, num_rows, alpha, limit);
+  if (interleaved) {
+    swiglu_kernel_interleaved<T><<<grid, block, 0, stream>>>(
+        output, input, intermediate_size, num_rows, alpha, beta, limit, has_limit);
   } else {
-    swiglu_kernel_chunked<T, HasLimit><<<grid, block, 0, stream>>>(output, input, intermediate_size, num_rows, alpha, limit);
+    swiglu_kernel_chunked<T><<<grid, block, 0, stream>>>(
+        output, input, intermediate_size, num_rows, alpha, beta, limit, has_limit);
   }
 
   DUMP_TENSOR("swiglu output", output, num_rows, intermediate_size);
@@ -748,13 +757,19 @@ __global__ void dispatch_activations_kernel(int64_t* total_rows_before_expert, i
 
 template <typename T, typename WeightType, typename Enable>
 CutlassMoeFCRunner<T, WeightType, Enable>::CutlassMoeFCRunner(int sm_version, ActivationType activation_type, bool has_fc3,
-                                                              bool normalize_routing_weights, bool use_sparse_mixer)
+                                                              bool normalize_routing_weights, bool use_sparse_mixer,
+                                                              float swiglu_alpha, float swiglu_beta,
+                                                              float swiglu_limit, bool swiglu_interleaved)
     : activation_type_(activation_type),
       has_fc3_(has_fc3),
       total_past_rows_(0),
       total_covered_rows_(0),
       normalize_routing_weights_(normalize_routing_weights),
-      use_sparse_mixer_(use_sparse_mixer) {
+      use_sparse_mixer_(use_sparse_mixer),
+      swiglu_alpha_(swiglu_alpha),
+      swiglu_beta_(swiglu_beta),
+      swiglu_limit_(swiglu_limit),
+      swiglu_interleaved_(swiglu_interleaved) {
   moe_gemm_runner_.initialize(sm_version);
 }
 
@@ -1034,17 +1049,15 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::run_moe_fc(
         ActivationType::Identity,
         stream);
 
-    constexpr bool swiglu_interleaved = true;
-    constexpr bool swiglu_has_limit = true;
-    constexpr float swiglu_alpha = 1.702f;
-    constexpr float swiglu_limit = 7.0f;
-    invokeSwiGLU<T, swiglu_interleaved, swiglu_has_limit>(
+    invokeSwiGLU<T>(
         swiglu_output_buffer + total_past_rows_ * inter_size,
         gemm1_output_buffer + total_past_rows_ * 2 * inter_size,
         inter_size,
         static_cast<int>(total_covered_rows_),
-        swiglu_alpha,
-        swiglu_limit,
+        swiglu_alpha_,
+        swiglu_beta_,
+        swiglu_limit_,
+        swiglu_interleaved_,
         stream);
 
     moe_gemm_runner_.moe_gemm(
@@ -1370,7 +1383,7 @@ template void finalize_moe_routing_kernelLauncher(const half*, half*, const half
 template void finalize_moe_routing_kernelLauncher(const __nv_bfloat16*, __nv_bfloat16*, const __nv_bfloat16*,
                                                   const __nv_bfloat16*, const int*, const int*, int, int, int, cudaStream_t);
 
-template void invokeSwiGLU<float, true, true>(float*, float const*, int, int, float, float, cudaStream_t);
-template void invokeSwiGLU<half, true, true>(half*, half const*, int, int, float, float, cudaStream_t);
+template void invokeSwiGLU<float>(float*, float const*, int, int, float, float, float, bool, cudaStream_t);
+template void invokeSwiGLU<half>(half*, half const*, int, int, float, float, float, bool, cudaStream_t);
 
 }  // namespace ort_fastertransformer
