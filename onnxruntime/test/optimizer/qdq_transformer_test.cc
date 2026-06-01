@@ -4540,7 +4540,11 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   so.graph_optimization_level = TransformerLevel::Default;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
+  // Note: we intentionally do not call session_object.Initialize() here. Initialize() finalizes the
+  // session state and clears the graph's constant initializers (CleanInitializedTensorsFromGraph),
+  // after which GraphViewer::GetConstantInitializer would return nullptr. The ConvNodeGroupSelector
+  // bias-scale/zero-point validation needs those constant initializers to verify the QDQ group, so
+  // we keep the graph in its loaded (but resolved) state where the initializers are still present.
   const Graph& graph = session_object.GetGraph();
   const auto* conv_node = graph.GetNode(3);
 
