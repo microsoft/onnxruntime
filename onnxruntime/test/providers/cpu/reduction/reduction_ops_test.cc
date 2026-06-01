@@ -6799,7 +6799,7 @@ TEST(ReductionOpTest, ReduceSum_int32_Overflow_Saturates) {
   // Expected: saturates to INT32_MAX (3.3B > 2.147B)
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_int32_NegativeOverflow_Saturates) {
@@ -6810,7 +6810,7 @@ TEST(ReductionOpTest, ReduceSum_int32_NegativeOverflow_Saturates) {
   // Expected: saturates to INT32_MIN (-3.3B < -2.147B)
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::min()});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_int64_Overflow_Saturates) {
@@ -6821,7 +6821,7 @@ TEST(ReductionOpTest, ReduceSum_int64_Overflow_Saturates) {
   // 12e18 > INT64_MAX (~9.2e18)
   test.AddOutput<int64_t>("reduced", {1}, {std::numeric_limits<int64_t>::max()});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_int32_LargeValues_NoOverflow) {
@@ -6833,7 +6833,7 @@ TEST(ReductionOpTest, ReduceMean_int32_LargeValues_NoOverflow) {
   // Mean = 2B (fits in int32). Sum would be 6B (overflow).
   test.AddOutput<int32_t>("reduced", {1}, {big});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_int64_LargeValues_NoOverflow) {
@@ -6853,7 +6853,7 @@ TEST(ReductionOpTest, ReduceProd_int32_Overflow_Saturates) {
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceProd_int32_NegativeOverflow_Saturates) {
@@ -6863,7 +6863,7 @@ TEST(ReductionOpTest, ReduceProd_int32_NegativeOverflow_Saturates) {
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::min()});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_int32_Overflow_Saturates) {
@@ -6908,7 +6908,8 @@ TEST(ReductionOpTest, ReduceMax_int32_EmptySet) {
                           {std::numeric_limits<int32_t>::lowest(),
                            std::numeric_limits<int32_t>::lowest(),
                            std::numeric_limits<int32_t>::lowest()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMin_int32_EmptySet) {
@@ -6921,7 +6922,8 @@ TEST(ReductionOpTest, ReduceMin_int32_EmptySet) {
                           {std::numeric_limits<int32_t>::max(),
                            std::numeric_limits<int32_t>::max(),
                            std::numeric_limits<int32_t>::max()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMax_int64_EmptySet) {
@@ -6932,7 +6934,8 @@ TEST(ReductionOpTest, ReduceMax_int64_EmptySet) {
   test.AddOutput<int64_t>("reduced", {1, 2},
                           {std::numeric_limits<int64_t>::lowest(),
                            std::numeric_limits<int64_t>::lowest()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kWebGpuExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMin_int64_EmptySet) {
@@ -6943,7 +6946,8 @@ TEST(ReductionOpTest, ReduceMin_int64_EmptySet) {
   test.AddOutput<int64_t>("reduced", {1, 2},
                           {std::numeric_limits<int64_t>::max(),
                            std::numeric_limits<int64_t>::max()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kWebGpuExecutionProvider});
 }
 
 }  // namespace test

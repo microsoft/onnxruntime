@@ -814,7 +814,11 @@ TEST(LayerNormTest, LayerNorm_LargeValues_NoNaN) {
   // Expected: standard normalized values [-1.3416, -0.4472, 0.4472, 1.3416]
   test.AddOutput<float>("Y", dims, {-1.3416355f, -0.4472118f, 0.4472118f, 1.3416355f});
   test.SetOutputRelErr("Y", 1e-4f);
-  test.Run();
+  // Only CPU (fixed), CUDA (already robust), and WebGPU (fixed) handle large values without NaN.
+  // Other EPs may still use naive E[X^2]-E[X]^2 variance formula.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 // Edge case: even larger values
@@ -829,7 +833,9 @@ TEST(LayerNormTest, LayerNorm_VeryLargeValues_NoNaN) {
   test.AddInput<float>("bias", {4}, {0.0f, 0.0f, 0.0f, 0.0f});
   test.AddOutput<float>("Y", dims, {-1.3416355f, -0.4472118f, 0.4472118f, 1.3416355f});
   test.SetOutputRelErr("Y", 1e-4f);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 // Edge case: all identical values (zero variance)
@@ -861,7 +867,9 @@ TEST(LayerNormTest, LayerNorm_ConstantWeights_LargeInput) {
   test.AddInput<float>("bias", {4}, {0.1f, 0.1f, 0.1f, 0.1f});
   // All same input -> normalized to 0, then * 0.1 + 0.1 = 0.1
   test.AddOutput<float>("Y", dims, {0.1f, 0.1f, 0.1f, 0.1f});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
 }
 
 #if defined(USE_DNNL)

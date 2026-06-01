@@ -39,7 +39,6 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
   }
 
-  std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
   std::string simpl2 = (simplified_) ? "" : "- x_element_t(mean) ";
 
   if (split_norm_dim_) {
@@ -47,38 +46,88 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "var<workgroup> sum_shared : array<f32, workgroup_size_x>;\n"
         << "var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;\n";
 
-    shader.MainFunctionBody()
-        << "  var sum_vec4 = vec4<f32>(0);\n"
-        << "  var sum_squared_vec4 = vec4<f32>(0);\n"
-        << "  var cur_input = x_value_t(0);\n"
-        << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
-        << "    let input_offset = i * workgroup_size_x + local_idx;\n"
-        << "    let input_value = x[input_offset];\n"
-        << "    if (i == workgroup_idx) {\n"
-        << "      cur_input = input_value;\n"
-        << "    }\n"
-        << "    let f32_value = vec4<f32>(input_value);\n"
-        << "    sum_vec4 += f32_value;\n"
-        << "    sum_squared_vec4 += f32_value * f32_value;\n"
-        << "  }\n"
-        << "  var sum = " << SumVector("sum_vec4", 4) << ";\n"
-        << "  var sum_squared = " << SumVector("sum_squared_vec4", 4) << ";\n"
-        << "  sum_shared[local_idx] = sum;\n"
-        << "  sum_squared_shared[local_idx] = sum_squared;\n"
-        << "  workgroupBarrier();\n"
-        << "  var reduce_size : u32 = workgroup_size_x;\n"
-        << "  for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {\n"
-        << "    reduce_size = curr_size + (reduce_size & 1);\n"
-        << "    if (local_idx < curr_size) {\n"
-        << "      sum_shared[local_idx] += sum_shared[local_idx + reduce_size];\n"
-        << "      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];\n"
-        << "    }\n"
-        << "    workgroupBarrier();\n"
-        << "  }\n"
-        << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
-        << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
-        << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  y[offset] = ((cur_input " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ");\n";
+    if (simplified_) {
+      // Simplified (RMSNorm): single-pass sum of squares is fine (no cancellation risk)
+      shader.MainFunctionBody()
+          << "  var sum_vec4 = vec4<f32>(0);\n"
+          << "  var sum_squared_vec4 = vec4<f32>(0);\n"
+          << "  var cur_input = x_value_t(0);\n"
+          << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
+          << "    let input_offset = i * workgroup_size_x + local_idx;\n"
+          << "    let input_value = x[input_offset];\n"
+          << "    if (i == workgroup_idx) {\n"
+          << "      cur_input = input_value;\n"
+          << "    }\n"
+          << "    let f32_value = vec4<f32>(input_value);\n"
+          << "    sum_vec4 += f32_value;\n"
+          << "    sum_squared_vec4 += f32_value * f32_value;\n"
+          << "  }\n"
+          << "  sum_shared[local_idx] = " << SumVector("sum_vec4", 4) << ";\n"
+          << "  sum_squared_shared[local_idx] = " << SumVector("sum_squared_vec4", 4) << ";\n"
+          << "  workgroupBarrier();\n"
+          << "  var reduce_size : u32 = workgroup_size_x;\n"
+          << "  for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {\n"
+          << "    reduce_size = curr_size + (reduce_size & 1);\n"
+          << "    if (local_idx < curr_size) {\n"
+          << "      sum_shared[local_idx] += sum_shared[local_idx + reduce_size];\n"
+          << "      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];\n"
+          << "    }\n"
+          << "    workgroupBarrier();\n"
+          << "  }\n"
+          << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
+          << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n"
+          << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
+          << "  y[offset] = (cur_input * x_element_t(inv_std_dev) * scale[offset]"
+          << (has_bias_ ? " + bias[offset] " : "") << ");\n";
+    } else {
+      // Two-pass approach: pass 1 computes mean, pass 2 computes variance as mean((x-mean)^2)
+      // to avoid catastrophic cancellation in E[X^2] - E[X]^2 for large values.
+      shader.MainFunctionBody()
+          << "  var sum_vec4 = vec4<f32>(0);\n"
+          << "  var cur_input = x_value_t(0);\n"
+          << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
+          << "    let input_offset = i * workgroup_size_x + local_idx;\n"
+          << "    let input_value = x[input_offset];\n"
+          << "    if (i == workgroup_idx) {\n"
+          << "      cur_input = input_value;\n"
+          << "    }\n"
+          << "    let f32_value = vec4<f32>(input_value);\n"
+          << "    sum_vec4 += f32_value;\n"
+          << "  }\n"
+          << "  sum_shared[local_idx] = " << SumVector("sum_vec4", 4) << ";\n"
+          << "  workgroupBarrier();\n"
+          << "  var reduce_size : u32 = workgroup_size_x;\n"
+          << "  for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {\n"
+          << "    reduce_size = curr_size + (reduce_size & 1);\n"
+          << "    if (local_idx < curr_size) {\n"
+          << "      sum_shared[local_idx] += sum_shared[local_idx + reduce_size];\n"
+          << "    }\n"
+          << "    workgroupBarrier();\n"
+          << "  }\n"
+          << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
+          // Pass 2: compute sum of (x - mean)^2
+          << "  var var_vec4 = vec4<f32>(0);\n"
+          << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
+          << "    let input_offset = i * workgroup_size_x + local_idx;\n"
+          << "    let f32_value = vec4<f32>(x[input_offset]);\n"
+          << "    let diff = f32_value - vec4<f32>(mean);\n"
+          << "    var_vec4 += diff * diff;\n"
+          << "  }\n"
+          << "  sum_squared_shared[local_idx] = " << SumVector("var_vec4", 4) << ";\n"
+          << "  workgroupBarrier();\n"
+          << "  reduce_size = workgroup_size_x;\n"
+          << "  for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {\n"
+          << "    reduce_size = curr_size + (reduce_size & 1);\n"
+          << "    if (local_idx < curr_size) {\n"
+          << "      sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];\n"
+          << "    }\n"
+          << "    workgroupBarrier();\n"
+          << "  }\n"
+          << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) + uniforms.epsilon);\n"
+          << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
+          << "  y[offset] = ((cur_input - x_element_t(mean)) * x_element_t(inv_std_dev) * scale[offset]"
+          << (has_bias_ ? " + bias[offset] " : "") << ");\n";
+    }
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
@@ -111,27 +160,66 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "if (ix == workgroup_size_x - 1) {\n"
         << " stride = norm_size_vectorized - stride * ix;\n"
         << "}\n"
+        // Pass 1: compute sum (and store input into y for later use)
         << "for (var i: u32 = 0; i < stride; i++) {\n"
         << " let input_value = x[offset + i];\n"
         << " y[offset + i] = input_value;\n"
         << " let f32_value = f32_val_t(input_value);\n"
-        << " sum_shared[ix] += f32_value;\n"
-        << " sum_squared_shared[ix] += f32_value * f32_value;\n"
+        << " sum_shared[ix] += f32_value;\n";
+    if (simplified_) {
+      shader.MainFunctionBody()
+          << " sum_squared_shared[ix] += f32_value * f32_value;\n";
+    }
+    shader.MainFunctionBody()
         << "}\n"
         << "workgroupBarrier();\n"
         << "var reduce_size : u32 = workgroup_size_x;\n"
         << "for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {\n"
         << " reduce_size = curr_size + (reduce_size & 1);\n"
         << " if (ix < curr_size) {\n"
-        << "  sum_shared[ix] += sum_shared[ix + reduce_size];\n"
-        << "  sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];\n"
+        << "  sum_shared[ix] += sum_shared[ix + reduce_size];\n";
+    if (simplified_) {
+      shader.MainFunctionBody()
+          << "  sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];\n";
+    }
+    shader.MainFunctionBody()
         << " }\n"
         << " workgroupBarrier();\n"
         << "}\n"
         << "let sum = sum_shared[0];\n"
-        << "let square_sum = sum_squared_shared[0];\n"
-        << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
-        << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
+        << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n";
+
+    if (simplified_) {
+      // Simplified (RMSNorm): variance = E[X^2], no cancellation risk
+      shader.MainFunctionBody()
+          << "let square_sum = sum_squared_shared[0];\n"
+          << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components)
+          << " / f32(uniforms.norm_size) + uniforms.epsilon);\n";
+    } else {
+      // Pass 2: compute variance as mean((x - mean)^2) to avoid catastrophic cancellation
+      shader.MainFunctionBody()
+          << "sum_squared_shared[ix] = f32_val_t(0);\n"
+          << "workgroupBarrier();\n"
+          << "for (var i: u32 = 0; i < stride; i++) {\n"
+          << " let f32_value = f32_val_t(y[offset + i]);\n"
+          << " let diff = f32_value - f32_val_t(mean);\n"
+          << " sum_squared_shared[ix] += diff * diff;\n"
+          << "}\n"
+          << "workgroupBarrier();\n"
+          << "reduce_size = workgroup_size_x;\n"
+          << "for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {\n"
+          << " reduce_size = curr_size + (reduce_size & 1);\n"
+          << " if (ix < curr_size) {\n"
+          << "  sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];\n"
+          << " }\n"
+          << " workgroupBarrier();\n"
+          << "}\n"
+          << "let square_sum = sum_squared_shared[0];\n"
+          << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components)
+          << " / f32(uniforms.norm_size) + uniforms.epsilon);\n";
+    }
+
+    shader.MainFunctionBody()
         << "for (var i: u32 = 0; i < stride; i++) {\n"
         << " y[offset + i] = (y[offset + i] " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset1d + i]" << bias << ";\n"
         << "};\n";
