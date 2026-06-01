@@ -177,12 +177,12 @@ static void LutGemmPackArgs(benchmark::internal::Benchmark* b) {
 static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);
   b->ArgsProduct({
-      {128},                          // BlkLen
-      {1, 32},                        // M
-      {4096},                         // N
-      {4096},                         // K
-      {8},                            // Threads
-      {int64_t{false}},               // HasZeroPoint
+      {128},                            // BlkLen
+      {1, 32},                          // M
+      {4096},                           // N
+      {4096},                           // K
+      {8},                              // Threads
+      {int64_t{false}},                 // HasZeroPoint
       {int64_t{false}, int64_t{true}},  // HasBias
   });
 }
