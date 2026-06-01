@@ -94,8 +94,6 @@ class ModelPackageComponentContext {
     return component_model_info_.variants;
   }
 
-  Status GetSelectedVariantFilePaths(gsl::span<const std::filesystem::path>& out_file_paths) const;
-
   Status GetSelectedVariantFolderPath(const std::filesystem::path*& out_folder_path) const;
 
   // Get the single model file path for the selected variant.
@@ -151,7 +149,6 @@ class ModelPackageComponentContext {
   mutable std::string consumer_metadata_cache_{};
   mutable bool consumer_metadata_cache_valid_{false};
   mutable std::filesystem::path folder_path_cache_{};
-  mutable std::vector<std::filesystem::path> file_paths_cache_{};
   mutable std::vector<std::string> session_option_keys_cache_{};
   mutable std::vector<std::string> session_option_values_cache_{};
   mutable std::vector<std::string> provider_option_keys_cache_{};

@@ -133,38 +133,9 @@ Status ModelPackageComponentContext::GetSelectedVariantFolderPath(const std::fil
                 "Selected variant index out of range for component: ", component_model_name_);
 
   const auto& selected_variant = component_model_info_.variants[selected_idx];
-  ORT_RETURN_IF(!selected_variant.file.has_value(), "Selected variant has no file entry.");
 
   folder_path_cache_ = selected_variant.file->model_file_path.parent_path();
   out_folder_path = &folder_path_cache_;
-  return Status::OK();
-}
-
-Status ModelPackageComponentContext::GetSelectedVariantFilePaths(gsl::span<const std::filesystem::path>& out_file_paths) const {
-  out_file_paths = gsl::span<const std::filesystem::path>{};
-
-  ORT_RETURN_IF(!component_model_info_.selected_variant_index.has_value(),
-                "No variant selected for component: ", component_model_name_);
-
-  const size_t selected_idx = *component_model_info_.selected_variant_index;
-  ORT_RETURN_IF(selected_idx >= component_model_info_.variants.size(),
-                "Selected variant index out of range for component: ", component_model_name_);
-
-  // Return cached paths if already built.
-  if (!file_paths_cache_.empty()) {
-    out_file_paths = gsl::span<const std::filesystem::path>(file_paths_cache_.data(),
-                                                            file_paths_cache_.size());
-    return Status::OK();
-  }
-
-  const auto& selected_variant = component_model_info_.variants[selected_idx];
-
-  if (selected_variant.file.has_value()) {
-    file_paths_cache_.push_back(selected_variant.file->model_file_path);
-  }
-
-  out_file_paths = gsl::span<const std::filesystem::path>(file_paths_cache_.data(),
-                                                          file_paths_cache_.size());
   return Status::OK();
 }
 
