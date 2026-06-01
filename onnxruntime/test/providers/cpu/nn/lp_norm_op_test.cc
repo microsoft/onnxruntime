@@ -175,6 +175,13 @@ TEST(LpNormalizationTest, L2NormalizationWithZeroNorm) {
 }
 
 TEST(LpNormalizationTest, L2Normalization_FP16) {
+  // FP16 is only supported on CUDA/ROCM EPs. Skip before building the model so the
+  // OpTester is never constructed without a Run() (a Debug-build DebugTrap otherwise fires).
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
   OpTester test("LpNormalization");
   test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("p", (int64_t)2);
@@ -204,11 +211,6 @@ TEST(LpNormalizationTest, L2Normalization_FP16) {
   for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
   test.AddOutput<MLFloat16>("Y", input_dims, expected);
 
-  // FP16 is only supported on CUDA/ROCM EPs.
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA execution provider is not available.";
-  }
   SessionOptions so;
   ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -217,6 +219,13 @@ TEST(LpNormalizationTest, L2Normalization_FP16) {
 }
 
 TEST(LpNormalizationTest, L1Normalization_FP16) {
+  // FP16 is only supported on CUDA/ROCM EPs. Skip before building the model so the
+  // OpTester is never constructed without a Run() (a Debug-build DebugTrap otherwise fires).
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
   OpTester test("LpNormalization");
   test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("p", (int64_t)1);
@@ -237,11 +246,6 @@ TEST(LpNormalizationTest, L1Normalization_FP16) {
   for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
   test.AddOutput<MLFloat16>("Y", input_dims, expected);
 
-  // FP16 is only supported on CUDA/ROCM EPs.
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA execution provider is not available.";
-  }
   SessionOptions so;
   ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
