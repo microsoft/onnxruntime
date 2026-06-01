@@ -893,7 +893,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
     return false;
   }
 
-  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, num_dq_inputs)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
   }
 
