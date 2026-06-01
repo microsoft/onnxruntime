@@ -15,6 +15,7 @@ Abstract:
 
 --*/
 #include <cassert>
+#include <limits>
 #include <vector>
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
@@ -153,6 +154,24 @@ MlasGemmQuantPackBBaseSize(
     return (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
 }
 
+#if defined(USE_KLEIDIAI)
+static size_t
+MlasGemmQuantPackBAppendixSize(
+    size_t N,
+    size_t K,
+    bool AIsSigned,
+    bool BIsSigned,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
+{
+    if (BackendKernelSelectorConfig && !BackendKernelSelectorConfig->use_kleidiai) {
+        return 0;
+    }
+
+    return ArmKleidiAI::MlasQGemmPackBSize(N, K, AIsSigned, BIsSigned);
+}
+#endif
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
@@ -180,9 +199,11 @@ MlasGemmBatch(
         std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> adjusted_data;
         bool can_try_override = true;
         if (has_packed_b) {
+            const size_t packed_b_appendix_size =
+                MlasGemmQuantPackBAppendixSize(Shape.N, Shape.K, Shape.AIsSigned, Shape.BIsSigned, BackendKernelSelectorConfig);
             const size_t packed_b_base_size =
                 MlasGemmQuantPackBBaseSize(Shape.N, Shape.K, Shape.AIsSigned, Shape.BIsSigned);
-            if (packed_b_base_size == 0) {
+            if (packed_b_base_size == 0 || packed_b_appendix_size == 0) {
                 can_try_override = false;
             } else {
                 adjusted_data.assign(DataParams, DataParams + BatchN);
@@ -475,9 +496,12 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) {
-        PackedBytesRequired += ArmKleidiAI::MlasQGemmPackBSize(N, K, AIsSigned, BIsSigned);
+    const size_t PackedBAppendixBytesRequired =
+        MlasGemmQuantPackBAppendixSize(N, K, AIsSigned, BIsSigned, BackendKernelSelectorConfig);
+    if (PackedBAppendixBytesRequired > std::numeric_limits<size_t>::max() - PackedBytesRequired) {
+        return 0;
     }
+    PackedBytesRequired += PackedBAppendixBytesRequired;
 #else
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
 #endif
@@ -527,6 +551,23 @@ MlasGemmPackB(
     bool BIsSigned,
     void* PackedB,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    )
+{
+    MlasGemmPackB(N, K, B, ldb, AIsSigned, BIsSigned, PackedB, BackendKernelSelectorConfig, nullptr);
+}
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
+    const uint8_t* ZeroPointA
     )
 /*++
 
@@ -624,12 +665,15 @@ Return Value:
     }
 
 #if defined(USE_KLEIDIAI)
-    if (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) {
-        void* KleidiPackedB = static_cast<uint8_t*>(PackedBBase) + BasePackedBSize;
-        ArmKleidiAI::MlasQGemmPackB(N, K, BBase, ldb, AIsSigned, BIsSigned, KleidiPackedB);
+    const size_t PackedBAppendixBytesRequired =
+        MlasGemmQuantPackBAppendixSize(N, K, AIsSigned, BIsSigned, BackendKernelSelectorConfig);
+    if (PackedBAppendixBytesRequired != 0) {
+        void* PackedBAppendix = static_cast<uint8_t*>(PackedBBase) + BasePackedBSize;
+        ArmKleidiAI::MlasQGemmPackB(N, K, BBase, ldb, AIsSigned, BIsSigned, PackedBAppendix, ZeroPointA);
     }
 #else
     MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+    MLAS_UNREFERENCED_PARAMETER(ZeroPointA);
     MLAS_UNREFERENCED_PARAMETER(PackedBBase);
     MLAS_UNREFERENCED_PARAMETER(BBase);
     MLAS_UNREFERENCED_PARAMETER(BasePackedBSize);

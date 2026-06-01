@@ -26,6 +26,8 @@ class MatMulInteger final : public MatMulIntegerBase {
 
  protected:
   int GetBIdx() const override { return IN_B; }
+
+  int GetAZeroPointIdx() const override { return IN_A_ZERO_POINT; }
 };
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(

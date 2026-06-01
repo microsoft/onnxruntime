@@ -134,7 +134,8 @@ MlasQGemmPackB(
     size_t ldb,
     bool AIsSigned,
     bool BIsSigned,
-    void* PackedB
+    void* PackedB,
+    const uint8_t* ZeroPointA
     );
 
 #if defined(__aarch64__) && defined(__linux__)

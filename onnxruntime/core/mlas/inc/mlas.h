@@ -880,6 +880,20 @@ MlasGemmPackB(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr
     );
 
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
+    const uint8_t* ZeroPointA
+    );
+
 /**
  * @brief For symmetric quantized GEMM, returns size of the
  *        packing buffer needed for right hand side

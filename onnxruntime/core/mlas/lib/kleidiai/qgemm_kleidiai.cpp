@@ -33,6 +33,32 @@ struct KaiTlsBuffersQgemm {
 static thread_local KaiTlsBuffersQgemm g_kai_tls_qgemm;
 
 const KaiDynamicQGemmKernel qgemm_gemm = GetKleidiAIQGemmUKernel();
+constexpr int32_t kPackedBAccColBiasInvalidZeroPointA = -1;
+
+constexpr size_t kStaticQgemmMTileByteLimit = 128 * 1024;
+constexpr size_t kDynamicQgemmNTileByteLimit = 128 * 1024;
+
+static size_t
+CapStepByPackedBytes(size_t step, size_t base_step, size_t base_packed_bytes, size_t byte_limit) {
+    if (byte_limit == 0 || base_step == 0 || base_packed_bytes == 0 || step <= base_step) {
+        return step;
+    }
+
+    const size_t max_blocks = std::max<size_t>(size_t{1}, byte_limit / base_packed_bytes);
+
+    size_t capped_step = 0;
+    if (mul_overflow_size_t_builtin(base_step, max_blocks, &capped_step)) {
+        return step;
+    }
+
+    return std::min(step, capped_step);
+}
+
+static size_t
+CapDynamicQgemmNStepByPackedRhs(size_t n_step, size_t base_n_step, size_t k, size_t byte_limit) {
+    return CapStepByPackedBytes(
+        n_step, base_n_step, qgemm_gemm.ukernel.get_rhs_packed_offset(base_n_step, k), byte_limit);
+}
 
 struct KaiTlsBuffersQgemmInteger {
     std::vector<uint8_t> lhs_unsigned;
@@ -108,6 +134,21 @@ PackedBColumnSumsSize(size_t n, size_t* size) {
     return CheckedAlignUp(bytes, MlasGetPreferredBufferAlignment(), size);
 }
 
+static bool
+PackedBAccColBiasSize(size_t n, size_t* size) {
+    size_t elements = 0;
+    if (!CheckedAddSize(n, 1, &elements)) {
+        return false;
+    }
+
+    size_t bytes = 0;
+    if (mul_overflow_size_t_builtin(elements, sizeof(int32_t), &bytes)) {
+        return false;
+    }
+
+    return CheckedAlignUp(bytes, MlasGetPreferredBufferAlignment(), size);
+}
+
 static int32_t*
 PackedBColumnSums(void* packed_b) {
     return reinterpret_cast<int32_t*>(packed_b);
@@ -118,13 +159,49 @@ PackedBColumnSums(const void* packed_b) {
     return reinterpret_cast<const int32_t*>(packed_b);
 }
 
+static int32_t*
+PackedBAccColBias(void* packed_b, size_t n) {
+    size_t column_sums_size = 0;
+    if (!PackedBColumnSumsSize(n, &column_sums_size)) {
+        return nullptr;
+    }
+
+    return reinterpret_cast<int32_t*>(static_cast<std::byte*>(packed_b) + column_sums_size);
+}
+
+static const int32_t*
+PackedBAccColBias(const void* packed_b, size_t n) {
+    size_t column_sums_size = 0;
+    if (!PackedBColumnSumsSize(n, &column_sums_size)) {
+        return nullptr;
+    }
+
+    return reinterpret_cast<const int32_t*>(static_cast<const std::byte*>(packed_b) + column_sums_size);
+}
+
+static const int32_t*
+PackedBAccColBiasData(const void* packed_b, size_t n, int32_t zero_point_a) {
+    const int32_t* acc_col_bias = PackedBAccColBias(packed_b, n);
+    if (acc_col_bias == nullptr || acc_col_bias[0] != zero_point_a) {
+        return nullptr;
+    }
+
+    return acc_col_bias + 1;
+}
+
 static void*
 PackedBData(void* packed_b, size_t n) {
     size_t column_sums_size = 0;
     if (!PackedBColumnSumsSize(n, &column_sums_size)) {
         return nullptr;
     }
-    return static_cast<std::byte*>(packed_b) + column_sums_size;
+
+    size_t acc_col_bias_size = 0;
+    if (!PackedBAccColBiasSize(n, &acc_col_bias_size)) {
+        return nullptr;
+    }
+
+    return static_cast<std::byte*>(packed_b) + column_sums_size + acc_col_bias_size;
 }
 
 static const void*
@@ -133,7 +210,13 @@ PackedBData(const void* packed_b, size_t n) {
     if (!PackedBColumnSumsSize(n, &column_sums_size)) {
         return nullptr;
     }
-    return static_cast<const std::byte*>(packed_b) + column_sums_size;
+
+    size_t acc_col_bias_size = 0;
+    if (!PackedBAccColBiasSize(n, &acc_col_bias_size)) {
+        return nullptr;
+    }
+
+    return static_cast<const std::byte*>(packed_b) + column_sums_size + acc_col_bias_size;
 }
 
 template <bool LhsIsSigned, bool RhsIsSigned, bool OutputFloat>
@@ -271,12 +354,17 @@ GemmBatch(
         if (zpA == 0) {
             acc_col_bias = EnsureZeroVectorSize(g_kai_tls_qgemm_int.zero_acc_col_bias, n);
         } else if (rhs_is_packed) {
-            EnsureVectorSize(g_kai_tls_qgemm_int.acc_col_bias, n);
-            const int32_t* rhs_col_sums = PackedBColumnSums(p.B);
-            for (size_t col = 0; col < n; ++col) {
-                g_kai_tls_qgemm_int.acc_col_bias[col] = static_cast<int32_t>(-static_cast<int64_t>(zpA) * rhs_col_sums[col]);
+            const int32_t* packed_acc_col_bias = PackedBAccColBiasData(p.B, n, zpA);
+            if (packed_acc_col_bias != nullptr) {
+                acc_col_bias = packed_acc_col_bias;
+            } else {
+                EnsureVectorSize(g_kai_tls_qgemm_int.acc_col_bias, n);
+                const int32_t* rhs_col_sums = PackedBColumnSums(p.B);
+                for (size_t col = 0; col < n; ++col) {
+                    g_kai_tls_qgemm_int.acc_col_bias[col] = static_cast<int32_t>(-static_cast<int64_t>(zpA) * rhs_col_sums[col]);
+                }
+                acc_col_bias = g_kai_tls_qgemm_int.acc_col_bias.data();
             }
-            acc_col_bias = g_kai_tls_qgemm_int.acc_col_bias.data();
         } else {
             EnsureVectorSize(g_kai_tls_qgemm_int.acc_col_bias, n);
             for (size_t col = 0; col < n; ++col) {
@@ -291,29 +379,20 @@ GemmBatch(
         }
 
         const kai_matmul_pack_lhs_uker_config lhs_pack_config{};
-        const kai_matmul_pack_lhs_uker_lhs_packed_dim_args lhs_packed_shape{m, k};
+        const auto lhs_pack_step = qgemm_int_lhs_pack.get_step(&lhs_pack_config);
+        const size_t lhs_base_m_step = lhs_pack_step.m == 0 ? m : lhs_pack_step.m;
+        const kai_matmul_pack_lhs_uker_lhs_packed_dim_args lhs_packed_shape{lhs_base_m_step, k};
         const auto lhs_packed_stride =
             qgemm_int_lhs_pack.get_lhs_packed_stride(&lhs_pack_config, &lhs_packed_shape);
-        const size_t lhs_packed_size =
-            qgemm_int_lhs_pack.get_lhs_packed_size(&lhs_pack_config, &lhs_packed_shape, &lhs_packed_stride);
-        EnsureVectorSize(g_kai_tls_qgemm_int.lhs_packed, lhs_packed_size);
-
-        kai_matmul_pack_lhs_uker_args lhs_pack_args{};
-        lhs_pack_args.shape.m = m;
-        lhs_pack_args.shape.k = k;
-        lhs_pack_args.operand.lhs.ptr = lhs_qdata;
-        lhs_pack_args.operand.lhs.stride.m = lhs_stride;
-        lhs_pack_args.operand.lhs_packed.ptr = g_kai_tls_qgemm_int.lhs_packed.data();
-        lhs_pack_args.operand.lhs_packed.stride = lhs_packed_stride;
-        KLEIDIAI_KERNEL_LOG("kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme"
-                            << " Batch=" << i << " M=" << m << " K=" << k);
-        qgemm_int_lhs_pack.run(&lhs_pack_config, &lhs_pack_args);
+        const size_t m_tile_step =
+            CapStepByPackedBytes(m, lhs_base_m_step, lhs_packed_stride.m, kStaticQgemmMTileByteLimit);
 
         const kai_matmul_pack_rhs_uker_config rhs_pack_config{};
         const kai_matmul_pack_rhs_uker_rhs_packed_dim_args rhs_packed_shape{n, k};
         const auto rhs_packed_stride =
             qgemm_int_rhs_pack.get_rhs_packed_stride(&rhs_pack_config, &rhs_packed_shape);
         const void* rhs_packed_data = nullptr;
+
         if (rhs_is_packed) {
             rhs_packed_data = PackedBData(p.B, n);
             if (rhs_packed_data == nullptr) {
@@ -365,33 +444,54 @@ GemmBatch(
 
         const kai_matmul_uker_config matmul_config{};
         const kai_matmul_uker_api& matmul = OutputFloat ? qgemm_int_f32 : qgemm_int_i32;
-        kai_matmul_uker_args matmul_args{};
-        matmul_args.flags = OutputFloat ? KAI_MATMUL_UKER_FLAGS_ARGS_CLAMP : 0;
-        matmul_args.shape.m = m;
-        matmul_args.shape.n = n;
-        matmul_args.shape.k = k;
-        matmul_args.operand.lhs.ptr = g_kai_tls_qgemm_int.lhs_packed.data();
-        matmul_args.operand.lhs.stride.m = lhs_packed_stride.m;
-        matmul_args.operand.rhs.ptr = rhs_packed_data;
-        matmul_args.operand.rhs.stride.n = rhs_packed_stride.n;
-        matmul_args.operand.dst.ptr = dst;
-        matmul_args.operand.dst.stride.m = dst_stride;
-        matmul_args.operand.bias.acc_bias_m.ptr = acc_row_bias;
-        matmul_args.operand.bias.acc_bias_n.ptr = acc_col_bias;
-        if constexpr (OutputFloat) {
-            matmul_args.operand.scale.acc_scale_global.ptr = scale;
-            matmul_args.operand.bias.scale_bias_n.ptr = scale_bias_n;
-            matmul_args.activation.clamp.min_ptr = &clamp_min;
-            matmul_args.activation.clamp.max_ptr = &clamp_max;
+
+        for (size_t m_start = 0; m_start < m; m_start += m_tile_step) {
+            const size_t m_tile = std::min(m - m_start, m_tile_step);
+            const kai_matmul_pack_lhs_uker_lhs_packed_dim_args lhs_tile_packed_shape{m_tile, k};
+            const size_t lhs_packed_size =
+                qgemm_int_lhs_pack.get_lhs_packed_size(&lhs_pack_config, &lhs_tile_packed_shape, &lhs_packed_stride);
+            EnsureVectorSize(g_kai_tls_qgemm_int.lhs_packed, lhs_packed_size);
+
+            kai_matmul_pack_lhs_uker_args lhs_pack_args{};
+            lhs_pack_args.shape.m = m_tile;
+            lhs_pack_args.shape.k = k;
+            lhs_pack_args.operand.lhs.ptr = static_cast<const uint8_t*>(lhs_qdata) + m_start * lhs_stride;
+            lhs_pack_args.operand.lhs.stride.m = lhs_stride;
+            lhs_pack_args.operand.lhs_packed.ptr = g_kai_tls_qgemm_int.lhs_packed.data();
+            lhs_pack_args.operand.lhs_packed.stride = lhs_packed_stride;
+            KLEIDIAI_KERNEL_LOG("kai_matmul_pack_lhs_mxk_x8p4vsx4_x8_sme"
+                                << " Batch=" << i << " M=" << m_tile << " K=" << k);
+            qgemm_int_lhs_pack.run(&lhs_pack_config, &lhs_pack_args);
+
+            kai_matmul_uker_args matmul_args{};
+            matmul_args.flags = OutputFloat ? KAI_MATMUL_UKER_FLAGS_ARGS_CLAMP : 0;
+            matmul_args.shape.m = m_tile;
+            matmul_args.shape.n = n;
+            matmul_args.shape.k = k;
+            matmul_args.operand.lhs.ptr = g_kai_tls_qgemm_int.lhs_packed.data();
+            matmul_args.operand.lhs.stride.m = lhs_packed_stride.m;
+            matmul_args.operand.rhs.ptr = rhs_packed_data;
+            matmul_args.operand.rhs.stride.n = rhs_packed_stride.n;
+            matmul_args.operand.dst.ptr = static_cast<std::byte*>(dst) + m_start * dst_stride;
+            matmul_args.operand.dst.stride.m = dst_stride;
+            matmul_args.operand.bias.acc_bias_m.ptr =
+                static_cast<const int32_t*>(acc_row_bias) + m_start;
+            matmul_args.operand.bias.acc_bias_n.ptr = acc_col_bias;
+            if constexpr (OutputFloat) {
+                matmul_args.operand.scale.acc_scale_global.ptr = scale;
+                matmul_args.operand.bias.scale_bias_n.ptr = scale_bias_n;
+                matmul_args.activation.clamp.min_ptr = &clamp_min;
+                matmul_args.activation.clamp.max_ptr = &clamp_max;
+            }
+            if constexpr (OutputFloat) {
+                KLEIDIAI_KERNEL_LOG("kai_matmul_clamp_f32_u8p4vsx4_u8p4vsx4_i32_i32_f32_f32_8vsx8vs_sme2_mopa"
+                                    << " Batch=" << i << " M=" << m_tile << " N=" << n << " K=" << k);
+            } else {
+                KLEIDIAI_KERNEL_LOG("kai_matmul_i32_u8p4vsx4_u8p4vsx4_i32_i32_8vsx8vs_sme2_mopa"
+                                    << " Batch=" << i << " M=" << m_tile << " N=" << n << " K=" << k);
+            }
+            matmul.run(&matmul_config, &matmul_args);
         }
-        if constexpr (OutputFloat) {
-            KLEIDIAI_KERNEL_LOG("kai_matmul_clamp_f32_u8p4vsx4_u8p4vsx4_i32_i32_f32_f32_8vsx8vs_sme2_mopa"
-                                << " Batch=" << i << " M=" << m << " N=" << n << " K=" << k);
-        } else {
-            KLEIDIAI_KERNEL_LOG("kai_matmul_i32_u8p4vsx4_u8p4vsx4_i32_i32_8vsx8vs_sme2_mopa"
-                                << " Batch=" << i << " M=" << m << " N=" << n << " K=" << k);
-        }
-        matmul.run(&matmul_config, &matmul_args);
     }
 
     return true;
@@ -526,6 +626,11 @@ ArmKleidiAI::MlasQGemmPackBSize(
         return 0;
     }
 
+    size_t acc_col_bias_size = 0;
+    if (!PackedBAccColBiasSize(N, &acc_col_bias_size)) {
+        return 0;
+    }
+
     size_t rhs_elements = 0;
     if (mul_overflow_size_t_builtin(N, K, &rhs_elements)) {
         return 0;
@@ -542,6 +647,9 @@ ArmKleidiAI::MlasQGemmPackBSize(
     if (!CheckedAddSize(column_sums_size, rhs_packed_size, &total_size)) {
         return 0;
     }
+    if (!CheckedAddSize(total_size, acc_col_bias_size, &total_size)) {
+        return 0;
+    }
 
     return total_size;
 }
@@ -555,16 +663,20 @@ ArmKleidiAI::MlasQGemmPackB(
     size_t ldb,
     bool AIsSigned,
     bool BIsSigned,
-    void* PackedB
+    void* PackedB,
+    const uint8_t* ZeroPointA
 ) {
-    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
-
     if (ArmKleidiAI::MlasQGemmPackBSize(N, K, AIsSigned, BIsSigned) == 0 || B == nullptr || PackedB == nullptr) {
         return false;
     }
 
     int32_t* rhs_col_sums = PackedBColumnSums(PackedB);
     std::fill_n(rhs_col_sums, N, int32_t{0});
+    int32_t* cached_acc_col_bias = PackedBAccColBias(PackedB, N);
+    if (cached_acc_col_bias == nullptr) {
+        return false;
+    }
+    cached_acc_col_bias[0] = kPackedBAccColBiasInvalidZeroPointA;
 
     const void* rhs_qdata = static_cast<const void*>(B);
     size_t rhs_stride = ldb * sizeof(uint8_t);
@@ -598,6 +710,14 @@ ArmKleidiAI::MlasQGemmPackB(
                 rhs_col_sums[col] += src[col];
             }
             src += ldb;
+        }
+    }
+
+    if (ZeroPointA != nullptr) {
+        const int32_t zpA = AdjustedZeroPoint(*ZeroPointA, AIsSigned);
+        cached_acc_col_bias[0] = zpA;
+        for (size_t col = 0; col < N; ++col) {
+            cached_acc_col_bias[col + 1] = static_cast<int32_t>(-static_cast<int64_t>(zpA) * rhs_col_sums[col]);
         }
     }
 
@@ -706,6 +826,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
 
     size_t m_step = qgemm_gemm.ukernel.get_m_step();
     size_t n_step = qgemm_gemm.ukernel.get_n_step();
+    const size_t base_n_step = n_step;
 
     if (BatchSize == 0 || Shape.M == 0 || Shape.N == 0 || Shape.K == 0) {
         return;
@@ -753,6 +874,7 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     EnsureVectorSize(g_kai_tls_qgemm.lhs_base_table, BatchSize);
     // Capture the shared batch table pointer so worker threads use the same backing storage.
     const std::byte** tls_lhs_base = g_kai_tls_qgemm.lhs_base_table.data();
+
     // B batches require no packing.
     // We have already decided the matmul variant we are using before having values for M, N, and K.
     MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
@@ -785,6 +907,8 @@ ArmKleidiAI::MlasDynamicQGemmBatch(
     // Compute new step sizes.
     m_step *= MlasDivRoundup(MlasDivRoundup(Shape.M, dim[1]), m_step);
     n_step *= MlasDivRoundup(MlasDivRoundup(Shape.N, dim[2]), n_step);
+
+    n_step = CapDynamicQgemmNStepByPackedRhs(n_step, base_n_step, Shape.K, kDynamicQgemmNTileByteLimit);
 
     // Update tile iterations.
     dim[1] = MlasDivRoundup(Shape.M, m_step);
