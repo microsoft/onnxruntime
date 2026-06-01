@@ -54,7 +54,7 @@ TEST_F(ExperimentalCApiTest, CallThroughTypedPointer) {
   ASSERT_NE(fn, nullptr);
 
   int64_t result = 0;
-  Ort::Status status = fn(&result);
+  auto status = Ort::Status{fn(&result)};
   ASSERT_TRUE(status.IsOK()) << "ExperimentalApiTest returned failure status: " << status.GetErrorMessage();
   EXPECT_EQ(result, 12345);
 }
