@@ -232,10 +232,7 @@ def validate_tarball(args):
         raise Exception("No packages / more than one packages found in the given path.")
 
     package_name = args.package_name
-    if "-gpu-" in package_name.lower():
-        is_gpu_package = True
-    else:
-        is_gpu_package = False
+    is_gpu_package = "-gpu_cuda" in package_name.lower()
 
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 
@@ -266,10 +263,7 @@ def validate_zip(args):
         raise Exception("No packages / more than one packages found in the given path.")
 
     package_name = args.package_name
-    if "-gpu-" in package_name.lower():
-        is_gpu_package = True
-    else:
-        is_gpu_package = False
+    is_gpu_package = "-gpu_cuda" in package_name.lower()
 
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 

@@ -12,6 +12,7 @@
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cuda_nhwc_ops.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
@@ -383,23 +384,7 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp([[maybe_
     return std::nullopt;
   }
 
-  // TODO(mtavenrath) generate list from registered kernels using nhwc domain
-  static const std::unordered_set<std::string_view> cuda_nhwc_onnx_ops{
-      "BatchNormalization",
-      "Conv",
-      "ConvTranspose",
-      "GlobalMaxPool",
-      "MaxPool",
-      "GlobalAveragePool",
-      "AveragePool",
-      "GridSample",
-      "DepthToSpace",
-      "SpaceToDepth",
-      "LRN",
-  };
-
-  return (node_domain == kOnnxDomain && cuda_nhwc_onnx_ops.find(node_op_type) != cuda_nhwc_onnx_ops.end()) ||
-         (node_domain == kMSDomain && node_op_type == "GridSample");
+  return cuda::IsNhwcEligible(node_domain, node_op_type);
 
 #else  // defined(ENABLE_CUDA_NHWC_OPS)
   ORT_UNUSED_PARAMETER(node_domain);
