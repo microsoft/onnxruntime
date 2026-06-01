@@ -15,18 +15,20 @@ using onnxruntime::webgpu::ComputeContext;
 
 class RotaryEmbeddingProgram final : public Program<RotaryEmbeddingProgram> {
  public:
-  RotaryEmbeddingProgram(bool interleaved) : Program{"RotaryEmbedding"}, interleaved_{interleaved} {
-  }
+  RotaryEmbeddingProgram(bool interleaved, bool use_position_offset = false)
+      : Program{"RotaryEmbedding"}, interleaved_{interleaved}, use_position_offset_{use_position_offset} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"scale", ProgramUniformVariableDataType::Float32},
                                           {"global_shape", ProgramUniformVariableDataType::Uint32},
                                           {"global_stride", ProgramUniformVariableDataType::Uint32},
-                                          {"input_output_stride", ProgramUniformVariableDataType::Uint32});
+                                          {"input_output_stride", ProgramUniformVariableDataType::Uint32},
+                                          {"position_offset", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
+  const bool use_position_offset_;
 };
 
 class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddingProgram> {

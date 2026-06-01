@@ -102,7 +102,8 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
         .AddUniformVariables({{1.0f},
                               {gsl::make_span(global_dims)},
                               {gsl::make_span(global_strides)},
-                              {gsl::make_span(input_output_strides)}})
+                              {gsl::make_span(input_output_strides)},
+                              {0u}})
         .AddIndices(TensorShape{1, 1});
     return context.RunProgram(program);
   }
@@ -144,7 +145,8 @@ Status RotaryEmbedding::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{1.0f},
                             {gsl::make_span(global_dims)},
                             {gsl::make_span(global_strides)},
-                            {gsl::make_span(input_output_strides)}})
+                            {gsl::make_span(input_output_strides)},
+                            {0u}})
       .AddIndices(TensorShape{1, 1});
   return context.RunProgram(program);
 }

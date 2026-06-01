@@ -22,42 +22,70 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
-  const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::UseUniform);
+  const auto interleaved_str = interleaved_ ? "true" : "false";
+
+  // Declare inputs conditionally: position_offset path skips the position_ids tensor.
+  const ShaderVariableHelper* position_ids_ptr = nullptr;
+  if (!use_position_offset_) {
+    position_ids_ptr = &shader.AddInput("position_ids", ShaderUsage::UseUniform);
+  }
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
-  // TODO: remove output_indices.
-  const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::None);
-  const auto interleaved_str = interleaved_ ? "true" : "false";
+
   shader.MainFunctionBody() << "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
                                "  let bsnh = global_idx / uniforms.global_stride % uniforms.global_shape;\n"
                                "  let size = uniforms.global_shape[0] * uniforms.global_stride[0];\n"
                                "  if (global_idx >= size) { return; }\n"
-                               "  if (bsnh[3] < half_rotary_emb_dim) {\n"
-                            << "    let position_ids_idx = " << position_ids.BroadcastedIndicesToOffset("bsnh.xy", output_indices) << ";\n"
-                            << "    let raw_pos = " << position_ids.GetByOffset("position_ids_idx") << ";\n"
-                            << "    let i = dot(bsnh, uniforms.input_output_stride) + select(0, bsnh[3], " << interleaved_str << ");\n"
+                               "  if (bsnh[3] < half_rotary_emb_dim) {\n";
+
+  // Compute position_id differently based on mode.
+  if (use_position_offset_) {
+    shader.MainFunctionBody() << "    let position_id = uniforms.position_offset + bsnh[1];\n";
+  } else {
+    const auto& position_ids = *position_ids_ptr;
+    const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::None);
+    shader.MainFunctionBody() << "    let position_ids_idx = " << position_ids.BroadcastedIndicesToOffset("bsnh.xy", output_indices) << ";\n"
+                              << "    let raw_pos = " << position_ids.GetByOffset("position_ids_idx") << ";\n";
+  }
+
+  shader.MainFunctionBody() << "    let i = dot(bsnh, uniforms.input_output_stride) + select(0, bsnh[3], " << interleaved_str << ");\n"
                             << "    let j = i + select(half_rotary_emb_dim, 1, " << interleaved_str << ");\n"
-                                                                                                       "    let max_position = uniforms.cos_cache_shape[0];\n"
-                                                                                                       // Bounds check: raw_pos < 0 catches negative position_ids (i32 from truncated int64).
-                                                                                                       // After u32 conversion + offset, check >= max_position catches too-large values.
-                                                                                                       // On OOB, pass through input unchanged (same as CUDA kernel behavior).
-                                                                                                       "    if (raw_pos < 0) {\n"
-                            << "      " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
-                            << "      " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
-                                                                                              "    } else {\n"
-                                                                                              "      let position_id = u32(raw_pos) + select(0, bsnh[1], position_ids_idx == 0);\n"
-                                                                                              "      if (position_id >= max_position) {\n"
-                            << "        " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
-                            << "        " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
-                                                                                                "      } else {\n"
-                            << "        let re = " << input.GetByOffset("i") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " - " << input.GetByOffset("j") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
-                            << "        " << output.SetByOffset("i", "re") << "\n"
-                            << "        let im = " << input.GetByOffset("i") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " + " << input.GetByOffset("j") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
-                            << "        " << output.SetByOffset("j", "im") << "\n"
-                                                                              "      }\n"
-                                                                              "    }\n"
-                            << "  } else { \n"
+                                                                                                       "    let max_position = uniforms.cos_cache_shape[0];\n";
+
+  if (use_position_offset_) {
+    shader.MainFunctionBody() << "    if (position_id >= max_position) {\n"
+                              << "      " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
+                              << "      " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
+                                                                                                "    } else {\n";
+  } else {
+    shader.MainFunctionBody() << "    if (raw_pos < 0) {\n"
+                              << "      " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
+                              << "      " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
+                                                                                                "    } else {\n"
+                                                                                                "      let position_id = u32(raw_pos) + select(0, bsnh[1], position_ids_idx == 0);\n"
+                                                                                                "      if (position_id >= max_position) {\n"
+                              << "        " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
+                              << "        " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
+                                                                                                  "      } else {\n";
+  }
+
+  // Rotation math (shared).
+  const auto indent = use_position_offset_ ? "      " : "        ";
+  shader.MainFunctionBody() << indent << "let re = " << input.GetByOffset("i") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " - " << input.GetByOffset("j") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+                            << indent << "" << output.SetByOffset("i", "re") << "\n"
+                            << indent << "let im = " << input.GetByOffset("i") << " * " << sin_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << " + " << input.GetByOffset("j") << " * " << cos_cache.GetByIndices("vec2<u32>(position_id, bsnh[3])") << ";\n"
+                            << indent << "" << output.SetByOffset("j", "im") << "\n";
+
+  if (use_position_offset_) {
+    shader.MainFunctionBody() << "    }\n";
+  } else {
+    shader.MainFunctionBody() << "      }\n"
+                                 "    }\n";
+  }
+
+  // Passthrough for elements beyond half_rotary_emb_dim (shared).
+  shader.MainFunctionBody() << "  } else { \n"
                                "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n"
                             << "    " << output.SetByOffset("k", input.GetByOffset("k")) << "\n"
                             << "  }";

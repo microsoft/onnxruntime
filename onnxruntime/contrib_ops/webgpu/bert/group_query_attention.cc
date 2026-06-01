@@ -7,7 +7,6 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "contrib_ops/webgpu/bert/rotary_embedding.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
-#include "core/providers/webgpu/generator/range.h"
 
 #include "core/common/narrow.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -184,8 +183,8 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
-// Apply rotary embedding to a single tensor using RotaryEmbeddingProgram with a scalar position_ids.
-// Position for each token = past_sequence_length + sequence_index (computed in shader via broadcast).
+// Apply rotary embedding to a single tensor using RotaryEmbeddingProgram with position_offset mode.
+// Position for each token = past_sequence_length + sequence_index (computed in shader).
 Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                           const Tensor* input,
                           const Tensor* cos_cache,
@@ -219,26 +218,10 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
                                                            gsl::narrow_cast<uint32_t>(head_size),
                                                            1u});
 
-  // Create scalar position_ids [1,1] with value = past_sequence_length.
-  // The shader broadcasts this to all threads and adds bsnh[1] (sequence index).
-  const TensorShape pos_ids_shape({1, 1});
-  Tensor pos_ids_tensor = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
-  {
-    RangeProgram range_program{ONNX_NAMESPACE::TensorProto_DataType_INT64};
-    int32_t start_i32 = static_cast<int32_t>(past_sequence_length);
-    int32_t delta_i32 = 1;
-    range_program
-        .AddOutput({&pos_ids_tensor, ProgramTensorMetadataDependency::Type})
-        .SetDispatchGroupSize(1)
-        .AddUniformVariables({1u, std::bit_cast<uint32_t>(start_i32), std::bit_cast<uint32_t>(delta_i32)});
-    ORT_RETURN_IF_ERROR(context.RunProgram(range_program));
-  }
-
-  RotaryEmbeddingProgram program(rotary_interleaved);
+  RotaryEmbeddingProgram program(rotary_interleaved, /*use_position_offset=*/true);
   program
-      .CacheHint(rotary_interleaved)
+      .CacheHint(rotary_interleaved, true)
       .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
-                  {&pos_ids_tensor, ProgramTensorMetadataDependency::Rank},
                   {cos_cache, ProgramTensorMetadataDependency::Rank},
                   {sin_cache, ProgramTensorMetadataDependency::Rank}})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
@@ -246,8 +229,8 @@ Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
       .AddUniformVariables({{scale},
                             {gsl::make_span(global_dims)},
                             {gsl::make_span(global_strides)},
-                            {gsl::make_span(input_output_strides)}})
-      .AddIndices(TensorShape{1, 1});
+                            {gsl::make_span(input_output_strides)},
+                            {static_cast<uint32_t>(past_sequence_length)}});
   return context.RunProgram(program);
 }
 
