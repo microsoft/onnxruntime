@@ -798,19 +798,6 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
 
-          # The dawn_fetch_dependencies_retry.patch contains the following changes:
-          #
-          # - (private) Make Dawn's transitive dependency fetch robust
-          #   tools/fetch_dawn_dependencies.py runs every git command with capture_output=True
-          #   and never inspects the return code. A failed/partial git fetch or checkout (e.g. a
-          #   transient git server error) therefore leaves the dependency directory empty or
-          #   partially populated and the build later fails with confusing errors such as a
-          #   missing CMakeLists.txt for vulkan-headers / vulkan-utility-libraries or an empty
-          #   'jinja2' package that has no BaseLoader attribute. This patch wraps the network
-          #   git operations in a retry helper that fails loudly after exhausting retries.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_fetch_dependencies_retry.patch &&
-
           # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
           # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
           ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)
