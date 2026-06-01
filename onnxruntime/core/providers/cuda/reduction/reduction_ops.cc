@@ -180,8 +180,9 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
                       reinterpret_cast<CudaT*>(exp_result),
                       input_count);
 
-      // Fix NaN from exp(-inf - (-inf)): mathematically exp(-inf)=0, replace NaN with 0.
-      Impl_NanToZero<CudaT>(cuda_stream, reinterpret_cast<CudaT*>(exp_result), input_count);
+      // Fix NaN from exp(inf - inf): use original input to determine correct value.
+      Impl_FixExpForReduceLogSumExp<CudaT>(cuda_stream, reinterpret_cast<const CudaT*>(X),
+                                           reinterpret_cast<CudaT*>(exp_result), input_count);
 
       // ReduceSum
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
@@ -556,8 +557,9 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
                       reinterpret_cast<CudaT*>(exp_result),
                       input_count);
 
-      // Fix NaN from exp(-inf - (-inf)): mathematically exp(-inf)=0, replace NaN with 0.
-      Impl_NanToZero<CudaT>(stream, reinterpret_cast<CudaT*>(exp_result), input_count);
+      // Fix NaN from exp(inf - inf): use original input to determine correct value.
+      Impl_FixExpForReduceLogSumExp<CudaT>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                           reinterpret_cast<CudaT*>(exp_result), input_count);
 
       // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       // This happens when the input is Scalar. We do not need to add anything in this case.

@@ -282,11 +282,9 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
     EigenMap<T>(output).array() = static_cast<T>(0);
   }
 
-  // Fast reduction
-  // NOTE: Fast-reduce paths below still use Eigen/BLAS operations directly on T.
-  // For integer types, these paths may overflow on very large inputs. The fundamental
-  // correctness paths (aggall, update, get_value) use double accumulation and are safe.
-  // Fixing fast paths requires double-buffered intermediates and is a future optimization.
+  // Fast reduction paths use parallelized vectorized operations.
+  // For integer types, FastReduceRK and FastReduceKRK accumulate through double
+  // intermediates to avoid signed overflow UB, then saturating-cast back to T.
   static inline FastReduceKind WhichFastReduce() {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK | FastReduceKind::kRKR;
   }
@@ -310,17 +308,40 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
-
     int64_t n_rows = fast_shape[0];
-    memcpy(out, data, SafeInt<size_t>(N) * sizeof(T));
-    concurrency::ThreadPool::TryParallelFor(
-        tp, onnxruntime::narrow<std::ptrdiff_t>(N), ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
-        [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
-          for (int64_t row = 1; row < n_rows; ++row) {
-            EigenVectorArrayMap<T>(out + begin, end - begin) += ConstEigenVectorArrayMap<T>(
-                data + row * N + begin, end - begin);
-          }
-        });
+
+    if constexpr (std::is_integral_v<T>) {
+      // Accumulate rows in double to avoid signed overflow UB, then saturate.
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(N), ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
+          [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
+            for (ptrdiff_t col = begin; col < end; ++col) {
+              double sum = 0.0;
+              for (int64_t row = 0; row < n_rows; ++row) {
+                sum += static_cast<double>(data[row * N + col]);
+              }
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (sum >= t_max) {
+                out[col] = std::numeric_limits<T>::max();
+              } else if (sum <= t_min) {
+                out[col] = std::numeric_limits<T>::lowest();
+              } else {
+                out[col] = static_cast<T>(sum);
+              }
+            }
+          });
+    } else {
+      memcpy(out, data, SafeInt<size_t>(N) * sizeof(T));
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(N), ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
+          [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
+            for (int64_t row = 1; row < n_rows; ++row) {
+              EigenVectorArrayMap<T>(out + begin, end - begin) += ConstEigenVectorArrayMap<T>(
+                  data + row * N + begin, end - begin);
+            }
+          });
+    }
   }
 
   static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
@@ -330,25 +351,88 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
     int64_t stridei = fast_shape[1] * fast_shape[2];
     int64_t strideo = fast_shape[2];
     T* out = output.MutableData<T>();
-    std::vector<T> one(onnxruntime::narrow<size_t>(fast_shape[1]), 1);
-    concurrency::ThreadPool::TryParallelFor(
-        tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]), ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
-        [one, data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
-          for (ptrdiff_t d = begin; d < last; ++d) {
-            // TODO(hasesh): Plumb through the mlas backend kernel selector config here
-            math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N), onnxruntime::narrow<ptrdiff_t>(fast_shape[1]), one.data(), data + stridei * d, out + strideo * d, nullptr, nullptr);
-          }
-        });
+
+    if constexpr (std::is_integral_v<T>) {
+      // Accumulate the middle dimension in double to avoid signed overflow UB.
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
+          [data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              for (int64_t col = 0; col < N; ++col) {
+                double sum = 0.0;
+                for (int64_t row = 0; row < fast_shape[1]; ++row) {
+                  sum += static_cast<double>(data[stridei * d + row * N + col]);
+                }
+                constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+                constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+                if (sum >= t_max) {
+                  out[strideo * d + col] = std::numeric_limits<T>::max();
+                } else if (sum <= t_min) {
+                  out[strideo * d + col] = std::numeric_limits<T>::lowest();
+                } else {
+                  out[strideo * d + col] = static_cast<T>(sum);
+                }
+              }
+            }
+          });
+    } else {
+      std::vector<T> one(onnxruntime::narrow<size_t>(fast_shape[1]), 1);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
+          [one, data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N),
+                              onnxruntime::narrow<ptrdiff_t>(fast_shape[1]),
+                              one.data(), data + stridei * d,
+                              out + strideo * d, nullptr, nullptr);
+            }
+          });
+    }
   }
 
   static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregator<T, T>::CommonFastReduceRKR(
-        input, fast_shape, output, tp,
-        [=](const T*) -> T { return 0; },
-        [=](T& value, const T* p, int64_t size) {
-          value += aggall(p, size);
-        });
+    if constexpr (std::is_integral_v<T>) {
+      // Use double accumulation across outer-dimension partial sums.
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t d0 = fast_shape[0];
+      int64_t d2 = fast_shape[2];
+      int64_t inc = d2 * fast_shape[1];
+
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[1]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[0] * fast_shape[2], sizeof(T), 6),
+          [data, out, d0, d2, inc](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              const T* p = data + d * d2;
+              double sum = 0.0;
+              for (int64_t i = 0; i < d0; ++i, p += inc) {
+                for (int64_t j = 0; j < d2; ++j) {
+                  sum += static_cast<double>(p[j]);
+                }
+              }
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (sum >= t_max) {
+                out[d] = std::numeric_limits<T>::max();
+              } else if (sum <= t_min) {
+                out[d] = std::numeric_limits<T>::lowest();
+              } else {
+                out[d] = static_cast<T>(sum);
+              }
+            }
+          });
+    } else {
+      ReduceAggregator<T, T>::CommonFastReduceRKR(
+          input, fast_shape, output, tp,
+          [=](const T*) -> T { return 0; },
+          [=](T& value, const T* p, int64_t size) {
+            value += aggall(p, size);
+          });
+    }
   }
 };
 
@@ -537,11 +621,11 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
   }
   inline void update(const T& v) { this->accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
 
-  // SFINAE: fill_for_empty_set is not defined for bool (ReduceMax on empty set is
-  // semantically undefined for bool). Attempting to call it for bool fails at compile time.
-  template <typename U = T, std::enable_if_t<!std::is_same_v<U, bool>, int> = 0>
+  // fill_for_empty_set: ReduceMax on empty set is semantically undefined for bool.
   static void fill_for_empty_set(Tensor& output) {
-    if constexpr (std::is_integral_v<T>) {
+    if constexpr (std::is_same_v<T, bool>) {
+      ORT_NOT_IMPLEMENTED("ReduceMax is not defined for empty set with bool type");
+    } else if constexpr (std::is_integral_v<T>) {
       // For integers, infinity() returns 0. Use lowest() (most negative value).
       EigenMap<T>(output).array() = std::numeric_limits<T>::lowest();
     } else {
@@ -751,11 +835,11 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) { this->accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
 
-  // SFINAE: fill_for_empty_set is not defined for bool (ReduceMin on empty set is
-  // semantically undefined for bool). Attempting to call it for bool fails at compile time.
-  template <typename U = T, std::enable_if_t<!std::is_same_v<U, bool>, int> = 0>
+  // fill_for_empty_set: ReduceMin on empty set is semantically undefined for bool.
   static void fill_for_empty_set(Tensor& output) {
-    if constexpr (std::is_integral_v<T>) {
+    if constexpr (std::is_same_v<T, bool>) {
+      ORT_NOT_IMPLEMENTED("ReduceMin is not defined for empty set with bool type");
+    } else if constexpr (std::is_integral_v<T>) {
       // For integers, infinity() returns 0. Use max() (largest value).
       EigenMap<T>(output).array() = std::numeric_limits<T>::max();
     } else {
@@ -1197,11 +1281,11 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
       if (result <= t_min) return std::numeric_limits<T>::min();
       return static_cast<T>(result);
     } else {
-      // For floating-point types: when max is -inf, all elements are -inf,
-      // so exp(x_i) = 0 for all i, and log(sum(0)) = log(0) = -inf.
-      // Return early to avoid -inf - (-inf) = NaN.
-      if (max_ == -std::numeric_limits<T>::infinity()) {
-        return -std::numeric_limits<T>::infinity();
+      // For floating-point types: if max_ is infinite, return max_ early.
+      // When max_ = -inf: all inputs are -inf, exp(x_i)=0, log(0) = -inf.
+      // When max_ = +inf: result is +inf (avoids +inf - (+inf) = NaN).
+      if (reduce_isinf(max_)) {
+        return max_;
       }
       for (int64_t i = 0; i < this->N_; ++i) {
         update(from_data[i]);
@@ -1235,9 +1319,9 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
       if (result <= t_min) return std::numeric_limits<T>::min();
       return static_cast<T>(result);
     } else {
-      // For floating-point types: if max_ is -inf, all inputs were -inf.
-      if (max_ == -std::numeric_limits<T>::infinity()) {
-        return -std::numeric_limits<T>::infinity();
+      // For floating-point types: if max_ is infinite, return max_ directly.
+      if (reduce_isinf(max_)) {
+        return max_;
       }
       return reduce_log<T>(this->accumulator_) + max_;
     }

@@ -598,25 +598,41 @@ template void Impl_SaturatingCastFromDouble<int64_t>(cudaStream_t, const double*
 template void Impl_SaturatingCastFromDouble<int8_t>(cudaStream_t, const double*, int8_t*, size_t);
 template void Impl_SaturatingCastFromDouble<uint8_t>(cudaStream_t, const double*, uint8_t*, size_t);
 
-// NanToZero: replace NaN values with 0 in-place.
-// Used by ReduceLogSumExp after Exp to handle exp(-inf - (-inf)) = exp(NaN) = NaN -> 0.
+// FixExpForReduceLogSumExp: after computing exp(X - max), fix NaN results
+// that arise from inf - inf or -inf - (-inf).
+// For each element:
+//   - If original X[i] is -inf: exp should be 0 (exp(-inf) = 0)
+//   - If original X[i] is +inf: exp should be 1 (exp(+inf - +inf) = exp(0) = 1)
+//   - If original X[i] is NaN: preserve NaN (propagate)
+//   - Otherwise: keep exp_result[i] as-is
 template <typename T>
-struct NanToZeroFunctor {
-  __device__ __inline__ T operator()(T a) const {
-    return _IsNan<T>{}(a) ? T(0) : a;
+__global__ void _FixExpForReduceLogSumExp(const T* original_input, T* exp_result, size_t count) {
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= count) return;
+  if (_IsNan<T>{}(exp_result[idx])) {
+    T x = original_input[idx];
+    if (_IsInf<T, true, true>{}(x)) {
+      // +inf input: exp(+inf - (+inf)) should be 1
+      // -inf input: exp(-inf - (-inf)) should be 0
+      exp_result[idx] = _IsInf<T, true, false>{}(x) ? T(1) : T(0);
+    }
+    // else: x is NaN, keep NaN in exp_result (propagate)
   }
-};
-
-template <typename T>
-void Impl_NanToZero(cudaStream_t stream, T* data, size_t count) {
-  if (count == 0) return;
-  UnaryElementWiseImpl(stream, data, data, NanToZeroFunctor<T>{}, count);
 }
 
-template void Impl_NanToZero<float>(cudaStream_t, float*, size_t);
-template void Impl_NanToZero<double>(cudaStream_t, double*, size_t);
-template void Impl_NanToZero<half>(cudaStream_t, half*, size_t);
-template void Impl_NanToZero<BFloat16>(cudaStream_t, BFloat16*, size_t);
+template <typename T>
+void Impl_FixExpForReduceLogSumExp(cudaStream_t stream, const T* original_input,
+                                   T* exp_result, size_t count) {
+  if (count == 0) return;
+  constexpr int block_size = 256;
+  int grid_size = static_cast<int>((count + block_size - 1) / block_size);
+  _FixExpForReduceLogSumExp<T><<<grid_size, block_size, 0, stream>>>(original_input, exp_result, count);
+}
+
+template void Impl_FixExpForReduceLogSumExp<float>(cudaStream_t, const float*, float*, size_t);
+template void Impl_FixExpForReduceLogSumExp<double>(cudaStream_t, const double*, double*, size_t);
+template void Impl_FixExpForReduceLogSumExp<half>(cudaStream_t, const half*, half*, size_t);
+template void Impl_FixExpForReduceLogSumExp<BFloat16>(cudaStream_t, const BFloat16*, BFloat16*, size_t);
 
 }  // namespace cuda
 }  // namespace onnxruntime
