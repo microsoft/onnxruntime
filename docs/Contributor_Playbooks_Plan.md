@@ -28,6 +28,7 @@ The first three playbooks have been drafted:
 3. [03 First PR and Environment Setup](playbooks/03-first-pr-and-environment-setup.md)
 4. [04 Session Lifecycle from Load to Run](playbooks/04-session-lifecycle-from-load-to-run.md)
 5. [05 Adding or Changing a Kernel](playbooks/05-adding-or-changing-a-kernel.md)
+6. [06 Adding a Contrib Operator](playbooks/06-adding-a-contrib-operator.md)
 
 ## Proposed Playbooks
 
