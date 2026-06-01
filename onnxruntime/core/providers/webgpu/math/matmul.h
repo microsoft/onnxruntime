@@ -24,7 +24,8 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
     bool is_gemm,
     float beta,
     uint32_t output_components,
-    const TensorShape& output_shape);
+    const TensorShape& output_shape,
+    uint32_t batch_size = 1);
 
 class MatMul final : public WebGpuKernel {
  public:

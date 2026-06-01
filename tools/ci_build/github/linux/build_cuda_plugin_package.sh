@@ -39,6 +39,7 @@ docker run --rm \
     --volume "${BUILD_BINARIESDIRECTORY}:/build" \
     --volume /data/models:/build/models:ro \
     --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
+    -e PIP_INDEX_URL \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     -e SYSTEM_COLLECTIONURI \
@@ -55,6 +56,7 @@ docker run --rm \
         --skip_submodule_sync \
         --parallel \
         --nvcc_threads 1 \
+        --flash_nvcc_threads 1 \
         --use_binskim_compliant_compile_flags \
         --use_cuda \
         --cuda_version=${SHORT_CUDA_VERSION} \

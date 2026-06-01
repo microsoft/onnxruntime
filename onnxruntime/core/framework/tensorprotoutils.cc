@@ -98,6 +98,7 @@ TO_TENSOR_ORT_TYPE(Float8E4M3FN)
 TO_TENSOR_ORT_TYPE(Float8E4M3FNUZ)
 TO_TENSOR_ORT_TYPE(Float8E5M2)
 TO_TENSOR_ORT_TYPE(Float8E5M2FNUZ)
+TO_TENSOR_ORT_TYPE(Float8E8M0)
 #endif
 #if !defined(DISABLE_FLOAT4_TYPES)
 TO_TENSOR_ORT_TYPE_4BIT_TYPE(Float4E2M1x2)
@@ -379,11 +380,11 @@ Status TensorProtoWithExternalDataToTensorProto(
   return Status::OK();
 }
 
-// Wraps std::filesystem::weakly_canonical with error_code handling.
+// Wraps Env::GetWeaklyCanonicalPath for std::filesystem::path.
 static Status WeaklyCanonicalPath(const std::filesystem::path& path, std::filesystem::path& result) {
-  std::error_code ec;
-  result = std::filesystem::weakly_canonical(path, ec);
-  ORT_RETURN_IF(ec, "Failed to get the weakly canonical path: ", path, " - ", ec.message());
+  PathString canonical_str;
+  ORT_RETURN_IF_ERROR(Env::Default().GetWeaklyCanonicalPath(path.native(), canonical_str));
+  result = std::filesystem::path(std::move(canonical_str));
   return Status::OK();
 }
 
@@ -738,6 +739,7 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FN)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E4M3FNUZ)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E5M2FNUZ)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(Float8E8M0)
 #endif
 
 template <>
@@ -1059,6 +1061,41 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   return Status::OK();
 }
 
+// UnpackTensor<Float8E8M0>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float8E8M0* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0 != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = Float8E8M0(static_cast<uint8_t>(v), Float8E8M0::FromBits());
+  }
+
+  return Status::OK();
+}
+
 #endif
 
 #define DEFINE_INT4_UNPACK_TENSOR_IMPL(INT4_TYPE, ONNX_INT4_TYPE)                                           \
@@ -1212,6 +1249,7 @@ INSTANTIATE_UNPACK_TENSOR(Float8E4M3FN)
 INSTANTIATE_UNPACK_TENSOR(Float8E4M3FNUZ)
 INSTANTIATE_UNPACK_TENSOR(Float8E5M2)
 INSTANTIATE_UNPACK_TENSOR(Float8E5M2FNUZ)
+INSTANTIATE_UNPACK_TENSOR(Float8E8M0)
 #endif
 INSTANTIATE_UNPACK_TENSOR(Int4x2)
 INSTANTIATE_UNPACK_TENSOR(UInt4x2)
@@ -1273,6 +1311,7 @@ static common::Status GetSizeInBytesFromTensorElemCountAndType(size_t elem_count
     CASE_PROTO_TRACE(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
     CASE_PROTO_TRACE(FLOAT8E5M2, Float8E5M2);
     CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+    CASE_PROTO_TRACE(FLOAT8E8M0, Float8E8M0);
 #endif
     CASE_PROTO_TRACE_INT4(UINT4, UInt4x2);
     CASE_PROTO_TRACE_INT4(INT4, Int4x2);
@@ -1526,12 +1565,34 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 }
 #endif
 
+// Backstop validation for callers that load external data outside Graph::Resolve (e.g. training
+// checkpoints, custom-op initializers). Passes through ORT's in-memory address markers — those are
+// validated at higher layers (Graph::ConvertInitializersIntoOrtValues for dense; markers on sparse
+// sub-tensors are rejected outright in SparseTensorProtoToDenseTensorProto). For declared file paths,
+// defers to ValidateExternalDataPath, which rejects absolute paths and paths that escape the model
+// directory. Callers must have already verified the tensor has external data.
+static Status ValidateExternalFilePathForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                const std::filesystem::path& model_path) {
+  if (HasExternalDataInMemory(tensor_proto)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+  return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
+}
+
 Status GetExtDataFromTensorProto(const Env& env,
                                  const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info) {
   ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
               tensor_proto.name(), "Expected to have external data");
+
+  // Defense-in-depth: reject absolute or directory-escaping external data paths even when this
+  // function is reached outside Graph::Resolve (e.g. training checkpoint load, custom-op init).
+  // In-memory address markers are passed through; their validity is enforced upstream.
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -1569,7 +1630,7 @@ Status GetExtDataFromTensorProto(const Env& env,
     if constexpr (endian::native != endian::little) {
       auto allocator = CPUAllocator::DefaultInstance();
 
-      auto deleter = [&allocator](uint8_t* ptr) { allocator->Free(ptr); };
+      auto deleter = [allocator](uint8_t* ptr) { allocator->Free(ptr); };
       std::unique_ptr<uint8_t[], decltype(deleter)> native_data{reinterpret_cast<uint8_t*>(allocator->Alloc(static_cast<size_t>(raw_data_safe_len))), deleter};
 
       size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_proto.data_type()));
@@ -1696,6 +1757,9 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
                                           const IExternalDataLoader& ext_data_loader,
                                           Tensor& tensor) {
   ORT_ENFORCE(HasExternalData(tensor_proto));
+  // Defense-in-depth path validation for callers reaching this function outside Graph::Resolve.
+  // In-memory markers are passed through; rejected explicitly below as unsupported for this path.
+  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
@@ -1809,6 +1873,7 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     CASE_PROTO(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
     CASE_PROTO(FLOAT8E5M2, Float8E5M2);
     CASE_PROTO(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+    CASE_PROTO(FLOAT8E8M0, Float8E8M0);
 #endif
     CASE_PROTO(INT4, Int4x2);
     CASE_PROTO(UINT4, UInt4x2);
@@ -1902,6 +1967,7 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(FLOAT8E4M3FNUZ)
     CASE_TYPE(FLOAT8E5M2)
     CASE_TYPE(FLOAT8E5M2FNUZ)
+    CASE_TYPE(FLOAT8E8M0)
 #endif
     CASE_TYPE(UINT4)
     CASE_TYPE(INT4)
@@ -2056,6 +2122,32 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
+
+// Validates the external data declaration on a sub-tensor of a SparseTensorProto (values or
+// indices). Validates that any file path stays within the model directory.
+//
+// Gates on data_location == EXTERNAL (rather than HasExternalData()) so that path validation
+// runs even when data_type is UNDEFINED. A malicious model could set data_location=EXTERNAL with
+// data_type=UNDEFINED and an evil file path; downstream loading would also reject it, but we
+// validate here for defense-in-depth.
+//
+// In-memory address markers must never appear on sparse sub-tensors. The trusted .ort loader
+// materializes sparse sub-tensors as inline raw_data (see LoadSparseInitializerOrtFormat); the
+// untrusted .onnx protobuf path rejects markers at the Graph constructor; and
+// SparseTensorProtoToDenseTensorProto re-asserts the invariant before this function is reached.
+// The HasExternalDataInMemory early-return below is a paranoid backstop.
+static Status ValidateSparseSubTensorExternalDataPath(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                      const std::filesystem::path& model_path) {
+  if (tensor_proto.data_location() != ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL ||
+      HasExternalDataInMemory(tensor_proto)) {
+    return Status::OK();
+  }
+
+  std::unique_ptr<ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+  return utils::ValidateExternalDataPath(model_path, external_data_info->GetRelPath());
+}
+
 static Status CopySparseData(const std::string& name,
                              int64_t nnz_elements,
                              const ONNX_NAMESPACE::TensorProto& indices,
@@ -2074,10 +2166,18 @@ static Status CopySparseData(const std::string& name,
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (narrow<size_t>(indices_elements) * sizeof(int64_t)),
-                          "Sparse tensor: ", name, " indices raw data size does not match expected: ",
-                          indices_elements * sizeof(int64_t));
+        // For inline raw_data, validate size before unpacking to avoid a large allocation from a
+        // malformed tensor with small indices shape but oversized raw_data. For external data,
+        // raw_data is empty so we can only validate after unpacking.
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int64_t),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int64_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        ORT_RETURN_IF_NOT(unpack_buffer.size() == SafeInt<size_t>(indices_elements) * sizeof(int64_t),
+                          "Sparse tensor: ", name, " indices data size does not match expected: ",
+                          indices_elements * sizeof(int64_t));
         indices_data = ReinterpretAsSpan<const int64_t>(gsl::make_span(unpack_buffer));
       } else {
         ORT_RETURN_IF_NOT(indices.int64_data_size() == indices_elements,
@@ -2088,10 +2188,15 @@ static Status CopySparseData(const std::string& name,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       if (needs_unpack) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (narrow<size_t>(indices_elements) * sizeof(int32_t)),
-                          "Sparse tensor: ", name, " indices raw data size does not match expected: ",
-                          indices_elements * sizeof(int32_t));
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int32_t),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int32_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        ORT_RETURN_IF_NOT(unpack_buffer.size() == SafeInt<size_t>(indices_elements) * sizeof(int32_t),
+                          "Sparse tensor: ", name, " indices data size does not match expected: ",
+                          indices_elements * sizeof(int32_t));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int32_span.begin(), int32_span.end());
         unpack_buffer.clear();
@@ -2107,10 +2212,15 @@ static Status CopySparseData(const std::string& name,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
       if (needs_unpack) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == (narrow<size_t>(indices_elements) * sizeof(int16_t)),
-                          "Sparse tensor: ", name, " indices raw data size does not match expected: ",
-                          indices_elements * sizeof(int16_t));
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == SafeInt<size_t>(indices_elements) * sizeof(int16_t),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int16_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        ORT_RETURN_IF_NOT(unpack_buffer.size() == SafeInt<size_t>(indices_elements) * sizeof(int16_t),
+                          "Sparse tensor: ", name, " indices data size does not match expected: ",
+                          indices_elements * sizeof(int16_t));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
         unpack_buffer.clear();
@@ -2126,10 +2236,15 @@ static Status CopySparseData(const std::string& name,
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       if (needs_unpack) {
-        ORT_RETURN_IF_NOT(indices.raw_data().size() == narrow<size_t>(indices_elements),
-                          "Sparse tensor: ", name, " indices raw data size does not match expected: ",
-                          indices_elements * sizeof(int8_t));
+        if (!utils::HasExternalData(indices)) {
+          ORT_RETURN_IF_NOT(indices.raw_data().size() == narrow<size_t>(indices_elements),
+                            "Sparse tensor: ", name, " indices raw data size does not match expected: ",
+                            indices_elements * sizeof(int8_t));
+        }
         ORT_RETURN_IF_ERROR(UnpackInitializerData(indices, model_path, unpack_buffer));
+        ORT_RETURN_IF_NOT(unpack_buffer.size() == narrow<size_t>(indices_elements),
+                          "Sparse tensor: ", name, " indices data size does not match expected: ",
+                          indices_elements * sizeof(int8_t));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
         indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
         unpack_buffer.clear();
@@ -2212,6 +2327,23 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
   const auto& sparse_values = sparse.values();
   const auto& name = sparse_values.name();
 
+  // In-memory address markers (pointing into mmap'd / heap buffers) are forbidden on sparse
+  // sub-tensors. The trusted .ort loader is required to materialize sparse sub-tensors as inline
+  // raw_data (see LoadSparseInitializerOrtFormat) so they never carry markers. Untrusted .onnx
+  // protobuf input is rejected at the Graph constructor before reaching this function; this is
+  // the function-level backstop. A marker here would otherwise trigger an arbitrary memory read
+  // in UnpackInitializerData.
+  if (HasExternalDataInMemory(sparse_values)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " values use an in-memory address marker which is not permitted on sparse sub-tensors.");
+  }
+  if (HasExternalDataInMemory(sparse.indices())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                           "Sparse tensor: ", name,
+                           " indices use an in-memory address marker which is not permitted on sparse sub-tensors.");
+  }
+
   const auto values_rank = sparse_values.dims_size();
   if (values_rank != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
@@ -2277,6 +2409,12 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     }
   }
 
+  // Validate external data paths before any early returns or allocations.
+  // This ensures malicious paths are rejected even for zero-element tensors,
+  // and prevents large allocations before an invalid path is caught.
+  ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(sparse_values, model_path));
+  ORT_RETURN_IF_ERROR(ValidateSparseSubTensorExternalDataPath(indices, model_path));
+
   if (dense_elements == 0) {
     // if there are no elements in the dense tensor, we can return early with an empty tensor proto
     return status;
@@ -2288,14 +2426,14 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto.
-    std::string dense_data_storage(narrow<size_t>(dense_elements) * element_size, 0);
+    std::string dense_data_storage(SafeInt<size_t>(dense_elements) * element_size, 0);
     if (nnz_elements > 0) {
       // need to read in sparse data first as it could be in a type specific field, in raw data, or in external data
       std::vector<uint8_t> values_data;
       ORT_RETURN_IF_ERROR(UnpackInitializerData(sparse_values, model_path, values_data));
-      ORT_RETURN_IF_NOT(values_data.size() == static_cast<size_t>(nnz_elements) * element_size,
+      ORT_RETURN_IF_NOT(values_data.size() == SafeInt<size_t>(nnz_elements) * element_size,
                         "Sparse tensor: ", name, " values data size does not match expected: ",
-                        static_cast<size_t>(nnz_elements) * element_size);
+                        static_cast<size_t>(SafeInt<size_t>(nnz_elements) * element_size));
       void* sparse_data = values_data.data();
       void* dense_data = dense_data_storage.data();
 
@@ -2605,6 +2743,7 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK(FLOAT8E4M3FNUZ, onnxruntime::Float8E4M3FNUZ, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2, onnxruntime::Float8E5M2, int32_data_size);
     CASE_UNPACK(FLOAT8E5M2FNUZ, onnxruntime::Float8E5M2FNUZ, int32_data_size);
+    CASE_UNPACK(FLOAT8E8M0, onnxruntime::Float8E8M0, int32_data_size);
 #endif
     CASE_UNPACK_SUBBYTE_TYPE(INT4, Int4x2, int32_data_size, CalcNumInt4Pairs);
     CASE_UNPACK_SUBBYTE_TYPE(UINT4, UInt4x2, int32_data_size, CalcNumInt4Pairs);

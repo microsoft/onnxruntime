@@ -6,6 +6,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -472,6 +473,42 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
                       {kOpenVINOExecutionProvider, kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+
+  OpTester test("ConvTranspose", 22);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 5});
+  test.AddAttribute("group", int64_t{1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("output_shape", std::vector<int64_t>{1, 1, 1, 14});
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+
+  std::vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> X_shape = {1, 1, 1, 10};
+  std::vector<float> W = {1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
+  std::vector<int64_t> W_shape = {1, 1, 1, 5};
+  std::vector<float> B = {1.0f};
+  std::vector<int64_t> B_shape = {1};
+  std::vector<float> expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f, 46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
+
+  test.AddInput<float>("X", X_shape, X);
+  test.AddInput<float>("W", W_shape, W, true);
+  test.AddInput<float>("B", B_shape, B, true);
+  test.AddOutput<float>("Y", {1, 1, 1, 14}, expected_vals);
+
+  SessionOptions so;
+  auto status = so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   ConvTransposeOpAttributes attrs = {
       std::vector<int64_t>{1, 5},         // kernel_shape
@@ -525,7 +562,7 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
                       // so drop the part that differs from the expected string
                       "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,",
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
-                       kDmlExecutionProvider});  // TODO: Unskip when fixed #41968513
+                       kDmlExecutionProvider, kOpenVINOExecutionProvider});  // TODO: Unskip when fixed #41968513
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {
@@ -1534,6 +1571,78 @@ TEST(ConvTransposeTest, ConvTranspose_ZeroDilation_Dml) {
   test.ConfigEp(DefaultDmlExecutionProvider())
       .Config(OpTester::ExpectResult::kExpectFailure, "The parameter is incorrect")
       .RunWithConfig();
+}
+
+TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank0) {
+  OpTester test("ConvTranspose", 11);
+  // Skip ONNX shape inference which may crash on invalid-rank inputs (not our code to fix).
+  // Must be set before AddInput/AddOutput so type protos are built without shape info.
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("X", {}, {1.0f});
+  test.AddInput<float>("W", {}, {1.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank1) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("X", {2}, {1.0f, 2.0f});
+  test.AddInput<float>("W", {2}, {1.0f, 2.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(ConvTransposeTest, ConvTranspose_InvalidInputRank2) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("X", {1, 1}, {1.0f});
+  test.AddInput<float>("W", {1, 1}, {1.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(ConvTransposeTest, ConvTranspose_InvalidWeightRank0) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("X", {1, 1, 3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("W", {}, {1.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "at least 3 dimensions",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(ConvTransposeTest, ConvTranspose_InvalidOutputPaddingSize) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("output_padding", std::vector<int64_t>{0, 0, 0});  // 3 values for 2D spatial
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output_padding size",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ConvTransposeTest, ConvTranspose_OutputPaddingExceedsStride) {
+  OpTester test("ConvTranspose", 11);
+  test.AddShapeToTensorData(false);
+  // output_padding[i] must be < max(stride[i], dilation[i]). stride=2, so output_padding must be < 2.
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("output_padding", std::vector<int64_t>{2, 2});
+  test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output_padding",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 }  // namespace test

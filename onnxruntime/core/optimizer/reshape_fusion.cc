@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -468,6 +470,19 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
       break;
     }
 
+    // If next_node is a Reshape with allowzero=1, the fused node cannot represent this
+    // correctly: the fused node inherits attributes from the first node in the chain
+    // (which has allowzero=0 or no allowzero attribute). Bailing out here prevents
+    // incorrect fusion such as Reshape([0,8,2]->[4,2,-1]) + Reshape([0,0,4],allowzero=1)
+    // being collapsed into Reshape([0,8,2]->[0,0,4],allowzero=0), which would silently
+    // copy dims from the original input instead of preserving the explicit zeros.
+    if (next_node->OpType() == "Reshape") {
+      const auto* az_attr = graph_utils::GetNodeAttribute(*next_node, "allowzero");
+      if ((nullptr != az_attr) && az_attr->has_i() && az_attr->i() != 0) {
+        break;
+      }
+    }
+
     auto shape = next_node->OutputDefs()[0]->Shape();
     if (!shape) {
       break;
@@ -483,6 +498,16 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
   }
 
   if (contiguous_reshapes.size() < 2) {
+    return false;
+  }
+
+  // The fused shape is taken verbatim from the inferred output shape of the last reshape
+  // (we ensured tensor_shape.Size() != -1 above, so dims are concrete). If any dim is
+  // literally 0, fusing into a single Reshape is unsafe: ONNX Reshape with the default
+  // allowzero=0 would reinterpret the 0 as "copy from input", producing the wrong shape.
+  // Setting allowzero=1 would fix it but requires opset >= 14, which we cannot assume
+  // here (this transformer accepts Reshape opset 5+). Bail out conservatively.
+  if (std::any_of(shape_value.begin(), shape_value.end(), [](int64_t d) { return d == 0; })) {
     return false;
   }
 

@@ -100,16 +100,23 @@ std::unique_ptr<OrtHardwareDevice> MakeTestOrtHardwareDevice(OrtHardwareDeviceTy
 }
 
 std::unique_ptr<OrtEpDevice> MakeTestOrtEpDevice(const OrtHardwareDevice* hardware_device,
-                                                 const OrtMemoryInfo* device_memory_info = nullptr,
-                                                 const OrtMemoryInfo* host_accessible_memory_info = nullptr) {
+                                                 OrtEpFactory& ep_factory,
+                                                 const OrtMemoryInfo* device_memory_info,
+                                                 const OrtMemoryInfo* host_accessible_memory_info) {
   auto ep_device = std::make_unique<OrtEpDevice>();
   ep_device->ep_name = "TestOrtEp";
   ep_device->ep_vendor = "Contoso";
   ep_device->device = hardware_device;
-  ep_device->ep_factory = &g_test_ort_ep_factory;
+  ep_device->ep_factory = &ep_factory;
   ep_device->device_memory_info = device_memory_info;
   ep_device->host_accessible_memory_info = host_accessible_memory_info;
   return ep_device;
+}
+
+std::unique_ptr<OrtEpDevice> MakeTestOrtEpDevice(const OrtHardwareDevice* hardware_device,
+                                                 const OrtMemoryInfo* device_memory_info = nullptr,
+                                                 const OrtMemoryInfo* host_accessible_memory_info = nullptr) {
+  return MakeTestOrtEpDevice(hardware_device, g_test_ort_ep_factory, device_memory_info, host_accessible_memory_info);
 }
 
 OrtDevice MakeTestOrtDevice(OrtDevice::DeviceType device_type, OrtDevice::MemoryType memory_type) {
@@ -162,7 +169,146 @@ class MockKernelLookup : public IExecutionProvider::IKernelLookup {
   LookUpKernelFunc lookup_ = nullptr;
 };
 
+const OrtLogger& GetDefaultOrtLogger() {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  return *reinterpret_cast<const OrtLogger*>(&logger);
+}
+
+// Test OrtEpFactory that creates a caller-provided OrtEp and tracks ReleaseEp calls.
+// Used to test PluginExecutionProviderFactory creation and sanity-check behavior.
+struct TestOrtEpFactoryForCreateProvider : ::OrtEpFactory {
+  TestOrtEpFactoryForCreateProvider() : ::OrtEpFactory{} {
+    ort_version_supported = ORT_API_VERSION;
+    GetName = GetNameImpl;
+    CreateEp = CreateEpImpl;
+    ReleaseEp = ReleaseEpImpl;
+  }
+
+  void SetNextEp(std::unique_ptr<TestOrtEp> ep) {
+    next_ep_ = std::move(ep);
+  }
+
+  static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return "TestOrtEp";
+  }
+
+  static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
+                                              const OrtHardwareDevice* const* /*hw_devices*/,
+                                              const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                              size_t /*num_devices*/,
+                                              const OrtSessionOptions* /*session_options*/,
+                                              const OrtLogger* /*logger*/,
+                                              OrtEp** ep_out) noexcept {
+    auto& self = *static_cast<TestOrtEpFactoryForCreateProvider*>(this_ptr);
+    *ep_out = self.next_ep_.release();
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
+    auto& self = *static_cast<TestOrtEpFactoryForCreateProvider*>(this_ptr);
+    ++self.release_ep_count_;
+    delete static_cast<TestOrtEp*>(ep);
+  }
+
+  int GetReleaseEpCount() const {
+    return release_ep_count_;
+  }
+
+ private:
+  int release_ep_count_ = 0;
+  std::unique_ptr<TestOrtEp> next_ep_;
+};
+
+// Test context for PluginExecutionProviderFactory creation tests.
+struct CreateProviderTestContext {
+  CreateProviderTestContext()
+      : hw_device(MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU)),
+        ep_device(MakeTestOrtEpDevice(hw_device.get(), ep_factory,
+                                      /*device_memory_info*/ nullptr,
+                                      /*host_accessible_memory_info*/ nullptr)),
+        ep_devices{ep_device.get()},
+        provider_factory(ep_factory, ep_devices) {
+  }
+
+  Status Create(std::unique_ptr<PluginExecutionProvider>& plugin_ep_out) {
+    Ort::SessionOptions session_options;
+    return provider_factory.CreatePluginExecutionProvider(*static_cast<const OrtSessionOptions*>(session_options),
+                                                          GetDefaultOrtLogger(), plugin_ep_out);
+  }
+
+  TestOrtEpFactoryForCreateProvider ep_factory;
+  std::unique_ptr<OrtHardwareDevice> hw_device;
+  std::unique_ptr<OrtEpDevice> ep_device;
+  std::vector<const OrtEpDevice*> ep_devices;
+  PluginExecutionProviderFactory provider_factory;
+};
+
 }  // namespace test_plugin_ep
+
+TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsWithNullGetNamePointer) {
+  test_plugin_ep::CreateProviderTestContext context;
+
+  auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+  ort_ep->GetName = nullptr;
+  context.ep_factory.SetNextEp(std::move(ort_ep));
+
+  std::unique_ptr<PluginExecutionProvider> plugin_ep;
+  const Status status = context.Create(plugin_ep);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("null GetName function pointer"));
+  EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
+}
+
+TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsWhenGetNameReturnsNull) {
+  test_plugin_ep::CreateProviderTestContext context;
+
+  auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+  ort_ep->GetName = [](const OrtEp* /*this_ptr*/) noexcept -> const char* {
+    return nullptr;
+  };
+  context.ep_factory.SetNextEp(std::move(ort_ep));
+
+  std::unique_ptr<PluginExecutionProvider> plugin_ep;
+  const Status status = context.Create(plugin_ep);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("GetName function returned null"));
+  EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
+}
+
+TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsForTooLowVersion) {
+  test_plugin_ep::CreateProviderTestContext context;
+
+  auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+  ort_ep->ort_version_supported = 0;
+  context.ep_factory.SetNextEp(std::move(ort_ep));
+
+  std::unique_ptr<PluginExecutionProvider> plugin_ep;
+  const Status status = context.Create(plugin_ep);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("invalid ort_version_supported"));
+  EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
+}
+
+TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderAcceptsHighVersion) {
+  test_plugin_ep::CreateProviderTestContext context;
+
+  auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();
+  ort_ep->ort_version_supported = ORT_API_VERSION + 1;
+  context.ep_factory.SetNextEp(std::move(ort_ep));
+
+  std::unique_ptr<PluginExecutionProvider> plugin_ep;
+
+  ASSERT_STATUS_OK(context.Create(plugin_ep));
+  ASSERT_NE(plugin_ep, nullptr);
+
+  EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 0);
+
+  plugin_ep.reset();
+  EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
+}
 
 TEST(PluginExecutionProviderTest, GetPreferredLayout) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
@@ -1380,6 +1526,49 @@ TEST(PluginExecutionProviderTest, ReplayGraph) {
   }
 }
 
+TEST(PluginExecutionProviderTest, ReleaseCapturedGraph) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    // NULL function pointer should return OK (default behavior).
+    ort_ep->ReleaseCapturedGraph = nullptr;
+    ASSERT_STATUS_OK(ep->ReleaseCapturedGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning OK.
+    auto release_ok = [](OrtEp* /*this_ptr*/, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      return nullptr;
+    };
+    ort_ep->ReleaseCapturedGraph = release_ok;
+    ASSERT_STATUS_OK(ep->ReleaseCapturedGraph(0));
+  }
+
+  {
+    // Non-NULL implementation returning an error.
+    auto release_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Release captured graph failed");
+    };
+    ort_ep->ReleaseCapturedGraph = release_fail;
+    auto status = ep->ReleaseCapturedGraph(0);
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Release captured graph failed"));
+  }
+
+  {
+    // Backward compatibility: version < 27 should return OK even if function pointer is set.
+    auto release_fail = [](OrtEp* this_ptr, int /*graph_annotation_id*/) noexcept -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "Should not be called");
+    };
+    ort_ep->ReleaseCapturedGraph = release_fail;
+    ort_ep->ort_version_supported = 26;
+    ASSERT_STATUS_OK(ep->ReleaseCapturedGraph(0));
+    ort_ep->ort_version_supported = ORT_API_VERSION;  // Restore.
+  }
+}
+
 TEST(PluginExecutionProviderTest, GetGraphCaptureNodeAssignmentPolicy) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
@@ -1511,6 +1700,54 @@ TEST(PluginExecutionProviderTest, GetAvailableResource_NullCallbackLeavesThresho
   auto* accountant = CallGetCapabilityWithAccountant(*ep, ort_ep, acc_map);
 
   EXPECT_FALSE(accountant->GetThreshold().has_value());
+}
+
+// OnSessionInitializationEnd is nullptr -> falls back to base class (returns OK).
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_NullCallback) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = nullptr;
+  ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
+}
+
+// OnSessionInitializationEnd returns OK status.
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_Success) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = [](OrtEp* /*this_ptr*/) noexcept -> OrtStatus* {
+    return nullptr;
+  };
+
+  ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
+}
+
+// OnSessionInitializationEnd returns an error status -> error propagates.
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_Error) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = [](OrtEp* this_ptr) noexcept -> OrtStatus* {
+    auto* test_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+    return test_ep->ort_api->CreateStatus(ORT_RUNTIME_EXCEPTION, "cleanup failed");
+  };
+
+  auto status = ep->OnSessionInitializationEnd();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("cleanup failed"));
+}
+
+// OnSessionInitializationEnd with old ort_version_supported -> falls back to base class even if pointer is set.
+TEST(PluginExecutionProviderTest, OnSessionInitializationEnd_OldVersionFallback) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  ort_ep->OnSessionInitializationEnd = [](OrtEp* this_ptr) noexcept -> OrtStatus* {
+    auto* test_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+    return test_ep->ort_api->CreateStatus(ORT_RUNTIME_EXCEPTION, "should not be called");
+  };
+
+  // Simulate an older EP version that doesn't have this field.
+  ort_ep->ort_version_supported = 26;
+
+  ASSERT_STATUS_OK(ep->OnSessionInitializationEnd());
 }
 
 }  // namespace onnxruntime::test

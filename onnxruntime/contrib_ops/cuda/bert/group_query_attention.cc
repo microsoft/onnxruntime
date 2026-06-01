@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
@@ -13,6 +14,7 @@
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
+#include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
@@ -220,11 +222,17 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 softcap_,
                                                                 kv_cache_bit_width_,
                                                                 device_prop.maxThreadsPerBlock));
+#ifndef USE_INT4_KV_CACHE
+  if (kv_cache_bit_width_ == 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
+  }
+#endif
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
+
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
   parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;
@@ -289,13 +297,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
-
   data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
   data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
-
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
-  // This compares the final pointer values after quantization handling.
-  parameters.past_present_share_buffer = (data.past_key == data.present_key);
+  bool past_key_shared = (data.past_key != nullptr && data.past_key == data.present_key);
+  bool past_value_shared = (data.past_value != nullptr && data.past_value == data.present_value);
+  ORT_ENFORCE(past_key_shared == past_value_shared,
+              "past_key/present_key and past_value/present_value must be both shared or both separate.");
+  parameters.past_present_share_buffer = past_key_shared;
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
@@ -317,6 +326,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
+      parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
       !parameters.use_smooth_softmax &&
@@ -394,7 +404,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                  parameters.kv_num_heads);
 
   data.use_flash_attention = use_flash_attention;
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.past_present_share_buffer && !is_inputs_quantized;
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)
@@ -507,6 +517,47 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
 
+  // ---------------------------------------------------------------------
+  // GQA-capable unfused fallback (issue #28195).
+  // Activates when Flash / MEA / XQA are all ineligible and KV is not quantized.
+  // Supports any head_size (FP32 QK accumulation), GQA, sliding window, softcap.
+  // See LaunchUnfusedAttention in contrib_ops/cuda/bert/unfused_attention.h.
+  // ---------------------------------------------------------------------
+  IAllocatorUniquePtr<void> unfused_scratch;
+  if (!data.use_xqa && !data.use_flash_attention && !data.use_memory_efficient_attention &&
+      !is_inputs_quantized && !parameters.use_smooth_softmax && head_sink == nullptr &&
+      parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+    data.use_unfused = true;
+
+    const size_t B = static_cast<size_t>(parameters.batch_size);
+    const size_t N_q = static_cast<size_t>(parameters.num_heads);
+    const size_t S_q = static_cast<size_t>(parameters.sequence_length);
+    const size_t H = static_cast<size_t>(parameters.head_size);
+    // GQA guarantees head_size == v_head_size; use H_v for the Y output buffer
+    // so the allocation stays correct if a distinct v_head_size is ever exposed.
+    const size_t H_v = (parameters.v_head_size > 0)
+                           ? static_cast<size_t>(parameters.v_head_size)
+                           : H;
+    const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
+
+    auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
+      return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
+    };
+    const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H_v * sizeof(T));
+    const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
+        onnxruntime::contrib::cuda::GetUnfusedAttentionWorkspaceSize(
+            static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
+    const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
+
+    unfused_scratch = GetScratchBuffer<void>(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
+                                             GetComputeStream(context));
+    auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
+    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
+    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
+    data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
+  }
+
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = data.use_flash_attention;
@@ -516,13 +567,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                      this->Node().Name(),
                      std::is_same<T, MLFloat16>::value,
                      std::is_same<T, BFloat16>::value);
-  }
-
-  // Validate past_value pointer consistency (past_present_share_buffer was computed early after pointer setup)
-  if (parameters.past_present_share_buffer) {
-    ORT_ENFORCE(data.past_value == data.present_value, "past_value and present_value must be the same tensor when past_present_share_buffer is true");
-  } else {
-    ORT_ENFORCE(data.past_value != data.present_value, "past_value and present_value must be different tensors when past_present_share_buffer is false");
   }
 
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());

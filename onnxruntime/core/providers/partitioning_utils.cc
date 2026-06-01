@@ -307,19 +307,33 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
   for (const Node* node : group) {
     sub_graph->nodes.push_back(node->Index());
 
-    for (const auto* input : node->InputDefs()) {
-      if (!input->Exists()) {
-        // skip the placeholder inputs
-        continue;
-      }
-      // if the node input was not produced by this subgraph, add it to the subgraph inputs.
-      if (!Contains(node_outputs, input)) {
-        if (!Contains(subgraph_inputs, input)) {
-          subgraph_inputs.insert(input);
-          ordered_subgraph_inputs.push_back(input);
+    // Collect boundary inputs from a def container, skipping placeholders and
+    // values already produced inside the partition; preserves first-seen order.
+    auto collect_boundary_inputs = [&](const auto& defs) {
+      for (const auto* input : defs) {
+        if (!input->Exists()) {
+          continue;
+        }
+        if (!Contains(node_outputs, input)) {
+          if (!Contains(subgraph_inputs, input)) {
+            subgraph_inputs.insert(input);
+            ordered_subgraph_inputs.push_back(input);
+          }
         }
       }
-    }
+    };
+
+    collect_boundary_inputs(node->InputDefs());
+
+    // Region-bearing ops (Loop/If/Scan) reference outer-scope SSA values via
+    // ImplicitInputDefs rather than InputDefs. When an EP claims the whole
+    // control-flow op, those implicit captures must also be in MetaDef::inputs
+    // so FinalizeFuseSubGraph can rewire the outer-scope edges onto the fused
+    // node's InputDefs. Without this, plugin EPs that fuse Loop/If/Scan lose
+    // the captures at the fused-node boundary and cannot resolve them at
+    // Compute time. Running this after the explicit loop preserves
+    // explicit-operand index ordering in meta_def->inputs.
+    collect_boundary_inputs(node->ImplicitInputDefs());
 
     const auto& output_defs = node->OutputDefs();
     for (const auto* output_def : output_defs) {

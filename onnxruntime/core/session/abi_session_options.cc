@@ -118,6 +118,15 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionExecutionMode, _In_ OrtSessionOptions* op
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "'out' parameter must not be NULL");
+  *out = options->value.execution_mode;
+  return nullptr;
+  API_IMPL_END
+}
+
 // set filepath to save optimized onnx model.
 ORT_API_STATUS_IMPL(OrtApis::SetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath) {
   options->value.optimized_model_filepath = optimized_model_filepath;
@@ -147,6 +156,15 @@ ORT_API_STATUS_IMPL(OrtApis::EnableMemPattern, _In_ OrtSessionOptions* options) 
 ORT_API_STATUS_IMPL(OrtApis::DisableMemPattern, _In_ OrtSessionOptions* options) {
   options->value.enable_mem_pattern = false;
   return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetMemPatternEnabled, _In_ const OrtSessionOptions* options, _Out_ int* out) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
+  ORT_API_RETURN_IF(out == nullptr, ORT_INVALID_ARGUMENT, "'out' parameter must not be NULL");
+  *out = options->value.enable_mem_pattern ? 1 : 0;
+  return nullptr;
+  API_IMPL_END
 }
 
 // enable the memory arena on CPU

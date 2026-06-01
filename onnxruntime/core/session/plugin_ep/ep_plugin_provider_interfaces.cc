@@ -72,23 +72,43 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   return plugin_ep;
 }
 
+// Do some basic checks on `ort_ep` to detect obvious issues early on.
+static Status SanityCheckOrtEp(const OrtEp& ort_ep) {
+  // Plugin EPs were first introduced in ORT 1.22, so we expect at least this API version.
+  constexpr auto kMinAllowedOrtVersionSupported = 22;
+
+  ORT_RETURN_IF_NOT(ort_ep.ort_version_supported >= kMinAllowedOrtVersionSupported,
+                    "OrtEp has invalid ort_version_supported=", ort_ep.ort_version_supported,
+                    " (expected at least ", kMinAllowedOrtVersionSupported, ").");
+
+  ORT_RETURN_IF_NOT(ort_ep.GetName != nullptr, "OrtEp has null GetName function pointer.");
+
+  ORT_RETURN_IF_NOT(ort_ep.GetName(&ort_ep) != nullptr, "OrtEp's GetName function returned null.");
+
+  return Status::OK();
+}
+
 Status PluginExecutionProviderFactory::CreatePluginExecutionProvider(
     const OrtSessionOptions& session_options,
     const OrtLogger& logger,
     /*out*/ std::unique_ptr<PluginExecutionProvider>& plugin_ep) {
   plugin_ep = nullptr;
-  OrtEp* ort_ep = nullptr;
+  OrtEp* ort_ep_raw = nullptr;
 
   ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(),
                                                               ep_metadata_.data(), hardware_devices_.size(),
-                                                              &session_options, &logger, &ort_ep)));
-  ORT_RETURN_IF(ort_ep == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
+                                                              &session_options, &logger, &ort_ep_raw)));
+  ORT_RETURN_IF(ort_ep_raw == nullptr, "OrtEpFactory::CreateEp() for '", ep_factory_.GetName(&ep_factory_),
                 "' returned a NULL OrtEp instance");
+
+  auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter(ep_factory_));
+
+  ORT_RETURN_IF_ERROR(SanityCheckOrtEp(*ort_ep));
 
   std::shared_ptr<KernelRegistry> kernel_registry;
   ORT_RETURN_IF_ERROR(GetPluginEpKernelRegistry(*ort_ep, kernel_registry));
 
-  plugin_ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+  plugin_ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                         session_options, ep_factory_, devices_,
                                                         kernel_registry,
                                                         *logger.ToInternal());
@@ -468,6 +488,10 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   return result;
 }
 
+// Out-of-line destructor: EpNode and EpValueInfo must be complete types
+// when unique_ptr members are destroyed (required by libc++).
+PluginExecutionProvider::FusedNodeState::~FusedNodeState() = default;
+
 Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node) {
   std::unique_ptr<EpNode> unique_ep_fused_node = nullptr;
   ORT_RETURN_IF_ERROR(EpNode::Create(fused_node, /*parent graph*/ nullptr, this->value_infos, unique_ep_fused_node));
@@ -783,6 +807,13 @@ Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run
   return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
 }
 
+Status PluginExecutionProvider::OnSessionInitializationEnd() {
+  if (ort_ep_->ort_version_supported < 27 || ort_ep_->OnSessionInitializationEnd == nullptr) {
+    return Base::OnSessionInitializationEnd();
+  }
+  return ToStatusAndRelease(ort_ep_->OnSessionInitializationEnd(ort_ep_.get()));
+}
+
 Status PluginExecutionProvider::Sync() const {
   if (ort_ep_->ort_version_supported < 25 || ort_ep_->Sync == nullptr) {
     return Base::Sync();
@@ -1021,6 +1052,16 @@ Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
     return Base::ReplayGraph(graph_annotation_id);
   }
   return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
+}
+
+Status PluginExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
+  // For plugin EPs that don't implement ReleaseCapturedGraph (version < 27 or null function pointer),
+  // fall back to the base class no-op implementation. This is intentional: the request is silently
+  // ignored since the plugin EP doesn't support explicit graph resource release.
+  if (ort_ep_->ort_version_supported < 27 || ort_ep_->ReleaseCapturedGraph == nullptr) {
+    return Base::ReleaseCapturedGraph(graph_annotation_id);
+  }
+  return ToStatusAndRelease(ort_ep_->ReleaseCapturedGraph(ort_ep_.get(), graph_annotation_id));
 }
 
 OrtGraphCaptureNodeAssignmentPolicy PluginExecutionProvider::GetGraphCaptureNodeAssignmentPolicy() const {
