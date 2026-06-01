@@ -32,6 +32,7 @@ The following playbooks have been drafted:
 7. [07 Graph Optimizations and Fusion Passes](playbooks/07-graph-optimizations-and-fusion-passes.md)
 8. [08 Execution Provider Implementation](playbooks/08-execution-provider-implementation.md)
 9. [09 Memory Management, Allocators, and Data Movement](playbooks/09-memory-management-allocators-and-data-movement.md)
+10. [10 Python and C API Binding Extension](playbooks/10-python-and-c-api-binding-extension.md)
 
 ## Proposed Playbooks
 
