@@ -1569,14 +1569,14 @@ static void RunScanInLocalFunctionTest(InferenceSession& session) {
 
   // result: float[4] = [6, 6, 6, 6]
   const auto& result_tensor = fetches[0].Get<Tensor>();
-  ASSERT_EQ(result_tensor.Shape().GetDims(), (std::vector<int64_t>{4}));
+  ASSERT_EQ(result_tensor.Shape(), TensorShape({4}));
   for (float v : result_tensor.DataAsSpan<float>()) {
     EXPECT_FLOAT_EQ(v, 6.f);
   }
 
   // out_seq: float[3, 4] = [[1,1,1,1],[3,3,3,3],[6,6,6,6]]
   const auto& out_seq_tensor = fetches[1].Get<Tensor>();
-  ASSERT_EQ(out_seq_tensor.Shape().GetDims(), (std::vector<int64_t>{3, 4}));
+  ASSERT_EQ(out_seq_tensor.Shape(), TensorShape({3, 4}));
   const float* out_data = out_seq_tensor.Data<float>();
   const float expected_out_seq[12] = {1, 1, 1, 1, 3, 3, 3, 3, 6, 6, 6, 6};
   for (int i = 0; i < 12; ++i) {
