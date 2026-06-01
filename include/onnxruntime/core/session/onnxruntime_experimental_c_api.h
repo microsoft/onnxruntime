@@ -29,7 +29,7 @@
 
 // --- C: function pointer typedefs and name constants ---
 //
-// For each ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...) entry in the .inc file, this generates:
+// For each ORT_EXPERIMENTAL_API(VER, NAME, RET, ...) entry in the .inc file, this generates:
 //
 //   // Function pointer typedef:
 //   typedef RET(ORT_API_CALL* OrtExperimental_<NAME>_ExpSinceV<VER>_Fn)(...) NO_EXCEPTION;
@@ -37,18 +37,18 @@
 //   // Name constant for lookup:
 //   static const char* const kOrtExperimental_<NAME>_ExpSinceV<VER>_FnName = "<NAME>_ExpSinceV<VER>";
 //
-// Example: ORT_EXPERIMENTAL_FUNC(27, OrtApi_ExperimentalApiTest, OrtStatusPtr, _Out_ int64_t* out)
+// Example: ORT_EXPERIMENTAL_API(27, OrtApi_ExperimentalApiTest, OrtStatusPtr, _Out_ int64_t* out)
 // produces:
 //   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_Fn)(
 //       _Out_ int64_t* out) NO_EXCEPTION;
 //   static const char* const kOrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_FnName =
 //       "OrtApi_ExperimentalApiTest_ExpSinceV27";
 
-#define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                   \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                   \
   typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_ExpSinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
   static const char* const kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName = #NAME "_ExpSinceV" #VER;
 #include "onnxruntime_experimental_c_api.inc"
-#undef ORT_EXPERIMENTAL_FUNC
+#undef ORT_EXPERIMENTAL_API
 
 #ifdef __cplusplus
 
@@ -61,21 +61,21 @@ namespace Experimental {
 //
 //   inline OrtExperimental_<NAME>_ExpSinceV<VER>_Fn Get_<NAME>_ExpSinceV<VER>_Fn(const OrtApi* api);
 //
-// Example: for ORT_EXPERIMENTAL_FUNC(27, OrtApi_ExperimentalApiTest, ...) this produces:
+// Example: for ORT_EXPERIMENTAL_API(27, OrtApi_ExperimentalApiTest, ...) this produces:
 //   inline OrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_Fn
 //   Get_OrtApi_ExperimentalApiTest_ExpSinceV27_Fn(const OrtApi* api) {
 //     return reinterpret_cast<OrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_Fn>(
 //         api->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_FnName));
 //   }
 
-#define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                        \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                        \
   inline OrtExperimental_##NAME##_ExpSinceV##VER##_Fn Get_##NAME##_ExpSinceV##VER##_Fn(   \
       const OrtApi* api) {                                                                \
     return reinterpret_cast<OrtExperimental_##NAME##_ExpSinceV##VER##_Fn>(                \
         api->GetExperimentalFunction(kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName)); \
   }
 #include "onnxruntime_experimental_c_api.inc"
-#undef ORT_EXPERIMENTAL_FUNC
+#undef ORT_EXPERIMENTAL_API
 
 }  // namespace Experimental
 }  // namespace Ort

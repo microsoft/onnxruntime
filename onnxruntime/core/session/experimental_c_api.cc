@@ -44,10 +44,10 @@ struct ExperimentalEntry {
 };
 
 static const ExperimentalEntry kExperimentalFunctions[] = {
-#define ORT_EXPERIMENTAL_FUNC(VER, NAME, ...) \
+#define ORT_EXPERIMENTAL_API(VER, NAME, ...) \
   {#NAME "_ExpSinceV" #VER, reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_ExpSinceV##VER)},
 #include "onnxruntime_experimental_c_api.inc"
-#undef ORT_EXPERIMENTAL_FUNC
+#undef ORT_EXPERIMENTAL_API
 };
 
 }  // anonymous namespace
