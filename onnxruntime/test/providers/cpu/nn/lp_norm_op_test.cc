@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "default_providers.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {

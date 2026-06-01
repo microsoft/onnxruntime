@@ -31,54 +31,58 @@ __global__ void LpNormKernel(
     const int64_t norm_size,
     const int64_t num_norms,
     const int64_t stride) {
-  const int64_t norm_idx = static_cast<int64_t>(blockIdx.x);
-  if (norm_idx >= num_norms) return;
+  // Grid-stride loop so the kernel works even when num_norms exceeds the grid size.
+  for (int64_t norm_idx = static_cast<int64_t>(blockIdx.x);
+       norm_idx < num_norms;
+       norm_idx += static_cast<int64_t>(gridDim.x)) {
+    // Compute base offset for this normalization vector.
+    // norm_idx = (outer_idx * stride + inner_idx) where inner_idx < stride
+    const int64_t outer_idx = norm_idx / stride;
+    const int64_t inner_idx = norm_idx % stride;
+    const int64_t base = outer_idx * norm_size * stride + inner_idx;
 
-  // Compute base offset for this normalization vector.
-  // norm_idx = (outer_idx * stride + inner_idx) where inner_idx < stride
-  const int64_t outer_idx = norm_idx / stride;
-  const int64_t inner_idx = norm_idx % stride;
-  const int64_t base = outer_idx * norm_size * stride + inner_idx;
-
-  // Step 1: Each thread accumulates partial norm over its assigned elements
-  // using a wider accumulation type to avoid overflow (e.g. half -> float).
-  AccT thread_sum = AccT(0);
-  for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
-    AccT val = static_cast<AccT>(input[base + i * stride]);
-    if constexpr (P == 1) {
-      thread_sum += _Abs(val);
-    } else {
-      thread_sum += val * val;
+    // Step 1: Each thread accumulates partial norm over its assigned elements
+    // using a wider accumulation type to avoid overflow (e.g. half -> float).
+    AccT thread_sum = AccT(0);
+    for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
+      AccT val = static_cast<AccT>(input[base + i * stride]);
+      if constexpr (P == 1) {
+        thread_sum += _Abs(val);
+      } else {
+        thread_sum += val * val;
+      }
     }
-  }
 
-  // Step 2: Block-level reduction using shared memory.
-  // blockDim.x is always a power of two so the halving reduction is correct.
-  extern __shared__ char shared_mem[];
-  AccT* sdata = reinterpret_cast<AccT*>(shared_mem);
-  sdata[threadIdx.x] = thread_sum;
-  __syncthreads();
-
-  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
-    if (threadIdx.x < s) {
-      sdata[threadIdx.x] += sdata[threadIdx.x + s];
-    }
+    // Step 2: Block-level reduction using shared memory.
+    // blockDim.x is always a power of two so the halving reduction is correct.
+    extern __shared__ char shared_mem[];
+    AccT* sdata = reinterpret_cast<AccT*>(shared_mem);
+    sdata[threadIdx.x] = thread_sum;
     __syncthreads();
-  }
 
-  AccT norm = sdata[0];
-  if constexpr (P == 2) {
-    norm = _Sqrt(norm);
-  }
-
-  // Step 3: Normalize (division in accumulation type, cast back to T).
-  if (norm != AccT(0)) {
-    for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
-      output[base + i * stride] = static_cast<T>(static_cast<AccT>(input[base + i * stride]) / norm);
+    for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
+      if (threadIdx.x < s) {
+        sdata[threadIdx.x] += sdata[threadIdx.x + s];
+      }
+      __syncthreads();
     }
-  } else {
-    for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
-      output[base + i * stride] = T(0);
+
+    AccT norm = sdata[0];
+    if constexpr (P == 2) {
+      norm = _Sqrt(norm);
+    }
+
+    // Step 3: Normalize (division in accumulation type, cast back to T).
+    if (norm != AccT(0)) {
+      for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
+        output[base + i * stride] = static_cast<T>(static_cast<AccT>(input[base + i * stride]) / norm);
+      }
+    } else {
+      // Zero norm: output zeros to match the CPU kernel behavior (yVec.setZero()).
+      // The ONNX spec would produce inf/nan here, but ORT intentionally returns 0.
+      for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
+        output[base + i * stride] = T(0);
+      }
     }
   }
 }
@@ -99,7 +103,9 @@ void LpNormImpl(
   // Block size must be a power of two for the shared-memory reduction.
   const int raw_threads = static_cast<int>(std::min(static_cast<int64_t>(256), norm_size));
   const int threads_per_block = std::max(1, NextPowerOfTwo(raw_threads));
-  const int blocks = static_cast<int>(num_norms);
+  // Cap grid size to avoid exceeding CUDA limits; the kernel uses a grid-stride loop.
+  constexpr int64_t kMaxGridDim = 65535;
+  const int blocks = static_cast<int>(std::min(num_norms, kMaxGridDim));
   const size_t shared_mem_size = static_cast<size_t>(threads_per_block) * sizeof(AccT);
 
   if (p == 1) {
@@ -113,7 +119,6 @@ void LpNormImpl(
 
 // Explicit instantiations.
 template void LpNormImpl<float>(cudaStream_t, const float*, float*, int64_t, int64_t, int64_t, int);
-template void LpNormImpl<double>(cudaStream_t, const double*, double*, int64_t, int64_t, int64_t, int);
 template void LpNormImpl<half>(cudaStream_t, const half*, half*, int64_t, int64_t, int64_t, int);
 
 }  // namespace cuda
