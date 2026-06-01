@@ -6,7 +6,7 @@
 // This file is included multiple times with different definitions of ORT_EXPERIMENTAL_API to generate constructs like
 // typedefs, name constants, registration table entries, and C++ accessors.
 //
-// The X-macro ORT_EXPERIMENTAL_API has the following signature:
+// The X-macro (https://en.wikipedia.org/wiki/X_macro) ORT_EXPERIMENTAL_API has the following signature:
 //   ORT_EXPERIMENTAL_API(SinceVersion, Name, ReturnType, Params...)
 //
 //     SinceVersion: The ORT API version in which the function was first introduced.

@@ -3,12 +3,15 @@
 
 // Experimental C API consumer header.
 //
-// This header provides typedefs, name constants, and (for C++) typed inline accessors
-// for experimental ORT functions. It is generated from onnxruntime_experimental_c_api.inc.
+// This header provides typedefs, name constants, and (for C++) typed inline accessors for experimental ORT functions.
+// It should be used together with the experimental header lookup function `OrtApi::GetExperimentalFunction()`.
 //
-// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added,
-// changed, or removed between releases without notice. A function's availability should
-// always be checked at runtime (the lookup returns nullptr if the function is not present).
+// This header is generated from onnxruntime_experimental_c_api.inc, which defines the list of experimental API
+// functions.
+//
+// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
+// releases without notice. A function's availability should always be checked at runtime (the lookup returns nullptr
+// if the function is not present).
 //
 // C usage:
 //   OrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_Fn fn =
