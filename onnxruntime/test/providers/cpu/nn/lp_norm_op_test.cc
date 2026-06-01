@@ -4,6 +4,7 @@
 #include <cmath>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -202,9 +203,16 @@ TEST(LpNormalizationTest, L2Normalization_FP16) {
   for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
   test.AddOutput<MLFloat16>("Y", input_dims, expected);
 
-  // FP16 is only on CUDA/ROCM EPs; exclude CPU (no fp16 kernel) and others that don't support it
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCpuExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
+  // FP16 is only supported on CUDA/ROCM EPs.
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+  SessionOptions so;
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(LpNormalizationTest, L1Normalization_FP16) {
@@ -228,8 +236,16 @@ TEST(LpNormalizationTest, L1Normalization_FP16) {
   for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
   test.AddOutput<MLFloat16>("Y", input_dims, expected);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCpuExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
+  // FP16 is only supported on CUDA/ROCM EPs.
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+  SessionOptions so;
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(LpNormalizationTest, L2Normalization_LastAxis) {

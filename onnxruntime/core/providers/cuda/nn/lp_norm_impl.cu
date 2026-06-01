@@ -1,16 +1,30 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "lp_norm_impl.h"
+#include "core/providers/cuda/shared_inc/accumulation_type.h"
+#include "core/providers/cuda/nn/lp_norm_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
 
+// Round up to the next power of two (for block-level reduction correctness).
+inline int NextPowerOfTwo(int v) {
+  --v;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  return v + 1;
+}
+
 // Each block handles one normalization vector.
 // norm_size: length along the normalization axis
 // stride: stride between consecutive elements along the normalization axis
-template <typename T, int P>
+// AccT is the accumulation type (float for half, T otherwise).
+template <typename T, typename AccT, int P>
 __global__ void LpNormKernel(
     const T* __restrict__ input,
     T* __restrict__ output,
@@ -26,10 +40,11 @@ __global__ void LpNormKernel(
   const int64_t inner_idx = norm_idx % stride;
   const int64_t base = outer_idx * norm_size * stride + inner_idx;
 
-  // Step 1: Each thread accumulates partial norm over its assigned elements.
-  T thread_sum = T(0);
+  // Step 1: Each thread accumulates partial norm over its assigned elements
+  // using a wider accumulation type to avoid overflow (e.g. half -> float).
+  AccT thread_sum = AccT(0);
   for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
-    T val = input[base + i * stride];
+    AccT val = static_cast<AccT>(input[base + i * stride]);
     if constexpr (P == 1) {
       thread_sum += _Abs(val);
     } else {
@@ -38,8 +53,9 @@ __global__ void LpNormKernel(
   }
 
   // Step 2: Block-level reduction using shared memory.
+  // blockDim.x is always a power of two so the halving reduction is correct.
   extern __shared__ char shared_mem[];
-  T* sdata = reinterpret_cast<T*>(shared_mem);
+  AccT* sdata = reinterpret_cast<AccT*>(shared_mem);
   sdata[threadIdx.x] = thread_sum;
   __syncthreads();
 
@@ -50,15 +66,15 @@ __global__ void LpNormKernel(
     __syncthreads();
   }
 
-  T norm = sdata[0];
+  AccT norm = sdata[0];
   if constexpr (P == 2) {
     norm = _Sqrt(norm);
   }
 
-  // Step 3: Normalize.
-  if (norm != T(0)) {
+  // Step 3: Normalize (division in accumulation type, cast back to T).
+  if (norm != AccT(0)) {
     for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
-      output[base + i * stride] = input[base + i * stride] / norm;
+      output[base + i * stride] = static_cast<T>(static_cast<AccT>(input[base + i * stride]) / norm);
     }
   } else {
     for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {
@@ -76,17 +92,21 @@ void LpNormImpl(
     int64_t num_norms,
     int64_t stride,
     int p) {
+  using AccT = AccumulationType_t<T>;
+
   if (num_norms == 0) return;
 
-  const int threads_per_block = std::min(static_cast<int64_t>(256), norm_size);
+  // Block size must be a power of two for the shared-memory reduction.
+  const int raw_threads = static_cast<int>(std::min(static_cast<int64_t>(256), norm_size));
+  const int threads_per_block = std::max(1, NextPowerOfTwo(raw_threads));
   const int blocks = static_cast<int>(num_norms);
-  const size_t shared_mem_size = threads_per_block * sizeof(T);
+  const size_t shared_mem_size = static_cast<size_t>(threads_per_block) * sizeof(AccT);
 
   if (p == 1) {
-    LpNormKernel<T, 1><<<blocks, threads_per_block, shared_mem_size, stream>>>(
+    LpNormKernel<T, AccT, 1><<<blocks, threads_per_block, shared_mem_size, stream>>>(
         input, output, norm_size, num_norms, stride);
   } else {
-    LpNormKernel<T, 2><<<blocks, threads_per_block, shared_mem_size, stream>>>(
+    LpNormKernel<T, AccT, 2><<<blocks, threads_per_block, shared_mem_size, stream>>>(
         input, output, norm_size, num_norms, stride);
   }
 }

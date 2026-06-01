@@ -49,6 +49,9 @@ Status LpNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const auto canonical_axis = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
   const int64_t norm_size = input_shape.GetDims()[onnxruntime::narrow<size_t>(canonical_axis)];
   const int64_t num_elements = input_shape.Size();
+  if (num_elements == 0) {
+    return Status::OK();
+  }
   const int64_t num_norms = num_elements / norm_size;
   const int64_t stride = input_shape.SizeFromDimension(SafeInt<size_t>(canonical_axis) + 1);
 
