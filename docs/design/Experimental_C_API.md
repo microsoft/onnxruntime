@@ -249,4 +249,6 @@ stable API slot for no practical benefit.
 ## Open Questions
 
 - Should the Python/C#/Java bindings expose experimental functions, or keep them C/C++ only initially?
+  - We can start with C/C++ and prove it out first.
 - Should we document an "epoch" expectation (e.g., "experimental functions are expected to be promoted or removed within 2 releases")?
+  - We can set a general expectation without enforcing it.
