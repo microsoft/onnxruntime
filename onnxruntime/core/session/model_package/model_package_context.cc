@@ -182,7 +182,8 @@ Status ModelPackageComponentContext::GetSelectedVariantFilePath(std::filesystem:
   ORT_RETURN_IF(!selected_variant.file.has_value(),
                 "Selected variant '", selected_variant.variant_name,
                 "' does not have a variant.json descriptor (or it lacks a 'filename' entry). "
-                "Component: ", component_model_name_);
+                "Component: ",
+                component_model_name_);
 
   out_path = selected_variant.file->model_file_path;
   return Status::OK();
