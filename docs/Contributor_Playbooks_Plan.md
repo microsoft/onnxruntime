@@ -30,6 +30,7 @@ The following playbooks have been drafted:
 5. [05 Adding or Changing a Kernel](playbooks/05-adding-or-changing-a-kernel.md)
 6. [06 Adding a Contrib Operator](playbooks/06-adding-a-contrib-operator.md)
 7. [07 Graph Optimizations and Fusion Passes](playbooks/07-graph-optimizations-and-fusion-passes.md)
+8. [08 Execution Provider Implementation](playbooks/08-execution-provider-implementation.md)
 
 ## Proposed Playbooks
 
