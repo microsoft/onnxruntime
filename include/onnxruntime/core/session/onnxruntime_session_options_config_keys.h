@@ -456,6 +456,15 @@ static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_e
 static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
     "ep.context_model_external_initializers_file_name";
 
+// Internal-only flag set by OrtCompileAPI::CompileModel() to signal EPs that this session
+// is being used for compilation only and will never be used for inference.
+// EPs can use this to skip GPU deserialization and execution context creation, which would
+// otherwise be wasteful since the session is destroyed immediately after compilation.
+// This is NOT a user-facing option and must not be set directly by application code.
+// "0": normal session (default)
+// "1": compile-only session (set internally by OrtCompileAPI::CompileModel)
+static const char* const kOrtSessionOptionCompileOnly = "session.compile_only";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
