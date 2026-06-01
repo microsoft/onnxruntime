@@ -1888,7 +1888,7 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_Rotary_Prefill) {
 }
 
 // WebGPU: kv_sequence_length=0 with do_rotary=1 and batch_size > 1.
-// Validates batch stride calculations in RotaryEmbeddingWithOffsetProgram.
+// Validates batch stride calculations in the rotary embedding path.
 TEST(GroupQueryAttentionTest, WebGPU_SharedKV_Rotary_MultiBatch) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {

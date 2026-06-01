@@ -29,23 +29,6 @@ class RotaryEmbeddingProgram final : public Program<RotaryEmbeddingProgram> {
   const bool interleaved_;
 };
 
-class RotaryEmbeddingWithOffsetProgram final : public Program<RotaryEmbeddingWithOffsetProgram> {
- public:
-  RotaryEmbeddingWithOffsetProgram(bool interleaved)
-      : Program{"RotaryEmbeddingWithOffset"}, interleaved_{interleaved} {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"scale", ProgramUniformVariableDataType::Float32},
-                                          {"global_shape", ProgramUniformVariableDataType::Uint32},
-                                          {"global_stride", ProgramUniformVariableDataType::Uint32},
-                                          {"input_output_stride", ProgramUniformVariableDataType::Uint32},
-                                          {"position_offset", ProgramUniformVariableDataType::Uint32});
-
- private:
-  const bool interleaved_;
-};
-
 class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddingProgram> {
  public:
   FusedQKRotaryEmbeddingProgram(bool interleaved) : Program{"FusedQKRotaryEmbedding"}, interleaved_{interleaved} {}
