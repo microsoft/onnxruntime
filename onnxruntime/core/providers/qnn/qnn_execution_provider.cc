@@ -1014,7 +1014,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       auto validate_status = utils::ValidateExternalDataPath(
           std::filesystem::path(context_model_path), std::filesystem::path(ep_cache_context_value));
       if (!validate_status.IsOK()) {
-        ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, validate_status.ErrorMessage()));
+        LOGS(logger, ERROR) << "QNN EP context path validation failed: " << validate_status.ErrorMessage();
+        return result;
       }
       std::string context_bin_filepath(parent_path.string());
       context_bin_filepath.append("/").append(ep_cache_context_value);

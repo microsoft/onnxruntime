@@ -716,6 +716,102 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
 
+// Test that symlinked model + symlinked data in same blob store passes (HuggingFace layout).
+// Layout:
+//   base_dir_/blobs/model_blob       (real model file)
+//   base_dir_/blobs/data_blob        (real data file)
+//   base_dir_/snapshots/v1/model.onnx -> ../../blobs/model_blob  (symlink)
+//   base_dir_/snapshots/v1/data.bin   -> ../../blobs/data_blob   (symlink)
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModelAndData_HuggingFaceLayout) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+
+    // Create real files in blobs/
+    std::ofstream{blobs_dir / "model_blob"};
+    std::ofstream{blobs_dir / "data_blob"};
+
+    // Create symlinks in snapshots/v1/
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+    std::filesystem::create_symlink(blobs_dir / "data_blob", snapshots_dir / "data.bin");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  // model.onnx is a symlink; data.bin is also a symlink.
+  // Both resolve to the same blobs/ directory — should pass.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "data.bin"));
+}
+
+// Test that symlinked model + empty external data path is rejected (not silently accepted).
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_EmptyPathRejected) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Empty external data path"));
+}
+
+// Test that symlinked model + absolute external data path is rejected without symlink fallback.
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_AbsolutePathRejected) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "/etc/passwd");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Absolute path not allowed"));
+}
+
+// Test that symlinked model + data symlink resolving OUTSIDE the real model dir is rejected.
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_DataEscapesRealDir) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+
+    // Create data symlink that resolves outside of blobs/ (the real model dir)
+    auto outside_target = outside_dir_ / "evil.bin";
+    std::ofstream{outside_target};
+    std::filesystem::create_symlink(outside_target, snapshots_dir / "evil_data.bin");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "evil_data.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+}
+
+// Test that ValidateExternalDataPathFromDir rejects a non-existent file even if path is valid.
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_NonExistentFileRejected) {
+  // base_dir_ exists but "no_such_file.bin" does not.
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "no_such_file.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("does not exist"));
+}
+
 // Tests for ValidateExternalDataPathFromDir (directory-based overload used by EPs).
 TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_ValidSubpath) {
   // A valid relative path under the given directory should pass.
