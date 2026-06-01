@@ -1213,6 +1213,50 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   }
 }
 
+static std::string BuildConvModelWithMismatchedWeightSpatialRankBytes(int64_t opset_version) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  auto* opset = model.add_opset_import();
+  opset->set_domain(onnxruntime::kOnnxDomain);
+  opset->set_version(opset_version);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("conv_mismatched_weight_spatial_rank");
+
+  auto add_tensor_value_info = [](ONNX_NAMESPACE::ValueInfoProto* value_info,
+                                  const char* name,
+                                  const std::vector<int64_t>& dims) {
+    value_info->set_name(name);
+    auto* type = value_info->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* shape = type->mutable_shape();
+    for (int64_t dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+  };
+
+  add_tensor_value_info(graph->add_input(), "X", {1, 1, 4, 4});
+  add_tensor_value_info(graph->add_input(), "W", {1, 1, 3, 3, 3});
+
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto* node = graph->add_node();
+  node->set_name("Conv_0");
+  node->set_op_type("Conv");
+  node->set_domain(onnxruntime::kOnnxDomain);
+  node->add_input("X");
+  node->add_input("W");
+  node->add_output("Y");
+
+  std::string model_data;
+  const bool serialized = model.SerializeToString(&model_data);
+  EXPECT_TRUE(serialized);
+  return model_data;
+}
+
 static void CreateFuseOpModel(const PathString& model_file_name) {
   onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                            {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
@@ -2954,6 +2998,30 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session2.GetInterOpThreadPoolToUse(), false);
 }
 #endif
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(InferenceSessionTests, ConvLoadRejectsWeightSpatialRankMismatchOpset11) {
+  const std::string model_data = BuildConvModelWithMismatchedWeightSpatialRankBytes(11);
+  std::stringstream model_stream(model_data);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.ConvLoadRejectsWeightSpatialRankMismatchOpset11";
+  InferenceSession session{so, GetEnvironment()};
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Load(model_stream), "Attribute kernel_shape has incorrect size");
+}
+
+TEST(InferenceSessionTests, ConvLoadRejectsWeightSpatialRankMismatchOpset1) {
+  const std::string model_data = BuildConvModelWithMismatchedWeightSpatialRankBytes(1);
+  std::stringstream model_stream(model_data);
+
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.ConvLoadRejectsWeightSpatialRankMismatchOpset1";
+  InferenceSession session{so, GetEnvironment()};
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Load(model_stream), "Attribute kernel_shape has incorrect size");
+}
+#endif  // !ORT_NO_EXCEPTIONS
 
 TEST(InferenceSessionTests, BadDataTypeInInitializerIsHandled) {
   // model has an initializer with a bogus data type. Graph ctor should detect and throw.

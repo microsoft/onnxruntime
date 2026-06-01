@@ -74,7 +74,39 @@ diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
 index a6a8a83..153da87 100644
 --- a/onnx/defs/nn/old.cc
 +++ b/onnx/defs/nn/old.cc
-@@ -4026,7 +4026,6 @@ ONNX_OPERATOR_SET_SCHEMA(
+@@ -179,10 +179,14 @@
+        return;
+      }
+      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+    }
+  }
++  if (kernel_shape.size() != n_input_dims) {
++    fail_shape_inference("Attribute kernel_shape has incorrect size");
++  }
++
+ 
+   std::vector<int64_t> effective_kernel_shape = kernel_shape;
+   for (size_t i = 0; i < kernel_shape.size(); i++) {
+     // accounting for dilation, how big is the kernel in this dimension
+     effective_kernel_shape[i] = (effective_kernel_shape[i] - 1) * dilations[i] + 1;
+@@ -1988,10 +1992,14 @@
+        return;
+      }
+      kernel_shape.push_back(second_input_shape.dim(i).dim_value());
+    }
+  }
++  if (kernel_shape.size() != n_input_dims) {
++    fail_shape_inference("Attribute kernel_shape has incorrect size");
++  }
++
+ 
+   std::vector<int64_t> effective_kernel_shape = kernel_shape;
+   for (size_t i = 0; i < kernel_shape.size(); i++) {
+     // accounting for dilation, how big is the kernel in this dimension
+     effective_kernel_shape[i] = (effective_kernel_shape[i] - 1) * dilations[i] + 1;
+@@ -4024,11 +4032,10 @@
+ 
+ ONNX_OPERATOR_SET_SCHEMA(
      GroupNormalization,
      18,
      OpSchema()
@@ -82,3 +114,5 @@ index a6a8a83..153da87 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+             "num_groups",
+             "The number of groups of channels. It should be a divisor of the number of channels `C`.",
