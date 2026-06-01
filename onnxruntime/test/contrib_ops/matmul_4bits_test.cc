@@ -853,6 +853,20 @@ TEST(MatMulNBits, Fp16_Int4_Chunked_Uint8ZeroPoint) {
       RunTest<MLFloat16>(opts, std::move(eps));
     }
   }
+  // Odd blocks_per_col (K=96, block_size=32 → blocks_per_col=3) exercises the
+  // (blocks_per_col + 1) / 2 rounding in the 4-bit packed ZP offset.
+  {
+    TestOptions opts{};
+    opts.M = 1, opts.N = 256, opts.K = 96;
+    opts.block_size = 32;
+    opts.has_zero_point = true;
+    opts.zp_is_4bit = true;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = 0.001f;
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    RunTest<MLFloat16>(opts, std::move(eps));
+  }
 }
 
 TEST(MatMulNBits, Fp16_Int4_Chunked_Fp16ZeroPoint) {
@@ -927,6 +941,20 @@ TEST(MatMulNBits, BFloat16_Int4_Chunked_Uint8ZeroPoint) {
       eps.push_back(DefaultCudaExecutionProvider());
       RunTest<BFloat16>(opts, std::move(eps));
     }
+  }
+  // Odd blocks_per_col (K=96, block_size=32 → blocks_per_col=3) exercises the
+  // (blocks_per_col + 1) / 2 rounding in the 4-bit packed ZP offset.
+  {
+    TestOptions opts{};
+    opts.M = 1, opts.N = 256, opts.K = 96;
+    opts.block_size = 32;
+    opts.has_zero_point = has_zeropoint;
+    opts.zp_is_4bit = zp_is_4bit;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = 0.001f;
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    RunTest<BFloat16>(opts, std::move(eps));
   }
 }
 

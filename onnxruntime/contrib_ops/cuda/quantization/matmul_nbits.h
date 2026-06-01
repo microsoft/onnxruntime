@@ -81,6 +81,9 @@ class MatMulNBits final : public CudaKernel {
 
     force_chunked_ = ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
     chunk_target_rows_ = ParseEnvironmentVariableWithDefault<int64_t>(kChunkSizeEnvVar, kDefaultChunkTargetRows);
+    if (chunk_target_rows_ < 1) {
+      chunk_target_rows_ = kDefaultChunkTargetRows;
+    }
 
 #if USE_FPA_INTB_GEMM
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
