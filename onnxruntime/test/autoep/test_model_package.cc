@@ -1185,5 +1185,75 @@ TEST(ModelPackageApiTest, CxxWrappers_SelectComponentAndQueryFileAccessors) {
   std::filesystem::remove_all(package_root, ec);
 }
 
+// ------------------------------------------------------------------
+// Test: GetSelectedVariantFolderPath returns correct path even when variant.json is absent.
+// ------------------------------------------------------------------
+TEST(ModelPackageApiTest, FolderPath_ReturnsCorrectPath_WhenVariantJsonAbsent) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_folder_path_no_variant_json";
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+  std::filesystem::create_directories(package_root);
+
+  CreateManifestJson(package_root, MakeManifestJson("model_1"));
+
+  const auto variant_dir = package_root / "models" / "model_1" / "variant_1";
+  std::filesystem::create_directories(variant_dir);
+
+  // Copy a model file but do NOT create variant.json
+  std::filesystem::copy_file("testdata/mul_1.onnx", variant_dir / "mul_1.onnx",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+
+  constexpr std::string_view metadata_json = R"({
+    "component_name": "model_1",
+    "variants": {
+      "variant_1": {
+        "ep": "example_ep",
+        "device": "cpu"
+      }
+    }
+  })";
+  CreateComponentModelMetadata(package_root, "model_1", metadata_json);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions so;
+  std::unordered_map<std::string, std::string> ep_options;
+  so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+  Ort::ModelPackageOptions pkg_opts(*ort_env, so);
+
+  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
+  ASSERT_NE(pkg_api, nullptr);
+
+  OrtModelPackageOptions* raw_mp_opts = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, so, &raw_mp_opts));
+  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
+  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(raw_mp_opts, options_deleter);
+
+  OrtModelPackageContext* raw_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(raw_ctx, context_deleter);
+
+  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  };
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(raw_comp_ctx, component_context_deleter);
+
+  // GetSelectedVariantFolderPath should return the variant directory even without variant.json.
+  const ORTCHAR_T* selected_folder = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFolderPath(comp_ctx.get(), &selected_folder));
+  ASSERT_NE(selected_folder, nullptr);
+
+  const auto result_path = std::filesystem::path(selected_folder);
+  EXPECT_FALSE(result_path.empty());
+  EXPECT_EQ(result_path.filename().string(), "variant_1");
+
+  std::filesystem::remove_all(package_root, ec);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

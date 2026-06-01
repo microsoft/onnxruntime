@@ -134,7 +134,7 @@ Status ModelPackageComponentContext::GetSelectedVariantFolderPath(const std::fil
 
   const auto& selected_variant = component_model_info_.variants[selected_idx];
 
-  folder_path_cache_ = selected_variant.file->model_file_path.parent_path();
+  folder_path_cache_ = selected_variant.folder_path;
   out_folder_path = &folder_path_cache_;
   return Status::OK();
 }
@@ -371,6 +371,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
       VariantInfo ort_variant{};
       ort_variant.component_name = name;
       ort_variant.variant_name = variant.name;
+      ort_variant.folder_path = variant.folder_path;
 
       // Convert EP compatibility (single entry per variant).
       ort_variant.ep_compatibility.ep = variant.ep_compatibility.ep;

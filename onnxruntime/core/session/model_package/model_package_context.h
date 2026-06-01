@@ -47,6 +47,9 @@ struct VariantInfo {
   std::string component_name;
   std::string variant_name;
 
+  // The variant's root folder (always available regardless of variant.json presence).
+  std::filesystem::path folder_path;
+
   // from metadata.json: single EP target per variant (ep, device, compatibility_string)
   VariantEpCompatibilityInfo ep_compatibility;
 
