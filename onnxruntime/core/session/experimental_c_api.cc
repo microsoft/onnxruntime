@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // Runtime implementation for experimental C API functions.
-// See docs/design/Experimental_C_API.md for the design and lifecycle rules.
+// See onnxruntime_experimental_c_api.inc for the declaration list and lifecycle rules.
 
 #include <string_view>
 
