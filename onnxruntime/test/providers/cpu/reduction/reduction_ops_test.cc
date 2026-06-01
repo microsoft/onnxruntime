@@ -6798,7 +6798,8 @@ TEST(ReductionOpTest, ReduceSum_int32_Overflow_Saturates) {
   test.AddInput<int64_t>("axes", {1}, {0});
   // Expected: saturates to INT32_MAX (3.3B > 2.147B)
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_int32_NegativeOverflow_Saturates) {
@@ -6808,7 +6809,8 @@ TEST(ReductionOpTest, ReduceSum_int32_NegativeOverflow_Saturates) {
   test.AddInput<int64_t>("axes", {1}, {0});
   // Expected: saturates to INT32_MIN (-3.3B < -2.147B)
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::min()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSum_int64_Overflow_Saturates) {
@@ -6818,7 +6820,8 @@ TEST(ReductionOpTest, ReduceSum_int64_Overflow_Saturates) {
   test.AddInput<int64_t>("axes", {1}, {0});
   // 12e18 > INT64_MAX (~9.2e18)
   test.AddOutput<int64_t>("reduced", {1}, {std::numeric_limits<int64_t>::max()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_int32_LargeValues_NoOverflow) {
@@ -6829,7 +6832,8 @@ TEST(ReductionOpTest, ReduceMean_int32_LargeValues_NoOverflow) {
   test.AddInput<int64_t>("axes", {1}, {0});
   // Mean = 2B (fits in int32). Sum would be 6B (overflow).
   test.AddOutput<int32_t>("reduced", {1}, {big});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceMean_int64_LargeValues_NoOverflow) {
@@ -6848,7 +6852,8 @@ TEST(ReductionOpTest, ReduceProd_int32_Overflow_Saturates) {
   test.AddInput<int32_t>("data", {3}, {100'000, 100'000, 100'000});
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::max()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceProd_int32_NegativeOverflow_Saturates) {
@@ -6857,7 +6862,8 @@ TEST(ReductionOpTest, ReduceProd_int32_NegativeOverflow_Saturates) {
   test.AddInput<int32_t>("data", {3}, {-100'000, 100'000, 100'000});
   test.AddInput<int64_t>("axes", {1}, {0});
   test.AddOutput<int32_t>("reduced", {1}, {std::numeric_limits<int32_t>::min()});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ReduceSumSquare_int32_Overflow_Saturates) {
