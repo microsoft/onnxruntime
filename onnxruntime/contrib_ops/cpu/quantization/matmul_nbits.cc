@@ -192,6 +192,7 @@ class MatMulNBits final : public OpKernel {
                         const MatMulComputeHelper& helper) const;
 
   Status ComputeBPackedLUT(const Tensor* a,
+                           const Tensor* bias,
                            Tensor* y,
                            concurrency::ThreadPool* thread_pool,
                            const MatMulComputeHelper& helper) const;
@@ -641,6 +642,7 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
 
 template <typename T1>
 Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
+                                          const Tensor* bias,
                                           Tensor* y,
                                           concurrency::ThreadPool* thread_pool,
                                           const MatMulComputeHelper& helper) const {
@@ -650,7 +652,21 @@ Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
   const int N = static_cast<int>(helper.N());
   const int K = static_cast<int>(helper.K());
 
-  MlasLutGemm(a_data, block_size_, packed_b_.get(), y_data, K, M, N, has_zp_input_, thread_pool);
+  // Bias is fused into MlasLutGemm: it is broadcast-added per output-feature tile inside
+  // the same parallel loop that runs the GEMM, so the bias addition is multi-threaded and
+  // operates on data that is still hot in cache. MlasLutGemm currently only supports fp32
+  // activations/outputs; reject any other type when a bias is present.
+  const float* bias_data = nullptr;
+  if (bias != nullptr) {
+    if constexpr (std::is_same_v<T1, float>) {
+      bias_data = bias->Data<float>();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "MatMulNBits LUT GEMM path does not support non-fp32 bias.");
+    }
+  }
+
+  MlasLutGemm(a_data, block_size_, packed_b_.get(), y_data, K, M, N, has_zp_input_, thread_pool, bias_data);
   return Status::OK();
 }
 
@@ -1227,7 +1243,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
     if (prefer_lut_gemm_) {
-      return ComputeBPackedLUT(a, y, thread_pool, helper);
+      return ComputeBPackedLUT(a, bias, y, thread_pool, helper);
     }
 
     if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {
