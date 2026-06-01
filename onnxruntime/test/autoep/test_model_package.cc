@@ -39,10 +39,8 @@ std::filesystem::path CreateManifestJson(const std::filesystem::path& package_ro
 std::string MakeVariantJson(std::string_view filename) {
   std::ostringstream oss;
   oss << R"({
-    "file": {
-      "filename": ")"
+    "filename": ")"
       << filename << R"("
-    }
   })";
   return oss.str();
 }
@@ -190,16 +188,14 @@ std::filesystem::path CreateModelPackageApiTestPackage(bool multi_file_variant =
   if (!multi_file_variant) {
     std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
     os << R"({
-      "file": {
-        "filename": "mul_1.onnx",
-        "session_options": {
-          "session.disable_prepacking": "1",
-          "session.intra_op.allow_spinning": "0"
-        },
-        "provider_options": {
-          "backend_path": "example_backend",
-          "enable_htp": "1"
-        }
+      "filename": "mul_1.onnx",
+      "session_options": {
+        "session.disable_prepacking": "1",
+        "session.intra_op.allow_spinning": "0"
+      },
+      "provider_options": {
+        "backend_path": "example_backend",
+        "enable_htp": "1"
       }
     })";
   } else {
@@ -207,16 +203,14 @@ std::filesystem::path CreateModelPackageApiTestPackage(bool multi_file_variant =
     // just write a single-file variant.json.
     std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
     os << R"({
-      "file": {
-        "filename": "mul_1.onnx",
-        "session_options": {
-          "session.disable_prepacking": "1",
-          "session.intra_op.allow_spinning": "0"
-        },
-        "provider_options": {
-          "backend_path": "example_backend",
-          "enable_htp": "1"
-        }
+      "filename": "mul_1.onnx",
+      "session_options": {
+        "session.disable_prepacking": "1",
+        "session.intra_op.allow_spinning": "0"
+      },
+      "provider_options": {
+        "backend_path": "example_backend",
+        "enable_htp": "1"
       }
     })";
   }
@@ -224,9 +218,7 @@ std::filesystem::path CreateModelPackageApiTestPackage(bool multi_file_variant =
   {
     std::ofstream os(package_root / "models" / "model_1" / "variant_2" / "variant.json", std::ios::binary);
     os << R"({
-      "file": {
-        "filename": "mul_16.onnx"
-      }
+      "filename": "mul_16.onnx"
     })";
   }
 
@@ -700,15 +692,11 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_PackageRootDirectory) {
   // New schema: per-variant descriptor in variant.json
   {
     std::ofstream os(package_root / "models" / "model_1" / "variant_1" / "variant.json", std::ios::binary);
-    os << R"({
-      "file": { "filename": "mul_1.onnx" }
-    })";
+    os << R"({ "filename": "mul_1.onnx" })";
   }
   {
     std::ofstream os(package_root / "models" / "model_1" / "variant_2" / "variant.json", std::ios::binary);
-    os << R"({
-      "file": { "filename": "mul_16.onnx" }
-    })";
+    os << R"({ "filename": "mul_16.onnx" })";
   }
 
   ModelPackageContext ctx(package_root);
@@ -765,9 +753,7 @@ TEST(ModelPackageTest, ParseVariantsFromRoot_ComponentModelDirectory) {
 
   {
     std::ofstream os(variant_dir / "variant.json", std::ios::binary);
-    os << R"({
-      "file": { "filename": "mul_1.onnx" }
-    })";
+    os << R"({ "filename": "mul_1.onnx" })";
   }
 
   ModelPackageContext ctx(component_root);
@@ -795,7 +781,7 @@ namespace {
 // Returns the package_root.
 std::filesystem::path MakeSingleComponentPackageWithMetadata(std::string_view subdir,
                                                              std::string_view metadata_json,
-                                                             std::string_view variant_json = R"({"file":{"filename":"mul_1.onnx"}})") {
+                                                             std::string_view variant_json = R"({"filename":"mul_1.onnx"})") {
   const auto package_root = std::filesystem::temp_directory_path() / std::string(subdir);
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
@@ -932,7 +918,7 @@ TEST(ModelPackageApiTest, GetVariantEpName_ReturnsSingleEp) {
 
   for (const auto& d : {variant1_dir, variant2_dir}) {
     std::ofstream os(d / "variant.json", std::ios::binary);
-    os << R"({"file":{"filename":"mul_1.onnx"}})";
+    os << R"({"filename":"mul_1.onnx"})";
   }
 
   const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
@@ -1081,11 +1067,9 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   {
     std::ofstream os(variant_dir / "variant.json", std::ios::binary);
     os << R"({
-      "file": {
-        "filename": "mul_1.onnx",
-        "session_options": {
-          "intra_op_num_threads": "not_an_int"
-        }
+      "filename": "mul_1.onnx",
+      "session_options": {
+        "intra_op_num_threads": "not_an_int"
       }
     })";
   }
