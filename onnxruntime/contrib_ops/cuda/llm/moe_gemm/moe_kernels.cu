@@ -49,6 +49,7 @@
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/common/data_type.h"
@@ -63,7 +64,6 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_activation_kernels.cuh"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_utils.cuh"
 
-#include <cub/cub.cuh>
 #include <curand_kernel.h>
 #include <curand_philox4x32_x.h>
 
