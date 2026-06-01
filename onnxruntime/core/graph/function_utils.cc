@@ -525,7 +525,7 @@ class Inliner {
         // For Scan nodes with concrete outer-input types, build a binding from
         // symbolic dim_params (in the Scan body carry-state input types) to
         // concrete dim_values (from the renamed carry-init inputs). This lets us
-        // materialise concrete shapes in the Scan body's value_info entries so that
+        // materialize concrete shapes in the Scan body's value_info entries so that
         // the memory planner can determine carry-state buffer sizes without relying
         // on a later shape-inference pass to resolve the symbolic dims.
         InlinedHashMap<std::string, int64_t> dim_bindings;
@@ -542,7 +542,7 @@ class Inliner {
 
   // Process a sub-graph, contained as an attribute in a control-flow op node.
   // dim_bindings: optional map from symbolic dim_param names to concrete int64
-  // values, used to materialise concrete shapes in value_info entries.
+  // values, used to materialize concrete shapes in value_info entries.
   void transform(GraphProto& graph,
                  const InlinedHashMap<std::string, int64_t>& dim_bindings = {}) {
     rename_scopes_.emplace_back();
