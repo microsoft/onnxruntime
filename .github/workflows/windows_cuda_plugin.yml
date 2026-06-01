@@ -127,6 +127,7 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "1ES.ImageOverride=onnxruntime-Win-CPU-VS2022-Latest-NVMe-x64-test",
       "JobId=windows-cuda-plugin-test-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     ]
     steps:
@@ -186,6 +187,13 @@ jobs:
         uses: ./.github/actions/install-onnxruntime-wheel
         with:
           whl-directory: ${{ runner.temp }}\build\Release\Release\dist
+
+      # Verify the GPU is accessible before running the full test suite.
+      # If the NVIDIA driver is not available, tests will fail with
+      # "CUDA failure 100" and waste significant time.
+      - name: Verify GPU access
+        shell: pwsh
+        run: nvidia-smi
 
       - name: Run CUDA Plugin EP Python Tests
         working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers

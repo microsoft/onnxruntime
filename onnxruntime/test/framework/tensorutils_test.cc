@@ -1151,7 +1151,136 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroNNZ)
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
 }
 
+// Defense-in-depth: SparseTensorProtoToDenseTensorProto must reject ORT's in-memory address
+// marker on sparse sub-tensors unconditionally. The trusted .ort loader is required to
+// materialize sparse sub-tensors as inline raw_data so they never carry markers. Without this
+// self-check, a caller that bypasses the Graph-ctor chokepoint would dereference an
+// attacker-controlled address.
+TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnValuesByDefault) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_marker_values");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = values->add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+  auto* len = values->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->add_int64_data(0);
+  indices->add_int64_data(1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, std::filesystem::path{}, dense);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
+TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnIndicesByDefault) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_marker_indices");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->add_float_data(1.0f);
+  values->add_float_data(2.0f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = indices->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = indices->add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+  auto* len = indices->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(int64_t)));
+
+  ONNX_NAMESPACE::TensorProto dense;
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, std::filesystem::path{}, dense);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+// Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when
+// called with an empty model_path (e.g. from training checkpoint or custom-op init paths).
+// Previously, ValidateExternalDataPath was only invoked from Graph::ConvertInitializersIntoOrtValues,
+// so direct callers of GetExtDataFromTensorProto could load arbitrary files.
+TEST(GetExtDataFromTensorProtoTest, RejectsAbsoluteExternalPathWithEmptyModelPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("abs_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+#ifdef _WIN32
+  loc->set_value("C:\\data.bin");
+#else
+  loc->set_value("/etc/passwd");
+#endif
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), {}, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Absolute external path must be rejected even with empty model_path.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+}
+
+// Defense-in-depth: GetExtDataFromTensorProto must reject directory-escaping external paths even
+// when the caller passes a non-empty model_path. This guards callers outside Graph::Resolve.
+TEST(GetExtDataFromTensorProtoTest, RejectsEscapingExternalPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("escape_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value("../escape.bin");
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  // Pass a synthetic model_path so the validator has a model directory to compare against.
+  std::filesystem::path model_path = std::filesystem::temp_directory_path() / "sub" / "model.onnx";
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), model_path, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Directory-escaping external path must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
 
 TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
   // Case 1: Annotation exists

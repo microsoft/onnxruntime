@@ -251,7 +251,7 @@ class MlasKVQuantTest : public MlasTestBase {
     RefSVGemm(A, BDequant, CRef, M, N, K, K, N);
 
     // Quantized: MlasSVGemm
-    MlasSVGemm(M, N, K, A, K, BQuant, QuantType, scales, C, N, nullptr);
+    MlasSVGemm(M, N, K, A, K, BQuant, QuantType, scales, C, N, 0.0f, nullptr);
 
     float atol = IsInt4(QuantType) ? 0.15f : 0.02f;
     float rtol = IsInt4(QuantType) ? 0.1f : 0.01f;
@@ -319,6 +319,345 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasKVQuantTest>::RegisterShortExecute();
+  }
+  return count;
+});
+
+//
+// Focused test for MlasFlashAttentionQuantizedKV:
+// Validates the tiled online-softmax kernel against a naive reference pipeline
+// (MlasQKGemm + softmax + MlasSVGemm) across INT8/INT4, per-tensor/per-channel.
+//
+class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
+ private:
+  MatrixGuardBuffer<float> BufferQ;
+  MatrixGuardBuffer<float> BufferOutput;
+  MatrixGuardBuffer<float> BufferOutputRef;
+  MatrixGuardBuffer<float> BufferScores;
+  MatrixGuardBuffer<float> BufferProbs;
+  MatrixGuardBuffer<float> BufferScalesK;
+  MatrixGuardBuffer<float> BufferScalesV;
+  MatrixGuardBuffer<float> BufferKFP32;
+  MatrixGuardBuffer<float> BufferVFP32;
+  MatrixGuardBuffer<float> BufferFlash;
+  MatrixGuardBuffer<float> BufferPartials;
+  MatrixGuardBuffer<uint8_t> BufferKQuant;
+  MatrixGuardBuffer<uint8_t> BufferVQuant;
+
+  void FillRandom(float* buf, size_t n, unsigned seed, float lo = -0.5f, float hi = 0.5f) {
+    std::default_random_engine gen(seed);
+    std::uniform_real_distribution<float> dist(lo, hi);
+    for (size_t i = 0; i < n; i++) {
+      buf[i] = dist(gen);
+    }
+  }
+
+  bool IsInt4(MLAS_KV_QUANT_TYPE qt) {
+    return qt == MLAS_KV_QUANT_TYPE::S4_PerTensor || qt == MLAS_KV_QUANT_TYPE::S4_PerChannel;
+  }
+
+  bool IsPerChannel(MLAS_KV_QUANT_TYPE qt) {
+    return qt == MLAS_KV_QUANT_TYPE::S8_PerChannel || qt == MLAS_KV_QUANT_TYPE::S4_PerChannel;
+  }
+
+  void ComputeScales(const float* data, size_t rows, size_t cols, MLAS_KV_QUANT_TYPE qt, float* scales) {
+    float qmax = IsInt4(qt) ? 7.0f : 127.0f;
+    if (IsPerChannel(qt)) {
+      for (size_t c = 0; c < cols; c++) {
+        float amax = 0.0f;
+        for (size_t r = 0; r < rows; r++) {
+          amax = std::max(amax, std::fabs(data[r * cols + c]));
+        }
+        scales[c] = (amax > 1e-6f) ? (amax / qmax) : 1.0f;
+      }
+    } else {
+      float amax = 0.0f;
+      for (size_t i = 0; i < rows * cols; i++) {
+        amax = std::max(amax, std::fabs(data[i]));
+      }
+      scales[0] = (amax > 1e-6f) ? (amax / qmax) : 1.0f;
+    }
+  }
+
+  // Naive reference: for a single (batch=1, head=1) attention computation
+  // Q[seq_len, head_size], K[total_seqlen, head_size], V[total_seqlen, head_size]
+  // -> output[seq_len, head_size]
+  // Uses quantized K/V via MlasQKGemm + softmax + MlasSVGemm.
+  void NaiveReference(
+      const float* Q, size_t seq_len, size_t total_seqlen, size_t head_size,
+      const uint8_t* k_quant, const uint8_t* v_quant,
+      MLAS_KV_QUANT_TYPE quant_type, const float* k_scale, const float* v_scale,
+      float scale, int past_seqlen, float* output) {
+    float* scores = BufferScores.GetBuffer(seq_len * total_seqlen);
+    float* probs = BufferProbs.GetBuffer(seq_len * total_seqlen);
+
+    // QK^T
+    MlasQKGemm(seq_len, total_seqlen, head_size, scale,
+               Q, head_size, k_quant, quant_type, k_scale,
+               scores, total_seqlen, nullptr);
+
+    // Causal mask + softmax
+    for (size_t q_s = 0; q_s < seq_len; q_s++) {
+      size_t causal_limit = static_cast<size_t>(past_seqlen) + q_s + 1;
+      // Apply causal mask
+      for (size_t kv_s = 0; kv_s < total_seqlen; kv_s++) {
+        if (kv_s >= causal_limit) {
+          scores[q_s * total_seqlen + kv_s] = -std::numeric_limits<float>::infinity();
+        }
+      }
+      // Softmax
+      float max_val = -std::numeric_limits<float>::infinity();
+      for (size_t kv_s = 0; kv_s < total_seqlen; kv_s++) {
+        max_val = std::max(max_val, scores[q_s * total_seqlen + kv_s]);
+      }
+      float sum_exp = 0.0f;
+      for (size_t kv_s = 0; kv_s < total_seqlen; kv_s++) {
+        probs[q_s * total_seqlen + kv_s] = std::exp(scores[q_s * total_seqlen + kv_s] - max_val);
+        sum_exp += probs[q_s * total_seqlen + kv_s];
+      }
+      for (size_t kv_s = 0; kv_s < total_seqlen; kv_s++) {
+        probs[q_s * total_seqlen + kv_s] /= sum_exp;
+      }
+    }
+
+    // SV GEMM
+    MlasSVGemm(seq_len, head_size, total_seqlen,
+               probs, total_seqlen, v_quant, quant_type, v_scale,
+               output, head_size, 0.0f, nullptr);
+  }
+
+  void TestFlashAttention(size_t seq_len, size_t total_seqlen, size_t head_size,
+                          MLAS_KV_QUANT_TYPE quant_type) {
+    const size_t k_num_scales = IsPerChannel(quant_type) ? head_size : 1;
+    const size_t v_num_scales = IsPerChannel(quant_type) ? head_size : 1;
+    const size_t packed_row_bytes = MlasKVQuantPackedRowBytes(quant_type, head_size);
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+    const int past_seqlen = static_cast<int>(total_seqlen - seq_len);
+
+    // Allocate and fill
+    float* Q = BufferQ.GetBuffer(seq_len * head_size);
+    float* K_fp32 = BufferKFP32.GetBuffer(total_seqlen * head_size);
+    float* V_fp32 = BufferVFP32.GetBuffer(total_seqlen * head_size);
+    float* k_scale = BufferScalesK.GetBuffer(k_num_scales);
+    float* v_scale = BufferScalesV.GetBuffer(v_num_scales);
+    float* output_flash = BufferOutput.GetBuffer(seq_len * head_size);
+    float* output_ref = BufferOutputRef.GetBuffer(seq_len * head_size);
+
+    unsigned seed = static_cast<unsigned>(seq_len * 1000 + total_seqlen * 10 + head_size);
+    FillRandom(Q, seq_len * head_size, seed);
+    FillRandom(K_fp32, total_seqlen * head_size, seed + 1);
+    FillRandom(V_fp32, total_seqlen * head_size, seed + 2);
+
+    ComputeScales(K_fp32, total_seqlen, head_size, quant_type, k_scale);
+    ComputeScales(V_fp32, total_seqlen, head_size, quant_type, v_scale);
+
+    // Quantize K and V
+    uint8_t* k_quant = BufferKQuant.GetBuffer(total_seqlen * packed_row_bytes);
+    uint8_t* v_quant = BufferVQuant.GetBuffer(total_seqlen * packed_row_bytes);
+    MlasKVQuantize(K_fp32, k_quant, total_seqlen, head_size, head_size, quant_type, k_scale, nullptr);
+    MlasKVQuantize(V_fp32, v_quant, total_seqlen, head_size, head_size, quant_type, v_scale, nullptr);
+
+    // Naive reference
+    NaiveReference(Q, seq_len, total_seqlen, head_size,
+                   k_quant, v_quant, quant_type, k_scale, v_scale,
+                   scale, past_seqlen, output_ref);
+
+    // Flash attention
+    int q_block_size = std::min(static_cast<int>(seq_len), 16);
+    int kv_block_size = std::min(static_cast<int>(total_seqlen), 32);
+
+    size_t buffer_size_per_thread =
+        (static_cast<size_t>(q_block_size) * 2 +
+         static_cast<size_t>(q_block_size) * static_cast<size_t>(kv_block_size) +
+         static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size)) *
+        sizeof(float);
+    float* flash_buffer = BufferFlash.GetBuffer(buffer_size_per_thread / sizeof(float));
+
+    MlasFlashAttentionQuantizedKVArgs args;
+    args.batch_size = 1;
+    args.num_heads = 1;
+    args.kv_num_heads = 1;
+    args.sequence_length = static_cast<int>(seq_len);
+    args.total_seqlen = static_cast<int>(total_seqlen);
+    args.head_size = static_cast<int>(head_size);
+    args.past_seqlen = past_seqlen;
+    args.local_window_size = -1;
+    args.seqlen_present_kv = static_cast<int>(total_seqlen);
+    args.q_block_size = q_block_size;
+    args.kv_block_size = kv_block_size;
+    args.scale = scale;
+    args.quant_type = quant_type;
+    args.per_channel_k = IsPerChannel(quant_type);
+    args.per_channel_v = IsPerChannel(quant_type);
+    args.thread_count = 1;
+    args.buffer = flash_buffer;
+    args.buffer_size_per_thread = buffer_size_per_thread;
+    args.query = Q;
+    args.k_cache = k_quant;
+    args.v_cache = v_quant;
+    args.k_scale = k_scale;
+    args.v_scale = v_scale;
+    args.output = output_flash;
+    args.attention_bias = nullptr;
+    args.attention_bias_seqlen_stride = 0;
+    args.attention_bias_broadcast_batch = true;
+    args.attention_bias_broadcast_head = true;
+    args.flash_decoding_partials = nullptr;
+    args.kv_chunk_count = 0;
+
+    MlasFlashAttentionQuantizedKV(&args, nullptr);
+
+    // Compare: flash uses ComputeSumExpF32Kernel (SIMD polynomial approx) while
+    // NaiveReference uses std::exp. Tolerance accounts for accumulation order
+    // differences across platforms/ISAs.
+    float atol = IsInt4(quant_type) ? 1e-3f : 1e-4f;
+    for (size_t i = 0; i < seq_len * head_size; i++) {
+      float diff = std::fabs(output_flash[i] - output_ref[i]);
+      ASSERT_LE(diff, atol)
+          << "FlashAttention vs Naive mismatch at [" << i / head_size << ", " << i % head_size
+          << "], flash=" << output_flash[i] << " ref=" << output_ref[i]
+          << " seq_len=" << seq_len << " total_seqlen=" << total_seqlen
+          << " head_size=" << head_size
+          << " qt=" << static_cast<int>(quant_type);
+    }
+  }
+
+  // Test flash decoding path: sequence_length=1 with KV split across chunks
+  void TestFlashDecoding(size_t total_seqlen, size_t head_size,
+                         MLAS_KV_QUANT_TYPE quant_type) {
+    const size_t seq_len = 1;
+    const size_t k_num_scales = IsPerChannel(quant_type) ? head_size : 1;
+    const size_t v_num_scales = IsPerChannel(quant_type) ? head_size : 1;
+    const size_t packed_row_bytes = MlasKVQuantPackedRowBytes(quant_type, head_size);
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+    const int past_seqlen = static_cast<int>(total_seqlen - 1);
+
+    // Allocate and fill
+    float* Q = BufferQ.GetBuffer(head_size);
+    float* K_fp32 = BufferKFP32.GetBuffer(total_seqlen * head_size);
+    float* V_fp32 = BufferVFP32.GetBuffer(total_seqlen * head_size);
+    float* k_scale_buf = BufferScalesK.GetBuffer(k_num_scales);
+    float* v_scale_buf = BufferScalesV.GetBuffer(v_num_scales);
+    float* output_flash = BufferOutput.GetBuffer(head_size);
+    float* output_ref = BufferOutputRef.GetBuffer(head_size);
+
+    unsigned seed = static_cast<unsigned>(total_seqlen * 100 + head_size * 7);
+    FillRandom(Q, head_size, seed);
+    FillRandom(K_fp32, total_seqlen * head_size, seed + 1);
+    FillRandom(V_fp32, total_seqlen * head_size, seed + 2);
+
+    ComputeScales(K_fp32, total_seqlen, head_size, quant_type, k_scale_buf);
+    ComputeScales(V_fp32, total_seqlen, head_size, quant_type, v_scale_buf);
+
+    // Quantize K and V
+    uint8_t* k_quant = BufferKQuant.GetBuffer(total_seqlen * packed_row_bytes);
+    uint8_t* v_quant = BufferVQuant.GetBuffer(total_seqlen * packed_row_bytes);
+    MlasKVQuantize(K_fp32, k_quant, total_seqlen, head_size, head_size, quant_type, k_scale_buf, nullptr);
+    MlasKVQuantize(V_fp32, v_quant, total_seqlen, head_size, head_size, quant_type, v_scale_buf, nullptr);
+
+    // Naive reference
+    NaiveReference(Q, seq_len, total_seqlen, head_size,
+                   k_quant, v_quant, quant_type, k_scale_buf, v_scale_buf,
+                   scale, past_seqlen, output_ref);
+
+    // Flash decoding: use small kv_block_size to get multiple chunks
+    int kv_block_size = std::min(static_cast<int>(total_seqlen), 16);
+    int kv_chunk_count = (static_cast<int>(total_seqlen) + kv_block_size - 1) / kv_block_size;
+
+    // Per-thread scratch: scores[kv_block_size]
+    size_t buffer_size_per_thread = static_cast<size_t>(kv_block_size) * sizeof(float);
+    float* flash_buffer = BufferFlash.GetBuffer(buffer_size_per_thread / sizeof(float));
+
+    // Partials buffer: [1 batch * 1 head * kv_chunk_count * (2 + head_size)]
+    size_t partials_count = static_cast<size_t>(kv_chunk_count) * (2 + head_size);
+    float* partials = BufferPartials.GetBuffer(partials_count);
+
+    MlasFlashAttentionQuantizedKVArgs args;
+    args.batch_size = 1;
+    args.num_heads = 1;
+    args.kv_num_heads = 1;
+    args.sequence_length = 1;
+    args.total_seqlen = static_cast<int>(total_seqlen);
+    args.head_size = static_cast<int>(head_size);
+    args.past_seqlen = past_seqlen;
+    args.local_window_size = -1;
+    args.seqlen_present_kv = static_cast<int>(total_seqlen);
+    args.q_block_size = 1;
+    args.kv_block_size = kv_block_size;
+    args.scale = scale;
+    args.quant_type = quant_type;
+    args.per_channel_k = IsPerChannel(quant_type);
+    args.per_channel_v = IsPerChannel(quant_type);
+    args.thread_count = 1;
+    args.buffer = flash_buffer;
+    args.buffer_size_per_thread = buffer_size_per_thread;
+    args.query = Q;
+    args.k_cache = k_quant;
+    args.v_cache = v_quant;
+    args.k_scale = k_scale_buf;
+    args.v_scale = v_scale_buf;
+    args.output = output_flash;
+    args.attention_bias = nullptr;
+    args.attention_bias_seqlen_stride = 0;
+    args.attention_bias_broadcast_batch = true;
+    args.attention_bias_broadcast_head = true;
+    args.flash_decoding_partials = partials;
+    args.kv_chunk_count = kv_chunk_count;
+
+    MlasFlashAttentionQuantizedKV(&args, nullptr);
+
+    // Compare: flash decoding has an extra reduce phase with exp rescaling,
+    // so tolerance is slightly larger than the single-pass flash attention test.
+    float atol = IsInt4(quant_type) ? 1e-3f : 1e-4f;
+    for (size_t i = 0; i < head_size; i++) {
+      float diff = std::fabs(output_flash[i] - output_ref[i]);
+      ASSERT_LE(diff, atol)
+          << "FlashDecoding vs Naive mismatch at [" << i
+          << "], flash=" << output_flash[i] << " ref=" << output_ref[i]
+          << " total_seqlen=" << total_seqlen
+          << " head_size=" << head_size
+          << " qt=" << static_cast<int>(quant_type);
+    }
+  }
+
+ public:
+  static const char* GetTestSuiteName() {
+    static const std::string suite_name("FlashAttentionQuantizedKV");
+    return suite_name.c_str();
+  }
+
+  void ExecuteShort(void) override {
+    static const MLAS_KV_QUANT_TYPE AllQuantTypes[] = {
+        MLAS_KV_QUANT_TYPE::S8_PerTensor,
+        MLAS_KV_QUANT_TYPE::S8_PerChannel,
+        MLAS_KV_QUANT_TYPE::S4_PerTensor,
+        MLAS_KV_QUANT_TYPE::S4_PerChannel,
+    };
+
+    for (auto qt : AllQuantTypes) {
+      size_t min_head = size_t{4};
+      for (size_t seq_len : {size_t{1}, size_t{4}, size_t{16}}) {
+        for (size_t total_seqlen : {size_t{4}, size_t{32}, size_t{64}}) {
+          if (total_seqlen < seq_len) continue;
+          for (size_t head_size : {min_head, size_t{32}, size_t{64}}) {
+            TestFlashAttention(seq_len, total_seqlen, head_size, qt);
+          }
+        }
+      }
+      // Flash decoding tests (sequence_length=1 with KV split into chunks)
+      for (size_t total_seqlen : {size_t{4}, size_t{32}, size_t{64}, size_t{128}}) {
+        for (size_t head_size : {min_head, size_t{32}, size_t{64}}) {
+          TestFlashDecoding(total_seqlen, head_size, qt);
+        }
+      }
+    }
+  }
+};
+
+static UNUSED_VARIABLE bool added_flash_to_main = AddTestRegister([](bool is_short_execute) {
+  size_t count = 0;
+  if (is_short_execute) {
+    count += MlasDirectShortExecuteTests<MlasFlashAttentionQuantizedKVTest>::RegisterShortExecute();
   }
   return count;
 });
