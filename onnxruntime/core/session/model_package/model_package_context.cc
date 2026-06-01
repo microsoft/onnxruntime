@@ -125,11 +125,17 @@ Status ModelPackageComponentContext::ResolveVariantImpl(gsl::span<const VariantS
 Status ModelPackageComponentContext::GetSelectedVariantFolderPath(const std::filesystem::path*& out_folder_path) const {
   out_folder_path = nullptr;
 
-  gsl::span<const std::filesystem::path> file_paths;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantFilePaths(file_paths));
-  ORT_RETURN_IF(file_paths.empty(), "Selected variant has no files.");
+  ORT_RETURN_IF(!component_model_info_.selected_variant_index.has_value(),
+                "No variant selected for component: ", component_model_name_);
 
-  folder_path_cache_ = file_paths.front().parent_path();
+  const size_t selected_idx = *component_model_info_.selected_variant_index;
+  ORT_RETURN_IF(selected_idx >= component_model_info_.variants.size(),
+                "Selected variant index out of range for component: ", component_model_name_);
+
+  const auto& selected_variant = component_model_info_.variants[selected_idx];
+  ORT_RETURN_IF(!selected_variant.file.has_value(), "Selected variant has no file entry.");
+
+  folder_path_cache_ = selected_variant.file->model_file_path.parent_path();
   out_folder_path = &folder_path_cache_;
   return Status::OK();
 }
@@ -153,11 +159,8 @@ Status ModelPackageComponentContext::GetSelectedVariantFilePaths(gsl::span<const
 
   const auto& selected_variant = component_model_info_.variants[selected_idx];
 
-  file_paths_cache_.clear();
-  file_paths_cache_.reserve(selected_variant.files.size());
-
-  for (const auto& file : selected_variant.files) {
-    file_paths_cache_.push_back(file.model_file_path);
+  if (selected_variant.file.has_value()) {
+    file_paths_cache_.push_back(selected_variant.file->model_file_path);
   }
 
   out_file_paths = gsl::span<const std::filesystem::path>(file_paths_cache_.data(),
@@ -168,13 +171,20 @@ Status ModelPackageComponentContext::GetSelectedVariantFilePaths(gsl::span<const
 Status ModelPackageComponentContext::GetSelectedVariantFilePath(std::filesystem::path& out_path) const {
   out_path.clear();
 
-  gsl::span<const std::filesystem::path> file_paths;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantFilePaths(file_paths));
+  ORT_RETURN_IF(!component_model_info_.selected_variant_index.has_value(),
+                "No variant selected for component: ", component_model_name_);
 
-  ORT_RETURN_IF(file_paths.size() != 1,
-                "GetSelectedVariantFilePath requires exactly one selected variant file. Found: ", file_paths.size());
+  const size_t selected_idx = *component_model_info_.selected_variant_index;
+  ORT_RETURN_IF(selected_idx >= component_model_info_.variants.size(),
+                "Selected variant index out of range for component: ", component_model_name_);
 
-  out_path = file_paths.front();
+  const auto& selected_variant = component_model_info_.variants[selected_idx];
+  ORT_RETURN_IF(!selected_variant.file.has_value(),
+                "Selected variant '", selected_variant.variant_name,
+                "' does not have a variant.json descriptor (or it lacks a 'filename' entry). "
+                "Component: ", component_model_name_);
+
+  out_path = selected_variant.file->model_file_path;
   return Status::OK();
 }
 
@@ -196,8 +206,7 @@ Status ModelPackageComponentContext::GetSelectedVariantInfo(const VariantInfo*& 
   return Status::OK();
 }
 
-Status ModelPackageComponentContext::GetSelectedVariantFileSessionOptions(size_t file_idx,
-                                                                          gsl::span<const std::string>& out_keys,
+Status ModelPackageComponentContext::GetSelectedVariantFileSessionOptions(gsl::span<const std::string>& out_keys,
                                                                           gsl::span<const std::string>& out_values) const {
   out_keys = {};
   out_values = {};
@@ -205,34 +214,27 @@ Status ModelPackageComponentContext::GetSelectedVariantFileSessionOptions(size_t
   const VariantInfo* selected_variant = nullptr;
   ORT_RETURN_IF_ERROR(GetSelectedVariantInfo(selected_variant));
   ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_model_name_);
-
-  ORT_RETURN_IF(file_idx >= selected_variant->files.size(),
-                "file_idx out of range for selected variant files. file_idx=", file_idx,
-                ", file_count=", selected_variant->files.size());
+  ORT_RETURN_IF(!selected_variant->file.has_value(), "Selected variant has no file entry.");
 
   // Fast path: return cached key/value vectors if both exist.
-  auto keys_it = file_id_to_session_option_keys_cache_.find(file_idx);
-  auto values_it = file_id_to_session_option_values_cache_.find(file_idx);
-  if (keys_it != file_id_to_session_option_keys_cache_.end() &&
-      values_it != file_id_to_session_option_values_cache_.end()) {
-    ORT_RETURN_IF(keys_it->second.size() != values_it->second.size(),
-                  "Session options key/value cache size mismatch for file_idx=", file_idx);
+  if (!session_option_keys_cache_.empty() || !session_option_values_cache_.empty()) {
+    ORT_RETURN_IF(session_option_keys_cache_.size() != session_option_values_cache_.size(),
+                  "Session options key/value cache size mismatch");
 
-    out_keys = gsl::span<const std::string>(keys_it->second.data(), keys_it->second.size());
-    out_values = gsl::span<const std::string>(values_it->second.data(), values_it->second.size());
+    out_keys = gsl::span<const std::string>(session_option_keys_cache_.data(), session_option_keys_cache_.size());
+    out_values = gsl::span<const std::string>(session_option_values_cache_.data(), session_option_values_cache_.size());
     return Status::OK();
   }
 
-  const auto& selected_file = selected_variant->files[file_idx];
+  const auto& selected_file = *selected_variant->file;
   return FillOptionCachesFromMap(selected_file.session_options,
-                                 file_id_to_session_option_keys_cache_[file_idx],
-                                 file_id_to_session_option_values_cache_[file_idx],
+                                 session_option_keys_cache_,
+                                 session_option_values_cache_,
                                  out_keys,
                                  out_values);
 }
 
-Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptions(size_t file_idx,
-                                                                           gsl::span<const std::string>& out_keys,
+Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptions(gsl::span<const std::string>& out_keys,
                                                                            gsl::span<const std::string>& out_values) const {
   out_keys = {};
   out_values = {};
@@ -240,28 +242,22 @@ Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptions(size_
   const VariantInfo* selected_variant = nullptr;
   ORT_RETURN_IF_ERROR(GetSelectedVariantInfo(selected_variant));
   ORT_RETURN_IF(selected_variant == nullptr, "Selected variant is null for component: ", component_model_name_);
-
-  ORT_RETURN_IF(file_idx >= selected_variant->files.size(),
-                "file_idx out of range for selected variant files. file_idx=", file_idx,
-                ", file_count=", selected_variant->files.size());
+  ORT_RETURN_IF(!selected_variant->file.has_value(), "Selected variant has no file entry.");
 
   // Fast path: return cached key/value vectors if both exist.
-  auto keys_it = file_id_to_provider_option_keys_cache_.find(file_idx);
-  auto values_it = file_id_to_provider_option_values_cache_.find(file_idx);
-  if (keys_it != file_id_to_provider_option_keys_cache_.end() &&
-      values_it != file_id_to_provider_option_values_cache_.end()) {
-    ORT_RETURN_IF(keys_it->second.size() != values_it->second.size(),
-                  "Provider options key/value cache size mismatch for file_idx=", file_idx);
+  if (!provider_option_keys_cache_.empty() || !provider_option_values_cache_.empty()) {
+    ORT_RETURN_IF(provider_option_keys_cache_.size() != provider_option_values_cache_.size(),
+                  "Provider options key/value cache size mismatch");
 
-    out_keys = gsl::span<const std::string>(keys_it->second.data(), keys_it->second.size());
-    out_values = gsl::span<const std::string>(values_it->second.data(), values_it->second.size());
+    out_keys = gsl::span<const std::string>(provider_option_keys_cache_.data(), provider_option_keys_cache_.size());
+    out_values = gsl::span<const std::string>(provider_option_values_cache_.data(), provider_option_values_cache_.size());
     return Status::OK();
   }
 
-  const auto& selected_file = selected_variant->files[file_idx];
+  const auto& selected_file = *selected_variant->file;
   return FillOptionCachesFromMap(selected_file.provider_options,
-                                 file_id_to_provider_option_keys_cache_[file_idx],
-                                 file_id_to_provider_option_values_cache_[file_idx],
+                                 provider_option_keys_cache_,
+                                 provider_option_values_cache_,
                                  out_keys,
                                  out_values);
 }
@@ -281,7 +277,6 @@ void BuildPtrCache(gsl::span<const std::string> strings,
 }  // namespace
 
 Status ModelPackageComponentContext::GetSelectedVariantFileSessionOptionPtrs(
-    size_t file_idx,
     const char* const*& out_keys,
     const char* const*& out_values,
     size_t& out_count) const {
@@ -291,17 +286,16 @@ Status ModelPackageComponentContext::GetSelectedVariantFileSessionOptionPtrs(
 
   gsl::span<const std::string> keys;
   gsl::span<const std::string> values;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantFileSessionOptions(file_idx, keys, values));
+  ORT_RETURN_IF_ERROR(GetSelectedVariantFileSessionOptions(keys, values));
   ORT_RETURN_IF(keys.size() != values.size(), "Session options keys/values size mismatch.");
 
-  BuildPtrCache(keys, file_session_option_key_ptrs_cache_[file_idx], out_keys, out_count);
+  BuildPtrCache(keys, session_option_key_ptrs_cache_, out_keys, out_count);
   size_t dummy;
-  BuildPtrCache(values, file_session_option_value_ptrs_cache_[file_idx], out_values, dummy);
+  BuildPtrCache(values, session_option_value_ptrs_cache_, out_values, dummy);
   return Status::OK();
 }
 
 Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptionPtrs(
-    size_t file_idx,
     const char* const*& out_keys,
     const char* const*& out_values,
     size_t& out_count) const {
@@ -311,12 +305,12 @@ Status ModelPackageComponentContext::GetSelectedVariantFileProviderOptionPtrs(
 
   gsl::span<const std::string> keys;
   gsl::span<const std::string> values;
-  ORT_RETURN_IF_ERROR(GetSelectedVariantFileProviderOptions(file_idx, keys, values));
+  ORT_RETURN_IF_ERROR(GetSelectedVariantFileProviderOptions(keys, values));
   ORT_RETURN_IF(keys.size() != values.size(), "Provider options keys/values size mismatch.");
 
-  BuildPtrCache(keys, file_provider_option_key_ptrs_cache_[file_idx], out_keys, out_count);
+  BuildPtrCache(keys, provider_option_key_ptrs_cache_, out_keys, out_count);
   size_t dummy;
-  BuildPtrCache(values, file_provider_option_value_ptrs_cache_[file_idx], out_values, dummy);
+  BuildPtrCache(values, provider_option_value_ptrs_cache_, out_values, dummy);
   return Status::OK();
 }
 
@@ -412,15 +406,15 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
       ort_variant.ep_compatibility.compatibility_string = variant.ep_compatibility.compatibility_string;
       ort_variant.ep_compatibility.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
 
-      // Convert file entries.
-      for (const auto& file : variant.files) {
+      // Convert file entry (single file per variant).
+      if (variant.file.has_value()) {
         VariantModelInfo ort_file{};
-        ort_file.identifier = file.filename;
-        ort_file.model_file_path = file.resolved_path;
-        ort_file.session_options = file.session_options;
-        ort_file.provider_options = file.provider_options;
-        ort_file.shared_files = file.shared_files;
-        ort_variant.files.push_back(std::move(ort_file));
+        ort_file.identifier = variant.file->filename;
+        ort_file.model_file_path = variant.file->resolved_path;
+        ort_file.session_options = variant.file->session_options;
+        ort_file.provider_options = variant.file->provider_options;
+        ort_file.shared_files = variant.file->shared_files;
+        ort_variant.file = std::move(ort_file);
       }
 
       // Consumer metadata.

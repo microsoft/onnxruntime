@@ -301,11 +301,11 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
     // original session options used to create the package options.
     effective_options_storage.emplace();
 
-    // Merge variant/file session options into config options.
+    // Merge variant file session options into config options.
     gsl::span<const std::string> session_option_keys;
     gsl::span<const std::string> session_option_values;
     ORT_API_RETURN_IF_STATUS_NOT_OK(
-        mp_ctx.GetSelectedVariantFileSessionOptions(0, session_option_keys, session_option_values));
+        mp_ctx.GetSelectedVariantFileSessionOptions(session_option_keys, session_option_values));
 
     ORT_API_RETURN_IF(session_option_keys.size() != session_option_values.size(),
                       ORT_FAIL, "Session option keys/values size mismatch.");
@@ -319,11 +319,11 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
       }
     }
 
-    // Merge variant/file provider options as flat key/value entries for the selected EP devices.
+    // Merge variant file provider options as flat key/value entries for the selected EP devices.
     gsl::span<const std::string> provider_option_keys;
     gsl::span<const std::string> provider_option_values;
     ORT_API_RETURN_IF_STATUS_NOT_OK(
-        mp_ctx.GetSelectedVariantFileProviderOptions(0, provider_option_keys, provider_option_values));
+        mp_ctx.GetSelectedVariantFileProviderOptions(provider_option_keys, provider_option_values));
 
     ORT_API_RETURN_IF(provider_option_keys.size() != provider_option_values.size(),
                       ORT_FAIL, "Provider option keys/values size mismatch.");

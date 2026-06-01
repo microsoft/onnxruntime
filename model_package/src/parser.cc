@@ -9,7 +9,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
-#include <unordered_set>
 
 #include "nlohmann/json.hpp"
 
@@ -35,7 +34,6 @@ constexpr const char* kEpKey = "ep";
 constexpr const char* kDeviceKey = "device";
 constexpr const char* kCompatibilityStringKey = "compatibility_string";
 
-constexpr const char* kFilesKey = "files";
 constexpr const char* kFilenameKey = "filename";
 constexpr const char* kSessionOptionsKey = "session_options";
 constexpr const char* kProviderOptionsKey = "provider_options";
@@ -46,16 +44,11 @@ constexpr const char* kConsumerMetadataKey = "consumer_metadata";
 // Internal schema types for deserialization
 // ─────────────────────────────────────────────────────────────────────────────
 
-struct VariantFileSchema {
+struct VariantMetadataSchema {
   std::string filename;
   std::optional<std::unordered_map<std::string, std::string>> session_options;
   std::optional<std::unordered_map<std::string, std::string>> provider_options;
   std::optional<std::unordered_map<std::string, std::string>> shared_files;
-};
-
-struct VariantMetadataSchema {
-  std::vector<VariantFileSchema> files;
-  std::optional<json> consumer_metadata;
 };
 
 struct EpCompatibilitySchema {
@@ -158,22 +151,11 @@ void from_json(const json& j, VariantSchema& v) {
   v.ep_info = j.get<EpCompatibilitySchema>();
 }
 
-void from_json(const json& j, VariantFileSchema& f) {
-  f.filename = j.at(kFilenameKey).get<std::string>();
-  f.session_options = ParseFlatOptionsObject(j, kSessionOptionsKey);
-  f.provider_options = ParseFlatOptionsObject(j, kProviderOptionsKey);
-  f.shared_files = ParseFlatOptionsObject(j, kSharedFilesKey);
-}
-
 void from_json(const json& j, VariantMetadataSchema& v) {
-  v.files = j.at(kFilesKey).get<std::vector<VariantFileSchema>>();
-  if (v.files.empty()) {
-    throw std::invalid_argument(std::string("\"") + kFilesKey + "\" must contain at least one entry");
-  }
-
-  if (j.contains(kConsumerMetadataKey) && j[kConsumerMetadataKey].is_object()) {
-    v.consumer_metadata = j[kConsumerMetadataKey];
-  }
+  v.filename = j.at(kFilenameKey).get<std::string>();
+  v.session_options = ParseFlatOptionsObject(j, kSessionOptionsKey);
+  v.provider_options = ParseFlatOptionsObject(j, kProviderOptionsKey);
+  v.shared_files = ParseFlatOptionsObject(j, kSharedFilesKey);
 }
 
 void from_json(const json& j, ManifestSchema& m) {
@@ -351,50 +333,41 @@ bool ParseVariantsFromComponent(const std::string& component_name,
         return false;
       }
 
-      if (variant_metadata.consumer_metadata.has_value()) {
-        variant_info.consumer_metadata_json = variant_metadata.consumer_metadata->dump();
+      // consumer_metadata is a top-level optional field parsed separately from the schema struct.
+      if (variant_doc.contains(kConsumerMetadataKey) && variant_doc[kConsumerMetadataKey].is_object()) {
+        variant_info.consumer_metadata_json = variant_doc[kConsumerMetadataKey].dump();
       }
 
-      std::unordered_set<std::string> identifiers_seen;
+      if (!ValidatePathSegment(variant_metadata.filename, "File name", error)) return false;
 
-      for (const auto& file_schema : variant_metadata.files) {
-        if (!ValidatePathSegment(file_schema.filename, "File name", error)) return false;
+      const std::filesystem::path candidate_path = variant_root / variant_metadata.filename;
+      if (!ValidatePathConfinement(candidate_path, variant_root, "Variant file path", error)) return false;
 
-        if (!identifiers_seen.insert(file_schema.filename).second) {
-          error = "Duplicate file identifier '" + file_schema.filename +
-                  "' in variant '" + variant_name + "'.";
-          return false;
-        }
-
-        const std::filesystem::path candidate_path = variant_root / file_schema.filename;
-        if (!ValidatePathConfinement(candidate_path, variant_root, "Variant file path", error)) return false;
-
-        if (!std::filesystem::exists(candidate_path)) {
-          error = "Variant '" + variant_name + "', file '" + file_schema.filename +
-                  "' path does not exist: " + candidate_path.string();
-          return false;
-        }
-
-        std::filesystem::path resolved_model_path;
-        if (std::filesystem::is_regular_file(candidate_path)) {
-          resolved_model_path = candidate_path;
-        } else if (std::filesystem::is_directory(candidate_path)) {
-          if (!FindSingleOnnxFile(candidate_path, resolved_model_path, error)) return false;
-        } else {
-          error = "Variant '" + variant_name + "', file '" + file_schema.filename +
-                  "' path is neither a file nor directory: " + candidate_path.string();
-          return false;
-        }
-
-        VariantFile file_info{};
-        file_info.filename = file_schema.filename;
-        file_info.resolved_path = std::move(resolved_model_path);
-        file_info.session_options = file_schema.session_options;
-        file_info.provider_options = file_schema.provider_options;
-        file_info.shared_files = file_schema.shared_files;
-
-        variant_info.files.push_back(std::move(file_info));
+      if (!std::filesystem::exists(candidate_path)) {
+        error = "Variant '" + variant_name + "', file '" + variant_metadata.filename +
+                "' path does not exist: " + candidate_path.string();
+        return false;
       }
+
+      std::filesystem::path resolved_model_path;
+      if (std::filesystem::is_regular_file(candidate_path)) {
+        resolved_model_path = candidate_path;
+      } else if (std::filesystem::is_directory(candidate_path)) {
+        if (!FindSingleOnnxFile(candidate_path, resolved_model_path, error)) return false;
+      } else {
+        error = "Variant '" + variant_name + "', file '" + variant_metadata.filename +
+                "' path is neither a file nor directory: " + candidate_path.string();
+        return false;
+      }
+
+      VariantFile file_info{};
+      file_info.filename = variant_metadata.filename;
+      file_info.resolved_path = std::move(resolved_model_path);
+      file_info.session_options = variant_metadata.session_options;
+      file_info.provider_options = variant_metadata.provider_options;
+      file_info.shared_files = variant_metadata.shared_files;
+
+      variant_info.file = std::move(file_info);
     }
 
     // EP compatibility from metadata.json (single entry per variant)
