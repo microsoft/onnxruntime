@@ -38,7 +38,7 @@ Add a single stable API entry point that retrieves an experimental function poin
 
 **Pros:**
 - Each function is independently addressable—unchanged functions keep resolving across releases
-- Signature changes use a new name (`Foo_v2`); old name can be removed independently
+- Signature changes use a new name (version prefix guarantees uniqueness); old name can be removed independently
 - Minimal stable API cost (one slot)
 - The instability contract is semantically clear: "is this specific thing available?"
 - Promotion to stable is clean: move to `OrtApi`, optionally keep the name as a redirect
@@ -85,90 +85,88 @@ between the generic and typed pointers.
 
 ### Single Source of Truth: The `.inc` File
 
-All experimental functions are declared in one [X-macro](https://en.wikipedia.org/wiki/X_macro) include file:
+All experimental functions are declared in one [X-macro](https://en.wikipedia.org/wiki/X_macro) include file.
+The first argument is the ORT API version in which the function was introduced. The macro
+mechanically constructs the lookup name as `ExpSinceV<version>_<Name>`, guaranteeing uniqueness
+by construction—no two entries can collide unless they share both the same version and the
+same base name, which is trivially avoided during review.
 
 ```c
 // onnxruntime_experimental_api.inc
 //
-// ORT_EXPERIMENTAL_FUNC(Name, ReturnType, Params...)
+// ORT_EXPERIMENTAL_FUNC(SinceVersion, Name, ReturnType, Params...)
 
-ORT_EXPERIMENTAL_FUNC(OrtApi_SomeNewThing, OrtStatusPtr,
+ORT_EXPERIMENTAL_FUNC(22, OrtApi_SomeNewThing, OrtStatusPtr,
     _In_ const OrtSession* session, _Out_ int64_t* result)
 
-ORT_EXPERIMENTAL_FUNC(OrtApi_AnotherThing, OrtStatusPtr,
+ORT_EXPERIMENTAL_FUNC(22, OrtApi_AnotherThing, OrtStatusPtr,
     _In_ const OrtEnv* env, _In_ const char* name, _Out_ OrtValue** out)
 ```
 
-### C Header (generated from `.inc`)
+### Consumer Header (generated from `.inc`)
+
+A single header serves both C and C++ consumers. The C section provides typedefs and name
+constants; the C++ section (guarded by `#ifdef __cplusplus`) adds typed inline accessors
+in the `Ort::Experimental` namespace.
 
 ```c
 // onnxruntime_experimental_api.h
+#pragma once
 
-// --- Function pointer typedefs and name constants (auto-generated from .inc) ---
-#define ORT_EXPERIMENTAL_FUNC(NAME, RET, ...)                                         \
-  typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_Fn)(__VA_ARGS__) NO_EXCEPTION;   \
-  static const char* const kOrtExperimental_##NAME = #NAME;
+// --- C: function pointer typedefs and name constants ---
+#define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                   \
+  typedef RET(ORT_API_CALL* OrtExperimental_ExpSinceV##VER##_##NAME##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
+  static const char* const kOrtExperimental_ExpSinceV##VER##_##NAME = "ExpSinceV" #VER "_" #NAME;
 #include "onnxruntime_experimental_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 
-// Produces:
-//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_SomeNewThing_Fn)(...) NO_EXCEPTION;
-//   static const char* const kOrtExperimental_OrtApi_SomeNewThing = "OrtApi_SomeNewThing";
-//
-//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_AnotherThing_Fn)(...) NO_EXCEPTION;
-//   static const char* const kOrtExperimental_OrtApi_AnotherThing = "OrtApi_AnotherThing";
-```
+// Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
+//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn)(
+//       ...) NO_EXCEPTION;
+//   static const char* const kOrtExperimental_ExpSinceV22_OrtApi_SomeNewThing =
+//       "ExpSinceV22_OrtApi_SomeNewThing";
 
-C usage:
-
-```c
-OrtExperimental_OrtApi_SomeNewThing_Fn fn =
-    (OrtExperimental_OrtApi_SomeNewThing_Fn)api->GetExperimentalFunction(kOrtExperimental_OrtApi_SomeNewThing);
-if (fn) {
-  OrtStatusPtr status = fn(session, &result);
-}
-```
-
-### C++ Header (generated from `.inc`)
-
-Uses a macro to declare the typedef and a typed inline accessor in one shot:
-
-```cpp
-// onnxruntime_experimental_cxx_api.h
+#ifdef __cplusplus
 namespace Ort::Experimental {
 
-#define ORT_EXPERIMENTAL_FUNC(NAME, RET, ...)                                    \
-  typedef RET(ORT_API_CALL* NAME##_Fn)(__VA_ARGS__) NO_EXCEPTION;                \
-  inline NAME##_Fn Get_##NAME##_Fn(const OrtApi* api) {                          \
-    return reinterpret_cast<NAME##_Fn>(api->GetExperimentalFunction(#NAME));     \
+// --- C++: typed inline accessors (reuses the C typedefs above) ---
+#define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                  \
+  inline OrtExperimental_ExpSinceV##VER##_##NAME##_Fn Get_ExpSinceV##VER##_##NAME##_Fn(             \
+      const OrtApi* api) {                                                                          \
+    return reinterpret_cast<OrtExperimental_ExpSinceV##VER##_##NAME##_Fn>(                          \
+        api->GetExperimentalFunction(kOrtExperimental_ExpSinceV##VER##_##NAME));                    \
   }
 #include "onnxruntime_experimental_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 
 }  // namespace Ort::Experimental
 
-// Produces:
+// Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
 // namespace Ort::Experimental {
-//
-//   typedef OrtStatusPtr(ORT_API_CALL* OrtApi_SomeNewThing_Fn)(
-//       _In_ const OrtSession* session, _Out_ int64_t* result) NO_EXCEPTION;
-//   inline OrtApi_SomeNewThing_Fn Get_OrtApi_SomeNewThing_Fn(const OrtApi* api) {
-//     return reinterpret_cast<OrtApi_SomeNewThing_Fn>(api->GetExperimentalFunction("OrtApi_SomeNewThing"));
+//   inline OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn
+//   Get_ExpSinceV22_OrtApi_SomeNewThing_Fn(const OrtApi* api) {
+//     return reinterpret_cast<OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn>(
+//         api->GetExperimentalFunction(kOrtExperimental_ExpSinceV22_OrtApi_SomeNewThing));
 //   }
-//
-//   typedef OrtStatusPtr(ORT_API_CALL* OrtApi_AnotherThing_Fn)(
-//       _In_ const OrtEnv* env, _In_ const char* name, _Out_ OrtValue** out) NO_EXCEPTION;
-//   inline OrtApi_AnotherThing_Fn Get_OrtApi_AnotherThing_Fn(const OrtApi* api) {
-//     return reinterpret_cast<OrtApi_AnotherThing_Fn>(api->GetExperimentalFunction("OrtApi_AnotherThing"));
-//   }
-//
-// }  // namespace Ort::Experimental
+// }
+#endif  // __cplusplus
+```
+
+C usage:
+
+```c
+OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn fn =
+    (OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn)api->GetExperimentalFunction(
+        kOrtExperimental_ExpSinceV22_OrtApi_SomeNewThing);
+if (fn) {
+  OrtStatusPtr status = fn(session, &result);
+}
 ```
 
 C++ usage:
 
 ```cpp
-if (auto fn = Ort::Experimental::Get_OrtApi_SomeNewThing_Fn(api)) {
+if (auto* fn = Ort::Experimental::Get_ExpSinceV22_OrtApi_SomeNewThing_Fn(api)) {
   Ort::Status status(fn(session, &result));
 }
 ```
@@ -178,8 +176,8 @@ if (auto fn = Ort::Experimental::Get_OrtApi_SomeNewThing_Fn(api)) {
 ```cpp
 // experimental_api.cc
 
-// Function implementations
-ORT_API_STATUS_IMPL(OrtExperimentalApis::OrtApi_SomeNewThing,
+// Function implementations use the full constructed name.
+ORT_API_STATUS_IMPL(OrtExperimentalApis::ExpSinceV22_OrtApi_SomeNewThing,
                     _In_ const OrtSession* session, _Out_ int64_t* result) {
   API_IMPL_BEGIN
   // ...
@@ -193,7 +191,9 @@ struct ExperimentalEntry {
 };
 
 static const ExperimentalEntry kExperimentalFunctions[] = {
-#define ORT_EXPERIMENTAL_FUNC(NAME, ...) { #NAME, reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME) },
+#define ORT_EXPERIMENTAL_FUNC(VER, NAME, ...)                                                       \
+  { "ExpSinceV" #VER "_" #NAME,                                                                    \
+    reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::ExpSinceV##VER##_##NAME) },
 #include "onnxruntime_experimental_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 };
@@ -209,59 +209,33 @@ ORT_API(OrtExperimentalFnPtr, OrtApis::GetExperimentalFunction, _In_ const char*
 }
 ```
 
-### Name Reuse Prevention
-
-When a function name is retired (removed or superseded by a `_v2`), it must never be
-reused with a different signature—a stale client holding a cached pointer to the old name
-would call it with the wrong arguments. A compile-time check is sufficient to enforce this:
-
-```c
-// onnxruntime_experimental_retired.inc
-//
-// Names that were once registered and must not be reused.
-// ORT_RETIRED_EXPERIMENTAL_FUNC(Name)
-
-ORT_RETIRED_EXPERIMENTAL_FUNC(OrtApi_SomeOldThing)
-ORT_RETIRED_EXPERIMENTAL_FUNC(OrtApi_SomeNewThing_v1)
-```
-
-In the implementation file, after building the active registration table:
-
-```cpp
-// Compile-time check: no active name may collide with a retired name.
-#define ORT_RETIRED_EXPERIMENTAL_FUNC(NAME)                                          \
-  static_assert(                                                                     \
-      std::none_of(std::begin(kExperimentalFunctions), std::end(kExperimentalFunctions), \
-                   [](const ExperimentalEntry& e) { return e.name == #NAME; }),       \
-      "Experimental function name '" #NAME "' is retired and must not be reused.");
-#include "onnxruntime_experimental_retired.inc"
-#undef ORT_RETIRED_EXPERIMENTAL_FUNC
-```
-
-Runtime enforcement is unnecessary: if the `static_assert` passes, the retired name
-cannot exist in the lookup table, so no query for it can ever succeed. The compile-time
-check alone is the single enforcement point.
-
 ### Lifecycle Rules
 
-1. **Adding an experimental function**: Add one line to the `.inc` file, implement it.
-2. **Removing a function**: Delete the line from the `.inc`; add the name to the retired `.inc`.
-3. **Changing a signature**: This requires a new function name. Add a new function with an incremented version suffix (`_v2`) and optionally remove the old function (see cases 1 and 2). If the old function is kept around, both signatures are supported.
-4. **Promoting to stable**: Add the function to the stable API (append-only). Remove the experimental function (see case 2). Optionally keep the experimental function around for a short period, resolving it as a redirect.
+1. **Adding an experimental function**: Add one line to the `.inc` file with the current ORT API version, implement it.
+2. **Removing a function**: Delete the line from the `.inc`. No retirement tracking is needed—the versioned name is inherently unique and cannot be accidentally reused.
+3. **Changing a signature**: Add a new entry with the current ORT API version (producing a new unique name) and optionally delete the old entry. Both can coexist if the old signature is still supported.
+4. **Promoting to stable**: Add the function to the stable API struct (append-only, name drops the `ExpSinceV<ver>_` prefix). Delete the experimental entry. Optionally keep the experimental entry for a transitional period, resolving it as a redirect.
 
 ### Naming Convention
 
-Experimental function names are prefixed with the target stable API struct name, making
-the intended promotion destination clear. If a signature changes, append `_v2`, `_v3`, etc.
+Experimental function names follow the pattern `ExpSinceV<version>_<TargetStruct>_<Name>`.
+The version is the ORT API version in which the function was first introduced. The target
+struct prefix indicates the intended promotion destination. This naming scheme guarantees
+uniqueness by construction—a signature change requires a new `.inc` entry at the current
+API version, which produces a distinct name.
+
 Examples:
 
-- `OrtApi_SomeNewThing` — destined for `OrtApi`
-- `OrtApi_SomeNewThing_v2` — updated signature, replaces the original
-- `OrtEpApi_SomeNewEpThing` — destined for `OrtEpApi`
-- `OrtCompileApi_SomeNewCompileThing` — destined for `OrtCompileApi`
+- `ExpSinceV22_OrtApi_SomeNewThing` — introduced in API v22, destined for `OrtApi`
+- `ExpSinceV23_OrtApi_SomeNewThing` — signature changed in API v23, replaces the v22 entry
+- `ExpSinceV22_OrtEpApi_SomeNewEpThing` — destined for `OrtEpApi`
+- `ExpSinceV22_OrtCompileApi_SomeNewCompileThing` — destined for `OrtCompileApi`
 
-Names are flat strings matched exactly. No formal namespace separator beyond this prefix
-convention is needed.
+At promotion, the stable struct member drops the `ExpSinceV<ver>_` prefix (e.g., the stable
+slot is named `SomeNewThing` in `OrtApi`).
+
+Names are flat strings matched exactly. No separate retirement tracking is needed because
+the version prefix makes accidental name reuse impossible.
 
 ### Rejected: Enumeration Helper
 
