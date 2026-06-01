@@ -104,7 +104,8 @@ class MatMulNBits final : public OpKernel {
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
-        prefer_lut_gemm_{info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
+        prefer_lut_gemm_{std::is_same_v<T1, float> &&
+                         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
                          MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("K")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
