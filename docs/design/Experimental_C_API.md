@@ -38,7 +38,7 @@ Add a single stable API entry point that retrieves an experimental function poin
 
 **Pros:**
 - Each function is independently addressable—unchanged functions keep resolving across releases
-- Signature changes use a new name (version prefix guarantees uniqueness); old name can be removed independently
+- Signature changes use a new name (API version-introduced suffix guarantees uniqueness); old name can be removed independently
 - Minimal stable API cost (one slot)
 - The instability contract is semantically clear: "is this specific thing available?"
 - Promotion to stable is clean: move to `OrtApi`, optionally keep the name as a redirect
@@ -87,7 +87,7 @@ between the generic and typed pointers.
 
 All experimental functions are declared in one [X-macro](https://en.wikipedia.org/wiki/X_macro) include file.
 The first argument is the ORT API version in which the function was introduced. The macro
-mechanically constructs the lookup name as `ExpSinceV<version>_<Name>`, guaranteeing uniqueness
+mechanically constructs the lookup name as `<Name>_ExpSinceV<API Version>`, guaranteeing uniqueness
 by construction—no two entries can collide unless they share both the same version and the
 same base name, which is trivially avoided during review.
 
@@ -103,38 +103,40 @@ ORT_EXPERIMENTAL_FUNC(22, OrtApi_AnotherThing, OrtStatusPtr,
     _In_ const OrtEnv* env, _In_ const char* name, _Out_ OrtValue** out)
 ```
 
-### Consumer Header (generated from `.inc`)
+### Experimental Consumer Header (generated from `.inc`)
 
-A single header serves both C and C++ consumers. The C section provides typedefs and name
-constants; the C++ section (guarded by `#ifdef __cplusplus`) adds typed inline accessors
-in the `Ort::Experimental` namespace.
+A single header serves both C and C++ experimental API consumers. The C section provides typedefs and name
+constants; the C++ section (guarded by `#ifdef __cplusplus`) adds typed inline accessors in the `Ort::Experimental`
+namespace.
 
 ```c
 // onnxruntime_experimental_api.h
 #pragma once
 
+// Declare any new, auxiliary opaque types required by the experimental APIs in this header too.
+
 // --- C: function pointer typedefs and name constants ---
 #define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                   \
-  typedef RET(ORT_API_CALL* OrtExperimental_ExpSinceV##VER##_##NAME##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
-  static const char* const kOrtExperimental_ExpSinceV##VER##_##NAME = "ExpSinceV" #VER "_" #NAME;
+  typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_ExpSinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
+  static const char* const kOrtExperimental_##NAME##_ExpSinceV##VER = #NAME "_ExpSinceV" #VER;
 #include "onnxruntime_experimental_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 
 // Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
-//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn)(
+//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn)(
 //       ...) NO_EXCEPTION;
-//   static const char* const kOrtExperimental_ExpSinceV22_OrtApi_SomeNewThing =
-//       "ExpSinceV22_OrtApi_SomeNewThing";
+//   static const char* const kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22 =
+//       "OrtApi_SomeNewThing_ExpSinceV22";
 
 #ifdef __cplusplus
 namespace Ort::Experimental {
 
 // --- C++: typed inline accessors (reuses the C typedefs above) ---
 #define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                  \
-  inline OrtExperimental_ExpSinceV##VER##_##NAME##_Fn Get_ExpSinceV##VER##_##NAME##_Fn(             \
+  inline OrtExperimental_##NAME##_ExpSinceV##VER##_Fn Get_##NAME##_ExpSinceV##VER##_Fn(             \
       const OrtApi* api) {                                                                          \
-    return reinterpret_cast<OrtExperimental_ExpSinceV##VER##_##NAME##_Fn>(                          \
-        api->GetExperimentalFunction(kOrtExperimental_ExpSinceV##VER##_##NAME));                    \
+    return reinterpret_cast<OrtExperimental_##NAME##_ExpSinceV##VER##_Fn>(                          \
+        api->GetExperimentalFunction(kOrtExperimental_##NAME##_ExpSinceV##VER));                    \
   }
 #include "onnxruntime_experimental_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
@@ -143,10 +145,10 @@ namespace Ort::Experimental {
 
 // Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
 // namespace Ort::Experimental {
-//   inline OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn
-//   Get_ExpSinceV22_OrtApi_SomeNewThing_Fn(const OrtApi* api) {
-//     return reinterpret_cast<OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn>(
-//         api->GetExperimentalFunction(kOrtExperimental_ExpSinceV22_OrtApi_SomeNewThing));
+//   inline OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn
+//   Get_OrtApi_SomeNewThing_ExpSinceV22_Fn(const OrtApi* api) {
+//     return reinterpret_cast<OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn>(
+//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22));
 //   }
 // }
 #endif  // __cplusplus
@@ -155,9 +157,9 @@ namespace Ort::Experimental {
 C usage:
 
 ```c
-OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn fn =
-    (OrtExperimental_ExpSinceV22_OrtApi_SomeNewThing_Fn)api->GetExperimentalFunction(
-        kOrtExperimental_ExpSinceV22_OrtApi_SomeNewThing);
+OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn fn =
+    (OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn)api->GetExperimentalFunction(
+        kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22);
 if (fn) {
   OrtStatusPtr status = fn(session, &result);
 }
@@ -166,7 +168,7 @@ if (fn) {
 C++ usage:
 
 ```cpp
-if (auto* fn = Ort::Experimental::Get_ExpSinceV22_OrtApi_SomeNewThing_Fn(api)) {
+if (auto* fn = Ort::Experimental::Get_OrtApi_SomeNewThing_ExpSinceV22_Fn(api)) {
   Ort::Status status(fn(session, &result));
 }
 ```
@@ -177,7 +179,7 @@ if (auto* fn = Ort::Experimental::Get_ExpSinceV22_OrtApi_SomeNewThing_Fn(api)) {
 // experimental_api.cc
 
 // Function implementations use the full constructed name.
-ORT_API_STATUS_IMPL(OrtExperimentalApis::ExpSinceV22_OrtApi_SomeNewThing,
+ORT_API_STATUS_IMPL(OrtExperimentalApis::OrtApi_SomeNewThing_ExpSinceV22,
                     _In_ const OrtSession* session, _Out_ int64_t* result) {
   API_IMPL_BEGIN
   // ...
@@ -191,9 +193,8 @@ struct ExperimentalEntry {
 };
 
 static const ExperimentalEntry kExperimentalFunctions[] = {
-#define ORT_EXPERIMENTAL_FUNC(VER, NAME, ...)                                                       \
-  { "ExpSinceV" #VER "_" #NAME,                                                                    \
-    reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::ExpSinceV##VER##_##NAME) },
+#define ORT_EXPERIMENTAL_FUNC(VER, NAME, ...) \
+  { #NAME "_ExpSinceV" #VER, reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_ExpSinceV##VER) },
 #include "onnxruntime_experimental_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 };
@@ -214,28 +215,28 @@ ORT_API(OrtExperimentalFnPtr, OrtApis::GetExperimentalFunction, _In_ const char*
 1. **Adding an experimental function**: Add one line to the `.inc` file with the current ORT API version, implement it.
 2. **Removing a function**: Delete the line from the `.inc`. No retirement tracking is needed—the versioned name is inherently unique and cannot be accidentally reused.
 3. **Changing a signature**: Add a new entry with the current ORT API version (producing a new unique name) and optionally delete the old entry. Both can coexist if the old signature is still supported.
-4. **Promoting to stable**: Add the function to the stable API struct (append-only, name drops the `ExpSinceV<ver>_` prefix). Delete the experimental entry. Optionally keep the experimental entry for a transitional period, resolving it as a redirect.
+4. **Promoting to stable**: Add the function to the stable API struct (append-only, name drops the `_ExpSinceV<ver>` suffix). Delete the experimental entry. Optionally keep the experimental entry for a transitional period, resolving it as a redirect.
 
 ### Naming Convention
 
-Experimental function names follow the pattern `ExpSinceV<version>_<TargetStruct>_<Name>`.
-The version is the ORT API version in which the function was first introduced. The target
+Experimental function names follow the pattern `<TargetStruct>_<Name>_ExpSinceV<API Version>`.
+The API version is the ORT API version in which the function was first introduced. The target
 struct prefix indicates the intended promotion destination. This naming scheme guarantees
 uniqueness by construction—a signature change requires a new `.inc` entry at the current
 API version, which produces a distinct name.
 
 Examples:
 
-- `ExpSinceV22_OrtApi_SomeNewThing` — introduced in API v22, destined for `OrtApi`
-- `ExpSinceV23_OrtApi_SomeNewThing` — signature changed in API v23, replaces the v22 entry
-- `ExpSinceV22_OrtEpApi_SomeNewEpThing` — destined for `OrtEpApi`
-- `ExpSinceV22_OrtCompileApi_SomeNewCompileThing` — destined for `OrtCompileApi`
+- `OrtApi_SomeNewThing_ExpSinceV22` — introduced in API v22, destined for `OrtApi`
+- `OrtApi_SomeNewThing_ExpSinceV23` — signature changed in API v23, replaces the v22 entry
+- `OrtEpApi_SomeNewEpThing_ExpSinceV22` — destined for `OrtEpApi`
+- `OrtCompileApi_SomeNewCompileThing_ExpSinceV22` — destined for `OrtCompileApi`
 
-At promotion, the stable struct member drops the `ExpSinceV<ver>_` prefix (e.g., the stable
+At promotion, the stable struct member drops the `_ExpSinceV<API Version>` suffix (e.g., the stable
 slot is named `SomeNewThing` in `OrtApi`).
 
 Names are flat strings matched exactly. No separate retirement tracking is needed because
-the version prefix makes accidental name reuse impossible.
+the version suffix makes accidental name reuse impossible.
 
 ### Rejected: Enumeration Helper
 
