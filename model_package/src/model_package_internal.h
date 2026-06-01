@@ -41,7 +41,8 @@ struct Variant {
   std::filesystem::path folder_path;
   // Single EP compatibility entry per variant (from metadata.json).
   EpCompatibility ep_compatibility;
-  std::vector<VariantFile> files;
+  // Single model file entry (from variant.json). Empty when variant.json is absent.
+  std::optional<VariantFile> file;
   std::optional<std::string> consumer_metadata_json;
 };
 

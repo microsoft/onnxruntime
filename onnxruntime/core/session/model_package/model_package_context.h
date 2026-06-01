@@ -50,8 +50,8 @@ struct VariantInfo {
   // from metadata.json: single EP target per variant (ep, device, compatibility_string)
   VariantEpCompatibilityInfo ep_compatibility;
 
-  // from variant.json: files[]
-  std::vector<VariantModelInfo> files;
+  // from variant.json: single model file entry. Empty when variant.json is absent.
+  std::optional<VariantModelInfo> file;
 
   // from variant.json
   std::optional<json> consumer_metadata;
@@ -98,15 +98,13 @@ class ModelPackageComponentContext {
 
   Status GetSelectedVariantFolderPath(const std::filesystem::path*& out_folder_path) const;
 
-  // Convenience API for single-file selected variants. Will return an error if there are 0 or >1 components.
+  // Get the single model file path for the selected variant.
   Status GetSelectedVariantFilePath(std::filesystem::path& out_path) const;
 
-  Status GetSelectedVariantFileSessionOptions(size_t file_idx,
-                                              gsl::span<const std::string>& out_keys,
+  Status GetSelectedVariantFileSessionOptions(gsl::span<const std::string>& out_keys,
                                               gsl::span<const std::string>& out_values) const;
 
-  Status GetSelectedVariantFileProviderOptions(size_t file_idx,
-                                               gsl::span<const std::string>& out_keys,
+  Status GetSelectedVariantFileProviderOptions(gsl::span<const std::string>& out_keys,
                                                gsl::span<const std::string>& out_values) const;
 
   // Returns the consumer_metadata JSON object (from variant.json) serialized to a string for the
@@ -114,12 +112,10 @@ class ModelPackageComponentContext {
   // Pointer lifetime is owned by this context.
 
   // C API helpers: return const char* pointer arrays with context-owned lifetime.
-  Status GetSelectedVariantFileSessionOptionPtrs(size_t file_idx,
-                                                 const char* const*& out_keys,
+  Status GetSelectedVariantFileSessionOptionPtrs(const char* const*& out_keys,
                                                  const char* const*& out_values,
                                                  size_t& out_count) const;
-  Status GetSelectedVariantFileProviderOptionPtrs(size_t file_idx,
-                                                  const char* const*& out_keys,
+  Status GetSelectedVariantFileProviderOptionPtrs(const char* const*& out_keys,
                                                   const char* const*& out_values,
                                                   size_t& out_count) const;
 
@@ -156,16 +152,16 @@ class ModelPackageComponentContext {
   mutable bool consumer_metadata_cache_valid_{false};
   mutable std::filesystem::path folder_path_cache_{};
   mutable std::vector<std::filesystem::path> file_paths_cache_{};
-  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_session_option_keys_cache_{};
-  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_session_option_values_cache_{};
-  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_provider_option_keys_cache_{};
-  mutable std::unordered_map<size_t, std::vector<std::string>> file_id_to_provider_option_values_cache_{};
+  mutable std::vector<std::string> session_option_keys_cache_{};
+  mutable std::vector<std::string> session_option_values_cache_{};
+  mutable std::vector<std::string> provider_option_keys_cache_{};
+  mutable std::vector<std::string> provider_option_values_cache_{};
 
   // C API pointer caches for session/provider options, owned by context for stable lifetime.
-  mutable std::unordered_map<size_t, std::vector<const char*>> file_session_option_key_ptrs_cache_{};
-  mutable std::unordered_map<size_t, std::vector<const char*>> file_session_option_value_ptrs_cache_{};
-  mutable std::unordered_map<size_t, std::vector<const char*>> file_provider_option_key_ptrs_cache_{};
-  mutable std::unordered_map<size_t, std::vector<const char*>> file_provider_option_value_ptrs_cache_{};
+  mutable std::vector<const char*> session_option_key_ptrs_cache_{};
+  mutable std::vector<const char*> session_option_value_ptrs_cache_{};
+  mutable std::vector<const char*> provider_option_key_ptrs_cache_{};
+  mutable std::vector<const char*> provider_option_value_ptrs_cache_{};
 
   Status ResolveVariantImpl(gsl::span<const VariantSelectionEpInfo> ep_infos);
   Status GetSelectedVariantInfo(const VariantInfo*& out_variant) const;
