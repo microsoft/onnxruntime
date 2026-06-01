@@ -128,5 +128,15 @@ void Impl_SaturatingAbs(cudaStream_t stream, const T* input_data, T* output_data
 template <typename T>
 void Impl_SaturatingCastFromDouble(cudaStream_t stream, const double* input_data, T* output_data, size_t count);
 
+/**
+ * Replace NaN values with zero in-place.
+ *
+ * Used by ReduceLogSumExp to handle the case where exp(-inf - (-inf)) produces NaN.
+ * Mathematically, exp(-inf) = 0 regardless of the subtracted max, so replacing
+ * NaN with 0 is correct.
+ */
+template <typename T>
+void Impl_NanToZero(cudaStream_t stream, T* data, size_t count);
+
 }  // namespace cuda
 }  // namespace onnxruntime

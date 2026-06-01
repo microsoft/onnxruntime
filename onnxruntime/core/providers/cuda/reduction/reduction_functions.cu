@@ -598,5 +598,25 @@ template void Impl_SaturatingCastFromDouble<int64_t>(cudaStream_t, const double*
 template void Impl_SaturatingCastFromDouble<int8_t>(cudaStream_t, const double*, int8_t*, size_t);
 template void Impl_SaturatingCastFromDouble<uint8_t>(cudaStream_t, const double*, uint8_t*, size_t);
 
+// NanToZero: replace NaN values with 0 in-place.
+// Used by ReduceLogSumExp after Exp to handle exp(-inf - (-inf)) = exp(NaN) = NaN -> 0.
+template <typename T>
+struct NanToZeroFunctor {
+  __device__ __inline__ T operator()(T a) const {
+    return _IsNan<T>{}(a) ? T(0) : a;
+  }
+};
+
+template <typename T>
+void Impl_NanToZero(cudaStream_t stream, T* data, size_t count) {
+  if (count == 0) return;
+  UnaryElementWiseImpl(stream, data, data, NanToZeroFunctor<T>{}, count);
+}
+
+template void Impl_NanToZero<float>(cudaStream_t, float*, size_t);
+template void Impl_NanToZero<double>(cudaStream_t, double*, size_t);
+template void Impl_NanToZero<half>(cudaStream_t, half*, size_t);
+template void Impl_NanToZero<BFloat16>(cudaStream_t, BFloat16*, size_t);
+
 }  // namespace cuda
 }  // namespace onnxruntime
