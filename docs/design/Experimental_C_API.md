@@ -92,7 +92,7 @@ by construction—no two entries can collide unless they share both the same ver
 same base name, which is trivially avoided during review.
 
 ```c
-// onnxruntime_experimental_api.inc
+// onnxruntime_experimental_c_api.inc
 //
 // ORT_EXPERIMENTAL_FUNC(SinceVersion, Name, ReturnType, Params...)
 
@@ -110,7 +110,7 @@ constants; the C++ section (guarded by `#ifdef __cplusplus`) adds typed inline a
 namespace.
 
 ```c
-// onnxruntime_experimental_api.h
+// onnxruntime_experimental_c_api.h
 #pragma once
 
 // Declare any new, auxiliary opaque types required by the experimental APIs in this header too.
@@ -118,38 +118,42 @@ namespace.
 // --- C: function pointer typedefs and name constants ---
 #define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                   \
   typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_ExpSinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
-  static const char* const kOrtExperimental_##NAME##_ExpSinceV##VER = #NAME "_ExpSinceV" #VER;
-#include "onnxruntime_experimental_api.inc"
+  static const char* const kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName = #NAME "_ExpSinceV" #VER;
+#include "onnxruntime_experimental_c_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 
 // Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
 //   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn)(
 //       ...) NO_EXCEPTION;
-//   static const char* const kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22 =
+//   static const char* const kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_FnName =
 //       "OrtApi_SomeNewThing_ExpSinceV22";
 
 #ifdef __cplusplus
-namespace Ort::Experimental {
+namespace Ort {
+namespace Experimental {
 
 // --- C++: typed inline accessors (reuses the C typedefs above) ---
 #define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                  \
   inline OrtExperimental_##NAME##_ExpSinceV##VER##_Fn Get_##NAME##_ExpSinceV##VER##_Fn(             \
       const OrtApi* api) {                                                                          \
     return reinterpret_cast<OrtExperimental_##NAME##_ExpSinceV##VER##_Fn>(                          \
-        api->GetExperimentalFunction(kOrtExperimental_##NAME##_ExpSinceV##VER));                    \
+        api->GetExperimentalFunction(kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName));           \
   }
-#include "onnxruntime_experimental_api.inc"
+#include "onnxruntime_experimental_c_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 
-}  // namespace Ort::Experimental
+}  // namespace Experimental
+}  // namespace Ort
 
 // Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
-// namespace Ort::Experimental {
+// namespace Ort {
+// namespace Experimental {
 //   inline OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn
 //   Get_OrtApi_SomeNewThing_ExpSinceV22_Fn(const OrtApi* api) {
 //     return reinterpret_cast<OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn>(
-//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22));
+//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_FnName));
 //   }
+// }
 // }
 #endif  // __cplusplus
 ```
@@ -159,7 +163,7 @@ C usage:
 ```c
 OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn fn =
     (OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn)api->GetExperimentalFunction(
-        kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22);
+        kOrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_FnName);
 if (fn) {
   OrtStatusPtr status = fn(session, &result);
 }
@@ -176,7 +180,7 @@ if (auto* fn = Ort::Experimental::Get_OrtApi_SomeNewThing_ExpSinceV22_Fn(api)) {
 ### Implementation Side (generated from `.inc`)
 
 ```cpp
-// experimental_api.cc
+// experimental_c_api.cc
 
 // Function implementations use the full constructed name.
 ORT_API_STATUS_IMPL(OrtExperimentalApis::OrtApi_SomeNewThing_ExpSinceV22,
@@ -195,7 +199,7 @@ struct ExperimentalEntry {
 static const ExperimentalEntry kExperimentalFunctions[] = {
 #define ORT_EXPERIMENTAL_FUNC(VER, NAME, ...) \
   { #NAME "_ExpSinceV" #VER, reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_ExpSinceV##VER) },
-#include "onnxruntime_experimental_api.inc"
+#include "onnxruntime_experimental_c_api.inc"
 #undef ORT_EXPERIMENTAL_FUNC
 };
 
