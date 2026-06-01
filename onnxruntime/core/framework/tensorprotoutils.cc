@@ -470,6 +470,8 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   //
   // This supports symlinked models (e.g., Hugging Face Hub local cache) where the canonical
   // parent of the model file differs from the parent directory of the symlinked model file.
+  // In such layouts, external data files may also be symlinks under the symlink model directory
+  // that resolve to targets under the real model directory tree.
   std::error_code ec;
   if (!std::filesystem::is_symlink(model_path, ec)) {
     // Note: is_symlink returns false if file is not a symlink, file does not exist, or an error
@@ -481,8 +483,27 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
   auto real_model_dir = real_model_path.parent_path();
 
-  // Check against the real/canonical model directory.
-  return ValidateExternalDataPathFromDir(real_model_dir, external_data_path);
+  // Resolve the external data path from the *symlink* model directory (where the symlinked
+  // external data file lives), then check if the canonical target is under the real model directory.
+  // This handles the case where both the model and external data are symlinks (e.g., HuggingFace cache).
+  std::filesystem::path external_data_full_path = model_dir / external_data_path;
+  std::filesystem::path external_data_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(external_data_full_path, external_data_canonical));
+
+  std::filesystem::path real_model_dir_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_dir, real_model_dir_canonical));
+
+  if (HasPathComponentPrefix(real_model_dir_canonical, external_data_canonical)) {
+    bool path_exists = false;
+    ORT_RETURN_IF_ERROR(PathExists(external_data_canonical, path_exists));
+    ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_canonical);
+    return Status::OK();
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "External data path escapes model directory. ",
+                         "External data path: ", external_data_path, " resolved path: ",
+                         external_data_canonical, " ", "allowed directory: ", real_model_dir);
 }
 
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
