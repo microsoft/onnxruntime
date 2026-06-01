@@ -281,8 +281,9 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
 #define UnRollReduction(unroll_size)                                                              \
   do {                                                                                            \
     constexpr int kUnroll = unroll_size;                                                          \
-    constexpr int kUnrollMask = 0xffffffff & (~(kUnroll * k_per_iter - 1));                       \
-    for (; k_id < (k & kUnrollMask); k_id += kUnroll * k_per_iter) {                              \
+    constexpr int kUnrollStep = kUnroll * k_per_iter;                                             \
+    const int k_unroll_bound = k - k % kUnrollStep;                                               \
+    for (; k_id < k_unroll_bound; k_id += kUnrollStep) {                                          \
       _Pragma("unroll") for (int i = 0; i < kUnroll; i++) {                                       \
         uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + k_per_iter / 2 * i)); \
         T scale = b_scale_vec[t_meta_k + k_per_iter / block_size * i];                            \

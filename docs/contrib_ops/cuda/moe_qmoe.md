@@ -776,6 +776,10 @@ The block-scaled tensor op path is fundamentally more efficient because the
 hardware fuses dequantization with the matrix multiply, vs. the in-register
 software dequant of the mixed-input path.
 
+> **MSVC note**: Native SM90/SM120 TMA grouped MoE kernels are disabled in Windows/MSVC
+> builds because CUDA 13 generates host stubs that MSVC rejects for over-aligned
+> TMA parameters. See [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
+
 ---
 
 ## 12. Future / Deferred Modes
@@ -866,6 +870,41 @@ if(NOT onnxruntime_USE_FP8_QMOE)
 endif()
 ```
 
+### 14.1 MSVC and TMA grouped MoE GEMM
+
+Windows/MSVC builds intentionally do not define the grouped TMA MoE compile
+switches:
+
+- `COMPILE_HOPPER_TMA_GROUPED_GEMMS`
+- `COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS`
+
+The generated grouped TMA launchers pass CUTLASS TMA descriptor types through
+NVCC-generated host stubs. With CUDA 13 and MSVC, those stubs contain formal
+parameters with 128-byte alignment requirements, which triggers MSVC `C2719`:
+the requested alignment for a by-value formal parameter cannot be guaranteed.
+This affects the generated SM90/SM120 grouped MoE TMA launcher translation units,
+including the native SM120 QMoE FP4 / FP8×FP4 launchers.
+
+The source files are still present in the build graph, but the generated launcher
+bodies are guarded by the compile switches above, so they become empty units on
+MSVC. Runtime dispatch mirrors this build-time choice:
+
+- Standard FP16/BF16 MoE may skip TMA configs and use the existing SM80/Ampere
+  grouped GEMM fallback.
+- QMoE modes that require grouped TMA kernels do not silently fall back to SM80.
+  This includes FP4/block-scaled modes such as native SM120 `fp4`, `wfp4afp8`,
+  and other TMA-only mixed quantized paths. They fail with a clear error saying
+  the required TMA grouped MoE GEMM was not compiled.
+- `wfp4a16` on SM120 normally routes through the SM90 mixed-input TMA kernel set
+  for forward compatibility, but it is also unavailable when the Hopper grouped
+  TMA switch is disabled by MSVC.
+
+The intent is to keep Windows CUDA packaging builds working while avoiding a
+misleading or invalid fallback for QMoE configurations whose data layout requires
+TMA/block-scaled kernels. Re-enable these switches for MSVC only after the CUDA
+host-stub alignment issue is fixed or the launcher ABI is changed to avoid
+over-aligned by-value parameters.
+
 ---
 
 ## 15. Limitations & Known Issues
@@ -881,6 +920,10 @@ endif()
   FP4, the QMoE op currently routes only `sm_ >= 120` through the native FP4
   runner. SM90/SM100 fall back to dequantization. (Remove `sm_ < 120` and
   rebuild to enable native FP4 on those SMs once validated.)
+- **Windows/MSVC native TMA QMoE**: grouped TMA MoE kernels are disabled on MSVC
+  because CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters.
+  Standard MoE can fall back to SM80 kernels; native QMoE FP4/block-scaled modes
+  cannot. See [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
 - **WFP4AFP8 native** requires SM100+ hardware; only the dequant fallback path
   is validated end-to-end so far.
 - **Hopper W4A8** (INT4 weight + FP8 activation) is not supported — TRT-LLM gates

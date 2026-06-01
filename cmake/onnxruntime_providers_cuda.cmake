@@ -323,7 +323,9 @@
     endif()
 
     if(MSVC)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
@@ -385,14 +387,16 @@
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>)
       target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
-      target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+      if(NOT MSVC)
+        target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+      endif()
       if (MSVC)
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()
 
-    if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+    if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG AND NOT MSVC)
       target_compile_definitions(${target} PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
     endif()
 
