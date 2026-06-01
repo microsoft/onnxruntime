@@ -72,6 +72,10 @@ __global__ void LpNormKernel(
       norm = _Sqrt(norm);
     }
 
+    // Sync before Step 3 to prevent a fast thread in the next grid-stride iteration
+    // from overwriting sdata[] while a slower thread still reads norm from sdata[0].
+    __syncthreads();
+
     // Step 3: Normalize (division in accumulation type, cast back to T).
     if (norm != AccT(0)) {
       for (int64_t i = static_cast<int64_t>(threadIdx.x); i < norm_size; i += static_cast<int64_t>(blockDim.x)) {

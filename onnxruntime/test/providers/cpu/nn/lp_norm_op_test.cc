@@ -183,33 +183,44 @@ TEST(LpNormalizationTest, L2Normalization_FP16) {
   }
 
   OpTester test("LpNormalization");
-  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("axis", (int64_t)-1);  // normalize along last axis
   test.AddAttribute("p", (int64_t)2);
 
-  vector<float> input_f = {5.93932154F, 7.4367043F, 6.42487038F, 5.90394865F,
-                           4.81289319F, 6.81304702F, 4.9382849F, 9.02595701F,
-                           9.67296484F, 4.45097367F, 8.12552534F, 5.76005428F,
+  // Use axis length 128 with magnitudes ~100 so sum-of-squares (~128*10000 = 1.28M)
+  // exceeds FP16 max (65504). This locks in the float-accumulation fix: without it
+  // the sum overflows to inf and the output is all zeros.
+  constexpr int64_t kRows = 2;
+  constexpr int64_t kCols = 128;
+  vector<float> input_f(kRows * kCols);
+  for (int64_t r = 0; r < kRows; ++r) {
+    for (int64_t c = 0; c < kCols; ++c) {
+      // Vary values per row to get different norms
+      input_f[r * kCols + c] = 80.0f + static_cast<float>(c % 7) * 5.0f + static_cast<float>(r) * 10.0f;
+    }
+  }
 
-                           6.11240105F, 9.33036974F, 1.63932452F, 1.7841637F,
-                           1.18196558F, 8.49357861F, 8.00341076F, 8.83010933F,
-                           9.80756508F, 8.19242708F, 5.15331426F, 8.02476259F};
-  vector<int64_t> input_dims = {2, 3, 4};
+  // Compute expected output in float
+  vector<float> expected_f(kRows * kCols);
+  for (int64_t r = 0; r < kRows; ++r) {
+    float sum_sq = 0.0f;
+    for (int64_t c = 0; c < kCols; ++c) {
+      float v = input_f[r * kCols + c];
+      sum_sq += v * v;
+    }
+    float norm = std::sqrt(sum_sq);
+    for (int64_t c = 0; c < kCols; ++c) {
+      expected_f[r * kCols + c] = input_f[r * kCols + c] / norm;
+    }
+  }
 
+  vector<int64_t> dims = {kRows, kCols};
   vector<MLFloat16> input(input_f.size());
   for (size_t i = 0; i < input_f.size(); ++i) input[i] = MLFloat16(input_f[i]);
-  test.AddInput<MLFloat16>("input", input_dims, input);
+  test.AddInput<MLFloat16>("input", dims, input);
 
-  vector<float> expected_f = {
-      0.48173351F, 0.67457895F, 0.55987147F, 0.48285641F,
-      0.39036983F, 0.61800737F, 0.4303285F, 0.73819091F,
-      0.78456626F, 0.40374513F, 0.70806873F, 0.47108796F,
-
-      0.52617536F, 0.62021826F, 0.16971778F, 0.14788607F,
-      0.10174744F, 0.56459419F, 0.82858584F, 0.73191164F,
-      0.8442671F, 0.54457572F, 0.53351794F, 0.66515792F};
   vector<MLFloat16> expected(expected_f.size());
   for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
-  test.AddOutput<MLFloat16>("Y", input_dims, expected);
+  test.AddOutput<MLFloat16>("Y", dims, expected);
 
   SessionOptions so;
   ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
@@ -227,24 +238,40 @@ TEST(LpNormalizationTest, L1Normalization_FP16) {
   }
 
   OpTester test("LpNormalization");
-  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("axis", (int64_t)-1);  // normalize along last axis
   test.AddAttribute("p", (int64_t)1);
 
-  vector<float> input_f = {5.93932154F, 7.4367043F, 6.42487038F, 5.90394865F,
-                           4.81289319F, 6.81304702F, 4.9382849F, 9.02595701F,
-                           9.67296484F, 4.45097367F, 8.12552534F, 5.76005428F};
-  vector<int64_t> input_dims = {1, 3, 4};
+  // Use axis length 128 with magnitudes ~200 so sum (~128*200 = 25600)
+  // is large enough to stress FP16 precision.
+  constexpr int64_t kRows = 2;
+  constexpr int64_t kCols = 128;
+  vector<float> input_f(kRows * kCols);
+  for (int64_t r = 0; r < kRows; ++r) {
+    for (int64_t c = 0; c < kCols; ++c) {
+      input_f[r * kCols + c] = 150.0f + static_cast<float>(c % 11) * 10.0f + static_cast<float>(r) * 20.0f;
+    }
+  }
 
+  // Compute expected output in float
+  vector<float> expected_f(kRows * kCols);
+  for (int64_t r = 0; r < kRows; ++r) {
+    float sum_abs = 0.0f;
+    for (int64_t c = 0; c < kCols; ++c) {
+      sum_abs += std::abs(input_f[r * kCols + c]);
+    }
+    for (int64_t c = 0; c < kCols; ++c) {
+      expected_f[r * kCols + c] = input_f[r * kCols + c] / sum_abs;
+    }
+  }
+
+  vector<int64_t> dims = {kRows, kCols};
   vector<MLFloat16> input(input_f.size());
   for (size_t i = 0; i < input_f.size(); ++i) input[i] = MLFloat16(input_f[i]);
-  test.AddInput<MLFloat16>("input", input_dims, input);
+  test.AddInput<MLFloat16>("input", dims, input);
 
-  vector<float> expected_f = {0.2907843F, 0.3976693F, 0.3296719F, 0.28535331F,
-                              0.23563529F, 0.36431994F, 0.25339247F, 0.43624816F,
-                              0.47358041F, 0.23801075F, 0.41693563F, 0.27839852F};
   vector<MLFloat16> expected(expected_f.size());
   for (size_t i = 0; i < expected_f.size(); ++i) expected[i] = MLFloat16(expected_f[i]);
-  test.AddOutput<MLFloat16>("Y", input_dims, expected);
+  test.AddOutput<MLFloat16>("Y", dims, expected);
 
   SessionOptions so;
   ASSERT_TRUE(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1").IsOK());
