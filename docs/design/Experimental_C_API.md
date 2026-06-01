@@ -94,12 +94,12 @@ same base name, which is trivially avoided during review.
 ```c
 // onnxruntime_experimental_c_api.inc
 //
-// ORT_EXPERIMENTAL_FUNC(SinceVersion, Name, ReturnType, Params...)
+// ORT_EXPERIMENTAL_API(SinceVersion, Name, ReturnType, Params...)
 
-ORT_EXPERIMENTAL_FUNC(22, OrtApi_SomeNewThing, OrtStatusPtr,
+ORT_EXPERIMENTAL_API(22, OrtApi_SomeNewThing, OrtStatusPtr,
     _In_ const OrtSession* session, _Out_ int64_t* result)
 
-ORT_EXPERIMENTAL_FUNC(22, OrtApi_AnotherThing, OrtStatusPtr,
+ORT_EXPERIMENTAL_API(22, OrtApi_AnotherThing, OrtStatusPtr,
     _In_ const OrtEnv* env, _In_ const char* name, _Out_ OrtValue** out)
 ```
 
@@ -116,11 +116,11 @@ namespace.
 // Declare any new, auxiliary opaque types required by the experimental APIs in this header too.
 
 // --- C: function pointer typedefs and name constants ---
-#define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                   \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                   \
   typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_ExpSinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
   static const char* const kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName = #NAME "_ExpSinceV" #VER;
 #include "onnxruntime_experimental_c_api.inc"
-#undef ORT_EXPERIMENTAL_FUNC
+#undef ORT_EXPERIMENTAL_API
 
 // Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
 //   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_SomeNewThing_ExpSinceV22_Fn)(
@@ -133,14 +133,14 @@ namespace Ort {
 namespace Experimental {
 
 // --- C++: typed inline accessors (reuses the C typedefs above) ---
-#define ORT_EXPERIMENTAL_FUNC(VER, NAME, RET, ...)                                                  \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                  \
   inline OrtExperimental_##NAME##_ExpSinceV##VER##_Fn Get_##NAME##_ExpSinceV##VER##_Fn(             \
       const OrtApi* api) {                                                                          \
     return reinterpret_cast<OrtExperimental_##NAME##_ExpSinceV##VER##_Fn>(                          \
         api->GetExperimentalFunction(kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName));           \
   }
 #include "onnxruntime_experimental_c_api.inc"
-#undef ORT_EXPERIMENTAL_FUNC
+#undef ORT_EXPERIMENTAL_API
 
 }  // namespace Experimental
 }  // namespace Ort
@@ -197,10 +197,10 @@ struct ExperimentalEntry {
 };
 
 static const ExperimentalEntry kExperimentalFunctions[] = {
-#define ORT_EXPERIMENTAL_FUNC(VER, NAME, ...) \
+#define ORT_EXPERIMENTAL_API(VER, NAME, ...) \
   { #NAME "_ExpSinceV" #VER, reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_ExpSinceV##VER) },
 #include "onnxruntime_experimental_c_api.inc"
-#undef ORT_EXPERIMENTAL_FUNC
+#undef ORT_EXPERIMENTAL_API
 };
 
 // Lookup implementation
