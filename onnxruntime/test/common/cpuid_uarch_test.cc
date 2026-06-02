@@ -27,6 +27,13 @@ TEST(CpuidUarch, QualcommOryon) {
   EXPECT_EQ(uarch, static_cast<uint32_t>(cpuinfo_uarch_oryon));
 }
 
+TEST(CpuidUarch, QualcommOryonV3) {
+  // Qualcomm Oryon V3: implementer = 'Q' (0x51), part = 0x002
+  uint32_t uarch = cpuinfo_uarch_unknown;
+  decodeMIDR(MakeMIDR('Q', 0x002), &uarch);
+  EXPECT_EQ(uarch, static_cast<uint32_t>(cpuinfo_uarch_oryon_v3));
+}
+
 TEST(CpuidUarch, QualcommFalkor) {
   uint32_t uarch = cpuinfo_uarch_unknown;
   decodeMIDR(MakeMIDR('Q', 0xC00), &uarch);

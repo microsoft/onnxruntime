@@ -106,6 +106,8 @@ enum CPUIDINFOuarch {
   cpuinfo_uarch_saphira = 0x00400104,
   /** Qualcomm Oryon. */
   cpuinfo_uarch_oryon = 0x00400105,
+  /** Qualcomm Oryon V3. */
+  cpuinfo_uarch_oryon_v3 = 0x00400106,
 
   /** Nvidia Denver. */
   cpuinfo_uarch_denver = 0x00500100,

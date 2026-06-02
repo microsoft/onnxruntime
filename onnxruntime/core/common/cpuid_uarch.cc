@@ -116,6 +116,7 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_cortex_a76;
           break;
         case 0xD41: /* Cortex-A78 */
+        case 0xD4B: /* Cortex-A78C */
           *uarch = cpuinfo_uarch_cortex_a78;
           break;
         case 0xD44: /* Cortex-X1 */
@@ -294,6 +295,9 @@ void decodeMIDR(
 #if defined(_M_ARM64) || defined(__aarch64__)
         case 0x001: /* Qualcomm Oryon (Snapdragon X Elite / X Plus) */
           *uarch = cpuinfo_uarch_oryon;
+          break;
+        case 0x002: /* Qualcomm Oryon V3 (Snapdragon 8 Elite) */
+          *uarch = cpuinfo_uarch_oryon_v3;
           break;
         case 0xC00:
           *uarch = cpuinfo_uarch_falkor;
