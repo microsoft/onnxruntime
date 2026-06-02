@@ -638,6 +638,8 @@ TEST(OrtEpLibrary, EpContextDataUtils_PathHelpersRoundTrip) {
   const std::filesystem::path file_path = ep_context_data_utils::Utf8Path(file_name.c_str());
   ASSERT_FALSE(file_path.empty());
   EXPECT_EQ(ep_context_data_utils::PathToUtf8String(file_path), file_name);
+  EXPECT_TRUE(ep_context_data_utils::Utf8Path(nullptr).empty());
+  EXPECT_TRUE(ep_context_data_utils::Utf8Path("").empty());
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {

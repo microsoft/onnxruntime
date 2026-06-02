@@ -395,9 +395,9 @@ static constexpr OrtCompileApi ort_compile_api = {
     // End of Version 24 - DO NOT MODIFY ABOVE
     // End of Version 25 - DO NOT MODIFY ABOVE
     // End of Version 26 - DO NOT MODIFY ABOVE
-    // End of Version 27 - DO NOT MODIFY ABOVE
 
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
+    // End of Version 27 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -407,7 +407,7 @@ static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetOutputModelGetI
               "Size of version 23 of Api cannot change");
 static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetInputModel) / sizeof(void*) == 14,
               "Size of version 24 of Api cannot change");
-static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetInputModel) / sizeof(void*) == 14,
+static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetEpContextDataWriteFunc) / sizeof(void*) == 15,
               "Size of version 27 of Api cannot change");
 
 ORT_API(const OrtCompileApi*, OrtCompileAPI::GetCompileApi) {

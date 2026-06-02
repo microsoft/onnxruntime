@@ -427,6 +427,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextDataWithFileFallback(
             ep->ort_api, ep->ep_api, ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
             ep_context_data));
+        (void)ep_context_data;
       }
 
       // Create EpContextKernel for EPContext nodes - clearly separates from MulKernel

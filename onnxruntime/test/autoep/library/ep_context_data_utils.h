@@ -58,6 +58,10 @@ inline std::string WideToUtf8String(std::wstring_view value) {
 #endif
 
 inline std::filesystem::path Utf8Path(const char* path) {
+  if (path == nullptr || path[0] == '\0') {
+    return {};
+  }
+
 #ifdef _WIN32
   return std::filesystem::path{Utf8ToWideString(path)};
 #else

@@ -1352,12 +1352,12 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
     // End of Version 26 - DO NOT MODIFY ABOVE
-    // End of Version 27 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::SessionOptions_GetEpContextConfig,
     &OrtExecutionProviderApi::ReleaseEpContextConfig,
     &OrtExecutionProviderApi::EpContextConfig_GetEpContextDataReadFunc,
     &OrtExecutionProviderApi::EpContextConfig_GetEpContextDataWriteFunc,
+    // End of Version 27 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1369,7 +1369,7 @@ static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
 static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
               "Size of version 25 API cannot change");
-static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
+static_assert(offsetof(OrtEpApi, EpContextConfig_GetEpContextDataWriteFunc) / sizeof(void*) == 76,
               "Size of version 27 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
