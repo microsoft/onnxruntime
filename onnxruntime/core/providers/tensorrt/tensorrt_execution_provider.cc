@@ -2895,17 +2895,10 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                              "Please use provide an ONNX bytestream to enable refitting the weightless engine."
                              "When providing a bytestream during session initialization, it should also be set as trt_onnx_bytes_stream");
     } else {
-      // check if file path to ONNX is legal
-      if (path_check && IsAbsolutePath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "For security purpose, the ONNX model path should be set with "
-                               "a relative path, but it is an absolute path: " +
-                                   onnx_model_path.string());
-      }
-      if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "The ONNX model path has '..'. For security purpose, it's not "
-                               "allowed to point outside the directory.");
+      // Validate that the ONNX model path does not escape the model directory.
+      if (path_check && !onnx_model_filename.empty()) {
+        ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
+            std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
 
       if (!(std::filesystem::exists(onnx_model_path) && std::filesystem::is_regular_file(onnx_model_path))) {

@@ -2361,9 +2361,15 @@ TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
 }
 
 namespace {
-// int64 -> Cast(bool) -> Cast(float); the first Cast is fed directly by a graph
-// input (no preceding node). Used by the NeuralNetwork negative test below.
-std::string MakeCastBoolModelData() {
+// int64 -> Cast(bool) -> Cast(float) [-> Sqrt]; the first Cast is fed directly
+// by a graph input (no preceding node).
+//
+// append_nontrivial=false gives the all-Cast graph used by the NeuralNetwork
+// negative test below. append_nontrivial=true appends a Sqrt: a CoreML partition
+// made up only of trivial ops (Cast is marked trivial) is dropped, so the extra
+// non-trivial op keeps the partition and lets the test below assert the bool
+// Casts are claimed.
+std::string MakeCastBoolModelData(bool append_nontrivial = false) {
   onnxruntime::Model model("cast_bool_test", false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
@@ -2385,6 +2391,11 @@ std::string MakeCastBoolModelData() {
   to_bool.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BOOL));
   auto& to_float = graph.AddNode("cast_to_float", "Cast", "bool -> float", {&b}, {&y});
   to_float.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  if (append_nontrivial) {
+    auto& z = graph.GetOrCreateNodeArg("Z", &float_type);
+    graph.AddNode("sqrt", "Sqrt", "float -> float", {&y}, {&z});
+  }
 
   ORT_THROW_IF_ERROR(graph.Resolve());
   std::string model_data;
@@ -2426,6 +2437,17 @@ TEST(CoreMLExecutionProviderTest, CastNonArgMaxNeuralNetworkNotSupported) {
   gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
                                         model_data.size()};
   TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
+// Load-time partition check on the ML Program path: confirms the EP claims both
+// bool Casts. A non-trivial Sqrt is appended so the partition isn't dropped as
+// all-trivial (see MakeCastBoolModelData); all three nodes -- both Casts and the
+// Sqrt -- must land on CoreML.
+TEST(CoreMLExecutionProviderTest, CastBoolMLProgramPartition) {
+  const std::string model_data = MakeCastBoolModelData(/*append_nontrivial=*/true);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
 }
 
 namespace {
