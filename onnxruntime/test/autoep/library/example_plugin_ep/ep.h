@@ -63,6 +63,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
     bool enable_ep_context = false;
     bool embed_ep_context_in_model = true;
     bool enable_weightless_ep_context_nodes = false;
+    std::string ep_context_output_model_path;
     // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
   };
 

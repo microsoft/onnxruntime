@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -539,9 +540,21 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
       std::string ep_ctx = config_.embed_ep_context_in_model ? "binary_data" : fused_node_name + ".ctx";
       if (!config_.embed_ep_context_in_model) {
         const std::string ep_context_data = "binary_data";
+        std::string fallback_ep_ctx = ep_ctx;
+        const OrtGraph* fallback_graph = graph;
+        if (!config_.ep_context_output_model_path.empty()) {
+          const std::filesystem::path output_model_path =
+              ep_context_data_utils::Utf8Path(config_.ep_context_output_model_path.c_str());
+          const std::filesystem::path output_model_dir = output_model_path.parent_path();
+          if (!output_model_dir.empty()) {
+            fallback_ep_ctx = ep_context_data_utils::PathToUtf8String(
+                output_model_dir / ep_context_data_utils::Utf8Path(ep_ctx.c_str()));
+          }
+          fallback_graph = nullptr;
+        }
         RETURN_IF_ERROR(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-            ort_api, ep_api, ep_context_config_, ep_ctx.c_str(), graph, ep_context_data.data(),
-            ep_context_data.size()));
+            ort_api, ep_api, ep_context_config_, ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
+            ep_context_data.data(), ep_context_data.size()));
       }
       attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),
                                   ORT_OP_ATTR_STRING);

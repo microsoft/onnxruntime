@@ -220,17 +220,21 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
   std::string ep_context_enable;
   std::string ep_context_embed_mode;
+  std::string ep_context_output_model_path;
   std::string weightless_ep_context_nodes_enable;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "1",
                                                  ep_context_embed_mode));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextFilePath, "",
+                                                 ep_context_output_model_path));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
                                                  "0", weightless_ep_context_nodes_enable));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
   config.embed_ep_context_in_model = ep_context_embed_mode != "0";
+  config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
   OrtEpContextConfig* ep_context_config_raw = nullptr;

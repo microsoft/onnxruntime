@@ -203,7 +203,8 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(const OrtApi& api, const Ort
 
 inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const OrtEpApi& ep_api,
                                                      const OrtEpContextConfig* ep_context_config,
-                                                     const char* file_name, const OrtGraph* graph,
+                                                     const char* file_name, const char* fallback_file_name,
+                                                     const OrtGraph* graph,
                                                      const void* buffer, size_t buffer_size) {
   if (file_name == nullptr || file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
@@ -223,7 +224,19 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const Or
     return write_func(write_state, file_name, buffer, buffer_size);
   }
 
-  return WriteEpContextDataToFile(api, file_name, graph, buffer, buffer_size);
+  if (fallback_file_name == nullptr || fallback_file_name[0] == '\0') {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data fallback file name must not be empty");
+  }
+
+  return WriteEpContextDataToFile(api, fallback_file_name, graph, buffer, buffer_size);
+}
+
+inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const OrtEpApi& ep_api,
+                                                     const OrtEpContextConfig* ep_context_config,
+                                                     const char* file_name, const OrtGraph* graph,
+                                                     const void* buffer, size_t buffer_size) {
+  return WriteEpContextDataWithFileFallback(api, ep_api, ep_context_config, file_name, file_name, graph, buffer,
+                                            buffer_size);
 }
 
 }  // namespace ep_context_data_utils
