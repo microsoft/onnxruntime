@@ -194,11 +194,45 @@ TEST(MathOpTest, MatMulFloatTypeFastMathKTailDoesNotReadPaddedA) {
     std::vector<float> expected_vals(N, std::accumulate(input0_vals.begin(), input0_vals.end(), 0.0f));
     test.AddOutput<float>("Y", {M, N}, expected_vals);
 
-    Model& model = test.BuildModel();
-    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    ONNX_NAMESPACE::ModelProto model;
+    model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model.add_opset_import()->set_version(7);
+
+    auto* graph = model.mutable_graph();
+    graph->set_name("MatMulKTailGraph");
+
+    auto* input = graph->add_input();
+    input->set_name("A");
+    auto* input_tensor_type = input->mutable_type()->mutable_tensor_type();
+    input_tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    input_tensor_type->mutable_shape()->add_dim()->set_dim_value(M);
+    input_tensor_type->mutable_shape()->add_dim()->set_dim_value(K);
+
+    auto* output = graph->add_output();
+    output->set_name("Y");
+    auto* output_tensor_type = output->mutable_type()->mutable_tensor_type();
+    output_tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    output_tensor_type->mutable_shape()->add_dim()->set_dim_value(M);
+    output_tensor_type->mutable_shape()->add_dim()->set_dim_value(N);
+
+    auto* b_initializer = graph->add_initializer();
+    b_initializer->set_name("B");
+    b_initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    b_initializer->add_dims(K);
+    b_initializer->add_dims(N);
+    for (float value : input1_vals) {
+      b_initializer->add_float_data(value);
+    }
+
+    auto* matmul_node = graph->add_node();
+    matmul_node->set_name("MatMulKTail");
+    matmul_node->set_op_type("MatMul");
+    matmul_node->add_input("A");
+    matmul_node->add_input("B");
+    matmul_node->add_output("Y");
 
     std::string serialized_model;
-    ASSERT_TRUE(model.ToProto().SerializeToString(&serialized_model));
+    ASSERT_TRUE(model.SerializeToString(&serialized_model));
 
     SessionOptions so;
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
