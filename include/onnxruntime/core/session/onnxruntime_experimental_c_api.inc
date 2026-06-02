@@ -25,5 +25,10 @@
 //   - Promoting to stable: Move the function to the stable OrtApi struct (append-only, drop the
 //     _ExpSinceV<SinceVersion> suffix). Delete the experimental entry.
 
-// Test-only experimental function that exercises the lookup mechanism end-to-end.
+/** \brief Test-only experimental function that exercises the lookup mechanism end-to-end.
+ *
+ * \param[out] out The output of this function, the value 12345.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ */
 ORT_EXPERIMENTAL_API(27, OrtApi_ExperimentalApiTest, OrtStatusPtr, _Out_ int64_t* out)
