@@ -301,8 +301,6 @@ class MoeGemmRunner {
   std::vector<cutlass_extensions::CutlassGemmConfig> getConfigs() const;
   static std::vector<cutlass_extensions::CutlassGemmConfig> getConfigs(int sm);
   static std::vector<cutlass_extensions::CutlassGemmConfig> getTmaWarpSpecializedConfigs(int sm);
-  static std::vector<cutlass_extensions::CutlassGemmConfig> getBlackwellConfigs(int sm);
-  static std::vector<cutlass_extensions::CutlassGemmConfig> getHopperConfigs(int sm);
   static std::vector<cutlass_extensions::CutlassGemmConfig> getAmpereConfigs(int sm);
 
   [[nodiscard]] bool isTmaWarpSpecialized(cutlass_extensions::CutlassGemmConfig gemm_config) const;

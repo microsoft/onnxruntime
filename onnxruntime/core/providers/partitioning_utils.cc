@@ -289,34 +289,31 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
                                                          const GenerateMetadefNameFn& generate_metadef_name,
                                                          const std::string& execution_provider_name,
                                                          bool drop_constant_initializers) {
-  std::unordered_set<const Node*> node_set;
+  InlinedHashSet<const Node*> node_set;
   node_set.reserve(group.size());
   node_set.insert(group.cbegin(), group.cend());
 
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
-  std::unordered_set<const NodeArg*> node_outputs;
-  std::unordered_set<const NodeArg*> subgraph_inputs;
-  std::unordered_set<const NodeArg*> subgraph_outputs;
-  std::vector<const NodeArg*> ordered_subgraph_inputs;
-  std::vector<const NodeArg*> ordered_subgraph_outputs;
+  InlinedHashSet<const NodeArg*> node_outputs;
+  InlinedHashSet<const NodeArg*> subgraph_inputs;
+  InlinedHashSet<const NodeArg*> subgraph_outputs;
+  InlinedVector<const NodeArg*> ordered_subgraph_inputs;
+  InlinedVector<const NodeArg*> ordered_subgraph_outputs;
 
   const auto& graph_output_list = graph_viewer.GetOutputs();
-  std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
+  InlinedHashSet<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
 
   for (const Node* node : group) {
     sub_graph->nodes.push_back(node->Index());
 
-    // Collect boundary inputs from a def container, skipping placeholders and
-    // values already produced inside the partition; preserves first-seen order.
     auto collect_boundary_inputs = [&](const auto& defs) {
       for (const auto* input : defs) {
         if (!input->Exists()) {
           continue;
         }
         if (!Contains(node_outputs, input)) {
-          if (!Contains(subgraph_inputs, input)) {
-            subgraph_inputs.insert(input);
+          if (subgraph_inputs.insert(input).second) {
             ordered_subgraph_inputs.push_back(input);
           }
         }
@@ -333,7 +330,9 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     // the captures at the fused-node boundary and cannot resolve them at
     // Compute time. Running this after the explicit loop preserves
     // explicit-operand index ordering in meta_def->inputs.
-    collect_boundary_inputs(node->ImplicitInputDefs());
+    if (node->ContainsSubgraph()) {
+      collect_boundary_inputs(node->ImplicitInputDefs());
+    }
 
     const auto& output_defs = node->OutputDefs();
     for (const auto* output_def : output_defs) {
@@ -349,8 +348,7 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
       if (!Contains(node_set, &it->GetNode())) {
         const auto* output_def = output_defs[it->GetSrcArgIndex()];
-        if (!Contains(subgraph_outputs, output_def) && !Contains(graph_outputs, output_def)) {
-          subgraph_outputs.insert(output_def);
+        if (!Contains(graph_outputs, output_def) && subgraph_outputs.insert(output_def).second) {
           ordered_subgraph_outputs.push_back(output_def);
         }
       }

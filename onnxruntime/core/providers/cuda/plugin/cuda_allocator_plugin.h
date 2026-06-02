@@ -11,9 +11,11 @@
 #include "cuda_plugin_utils.h"
 
 #include <algorithm>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -100,6 +102,33 @@ class CudaDeviceAllocator final : public CudaAllocatorBase {
   static void* ORT_API_CALL ReserveImpl(OrtAllocator* this_ptr, size_t size) noexcept;
 
   int device_id_;
+};
+
+/// CUDA device memory allocator using external user-provided function pointers.
+/// Delegates alloc/free/empty_cache to the caller-supplied callbacks.
+/// Lifetime is managed by the EP factory (ReleaseAllocatorImpl), not by a Release callback.
+class CudaExternalDeviceAllocator final : public CudaAllocatorBase {
+  typedef void* (*ExternalAlloc)(size_t size);
+  typedef void (*ExternalFree)(void* p);
+  typedef void (*ExternalEmptyCache)();
+
+ public:
+  CudaExternalDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id,
+                              void* alloc_fn, void* free_fn, void* empty_cache_fn);
+  ~CudaExternalDeviceAllocator() = default;
+
+ private:
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* this_ptr, size_t size) noexcept;
+  static void ORT_API_CALL FreeImpl(OrtAllocator* this_ptr, void* p) noexcept;
+  static const OrtMemoryInfo* ORT_API_CALL InfoImpl(const OrtAllocator* this_ptr) noexcept;
+  static void* ORT_API_CALL ReserveImpl(OrtAllocator* this_ptr, size_t size) noexcept;
+
+  int device_id_;
+  ExternalAlloc alloc_fn_;
+  ExternalFree free_fn_;
+  ExternalEmptyCache empty_cache_fn_;
+  mutable std::mutex lock_;
+  std::unordered_set<void*> reserved_;
 };
 
 /// CUDA pinned (host) memory allocator using cudaHostAlloc/cudaFreeHost.

@@ -47,6 +47,7 @@ struct TestOptions8Bits {
   int64_t accuracy_level{0};
 
   bool has_zero_point{false};
+  bool zp_is_typed{false};  // true: zero_points use same type as scales (T); false: uint8
   bool has_g_idx{false};
   bool has_bias{false};
 
@@ -59,6 +60,7 @@ struct TestOptions8Bits {
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
+            << ", zp_is_typed:" << opts.zp_is_typed
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias;
 }
@@ -167,7 +169,23 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   }
 
   if (opts.has_zero_point) {
-    test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
+    if (opts.zp_is_typed) {
+      // T-typed zero points: convert uint8 zp to float then to T1
+      std::vector<float> zp_f;
+      zp_f.reserve(q_zp_size_in_bytes);
+      for (size_t i = 0; i < zp.size(); i++) {
+        zp_f.push_back(static_cast<float>(zp[i]));
+      }
+      if constexpr (std::is_same_v<T1, float>) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp_f, true);
+      } else if constexpr (std::is_same_v<T1, MLFloat16>) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, FloatsToMLFloat16s(zp_f), true);
+      } else if constexpr (std::is_same_v<T1, BFloat16>) {
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, FloatsToBFloat16s(zp_f), true);
+      }
+    } else {
+      test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
+    }
   } else {
     test.AddOptionalInputEdge<uint8_t>();
   }
@@ -523,6 +541,133 @@ TEST(MatMulNBits, BFloat16_Int8_Gemm_Cuda) {
   TestMatMul8BitsTyped<BFloat16, 32, 512, 512, 64>(abs_error, rel_error);
   TestMatMul8BitsTyped<BFloat16, 1, 256, 256, 128>(abs_error, rel_error);
   TestMatMul8BitsTyped<BFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
+}
+
+// Chunked dequant+GEMM path tests for INT8.
+// Force the chunked path with a small chunk size to exercise per-chunk pointer
+// arithmetic (blob, scales, zero_points offsets) and strided cuBLAS output
+// with manageable tensor sizes.
+
+TEST(MatMulNBits, Fp16_Int8_Chunked_Uint8ZeroPoint) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = false;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<MLFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<MLFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int8_Chunked_Fp16ZeroPoint) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = true;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<MLFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<MLFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int8_Chunked_NoZeroPoint) {
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = false;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<MLFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<MLFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int8_Chunked_Uint8ZeroPoint) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = false;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<BFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<BFloat16>(opts);
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int8_Chunked_BFloat16ZeroPoint) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr float rel_error = 0.02f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    TestOptions8Bits opts{};
+    opts.M = 1, opts.N = 256, opts.K = 1024;
+    opts.block_size = block_size;
+    opts.has_zero_point = true;
+    opts.zp_is_typed = true;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = rel_error;
+    RunTest8Bits<BFloat16>(opts);
+
+    opts.M = 2;
+    RunTest8Bits<BFloat16>(opts);
+  }
 }
 #endif
 
