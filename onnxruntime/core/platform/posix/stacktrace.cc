@@ -157,7 +157,10 @@ inline int GetAddr2LineEnv() {
   }
   char* end = nullptr;
   long parsed = strtol(val, &end, 10);
-  if (end == val || parsed < 0 || parsed > INT_MAX) {
+  // Reject empty input and any value with trailing non-numeric characters
+  // (e.g. "10foo"), so a malformed setting disables resolution rather than
+  // silently using a partially parsed number.
+  if (end == val || *end != '\0' || parsed < 0 || parsed > INT_MAX) {
     return 0;
   }
   return static_cast<int>(parsed);
@@ -202,13 +205,19 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
   for (int i = 0; i < depth; ++i) {
     Dl_info info;
     if (dladdr(addresses[i], &info) && info.dli_fname) {
+      const uintptr_t addr = reinterpret_cast<uintptr_t>(addresses[i]);
+      const uintptr_t base = reinterpret_cast<uintptr_t>(info.dli_fbase);
+      // Skip frames whose address is at or below the module base. Subtracting
+      // below would underflow uintptr_t and feed a garbage offset to addr2line.
+      if (addr <= base) {
+        continue;
+      }
       // Each captured address is a return address pointing just past the call
       // instruction. Subtract 1 so addr2line resolves the call site itself
       // rather than the following statement (which may be a different source
       // line or even the next function). The map is still keyed by the original
       // address so it matches the absl::Symbolize lookup in GetStackTrace.
-      uintptr_t offset = reinterpret_cast<uintptr_t>(addresses[i]) - 1 -
-                         reinterpret_cast<uintptr_t>(info.dli_fbase);
+      uintptr_t offset = addr - 1 - base;
       groups[info.dli_fname].push_back({addresses[i], offset});
     }
   }
@@ -261,9 +270,10 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
     // Close the write end in the parent so we observe EOF once addr2line exits.
     write_fd.Reset();
 
-    // posix_spawnp fails only when the child cannot be created. A missing
-    // addr2line still spawns but the child exits 127; that is handled by the
-    // ExitedCleanly() check below, which discards any output on failure.
+    // If addr2line cannot be executed (e.g. not installed), glibc posix_spawnp
+    // reports the failure here with a non-zero return (ENOENT) and no child is
+    // created. Some implementations instead spawn a child that exits 127; that
+    // case is caught by the ExitedCleanly() check below, which discards output.
     if (spawn_ret != 0) continue;
     ScopedChild child(pid);
 

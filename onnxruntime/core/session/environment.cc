@@ -60,7 +60,7 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
-#if !defined(NDEBUG) && !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
 #include "absl/debugging/symbolize.h"
 #endif
 
@@ -274,8 +274,11 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
   }
 
   // Initialize abseil symbolizer for readable stack traces in debug builds.
-  // Windows uses C++23 <stacktrace> instead, so skip abseil symbolizer there.
-#if !defined(NDEBUG) && !defined(_WIN32) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+  // Restricted to Linux: InitializeSymbolizer(nullptr) relies on /proc/self/exe
+  // to locate the executable, which is Linux-specific. Other platforms either
+  // use a different mechanism (Windows: C++23 <stacktrace>) or would need a real
+  // argv[0] path plumbed through, which is out of scope for this debug helper.
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
   std::call_once(symbolizerInitOnceFlag, []() {
     absl::InitializeSymbolizer(nullptr);
   });
