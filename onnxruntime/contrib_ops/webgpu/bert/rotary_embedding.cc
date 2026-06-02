@@ -22,6 +22,12 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
+  // Conditionally declare position_ids BEFORE cos_cache/sin_cache so the input order matches
+  // the caller's AddInputs order: [input, position_ids, cos_cache, sin_cache] for the legacy path.
+  const ShaderVariableHelper* position_ids_ptr = nullptr;
+  if (!use_position_offset_) {
+    position_ids_ptr = &shader.AddInput("position_ids", ShaderUsage::UseUniform);
+  }
   const auto& cos_cache = shader.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
@@ -53,7 +59,7 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  }";
   } else {
     // Original path: inputs are [input, position_ids, cos_cache, sin_cache].
-    const auto& position_ids = shader.AddInput("position_ids", ShaderUsage::UseUniform);
+    const auto& position_ids = *position_ids_ptr;
     // TODO: remove output_indices.
     const auto& output_indices = shader.AddIndices("output_indices", ShaderUsage::None);
     shader.MainFunctionBody() << "  let half_rotary_emb_dim = uniforms.cos_cache_shape[1];\n"
