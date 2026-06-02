@@ -402,31 +402,20 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
       // Per ONNX spec: empty-set max yields -inf if supported, else lowest value.
       CudaT fill_val;
       if constexpr (std::numeric_limits<T>::has_infinity) {
-        // For float/double: negate via arithmetic. For MLFloat16/BFloat16: use Negate().
-        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
-          T neg_inf = -std::numeric_limits<T>::infinity();
-          memcpy(&fill_val, &neg_inf, sizeof(fill_val));
-        } else {
-          T neg_inf = std::numeric_limits<T>::infinity().Negate();
-          memcpy(&fill_val, &neg_inf, sizeof(fill_val));
-        }
+        fill_val = ToCudaType<T>::FromFloat(-std::numeric_limits<float>::infinity());
       } else {
-        T lowest_val = std::numeric_limits<T>::lowest();
-        memcpy(&fill_val, &lowest_val, sizeof(fill_val));
+        // For integer types, CudaT == T.
+        fill_val = static_cast<CudaT>(std::numeric_limits<T>::lowest());
       }
-      static_assert(sizeof(CudaT) == sizeof(T), "CudaT and T must have same size");
       Fill(stream, output_data, fill_val, output_count);
     } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {
       // Per ONNX spec: empty-set min yields +inf if supported, else max value.
       CudaT fill_val;
       if constexpr (std::numeric_limits<T>::has_infinity) {
-        T pos_inf = std::numeric_limits<T>::infinity();
-        memcpy(&fill_val, &pos_inf, sizeof(fill_val));
+        fill_val = ToCudaType<T>::FromFloat(std::numeric_limits<float>::infinity());
       } else {
-        T max_val = std::numeric_limits<T>::max();
-        memcpy(&fill_val, &max_val, sizeof(fill_val));
+        fill_val = static_cast<CudaT>(std::numeric_limits<T>::max());
       }
-      static_assert(sizeof(CudaT) == sizeof(T), "CudaT and T must have same size");
       Fill(stream, output_data, fill_val, output_count);
     } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {
       // Identity for product is 1
@@ -843,14 +832,10 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       /* Empty-set reduction with non-empty output: fill with identity values per ONNX spec. */                           \
       auto* output_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());                                                  \
       if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {                                                                   \
-        T lowest_val = std::numeric_limits<T>::lowest();                                                                  \
-        CudaT fill_val;                                                                                                   \
-        memcpy(&fill_val, &lowest_val, sizeof(fill_val));                                                                 \
+        CudaT fill_val = static_cast<CudaT>(std::numeric_limits<T>::lowest());                                            \
         Fill(Stream(ctx), output_data, fill_val, output_count);                                                           \
       } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {                                                            \
-        T max_val = std::numeric_limits<T>::max();                                                                        \
-        CudaT fill_val;                                                                                                   \
-        memcpy(&fill_val, &max_val, sizeof(fill_val));                                                                    \
+        CudaT fill_val = static_cast<CudaT>(std::numeric_limits<T>::max());                                               \
         Fill(Stream(ctx), output_data, fill_val, output_count);                                                           \
       } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {                                                            \
         CudaT one_val = static_cast<CudaT>(1);                                                                            \
