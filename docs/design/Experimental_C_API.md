@@ -116,7 +116,7 @@ namespace.
 // Declare any new, auxiliary opaque types required by the experimental APIs in this header too.
 
 // --- C: function pointer typedefs and name constants ---
-#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                   \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                    \
   typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_ExpSinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
   static const char* const kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName = #NAME "_ExpSinceV" #VER;
 #include "onnxruntime_experimental_c_api.inc"
@@ -133,7 +133,7 @@ namespace Ort {
 namespace Experimental {
 
 // --- C++: typed inline accessors (reuses the C typedefs above) ---
-#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                  \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                   \
   inline OrtExperimental_##NAME##_ExpSinceV##VER##_Fn Get_##NAME##_ExpSinceV##VER##_Fn(             \
       const OrtApi* api) {                                                                          \
     return reinterpret_cast<OrtExperimental_##NAME##_ExpSinceV##VER##_Fn>(                          \
