@@ -310,16 +310,17 @@ class MlasConv2DTest : public MlasTestBase {
       return;
     }
 
-    // KleidiAI Conv caches LHS indirection tables by the per-thread padding
-    // buffer address. Grow the padding buffer, then reuse the original shape so
-    // stale pad pointers in the old cache entry would corrupt the result.
+    // Regression test for https://github.com/microsoft/onnxruntime/issues/26669.
+    // Run a smaller-CI shape to populate the KleidiAI LHS indirection cache,
+    // then a larger-CI shape to grow the per-thread pad buffer, then the
+    // smaller-CI shape again. If the cache entry is reused without accounting
+    // for the changed pad pointer, the final result can be corrupted.
+    // Repeat a few times to increase the likelihood of triggering a reallocation.
     for (int i = 0; i < 4; ++i) {
       Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
       Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
       Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
     }
-#else
-    return;
 #endif
   }
 
