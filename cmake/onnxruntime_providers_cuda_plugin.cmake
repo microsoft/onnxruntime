@@ -172,10 +172,12 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>"
         # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
         "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
         # /permissive disables C++ alternative tokens (or, and, not, etc.).
@@ -228,6 +230,7 @@ if (MSVC)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 endif()
@@ -241,9 +244,11 @@ if(ORT_HAS_SM90_OR_LATER)
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
     "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
-  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+  if(NOT MSVC)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+  endif()
 endif()
-if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG AND NOT MSVC)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
 endif()
 
@@ -370,6 +375,9 @@ onnxruntime_add_include_to_target(
     ${PROTOBUF_LIB}
     flatbuffers::flatbuffers
 )
+
+# Ensure generated headers (e.g. onnx-ml.pb.h) are available before compiling.
+add_dependencies(onnxruntime_providers_cuda_plugin ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 # Link libraries
 target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE

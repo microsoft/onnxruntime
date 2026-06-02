@@ -413,6 +413,9 @@ class NvExecutionProvider : public IExecutionProvider {
 
   // For create/dump EP context node model
   bool dump_ep_context_model_ = false;
+  // Set when the EP is instantiated by OrtCompileAPI::CompileModel(). Causes
+  // CreateNodeComputeInfoFromGraph to skip GPU deserialization and context creation.
+  bool compile_only_mode_ = false;
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
   std::string ctx_model_path_;

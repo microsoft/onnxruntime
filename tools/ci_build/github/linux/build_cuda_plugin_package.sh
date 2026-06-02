@@ -55,7 +55,7 @@ docker run --rm \
         --config ${BUILD_CONFIG} \
         --skip_submodule_sync \
         --parallel \
-        --nvcc_threads 2 \
+        --nvcc_threads 1 \
         --flash_nvcc_threads 1 \
         --use_binskim_compliant_compile_flags \
         --use_cuda \
