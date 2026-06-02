@@ -27,11 +27,11 @@ import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import helper
+from onnxruntime.capi import _pybind_state as _pybind
 from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
-from onnxruntime.capi import _pybind_state as _pybind
 
 try:
     from onnx import TensorProto
@@ -2067,6 +2067,221 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
         print("- tok/s: Tokens per second throughput (higher is better)")
         print("- Time Gain: ORT speedup for latency (higher is better)")
         print("- Throughput: ORT throughput improvement (higher is better)")
+
+
+# ============================================================================
+# QMoE integer-weight PrePack parity test.
+#
+# Validates the PrePack hook added in PR #28749: with `quant_type="int"`, the
+# QMoE op should be able to consume raw quantized weights — shape
+# `[E, N, K/(8/bits)]` as produced by `quantize_matmul_{4,8}bits` —
+# and internally run the CUTLASS fpA_intB layout transform that callers
+# previously had to do offline via `pack_weights_for_cuda_mixed_gemm`.
+#
+# Strategy: build two ONNX graphs that differ only in whether the weight
+# initializer is pre-prepacked or raw. Both go through ORT's CUDA QMoE
+# kernel. With the PrePack hook in place, the raw-weight graph's output
+# should be bit-identical to the offline-prepacked graph's output.
+# ============================================================================
+
+
+def _make_qmoe_initializer(name, np_array, onnx_type, shape):
+    """Wrap a raw-bytes initializer with the requested shape, preserving the
+    exact memory layout of the numpy array."""
+    arr = numpy.ascontiguousarray(np_array)
+    return helper.make_tensor(name, onnx_type, shape, arr.tobytes(), raw=True)
+
+
+def _build_qmoe_only_graph(
+    *,
+    hidden_size,
+    inter_size,
+    num_experts,
+    top_k,
+    fc1_weight_bytes,
+    fc1_weight_shape,
+    fc2_weight_bytes,
+    fc2_weight_shape,
+    fc1_scales,
+    fc2_scales,
+    onnx_dtype,
+    swiglu_fusion,
+    use_swiglu,
+):
+    """Build a tiny single-node QMoE graph from caller-supplied weight bytes.
+
+    The caller controls whether the weight bytes are raw (post-quantize,
+    pre-prepack) or pre-prepacked; the test uses this to exercise both
+    paths through identical scaffolding.
+    """
+    if not has_onnx:
+        return None
+    fc1_init = _make_qmoe_initializer("fc1_W", fc1_weight_bytes, TensorProto.UINT8, fc1_weight_shape)
+    fc2_init = _make_qmoe_initializer("fc2_W", fc2_weight_bytes, TensorProto.UINT8, fc2_weight_shape)
+
+    torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+    scale_t = torch_dtype  # fp16 / bf16 / float
+    fc1_scale_init = helper.make_tensor(
+        "fc1_S",
+        onnx_dtype,
+        list(fc1_scales.shape),
+        fc1_scales.to(scale_t).flatten().detach().cpu().tolist(),
+    )
+    fc2_scale_init = helper.make_tensor(
+        "fc2_S",
+        onnx_dtype,
+        list(fc2_scales.shape),
+        fc2_scales.to(scale_t).flatten().detach().cpu().tolist(),
+    )
+
+    qmoe = helper.make_node(
+        "QMoE",
+        inputs=["x", "router", "fc1_W", "fc1_S", "", "", "fc2_W", "fc2_S", "", ""],
+        outputs=["y"],
+        name="qmoe",
+        domain="com.microsoft",
+        k=top_k,
+        normalize_routing_weights=1,
+        activation_type="swiglu" if use_swiglu else "silu",
+        swiglu_fusion=swiglu_fusion,
+        expert_weight_bits=4,
+        quant_type="int",
+    )
+    x_in = helper.make_tensor_value_info("x", onnx_dtype, [None, hidden_size])
+    r_in = helper.make_tensor_value_info("router", onnx_dtype, [None, num_experts])
+    y_out = helper.make_tensor_value_info("y", onnx_dtype, [None, hidden_size])
+
+    graph = helper.make_graph(
+        nodes=[qmoe],
+        name="qmoe_only",
+        inputs=[x_in, r_in],
+        outputs=[y_out],
+        initializer=[fc1_init, fc2_init, fc1_scale_init, fc2_scale_init],
+    )
+    model = helper.make_model(
+        graph,
+        opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)],
+    )
+    model.ir_version = 10
+    return model.SerializeToString()
+
+
+@unittest.skipUnless(torch.cuda.is_available(), "QMoE PrePack parity requires CUDA")
+class TestQMoEIntPrePackParity(unittest.TestCase):
+    """Bit-parity test for the QMoE int4 PrePack hook (issue #28748 / PR #28749).
+
+    Builds two graphs over the same per-expert quantized weights:
+
+    - **Raw path**: writes the un-prepacked ``[E, N, K/2]`` bytes straight
+      from ``quantize_matmul_4bits`` into the initializer. Exercises
+      ``QMoE::PrePackIntExpertWeights``.
+    - **Pre-prepacked path**: applies ``pack_weights_for_cuda_mixed_gemm``
+      to each expert before writing the initializer. This is what
+      existing offline tooling (and the rest of ``test_qmoe_cuda.py``) does.
+
+    The kernel is the same; only the weight bytes differ. With the
+    PrePack hook in place the runner sees the same prepacked bytes
+    either way, so outputs should agree to within fp16 rounding.
+    """
+
+    def _run_one(self, *, hidden_size, inter_size, num_experts, top_k, swiglu_fusion, batch_size):
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+
+        onnx_dtype = TensorProto.FLOAT16
+        use_swiglu = True
+        # fc1 packs gate+up along the N axis when use_swiglu=True.
+        fc1_n = 2 * inter_size if use_swiglu else inter_size
+        fc1_k = hidden_size
+        fc2_n = hidden_size
+        fc2_k = inter_size
+
+        raw_fc1 = numpy.zeros((num_experts, fc1_n, fc1_k // 2), dtype=numpy.uint8)
+        raw_fc2 = numpy.zeros((num_experts, fc2_n, fc2_k // 2), dtype=numpy.uint8)
+        prepacked_fc1 = numpy.zeros((num_experts, fc1_k, fc1_n // 2), dtype=numpy.uint8)
+        prepacked_fc2 = numpy.zeros((num_experts, fc2_k, fc2_n // 2), dtype=numpy.uint8)
+        fc1_scales = torch.zeros(num_experts, fc1_n, dtype=torch.float16)
+        fc2_scales = torch.zeros(num_experts, fc2_n, dtype=torch.float16)
+
+        for e in range(num_experts):
+            w1 = (torch.randn(fc1_n, fc1_k) * 0.05).to(torch.float16)
+            w2 = (torch.randn(fc2_n, fc2_k) * 0.05).to(torch.float16)
+            # quant_dequant_blockwise with block_size = K → per-row scales.
+            s1, packed1, _, _ = quant_dequant_blockwise(w1, fc1_k, is_4_bit_quantization=True, asymmetric=False)
+            s2, packed2, _, _ = quant_dequant_blockwise(w2, fc2_k, is_4_bit_quantization=True, asymmetric=False)
+            # The harness returns prepacked weights in (K, N/2) layout.
+            prepacked_fc1[e] = packed1.cpu().numpy()
+            prepacked_fc2[e] = packed2.cpu().numpy()
+            fc1_scales[e] = s1.squeeze(-1) if s1.dim() == 2 else s1.flatten()
+            fc2_scales[e] = s2.squeeze(-1) if s2.dim() == 2 else s2.flatten()
+            # Re-quantize w1/w2 in raw (un-prepacked) form for the new code path.
+            w1_t = numpy.ascontiguousarray(w1.T.detach().cpu().numpy())
+            w2_t = numpy.ascontiguousarray(w2.T.detach().cpu().numpy())
+            qw1 = numpy.zeros((fc1_n, 1, fc1_k // 2), dtype=numpy.uint8)
+            qw2 = numpy.zeros((fc2_n, 1, fc2_k // 2), dtype=numpy.uint8)
+            sc1 = numpy.zeros((fc1_n, 1), dtype=numpy.float32)
+            sc2 = numpy.zeros((fc2_n, 1), dtype=numpy.float32)
+            zp1 = numpy.zeros((fc1_n, 1), dtype=numpy.uint8)
+            zp2 = numpy.zeros((fc2_n, 1), dtype=numpy.uint8)
+            _pybind.quantize_matmul_4bits(qw1, w1_t, sc1, zp1, fc1_k, fc1_n, fc1_k, True)
+            _pybind.quantize_matmul_4bits(qw2, w2_t, sc2, zp2, fc2_k, fc2_n, fc2_k, True)
+            raw_fc1[e] = qw1.reshape(fc1_n, fc1_k // 2)
+            raw_fc2[e] = qw2.reshape(fc2_n, fc2_k // 2)
+
+        # Build both graphs.
+        raw_model = _build_qmoe_only_graph(
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            fc1_weight_bytes=raw_fc1,
+            fc1_weight_shape=[num_experts, fc1_n, fc1_k // 2],
+            fc2_weight_bytes=raw_fc2,
+            fc2_weight_shape=[num_experts, fc2_n, fc2_k // 2],
+            fc1_scales=fc1_scales,
+            fc2_scales=fc2_scales,
+            onnx_dtype=onnx_dtype,
+            swiglu_fusion=swiglu_fusion,
+            use_swiglu=use_swiglu,
+        )
+        prepacked_model = _build_qmoe_only_graph(
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            fc1_weight_bytes=prepacked_fc1,
+            fc1_weight_shape=[num_experts, fc1_k, fc1_n // 2],
+            fc2_weight_bytes=prepacked_fc2,
+            fc2_weight_shape=[num_experts, fc2_k, fc2_n // 2],
+            fc1_scales=fc1_scales,
+            fc2_scales=fc2_scales,
+            onnx_dtype=onnx_dtype,
+            swiglu_fusion=swiglu_fusion,
+            use_swiglu=use_swiglu,
+        )
+
+        sess_raw = onnxruntime.InferenceSession(raw_model, providers=ort_provider)
+        sess_prepacked = onnxruntime.InferenceSession(prepacked_model, providers=ort_provider)
+
+        x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+        feeds = {"x": x, "router": router}
+
+        out_raw = sess_raw.run(None, feeds)[0]
+        out_prepacked = sess_prepacked.run(None, feeds)[0]
+
+        self.assertFalse(numpy.isnan(out_raw).any(), "raw-path output has NaN")
+        self.assertFalse(numpy.isinf(out_raw).any(), "raw-path output has Inf")
+        # Both paths run the same kernel over the same (after prepack) bytes,
+        # so the outputs should be identical up to fp16 rounding from the
+        # different intermediate scratch buffers.
+        numpy.testing.assert_allclose(out_raw, out_prepacked, atol=2e-3, rtol=2e-3)
+
+    def test_int4_swiglu_interleaved_small(self):
+        self._run_one(hidden_size=64, inter_size=32, num_experts=4, top_k=2, swiglu_fusion=1, batch_size=8)
+
+    def test_int4_swiglu_interleaved_medium(self):
+        self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
 
 
 if __name__ == "__main__":
