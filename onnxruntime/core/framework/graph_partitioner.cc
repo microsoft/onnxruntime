@@ -95,7 +95,7 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
 /// <param name="provider_type">The EP to assign the Indexed subgraph to</param>
 static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
                            const std::string& provider_type,
-                           std::vector<NodeIndex>* newly_assigned_nodes = nullptr) {
+                           InlinedVector<NodeIndex>* newly_assigned_nodes = nullptr) {
   // Before assigning the ep to any node, first walk through all the nodes and ensure
   // none of the nodes have already been assigned. If a node is assigned, simply return.
   for (auto node_index : capability.nodes) {
@@ -122,7 +122,7 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
 }
 
 static void ClearExecutionProviderAssignments(Graph& graph,
-                                              const std::vector<NodeIndex>& node_indices,
+                                              const InlinedVector<NodeIndex>& node_indices,
                                               const std::string& provider_type) {
   for (NodeIndex node_index : node_indices) {
     auto* node = graph.GetNode(node_index);
@@ -316,7 +316,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   // CPU EP layout transformation happens later when level 3 transformers are run.
   if (params.mode != GraphPartitioner::Mode::kAssignOnly && params.transform_layout.get() &&
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
-    std::vector<NodeIndex> nodes_temporarily_assigned_to_ep;
+    InlinedVector<NodeIndex> nodes_temporarily_assigned_to_ep;
     for (auto& capability : capabilities) {
       TryAssignNodes(graph, *capability->sub_graph, ep_type, &nodes_temporarily_assigned_to_ep);
     }
