@@ -46,9 +46,21 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #endif
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Range,
     11,
+    26,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledRangeDataTypes>()),
+    Range);
+
+// Opset 27 added float16/bfloat16 to the type constraint and a stash_type attribute.
+// The existing kernel continues to support the common numeric types; float16/bfloat16
+// support is a follow-up enhancement.
+ONNX_CPU_OPERATOR_KERNEL(
+    Range,
+    27,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledRangeDataTypes>()),
