@@ -171,10 +171,10 @@ class EpilogueMoeFusedFinalize {
     auto N = get<1>(problem_shape_mnkl);
     auto L = get<3>(problem_shape_mnkl);
 
-    auto mma_tile_m = tile_size<0>(tiled_mma);
-    auto mma_tile_n = tile_size<1>(tiled_mma);
-    auto epi_tile_m = size<0>(EpilogueTile{});
-    auto epi_tile_n = size<1>(EpilogueTile{});
+    constexpr auto mma_tile_m = decltype(tile_size<0>(tiled_mma)){};
+    constexpr auto mma_tile_n = decltype(tile_size<1>(tiled_mma)){};
+    constexpr auto epi_tile_m = size<0>(EpilogueTile{});
+    constexpr auto epi_tile_n = size<1>(EpilogueTile{});
 
     CUTE_STATIC_ASSERT(epi_tile_m % mma_tile_m == 0, "MMA_TILE_M must divide EPI_TILE_M");
     CUTE_STATIC_ASSERT(mma_tile_n % epi_tile_n == 0, "EPI_TILE_N must divide MMA_TILE_N");
@@ -248,16 +248,17 @@ class EpilogueMoeFusedFinalize {
     Tensor tRS_rD = make_tensor<ElementAccumulator>(shape(tRS_sD));  // ((R2S,R2S_V),R2S_M,R2S_N)
 
     // Make a tiled copy vectorized along major direction of D
+    constexpr int TiledMmaThreads = decltype(cute::size(tiled_mma))::value;
     auto tiled_s2r = [&]() {
       if constexpr (cutlass::gemm::detail::is_k_major<StrideD>()) {
         constexpr int NumThreadsMajor = epi_tile_n / AlignmentD;
-        constexpr int NumThreadsMinor = cute::size(tiled_mma) / NumThreadsMajor;
+        constexpr int NumThreadsMinor = TiledMmaThreads / NumThreadsMajor;
         return make_tiled_copy(CopyAtomS2R{},
                                Layout<Shape<Int<NumThreadsMinor>, Int<NumThreadsMajor>>, Stride<Int<NumThreadsMajor>, _1>>{},
                                Layout<Shape<_1, Int<AlignmentD>>>{});
       } else if constexpr (cutlass::gemm::detail::is_mn_major<StrideD>()) {
         constexpr int NumThreadsMajor = epi_tile_m / AlignmentD;
-        constexpr int NumThreadsMinor = cute::size(tiled_mma) / NumThreadsMajor;
+        constexpr int NumThreadsMinor = TiledMmaThreads / NumThreadsMajor;
         return make_tiled_copy(CopyAtomS2R{},
                                Layout<Shape<Int<NumThreadsMajor>, Int<NumThreadsMinor>>, Stride<_1, Int<NumThreadsMajor>>>{},
                                Layout<Shape<Int<AlignmentD>, _1>>{});
@@ -274,11 +275,11 @@ class EpilogueMoeFusedFinalize {
     Tensor tSR_gScale = thread_s2r.partition_D(gScale_epi);  // ((S2R,S2R_V),S2R_M,S2R_N,EPI_M,EPI_N)
 
     // Allocate intermediate registers for a single subtile
-    Tensor tSR_rD = make_tensor<ElementAccumulator>(take<0, 3>(shape(tSR_gD)));         // ((S2R,S2R_V),S2R_M,S2R_N)
-    Tensor tSR_rD_final = make_tensor<ElementD>(shape(tSR_rD));                         // ((S2R,S2R_V),S2R_M,S2R_N)
-    Tensor tSR_rC = make_tensor<ElementC>(shape(tSR_rD));                               // ((S2R,S2R_V),S2R_M,S2R_N)
-    Tensor tSR_rBias = make_tensor<ElementBias>(tSR_gBias(_, _, _, 0, 0).layout());     // ((S2R,S2R_V),S2R_M,S2R_N)
-    Tensor tSR_rScale = make_tensor<ElementScale>(tSR_gScale(_, _, _, 0, 0).layout());  // ((S2R,S2R_V),S2R_M,S2R_N)
+    Tensor tSR_rD = make_tensor<ElementAccumulator>(take<0, 3>(shape(tSR_gD)));       // ((S2R,S2R_V),S2R_M,S2R_N)
+    Tensor tSR_rD_final = make_tensor<ElementD>(shape(tSR_rD));                       // ((S2R,S2R_V),S2R_M,S2R_N)
+    Tensor tSR_rC = make_tensor<ElementC>(shape(tSR_rD));                             // ((S2R,S2R_V),S2R_M,S2R_N)
+    Tensor tSR_rBias = make_tensor<ElementBias>(shape(tSR_gBias(_, _, _, 0, 0)));     // ((S2R,S2R_V),S2R_M,S2R_N)
+    Tensor tSR_rScale = make_tensor<ElementScale>(shape(tSR_gScale(_, _, _, 0, 0)));  // ((S2R,S2R_V),S2R_M,S2R_N)
 
     // Make an identity coordinate tensor for predicating our output MN tile
     Tensor cD = make_identity_tensor(make_shape(unwrap(shape<0>(gD)), unwrap(shape<1>(gD))));
