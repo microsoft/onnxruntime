@@ -66,6 +66,7 @@ class MatMulIntegerBase : public OpKernel {
       // buffer memory and we don not want it uninitialized and generate different hashes
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
       memset(packed_b_.get(), 0, packed_b_size);
+#if defined(USE_KLEIDIAI)
       const uint8_t* a_zero_point = nullptr;
       const int a_zero_point_idx = GetAZeroPointIdx();
       if (a_zero_point_idx >= 0) {
@@ -77,6 +78,10 @@ class MatMulIntegerBase : public OpKernel {
 
       MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get(),
                     &mlas_backend_kernel_selector_config_, a_zero_point);
+#else
+      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get(),
+                    &mlas_backend_kernel_selector_config_);
+#endif
 
       bool share_prepacked_weights = (prepacked_weights != nullptr);
       if (share_prepacked_weights) {

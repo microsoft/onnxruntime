@@ -187,6 +187,7 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
 {
+#if defined(USE_KLEIDIAI)
     bool has_packed_b = false;
     for (size_t i = 0; i < BatchN; ++i) {
         has_packed_b = has_packed_b || DataParams[i].BIsPacked;
@@ -222,6 +223,9 @@ MlasGemmBatch(
             return;
         }
     }
+#else
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+#endif
 
     const size_t M = Shape.M;
     const size_t N = Shape.N;
