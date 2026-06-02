@@ -2568,6 +2568,47 @@ struct OrtEp {
    */
   ORT_API2_STATUS(OnSessionInitializationEnd, _In_ OrtEp* this_ptr);
 
+  /** \brief Get the EP's default memory device.
+   *
+   * The EP's default memory device identifies the hardware the EP operates on. ORT uses it to:
+   * - Determine if data copies are needed between EPs (inserting memcpy nodes at EP boundaries)
+   * - Determine if the EP is CPU-based (which affects synchronization and data transfer decisions)
+   * - Bind execution streams to the correct device
+   *
+   * If the implementation allows an EP to be created with multiple EpDevices this should return the OrtMemoryDevice
+   * that ORT should consider as default for this EP instance.
+   *
+   * An OrtMemoryDevice is obtained from an OrtMemoryInfo via `OrtEpApi::MemoryInfo_GetMemoryDevice()`.
+   * Typically, an EP creates OrtMemoryInfo instances and registers them with its OrtEpDevice(s) via
+   * `OrtEpApi::EpDevice_AddAllocatorInfo()`. The OrtMemoryDevice returned here must correspond to an
+   * OrtMemoryInfo registered as an `OrtDeviceAllocator` entry (either `OrtDeviceMemoryType_DEFAULT` or
+   * `OrtDeviceMemoryType_HOST_ACCESSIBLE`). An OrtMemoryDevice from an `OrtReadOnlyAllocator` entry is
+   * not accepted as the EP's default/identity device.
+   *
+   * The returned pointer must remain valid for the lifetime of the OrtEp instance
+   * (typically by storing the parent OrtMemoryInfo as a member of the EP).
+   *
+   * If this function is not implemented (NULL), or if it sets `device` to NULL, ORT infers
+   * the default memory device from the first OrtEpDevice's `OrtDeviceAllocator` entry with
+   * `OrtDeviceMemoryType_DEFAULT` registered via `EpDevice_AddAllocatorInfo`. EPs created against
+   * multiple OrtEpDevices whose default memory devices differ should implement this function to
+   * disambiguate; otherwise the first OrtEpDevice's default memory device is used and the others
+   * are ignored for identity purposes. If no such allocator entry is registered, the EP defaults
+   * to a CPU memory device.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] device Set to the EP's default OrtMemoryDevice, or NULL to use the default behavior (described above).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL (not implemented), ORT
+   *       infers the default memory device using the default behavior described above.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(GetDefaultMemoryDevice, _In_ const OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ const OrtMemoryDevice** device);
+
   /** \brief Release a previously captured graph and its associated resources.
    *
    * Called when the caller no longer needs the captured graph for the given annotation ID.
