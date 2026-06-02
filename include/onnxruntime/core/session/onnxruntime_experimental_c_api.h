@@ -47,7 +47,7 @@
 //   static const char* const kOrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_FnName =
 //       "OrtApi_ExperimentalApiTest_ExpSinceV27";
 
-#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                   \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                                    \
   typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_ExpSinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
   static const char* const kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName = #NAME "_ExpSinceV" #VER;
 #include "onnxruntime_experimental_c_api.inc"
@@ -71,7 +71,7 @@ namespace Experimental {
 //         api->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_ExpSinceV27_FnName));
 //   }
 
-#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                        \
+#define ORT_EXPERIMENTAL_API(VER, NAME, RET, ...)                                         \
   inline OrtExperimental_##NAME##_ExpSinceV##VER##_Fn Get_##NAME##_ExpSinceV##VER##_Fn(   \
       const OrtApi* api) {                                                                \
     return reinterpret_cast<OrtExperimental_##NAME##_ExpSinceV##VER##_Fn>(                \
