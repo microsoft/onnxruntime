@@ -226,7 +226,8 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
       .AddUniformVariables({{scale_},
                             {gsl::make_span(global_dims)},
                             {gsl::make_span(global_strides)},
-                            {gsl::make_span(input_output_strides)}})
+                            {gsl::make_span(input_output_strides)},
+                            {0u}})
       .AddIndices(TensorShape{1, 1});
   return context.RunProgram(program);
 }
