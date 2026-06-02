@@ -4,6 +4,101 @@
 #include "test_conv2d.h"
 #include "test_conv2d_fixture.h"
 
+TEST(Conv2d_HalfConv, PrepareRespectsBackendSelectorConfig) {
+  const int64_t input_shape[] = {5, 5};
+  const int64_t kernel_shape[] = {3, 3};
+  const int64_t dilation_shape[] = {1, 1};
+  const int64_t padding[] = {1, 1, 1, 1};
+  const int64_t stride_shape[] = {1, 1};
+  const int64_t output_shape[] = {5, 5};
+
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasIdentityActivation;
+
+  MLAS_CONV_PARAMETERS parameters{};
+  size_t working_buffer_size = 0;
+  if (!MlasHalfConvPrepare(&parameters,
+                           2,
+                           1,
+                           1,
+                           4,
+                           input_shape,
+                           kernel_shape,
+                           dilation_shape,
+                           padding,
+                           stride_shape,
+                           output_shape,
+                           8,
+                           &activation,
+                           &working_buffer_size,
+                           0.0f,
+                           false,
+                           nullptr,
+                           nullptr)) {
+    GTEST_SKIP() << "HalfConv prepare path unavailable";
+  }
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG selector_config;
+  selector_config.use_kleidiai = false;
+
+  MLAS_CONV_PARAMETERS disabled_parameters{};
+  EXPECT_FALSE(MlasHalfConvPrepare(&disabled_parameters,
+                                   2,
+                                   1,
+                                   1,
+                                   4,
+                                   input_shape,
+                                   kernel_shape,
+                                   dilation_shape,
+                                   padding,
+                                   stride_shape,
+                                   output_shape,
+                                   8,
+                                   &activation,
+                                   &working_buffer_size,
+                                   0.0f,
+                                   false,
+                                   nullptr,
+                                   &selector_config));
+}
+
+TEST(Conv2d_HalfConv, PrepareReportsWorkingBufferSizeInBytes) {
+  const int64_t input_shape[] = {5, 5};
+  const int64_t kernel_shape[] = {3, 3};
+  const int64_t dilation_shape[] = {1, 1};
+  const int64_t padding[] = {1, 1, 1, 1};
+  const int64_t stride_shape[] = {1, 1};
+  const int64_t output_shape[] = {5, 5};
+
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasIdentityActivation;
+
+  MLAS_CONV_PARAMETERS parameters{};
+  size_t working_buffer_size = 0;
+  if (!MlasHalfConvPrepare(&parameters,
+                           2,
+                           1,
+                           1,
+                           4,
+                           input_shape,
+                           kernel_shape,
+                           dilation_shape,
+                           padding,
+                           stride_shape,
+                           output_shape,
+                           8,
+                           &activation,
+                           &working_buffer_size,
+                           0.0f,
+                           false,
+                           nullptr,
+                           nullptr)) {
+    GTEST_SKIP() << "HalfConv prepare path unavailable";
+  }
+
+  EXPECT_EQ(working_buffer_size, parameters.OutputSize * parameters.FilterCount * sizeof(uint16_t));
+}
+
 static size_t Conv2dRegistLongExecute() {
   size_t count = MlasLongExecuteTests<MlasConv2DTest<false>>::RegisterLongExecute();
   if (GetMlasThreadPool() != nullptr) {
