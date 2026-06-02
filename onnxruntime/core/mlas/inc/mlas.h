@@ -911,6 +911,7 @@ struct MLAS_CONV_PARAMETERS {
     const void* PackedFilter = nullptr;
     size_t PackedFilterGroupStride = 0;
     bool FilterIsPacked = false;
+    bool InputOutputChannelsLast = false;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -1935,11 +1936,21 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
     const MLAS_HALF_GEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/
     bool BIsfp32 = false;             /**< matrix B is fp32, needs to be casted into fp16*/
+    bool BIsPacked = false;           /**< matrix B is pre-packed by MlasHalfGemmPackB/MlasHalfGemmConvertPackB */
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    /**
+     * Matrix B uses a backend-specific direct-consumption packed layout.
+     * When true, B must be produced by MlasHalfGemmNativePackB, ldb must be 0,
+     * Bias must be nullptr, and OutputProcessor must be nullptr.
+     */
+    bool BIsBackendNativePacked = false;
 };
 
 /**
  * @brief Half precision Batched GEMM:  C = A * B + Bias
- *        Either A or B can be fp32 or fp16
+ *        Either A or B can be fp32 or fp16.
+ *        Backend-native packed B is a constrained direct-consumption layout
+ *        and does not support runtime Bias or OutputProcessor.
  *
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
@@ -2000,6 +2011,106 @@ MlasHalfGemmPackB(
     size_t ldb,
     void* PackedB
     );
+
+/**
+ * @brief For half precision GEMM, returns the size of a backend-native
+ *        direct-consumption packing buffer for right hand side B.
+ *
+ * The returned layout is only valid when MlasHalfGemmBatch consumes
+ * MLAS_HALF_GEMM_DATA_PARAMS with BIsBackendNativePacked set to true, ldb set
+ * to 0, Bias set to nullptr, and OutputProcessor set to nullptr. Returns 0
+ * when no backend-native format is available for the given transpose/shape/config.
+ */
+size_t
+MLASCALL
+MlasHalfGemmNativePackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+/**
+ * @brief For half precision GEMM, pack right hand side B into the
+ *        backend-native direct-consumption format.
+ *
+ * Returns false when the backend-native format is unavailable for the given
+ * transpose/shape/config. The resulting buffer must be passed to
+ * MlasHalfGemmBatch with ldb set to 0, BIsBackendNativePacked set to true,
+ * Bias set to nullptr, and OutputProcessor set to nullptr.
+ */
+bool
+MLASCALL
+MlasHalfGemmNativePackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+bool
+MLASCALL
+MlasHalfConvPrepare(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    bool InputOutputChannelsLast,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConv(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const MLAS_FP16* Input,
+    const MLAS_FP16* Filter,
+    // When true, Filter must point to a packed weights+bias buffer produced by
+    // MlasHalfConvPackWeightsAndBias and Bias must be nullptr.
+    bool FilterAndBiasArePacked,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* WorkingBuffer,
+    MLAS_FP16* Output,
+    MLAS_THREADPOOL* ThreadPool);
+
+size_t
+MLASCALL
+MlasHalfConvPackWeightsAndBiasSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConvPackWeightsAndBias(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_FP16* Filter,
+    // Optional bias to bake into the packed direct-consumption buffer.
+    const MLAS_FP16* Bias,
+    void* PackedWeightsAndBias,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 /**
  * @brief For half precision GEMM, convert the float matrix B

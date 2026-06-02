@@ -17,6 +17,9 @@ Abstract:
 #pragma once
 
 #include "test_fp16.h"
+#include "core/mlas/lib/mlasi.h"
+#include <algorithm>
+#include <cmath>
 
 /**
  * @brief Test class for half precision GEMM
@@ -26,6 +29,21 @@ Abstract:
 template <typename AType, typename BType, bool Packed, bool Threaded>
 class MlasHalfGemmTest : public MlasTestBase {
  private:
+  // Native FP16 is validated against the FP32 reference path
+  // rather than the existing stepwise-FP16 oracle, so these backend-specific
+  // tests use a separate tolerance.
+  static bool CloseEnoughNativeFp16(float got, float ref) {
+    constexpr float abs_tol = 0.03125f;
+    constexpr float rel_tol = 0.005f;
+
+    const float diff = std::fabs(got - ref);
+    if (diff <= abs_tol) {
+      return true;
+    }
+
+    return diff <= rel_tol * std::max(std::fabs(got), std::fabs(ref));
+  }
+
   MatrixGuardBuffer<uint8_t> BufferBPacked;
   MatrixGuardBuffer<AType> BufferA;
   MatrixGuardBuffer<BType> BufferB;
@@ -60,7 +78,9 @@ class MlasHalfGemmTest : public MlasTestBase {
                 const MLFp16* Bias,
                 MLFp16* C,
                 size_t ldc,
-                float* Cfloat) {
+                float* Cfloat,
+                bool use_output_processor = true,
+                bool enforce_kleidiai_override = false) {
     MLAS_ACTIVATION act;
     act.ActivationKind = MlasIdentityActivation;
     std::vector<MLAS_HALF_GEMM_2FLOAT_PROCESSOR> Converters;
@@ -84,17 +104,29 @@ class MlasHalfGemmTest : public MlasTestBase {
         ASSERT_EQ(BatchSize, size_t(1)) << "Packing B not supported in batching yet!";
         params.B = PackB(N, K, B, ldb);
         params.ldb = 0;
+        params.BIsPacked = true;
       } else {
         params.B = B + (K * N * i);
         params.ldb = ldb;
       }
       params.AIsfp32 = std::is_same<AType, float>::value;
       params.BIsfp32 = std::is_same<BType, float>::value;
-      Converters.emplace_back(act, Cfloat + (M * N * i), N);
-      params.OutputProcessor = &(Converters[i]);
+      if (use_output_processor) {
+        Converters.emplace_back(act, Cfloat + (M * N * i), N);
+        params.OutputProcessor = &(Converters[i]);
+      } else {
+        params.OutputProcessor = nullptr;
+      }
     }
 
-    MlasHalfGemmBatch(M, N, K, BatchSize, GemmParameters.data(), threadpool_);
+    if (enforce_kleidiai_override) {
+      ASSERT_NE(GetMlasPlatform().MlasHalfGemmBatchOverride, nullptr);
+      const bool handled = GetMlasPlatform().MlasHalfGemmBatchOverride(
+          M, N, K, BatchSize, GemmParameters.data(), threadpool_, nullptr);
+      ASSERT_TRUE(handled);
+    } else {
+      MlasHalfGemmBatch(M, N, K, BatchSize, GemmParameters.data(), threadpool_);
+    }
   }
 
   void ReferenceQgemm(size_t M,
@@ -153,6 +185,60 @@ class MlasHalfGemmTest : public MlasTestBase {
     }
   }
 
+  void ReferenceMlasGemmFp32(size_t M,
+                             size_t N,
+                             size_t K,
+                             size_t BatchSize,
+                             const AType* A,
+                             const BType* B,
+                             const MLFp16* Bias,
+                             float* C) {
+    MatrixGuardBuffer<float> buffer_a_fp32{};
+    MatrixGuardBuffer<float> buffer_b_fp32{};
+    MatrixGuardBuffer<float> buffer_c_fp32{};
+
+    float* AFloat = buffer_a_fp32.GetBuffer(M * K * BatchSize);
+    float* BFloat = buffer_b_fp32.GetBuffer(K * N * BatchSize);
+    float* CFloat = buffer_c_fp32.GetBuffer(M * N * BatchSize, true);
+
+    for (size_t i = 0; i < M * K * BatchSize; ++i) {
+      AFloat[i] = float(A[i]);
+    }
+
+    for (size_t i = 0; i < K * N * BatchSize; ++i) {
+      BFloat[i] = float(B[i]);
+    }
+
+    for (size_t batch = 0; batch < BatchSize; ++batch) {
+      MlasGemm(
+          CblasNoTrans, CblasNoTrans, M, N, K,
+          1.0f,
+          AFloat + batch * (M * K), K,
+          BFloat + batch * (K * N), N,
+          0.0f,
+          CFloat + batch * (M * N), N,
+          threadpool_,
+          nullptr);
+    }
+
+    for (size_t batch = 0; batch < BatchSize; batch++) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++) {
+          const size_t idx = (M * N * batch) + (m * N) + n;
+          float sum = CFloat[idx];
+          if (Bias != nullptr) {
+            sum += float(Bias[n]);
+          }
+          C[idx] = float(MLFp16(sum));
+        }
+      }
+
+      if (Bias) {
+        Bias += N;
+      }
+    }
+  }
+
  public:
   MlasHalfGemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
@@ -198,6 +284,56 @@ class MlasHalfGemmTest : public MlasTestBase {
     if (withBias) {
       ASSERT_EQ(std::memcmp(BiasTail, Bias + N * BatchSize, 16 * sizeof(MLFp16)), 0) << "Bias buffer overwritten!";
     }
+  }
+
+  void TestKleidiAIWithoutOutputProcessor(size_t M, size_t N, size_t K, size_t BatchSize, bool withBias) {
+    if (GetMlasPlatform().MlasHalfGemmBatchOverride == nullptr) {
+      GTEST_SKIP() << "KleidiAI halfgemm override unavailable";
+    }
+
+    const AType* A = BufferA.GetFilledBuffer(K * M * BatchSize + 16, SmallFloatFill<AType>);
+    const BType* B = BufferB.GetFilledBuffer(N * K * BatchSize + 16, SmallFloatFill<BType>);
+
+    const MLFp16* Bias = nullptr;
+    if (withBias) {
+      Bias = BufferBias.GetFilledBuffer(N * BatchSize + 16, SmallFloatFill<MLFp16>);
+    }
+
+    MLFp16* C = BufferC.GetFilledBuffer(N * M * BatchSize, SmallFloatFill<MLFp16>);
+    float* Cfloat = BufferFloatC.GetBuffer(N * M * BatchSize, true);
+    float* CReference = BufferCReference.GetFilledBuffer(
+        N * M * BatchSize,
+        [](float* start, size_t size) {
+          std::fill_n(start, size, -1.0f);
+        });
+    MatrixGuardBuffer<float> buffer_fp32_reference{};
+    float* CFp32Reference = buffer_fp32_reference.GetFilledBuffer(
+        N * M * BatchSize,
+        [](float* start, size_t size) {
+          std::fill_n(start, size, -1.0f);
+        });
+
+    this->CallGemm(M, N, K, BatchSize, A, K, B, N, Bias, C, N, Cfloat, false, true);
+    ReferenceQgemm(M, N, K, BatchSize, A, B, Bias, CReference);
+    ReferenceMlasGemmFp32(M, N, K, BatchSize, A, B, Bias, CFp32Reference);
+
+    for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++, f++) {
+          ASSERT_TRUE(CloseEnoughNativeFp16(float(C[f]), CFp32Reference[f])) << "@[" << batch << "x" << m << "x" << n << "], "
+                                                                             << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K
+                                                                             << " got=" << float(C[f])
+                                                                             << " fp32=" << CFp32Reference[f]
+                                                                             << " stepwise=" << CReference[f];
+        }
+      }
+    }
+  }
+
+  void TestNativeFp16WithoutOutputProcessor(size_t M, size_t N, size_t K, size_t BatchSize, bool withBias) {
+    static_assert(std::is_same_v<AType, MLFp16>);
+    static_assert(std::is_same_v<BType, MLFp16>);
+    TestKleidiAIWithoutOutputProcessor(M, N, K, BatchSize, withBias);
   }
 
  private:
