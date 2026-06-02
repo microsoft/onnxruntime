@@ -6537,7 +6537,8 @@ TEST(ReductionOpTest, ReduceLogSumExp_AllNegInf_NoKeepDims) {
                         neg_inf, neg_inf, neg_inf});
   test.AddInput<int64_t>("axes", {1}, {1});
   test.AddOutput<float>("reduced", {2}, {neg_inf, neg_inf});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider});
 }
 
 // Edge case: mixed -inf and finite values
