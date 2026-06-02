@@ -1201,6 +1201,10 @@ class ReduceAggregatorLogSum : public ReduceAggregator<T, T> {
           sum += static_cast<double>(from_data[i]);
         }
       }
+      if (sum <= 0.0) {
+        // log is undefined for non-positive values; map to min (closest integer analogue of -inf).
+        return std::numeric_limits<T>::min();
+      }
       double result = std::log(sum);
       constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
       constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
@@ -1229,6 +1233,10 @@ class ReduceAggregatorLogSum : public ReduceAggregator<T, T> {
   }
   inline T get_value() {
     if constexpr (std::is_integral_v<T>) {
+      if (double_accumulator_ <= 0.0) {
+        // log is undefined for non-positive values; map to min (closest integer analogue of -inf).
+        return std::numeric_limits<T>::min();
+      }
       double result = std::log(double_accumulator_);
       constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
       constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
