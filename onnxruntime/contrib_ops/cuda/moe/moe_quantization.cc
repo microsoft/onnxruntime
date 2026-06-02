@@ -15,6 +15,8 @@
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
@@ -813,6 +815,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
     fc1_weight_data = packed_fp4_fc1_weights_ ? packed_fp4_fc1_weights_.get() : fc1_weight_data;
     fc2_weight_data = packed_fp4_fc2_weights_ ? packed_fp4_fc2_weights_.get() : fc2_weight_data;
+  } else if (is_int) {
+    // PrePack converts the raw int4/int8 weights to the CUTLASS fpA_intB
+    // layout that the runner consumes. Use the prepacked buffer when the
+    // PrePack hook ran; otherwise (rare; e.g. session built with
+    // session.disable_prepacking) fall back to the original initializer
+    // and assume the caller already prepacked the bytes themselves.
+    if (packed_fc1_weights_) {
+      fc1_weight_data = packed_fc1_weights_.get();
+    }
+    if (packed_fc2_weights_) {
+      fc2_weight_data = packed_fc2_weights_.get();
+    }
   }
   IAllocatorUniquePtr<void> dequant_fc1_weights;
   IAllocatorUniquePtr<void> dequant_fc2_weights;
@@ -972,6 +986,13 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 5 && quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc2_weights_, is_packed);
     is_packed = false;
+  } else if (input_idx == 2 && quant_type_ == "int") {
+    // Bring the raw int4/int8 fc1 weight tensor into the CUTLASS
+    // fpA_intB layout that the QMoE runner consumes. Mirrors the
+    // PrePack_B path in MatMulNBits.
+    PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, is_packed);
+  } else if (input_idx == 5 && quant_type_ == "int") {
+    PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, is_packed);
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
@@ -1074,6 +1095,91 @@ void QMoE::PrePackCopyToGpu(const Tensor& tensor, cudaStream_t stream, Allocator
   } else {
     CUDA_CALL_THROW(cudaMemcpyAsync(packed_buf.get(), p_src, bytes, cudaMemcpyDeviceToDevice, stream));
   }
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  is_packed = true;
+}
+
+// ---------------------------------------------------------------------------
+// PrePack helper: int4/int8 per-expert weights → CUTLASS fpA_intB layout.
+// ---------------------------------------------------------------------------
+// Mirrors ``MatMulNBits::PrePack_B`` but loops over the leading E (experts)
+// dimension. Input ``tensor`` is the row-major 3-D ``[E, N, K/(8/bits)]``
+// quantized weight initializer; output is a GPU buffer in the
+// kernel-expected ``[E, K, N/(8/bits)]`` layout.
+void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                                   IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
+  ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
+              "PrePackIntExpertWeights: only 4 and 8 bits are supported, got ", expert_weight_bits_);
+  const auto& shape = tensor.Shape();
+  ORT_ENFORCE(shape.NumDimensions() == 3,
+              "PrePackIntExpertWeights: expected 3-D weight tensor [E, N, K/pack], got ndim=",
+              shape.NumDimensions());
+
+  const int bits = static_cast<int>(expert_weight_bits_);
+  const int pack_factor = 8 / bits;
+  const int64_t num_experts = shape[0];
+  const int64_t n = shape[1];
+  const int64_t k_packed = shape[2];
+  const int64_t k = k_packed * pack_factor;
+
+  ORT_ENFORCE(bits != 4 || k % 2 == 0, "K must be even for 4-bit packed weights, got K=", k);
+
+  // Per-expert sizes.
+  const size_t per_expert_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / pack_factor;
+  const size_t total_bytes = per_expert_bytes * static_cast<size_t>(num_experts);
+
+  // Output buffer holds all E prepacked experts back-to-back in
+  // [E, K, N/pack_factor] layout.
+  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, total_bytes, /*use_reserve=*/true);
+  int8_t* dst_all = reinterpret_cast<int8_t*>(packed_buf.get());
+
+  // Two transient per-expert scratch buffers reused across experts.
+  IAllocatorUniquePtr<void> transposed_scratch =
+      this->GetTransientScratchBuffer<void>(per_expert_bytes);
+  int8_t* transposed_scratch_ptr = reinterpret_cast<int8_t*>(transposed_scratch.get());
+
+  IAllocatorUniquePtr<void> src_gpu_scratch;
+  const uint8_t* src_base_gpu = nullptr;
+  if (tensor.Location().device.Type() == OrtDevice::CPU) {
+    src_gpu_scratch = this->GetTransientScratchBuffer<void>(total_bytes);
+    CUDA_CALL_THROW(cudaMemcpyAsync(src_gpu_scratch.get(), tensor.DataRaw(), total_bytes,
+                                    cudaMemcpyHostToDevice, stream));
+    src_base_gpu = reinterpret_cast<const uint8_t*>(src_gpu_scratch.get());
+  } else {
+    src_base_gpu = reinterpret_cast<const uint8_t*>(tensor.DataRaw());
+  }
+
+  IAllocatorUniquePtr<int32_t> permutation_map = this->GetTransientScratchBuffer<int32_t>(32);
+
+  using onnxruntime::llm::kernels::weight_only::QuantType;
+  const QuantType quant_type = (bits == 4) ? QuantType::W4_A16 : QuantType::W8_A16;
+
+  for (int64_t e = 0; e < num_experts; ++e) {
+    const uint8_t* src_e = src_base_gpu + static_cast<size_t>(e) * per_expert_bytes;
+    int8_t* dst_e = dst_all + static_cast<size_t>(e) * per_expert_bytes;
+
+    // Step 1: transpose + (for int4) unpack/zero-point bias into the
+    // transposed-int8 scratch buffer. Mirrors MatMulNBits's PrePack_B.
+    if (bits == 4) {
+      onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
+          stream, transposed_scratch_ptr, src_e, static_cast<int>(n), static_cast<int>(k));
+    } else {
+      onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
+          stream, transposed_scratch_ptr, src_e, static_cast<int>(n), static_cast<int>(k));
+    }
+
+    // Step 2: apply the CUTLASS fpA_intB row-permutation / column-interleave /
+    // bias / pair-interleave transform into the per-expert output slot.
+    onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
+        stream,
+        sm_,
+        dst_e,
+        transposed_scratch_ptr,
+        permutation_map.get(),
+        {static_cast<size_t>(k), static_cast<size_t>(n)},
+        quant_type);
+  }
+
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   is_packed = true;
 }
