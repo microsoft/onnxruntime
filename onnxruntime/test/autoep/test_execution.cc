@@ -854,7 +854,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   EXPECT_EQ(embed_mode_attr->i(), 1);
 
   const ONNX_NAMESPACE::AttributeProto* ep_cache_context_attr = GetNodeAttribute(*ep_context_nodes[0],
-                                                                                "ep_cache_context");
+                                                                                 "ep_cache_context");
   ASSERT_NE(ep_cache_context_attr, nullptr);
   EXPECT_EQ(ep_cache_context_attr->type(), ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
   EXPECT_EQ(ep_cache_context_attr->s(), "binary_data");
@@ -918,14 +918,14 @@ TEST(OrtEpLibrary, PluginEp_GenAndLoadEpContextModel_ExternalDataUsesFileFallbac
   EXPECT_EQ(embed_mode_attr->i(), 0);
 
   const ONNX_NAMESPACE::AttributeProto* ep_cache_context_attr = GetNodeAttribute(*ep_context_nodes[0],
-                                                                                "ep_cache_context");
+                                                                                 "ep_cache_context");
   ASSERT_NE(ep_cache_context_attr, nullptr);
   EXPECT_EQ(ep_cache_context_attr->type(), ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
   ASSERT_FALSE(ep_cache_context_attr->s().empty());
 
   const std::filesystem::path output_model_dir = std::filesystem::path{output_model_file}.parent_path();
   const std::filesystem::path context_data_path = output_model_dir /
-                                                 ep_context_data_utils::Utf8Path(ep_cache_context_attr->s().c_str());
+                                                  ep_context_data_utils::Utf8Path(ep_cache_context_attr->s().c_str());
   files_to_cleanup.push_back(context_data_path);
   ASSERT_TRUE(std::filesystem::exists(context_data_path));
 
