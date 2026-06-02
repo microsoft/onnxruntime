@@ -2228,9 +2228,12 @@ Replaces the 3-op pattern (Concat + Conv + Slice) with a single fused operation.
 The convolution is causal (looks only at current and past positions along the last
 spatial dimension) and depthwise (each channel is convolved independently with its own kernel).
 
-Input layout is channels-first: (batch_size, channels, ...).
+Input layout is selectable via the data_format attribute:
+  - "NCT" (default): (batch_size, channels, ...). Channels-first.
+  - "NTC": (batch_size, ..., channels). Channels-last (only valid for ndim=1).
 Weight layout: (channels, 1, k_1, ...) for depthwise convolution.
 The carry state stores the last (k-1) positions along the causal axis for incremental decode.
+The carry state is always (batch_size, channels, k-1) regardless of data_format.
 
 The ndim attribute generalizes the op to 1D, 2D, or 3D spatial dimensions. Causality is
 enforced on the last spatial dimension only.
@@ -2251,10 +2254,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Spatial dimensionality: 1, 2, or 3. Default is 1.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
+        .Attr("data_format",
+              "Input/output data layout. 'NCT' (channels-first, default) or 'NTC' (channels-last). "
+              "'NTC' is only supported for ndim=1.",
+              AttributeProto::STRING,
+              std::string("NCT"))
         .Input(0,
                "input",
-               "Input tensor with shape (batch_size, channels, ...). Channels-first layout. "
-               "Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W).",
+               "Input tensor. For data_format='NCT': (batch_size, channels, ...). "
+               "For data_format='NTC' (ndim=1 only): (batch_size, length, channels).",
                "T")
         .Input(1,
                "weight",
@@ -2269,6 +2277,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(3,
                "past_state",
                "Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1). "
+               "Layout is always channels-first regardless of data_format. "
                "If not provided, padding is zero.",
                "T",
                OpSchema::Optional)
@@ -2279,6 +2288,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "present_state",
                 "Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1). "
+                "Layout is always channels-first. "
                 "Contains the last (k-1) values from the virtual input along the causal axis.",
                 "T")
         .TypeConstraint("T",
@@ -2288,23 +2298,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           propagateElemTypeFromInputToOutput(ctx, 0, 1);
 
-          // Output 0: same shape as input (batch_size, channels, ...)
+          // Output 0: same shape as input
           propagateShapeFromInputToOutput(ctx, 0, 0);
 
-          // Output 1: state shape is (batch_size, channels, [non-causal spatial dims...], k_last - 1)
-          // For ndim=1: (B, C, k_1-1)
-          // For ndim=2: (B, C, input_H, k_2-1)
-          // For ndim=3: (B, C, input_D, input_H, k_3-1)
+          // Output 1: state shape is always (B, C, [..., k_last - 1]) regardless of data_format.
+          // For NTC (ndim=1) input is (B, L, C); for NCT input is (B, C, L) or higher.
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
             int64_t ndim = getAttribute(ctx, "ndim", 1);
+            std::string data_format = getAttribute(ctx, "data_format", std::string("NCT"));
             TensorShapeProto state_shape;
             *state_shape.add_dim() = input_shape.dim(0);  // batch_size
-            *state_shape.add_dim() = input_shape.dim(1);  // channels
-            // Copy non-causal spatial dims from input (dims 2 .. 2+ndim-2)
-            for (int64_t i = 0; i < ndim - 1; ++i) {
-              *state_shape.add_dim() = input_shape.dim(static_cast<int>(2 + i));
+            // channels: from input dim 1 (NCT) or last dim (NTC)
+            if (data_format == "NTC") {
+              // NTC only supported for ndim=1, channels at last dim
+              *state_shape.add_dim() = input_shape.dim(input_shape.dim_size() - 1);
+            } else {
+              *state_shape.add_dim() = input_shape.dim(1);  // channels
+              // Copy non-causal spatial dims from input (dims 2 .. 2+ndim-2)
+              for (int64_t i = 0; i < ndim - 1; ++i) {
+                *state_shape.add_dim() = input_shape.dim(static_cast<int>(2 + i));
+              }
             }
             // Causal (last) spatial dim: kernel_size - 1
             int last_kernel_dim = weight_shape.dim_size() - 1;

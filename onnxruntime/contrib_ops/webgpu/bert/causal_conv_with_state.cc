@@ -22,6 +22,13 @@ CausalConvActivation ParseCausalConvActivation(const std::string& activation_str
   return CausalConvActivation::Invalid;
 }
 
+CausalConvDataFormat ParseCausalConvDataFormat(const std::string& fmt_str) {
+  if (fmt_str == "NTC") {
+    return CausalConvDataFormat::NTC;
+  }
+  return CausalConvDataFormat::NCT;
+}
+
 // =============================================================================
 // CausalConvWithState Implementation
 // =============================================================================
@@ -40,6 +47,10 @@ CausalConvWithState::CausalConvWithState(const OpKernelInfo& info)
   std::string activation_str = info.GetAttrOrDefault<std::string>("activation", "none");
   activation_ = ParseCausalConvActivation(activation_str);
   ORT_ENFORCE(info.GetAttr<int64_t>("ndim", &ndim_).IsOK(), "Attribute 'ndim' is required");
+  std::string data_format_str = info.GetAttrOrDefault<std::string>("data_format", "NCT");
+  data_format_ = ParseCausalConvDataFormat(data_format_str);
+  ORT_ENFORCE(!(data_format_ == CausalConvDataFormat::NTC && ndim_ != 1),
+              "data_format='NTC' is only supported for ndim=1");
 }
 
 Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -59,14 +70,15 @@ Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) cons
   return WGSL_TEMPLATE_APPLY(shader, "bert/causal_conv_with_state.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_conv_state, has_conv_state_),
+                             WGSL_TEMPLATE_PARAMETER(is_ntc, data_format_ == CausalConvDataFormat::NTC),
                              WGSL_TEMPLATE_PARAMETER(use_silu, activation_ == CausalConvActivation::Silu));
 }
 
 Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
-  const Tensor* input = context.Input(0);       // (B, D, L)
+  const Tensor* input = context.Input(0);       // (B, D, L) NCT or (B, L, D) NTC
   const Tensor* weight = context.Input(1);      // (D, 1, K)
   const Tensor* bias = context.Input(2);        // optional (D,)
-  const Tensor* conv_state = context.Input(3);  // optional (B, D, K-1) — past_state
+  const Tensor* conv_state = context.Input(3);  // optional (B, D, K-1) — past_state, always NCT
 
   ORT_RETURN_IF(activation_ == CausalConvActivation::Invalid, "Invalid activation type");
   ORT_RETURN_IF(ndim_ != 1, "Only 1D convolution is supported");
@@ -74,13 +86,14 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   const auto& weight_shape = weight->Shape();
 
   ORT_RETURN_IF(input_shape.NumDimensions() != 3,
-                "Input must be 3D (batch_size, channels, length)");
+                "Input must be 3D");
   ORT_RETURN_IF(weight_shape.NumDimensions() != 3,
                 "Weight must be 3D (channels, 1, kernel_size)");
 
+  const bool is_ntc = (data_format_ == CausalConvDataFormat::NTC);
   const int64_t batch_size = input_shape[0];
-  const int64_t channels = input_shape[1];
-  const int64_t input_length = input_shape[2];
+  const int64_t channels = is_ntc ? input_shape[2] : input_shape[1];
+  const int64_t input_length = is_ntc ? input_shape[1] : input_shape[2];
   const int64_t kernel_size = weight_shape[2];
   const int64_t state_length = kernel_size - 1;
 
@@ -106,11 +119,10 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   const bool has_bias = (bias != nullptr);
   const bool has_conv_state = (conv_state != nullptr);
 
-  // Allocate outputs
-  // Output 0: (B, D, L)
+  // Allocate outputs (output shape == input shape, same layout)
   Tensor* output = context.Output(0, input_shape);
 
-  // Output 1: present_state (B, D, K-1)
+  // present_state always (B, C, K-1) regardless of data_format
   std::vector<int64_t> state_dims{batch_size, channels, state_length};
   Tensor* present_state = context.Output(1, TensorShape(state_dims));
 
@@ -124,11 +136,12 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   }
 
   // Create and run the shader program
-  CausalConvWithStateProgram program{activation_, has_bias, has_conv_state};
+  CausalConvWithStateProgram program{activation_, has_bias, has_conv_state, data_format_};
 
   uint32_t output_size = static_cast<uint32_t>(batch_size * channels * input_length);
 
-  program.CacheHint(has_bias, has_conv_state, kernel_size, static_cast<int>(activation_));
+  program.CacheHint(has_bias, has_conv_state, kernel_size, static_cast<int>(activation_),
+                    static_cast<int>(data_format_));
 
   program.AddInput({input, ProgramTensorMetadataDependency::Type})
       .AddInput({weight, ProgramTensorMetadataDependency::None});
