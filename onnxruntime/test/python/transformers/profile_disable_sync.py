@@ -38,6 +38,9 @@ import os
 import sys
 
 import numpy as np
+from onnx import TensorProto, helper, numpy_helper, save
+
+import onnxruntime as ort
 
 try:
     import nvtx  # type: ignore
@@ -55,9 +58,6 @@ def build_model(path: str, hidden: int, layers: int, op_type: str = "elementwise
                       EP-level synchronization that this test isolates.
       "matmul"      - a chain of MatMul + Relu ops (uses cuBLAS).
     """
-    import onnx
-    from onnx import TensorProto, helper, numpy_helper
-
     rng = np.random.default_rng(0)
 
     nodes = []
@@ -100,12 +100,10 @@ def build_model(path: str, hidden: int, layers: int, op_type: str = "elementwise
     )
     model = helper.make_model(graph, opset_imports=[helper.make_operatorsetid("", 17)])
     model.ir_version = 10
-    onnx.save(model, path)
+    save(model, path)
 
 
 def run(args: argparse.Namespace) -> int:
-    import onnxruntime as ort
-
     if "CUDAExecutionProvider" not in ort.get_available_providers():
         print("ERROR: CUDAExecutionProvider is not available in this onnxruntime build.", file=sys.stderr)
         return 2
@@ -148,7 +146,9 @@ def run(args: argparse.Namespace) -> int:
     def one_run():
         session.run_with_iobinding(io_binding, run_options)
 
-    # Warmup (outside the NVTX range so it can be excluded with --skip-first-ranges too).
+    # Warmup. These iterations are wrapped in the NVTX range like the measured
+    # ones, but parse_nsys.py drops them with --skip-first-ranges, so they do not
+    # affect the in-range CUDA API check.
     for _ in range(args.warmup):
         with _nvtx_range(args.nvtx_range):
             one_run()
@@ -158,9 +158,9 @@ def run(args: argparse.Namespace) -> int:
             one_run()
 
     # Final explicit synchronization so the process exits cleanly and the bound
-    # output is valid. This happens OUTSIDE every NVTX run range, so it does not
-    # pollute the in-range CUDA API check.
-    session.run_with_iobinding(io_binding, ort.RunOptions())  # default run syncs
+    # output is valid. This synchronizes the output buffers without launching an
+    # extra inference run, so it does not pollute the in-range CUDA API check.
+    io_binding.synchronize_outputs()
 
     print("Done.")
     return 0

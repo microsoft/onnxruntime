@@ -54,7 +54,7 @@ rc_off=0
 profile_one off || rc_off=$?
 
 echo
-echo "=== Baseline (control): all CUDA APIs in range for sync=on ==="
+echo "=== Baseline (control): host synchronization CUDA APIs in range for sync=on ==="
 rc_on=0
 profile_one on || rc_on=$?
 

@@ -191,19 +191,24 @@ def list_all_kernels(db_path: str) -> list[str]:
 # CUDA runtime API calls that block the host until the device/stream finishes
 # (host-side synchronization). These should NOT appear inside a run when the
 # run is launched with disable_synchronize_execution_providers=1 (sync=false).
-# Patterns use SQL LIKE syntax (matched against the demangled API name, which
-# carries a version suffix, e.g. "cudaStreamSynchronize_v3000").
+# Patterns use SQL LIKE syntax (matched against the runtime API name, which may
+# carry a version suffix, e.g. "cudaStreamSynchronize_v3000" or "cudaMemcpy_v3020").
+# Only CUPTI_ACTIVITY_KIND_RUNTIME (the cuda* runtime API) is scanned, so driver
+# (cu*) names are intentionally not listed here. cudaStreamWaitEvent is excluded
+# because it is a stream-ordering primitive, not a host-blocking sync.
 SYNC_API_PATTERNS = [
     "cudaDeviceSynchronize%",
     "cudaStreamSynchronize%",
     "cudaEventSynchronize%",
-    "cudaStreamWaitEvent%",
-    "cudaMemcpy\\_%",  # synchronous cudaMemcpy* (escaped _; excludes cudaMemcpyAsync)
-    "cudaMemset\\_%",  # synchronous cudaMemset* (escaped _; excludes cudaMemsetAsync)
-    "cuStreamSynchronize%",
-    "cuCtxSynchronize%",
-    "cuEventSynchronize%",
-    "cuStreamWaitEvent%",
+    "cudaMemcpy%",  # synchronous cudaMemcpy* (async variants excluded below)
+    "cudaMemset%",  # synchronous cudaMemset* (async variants excluded below)
+]
+
+# API names matching any of these are excluded even if they match a SYNC pattern.
+# This removes non-blocking *Async* copies/sets (e.g. cudaMemcpyAsync) which do
+# not synchronize the host.
+SYNC_API_EXCLUDE_PATTERNS = [
+    "%Async%",
 ]
 
 
@@ -212,6 +217,7 @@ def parse_cuda_api_in_range(
     nvtx_range: str,
     api_patterns: list[str] | None = None,
     skip_first_ranges: int = 0,
+    exclude_patterns: list[str] | None = None,
 ) -> list[dict]:
     """
     Aggregate CUDA runtime API calls that occur within an NVTX range.
@@ -227,6 +233,8 @@ def parse_cuda_api_in_range(
                       If None, all API calls in the range are returned.
         skip_first_ranges: Skip API calls in the first N occurrences of the NVTX
                            range (e.g. to exclude warmup iterations).
+        exclude_patterns: Optional list of SQL LIKE patterns; API names matching
+                          any of them are excluded (e.g. "%Async%").
 
     Returns:
         List of dicts with API call aggregation, ordered by call_count desc.
@@ -240,6 +248,11 @@ def parse_cuda_api_in_range(
         pattern_or = " OR ".join(["s.value LIKE ? ESCAPE '\\'" for _ in api_patterns])
         where_clauses.append(f"({pattern_or})")
         params.extend(api_patterns)
+
+    if exclude_patterns:
+        exclude_and = " AND ".join(["s.value NOT LIKE ? ESCAPE '\\'" for _ in exclude_patterns])
+        where_clauses.append(f"({exclude_and})")
+        params.extend(exclude_patterns)
 
     where_sql = " AND ".join(where_clauses)
 
@@ -484,6 +497,7 @@ Examples:
             args.nvtx_range,
             api_patterns=api_patterns,
             skip_first_ranges=args.skip_first_ranges,
+            exclude_patterns=SYNC_API_EXCLUDE_PATTERNS if args.sync_apis_only else None,
         )
 
         scope = f"NVTX range '{args.nvtx_range}'"
