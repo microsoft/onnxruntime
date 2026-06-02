@@ -451,7 +451,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor indirect_buffer;
 
   // Prepare indirect dispatch buffer for decode path with static KV cache
-  const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
+  const bool use_indirect_dispatch = !kv_empty &&
+                                     parameters.sequence_length_ == 1 &&
                                      parameters.past_present_share_buffer_ &&
                                      seqlen_k != nullptr &&
                                      context.IsGraphCaptureEnabled();
@@ -472,12 +473,14 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_ENFORCE(!do_rotary, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV should not be used with kv_sequence_length==0.");
     ORT_ENFORCE(past_key != nullptr && past_value != nullptr,
                 "kv_empty path requires past KV context (KV-shared layers reuse another layer's cache).");
-    // Alias past as present — flash attention only reads present_key/present_value,
-    // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
-    present_key = const_cast<Tensor*>(past_key);
-    present_value = const_cast<Tensor*>(past_value);
-    ORT_ENFORCE(!parameters.past_present_share_buffer_,
-                "kv_empty path must not use past_present_share_buffer (CopyKVCache is skipped).");
+    // When past_present_share_buffer_ is true (MayInplace optimization), present already
+    // shares the past buffer. No aliasing needed — the data is already in place.
+    if (!parameters.past_present_share_buffer_) {
+      // Alias past as present — flash attention only reads present_key/present_value,
+      // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
+      present_key = const_cast<Tensor*>(past_key);
+      present_value = const_cast<Tensor*>(past_value);
+    }
   } else if (do_rotary) {
     ORT_ENFORCE(parameters.is_packed_qkv_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires packed QKV input.");
     ORT_ENFORCE(parameters.past_present_share_buffer_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires static KV cache.");

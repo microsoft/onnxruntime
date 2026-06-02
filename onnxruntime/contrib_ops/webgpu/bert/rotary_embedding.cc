@@ -85,7 +85,7 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                                                                 "      }\n"
                                                                                 "    }\n"
                               << "  } else { \n"
-                                "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n"
+                                 "    let k = dot(bsnh, uniforms.input_output_stride) + half_rotary_emb_dim;\n"
                               << "    " << output.SetByOffset("k", input.GetByOffset("k")) << "\n"
                               << "  }";
   }
