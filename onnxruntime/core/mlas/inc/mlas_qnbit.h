@@ -358,6 +358,11 @@ MlasLutGemmPack(
  * @param[in]   N               column size of matrix B
  * @param[in]   HasZeroPoint    whether zero points are provided
  * @param[in]   threadpool      thread pool for parallel computation
+ * @param[in]   Bias            optional bias vector of length N (one value per output feature).
+ *                              When non-null, it is broadcast-added to every row of the [M, N]
+ *                              output. The addition is fused into the per-tile compute loop so
+ *                              it inherits the same multi-threading as the GEMM itself.
+ *                              Pass nullptr if no bias is to be applied.
  */
 void MLASCALL
 MlasLutGemm(
@@ -369,5 +374,6 @@ MlasLutGemm(
     size_t M,
     size_t N,
     bool HasZeroPoint,
-    MLAS_THREADPOOL* threadpool
+    MLAS_THREADPOOL* threadpool,
+    const float* Bias = nullptr
 );
