@@ -220,7 +220,8 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
   // is non-deterministic in ORT due to parallelized reduction order. Saturation provides
   // well-defined behavior. Other EPs (CUDA/DML) may still wrap.
   // Double has range ~1.8e308, sufficient for any practical sum of int32/int64 values.
-  // For int64, Kahan summation minimizes precision loss for values > 2^53.
+  // For int64 values > 2^53, double cannot represent every integer exactly;
+  // Kahan summation minimizes but does not eliminate rounding in that regime.
   double double_accumulator_ = 0.0;
   double kahan_compensation_ = 0.0;
 

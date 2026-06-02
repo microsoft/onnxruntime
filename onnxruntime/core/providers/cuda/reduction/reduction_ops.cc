@@ -324,7 +324,7 @@ Status PrepareForReduce(const Tensor* X,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
-      prepare_reduce_metadata.output_dims.push_back(dim == 0 ? 0 : 1);
+      prepare_reduce_metadata.output_dims.push_back(1);
     }
   }
 

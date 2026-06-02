@@ -4012,8 +4012,6 @@ TEST(ReductionOpTest, ReduceDimWithZero1) {
                // TODO: fix reduce kernel for zero set cases. see: https://github.com/microsoft/onnxruntime/issues/18588
                {
                    kCoreMLExecutionProvider,
-                   kCudaExecutionProvider,
-                   kCudaNHWCExecutionProvider,
                    kDnnlExecutionProvider,
                    kMIGraphXExecutionProvider,
                    kOpenVINOExecutionProvider,
@@ -6788,9 +6786,10 @@ TEST(ReductionOpTest, ReduceMin_float_Opset20_NoKeepdims_Cuda) {
 // =============================================================================
 // Integer overflow saturation tests.
 // These test the double-accumulation + saturation paths added to prevent
-// signed integer overflow UB in reduction aggregators. Tests run on all EPs
-// that support integer reductions correctly (CPU, CUDA); EPs known to wrap or
-// lack support are excluded per-test.
+// signed integer overflow UB in reduction aggregators. Most tests run on
+// CPU and CUDA; some are CPU-only where CUDA uses a different code path
+// (e.g., ReduceLogSumExp, ReduceSumSquare) or where int64 precision > 2^53
+// makes cross-EP comparison unreliable. Other EPs are excluded per-test.
 // =============================================================================
 
 TEST(ReductionOpTest, ReduceSum_int32_Overflow_Saturates) {
@@ -6951,6 +6950,45 @@ TEST(ReductionOpTest, ReduceMin_int64_EmptySet) {
                            std::numeric_limits<int64_t>::max()});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kDmlExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// Test empty-set reduction with default axes (reduce all dims) and keepdims=1.
+// Validates that CUDA PrepareForReduce produces output shape {1,1,1} (not {1,0,1})
+// and fills identity values correctly.
+TEST(ReductionOpTest, ReduceSum_EmptySet_DefaultAxes_KeepDims) {
+  OpTester test("ReduceSum", 13);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 0, 2}, {});
+  test.AddInput<int64_t>("axes", {0}, {}, true);  // empty axes = reduce all
+  test.AddOutput<float>("reduced", {1, 1, 1}, {0.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCoreMLExecutionProvider, kDmlExecutionProvider, kDnnlExecutionProvider,
+            kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
+            kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceMax_EmptySet_DefaultAxes_KeepDims) {
+  OpTester test("ReduceMax", 20);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {2, 0, 3}, {});
+  test.AddInput<int64_t>("axes", {0}, {}, true);  // empty axes = reduce all
+  test.AddOutput<float>("reduced", {1, 1, 1}, {-std::numeric_limits<float>::infinity()});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCoreMLExecutionProvider, kDmlExecutionProvider, kDnnlExecutionProvider,
+            kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
+            kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+TEST(ReductionOpTest, ReduceProd_EmptySet_DefaultAxes_KeepDims) {
+  OpTester test("ReduceProd", 18);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {2, 0}, {});
+  test.AddInput<int64_t>("axes", {0}, {}, true);  // empty axes = reduce all
+  test.AddOutput<float>("reduced", {1, 1}, {1.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCoreMLExecutionProvider, kDmlExecutionProvider, kDnnlExecutionProvider,
+            kMIGraphXExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider,
+            kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 }  // namespace test
