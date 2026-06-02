@@ -20,7 +20,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/resource_accountant.h"
 #include "core/graph/constants.h"
-#include "core/graph/ep_api_types.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_optimizer_registry.h"

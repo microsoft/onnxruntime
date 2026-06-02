@@ -647,10 +647,15 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
   const auto fake_ep_api = MakeFakeEpApi();
   std::filesystem::path data_path;
 
+  data_path = "stale.ctx";
   ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, nullptr, nullptr, data_path),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  EXPECT_TRUE(data_path.empty());
+
+  data_path = "stale.ctx";
   ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "", nullptr, data_path),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  EXPECT_TRUE(data_path.empty());
 
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, "relative.ctx", nullptr, data_path));
   EXPECT_EQ(ep_context_data_utils::PathToUtf8String(data_path), "relative.ctx");

@@ -79,6 +79,8 @@ inline std::string PathToUtf8String(const std::filesystem::path& path) {
 
 inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
                                            std::filesystem::path& data_path) {
+  data_path.clear();
+
   if (file_name == nullptr || file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
