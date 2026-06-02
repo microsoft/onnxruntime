@@ -42,7 +42,7 @@ void ComputeJob(
 
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
-  const int64_t input_offset = SafeInt<int64_t>(task_idx) * norm_size;
+  const ptrdiff_t input_offset = SafeInt<ptrdiff_t>(task_idx) * norm_size;
 
   if constexpr (std::is_same_v<T, float>) {
     if (MlasLayerNormF32(
@@ -67,29 +67,29 @@ void ComputeJob(
   }
   mean = mean / norm_size;
 
-  // Pass 2: compute variance using mean-centered formula to avoid catastrophic cancellation
-  // for large-magnitude inputs (fixes NaN when E[X^2] - E[X]^2 goes negative due to rounding).
-  T variance(0.0f);
+  // Pass 2: compute standard deviation using mean-centered formula to avoid catastrophic
+  // cancellation for large-magnitude inputs (fixes NaN when E[X^2] - E[X]^2 goes negative due to rounding).
+  T std_dev(0.0f);
   if (simplified) {
     for (int64_t h = 0; h < norm_size; h++) {
-      variance += p_input[h] * p_input[h];
+      std_dev += p_input[h] * p_input[h];
     }
-    variance = sqrt(variance / norm_size + epsilon);
+    std_dev = sqrt(std_dev / norm_size + epsilon);
   } else {
     for (int64_t h = 0; h < norm_size; h++) {
       T diff = p_input[h] - mean;
-      variance += diff * diff;
+      std_dev += diff * diff;
     }
-    variance = sqrt(variance / norm_size + epsilon);
+    std_dev = sqrt(std_dev / norm_size + epsilon);
   }
 
   for (int64_t h = 0; h < norm_size; h++, i++) {
     if (simplified) {
-      p_output[h] = p_output[h] / variance * scale_data[i];
+      p_output[h] = p_output[h] / std_dev * scale_data[i];
     } else if (nullptr == bias_data) {
-      p_output[h] = (p_output[h] - mean) / variance * scale_data[i];
+      p_output[h] = (p_output[h] - mean) / std_dev * scale_data[i];
     } else {
-      p_output[h] = (p_output[h] - mean) / variance * scale_data[i] + bias_data[i];
+      p_output[h] = (p_output[h] - mean) / std_dev * scale_data[i] + bias_data[i];
     }
   }
 
@@ -99,7 +99,7 @@ void ComputeJob(
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / variance);
+    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / std_dev);
   }
 }
 
@@ -128,7 +128,7 @@ void ComputeJob(
   ORT_UNUSED_PARAMETER(bias_data);   // only used in float/double overload
   ORT_UNUSED_PARAMETER(alloc);       // only required to create temporary float buffers
 
-  const int64_t input_offset = SafeInt<int64_t>(task_idx) * norm_size;
+  const ptrdiff_t input_offset = SafeInt<ptrdiff_t>(task_idx) * norm_size;
 
   // reinterpret input/output MLFloat16* as Eigen::half*
   const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(
@@ -150,21 +150,21 @@ void ComputeJob(
   }
   mean /= gsl::narrow_cast<float>(norm_size);
 
-  // Pass 2: compute variance using mean-centered formula to avoid catastrophic cancellation
-  float variance = 0.0f;
+  // Pass 2: compute standard deviation using mean-centered formula to avoid catastrophic cancellation
+  float std_dev = 0.0f;
   if (simplified) {
     for (int64_t i = 0; i < norm_size; ++i) {
       float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
-      variance += val * val;
+      std_dev += val * val;
     }
-    variance = std::sqrt(variance / norm_size + epsilon);
+    std_dev = std::sqrt(std_dev / norm_size + epsilon);
   } else {
     for (int64_t i = 0; i < norm_size; ++i) {
       float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
       float diff = val - mean;
-      variance += diff * diff;
+      std_dev += diff * diff;
     }
-    variance = std::sqrt(variance / norm_size + epsilon);
+    std_dev = std::sqrt(std_dev / norm_size + epsilon);
   }
 
   // Offset calculation for broadcasting
@@ -175,11 +175,11 @@ void ComputeJob(
 
     float y = 0.0f;
     if (simplified) {
-      y = x / variance * scale_float_ptr[i];
+      y = x / std_dev * scale_float_ptr[i];
     } else if (bias_float_ptr == nullptr) {
-      y = (x - mean) / variance * scale_float_ptr[i];
+      y = (x - mean) / std_dev * scale_float_ptr[i];
     } else {
-      y = (x - mean) / variance * scale_float_ptr[i] + bias_float_ptr[i];
+      y = (x - mean) / std_dev * scale_float_ptr[i] + bias_float_ptr[i];
     }
 
     output_vec[ToEigenIndex(h)] = gsl::narrow_cast<Eigen::half>(y);
@@ -191,7 +191,7 @@ void ComputeJob(
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = MLFloat16(1.0f / variance);
+    inv_std_dev_data[task_idx] = MLFloat16(1.0f / std_dev);
   }
 }
 // Write a statistic value (mean or 1/denom) into the output buffer,

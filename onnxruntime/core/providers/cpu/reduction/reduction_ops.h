@@ -215,6 +215,10 @@ template <typename T>
 class ReduceAggregatorSum : public ReduceAggregator<T, T> {
  protected:
   // For integer types, accumulate in double to avoid signed overflow UB.
+  // When overflow occurs, results saturate to T::max()/T::lowest() rather than wrapping.
+  // Note: NumPy/PyTorch use modular (wrapping) arithmetic for integers, but wrapping
+  // is non-deterministic in ORT due to parallelized reduction order. Saturation provides
+  // well-defined behavior. Other EPs (CUDA/DML) may still wrap.
   // Double has range ~1.8e308, sufficient for any practical sum of int32/int64 values.
   // For int64, Kahan summation minimizes precision loss for values > 2^53.
   double double_accumulator_ = 0.0;
@@ -556,51 +560,171 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
 
   static void FastReduceKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
-    // TODO: use MLAS or BLAS
-    T* out = output.MutableData<T>();
-    T* end = out + fast_shape[0];
-    for (; out != end; ++out) {
-      *out /= static_cast<T>(fast_shape[1]);
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t stridei = fast_shape[1];
+      double divisor = static_cast<double>(stridei);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(1, stridei, sizeof(T), 6),
+          [data, stridei, out, divisor](ptrdiff_t first, ptrdiff_t last) {
+            for (ptrdiff_t d = first; d < last; ++d) {
+              double sum = 0.0;
+              for (int64_t i = 0; i < stridei; ++i) {
+                sum += static_cast<double>(data[d * stridei + i]);
+              }
+              double result = sum / divisor;
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (result >= t_max)
+                out[d] = std::numeric_limits<T>::max();
+              else if (result <= t_min)
+                out[d] = std::numeric_limits<T>::lowest();
+              else
+                out[d] = static_cast<T>(result);
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
+      T* out = output.MutableData<T>();
+      T* end = out + fast_shape[0];
+      for (; out != end; ++out) {
+        *out /= static_cast<T>(fast_shape[1]);
+      }
     }
   }
 
   static void FastReduceRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
-    // TODO: use MLAS or BLAS
-    T* out = output.MutableData<T>();
-    T* end = out + fast_shape[1];
-    for (; out != end; ++out) {
-      *out /= static_cast<T>(fast_shape[0]);
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      int64_t N = fast_shape[1];
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t n_rows = fast_shape[0];
+      double divisor = static_cast<double>(n_rows);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(N),
+          ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
+          [data, out, N, n_rows, divisor](ptrdiff_t begin, ptrdiff_t end) {
+            for (ptrdiff_t col = begin; col < end; ++col) {
+              double sum = 0.0;
+              for (int64_t row = 0; row < n_rows; ++row) {
+                sum += static_cast<double>(data[row * N + col]);
+              }
+              double result = sum / divisor;
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (result >= t_max)
+                out[col] = std::numeric_limits<T>::max();
+              else if (result <= t_min)
+                out[col] = std::numeric_limits<T>::lowest();
+              else
+                out[col] = static_cast<T>(result);
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
+      T* out = output.MutableData<T>();
+      T* end = out + fast_shape[1];
+      for (; out != end; ++out) {
+        *out /= static_cast<T>(fast_shape[0]);
+      }
     }
   }
 
   static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
-    int64_t strideo = fast_shape[2];
-    T* out = output.MutableData<T>();
-    T* begin;
-    T* end;
-    T div = static_cast<T>(fast_shape[1]);
-    for (int64_t d = 0; d < fast_shape[0]; ++d) {
-      begin = out + strideo * d;
-      end = begin + strideo;
-      for (; begin != end; ++begin) {
-        *begin /= div;
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      int64_t N = fast_shape[2];
+      const T* data = input.Data<T>();
+      int64_t stridei = fast_shape[1] * fast_shape[2];
+      int64_t strideo = fast_shape[2];
+      T* out = output.MutableData<T>();
+      double divisor = static_cast<double>(fast_shape[1]);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
+          [data, fast_shape, stridei, strideo, out, N, divisor](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              for (int64_t col = 0; col < N; ++col) {
+                double sum = 0.0;
+                for (int64_t row = 0; row < fast_shape[1]; ++row) {
+                  sum += static_cast<double>(data[stridei * d + row * N + col]);
+                }
+                double result = sum / divisor;
+                constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+                constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+                if (result >= t_max)
+                  out[strideo * d + col] = std::numeric_limits<T>::max();
+                else if (result <= t_min)
+                  out[strideo * d + col] = std::numeric_limits<T>::lowest();
+                else
+                  out[strideo * d + col] = static_cast<T>(result);
+              }
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
+      int64_t strideo = fast_shape[2];
+      T* out = output.MutableData<T>();
+      T* begin;
+      T* end;
+      T div = static_cast<T>(fast_shape[1]);
+      for (int64_t d = 0; d < fast_shape[0]; ++d) {
+        begin = out + strideo * d;
+        end = begin + strideo;
+        for (; begin != end; ++begin) {
+          *begin /= div;
+        }
       }
     }
   }
 
   static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceRKR(input, fast_shape, output, tp);
-    T* out = output.MutableData<T>();
-    T div = static_cast<T>(fast_shape[0] * fast_shape[2]);
-    T* end = out + fast_shape[1];
-    for (; out != end; ++out) {
-      *out /= div;
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t d0 = fast_shape[0];
+      int64_t d2 = fast_shape[2];
+      int64_t inc = d2 * fast_shape[1];
+      double divisor = static_cast<double>(d0 * d2);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[1]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[0] * fast_shape[2], sizeof(T), 6),
+          [data, out, d0, d2, inc, divisor](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              const T* p = data + d * d2;
+              double sum = 0.0;
+              for (int64_t i = 0; i < d0; ++i, p += inc) {
+                for (int64_t j = 0; j < d2; ++j) {
+                  sum += static_cast<double>(p[j]);
+                }
+              }
+              double result = sum / divisor;
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (result >= t_max)
+                out[d] = std::numeric_limits<T>::max();
+              else if (result <= t_min)
+                out[d] = std::numeric_limits<T>::lowest();
+              else
+                out[d] = static_cast<T>(result);
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceRKR(input, fast_shape, output, tp);
+      T* out = output.MutableData<T>();
+      T div = static_cast<T>(fast_shape[0] * fast_shape[2]);
+      T* end = out + fast_shape[1];
+      for (; out != end; ++out) {
+        *out /= div;
+      }
     }
   }
 };
@@ -1261,6 +1385,7 @@ template <typename T>
 class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
  protected:
   T max_;
+  int64_t max_count_ = 0;  // Counter for integer types (avoids overflow in T accumulator)
 
  public:
   inline ReduceAggregatorLogSumExp(int64_t N, const T& init) : ReduceAggregator<T, T>(N, 0) {
@@ -1308,7 +1433,7 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
     if constexpr (std::is_integral_v<T>) {
       // For integer types: exp(v - max_) truncates to 1 if v == max_, else 0.
       // Use direct comparison to avoid signed overflow in (v - max_).
-      if (v == max_) this->accumulator_ += T{1};
+      if (v == max_) ++max_count_;
     } else {
       // For floating-point types: if v is -inf, exp(-inf) = 0 regardless of max_.
       // Skip to avoid -inf - (-inf) = NaN when max_ is also -inf.
@@ -1319,7 +1444,7 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
   inline T get_value() {
     if constexpr (std::is_integral_v<T>) {
       // log(count) + max_. Use double to detect overflow.
-      double log_count = std::log(static_cast<double>(this->accumulator_));
+      double log_count = std::log(static_cast<double>(max_count_));
       double result = log_count + static_cast<double>(max_);
       constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
       constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
