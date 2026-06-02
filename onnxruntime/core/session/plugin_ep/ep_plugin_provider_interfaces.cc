@@ -1047,11 +1047,15 @@ bool PluginExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
   return ort_ep_->IsGraphCaptured(ort_ep_.get(), graph_annotation_id);
 }
 
-Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id) {
+Status PluginExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {
   if (ort_ep_->ort_version_supported < 26 || ort_ep_->ReplayGraph == nullptr) {
-    return Base::ReplayGraph(graph_annotation_id);
+    return Base::ReplayGraph(graph_annotation_id, sync);
   }
-  return ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id));
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep_->ReplayGraph(ort_ep_.get(), graph_annotation_id)));
+  if (sync) {
+    ORT_RETURN_IF_ERROR(Sync());
+  }
+  return Status::OK();
 }
 
 Status PluginExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
