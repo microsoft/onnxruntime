@@ -183,57 +183,6 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   return context.RunProgram(program);
 }
 
-// Apply rotary embedding to a single tensor using RotaryEmbeddingProgram with position_offset mode.
-// Position for each token = past_sequence_length + sequence_index (computed in shader).
-Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
-                          const Tensor* input,
-                          const Tensor* cos_cache,
-                          const Tensor* sin_cache,
-                          Tensor* output,
-                          int batch_size,
-                          int sequence_length,
-                          int hidden_size,
-                          int head_size,
-                          int past_sequence_length,
-                          float scale,
-                          bool rotary_interleaved) {
-  const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
-  const auto num_heads = hidden_size / head_size;
-
-  const TensorShape global_shape({static_cast<int64_t>(batch_size),
-                                  static_cast<int64_t>(sequence_length),
-                                  static_cast<int64_t>(num_heads),
-                                  static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
-  const auto rank = global_shape.NumDimensions();
-  std::vector<uint32_t> global_dims(rank);
-  std::vector<uint32_t> global_strides(rank);
-  for (size_t j = 0; j < rank; ++j) {
-    global_dims[j] = gsl::narrow_cast<uint32_t>(global_shape[j]);
-    global_strides[j] = gsl::narrow_cast<uint32_t>(global_shape.SizeFromDimension(j + 1));
-  }
-
-  const auto output_size = gsl::narrow_cast<uint32_t>(global_shape.Size());
-  const auto input_output_strides = std::vector<uint32_t>({gsl::narrow_cast<uint32_t>(input->Shape().SizeFromDimension(1)),
-                                                           gsl::narrow_cast<uint32_t>(hidden_size),
-                                                           gsl::narrow_cast<uint32_t>(head_size),
-                                                           1u});
-
-  RotaryEmbeddingProgram program(rotary_interleaved, /*use_position_offset=*/true);
-  program
-      .CacheHint(rotary_interleaved, true)
-      .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank},
-                  {cos_cache, ProgramTensorMetadataDependency::Rank},
-                  {sin_cache, ProgramTensorMetadataDependency::Rank}})
-      .AddOutput({output, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{scale},
-                            {gsl::make_span(global_dims)},
-                            {gsl::make_span(global_strides)},
-                            {gsl::make_span(input_output_strides)},
-                            {static_cast<uint32_t>(past_sequence_length)}});
-  return context.RunProgram(program);
-}
-
 Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
@@ -332,12 +281,20 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     if (do_rotary_) {
       // Apply RoPE to Q only — K doesn't need rotation since we reuse another layer's already-rotated KV cache.
       qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
+      // Query is BSD (3 dims): [batch, sequence, hidden]. Strides for bsnh layout:
+      // {batch_stride, hidden_size, head_size, 1}.
+      const auto batch_stride = static_cast<uint32_t>(parameters.sequence_length_ * parameters.hidden_size_);
+      const std::vector<uint32_t> q_input_output_strides{
+          batch_stride,
+          static_cast<uint32_t>(parameters.hidden_size_),
+          static_cast<uint32_t>(parameters.head_size_),
+          1u};
       ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context,
-                                             query, cos_cache, sin_cache, &qRotary,
+                                             query, seqlen_k, cos_cache, sin_cache, &qRotary,
                                              parameters.batch_size_, parameters.sequence_length_,
                                              parameters.hidden_size_, parameters.head_size_,
-                                             parameters.past_sequence_length_,
-                                             parameters.scale_, parameters.rotary_interleaved_));
+                                             parameters.scale_, parameters.rotary_interleaved_,
+                                             /*use_seqlens_for_position=*/true, q_input_output_strides));
       query = &qRotary;
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {
