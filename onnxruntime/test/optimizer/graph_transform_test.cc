@@ -1642,6 +1642,53 @@ TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConsta
                                         pre_graph_checker, post_graph_checker));
 }
 
+// Verify that ConstantOfShape output size is estimated directly from the input shape
+// initializer (and not just from shape inference) so that excessive constant-folded
+// allocations are blocked before kernel execution. The 'value' attribute uses int64
+// elements (8 bytes) so that 100M * 8 = 800 MB exceeds the configured 256 MB cap.
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeUsesInputInitializerForSizeCheck) {
+  constexpr int64_t kLargeDim = 100 * 1024 * 1024;  // 100M elements
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* shape_data = builder.MakeInitializer<int64_t>({1}, {kLargeDim});
+    auto* output_arg = builder.MakeOutput();
+
+    auto& node = builder.AddNode("ConstantOfShape", {shape_data}, {output_arg});
+    ONNX_NAMESPACE::AttributeProto value_attr;
+    value_attr.set_name("value");
+    value_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = value_attr.mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor->add_dims(1);
+    tensor->add_int64_data(0);
+    node.AddAttributeProto(std::move(value_attr));
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // 800 MB output exceeds the 256 MB cap, so the node must not be folded
+    // (and crucially, the 800 MB allocation must not have happened during folding).
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "268435456"));  // 256 MB
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 // Test that small constant folding still works with the size limit.
 TEST_F(GraphTransformationTests, ConstantFoldingSmallOutputAllowed) {
   // Build a model with a small Expand: scalar -> [4, 4] = 16 * 4 = 64 bytes.
