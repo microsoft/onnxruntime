@@ -42,13 +42,13 @@ void ComputeJob(
 
   int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
-  const auto input_offset = SafeInt<int64_t>(task_idx) * norm_size;
+  const int64_t input_offset = SafeInt<int64_t>(task_idx) * norm_size;
 
   if constexpr (std::is_same_v<T, float>) {
     if (MlasLayerNormF32(
-            X_data + static_cast<int64_t>(input_offset), scale_data + i,
+            X_data + input_offset, scale_data + i,
             (simplified || !bias_data) ? nullptr : bias_data + i,
-            Y_data + static_cast<int64_t>(input_offset),
+            Y_data + input_offset,
             mean_data ? &mean_data[task_idx] : nullptr,
             inv_std_dev_data ? &inv_std_dev_data[task_idx] : nullptr,
             static_cast<size_t>(norm_size), epsilon, simplified)) {
@@ -56,8 +56,8 @@ void ComputeJob(
     }
   }
 
-  const T* p_input = X_data + static_cast<int64_t>(input_offset);
-  T* p_output = Y_data + static_cast<int64_t>(input_offset);
+  const T* p_input = X_data + input_offset;
+  T* p_output = Y_data + input_offset;
 
   // Pass 1: compute mean
   T mean(0.0f);
@@ -128,13 +128,13 @@ void ComputeJob(
   ORT_UNUSED_PARAMETER(bias_data);   // only used in float/double overload
   ORT_UNUSED_PARAMETER(alloc);       // only required to create temporary float buffers
 
-  const auto input_offset = SafeInt<int64_t>(task_idx) * norm_size;
+  const int64_t input_offset = SafeInt<int64_t>(task_idx) * norm_size;
 
   // reinterpret input/output MLFloat16* as Eigen::half*
   const Eigen::half* p_input = reinterpret_cast<const Eigen::half*>(
-      X_data + static_cast<int64_t>(input_offset));
+      X_data + input_offset);
   Eigen::half* p_output = reinterpret_cast<Eigen::half*>(
-      Y_data + static_cast<int64_t>(input_offset));
+      Y_data + input_offset);
 
   // Fix: cast norm_size to Eigen::Index
   Eigen::Map<const Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> input_vec(
