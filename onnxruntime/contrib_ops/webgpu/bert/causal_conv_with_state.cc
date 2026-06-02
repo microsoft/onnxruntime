@@ -195,8 +195,7 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
     update_state_program.AddInput({input, ProgramTensorMetadataDependency::Type})
         .AddOutput({present_state, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize((update_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-        .AddUniformVariables({{static_cast<uint32_t>(channels)},
-                              {static_cast<uint32_t>(input_length)},
+        .AddUniformVariables({{static_cast<uint32_t>(input_length)},
                               {static_cast<uint32_t>(state_length)},
                               {update_size}});
 

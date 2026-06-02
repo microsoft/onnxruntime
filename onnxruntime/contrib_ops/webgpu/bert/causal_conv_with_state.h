@@ -59,7 +59,6 @@ class CausalConvUpdateStateProgram final : public Program<CausalConvUpdateStateP
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"channels", ProgramUniformVariableDataType::Uint32},
       {"input_length", ProgramUniformVariableDataType::Uint32},
       {"state_length", ProgramUniformVariableDataType::Uint32},
       {"update_size", ProgramUniformVariableDataType::Uint32});
