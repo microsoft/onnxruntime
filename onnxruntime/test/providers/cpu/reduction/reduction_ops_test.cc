@@ -6785,9 +6785,11 @@ TEST(ReductionOpTest, ReduceMin_float_Opset20_NoKeepdims_Cuda) {
 #endif  // defined(USE_CUDA)
 
 // =============================================================================
-// Integer overflow saturation tests (CPU EP only).
+// Integer overflow saturation tests.
 // These test the double-accumulation + saturation paths added to prevent
-// signed integer overflow UB in reduction aggregators.
+// signed integer overflow UB in reduction aggregators. Tests run on all EPs
+// that support integer reductions correctly (CPU, CUDA); EPs known to wrap or
+// lack support are excluded per-test.
 // =============================================================================
 
 TEST(ReductionOpTest, ReduceSum_int32_Overflow_Saturates) {
