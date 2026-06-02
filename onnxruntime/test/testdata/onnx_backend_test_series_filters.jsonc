@@ -384,7 +384,8 @@
         // though no native CausalConvWithState/LinearAttention kernel exists and the CPU
         // Range-27 kernel registers only the common numeric types. Verified with
         // onnx_test_runner -e cpu (62/62 succeeded, output-compared) under
-        // ALLOW_RELEASED_ONNX_OPSET_ONLY=0. If a non-CPU EP (e.g. CUDA/DML) surfaces a
+        // ALLOW_RELEASED_ONNX_OPSET_ONLY=0. NOTE: GPU/CUDA/DML EPs were NOT exercised in
+        // this validation env -- CPU EP only. If a non-CPU EP (e.g. CUDA/DML) surfaces a
         // genuine failure in CI, add a narrowly-scoped EP-specific exclusion below rather
         // than re-adding a global filter.
     ],
