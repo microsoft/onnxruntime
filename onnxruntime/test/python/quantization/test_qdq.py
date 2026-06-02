@@ -2509,7 +2509,7 @@ class TestConvBiasScaleValidation(unittest.TestCase):
         fusion to QLinearConv must be skipped.
         """
         inp_shape = [1, 4, 4, 4]
-        weight_shape = [4, 1, 1, 1]
+        weight_shape = [4, 4, 1, 1]
         num_out_channels = weight_shape[0]
 
         x_scale = np.float32(0.05)
