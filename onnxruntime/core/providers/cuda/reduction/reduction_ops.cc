@@ -9,6 +9,7 @@
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #ifdef ENABLE_TRAINING
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -308,7 +309,7 @@ Status PrepareForReduce(const Tensor* X,
     prepare_reduce_metadata.output_dims = input_shape.AsShapeVector();
     for (auto axis : axes) {
       axis = HandleNegativeAxis(axis, rank);
-      ORT_ENFORCE(input_dims[axis] != 0,
+      ORT_ENFORCE(keepdims || input_dims[axis] != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
@@ -387,7 +388,53 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
   auto& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
-    assert(output.Shape().Size() == 0);
+    if (output_count == 0) {
+      return Status::OK();
+    }
+    // Empty-set reduction with non-empty output: fill with identity values per the ONNX spec.
+    if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES) {
+      // ArgMax/ArgMin: cannot select an index from an empty set (matches NumPy/PyTorch behavior).
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Cannot perform ArgMax/ArgMin on an empty reduction axis. input_shape:", input_shape);
+    }
+    auto* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
+    if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {
+      // Per ONNX spec: empty-set max yields -inf if supported, else lowest value.
+      CudaT fill_val;
+      if constexpr (std::numeric_limits<T>::has_infinity) {
+        // For float/double: negate via arithmetic. For MLFloat16/BFloat16: use Negate().
+        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+          T neg_inf = -std::numeric_limits<T>::infinity();
+          memcpy(&fill_val, &neg_inf, sizeof(fill_val));
+        } else {
+          T neg_inf = std::numeric_limits<T>::infinity().Negate();
+          memcpy(&fill_val, &neg_inf, sizeof(fill_val));
+        }
+      } else {
+        T lowest_val = std::numeric_limits<T>::lowest();
+        memcpy(&fill_val, &lowest_val, sizeof(fill_val));
+      }
+      static_assert(sizeof(CudaT) == sizeof(T), "CudaT and T must have same size");
+      Fill(stream, output_data, fill_val, output_count);
+    } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {
+      // Per ONNX spec: empty-set min yields +inf if supported, else max value.
+      CudaT fill_val;
+      if constexpr (std::numeric_limits<T>::has_infinity) {
+        T pos_inf = std::numeric_limits<T>::infinity();
+        memcpy(&fill_val, &pos_inf, sizeof(fill_val));
+      } else {
+        T max_val = std::numeric_limits<T>::max();
+        memcpy(&fill_val, &max_val, sizeof(fill_val));
+      }
+      static_assert(sizeof(CudaT) == sizeof(T), "CudaT and T must have same size");
+      Fill(stream, output_data, fill_val, output_count);
+    } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {
+      // Identity for product is 1
+      Fill(stream, output_data, ToCudaType<T>::FromFloat(1.0f), output_count);
+    } else {
+      // Identity for sum, mean, norm1, norm2 is 0
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
+    }
     return Status::OK();
   }
 
@@ -790,7 +837,27 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     auto& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;                                                  \
                                                                                                                           \
     if (input_count == 0) {                                                                                               \
-      assert(Y->Shape().Size() == 0);                                                                                     \
+      if (output_count == 0) {                                                                                            \
+        return Status::OK();                                                                                              \
+      }                                                                                                                   \
+      /* Empty-set reduction with non-empty output: fill with identity values per ONNX spec. */                           \
+      auto* output_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());                                                  \
+      if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {                                                                   \
+        T lowest_val = std::numeric_limits<T>::lowest();                                                                  \
+        CudaT fill_val;                                                                                                   \
+        memcpy(&fill_val, &lowest_val, sizeof(fill_val));                                                                 \
+        Fill(Stream(ctx), output_data, fill_val, output_count);                                                           \
+      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {                                                            \
+        T max_val = std::numeric_limits<T>::max();                                                                        \
+        CudaT fill_val;                                                                                                   \
+        memcpy(&fill_val, &max_val, sizeof(fill_val));                                                                    \
+        Fill(Stream(ctx), output_data, fill_val, output_count);                                                           \
+      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {                                                            \
+        CudaT one_val = static_cast<CudaT>(1);                                                                            \
+        Fill(Stream(ctx), output_data, one_val, output_count);                                                            \
+      } else {                                                                                                            \
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(ctx)));                     \
+      }                                                                                                                   \
       return Status::OK();                                                                                                \
     }                                                                                                                     \
                                                                                                                           \
