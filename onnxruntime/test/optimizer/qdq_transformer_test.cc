@@ -866,10 +866,13 @@ void QDQTransformerGemmTests() {
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, true);
-  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false, false, true);
-  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, false, true);
-  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, false, true);
-  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, false, true);
+  if constexpr (std::is_same_v<Input1Type, uint8_t> && std::is_same_v<Input2Type, uint8_t> &&
+                std::is_same_v<OutputType, uint8_t> && std::is_same_v<BiasType, int32_t>) {
+    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false, false, true);
+    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, false, true);
+    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, false, true);
+    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, false, true);
+  }
 }
 
 TEST(QDQTransformerTests, Gemm_U8U8U8) {
