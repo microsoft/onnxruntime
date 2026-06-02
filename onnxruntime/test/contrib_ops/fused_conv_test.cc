@@ -501,6 +501,45 @@ TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_SymmetricPadding) {
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 #endif
 }
+
+TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_Relu_NegativePreActivation) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "Float NHWC depthwise fast-path requires Arm64.";
+#else
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1, 1, 1},  // pads
+      vector<int64_t>{1, 1},        // strides
+      "Relu"                        // activation
+  };
+
+  vector<int64_t> X_shape = {1, 3, 3, 2};
+  vector<float> X = {1.0f, 10.0f, 2.0f, 20.0f, 3.0f, 30.0f,
+                     4.0f, 40.0f, 5.0f, 50.0f, 6.0f, 60.0f,
+                     7.0f, 70.0f, 8.0f, 80.0f, 9.0f, 90.0f};
+  vector<int64_t> W_shape = {2, 1, 3, 3};
+  vector<float> W = {-1.0f, -1.0f, -1.0f,
+                     -1.0f, -1.0f, -1.0f,
+                     -1.0f, -1.0f, -1.0f,
+                      1.0f,  1.0f,  1.0f,
+                      1.0f,  1.0f,  1.0f,
+                      1.0f,  1.0f,  1.0f};
+  vector<int64_t> Y_shape = {1, 3, 3, 2};
+  auto expected_vals = {0.0f, 120.0f, 0.0f, 210.0f, 0.0f, 160.0f,
+                        0.0f, 270.0f, 0.0f, 450.0f, 0.0f, 330.0f,
+                        0.0f, 240.0f, 0.0f, 390.0f, 0.0f, 280.0f};
+
+  if (!HasFloatNhwcNoTransposeSupport(X_shape, W_shape, attrs.pads, attrs.strides, attrs.group)) {
+    GTEST_SKIP() << "Float NHWC depthwise fast-path is not available on this configuration.";
+  }
+
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+#endif
+}
 #endif
 
 TEST(FusedConvTest, Cpu_Conv3D_Batched_Relu) {

@@ -109,6 +109,12 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
 }
 
 static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
+    // Grouped support in this override is only implemented for channels-last
+    // layout. The generic grouped path still assumes contiguous per-group CHW.
+    if (Parameters->GroupCount > 1 && !Parameters->ChannelsLast) {
+        return false;
+    }
+
     if (!MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
             Parameters->Dimensions,
             Parameters->BatchCount,
@@ -777,7 +783,10 @@ ArmKleidiAI::MlasConv(
                 Parameters->PackedFilterGroupStride,
                 Input, Output, WorkingBuffer, Parameters->ChannelsLast, ThreadPool);
 
-    MlasActivation(Parameters->Activation, Output, nullptr, Parameters->FilterCount, Parameters->OutputSize,
-                   Parameters->OutputSize);
+    const bool grouped_channels_last = Parameters->ChannelsLast && Parameters->GroupCount > 1;
+    const size_t activation_rows = grouped_channels_last ? Parameters->OutputSize : Parameters->FilterCount;
+    const size_t activation_cols =
+        grouped_channels_last ? Parameters->GroupCount * Parameters->FilterCount : Parameters->OutputSize;
+    MlasActivation(Parameters->Activation, Output, nullptr, activation_rows, activation_cols, activation_cols);
     return true;
 }

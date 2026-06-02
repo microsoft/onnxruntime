@@ -1395,12 +1395,16 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
         return false;
     }
 
-    const bool is_depthwise = GroupCount > 1 && FilterCount == 1;
-    if (GroupCount > 1 && !is_depthwise) {
+    const bool is_depthwise = GroupCount > 1;
+    if (is_depthwise) {
+        if (FilterCount != 1) {
+            return false;
+        }
+    } else if (FilterCount <= 1) {
         return false;
     }
 
-    if (!is_depthwise && (FilterCount <= 1 || KernelShape[0] < 3 || KernelShape[1] < 3)) {
+    if (KernelShape[0] < 3 || KernelShape[1] < 3) {
         return false;
     }
 
