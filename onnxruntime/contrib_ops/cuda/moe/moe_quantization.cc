@@ -819,8 +819,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // PrePack converts the raw int4/int8 weights to the CUTLASS fpA_intB
     // layout that the runner consumes. Use the prepacked buffer when the
     // PrePack hook ran; otherwise (rare; e.g. session built with
-    // session.disable_prepacking) fall back to the original initializer
-    // and assume the caller already prepacked the bytes themselves.
+    // ``session.disable_prepacking``) fall back to the original
+    // initializer and assume the caller already prepacked the bytes
+    // themselves (back-compat with QMoE consumers that pre-prepacked
+    // weights offline before this hook existed).
     if (packed_fc1_weights_) {
       fc1_weight_data = packed_fc1_weights_.get();
     }
@@ -990,9 +992,17 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // Bring the raw int4/int8 fc1 weight tensor into the CUTLASS
     // fpA_intB layout that the QMoE runner consumes. Mirrors the
     // PrePack_B path in MatMulNBits.
+    //
+    // We deliberately leave ``is_packed = false`` so ORT keeps the
+    // original initializer alive: ``moe_helper::CheckInputs`` still
+    // needs its shape at every ``Compute`` call to validate moe_params,
+    // matching the same trade-off used by the WFP4AFP8 weight branch
+    // above. ``packed_fc1_weights_`` carries the prepacked bytes.
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, is_packed);
+    is_packed = false;
   } else if (input_idx == 5 && quant_type_ == "int") {
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, is_packed);
+    is_packed = false;
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
