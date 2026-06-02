@@ -653,6 +653,20 @@ TEST_F(ActivationOpTest, PRelu_NaNPropagation) {
   test.Run();
 }
 
+// Edge case: -inf * 0 = NaN per IEEE 754 (indeterminate form).
+// PRelu spec says y = slope * x for x < 0, so -inf with slope=0 is 0 * -inf = NaN.
+TEST_F(ActivationOpTest, PRelu_NegInf_ZeroSlope) {
+  float neg_inf = -std::numeric_limits<float>::infinity();
+  float nan_val = std::numeric_limits<float>::quiet_NaN();
+
+  OpTester test("PRelu");
+  test.AddInput<float>("X", {3}, {neg_inf, neg_inf, 1.0f});
+  test.AddInput<float>("slope", {3}, {0.0f, 0.5f, 0.0f});
+  // -inf * 0 = NaN (IEEE 754); -inf * 0.5 = -inf; 1.0 >= 0 → 1.0
+  test.AddOutput<float>("Y", {3}, {nan_val, neg_inf, 1.0f});
+  test.Run();
+}
+
 TEST_F(ActivationOpTest, Softplus) {
   TestActivationOp<float>("Softplus",
                           input_values,

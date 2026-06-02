@@ -59,28 +59,28 @@ void ComputeJob(
   const T* p_input = X_data + input_offset;
   T* p_output = Y_data + input_offset;
 
-  // Pass 1: compute mean
   T mean(0.0f);
-  for (int64_t h = 0; h < norm_size; h++) {
-    p_output[h] = p_input[h];
-    mean += p_input[h];
-  }
-  mean = mean / norm_size;
-
-  // Pass 2: compute standard deviation using mean-centered formula to avoid catastrophic
-  // cancellation for large-magnitude inputs (fixes NaN when E[X^2] - E[X]^2 goes negative due to rounding).
   T std_dev(0.0f);
+
   if (simplified) {
+    // RMSNorm: single pass computing sum of squares (no mean needed for normalization).
+    T sum_sq(0.0f);
     for (int64_t h = 0; h < norm_size; h++) {
-      std_dev += p_input[h] * p_input[h];
+      p_output[h] = p_input[h];
+      sum_sq += p_input[h] * p_input[h];
     }
-    std_dev = sqrt(std_dev / norm_size + epsilon);
+    std_dev = sqrt(sum_sq / norm_size + epsilon);
   } else {
+    // Welford's online algorithm: single-pass numerically stable mean and variance.
+    T M2(0.0f);
     for (int64_t h = 0; h < norm_size; h++) {
-      T diff = p_input[h] - mean;
-      std_dev += diff * diff;
+      p_output[h] = p_input[h];
+      T delta = p_input[h] - mean;
+      mean += delta / static_cast<T>(h + 1);
+      T delta2 = p_input[h] - mean;
+      M2 += delta * delta2;
     }
-    std_dev = sqrt(std_dev / norm_size + epsilon);
+    std_dev = sqrt(M2 / norm_size + epsilon);
   }
 
   for (int64_t h = 0; h < norm_size; h++, i++) {
@@ -142,29 +142,28 @@ void ComputeJob(
   Eigen::Map<Eigen::Matrix<Eigen::half, Eigen::Dynamic, 1>> output_vec(
       p_output, ToEigenIndex(norm_size));
 
-  // Pass 1: compute mean in float for precision
   float mean = 0.0f;
-  for (int64_t i = 0; i < norm_size; ++i) {
-    float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
-    mean += val;
-  }
-  mean /= gsl::narrow_cast<float>(norm_size);
-
-  // Pass 2: compute standard deviation using mean-centered formula to avoid catastrophic cancellation
   float std_dev = 0.0f;
+
   if (simplified) {
+    // RMSNorm: single pass computing sum of squares (no mean needed for normalization).
+    float sum_sq = 0.0f;
     for (int64_t i = 0; i < norm_size; ++i) {
       float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
-      std_dev += val * val;
+      sum_sq += val * val;
     }
-    std_dev = std::sqrt(std_dev / norm_size + epsilon);
+    std_dev = std::sqrt(sum_sq / norm_size + epsilon);
   } else {
+    // Welford's online algorithm: single-pass numerically stable mean and variance.
+    float M2 = 0.0f;
     for (int64_t i = 0; i < norm_size; ++i) {
       float val = static_cast<float>(input_vec[ToEigenIndex(i)]);
-      float diff = val - mean;
-      std_dev += diff * diff;
+      float delta = val - mean;
+      mean += delta / static_cast<float>(i + 1);
+      float delta2 = val - mean;
+      M2 += delta * delta2;
     }
-    std_dev = std::sqrt(std_dev / norm_size + epsilon);
+    std_dev = std::sqrt(M2 / norm_size + epsilon);
   }
 
   // Offset calculation for broadcasting
