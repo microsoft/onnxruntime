@@ -65,11 +65,11 @@ Status RotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "    let raw_pos = " << position_ids.GetByOffset("position_ids_idx") << ";\n"
                               << "    let i = dot(bsnh, uniforms.input_output_stride) + select(0, bsnh[3], " << interleaved_str << ");\n"
                               << "    let j = i + select(half_rotary_emb_dim, 1, " << interleaved_str << ");\n"
-                                                                                                        "    let max_position = uniforms.cos_cache_shape[0];\n"
-                                                                                                        // Bounds check: raw_pos < 0 catches negative position_ids (i32 from truncated int64).
-                                                                                                        // After u32 conversion + offset, check >= max_position catches too-large values.
-                                                                                                        // On OOB, pass through input unchanged (same as CUDA kernel behavior).
-                                                                                                        "    if (raw_pos < 0) {\n"
+                                                                                                         "    let max_position = uniforms.cos_cache_shape[0];\n"
+                                                                                                         // Bounds check: raw_pos < 0 catches negative position_ids (i32 from truncated int64).
+                                                                                                         // After u32 conversion + offset, check >= max_position catches too-large values.
+                                                                                                         // On OOB, pass through input unchanged (same as CUDA kernel behavior).
+                                                                                                         "    if (raw_pos < 0) {\n"
                               << "      " << output.SetByOffset("i", input.GetByOffset("i")) << "\n"
                               << "      " << output.SetByOffset("j", input.GetByOffset("j")) << "\n"
                                                                                                 "    } else {\n"
