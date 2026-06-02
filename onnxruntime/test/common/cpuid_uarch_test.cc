@@ -54,6 +54,12 @@ TEST(CpuidUarch, ArmCortexA76) {
   EXPECT_EQ(uarch, static_cast<uint32_t>(cpuinfo_uarch_cortex_a76));
 }
 
+TEST(CpuidUarch, ArmCortexA78CMapsToA78) {
+  uint32_t uarch = cpuinfo_uarch_unknown;
+  decodeMIDR(MakeMIDR('A', 0xD4B), &uarch);
+  EXPECT_EQ(uarch, static_cast<uint32_t>(cpuinfo_uarch_cortex_a78));
+}
+
 TEST(CpuidUarch, UnknownImplementerReturnsUnknown) {
   // Implementer 'Z' (0x5A) is not in the table
   uint32_t uarch = cpuinfo_uarch_unknown;
