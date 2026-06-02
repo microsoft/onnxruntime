@@ -310,7 +310,13 @@ def make_bias_dropout_model():
 
 
 def run_operator_test(
-    target_device, model_creator, inputs, expected_fn, ep_name=CUDA_PLUGIN_EP_NAME, session_config=None
+    target_device,
+    model_creator,
+    inputs,
+    expected_fn,
+    ep_name=CUDA_PLUGIN_EP_NAME,
+    session_config=None,
+    nhwc_ops=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
         model_path = tmp.name
@@ -328,6 +334,10 @@ def run_operator_test(
                 f"Assignments: {_format_assignment_summary(assignment_info)}"
             )
             return False
+
+        # Structural assertion: verify NHWC domain assignment when requested
+        if nhwc_ops:
+            _assert_nhwc_domain_assigned(sess, ep_name, nhwc_ops)
 
         print(
             f"(Session created with {active_providers}; assigned nodes: "
@@ -405,6 +415,101 @@ def _expected_conv(inputs):
 
 
 _NHWC_CONFIG = {"ep.cuda.prefer_nhwc_layout": "1"}
+
+
+def _assert_nhwc_domain_assigned(session, ep_name, expected_ops):
+    """Assert that NHWC layout transformation occurred for the expected ops.
+
+    The framework's NHWC layout transformer rewrites eligible ops to the internal NHWC domain
+    and wraps them with Transpose nodes. We verify NHWC transformation by checking:
+    1. If the assignment API surfaces NHWC-domain nodes, verify expected ops are present.
+    2. Otherwise, fall back to checking that Transpose nodes were assigned (their presence
+       indicates the layout transformer ran and the NHWC kernel was found).
+
+    Args:
+        session: An InferenceSession with graph assignment info enabled.
+        ep_name: Name of the EP to check (e.g., CUDA_PLUGIN_EP_NAME).
+        expected_ops: Set or list of op_type strings expected to have NHWC transformation.
+
+    Returns:
+        True if evidence of NHWC transformation is found. Raises AssertionError otherwise.
+    """
+    assigned_nodes, _ = _get_assigned_nodes(session, ep_name)
+
+    # Check for NHWC-domain nodes directly (preferred when the API surfaces them).
+    nhwc_domain = "com.ms.internal.nhwc"
+    nhwc_ops_found = {n.op_type for n in assigned_nodes if n.domain == nhwc_domain}
+    if nhwc_ops_found:
+        missing = set(expected_ops) - nhwc_ops_found
+        if missing:
+            raise AssertionError(
+                f"Expected NHWC-domain nodes for {sorted(missing)} but only found "
+                f"{sorted(nhwc_ops_found)} in {ep_name} NHWC assignments."
+            )
+        return True
+
+    # Fallback: the NHWC transformation inserts Transpose nodes around the target op.
+    transpose_count = sum(1 for n in assigned_nodes if n.op_type == "Transpose")
+    if transpose_count == 0:
+        all_ops = [f"{n.domain or 'ai.onnx'}::{n.op_type}" for n in assigned_nodes]
+        raise AssertionError(
+            f"Expected NHWC layout transformation for {sorted(expected_ops)} but no Transpose "
+            f"nodes were found in {ep_name} assignments. Assigned ops: {all_ops}. "
+            f"This indicates the NHWC kernel was not found for the target op(s)."
+        )
+    return True
+
+
+def _run_nhwc_model_test(target_device, op_name, model, feed_dict, expected_fn, nhwc_ops=None, rtol=1e-3, atol=1e-3):
+    """Run an NHWC test: verify domain assignment and numerical correctness.
+
+    Args:
+        target_device: EP device to test on.
+        op_name: Op type name (for display and default NHWC assertion).
+        model: ONNX model proto.
+        feed_dict: Input feed dictionary.
+        expected_fn: Function(feed_dict) -> expected output(s).
+        nhwc_ops: Set of op_types expected in NHWC domain (defaults to {op_name}).
+        rtol: Relative tolerance for output comparison.
+        atol: Absolute tolerance for output comparison.
+
+    Returns:
+        TEST_PASS or TEST_FAIL string.
+    """
+    if nhwc_ops is None:
+        nhwc_ops = {op_name}
+    with tempfile.NamedTemporaryFile(suffix=f"_{op_name}_nhwc.onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        save(model, model_path)
+        sess_options = _create_session_options(_NHWC_CONFIG)
+        sess_options.add_provider_for_devices([target_device], {})
+        sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+        if not assigned_nodes:
+            print(
+                f"{TEST_FAIL} ({CUDA_PLUGIN_EP_NAME} was assigned no nodes; "
+                f"assignments={_format_assignment_summary(assignment_info)})"
+            )
+            return TEST_FAIL
+
+        # Structural assertion: verify NHWC domain assignment
+        _assert_nhwc_domain_assigned(sess, CUDA_PLUGIN_EP_NAME, nhwc_ops)
+
+        res = sess.run(None, feed_dict)
+        expected = expected_fn(feed_dict)
+        if isinstance(expected, (list, tuple)):
+            for r, e in zip(res, expected, strict=True):
+                np.testing.assert_allclose(r, e, rtol=rtol, atol=atol)
+        else:
+            np.testing.assert_allclose(res[0], expected, rtol=rtol, atol=atol)
+        return TEST_PASS
+    except Exception as e:
+        print(f"{TEST_FAIL} ({e})")
+        return TEST_FAIL
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
 
 
 def _expected_batchnorm(inputs):
@@ -589,7 +694,12 @@ class TestCudaPluginEP(unittest.TestCase):
             "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
         }
         result = run_operator_test(
-            target_device, create_conv_model, inputs, _expected_conv, session_config=_NHWC_CONFIG
+            target_device,
+            create_conv_model,
+            inputs,
+            _expected_conv,
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"Conv"},
         )
         self.assertTrue(result, "Conv (NHWC) plugin test failed")
 
@@ -597,7 +707,12 @@ class TestCudaPluginEP(unittest.TestCase):
         target_device = get_cuda_plugin_device()
         inputs = {"X": np.random.rand(1, 3, 4, 4).astype(np.float32)}
         result = run_operator_test(
-            target_device, create_batch_norm_model, inputs, _expected_batchnorm, session_config=_NHWC_CONFIG
+            target_device,
+            create_batch_norm_model,
+            inputs,
+            _expected_batchnorm,
+            session_config=_NHWC_CONFIG,
+            nhwc_ops={"BatchNormalization"},
         )
         self.assertTrue(result, "BatchNormalization (NHWC) plugin test failed")
 
@@ -610,6 +725,7 @@ class TestCudaPluginEP(unittest.TestCase):
             inputs,
             lambda feed: F.max_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
             session_config=_NHWC_CONFIG,
+            nhwc_ops={"MaxPool"},
         )
         self.assertTrue(result, "MaxPool (NHWC) plugin test failed")
 
@@ -622,8 +738,177 @@ class TestCudaPluginEP(unittest.TestCase):
             inputs,
             lambda feed: F.avg_pool2d(torch.from_numpy(feed["X"]), kernel_size=2, stride=2).numpy(),
             session_config=_NHWC_CONFIG,
+            nhwc_ops={"AveragePool"},
         )
         self.assertTrue(result, "AveragePool (NHWC) plugin test failed")
+
+    def test_nhwc_conv_transpose(self):
+        target_device = get_cuda_plugin_device()
+        # ConvTranspose: input [1,2,4,4], weight [2,3,3,3] -> output [1,3,6,6] with stride=2, padding=1, output_padding=1
+        f_dtype = TensorProto.FLOAT
+        node = helper.make_node(
+            "ConvTranspose",
+            ["X", "W"],
+            ["Y"],
+            strides=[2, 2],
+            pads=[1, 1, 1, 1],
+            output_padding=[1, 1],
+            group=1,
+        )
+        graph = helper.make_graph(
+            [node],
+            "test-ConvTranspose",
+            [
+                helper.make_tensor_value_info("X", f_dtype, [1, 2, 4, 4]),
+                helper.make_tensor_value_info("W", f_dtype, [2, 3, 3, 3]),
+            ],
+            [helper.make_tensor_value_info("Y", f_dtype, [1, 3, 6, 6])],
+        )
+        opset = OperatorSetIdProto()
+        opset.version = 11
+        model = helper.make_model(graph, opset_imports=[opset])
+        x = np.random.rand(1, 2, 4, 4).astype(np.float32)
+        w = np.random.rand(2, 3, 3, 3).astype(np.float32)
+
+        def expected_fn(feed):
+            return F.conv_transpose2d(
+                torch.from_numpy(feed["X"]),
+                torch.from_numpy(feed["W"]),
+                stride=2,
+                padding=1,
+                output_padding=1,
+            ).numpy()
+
+        result = _run_nhwc_model_test(target_device, "ConvTranspose", model, {"X": x, "W": w}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "ConvTranspose (NHWC) plugin test failed")
+
+    def test_nhwc_global_max_pool(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "GlobalMaxPool",
+            [("X", f_dtype, [1, 3, 4, 4])],
+            [("Y", f_dtype, [1, 3, 1, 1])],
+            opset=12,
+        )
+        x = np.random.rand(1, 3, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            return F.adaptive_max_pool2d(t, output_size=1).numpy()
+
+        result = _run_nhwc_model_test(target_device, "GlobalMaxPool", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "GlobalMaxPool (NHWC) plugin test failed")
+
+    def test_nhwc_global_average_pool(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        model = _make_simple_model(
+            "GlobalAveragePool",
+            [("X", f_dtype, [1, 3, 4, 4])],
+            [("Y", f_dtype, [1, 3, 1, 1])],
+            opset=12,
+        )
+        x = np.random.rand(1, 3, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            return F.adaptive_avg_pool2d(t, output_size=1).numpy()
+
+        result = _run_nhwc_model_test(target_device, "GlobalAveragePool", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "GlobalAveragePool (NHWC) plugin test failed")
+
+    def test_nhwc_depth_to_space(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # DepthToSpace: [1,4,2,2] -> [1,1,4,4] with blocksize=2
+        model = _make_simple_model(
+            "DepthToSpace",
+            [("X", f_dtype, [1, 4, 2, 2])],
+            [("Y", f_dtype, [1, 1, 4, 4])],
+            attrs={"blocksize": 2, "mode": "DCR"},
+            opset=13,
+        )
+        x = np.random.rand(1, 4, 2, 2).astype(np.float32)
+
+        def expected_fn(feed):
+            # DCR mode: depth, column, row
+            t = feed["X"]  # [1, 4, 2, 2]
+            b = 2
+            n, c, h, w = t.shape
+            t = t.reshape(n, b, b, c // (b * b), h, w)
+            t = t.transpose(0, 3, 4, 1, 5, 2)  # [n, c/b^2, h, b, w, b]
+            return t.reshape(n, c // (b * b), h * b, w * b)
+
+        result = _run_nhwc_model_test(target_device, "DepthToSpace", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "DepthToSpace (NHWC) plugin test failed")
+
+    def test_nhwc_space_to_depth(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # SpaceToDepth: [1,1,4,4] -> [1,4,2,2] with blocksize=2
+        model = _make_simple_model(
+            "SpaceToDepth",
+            [("X", f_dtype, [1, 1, 4, 4])],
+            [("Y", f_dtype, [1, 4, 2, 2])],
+            attrs={"blocksize": 2},
+            opset=13,
+        )
+        x = np.random.rand(1, 1, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = feed["X"]  # [1, 1, 4, 4]
+            b = 2
+            n, c, h, w = t.shape
+            t = t.reshape(n, c, h // b, b, w // b, b)
+            t = t.transpose(0, 3, 5, 1, 2, 4)  # [n, b, b, c, h/b, w/b]
+            return t.reshape(n, c * b * b, h // b, w // b)
+
+        result = _run_nhwc_model_test(target_device, "SpaceToDepth", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "SpaceToDepth (NHWC) plugin test failed")
+
+    def test_nhwc_lrn(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # LRN: [1,3,4,4] with size=3, alpha=0.0001, beta=0.75, bias=1.0
+        model = _make_simple_model(
+            "LRN",
+            [("X", f_dtype, [1, 3, 4, 4])],
+            [("Y", f_dtype, [1, 3, 4, 4])],
+            attrs={"size": 3, "alpha": 0.0001, "beta": 0.75, "bias": 1.0},
+            opset=13,
+        )
+        x = np.random.rand(1, 3, 4, 4).astype(np.float32)
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            return F.local_response_norm(t, size=3, alpha=0.0001, beta=0.75, k=1.0).numpy()
+
+        result = _run_nhwc_model_test(target_device, "LRN", model, {"X": x}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "LRN (NHWC) plugin test failed")
+
+    def test_nhwc_grid_sample(self):
+        target_device = get_cuda_plugin_device()
+        f_dtype = TensorProto.FLOAT
+        # GridSample: X [1,1,4,4], grid [1,3,3,2] -> Y [1,1,3,3]
+        model = _make_simple_model(
+            "GridSample",
+            [("X", f_dtype, [1, 1, 4, 4]), ("grid", f_dtype, [1, 3, 3, 2])],
+            [("Y", f_dtype, [1, 1, 3, 3])],
+            attrs={"mode": "linear", "padding_mode": "zeros", "align_corners": 0},
+            opset=20,
+        )
+        x = np.random.rand(1, 1, 4, 4).astype(np.float32)
+        # Grid values in [-1, 1]
+        grid = np.random.rand(1, 3, 3, 2).astype(np.float32) * 2 - 1
+
+        def expected_fn(feed):
+            t = torch.from_numpy(feed["X"])
+            g = torch.from_numpy(feed["grid"])
+            return F.grid_sample(t, g, mode="bilinear", padding_mode="zeros", align_corners=False).numpy()
+
+        result = _run_nhwc_model_test(target_device, "GridSample", model, {"X": x, "grid": grid}, expected_fn)
+        self.assertEqual(result, TEST_PASS, "GridSample (NHWC) plugin test failed")
 
     # ---- Standard op tests ----
 

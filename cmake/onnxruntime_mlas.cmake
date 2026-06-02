@@ -55,6 +55,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qlutgemm.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
   ${MLAS_SRC_DIR}/flashattn.cpp
+  ${MLAS_SRC_DIR}/flashattn_qkv.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
