@@ -374,20 +374,19 @@
         "^test_dft_rfft_opset19",
         "^test_dft_irfft_opset19",
         // ORT BitCast kernel does not support bool type.
-        "^test_bitcast_bool_to_uint8",
+        "^test_bitcast_bool_to_uint8"
         // --- ONNX 1.22.0rc1 / opset 27 integration (issue #28752) ---
-        // CausalConvWithState and LinearAttention are new opset-27 ops whose CPU kernels
-        // are deferred to follow-up work; exclude their entire backend node-test families
-        // (base + _expanded) for this RC integration.
-        "^test_causal_conv_with_state",
-        "^test_linear_attention",
-        // Range was updated to opset 27, adding float16/bfloat16 to type-constraint T and a
-        // stash_type attribute. The ORT CPU Range-27 kernel reuses the existing registration,
-        // which supports the common numeric types (float/double/int16/int32/int64) only.
-        // float16/bfloat16 support is a tracked follow-up, so exclude those Range-27 node
-        // tests (base + _expanded). The float/int32 Range tests remain enabled.
-        "^test_range_float16_type",
-        "^test_range_bfloat16_type"
+        // No opset-27 CPU exclusions are needed. The new opset-27 ops CausalConvWithState
+        // and LinearAttention are ONNX *function* ops, and the updated Range op (opset 27,
+        // which adds float16/bfloat16) also carries an ONNX function body. ORT expands these
+        // function bodies into primitive nodes at graph-partition time, so all 62 opset-27
+        // backend node tests (base + _expanded, including fp16/bf16) pass on the CPU EP even
+        // though no native CausalConvWithState/LinearAttention kernel exists and the CPU
+        // Range-27 kernel registers only the common numeric types. Verified with
+        // onnx_test_runner -e cpu (62/62 succeeded, output-compared) under
+        // ALLOW_RELEASED_ONNX_OPSET_ONLY=0. If a non-CPU EP (e.g. CUDA/DML) surfaces a
+        // genuine failure in CI, add a narrowly-scoped EP-specific exclusion below rather
+        // than re-adding a global filter.
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
