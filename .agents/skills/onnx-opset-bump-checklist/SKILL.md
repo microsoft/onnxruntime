@@ -54,6 +54,22 @@ B/C/D can be validated). Throughout this section, bold letters in parentheses (e
 | `onnxruntime/core/providers/cpu/cpu_execution_provider.cc` | add `// Opset N` forward-declares + `BuildKernelCreateInfo<...>` entries for new/updated CPU kernels; mirror the previous opset block exactly |
 | `onnxruntime/core/graph/contrib_ops/contrib_defs.h`, `dml_ops/dml_defs.h` | apply ONNX-header-driven `OpSchemaRegisterOnce` macro fixes **only if the build emits those errors** |
 
+> **🆕 Tradition: bump EVERY EP that registers the op, in the SAME PR.** When an op's kernel set
+> changes for the new opset (e.g. `Range` gaining fp16/bf16 at opset 27), version-split / bump
+> that op's registration in **every** EP that registers it — **CPU and CUDA at minimum** — so no
+> EP silently lags behind CPU and the advertised opset boundaries stay consistent. **Even an
+> open-ended kernel that already binds the new opset** (e.g. CUDA `Range` at `SinceVersion(11)`,
+> which already matches opset-27 nodes) should still be **version-split** for convention/clarity
+> and to keep the kernel's advertised boundary matching the schema. Worked example — **PR #28754**
+> split `Range` into `[11,26]` + `27` in **both** CPU and CUDA (verified), keeping the same
+> numeric type set and deferring fp16/bf16 to ONNX function-expansion.
+
+**EP checklist when an op's kernel set changes for the new opset:**
+- [ ] For **each** EP, `grep -rn "<Op>)" onnxruntime/core/providers/<ep>/` (and its `*_execution_provider.cc`) to find every registration of the changed op.
+- [ ] EPs that register ONNX kernels via the `ONNX_OPERATOR_[VERSIONED_]KERNEL[_CLASS_NAME]` macros — **cpu**, **cuda**, **js**, and **rocm** if it registers the op (rocm is often hipified from cuda): version-split each into `[prev_start, N-1]` + a new `N` registration (class forward-declare **and** `BuildKernelCreateInfo` entry).
+- [ ] EPs with their **own** registration systems assess per their conventions, not the macro split — **dml** (`REG_INFO(ver, Op, …)` in `OperatorRegistration.cpp`), **webgpu**, **coreml/nnapi/qnn/openvino/migraphx**. A partition/capability check (e.g. MIGraphX's `optype == "Range"`) is **not** a kernel registration and needs no split.
+- [ ] Bump the EP `GetMaxSupportedOpSet` ceilings (**coreml/nnapi/vsinpu/webnn**) in lockstep — see §4 gotcha **b**.
+
 > **IR version is NOT bumped manually.** ORT reads `ONNX_NAMESPACE::Version::IR_VERSION` from
 > the ONNX headers (`onnxruntime/core/graph/model.cc`); it follows the submodule automatically.
 
@@ -269,7 +285,7 @@ infra to deploy any new ONNX test data to CI machines (dev-notes).
 
 ## 6. Quick checklist
 - [ ] Group A: deps.txt (zip SHA1), submodule, vcpkg.json, portfile.cmake (tar.gz SHA512), onnx.patch rebased, binskim.patch mirrored byte-identical, all 7 requirements.txt (NOT the 3 transformers-model files frozen at onnx==1.18.0)
-- [ ] Group B: `kMaxSupportedOpset`, cpu_execution_provider.cc opset block, (contrib/dml macros if build demands)
+- [ ] Group B: `kMaxSupportedOpset`, cpu_execution_provider.cc opset block, **version-split the changed op in EVERY EP that registers it (cpu+cuda+js, rocm if present) — §1 Group B all-EP tradition**, (contrib/dml macros if build demands)
 - [ ] **Safety invariant (§11): every new no-kernel op MUST carry an ONNX function body — else its native kernel is a BLOCKER this PR, not a follow-up**
 - [ ] Gotchas: fusion path-matchers (embed_layer_norm_fusion.cc, gather_fusion.cc), all 4 EP `GetMaxSupportedOpSet`, run audit script (expect crash), defer-and-filter new ops (node-local & safe), narrow function-op `_expanded` filters
 - [ ] Group C: OperatorKernels.md (built module), webgl-operators.md, backend test filters/overrides
@@ -398,6 +414,14 @@ onnx_test_runner -e cpu (opset-<N> node tests) ✅.
 already covers opset N. Such an op is **already kernel-covered** and does **not** trigger the
 blocker below; the blocker applies **only** when *no* registered kernel binds the new-opset node
 **and** the op has no function body.
+
+> **Convention (cross-EP consistency) — distinct from the binding-coverage rule above.** Even
+> when an open-ended kernel already binds opset N (so it is *not* a blocker), still
+> **version-split** it — and do so in **every** EP that registers the op (see the Group B all-EP
+> tradition). PR #28754 split `Range` `[11,26]`+`27` in **both** CPU and CUDA even though CUDA's
+> `SinceVersion(11)` kernel already bound opset 27, so the advertised boundary matches the schema
+> and no EP lags behind CPU. Splitting is about **clarity/consistency**; binding-coverage is
+> about **correctness** — keep the two concerns distinct.
 
 **Why (the function-expansion mechanism):** an ONNX *function* op ships a reference
 decomposition into primitive ops (`SetContextDependentFunctionBodyBuilder` /
