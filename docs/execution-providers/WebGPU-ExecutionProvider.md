@@ -38,7 +38,7 @@ The WebGPU EP requires a GPU and driver that support one of Dawn's native backen
 
 | Platform | Backend used by Dawn |
 |----------|----------------------|
-| Windows  | Direct3D 12 (default), Vulkan (opt-in via `dawnBackendType`) |
+| Windows  | Direct3D 12, Vulkan |
 | Linux    | Vulkan |
 | Android  | Vulkan |
 | macOS    | Metal |
@@ -62,11 +62,7 @@ python tools/ci_build/build.py --build_dir build/webgpu_plugin_ep --config RelWi
 |------|-------------|
 | `--use_webgpu [static_lib\|shared_lib]` | Enable the WebGPU EP. `static_lib` (the default if no value is given) builds the WebGPU EP into the main `onnxruntime` library. `shared_lib` builds the WebGPU EP as a separate [plugin EP library](./plugin-ep-libraries/index.md) (`onnxruntime_USE_EP_API_ADAPTERS=ON`) and is what produces the `onnxruntime_providers_webgpu.{dll,so,dylib}` shipped in the `onnxruntime-ep-webgpu` / `Microsoft.ML.OnnxRuntime.EP.WebGpu` packages. `shared_lib` is not supported for WebAssembly builds. Sets the CMake flag `onnxruntime_USE_WEBGPU=ON`. |
 | `--use_external_dawn` | Link against an externally-provided Dawn instead of building Dawn from source. Requires `--use_webgpu`. Sets `onnxruntime_USE_EXTERNAL_DAWN=ON`. |
-| `--wgsl_template {static,dynamic}` | Select the WGSL shader-template generator. `static` (default) bakes shader sources in at build time; `dynamic` generates them at runtime. |
 | `--enable_pix_capture` | Windows only. Build with PIX GPU debugger support. Requires `--use_webgpu`. |
-
-{: .note }
-> Building from a fully isolated network is not currently supported for native WebGPU because Dawn must be fetched during the build. See [Dependencies](../build/dependencies.md) for context.
 
 ## Usage
 
@@ -181,17 +177,15 @@ These options configure the underlying Dawn/WebGPU instance, adapter, and device
 | Option | Allowed values | Description |
 |--------|----------------|-------------|
 | `deviceId` | integer | Selects a WebGPU context to use. Sessions sharing the same `deviceId` share an underlying device and buffer cache. Defaults to `0`. |
-| `dawnBackendType` | `D3D12`, `Vulkan` | Override the native backend Dawn requests. Defaults to the OS's preferred backend. |
 | `powerPreference` | `high-performance`, `low-power` | Hint passed to `requestAdapter`. Defaults to the implementation default. |
 | `webgpuInstance` | pointer (as integer) | Bring-your-own `WGPUInstance`. Encoded as the decimal representation of the pointer value. Use when sharing a Dawn instance with the host application. |
 | `webgpuDevice` | pointer (as integer) | Bring-your-own `WGPUDevice`. Encoded as the decimal representation of the pointer value. Use together with `webgpuInstance` to share an existing device. |
-| `dawnProcTable` | pointer (as integer) | Address of an external `DawnProcTable` to use when the host application loads Dawn itself (typical with `--use_external_dawn`). |
 | `preserveDevice` | `0`, `1` | When `1`, keep the underlying WebGPU device alive after the last session that owns the context is released. Useful when sessions are created and destroyed repeatedly. |
 | `validationMode` | `disabled`, `wgpuOnly`, `basic`, `full` | Controls WGSL/runtime validation. `disabled` skips ONNX-side validation, `wgpuOnly` relies on Dawn's validation, `basic` enables lightweight ONNX checks, `full` enables all available checks. Defaults to a build-dependent value. |
 | `maxStorageBufferBindingSize` | integer (bytes) | Override the requested `maxStorageBufferBindingSize` device limit. Cannot exceed the adapter's reported limit. |
 
 {: .note }
-> Pointer-valued options (`webgpuInstance`, `webgpuDevice`, `dawnProcTable`) are parsed as base-10 integers — pass the decimal representation of the pointer value. Hex literals (e.g. `0x...`) are not accepted.
+> Pointer-valued options (`webgpuInstance`, `webgpuDevice`) are parsed as base-10 integers — pass the decimal representation of the pointer value. Hex literals (e.g. `0x...`) are not accepted.
 
 ### Buffer cache modes
 
@@ -222,7 +216,7 @@ The same feature is exposed in ORT Web via the `enableGraphCapture` session opti
 ## Profiling and debugging
 
 - **Generic ORT profiling.** ORT's built-in profiler (`SessionOptions::EnableProfiling`) works with the WebGPU EP and produces per-op timing.
-- **Native PIX capture (Windows).** Build with `--use_webgpu --enable_pix_capture`, attach PIX to the host process, and set `enablePIXCapture` to `1` on the session to capture WebGPU/D3D12 work for individual runs. PIX only attaches to D3D12, so this requires `dawnBackendType` to be `D3D12` (the default on Windows); it is a no-op when `dawnBackendType` is `Vulkan`.
+- **Native PIX capture (Windows).** Build with `--use_webgpu --enable_pix_capture`, attach PIX to the host process, and set `enablePIXCapture` to `1` on the session to capture WebGPU/D3D12 work for individual runs.
 - **WebGPU validation.** Tune `validationMode` to surface device-side issues during development; turn it down to `disabled` for production benchmarking to remove validation overhead.
 - **Browser profiling.** For ORT Web, see [WebGPU profiling](../tutorials/web/performance-diagnosis.md#webgpu-profiling).
 
@@ -231,10 +225,6 @@ The same feature is exposed in ORT Web via the `enableGraphCapture` session opti
 ### WebGPU EP vs. JSEP
 
 ONNX Runtime Web historically powered its `webgpu` backend through the **JavaScript Execution Provider (JSEP)**, which is enabled at build time with `--use_jsep`. The native WebGPU EP (`--use_webgpu`) is a separate, C++-side implementation built on Dawn. Today both flags can be enabled in the same build (a transitional state); a future change is expected to make them mutually exclusive. Use `--use_webgpu` for native and WebAssembly+JSEP builds for the browser path that ORT Web currently ships.
-
-### Relationship to DirectML
-
-On Windows the WebGPU EP dispatches to D3D12 through Dawn, while the [DirectML EP](./DirectML-ExecutionProvider.md) dispatches to D3D12 through DirectML (DML). The two providers have different op coverage, fusion strategies, and packaging stories; neither is a drop-in replacement for the other.
 
 ## Additional resources
 
