@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <algorithm>
@@ -33,6 +34,122 @@ extern char** environ;
 
 namespace {
 
+// RAII wrapper for a file descriptor: closes it on scope exit unless released.
+class ScopedFd {
+ public:
+  ScopedFd() = default;
+  explicit ScopedFd(int fd) : fd_(fd) {}
+  ScopedFd(const ScopedFd&) = delete;
+  ScopedFd& operator=(const ScopedFd&) = delete;
+  ScopedFd(ScopedFd&& other) noexcept : fd_(other.fd_) { other.fd_ = -1; }
+  ScopedFd& operator=(ScopedFd&& other) noexcept {
+    if (this != &other) {
+      Reset();
+      fd_ = other.fd_;
+      other.fd_ = -1;
+    }
+    return *this;
+  }
+  ~ScopedFd() { Reset(); }
+
+  int get() const { return fd_; }
+  void Reset() {
+    if (fd_ != -1) {
+      close(fd_);
+      fd_ = -1;
+    }
+  }
+  // Relinquish ownership; the caller becomes responsible for closing.
+  int Release() {
+    int fd = fd_;
+    fd_ = -1;
+    return fd;
+  }
+
+ private:
+  int fd_ = -1;
+};
+
+// RAII wrapper for posix_spawn_file_actions_t.
+class ScopedSpawnFileActions {
+ public:
+  ScopedSpawnFileActions() = default;
+  ScopedSpawnFileActions(const ScopedSpawnFileActions&) = delete;
+  ScopedSpawnFileActions& operator=(const ScopedSpawnFileActions&) = delete;
+  ~ScopedSpawnFileActions() {
+    if (initialized_) {
+      posix_spawn_file_actions_destroy(&actions_);
+    }
+  }
+
+  int Init() {
+    const int rc = posix_spawn_file_actions_init(&actions_);
+    initialized_ = (rc == 0);
+    return rc;
+  }
+  posix_spawn_file_actions_t* get() { return &actions_; }
+
+ private:
+  posix_spawn_file_actions_t actions_{};
+  bool initialized_ = false;
+};
+
+// RAII wrapper for a FILE* obtained from fdopen.
+class ScopedFile {
+ public:
+  explicit ScopedFile(FILE* fp) : fp_(fp) {}
+  ScopedFile(const ScopedFile&) = delete;
+  ScopedFile& operator=(const ScopedFile&) = delete;
+  ~ScopedFile() {
+    if (fp_ != nullptr) {
+      fclose(fp_);
+    }
+  }
+  FILE* get() const { return fp_; }
+
+ private:
+  FILE* fp_;
+};
+
+// RAII wrapper that reaps a child process on scope exit and exposes its status.
+class ScopedChild {
+ public:
+  explicit ScopedChild(pid_t pid) : pid_(pid) {}
+  ScopedChild(const ScopedChild&) = delete;
+  ScopedChild& operator=(const ScopedChild&) = delete;
+  ~ScopedChild() { Wait(); }
+
+  // Wait for the child and cache its exit status. Safe to call more than once.
+  void Wait() {
+    if (pid_ == -1) {
+      return;
+    }
+    int status = 0;
+    while (waitpid(pid_, &status, 0) == -1 && errno == EINTR) {
+    }
+    status_ = status;
+    pid_ = -1;
+  }
+
+  // Returns true only if the child exited normally with code 0.
+  bool ExitedCleanly() {
+    Wait();
+    return status_.has_value() && WIFEXITED(*status_) && WEXITSTATUS(*status_) == 0;
+  }
+
+ private:
+  pid_t pid_;
+  std::optional<int> status_;
+};
+
+// ORT_ADDR2LINE controls optional source file:line resolution for stack frames.
+// It is read as a non-negative integer N:
+//   - unset or 0 : disabled (default). Only symbol names from absl::Symbolize
+//                  are shown and no subprocess is spawned.
+//   - N > 0      : resolve file:line for the top N frames by invoking the
+//                  external `addr2line` tool (part of binutils). This is opt-in
+//                  because spawning addr2line and parsing DWARF can be very slow
+//                  on large debug binaries, and addr2line may not be installed.
 inline int GetAddr2LineEnv() {
   const char* val = std::getenv("ORT_ADDR2LINE");
   if (val == nullptr) {
@@ -85,7 +202,12 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
   for (int i = 0; i < depth; ++i) {
     Dl_info info;
     if (dladdr(addresses[i], &info) && info.dli_fname) {
-      uintptr_t offset = reinterpret_cast<uintptr_t>(addresses[i]) -
+      // Each captured address is a return address pointing just past the call
+      // instruction. Subtract 1 so addr2line resolves the call site itself
+      // rather than the following statement (which may be a different source
+      // line or even the next function). The map is still keyed by the original
+      // address so it matches the absl::Symbolize lookup in GetStackTrace.
+      uintptr_t offset = reinterpret_cast<uintptr_t>(addresses[i]) - 1 -
                          reinterpret_cast<uintptr_t>(info.dli_fbase);
       groups[info.dli_fname].push_back({addresses[i], offset});
     }
@@ -104,7 +226,7 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
       offset_strs.emplace_back(buf);
     }
 
-    // Build raw argv array for execvp. All pointers reference stable strings above.
+    // Build raw argv array for addr2line. All pointers reference stable strings above.
     std::vector<char*> argv;
     argv.reserve(3 + frames.size() + 1);
     argv.push_back(const_cast<char*>("addr2line"));
@@ -115,55 +237,51 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
     }
     argv.push_back(nullptr);
 
-    // Create a pipe for reading addr2line's stdout.
+    // Create a pipe for reading addr2line's stdout. RAII wrappers below own the
+    // descriptors, spawn file actions, FILE*, and child process so each early
+    // 'continue' releases everything without manual cleanup calls.
     int pipe_fds[2];
     if (!CreateCloseOnExecPipe(pipe_fds)) continue;
+    ScopedFd read_fd(pipe_fds[0]);
+    ScopedFd write_fd(pipe_fds[1]);
 
-    posix_spawn_file_actions_t actions;
-    int rc = posix_spawn_file_actions_init(&actions);
-    if (rc != 0) {
-      close(pipe_fds[0]);
-      close(pipe_fds[1]);
+    ScopedSpawnFileActions actions;
+    if (actions.Init() != 0) continue;
+
+    if (posix_spawn_file_actions_adddup2(actions.get(), write_fd.get(), STDOUT_FILENO) != 0 ||
+        posix_spawn_file_actions_addclose(actions.get(), read_fd.get()) != 0 ||
+        // Redirect stderr to /dev/null to suppress error messages.
+        posix_spawn_file_actions_addopen(actions.get(), STDERR_FILENO, "/dev/null", O_WRONLY, 0) != 0) {
       continue;
     }
 
-    bool actions_ok = true;
-    actions_ok &= posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO) == 0;
-    actions_ok &= posix_spawn_file_actions_addclose(&actions, pipe_fds[0]) == 0;
-    // Redirect stderr to /dev/null to suppress error messages.
-    actions_ok &= posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0) == 0;
+    pid_t pid = -1;
+    const int spawn_ret = posix_spawnp(&pid, "addr2line", actions.get(), nullptr, argv.data(), environ);
 
-    if (!actions_ok) {
-      posix_spawn_file_actions_destroy(&actions);
-      close(pipe_fds[0]);
-      close(pipe_fds[1]);
-      continue;
-    }
+    // Close the write end in the parent so we observe EOF once addr2line exits.
+    write_fd.Reset();
 
-    pid_t pid;
-    int spawn_ret = posix_spawnp(&pid, "addr2line", &actions, nullptr, argv.data(), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    close(pipe_fds[1]);
+    // posix_spawnp fails only when the child cannot be created. A missing
+    // addr2line still spawns but the child exits 127; that is handled by the
+    // ExitedCleanly() check below, which discards any output on failure.
+    if (spawn_ret != 0) continue;
+    ScopedChild child(pid);
 
-    if (spawn_ret != 0) {
-      close(pipe_fds[0]);
-      continue;
-    }
+    FILE* raw_fp = fdopen(read_fd.get(), "r");
+    if (raw_fp == nullptr) continue;
+    read_fd.Release();  // fp now owns the descriptor.
+    ScopedFile fp(raw_fp);
 
-    // Read one line per address from addr2line output.
-    FILE* fp = fdopen(pipe_fds[0], "r");
-    if (!fp) {
-      close(pipe_fds[0]);
-      while (waitpid(pid, nullptr, 0) == -1 && errno == EINTR) {
-      }
-      continue;
-    }
+    // Read into a local map and only commit it if addr2line exited cleanly, so a
+    // failed run (e.g., addr2line missing, or an unreadable binary) contributes
+    // no partial or garbage results.
+    std::unordered_map<void*, std::string> binary_result;
 
     // We intentionally do not use -f/-i so output remains 1 line per address.
     // Adding those flags would break the 1:1 parsing below.
     char line_buf[1024];
     size_t frame_idx = 0;
-    while (fgets(line_buf, sizeof(line_buf), fp) && frame_idx < frames.size()) {
+    while (fgets(line_buf, sizeof(line_buf), fp.get()) && frame_idx < frames.size()) {
       // Remove trailing newline
       size_t len = strlen(line_buf);
       if (len > 0 && line_buf[len - 1] == '\n') line_buf[len - 1] = '\0';
@@ -171,12 +289,16 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
       std::string resolved(line_buf);
       // addr2line returns "??:0" or "??:?" for unknown frames, so skip those.
       if (resolved != "??:0" && resolved != "??:?" && resolved.substr(0, 2) != "??") {
-        result[frames[frame_idx].addr] = resolved;
+        binary_result[frames[frame_idx].addr] = std::move(resolved);
       }
       ++frame_idx;
     }
-    fclose(fp);
-    while (waitpid(pid, nullptr, 0) == -1 && errno == EINTR) {
+
+    // Reap the child and only trust the output if it exited with status 0.
+    if (child.ExitedCleanly()) {
+      for (auto& kv : binary_result) {
+        result.insert(std::move(kv));
+      }
     }
   }
 
