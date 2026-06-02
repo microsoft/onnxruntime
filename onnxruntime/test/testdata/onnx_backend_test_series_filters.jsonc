@@ -374,7 +374,20 @@
         "^test_dft_rfft_opset19",
         "^test_dft_irfft_opset19",
         // ORT BitCast kernel does not support bool type.
-        "^test_bitcast_bool_to_uint8"
+        "^test_bitcast_bool_to_uint8",
+        // --- ONNX 1.22.0rc1 / opset 27 integration (issue #28752) ---
+        // CausalConvWithState and LinearAttention are new opset-27 ops whose CPU kernels
+        // are deferred to follow-up work; exclude their entire backend node-test families
+        // (base + _expanded) for this RC integration.
+        "^test_causal_conv_with_state",
+        "^test_linear_attention",
+        // Range was updated to opset 27, adding float16/bfloat16 to type-constraint T and a
+        // stash_type attribute. The ORT CPU Range-27 kernel reuses the existing registration,
+        // which supports the common numeric types (float/double/int16/int32/int64) only.
+        // float16/bfloat16 support is a tracked follow-up, so exclude those Range-27 node
+        // tests (base + _expanded). The float/int32 Range tests remain enabled.
+        "^test_range_float16_type",
+        "^test_range_bfloat16_type"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
