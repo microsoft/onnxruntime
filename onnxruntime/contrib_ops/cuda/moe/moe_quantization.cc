@@ -62,6 +62,10 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
+  // Backward-compat opt-in: default is 1 (callers ship CUTLASS-prepacked
+  // weights, matching all pre-existing tooling). Setting to 0 tells the
+  // PrePack hook to lay out raw [E, N, K/pack] quantized weights itself.
+  weights_prepacked_ = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", 1) != 0;
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8",
@@ -815,14 +819,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
     fc1_weight_data = packed_fp4_fc1_weights_ ? packed_fp4_fc1_weights_.get() : fc1_weight_data;
     fc2_weight_data = packed_fp4_fc2_weights_ ? packed_fp4_fc2_weights_.get() : fc2_weight_data;
-  } else if (is_int) {
-    // PrePack converts the raw int4/int8 weights to the CUTLASS fpA_intB
+  } else if (is_int && !weights_prepacked_) {
+    // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
     // layout that the runner consumes. Use the prepacked buffer when the
     // PrePack hook ran; otherwise (rare; e.g. session built with
     // ``session.disable_prepacking``) fall back to the original
-    // initializer and assume the caller already prepacked the bytes
-    // themselves (back-compat with QMoE consumers that pre-prepacked
-    // weights offline before this hook existed).
+    // initializer — which won't actually work for the runner, but we
+    // surface a clear runtime failure rather than producing garbage.
     if (packed_fc1_weights_) {
       fc1_weight_data = packed_fc1_weights_.get();
     }
@@ -988,19 +991,27 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 5 && quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc2_weights_, is_packed);
     is_packed = false;
-  } else if (input_idx == 2 && quant_type_ == "int") {
-    // Bring the raw int4/int8 fc1 weight tensor into the CUTLASS
-    // fpA_intB layout that the QMoE runner consumes. Mirrors the
-    // PrePack_B path in MatMulNBits.
+  } else if (input_idx == 2 && quant_type_ == "int" && !weights_prepacked_) {
+    // Caller opted in (``weights_prepacked=0`` attribute) to having ORT
+    // do the CUTLASS fpA_intB layout transform internally, instead of
+    // shipping pre-prepacked bytes. Mirrors ``MatMulNBits::PrePack_B``
+    // looped over the E experts of ``[E, N, K/pack]``. We deliberately
+    // leave ``is_packed = false`` so ORT keeps the original initializer
+    // alive: ``moe_helper::CheckInputs`` still needs its shape at every
+    // ``Compute`` call to validate ``moe_params``, matching the same
+    // trade-off used by the WFP4AFP8 weight branch above. The persistent
+    // ``packed_fc1_weights_`` buffer carries the prepacked bytes.
     //
-    // We deliberately leave ``is_packed = false`` so ORT keeps the
-    // original initializer alive: ``moe_helper::CheckInputs`` still
-    // needs its shape at every ``Compute`` call to validate moe_params,
-    // matching the same trade-off used by the WFP4AFP8 weight branch
-    // above. ``packed_fc1_weights_`` carries the prepacked bytes.
+    // Persistent memory cost: ~2x the int4/int8 weight footprint
+    // (raw + prepacked). For the typical use case (large MoE models
+    // being int4-quantized) this is still ~4x smaller than the fp16
+    // baseline. ``MatMulNBits`` avoids the doubling because it caches
+    // shape in ``N_`` / ``K_`` members at construction time; QMoE
+    // currently re-runs full ``CheckInputs`` per compute, so the raw
+    // tensor has to stay live.
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, is_packed);
     is_packed = false;
-  } else if (input_idx == 5 && quant_type_ == "int") {
+  } else if (input_idx == 5 && quant_type_ == "int" && !weights_prepacked_) {
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, is_packed);
     is_packed = false;
   } else if (input_idx == 3) {  // fc1_scales
@@ -1132,7 +1143,22 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   const int64_t k_packed = shape[2];
   const int64_t k = k_packed * pack_factor;
 
-  ORT_ENFORCE(bits != 4 || k % 2 == 0, "K must be even for 4-bit packed weights, got K=", k);
+  // ``preprocess_weights_for_mixed_gemm_cuda`` only has tile / permutation
+  // tables for SM75 / 80 / 90. The offline pybind binding
+  // (``pack_weights_for_cuda_mixed_gemm``) similarly restricts force_arch
+  // to that set and falls back to 80 for newer archs. Mirror the same
+  // fallback here so SM100/120 (Blackwell) consumers get a defined layout
+  // (compiled-for-Ampere) instead of garbage.
+  int packing_sm = sm_;
+  if (packing_sm < 75) {
+    packing_sm = 75;
+  } else if (packing_sm > 90) {
+    packing_sm = 80;
+  } else if (packing_sm != 75 && packing_sm != 80 && packing_sm != 90) {
+    // sm_ values like 86 or 89 share the SM80 fpA_intB layout; explicitly
+    // round them down so the helper finds a matching tile table.
+    packing_sm = 80;
+  }
 
   // Per-expert sizes.
   const size_t per_expert_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / pack_factor;
@@ -1182,7 +1208,7 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
     // bias / pair-interleave transform into the per-expert output slot.
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
-        sm_,
+        packing_sm,
         dst_e,
         transposed_scratch_ptr,
         permutation_map.get(),

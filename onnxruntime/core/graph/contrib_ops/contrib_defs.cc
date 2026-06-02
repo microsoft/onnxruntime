@@ -1519,6 +1519,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "fc*_scales inputs contain MXFP4 block scales, and fc*_global_scale inputs must be provided.",
               AttributeProto::STRING,
               std::string("int"))
+        .Attr("weights_prepacked",
+              "Only meaningful when quant_type='int'. Set to 1 (default) when the int4/int8 "
+              "fc1/fc2 weight initializers have already been laid out in the CUTLASS fpA_intB "
+              "format expected by the runner (e.g. produced offline by "
+              "pack_weights_for_cuda_mixed_gemm). Set to 0 when the initializers are raw, "
+              "row-major [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits; "
+              "in that case the kernel runs the CUTLASS layout transform itself in PrePack(), "
+              "matching the behaviour of MatMulNBits and removing the offline pre-pack "
+              "requirement from exporters. Default is 1 for backward compatibility.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "

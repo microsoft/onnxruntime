@@ -46,6 +46,15 @@ class QMoE final : public CudaKernel, public MoEBase {
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
   bool is_fp16_;
+  // When true (the schema default), the int4/int8 fc1/fc2 weight
+  // initializers are already in the CUTLASS fpA_intB layout — produced
+  // offline e.g. via ``pack_weights_for_cuda_mixed_gemm`` — and the
+  // compute path reads them as-is. When false, the raw schema-conformant
+  // ``[E, N, K/pack]`` layout (as produced by
+  // ``quantize_matmul_{4,8}bits``) is rewritten inside the PrePack hook
+  // via ``PrePackIntExpertWeights``, removing the offline prepack
+  // dependency. Only meaningful when ``quant_type_ == "int"``.
+  bool weights_prepacked_ = true;
   bool use_fp4_dequant_fallback_ = false;
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;

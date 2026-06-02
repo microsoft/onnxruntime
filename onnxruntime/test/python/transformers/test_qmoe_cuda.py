@@ -2157,6 +2157,10 @@ class TestQMoEIntPrePackParity(unittest.TestCase):
             swiglu_fusion=swiglu_fusion,
             expert_weight_bits=4,
             quant_type="int",
+            # Opt in to the PrePack-hook path; the weights below are raw
+            # ``[E, N, K/2]`` outputs of ``quantize_matmul_4bits``, not
+            # CUTLASS-prepacked.
+            weights_prepacked=0,
         )
         graph = helper.make_graph(
             nodes=[qmoe],
