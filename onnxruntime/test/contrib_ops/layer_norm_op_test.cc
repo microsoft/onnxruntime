@@ -426,6 +426,29 @@ TEST(LayerNormTest, LayerNorm17_double) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
 }
 
+TEST(LayerNormTest, LayerNorm_LargeConstantInput_Valid) {
+  constexpr int64_t hidden_size = 768;
+  // Matches the constant-value pattern reported in the original repro.
+  constexpr float input_value = 2396.814f;
+  constexpr float scale_bias_value = 0.1f;
+
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", 2);
+
+  const std::vector<int64_t> dims{1, 2, hidden_size};
+  test.AddInput<float>("X", dims, std::vector<float>(2 * hidden_size, input_value));
+  test.AddInput<float>("Scale", {hidden_size}, std::vector<float>(hidden_size, scale_bias_value), true);
+  test.AddInput<float>("B", {hidden_size}, std::vector<float>(hidden_size, scale_bias_value), true);
+  test.AddOutput<float>("Y", dims, std::vector<float>(2 * hidden_size, scale_bias_value));
+  test.SetOutputAbsErr("Y", 1e-6f);
+
+  // Keep the regression pinned to CPU since the reported NaNs were in the CPU fast path.
+  auto cpu = DefaultCpuExecutionProvider();
+  if (!cpu) GTEST_SKIP() << "CPU EP not available in this build.";
+  test.ConfigEp(std::move(cpu)).RunWithConfig();
+}
+
 TEST(LayerNormTest, LayerNorm_NormSize1_Valid) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
