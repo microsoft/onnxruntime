@@ -7572,6 +7572,10 @@ struct OrtApi {
    * When loading a compiled model with external (non-embedded) EPContext binary data, an execution provider can
    * retrieve this callback from OrtEpContextConfig and call it instead of reading the binary data from disk.
    *
+   * Reading happens at session load, so this callback is configured on OrtSessionOptions. The corresponding write
+   * callback runs only at compile time and is configured on OrtModelCompilationOptions via
+   * OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc.
+   *
    * The state pointer is stored as-is and is not owned by ORT. It must remain valid while any session or EP created
    * from these options may call the callback. If the same state may be used by multiple EPs or threads, the application
    * is responsible for synchronization.
@@ -8433,6 +8437,10 @@ struct OrtCompileApi {
    *
    * When EPContext embed mode is disabled, execution providers can retrieve this callback from OrtEpContextConfig and
    * call it instead of writing EPContext binary data directly to disk.
+   *
+   * Writing happens only at compile time, so this callback is configured on OrtModelCompilationOptions. The
+   * corresponding read callback runs at session load and is configured on OrtSessionOptions via
+   * OrtApi::SessionOptions_SetEpContextDataReadFunc.
    *
    * The state pointer is stored as-is and is not owned by ORT. It must remain valid for the duration of the compile
    * operation that may call the callback. If the same state may be used by multiple EPs or threads, the application is

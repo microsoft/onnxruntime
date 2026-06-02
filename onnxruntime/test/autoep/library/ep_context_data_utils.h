@@ -77,6 +77,11 @@ inline std::string PathToUtf8String(const std::filesystem::path& path) {
 #endif
 }
 
+// NOTE: This sample resolves file_name (which can originate from an untrusted EPContext model's
+// "ep_cache_context" attribute) directly into a filesystem path. An absolute path or one containing ".."
+// segments can therefore escape the model directory. Production EPs that adopt this pattern should validate
+// or sandbox the resolved path (e.g. reject absolute paths and traversal, confine to an allowed directory)
+// and bound the amount of data read.
 inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
                                            std::filesystem::path& data_path) {
   data_path.clear();
