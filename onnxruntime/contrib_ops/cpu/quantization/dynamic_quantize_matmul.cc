@@ -158,7 +158,8 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
     params.ldc = gemm_shape.N;
   }
 
-  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool());
+  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(),
+                &mlas_backend_kernel_selector_config_);
 
   return Status::OK();
 }
@@ -222,6 +223,8 @@ class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
  protected:
   int GetBIdx() const override { return IN_B; }
 
+  int GetAZeroPointIdx() const override { return IN_A_ZERO_POINT; }
+
  private:
   // a scale and b scale may be switched in fusion stage because of lack of shape information.
   // Fix them up before computation.
@@ -245,6 +248,8 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     uint8_t a_zero_point;
     GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
+    bool is_b_scale_supported = IsBQuantParamSupported(b_scale_tensor->Shape(), b ? b->Shape() : b_shape_);
+
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
     uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
@@ -252,7 +257,6 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
 
     ParQuantizeLinearStd(a_data, a_data_quant, narrow<size_t>(num_of_elements), a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
-    bool is_b_scale_supported = IsBQuantParamSupported(b_scale_tensor->Shape(), b ? b->Shape() : b_shape_);
     const bool is_a_signed = false;
     ORT_RETURN_IF_ERROR(ComputeCommon(
         ctx,
@@ -297,18 +301,30 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     gemm_shape.K = static_cast<size_t>(helper.K());
 
     const size_t num_gemms = helper.OutputOffsets().size();
-    std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
 
-    for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
-      auto& params = gemm_data_vec[gemm_idx];
-      params.A = a_data + helper.LeftOffsets()[gemm_idx];
-      params.lda = gemm_shape.K;
-      params.PackedB = packed_b_.get();
-      params.C = y_data + helper.OutputOffsets()[gemm_idx];
-      params.ldc = gemm_shape.N;
+    if (num_gemms == 1) {
+      MLAS_GEMM_DYN_QUANT_DATA_PARAMS gemm_data{};
+      gemm_data.A = a_data + helper.LeftOffsets()[0];
+      gemm_data.lda = gemm_shape.K;
+      gemm_data.PackedB = packed_b_.get();
+      gemm_data.C = y_data + helper.OutputOffsets()[0];
+      gemm_data.ldc = gemm_shape.N;
+      MlasDynamicQGemm(gemm_shape, &gemm_data, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
+    } else {
+      std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
+
+      for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
+        auto& params = gemm_data_vec[gemm_idx];
+        params.A = a_data + helper.LeftOffsets()[gemm_idx];
+        params.lda = gemm_shape.K;
+        params.PackedB = packed_b_.get();
+        params.C = y_data + helper.OutputOffsets()[gemm_idx];
+        params.ldc = gemm_shape.N;
+      }
+
+      MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
     }
 
-    MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
     // This evaluates to true if bias data was not provided as constant data for prepacking stage
     if (!dynamic_quant_mlas_bias_data_was_packed_) {
       if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {
@@ -316,14 +332,13 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
         ORT_RETURN_IF_NOT(bias_t->Shape().Size() == static_cast<int64_t>(gemm_shape.N),
                           "bias tensor's element count must equal B's last dimension (",
                           gemm_shape.N, "), but got ", bias_t->Shape().Size());
-        const auto biases = std::vector<float>(&bias_t->Data<float>()[0],
-                                               &bias_t->Data<float>()[gemm_shape.N]);
+        const float* biases = bias_t->Data<float>();
 
         // deferred adding of bias
         for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
           float* MxN = y_data + helper.OutputOffsets()[gemm_idx];
           for (auto l = gemm_shape.M; l > 0; --l) {
-            MlasEltwiseAdd<float>(MxN, biases.data(), MxN, gemm_shape.N);
+            MlasEltwiseAdd<float>(MxN, biases, MxN, gemm_shape.N);
             MxN += gemm_shape.N;
           }
         }

@@ -26,6 +26,8 @@ class MatMulInteger final : public MatMulIntegerBase {
 
  protected:
   int GetBIdx() const override { return IN_B; }
+
+  int GetAZeroPointIdx() const override { return IN_A_ZERO_POINT; }
 };
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -120,7 +122,8 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
     gemm_params.B = b_data + helper.RightOffsets()[batch];
     gemm_params.C = y_data + helper.OutputOffsets()[batch];
   }
-  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch_size, ctx->GetOperatorThreadPool());
+  MlasGemmBatch(gemm_shape, gemm_data_vec.data(), batch_size, ctx->GetOperatorThreadPool(),
+                &mlas_backend_kernel_selector_config_);
 
   return Status::OK();
 }

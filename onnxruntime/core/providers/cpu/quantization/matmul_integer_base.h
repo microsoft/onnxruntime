@@ -66,7 +66,22 @@ class MatMulIntegerBase : public OpKernel {
       // buffer memory and we don not want it uninitialized and generate different hashes
       // if and when we try to cache this pre-packed buffer for sharing between sessions.
       memset(packed_b_.get(), 0, packed_b_size);
-      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get());
+#if defined(USE_KLEIDIAI)
+      const uint8_t* a_zero_point = nullptr;
+      const int a_zero_point_idx = GetAZeroPointIdx();
+      if (a_zero_point_idx >= 0) {
+        const Tensor* a_zero_point_tensor = GetConstantInputTensor(a_zero_point_idx);
+        if (a_zero_point_tensor != nullptr && IsScalarOr1ElementVector(a_zero_point_tensor)) {
+          a_zero_point = static_cast<const uint8_t*>(a_zero_point_tensor->DataRaw());
+        }
+      }
+
+      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get(),
+                    &mlas_backend_kernel_selector_config_, a_zero_point);
+#else
+      MlasGemmPackB(N, K, b_data, N, a_is_signed, b_is_signed_, packed_b_.get(),
+                    &mlas_backend_kernel_selector_config_);
+#endif
 
       bool share_prepacked_weights = (prepacked_weights != nullptr);
       if (share_prepacked_weights) {
@@ -99,6 +114,10 @@ class MatMulIntegerBase : public OpKernel {
    */
   virtual int GetAIdx() const { return 0; }
   virtual int GetBIdx() const = 0;
+
+  virtual int GetAZeroPointIdx() const {
+    return -1;
+  }
 
   virtual bool IsBTransposed() const {
     return false;
@@ -244,18 +263,24 @@ class MatMulIntegerBase : public OpKernel {
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
     memset(packed_b_.get(), 0, packed_b_size);
 
-    const auto scales = static_cast<size_t>(ctx.scale->Shape().Size()) == ctx.N
-                            ? std::vector<float>(&ctx.scale->Data<float>()[0],
-                                                 &ctx.scale->Data<float>()[ctx.N])
-                            : std::vector<float>(ctx.N, ctx.scale->Data<float>()[0]);
+    const float* scales = ctx.scale->Data<float>();
+    std::vector<float> expanded_scales;
+    if (static_cast<size_t>(ctx.scale->Shape().Size()) != ctx.N) {
+      expanded_scales.assign(ctx.N, scales[0]);
+      scales = expanded_scales.data();
+    }
 
-    const auto biases = ctx.bias != nullptr
-                            ? std::vector<float>(&ctx.bias->Data<float>()[0],
-                                                 &ctx.bias->Data<float>()[ctx.N])
-                            : std::vector<float>(ctx.N, 0.f);
+    const float* biases = nullptr;
+    std::vector<float> zero_biases;
+    if (ctx.bias != nullptr) {
+      biases = ctx.bias->Data<float>();
+    } else {
+      zero_biases.assign(ctx.N, 0.f);
+      biases = zero_biases.data();
+    }
 
     MlasDynamicQgemmPackB(ctx.N, ctx.K, reinterpret_cast<const int8_t*>(ctx.b_data),
-                          scales.data(), biases.data(), packed_b_.get(), &mlas_backend_kernel_selector_config_);
+                          scales, biases, packed_b_.get(), &mlas_backend_kernel_selector_config_);
 
     if (prepacked_weights != nullptr) {
       prepacked_weights->buffers_.push_back(std::move(packed_b_));

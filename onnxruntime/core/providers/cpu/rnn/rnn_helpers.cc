@@ -259,8 +259,6 @@ void ComputeGemm(const int M,
                  int32_t* quantize_agg_C_buffer,
                  concurrency::ThreadPool* thread_pool,
                  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
-  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
-
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(A + (M * K) <= A_end);
@@ -313,7 +311,7 @@ void ComputeGemm(const int M,
   gemm_params.ldc = ld_C_buffer;
   gemm_params.OutputProcessor = &output_processor;
 
-  MlasGemm(gemm_shape, gemm_params, thread_pool);
+  MlasGemm(gemm_shape, gemm_params, thread_pool, mlas_backend_kernel_selector_config);
 }
 
 namespace deepcpu {

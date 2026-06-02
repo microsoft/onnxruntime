@@ -119,6 +119,10 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     return IN_B;
   }
 
+  int GetAZeroPointIdx() const override {
+    return IN_A_ZERO_POINT;
+  }
+
   virtual bool IsBTransposed() const override {
     return trans_B_ == CblasTrans;
   }

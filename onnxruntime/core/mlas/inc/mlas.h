@@ -537,8 +537,19 @@ enum class MLAS_QGEMM_OUTPUT_MODE {
     AccumulateMode, // accumulate to the output buffer
 };
 
+class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR;
+
 class MLAS_QGEMM_OUTPUT_PROCESSOR {
 public:
+    // Allows backend overrides to recognize and fuse ScaleBias processing
+    // without requiring RTTI. Other output processor types return nullptr.
+    virtual
+    const MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR*
+    AsScaleBiasOutputProcessor() const
+    {
+        return nullptr;
+    }
+
     virtual
     void
     Process(
@@ -569,6 +580,48 @@ public:
             OutputMode_(Mode),
             QuantGran_(QuantGran)
     {
+    }
+
+    const MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR*
+    AsScaleBiasOutputProcessor() const override
+    {
+        return this;
+    }
+
+    float*
+    Output() const
+    {
+        return Output_;
+    }
+
+    size_t
+    LeadingDimensionOutput() const
+    {
+        return LeadingDimensionOutput_;
+    }
+
+    const float*
+    Scale() const
+    {
+        return Scale_;
+    }
+
+    const float*
+    Bias() const
+    {
+        return Bias_;
+    }
+
+    MLAS_QGEMM_OUTPUT_MODE
+    OutputMode() const
+    {
+        return OutputMode_;
+    }
+
+    MLAS_QUANTIZATION_GRANULARITY
+    QuantGranularity() const
+    {
+        return QuantGran_;
     }
 
     void
@@ -643,6 +696,9 @@ struct MLAS_GEMM_QUANT_DATA_PARAMS {
  * @param [IN]  DataParams   Array of data descriptors for the matrices.
  * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
  * @param [IN]  ThreadPool   optional thread pool for parallel processing
+ * @param [IN]  BackendKernelSelectorConfig Supplies the backend kernel selector
+ *                                           configuration options, else nullptr if the
+ *                                           default configuration should be used.
  */
 void
 MLASCALL
@@ -650,7 +706,8 @@ MlasGemmBatch(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr
     );
 
 inline
@@ -658,9 +715,10 @@ void
 MlasGemm(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS &Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS &DataParams,
-    MLAS_THREADPOOL *ThreadPool)
+    MLAS_THREADPOOL *ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr)
 {
-    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
+    MlasGemmBatch(Shape, &DataParams, 1, ThreadPool, BackendKernelSelectorConfig);
 }
 
 /**
@@ -818,7 +876,22 @@ MlasGemmPackB(
     size_t ldb,
     bool AIsSigned,
     bool BIsSigned,
-    void* PackedB
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr
+    );
+
+void
+MLASCALL
+MlasGemmPackB(
+    size_t N,
+    size_t K,
+    const uint8_t* B,
+    size_t ldb,
+    bool AIsSigned,
+    bool BIsSigned,
+    void* PackedB,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
+    const uint8_t* ZeroPointA
     );
 
 /**

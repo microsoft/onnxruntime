@@ -979,6 +979,13 @@ bool
     void* PackedB);
 #endif
 
+typedef bool (MLASCALL MLAS_QGEMM_BATCH_OVERRIDE)(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+);
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -1502,15 +1509,14 @@ struct MLAS_PLATFORM {
     bool Avx512Supported_ = false;
     bool ArmNeonIsQuantActivationsUnsigned = false;
 
-    // MLAS SGemm overrides
+    // MLAS override hooks
     MLAS_SGEMM_BATCH_OVERRIDE* MlasSGemmBatchOverride = nullptr;
     MLAS_SGEMM_PACK_B_SIZE_OVERRIDE* MlasSGemmPackBSizeOverride = nullptr;
     MLAS_SGEMM_PACK_B_OVERRIDE* MlasSGemmPackBOverride = nullptr;
-    // MLAS Dynamic QGemm overrides
     MLAS_DYNAMIC_QGEMM_BATCH_OVERRIDE* MlasDynamicQGemmBatchOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_SIZE_OVERRIDE* MlasDynamicQGemmPackBSizeOverride = nullptr;
     MLAS_DYNAMIC_QGEMM_PACK_B_OVERRIDE* MlasDynamicQGemmPackBOverride = nullptr;
-    // MLAS Conv overrides
+    MLAS_QGEMM_BATCH_OVERRIDE* MlasQGemmBatchOverride = nullptr;
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
 #if defined(__aarch64__) && defined(__linux__)

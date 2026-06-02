@@ -30,7 +30,7 @@ class QLinearConv : public OpKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                   gsl::span<const size_t> prepacked_buffer_sizes,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -441,7 +441,8 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
                       group_output_channels,
                       std::is_same<ActType, int8_t>::value,
                       is_W_signed_,
-                      packed_W);
+                      packed_W,
+                      &mlas_backend_kernel_selector_config_);
         packed_W += packed_W_size_;
         Wdata += W_offset;
       }
@@ -485,7 +486,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
 
 template <typename ActType>
 Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                                       gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                       gsl::span<const size_t> prepacked_buffer_sizes,
                                                        int input_idx,
                                                        /*out*/ bool& used_shared_buffers) {
   if (input_idx != 3) {
@@ -496,6 +497,14 @@ Status QLinearConv<ActType>::UseSharedPrePackedBuffers(std::vector<BufferUniqueP
 
   if (prepacked_buffers.size() == 1) {  // This means that only packed_W_ exists
     packed_W_buffer_ = std::move(prepacked_buffers[0]);
+
+    if (!prepacked_buffer_sizes.empty() && W_shape_.NumDimensions() > 2 && W_shape_[0] > 0 &&
+        conv_attrs_.group > 0 && W_shape_[0] % conv_attrs_.group == 0) {
+      const size_t group_count = static_cast<size_t>(conv_attrs_.group);
+      if (prepacked_buffer_sizes[0] % group_count == 0) {
+        packed_W_size_ = prepacked_buffer_sizes[0] / group_count;
+      }
+    }
   } else if (prepacked_buffers.size() == 2) {  // This means that only reordered_W_ exists
     // Enforce that the first "placeholder" buffer is nullptr
     ORT_ENFORCE(prepacked_buffers[0].get() == nullptr);
@@ -992,7 +1001,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             gemm_params.C = worker_gemm_output + group_id * group_output_channels;
             gemm_params.ldc = static_cast<size_t>(M);
 
-            MlasGemm(gemm_shape, gemm_params, nullptr);
+            MlasGemm(gemm_shape, gemm_params, nullptr, &mlas_backend_kernel_selector_config_);
           }
         }
       }

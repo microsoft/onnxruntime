@@ -29,7 +29,7 @@ class QAttention : public OpKernel, public AttentionCPUBase {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                   gsl::span<const size_t> prepacked_buffer_sizes,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -102,7 +102,8 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   memset(packed_weights_data, 0, packed_weights_data_size);
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
+    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data,
+                  &mlas_backend_kernel_selector_config_);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
   }
@@ -119,7 +120,7 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
 
 template <typename T>
 Status QAttention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                gsl::span<const size_t> prepacked_buffer_sizes,
                                                 int input_idx,
                                                 /*out*/ bool& used_shared_buffers) {
   if (1 != input_idx) {
@@ -128,6 +129,21 @@ Status QAttention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
 
   used_shared_buffers = true;
   packed_weights_ = std::move(prepacked_buffers[0]);
+
+  if (!prepacked_buffer_sizes.empty() && weight_shape_.NumDimensions() == 2) {
+    const auto& weights_dims = weight_shape_.GetDims();
+    const size_t hidden_size_x3 = narrow<size_t>(weights_dims[1]);
+    const size_t hidden_size = hidden_size_x3 / 3;
+    if (num_heads_ > 0 && hidden_size != 0 && hidden_size_x3 == 3 * hidden_size &&
+        hidden_size % static_cast<size_t>(num_heads_) == 0) {
+      const size_t num_heads = static_cast<size_t>(num_heads_);
+      const size_t loop_len = SafeInt<size_t>(3) * num_heads;
+
+      if (prepacked_buffer_sizes[0] % loop_len == 0) {
+        packed_weights_size_ = prepacked_buffer_sizes[0] / loop_len;
+      }
+    }
+  }
 
   return Status::OK();
 }
@@ -311,7 +327,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
       gemm_params.OutputProcessor = &(scale_bias_procs[i]);
     }
 
-    MlasGemmBatch(gemm_shape, gemm_data_vec.data(), loop_len, tp);
+    MlasGemmBatch(gemm_shape, gemm_data_vec.data(), loop_len, tp, &mlas_backend_kernel_selector_config_);
   }
 
   // Compute the attention score and apply the score to V

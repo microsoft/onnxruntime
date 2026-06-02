@@ -693,6 +693,7 @@ Return Value:
         this->MlasDynamicQGemmBatchOverride = ArmKleidiAI::MlasDynamicQGemmBatch;
         this->MlasDynamicQGemmPackBSizeOverride = ArmKleidiAI::MlasDynamicQGemmPackBSize;
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
+        this->MlasQGemmBatchOverride = ArmKleidiAI::MlasGemmBatch;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
 #if defined(__aarch64__) && defined(__linux__)
