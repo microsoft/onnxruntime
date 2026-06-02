@@ -205,10 +205,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4 || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
-  const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
+  // When PrePack consumed the int4/int8 expert-weight initializers
+  // (``weights_prepacked == false`` opt-in path), the original tensors
+  // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
+  // Mirror how ``MatMulNBits`` reads its prepacked B input.
+  const bool int_weights_consumed_by_prepack = is_int && !weights_prepacked_ && packed_fc1_weights_ != nullptr;
+  const Tensor* fc1_experts_weights = int_weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(2);
   const Tensor* fc1_scales = (is_int && !packed_fc1_scales_) ? context->Input<Tensor>(3) : nullptr;
   const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
-  const Tensor* fc2_experts_weights = context->Input<Tensor>(5);
+  const Tensor* fc2_experts_weights = int_weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(5);
   const Tensor* fc2_scales = (is_int && !packed_fc2_scales_) ? context->Input<Tensor>(6) : nullptr;
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);
   // The CUTLASS MoE runner has no separate FC3 GEMM — gate and up projection weights must be
@@ -230,8 +235,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(check_weight_type(fc1_experts_weights, "fc1_experts_weights", is_fp8));
-  ORT_RETURN_IF_ERROR(check_weight_type(fc2_experts_weights, "fc2_experts_weights", is_fp8));
+  // When PrePack consumed the int weight initializers, the dtype check
+  // is no longer applicable (we know they were uint8 — that's what
+  // PrePackIntExpertWeights validated and consumed).
+  if (!int_weights_consumed_by_prepack) {
+    ORT_RETURN_IF_ERROR(check_weight_type(fc1_experts_weights, "fc1_experts_weights", is_fp8));
+    ORT_RETURN_IF_ERROR(check_weight_type(fc2_experts_weights, "fc2_experts_weights", is_fp8));
+  }
 
   // Unified FP4 inputs: block scales in fc*_scales (3/6), global scales in 15/16.
   const Tensor* fp4_fc1_block_scales = (uses_fp4_weight_scales && !packed_fp4_fc1_block_scales_) ? context->Input<Tensor>(3) : nullptr;
@@ -262,10 +272,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
   bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
   MoEParameters moe_params;
+  // Prefer the cached shapes when PrePack consumed the source initializer.
+  const TensorShape& fc1_shape = int_weights_consumed_by_prepack ? fc1_weights_shape_ : fc1_experts_weights->Shape();
+  const TensorShape& fc2_shape = int_weights_consumed_by_prepack ? fc2_weights_shape_ : fc2_experts_weights->Shape();
   ORT_RETURN_IF_ERROR(onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
-      moe_params, input, router_probs, fc1_experts_weights,
+      moe_params, input, router_probs, &fc1_shape,
       fc1_experts_bias_optional, fc1_scales, fc1_zeros,
-      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
+      &fc2_shape, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
       nullptr, nullptr, nullptr, nullptr,
       pack_size, is_fused_swiglu, block_size_));
 
@@ -814,24 +827,17 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  const void* fc1_weight_data = fc1_experts_weights->DataRaw();
-  const void* fc2_weight_data = fc2_experts_weights->DataRaw();
+  const void* fc1_weight_data = fc1_experts_weights ? fc1_experts_weights->DataRaw() : nullptr;
+  const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
   if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
     fc1_weight_data = packed_fp4_fc1_weights_ ? packed_fp4_fc1_weights_.get() : fc1_weight_data;
     fc2_weight_data = packed_fp4_fc2_weights_ ? packed_fp4_fc2_weights_.get() : fc2_weight_data;
   } else if (is_int && !weights_prepacked_) {
     // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
-    // layout that the runner consumes. Use the prepacked buffer when the
-    // PrePack hook ran; otherwise (rare; e.g. session built with
-    // ``session.disable_prepacking``) fall back to the original
-    // initializer — which won't actually work for the runner, but we
-    // surface a clear runtime failure rather than producing garbage.
-    if (packed_fc1_weights_) {
-      fc1_weight_data = packed_fc1_weights_.get();
-    }
-    if (packed_fc2_weights_) {
-      fc2_weight_data = packed_fc2_weights_.get();
-    }
+    // layout that the runner consumes. The source initializer was freed
+    // (``is_packed = true``) so we always read from the prepacked buffer.
+    fc1_weight_data = packed_fc1_weights_.get();
+    fc2_weight_data = packed_fc2_weights_.get();
   }
   IAllocatorUniquePtr<void> dequant_fc1_weights;
   IAllocatorUniquePtr<void> dequant_fc2_weights;
@@ -995,25 +1001,15 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     // Caller opted in (``weights_prepacked=0`` attribute) to having ORT
     // do the CUTLASS fpA_intB layout transform internally, instead of
     // shipping pre-prepacked bytes. Mirrors ``MatMulNBits::PrePack_B``
-    // looped over the E experts of ``[E, N, K/pack]``. We deliberately
-    // leave ``is_packed = false`` so ORT keeps the original initializer
-    // alive: ``moe_helper::CheckInputs`` still needs its shape at every
-    // ``Compute`` call to validate ``moe_params``, matching the same
-    // trade-off used by the WFP4AFP8 weight branch above. The persistent
-    // ``packed_fc1_weights_`` buffer carries the prepacked bytes.
-    //
-    // Persistent memory cost: ~2x the int4/int8 weight footprint
-    // (raw + prepacked). For the typical use case (large MoE models
-    // being int4-quantized) this is still ~4x smaller than the fp16
-    // baseline. ``MatMulNBits`` avoids the doubling because it caches
-    // shape in ``N_`` / ``K_`` members at construction time; QMoE
-    // currently re-runs full ``CheckInputs`` per compute, so the raw
-    // tensor has to stay live.
+    // looped over the E experts of ``[E, N, K/pack]``. We cache the
+    // source shape in ``fc1_weights_shape_`` so ``CheckInputs`` can be
+    // satisfied without holding the original initializer alive, then
+    // set ``is_packed = true`` to let ORT free it.
+    fc1_weights_shape_ = tensor.Shape();
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, is_packed);
-    is_packed = false;
   } else if (input_idx == 5 && quant_type_ == "int" && !weights_prepacked_) {
+    fc2_weights_shape_ = tensor.Shape();
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, is_packed);
-    is_packed = false;
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {

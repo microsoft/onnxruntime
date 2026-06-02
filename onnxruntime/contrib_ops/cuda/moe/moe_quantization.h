@@ -55,6 +55,15 @@ class QMoE final : public CudaKernel, public MoEBase {
   // via ``PrePackIntExpertWeights``, removing the offline prepack
   // dependency. Only meaningful when ``quant_type_ == "int"``.
   bool weights_prepacked_ = true;
+  // Cached source weight shapes captured at PrePack time. When the
+  // PrePack hook consumed and released the original int4/int8 weight
+  // initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
+  // and ``(5)`` return nothing, so ``moe_helper::CheckInputs`` can no
+  // longer read the shapes from the live tensors. We feed it these
+  // cached shapes instead via the ``TensorShape*`` overload, matching
+  // how ``MatMulNBits`` caches ``N_`` / ``K_`` in its constructor.
+  TensorShape fc1_weights_shape_;
+  TensorShape fc2_weights_shape_;
   bool use_fp4_dequant_fallback_ = false;
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;
