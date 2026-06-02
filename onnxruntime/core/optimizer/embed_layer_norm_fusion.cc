@@ -256,7 +256,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_3{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Range", {1, 11}, kOnnxDomain},
+      {0, 0, "Range", {1, 11, 27}, kOnnxDomain},
       {0, 1, "Cast", {9, 13}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Shape", {1, 13}, kOnnxDomain}};
@@ -264,7 +264,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   std::vector<graph_utils::EdgeEndToMatch> parent_path_4{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Range", {1, 11}, kOnnxDomain},
+      {0, 0, "Range", {1, 11, 27}, kOnnxDomain},
       {0, 1, "Gather", {1, 11, 13}, kOnnxDomain},
       {0, 0, "Shape", {1, 13}, kOnnxDomain}};
   // Match one of the three path patterns.
