@@ -108,7 +108,7 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
     updateOutputShape(ctx, 1, mask_index_shape);
   }
 
-  if (ctx.getNumOutputs() == 3 || (ctx.getNumOutputs() == 2 && mask_index_type == 0)) {
+  if (ctx.getNumOutputs() > 2) {
     updateOutputShape(ctx, 2, output_shape);
     propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }

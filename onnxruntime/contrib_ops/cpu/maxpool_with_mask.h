@@ -200,10 +200,22 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     const TensorShape& x_shape = X->Shape();
     const TensorShape& m_shape = M->Shape();
     ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
-
-    // TODO: fix this checker later
-    // ONNXRUNTIME_RETURN_IF_NOT((x_shape[2] == m_shape[2]) && (x_shape[3] == m_shape[3]), " Input shape and mask shape
-    // mismatch: ", x_shape, " vs ", m_shape);
+    ORT_RETURN_IF_NOT(m_shape.NumDimensions() == x_shape.NumDimensions(),
+                      "Mask and input must have the same number of dimensions. Got mask dims: ",
+                      m_shape.NumDimensions(), " input dims: ", x_shape.NumDimensions());
+    const bool input_has_nonzero_channels = x_shape[0] > 0 && x_shape[1] > 0;
+    // Mask N and C dimensions may differ from input (broadcasting via modulo).
+    // Only require them to be nonzero to prevent division-by-zero in total_mask_channels.
+    ORT_RETURN_IF_NOT(!input_has_nonzero_channels || (m_shape[0] > 0 && m_shape[1] > 0),
+                      "Mask N and C dimensions must be greater than 0 when input N and C are greater than 0. "
+                      "Got mask N=",
+                      m_shape[0], " C=", m_shape[1],
+                      " input N=", x_shape[0], " C=", x_shape[1]);
+    for (size_t i = 2; i < x_shape.NumDimensions(); ++i) {
+      ORT_RETURN_IF_NOT(m_shape[i] == x_shape[i],
+                        "Mask and input spatial dimensions mismatch at dimension ", i,
+                        ": mask=", m_shape[i], " input=", x_shape[i]);
+    }
 
     TensorShapeVector pads = pool_attrs_.pads;
     TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;

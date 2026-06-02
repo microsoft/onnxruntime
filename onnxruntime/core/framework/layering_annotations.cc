@@ -166,6 +166,7 @@ struct EpDeviceView {
   OrtDevice::DeviceType device_type;  // OrtDevice::CPU, GPU, NPU, FPGA, or kDeviceTypeUnknown
   uint32_t vendor_id;
   OrtDevice::DeviceId device_id;
+  bool has_device_ordinal;         // true when device_id is a runtime ordinal (from device_memory_info)
   std::string_view vendor_string;  // from OrtHardwareDevice::vendor (empty if unavailable)
 };
 
@@ -190,7 +191,11 @@ bool MatchEpDevice(const EpDeviceView& ep,
     if (ep.device_type == OrtDevice::GPU) {
       uint32_t index = std::numeric_limits<uint32_t>::max();
       if (TryParseIndex(std::string(target_specifier), index)) {
-        return ep.device_id == static_cast<OrtDevice::DeviceId>(index);
+        // Only match by ordinal index when the device_id is known to be a runtime
+        // ordinal (sourced from device_memory_info). OrtHardwareDevice::device_id is
+        // a PCI hardware-type identifier, not a device instance ordinal.
+        return ep.has_device_ordinal &&
+               ep.device_id == static_cast<OrtDevice::DeviceId>(index);
       }
       // gpu:<vendor>
       if (!ep.vendor_string.empty() && CaseInsensitiveCompare(ep.vendor_string, target_specifier)) {
@@ -285,13 +290,13 @@ std::optional<std::string> EpLayeringMatcher::Match(gsl::span<const OrtEpDevice*
         ep_device.ep_name,
         device_type,
         has_hw ? ep_device.device->vendor_id : 0u,
-        // Prefer the device ordinal from device_memory_info (set by the EP factory to
-        // a runtime device ordinal such as a CUDA ordinal) over the OrtHardwareDevice::device_id
-        // which is a hardware-type identifier and not guaranteed to be a stable runtime ordinal.
+        // Use the device ordinal from device_memory_info (set by the EP factory to
+        // a runtime device ordinal such as a CUDA ordinal). OrtHardwareDevice::device_id
+        // is a PCI hardware-type identifier and must not be used for index-based matching.
         ep_device.device_memory_info
             ? ep_device.device_memory_info->device.Id()
-            : (has_hw ? static_cast<OrtDevice::DeviceId>(ep_device.device->device_id)
-                      : OrtDevice::DeviceId{}),
+            : OrtDevice::DeviceId{},
+        /*has_device_ordinal=*/ep_device.device_memory_info != nullptr,
         has_hw ? std::string_view(ep_device.device->vendor) : std::string_view{}};
 
     if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
@@ -316,7 +321,8 @@ std::optional<std::string> EpLayeringMatcher::Match(const ExecutionProviders& pr
         device.Type(),
         device.Vendor(),
         device.Id(),
-        {}};  // no vendor string available from IExecutionProvider
+        /*has_device_ordinal=*/true,  // IExecutionProvider sets device Id to a runtime ordinal
+        {}};                          // no vendor string available from IExecutionProvider
 
     if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
       return std::string(ep.Type());
@@ -386,8 +392,10 @@ Status LayeringIndex::Create(const Graph& graph,
       LOGS(logger, VERBOSE) << "Layering Rule " << i << " (" << rule.device << " -> " << rule.annotation
                             << ") mapped to EP: " << ep_type;
     } else {
-      LOGS(logger, WARNING) << "Layering Rule " << i << " (" << rule.device << " -> " << rule.annotation
-                            << ") could not be mapped to any available Execution Provider.";
+      LOGS(logger, ERROR) << "Layering rule " << i << " (device='" << rule.device << "', annotation='" << rule.annotation
+                          << "') could not be mapped to any available Execution Provider. "
+                          << "If a numeric gpu index was specified (e.g. gpu:0), ensure an EP with a matching "
+                          << "device ordinal is registered and reports device_memory_info.";
     }
   }
 

@@ -253,7 +253,8 @@ LutPackScalesAndZeroPoints(
     bool HasZeroPoint,
     float* PackedQuantBZPBegin,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     MLAS_THREADPOOL* ThreadPool
 )
 {
@@ -270,7 +271,7 @@ LutPackScalesAndZeroPoints(
 
     Dispatch->PackScalesAndZeroPoints(
         N, K, bits, BlkLen, simd_n_out, bm, HasZeroPoint,
-        PackedQuantBZPBegin, QuantBScale, QuantBZeroPoint, ThreadPool
+        PackedQuantBZPBegin, QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool
     );
 }
 
@@ -317,7 +318,8 @@ MlasLutGemmPack(
     bool HasZeroPoint,
     const std::byte* QuantBData,
     const float* QuantBScale,
-    const uint8_t* QuantBZeroPoint,
+    const void* QuantBZeroPoint,
+    bool IsFloatZeroPoint,
     std::byte* PackedBuf,
     MLAS_THREADPOOL* ThreadPool
 )
@@ -331,7 +333,8 @@ MlasLutGemmPack(
     if (QuantBScale != nullptr) {
         size_t scales_offset = LutGemmPackedScalesOffset(N, K, BlkBitWidth, BlkLen, HasZeroPoint);
         float* scales_dest = reinterpret_cast<float*>(PackedBuf + scales_offset);
-        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest, QuantBScale, QuantBZeroPoint, ThreadPool);
+        LutPackScalesAndZeroPoints(N, K, BlkBitWidth, BlkLen, HasZeroPoint, scales_dest,
+                                   QuantBScale, QuantBZeroPoint, IsFloatZeroPoint, ThreadPool);
     }
 }
 
@@ -358,6 +361,13 @@ MlasIsLutGemmAvailable(
     }
 
     if (K % 32 != 0) {
+        return false;
+    }
+
+    // K must be divisible by BlkLen. The packing and compute kernels use
+    // floor division (K / BlkLen) for per-column block strides, which
+    // diverges from the caller's ceiling division when K % BlkLen != 0.
+    if (K % BlkLen != 0) {
         return false;
     }
 

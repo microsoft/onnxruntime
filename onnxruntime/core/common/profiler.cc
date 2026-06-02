@@ -49,7 +49,10 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   custom_logger_ = custom_logger;
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
-    ep_profiler->StartProfiling(profiling_start_time_);
+    auto status = ep_profiler->StartProfiling(profiling_start_time_);
+    if (!status.IsOK() && ep_start_profiling_status_.IsOK()) {
+      ep_start_profiling_status_ = status;
+    }
   }
 }
 
@@ -62,7 +65,10 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   profile_stream_file_ = ToUTF8String(file_name);
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
-    ep_profiler->StartProfiling(profiling_start_time_);
+    auto status = ep_profiler->StartProfiling(profiling_start_time_);
+    if (!status.IsOK() && ep_start_profiling_status_.IsOK()) {
+      ep_start_profiling_status_ = status;
+    }
   }
 }
 

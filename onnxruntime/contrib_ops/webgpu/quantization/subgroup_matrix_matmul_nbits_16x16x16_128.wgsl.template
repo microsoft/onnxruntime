@@ -1,0 +1,681 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// SubgroupMatrix matmul_nbits kernel for 16x16x16 config with 128x128 tiles
+// Uses subgroupMatrixLoad/Store/MultiplyAccumulate for hardware tensor core acceleration
+//
+// A: prepacked layout (from PrepackProgram) - elements arranged for subgroupMatrixLoad
+// B: 4-bit or 8-bit quantized, dequantized into SLM (buf_b) with padded stride
+//
+// Workgroup: 128 threads = 4 subgroups x 32 lanes, arranged 2x2
+// Tile: BM(128) x BN(128)
+// Each subgroup handles WM(64) x WN(64) = 4x4 = 16 coopmat tiles of 16x16
+// K dimension iterated in BK(32) blocks
+//
+// Key optimizations vs 64x64 shader:
+// - 4x larger tile (128x128 vs 64x64) reduces global memory traffic
+// - A loaded directly from global memory (prepacked), 4 rows per subgroup per k-step
+// - B dequantized to shared memory with padded stride (SHMEM_STRIDE=40) for bank conflict avoidance
+// - B tiles loaded once per k-step, reused across 4 A rows
+
+#param n_bits
+#param has_zero_points
+#param has_bias
+#param has_weight_idx
+#param has_weight_idx_indirect
+#param sg_mat_k
+#param sg_mat_m
+#param sg_mat_n
+
+#use .getByOffset .setByOffset
+
+#include "quantization/matmul_nbits_zero_pt.wgsl.template"
+
+const kQuantizationBlockSize: u32 = 32;
+
+// Tile parameters matching CM1 (cooperative matrix) layout
+const BM: u32 = 128;                            // Tile size along M
+const BN: u32 = 128;                            // Tile size along N
+const BK: u32 = 32;                             // Tile size along K
+const kSgMatM: u32 = u32(sg_mat_m);             // 16
+const kSgMatN: u32 = u32(sg_mat_n);             // 16
+const kSgMatK: u32 = u32(sg_mat_k);             // 16
+const WM: u32 = 64;                             // Per-subgroup M (BM/2)
+const WN: u32 = 64;                             // Per-subgroup N (BN/2)
+const kSgMatSizeLeft: u32 = kSgMatM * kSgMatK;  // Elements per left (A) subgroup matrix
+const kSgMatCountM: u32 = BM / kSgMatM;         // 8 subgroup matrices per tile along M
+
+// Padded shared memory stride to avoid bank conflicts during cooperative matrix loads
+const SHMEM_STRIDE: u32 = 40;  // BK + 8 padding (matches Vulkan CM1's BK/2+4 in vec2 units)
+
+// Shared memory for dequantized B weights [BN, BK] with padding
+var<workgroup> buf_b: array<f16, BN * SHMEM_STRIDE>;  // 128 * 40 = 5120 elements = 10240 bytes
+
+// Small staging buffer for edge-tile output (one 16x16 tile per subgroup)
+var<workgroup> coopmat_stage: array<f16, kSgMatM * kSgMatN * 4>;  // 16*16*4 = 1024 elements = 2048 bytes
+// Total shared memory: 10240 + 2048 = 12288 bytes
+
+#if n_bits == 4
+// Dequantize 4-bit quantized B weights into buf_b with padded stride.
+// First half: rows 0..63, Second half: rows 64..127
+// 128 threads, 2 threads per N row, each handles 16 K elements.
+fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
+#if has_weight_idx
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+    let weight_offset = actual_weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
+#else
+    const weight_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let k_offset = k_chunk * 16u;
+
+    // First half: rows 0..63
+    {
+        let global_n = n_base + n_idx_0;
+        let buf_base = n_idx_0 * SHMEM_STRIDE + k_offset;
+        if (global_n < uniforms.N) {
+            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
+            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
+            let scale = f16(scales_b.getByOffset(scale_idx));
+            let zero = mm_read_zero(
+                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+            for (var step: u32 = 0; step < 2u; step++) {
+                let packed_weights = input_b.getByOffset(packed_idx + step);
+                let w_lo = (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
+                let w_hi = (vec4<f16>(unpack4xU8((packed_weights >> 4u) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
+                let b = buf_base + step * 8u;
+                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_hi[0];
+                buf_b[b + 2] = w_lo[1]; buf_b[b + 3] = w_hi[1];
+                buf_b[b + 4] = w_lo[2]; buf_b[b + 5] = w_hi[2];
+                buf_b[b + 6] = w_lo[3]; buf_b[b + 7] = w_hi[3];
+            }
+        } else {
+            for (var i: u32 = 0; i < 16u; i++) {
+                buf_b[buf_base + i] = f16(0.0);
+            }
+        }
+    }
+    // Second half: rows 64..127
+    {
+        let n_idx_1 = n_idx_0 + 64u;
+        let global_n = n_base + n_idx_1;
+        let buf_base = n_idx_1 * SHMEM_STRIDE + k_offset;
+        if (global_n < uniforms.N) {
+            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
+            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
+            let scale = f16(scales_b.getByOffset(scale_idx));
+            let zero = mm_read_zero(
+                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+            for (var step: u32 = 0; step < 2u; step++) {
+                let packed_weights = input_b.getByOffset(packed_idx + step);
+                let w_lo = (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
+                let w_hi = (vec4<f16>(unpack4xU8((packed_weights >> 4u) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
+                let b = buf_base + step * 8u;
+                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_hi[0];
+                buf_b[b + 2] = w_lo[1]; buf_b[b + 3] = w_hi[1];
+                buf_b[b + 4] = w_lo[2]; buf_b[b + 5] = w_hi[2];
+                buf_b[b + 6] = w_lo[3]; buf_b[b + 7] = w_hi[3];
+            }
+        } else {
+            for (var i: u32 = 0; i < 16u; i++) {
+                buf_b[buf_base + i] = f16(0.0);
+            }
+        }
+    }
+}
+#endif
+
+#if n_bits == 8
+// Dequantize 8-bit quantized B weights into buf_b with padded stride.
+fn dequant_b_to_buf(n_base: u32, k_idx: u32, n_idx_0: u32, k_chunk: u32) {
+#if has_weight_idx
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+    let weight_offset = actual_weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
+#else
+    const weight_offset : u32 = 0;
+    const scale_offset : u32 = 0;
+#endif
+    let k_offset = k_chunk * 16u;
+
+    // First half: rows 0..63
+    {
+        let global_n = n_base + n_idx_0;
+        let buf_base = n_idx_0 * SHMEM_STRIDE + k_offset;
+        if (global_n < uniforms.N) {
+            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
+            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
+            let scale = f16(scales_b.getByOffset(scale_idx));
+            let zero = mm_read_zero(
+                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+            for (var step: u32 = 0; step < 2u; step++) {
+                let packed_weights = input_b.getByOffset(packed_idx + step);
+                let w_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
+                let w_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
+                let b = buf_base + step * 8u;
+                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_lo[1];
+                buf_b[b + 2] = w_lo[2]; buf_b[b + 3] = w_lo[3];
+                buf_b[b + 4] = w_hi[0]; buf_b[b + 5] = w_hi[1];
+                buf_b[b + 6] = w_hi[2]; buf_b[b + 7] = w_hi[3];
+            }
+        } else {
+            for (var i: u32 = 0; i < 16u; i++) {
+                buf_b[buf_base + i] = f16(0.0);
+            }
+        }
+    }
+    // Second half: rows 64..127
+    {
+        let n_idx_1 = n_idx_0 + 64u;
+        let global_n = n_base + n_idx_1;
+        let buf_base = n_idx_1 * SHMEM_STRIDE + k_offset;
+        if (global_n < uniforms.N) {
+            let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
+            let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
+            let scale = f16(scales_b.getByOffset(scale_idx));
+            let zero = mm_read_zero(
+                global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+            for (var step: u32 = 0; step < 2u; step++) {
+                let packed_weights = input_b.getByOffset(packed_idx + step);
+                let w_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
+                let w_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
+                let b = buf_base + step * 8u;
+                buf_b[b]     = w_lo[0]; buf_b[b + 1] = w_lo[1];
+                buf_b[b + 2] = w_lo[2]; buf_b[b + 3] = w_lo[3];
+                buf_b[b + 4] = w_hi[0]; buf_b[b + 5] = w_hi[1];
+                buf_b[b + 6] = w_hi[2]; buf_b[b + 7] = w_hi[3];
+            }
+        } else {
+            for (var i: u32 = 0; i < 16u; i++) {
+                buf_b[buf_base + i] = f16(0.0);
+            }
+        }
+    }
+}
+#endif
+
+$MAIN {
+    let global_base_m = workgroup_id.y * BM;
+    let global_base_n = workgroup_id.x * BN;
+
+    let sg_idx = u32(local_idx / sg_size);
+    let sg_tid = local_idx % sg_size;
+    let warp_r = sg_idx % 2u;  // 0 or 1 (row in 2x2 grid)
+    let warp_c = sg_idx / 2u;  // 0 or 1 (col in 2x2 grid)
+
+    // Each subgroup's A starts at a different M offset in the prepacked layout
+    // Subgroup sg_idx handles rows: warp_r * WM .. warp_r * WM + WM (within the BM tile)
+    // But in the prepacked layout, the subgroups are numbered 0..7 (kSgMatCountM = BM/kSgMatM = 8)
+    // Subgroups 0,1 handle rows 0..63 (warp_r=0), subgroups 2,3 handle rows 64..127 (warp_r=1)
+    // Within each 64-row band, we have 4 coopmat rows of 16
+
+    // For prepacked A: sg_mat index = (workgroup_y * kSgMatCountM + first_coopmat_row_in_warp) * sg_mat_count_k
+    let sg_mat_count_k = uniforms.K / kSgMatK;
+
+    // 16 accumulator tiles (4x4 grid of 16x16)
+    var c00: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c01: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c02: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c03: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c10: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c11: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c12: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c13: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c20: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c21: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c22: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c23: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c30: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c31: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c32: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+    var c33: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+
+    // Precompute A offsets for the 4 coopmat rows this subgroup handles
+    // In prepacked layout, each subgroup matrix tile is kSgMatSizeLeft contiguous elements
+    // The 4 coopmat rows are at (warp_r * 4 + 0..3) in the M dimension
+    var sg_mat_offset_a0 = (workgroup_id.y * kSgMatCountM + warp_r * 4u + 0u) * sg_mat_count_k * kSgMatSizeLeft;
+    var sg_mat_offset_a1 = (workgroup_id.y * kSgMatCountM + warp_r * 4u + 1u) * sg_mat_count_k * kSgMatSizeLeft;
+    var sg_mat_offset_a2 = (workgroup_id.y * kSgMatCountM + warp_r * 4u + 2u) * sg_mat_count_k * kSgMatSizeLeft;
+    var sg_mat_offset_a3 = (workgroup_id.y * kSgMatCountM + warp_r * 4u + 3u) * sg_mat_count_k * kSgMatSizeLeft;
+
+    // Main K-loop
+    for (var k_block: u32 = 0; k_block < uniforms.K; k_block += BK) {
+        // Load B (Q4_K/Q8 weights) to buf_b with padded stride
+        dequant_b_to_buf(global_base_n, k_block, local_idx / 2u, local_idx % 2u);
+        workgroupBarrier();
+
+        // Compute: load B once per k-step, iterate 4 A rows
+        for (var k: u32 = 0; k < BK; k += kSgMatK) {
+            let b_base = (warp_c * WN) * SHMEM_STRIDE + k;
+
+            // Load 4 B tiles from shared memory (column-major, padded stride)
+            var b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base, true, SHMEM_STRIDE);
+            var b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base + 16u * SHMEM_STRIDE, true, SHMEM_STRIDE);
+            var b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base + 32u * SHMEM_STRIDE, true, SHMEM_STRIDE);
+            var b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base + 48u * SHMEM_STRIDE, true, SHMEM_STRIDE);
+
+            // A row 0: load from global prepacked memory
+            var a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
+                    &input_a, sg_mat_offset_a0, false, kSgMatK);
+            sg_mat_offset_a0 += kSgMatSizeLeft;
+            c00 = subgroupMatrixMultiplyAccumulate(a0, b0, c00);
+            c01 = subgroupMatrixMultiplyAccumulate(a0, b1, c01);
+            c02 = subgroupMatrixMultiplyAccumulate(a0, b2, c02);
+            c03 = subgroupMatrixMultiplyAccumulate(a0, b3, c03);
+
+            // A row 1
+            var a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
+                    &input_a, sg_mat_offset_a1, false, kSgMatK);
+            sg_mat_offset_a1 += kSgMatSizeLeft;
+            c10 = subgroupMatrixMultiplyAccumulate(a1, b0, c10);
+            c11 = subgroupMatrixMultiplyAccumulate(a1, b1, c11);
+            c12 = subgroupMatrixMultiplyAccumulate(a1, b2, c12);
+            c13 = subgroupMatrixMultiplyAccumulate(a1, b3, c13);
+
+            // A row 2
+            var a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
+                    &input_a, sg_mat_offset_a2, false, kSgMatK);
+            sg_mat_offset_a2 += kSgMatSizeLeft;
+            c20 = subgroupMatrixMultiplyAccumulate(a2, b0, c20);
+            c21 = subgroupMatrixMultiplyAccumulate(a2, b1, c21);
+            c22 = subgroupMatrixMultiplyAccumulate(a2, b2, c22);
+            c23 = subgroupMatrixMultiplyAccumulate(a2, b3, c23);
+
+            // A row 3
+            var a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
+                    &input_a, sg_mat_offset_a3, false, kSgMatK);
+            sg_mat_offset_a3 += kSgMatSizeLeft;
+            c30 = subgroupMatrixMultiplyAccumulate(a3, b0, c30);
+            c31 = subgroupMatrixMultiplyAccumulate(a3, b1, c31);
+            c32 = subgroupMatrixMultiplyAccumulate(a3, b2, c32);
+            c33 = subgroupMatrixMultiplyAccumulate(a3, b3, c33);
+        }
+        workgroupBarrier();
+    }
+
+    // Write out results
+    let dr = global_base_m + warp_r * WM;
+    let dc = global_base_n + warp_c * WN;
+    let stride = uniforms.N;
+
+    // Workgroup-uniform bounds check (based on workgroup_id, not local_idx)
+    let tile_m_in = global_base_m + BM <= uniforms.M;
+    let tile_n_in = global_base_n + BN <= uniforms.N;
+    let tile_in_bounds = tile_m_in && tile_n_in;
+
+#if has_bias
+    // Bias path: store all 16 tiles via coopmat_stage, add bias, write to output
+    let stage_base = sg_idx * kSgMatM * kSgMatN;
+#if has_weight_idx_indirect
+    let bias_offset = weight_index_indirect[uniforms.weight_idx] * uniforms.N;
+#elif has_weight_idx
+    let bias_offset = uniforms.weight_idx * uniforms.N;
+#else
+    const bias_offset: u32 = 0;
+#endif
+
+    // Helper macro: store one coopmat tile via stage, add bias, write to output
+    // Process all 16 tiles (4 rows x 4 cols)
+    // No workgroupBarrier needed: subgroupMatrixStore and scalar reads are within the same
+    // subgroup (lockstep execution), and each subgroup uses its own non-overlapping stage_base.
+
+    // Row 0
+    subgroupMatrixStore(&coopmat_stage, stage_base, c00, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + i / kSgMatN;
+        let c = dc + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c01, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + i / kSgMatN;
+        let c = dc + 16u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c02, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + i / kSgMatN;
+        let c = dc + 32u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c03, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + i / kSgMatN;
+        let c = dc + 48u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    // Row 1
+    subgroupMatrixStore(&coopmat_stage, stage_base, c10, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 16u + i / kSgMatN;
+        let c = dc + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c11, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 16u + i / kSgMatN;
+        let c = dc + 16u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c12, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 16u + i / kSgMatN;
+        let c = dc + 32u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c13, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 16u + i / kSgMatN;
+        let c = dc + 48u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    // Row 2
+    subgroupMatrixStore(&coopmat_stage, stage_base, c20, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 32u + i / kSgMatN;
+        let c = dc + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c21, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 32u + i / kSgMatN;
+        let c = dc + 16u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c22, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 32u + i / kSgMatN;
+        let c = dc + 32u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c23, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 32u + i / kSgMatN;
+        let c = dc + 48u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    // Row 3
+    subgroupMatrixStore(&coopmat_stage, stage_base, c30, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 48u + i / kSgMatN;
+        let c = dc + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c31, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 48u + i / kSgMatN;
+        let c = dc + 16u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c32, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 48u + i / kSgMatN;
+        let c = dc + 32u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+
+    subgroupMatrixStore(&coopmat_stage, stage_base, c33, false, kSgMatN);
+    for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+        let r = dr + 48u + i / kSgMatN;
+        let c = dc + 48u + i % kSgMatN;
+        if (r < uniforms.M && c < uniforms.N) {
+            let val = output_element_t(coopmat_stage[stage_base + i]) + bias[bias_offset + c];
+            output.setByOffset(r * stride + c, val);
+        }
+    }
+#else
+    // Non-bias path
+    if (tile_in_bounds) {
+        // Fast path: entire 128x128 tile is in bounds - direct store to global
+        let base = dr * stride + dc;
+        subgroupMatrixStore(&output, base, c00, false, stride);
+        subgroupMatrixStore(&output, base + 16u, c01, false, stride);
+        subgroupMatrixStore(&output, base + 32u, c02, false, stride);
+        subgroupMatrixStore(&output, base + 48u, c03, false, stride);
+
+        subgroupMatrixStore(&output, base + 16u * stride, c10, false, stride);
+        subgroupMatrixStore(&output, base + 16u * stride + 16u, c11, false, stride);
+        subgroupMatrixStore(&output, base + 16u * stride + 32u, c12, false, stride);
+        subgroupMatrixStore(&output, base + 16u * stride + 48u, c13, false, stride);
+
+        subgroupMatrixStore(&output, base + 32u * stride, c20, false, stride);
+        subgroupMatrixStore(&output, base + 32u * stride + 16u, c21, false, stride);
+        subgroupMatrixStore(&output, base + 32u * stride + 32u, c22, false, stride);
+        subgroupMatrixStore(&output, base + 32u * stride + 48u, c23, false, stride);
+
+        subgroupMatrixStore(&output, base + 48u * stride, c30, false, stride);
+        subgroupMatrixStore(&output, base + 48u * stride + 16u, c31, false, stride);
+        subgroupMatrixStore(&output, base + 48u * stride + 32u, c32, false, stride);
+        subgroupMatrixStore(&output, base + 48u * stride + 48u, c33, false, stride);
+    } else {
+        // Edge tile: store via coopmat_stage with bounds checking
+        // No workgroupBarrier needed: subgroupMatrixStore and scalar reads are within the same
+        // subgroup (lockstep execution), and each subgroup uses its own non-overlapping stage_base.
+        let stage_base = sg_idx * kSgMatM * kSgMatN;
+
+        // Row 0
+        subgroupMatrixStore(&coopmat_stage, stage_base, c00, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + i / kSgMatN;
+            let c = dc + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c01, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + i / kSgMatN;
+            let c = dc + 16u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c02, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + i / kSgMatN;
+            let c = dc + 32u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c03, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + i / kSgMatN;
+            let c = dc + 48u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        // Row 1
+        subgroupMatrixStore(&coopmat_stage, stage_base, c10, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 16u + i / kSgMatN;
+            let c = dc + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c11, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 16u + i / kSgMatN;
+            let c = dc + 16u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c12, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 16u + i / kSgMatN;
+            let c = dc + 32u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c13, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 16u + i / kSgMatN;
+            let c = dc + 48u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        // Row 2
+        subgroupMatrixStore(&coopmat_stage, stage_base, c20, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 32u + i / kSgMatN;
+            let c = dc + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c21, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 32u + i / kSgMatN;
+            let c = dc + 16u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c22, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 32u + i / kSgMatN;
+            let c = dc + 32u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c23, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 32u + i / kSgMatN;
+            let c = dc + 48u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        // Row 3
+        subgroupMatrixStore(&coopmat_stage, stage_base, c30, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 48u + i / kSgMatN;
+            let c = dc + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c31, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 48u + i / kSgMatN;
+            let c = dc + 16u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c32, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 48u + i / kSgMatN;
+            let c = dc + 32u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+
+        subgroupMatrixStore(&coopmat_stage, stage_base, c33, false, kSgMatN);
+        for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
+            let r = dr + 48u + i / kSgMatN;
+            let c = dc + 48u + i % kSgMatN;
+            if (r < uniforms.M && c < uniforms.N) {
+                output.setByOffset(r * stride + c, output_element_t(coopmat_stage[stage_base + i]));
+            }
+        }
+    }
+#endif
+}  // MAIN
