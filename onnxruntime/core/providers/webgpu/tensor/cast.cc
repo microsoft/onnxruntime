@@ -128,7 +128,8 @@ template KernelCreateInfo CreateCastKernelInfo<9, 12>(bool);
 template KernelCreateInfo CreateCastKernelInfo<13, 18>(bool);
 template KernelCreateInfo CreateCastKernelInfo<19, 20>(bool);
 template KernelCreateInfo CreateCastKernelInfo<21, 22>(bool);
-template KernelCreateInfo CreateCastKernelInfo<23>(bool);
+template KernelCreateInfo CreateCastKernelInfo<23, 23>(bool);
+template KernelCreateInfo CreateCastKernelInfo<24>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -422,25 +422,24 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink) {
   constexpr uint32_t tile_size = 64;
 
-  // Create present_key and present_value tensors if they are nullptr
+  // Create present_key and present_value tensors if they are nullptr.
+  // Skip allocation for kv_empty — present will be aliased to past below.
   Tensor internal_present_key;
   Tensor internal_present_value;
-  if (present_key == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+  const int present_kv_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
+  const bool kv_empty = (parameters.kv_sequence_length_ == 0);
+  if (!kv_empty && present_key == nullptr) {
+    TensorShapeVector present_kv_shape({parameters.batch_size_, present_kv_heads,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_key = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_key = &internal_present_key;
   }
-  if (present_value == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+  if (!kv_empty && present_value == nullptr) {
+    TensorShapeVector present_kv_shape({parameters.batch_size_, present_kv_heads,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_value = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_value = &internal_present_value;
   }
-
-  // Extract present_sequence_length directly from present_key tensor shape:
-  // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
-  const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
   const bool use_seqlen_k = seqlen_k != nullptr && context.IsGraphCaptureEnabled();
 
@@ -452,7 +451,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor indirect_buffer;
 
   // Prepare indirect dispatch buffer for decode path with static KV cache
-  const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
+  const bool use_indirect_dispatch = !kv_empty &&
+                                     parameters.sequence_length_ == 1 &&
                                      parameters.past_present_share_buffer_ &&
                                      seqlen_k != nullptr &&
                                      context.IsGraphCaptureEnabled();
@@ -464,7 +464,24 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
   const bool do_rotary = (cos_cache != nullptr && sin_cache != nullptr);
 
-  if (do_rotary) {
+  if (kv_empty) {
+    // kv_sequence_length==0: K/V inputs are empty (shared KV layer).
+    // Skip CopyKVCache and fused split+rotary+copyKV.
+    // Use past_key/past_value directly as the present buffers for attention.
+    // Note: do_rotary is always false here because GQA passes cos_cache=nullptr, sin_cache=nullptr
+    // for kv_empty layers (rotary is applied to Q separately in GQA before calling ApplyFlashAttention).
+    ORT_ENFORCE(!do_rotary, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV should not be used with kv_sequence_length==0.");
+    ORT_ENFORCE(past_key != nullptr && past_value != nullptr,
+                "kv_empty path requires past KV context (KV-shared layers reuse another layer's cache).");
+    // When past_present_share_buffer_ is true (MayInplace optimization), present already
+    // shares the past buffer. No aliasing needed — the data is already in place.
+    if (!parameters.past_present_share_buffer_) {
+      // Alias past as present — flash attention only reads present_key/present_value,
+      // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
+      present_key = const_cast<Tensor*>(past_key);
+      present_value = const_cast<Tensor*>(past_value);
+    }
+  } else if (do_rotary) {
     ORT_ENFORCE(parameters.is_packed_qkv_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires packed QKV input.");
     ORT_ENFORCE(parameters.past_present_share_buffer_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires static KV cache.");
 
@@ -480,6 +497,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   } else {
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
+
+  // Extract present_sequence_length directly from present_key tensor shape
+  // after kv_empty aliasing ensures present_key is valid:
+  // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
+  const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
   if (parameters.sequence_length_ > 1) {
     bool has_attention_bias = attention_bias != nullptr;
