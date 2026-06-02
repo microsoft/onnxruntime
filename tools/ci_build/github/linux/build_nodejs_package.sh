@@ -11,7 +11,7 @@ else
 fi
 
 mkdir -p "$HOME/.onnx"
-docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
+docker run -e SYSTEM_COLLECTIONURI --rm --network=host --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
 --volume "$BUILD_BINARIESDIRECTORY:/build" --volume /data/models:/build/models:ro \
 -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
 -e PIP_INDEX_URL \
