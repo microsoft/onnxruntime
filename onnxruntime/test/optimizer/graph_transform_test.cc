@@ -10708,6 +10708,45 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+
+  // OpSet-27, Tind is int64. Range gained an opset-27 schema in ONNX 1.22; ensure the fusion still matches it.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{8, 8, 8, 8}});
+      auto* range_input_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+      auto* range_input_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(8)});
+      auto* range_input_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* range_output = builder.MakeIntermediate();
+      auto* gather_output = builder.MakeOutput();
+
+      builder.AddNode("Range", {range_input_1, range_input_2, range_input_3}, {range_output});
+      builder.AddNode("Gather", {data_arg, range_output}, {gather_output})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      auto op_count_map = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_map["Range"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Gather"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Slice"] == 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Slice") {
+          const NodeArg& input_arg = *(node.InputDefs()[3]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+          Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+          TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          TEST_RETURN_IF_NOT(2 == static_cast<int32_t>(*(init_const.data<int64_t>())));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 27, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
