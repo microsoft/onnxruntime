@@ -58,9 +58,9 @@ class CudnnRNN {
                                                    dataType,
                                                    dataType,
                                                    mathType,
-                                                   gsl::narrow_cast<int>(input_size),
-                                                   gsl::narrow_cast<int>(hidden_size),
-                                                   gsl::narrow_cast<int>(proj_size),  // projected size
+                                                   gsl::narrow<int>(input_size),
+                                                   gsl::narrow<int>(hidden_size),
+                                                   gsl::narrow<int>(proj_size),  // projected size
                                                    num_layers,
                                                    cudnn_dropout_desc,
                                                    // CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED works with CUDNN_RNN_PADDED_IO_ENABLED, so that it will auto fill 0 for the shorter sequences
@@ -148,12 +148,11 @@ class CudnnRnnBase : public CudaKernel {
                        const void* w_data,
                        const int lin_layer_id,
                        const T* pos,
-                       int& offset,
+                       size_t& offset,
                        bool is_matrix,
                        cudaStream_t cuda_stream) const;
 
-  void SetZeroSequences(const int64_t zero_seq_index_cache_size,
-                        const std::vector<int32_t> zero_seq_index_cache,
+  void SetZeroSequences(gsl::span<const int32_t> zero_seq_index_cache,
                         T* y_data,
                         T* y_h_data,
                         T* y_c_data,

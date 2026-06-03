@@ -287,8 +287,23 @@ class IExecutionProvider {
 
   /**
      Run the instantiated graph.
+     @param sync If true, synchronize the device/stream after replay to ensure completion before returning.
+                 If false, the caller is responsible for synchronization.
+                 EPs that always replay synchronously may ignore this parameter.
    */
-  virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
+  virtual common::Status ReplayGraph(int /*graph_annotation_id*/, bool /*sync*/ = true) {
+    return Status::OK();
+  }
+
+  /**
+     Release a previously captured graph and its associated resources.
+     Called when the caller no longer needs the captured graph for the given annotation ID.
+
+     Thread safety: For EPs where ConcurrentRunSupported() returns true, this method may be
+     called concurrently with Run(). The EP is responsible for its own synchronization in
+     that case. For non-concurrent EPs, the session serializes calls via session_mutex_.
+   */
+  virtual common::Status ReleaseCapturedGraph(int /*graph_annotation_id*/) {
     return Status::OK();
   }
 

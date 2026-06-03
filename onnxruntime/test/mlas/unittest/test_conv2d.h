@@ -7,7 +7,7 @@
 
 #include "test_util.h"
 
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(USE_KLEIDIAI)
 #include "core/mlas/lib/mlasi.h"
 #endif
 
@@ -70,6 +70,7 @@ class MlasConv2DTest : public MlasTestBase {
                     FilterCount,
                     &Activation,
                     &WorkingBufferSize,
+                    false,
                     Beta,
                     threadpool_);
 
@@ -303,6 +304,26 @@ class MlasConv2DTest : public MlasTestBase {
 
   MlasConv2DTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
+  void TestKleidiAiLhsPointerCacheByPadGrowth() {
+#if defined(USE_KLEIDIAI)
+    if (GetMlasPlatform().MlasConvPrepareOverride == nullptr) {
+      return;
+    }
+
+    // Regression test for https://github.com/microsoft/onnxruntime/issues/26669.
+    // Run a smaller-CI shape to populate the KleidiAI LHS indirection cache,
+    // then a larger-CI shape to grow the per-thread pad buffer, then the
+    // smaller-CI shape again. If the cache entry is reused without accounting
+    // for the changed pad pointer, the final result can be corrupted.
+    // Repeat a few times to increase the likelihood of triggering a reallocation.
+    for (int i = 0; i < 4; ++i) {
+      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+      Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+    }
+#endif
+  }
+
 #if defined(MLAS_TARGET_AMD64)
   void TestMobileClipAvx512DispatchSelection(size_t GroupCount,
                                              size_t InputHeight,
@@ -366,6 +387,7 @@ class MlasConv2DTest : public MlasTestBase {
                     FilterCount,
                     &Activation,
                     &WorkingBufferSize,
+                    false,
                     0.0f,
                     threadpool_);
 
@@ -488,6 +510,52 @@ class MlasConv2DTest : public MlasTestBase {
           << ": actual=" << Output[i]
           << ", expected=" << OutputReference[i];
     }
+  }
+
+  void TestBatchedConv3DWorkingBufferUsesThreadTileSize() {
+    constexpr size_t Dimensions = 3;
+    constexpr size_t BatchCount = 12;
+    constexpr size_t GroupCount = 1;
+    constexpr size_t InputChannels = 1;
+    constexpr size_t FilterCount = 6;
+    int64_t InputShape[] = {32, 64, 64};
+    int64_t KernelShape[] = {7, 7, 7};
+    int64_t DilationShape[] = {1, 1, 1};
+    int64_t Padding[] = {3, 3, 3, 3, 3, 3};
+    int64_t StrideShape[] = {1, 1, 1};
+    int64_t OutputShape[] = {32, 64, 64};
+
+    MLAS_ACTIVATION Activation;
+    Activation.ActivationKind = MlasIdentityActivation;
+
+    MLAS_CONV_PARAMETERS Parameters;
+    size_t WorkingBufferSize = 0;
+
+    MlasConvPrepare(&Parameters,
+                    Dimensions,
+                    BatchCount,
+                    GroupCount,
+                    InputChannels,
+                    InputShape,
+                    KernelShape,
+                    DilationShape,
+                    Padding,
+                    StrideShape,
+                    OutputShape,
+                    FilterCount,
+                    &Activation,
+                    &WorkingBufferSize,
+                    false,
+                    0.0f,
+                    threadpool_);
+
+    if (Parameters.Algorithm != MlasConvAlgorithmExpandThenGemmSegmented) {
+      GTEST_SKIP() << "This platform uses a different Conv3D algorithm.";
+    }
+
+    const size_t full_column_buffer_size = Parameters.OutputSize * Parameters.K;
+    ASSERT_LT(WorkingBufferSize, full_column_buffer_size)
+        << "Batched Conv3D should not allocate a full im2col buffer per worker.";
   }
 
   void Test(
@@ -657,24 +725,7 @@ class MlasConv2DTest : public MlasTestBase {
       }
     }
 
-    //
-    // Regression test: exercise a KleidiAI Conv2D path when KleidiAI is enabled.
-    // See https://github.com/microsoft/onnxruntime/issues/26669.
-    //
-    // The KleidiAI implementation uses an internal per-thread padding buffer for out-of-bounds pixels
-    // when constructing the LHS indirection table. Historically, if the buffer was too small for a later
-    // convolution (larger CI), resizing could invalidate cached indirection pointers and lead to
-    // non-deterministic corruption.
-    //
-    // This sequence forces pad-buffer growth by running a smaller-CI convolution followed by a larger-CI
-    // convolution (with padding to ensure pad pointers are used), then runs the smaller-CI convolution again.
-    // Repeat a few times to increase the likelihood of triggering a reallocation and verify the path.
-    //
-    for (int i = 0; i < 4; ++i) {
-      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // smaller CI
-      Test(1, 1, 320, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);  // larger CI forces pad buffer growth
-      Test(1, 1, 64, 11, 11, 32, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1);   // sanity: back to smaller CI after growth
-    }
+    TestKleidiAiLhsPointerCacheByPadGrowth();
   }
 
   void ExecuteShort(void) override {
@@ -686,5 +737,7 @@ class MlasConv2DTest : public MlasTestBase {
     TestMobileClipBetaActivationRegression(64, 64, 64);
     TestMobileClipBetaActivationRegression(128, 32, 32);
     TestMobileClipBetaActivationRegression(256, 16, 16);
+    TestBatchedConv3DWorkingBufferUsesThreadTileSize();
+    TestKleidiAiLhsPointerCacheByPadGrowth();
   }
 };

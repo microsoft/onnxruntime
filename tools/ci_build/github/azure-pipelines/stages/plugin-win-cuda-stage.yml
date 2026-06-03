@@ -113,7 +113,7 @@ stages:
             scriptLocation: 'inlineScript'
             inlineScript: |
               set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/9.14.0.64_cuda13 "$(Agent.TempDirectory)"
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$(cuda13_cudnn_folder) "$(Agent.TempDirectory)"
 
       # CUDA 12.x build (no separate cuDNN)
       - ${{ if ne(parameters.cuda_version, '13.0') }}:
@@ -128,6 +128,7 @@ stages:
               --cmake_generator "$(VSGenerator)"
               --parallel
               --nvcc_threads 1
+              --flash_nvcc_threads 1
               --use_vcpkg
               --use_vcpkg_ms_internal_asset_cache
               --use_binskim_compliant_compile_flags
@@ -155,6 +156,7 @@ stages:
               --cmake_generator "$(VSGenerator)"
               --parallel
               --nvcc_threads 1
+              --flash_nvcc_threads 1
               --use_vcpkg
               --use_vcpkg_ms_internal_asset_cache
               --use_binskim_compliant_compile_flags
@@ -162,7 +164,7 @@ stages:
               --build
               --use_cuda
               --cuda_home="$(Agent.TempDirectory)\v${{ parameters.cuda_version }}"
-              --cudnn_home="$(Agent.TempDirectory)\9.14.0.64_cuda13"
+              --cudnn_home="$(Agent.TempDirectory)\$(cuda13_cudnn_folder)"
               --skip_tests
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON

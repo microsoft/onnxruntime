@@ -11,6 +11,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -88,9 +89,32 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return MakeString(user_provided_key, "_", COREML, "_", model_hash, "_", metadef_id);
       };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
+  // Drop CoreML partitions that consist entirely of trivial shape / cheap-elementwise ops.
+  // These ops can each be claimed individually but the CPU↔CoreML round-trip cost
+  // (~50-100us marshalling) outweighs the saving when the partition has no compute-heavy
+  // op to amortise it over. Per-op CoreML dispatch cost is ~10-14us on M3 Max even for
+  // trivial ops (Identity/Ceil/Tile etc.), and CPU runs them in <1us each.
+  //
+  // The "trivial" marker lives on each op builder's IOpBuilder::IsTrivial(node)
+  // override rather than as a hardcoded set here, so adding a new trivial op
+  // builder doesn't risk drifting from a list maintained at the EP level.
+  const auto& op_builders = coreml::GetOpBuilders();
+  const auto is_node_trivial = [&](const Node* node) -> bool {
+    auto it = op_builders.find(node->OpType());
+    return it != op_builders.end() && it->second->IsTrivial(*node);
+  };
+  const auto is_node_supported = [&](const Node& node) -> bool {
+    return supported_nodes.find(&node) != supported_nodes.end();
+  };
+  const auto on_group_closed = [&](const std::vector<const Node*>& group) -> bool {
+    // Keep the partition only if at least one node is non-trivial.
+    return std::any_of(group.begin(), group.end(),
+                       [&](const Node* node) { return !is_node_trivial(node); });
+  };
+
+  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, COREML, kCoreMLExecutionProvider,
-                                            nullptr,
+                                            /*node_unit_map*/ nullptr,
                                             /*drop_constant_initializers*/ true);
 
   const auto num_of_partitions = result.size();

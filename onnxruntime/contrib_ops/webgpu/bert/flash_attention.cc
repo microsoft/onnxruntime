@@ -215,11 +215,13 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
+                             WGSL_TEMPLATE_PARAMETER(max_k_step_param, max_k_step_),
                              WGSL_TEMPLATE_PARAMETER(prefer_subgroupshuffle, !is_nvidia_),
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
-                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_));
+                             WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
+                             WGSL_TEMPLATE_PARAMETER(use_shm_path, use_shm_path_));
 }
 
 Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -420,25 +422,24 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink) {
   constexpr uint32_t tile_size = 64;
 
-  // Create present_key and present_value tensors if they are nullptr
+  // Create present_key and present_value tensors if they are nullptr.
+  // Skip allocation for kv_empty — present will be aliased to past below.
   Tensor internal_present_key;
   Tensor internal_present_value;
-  if (present_key == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+  const int present_kv_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
+  const bool kv_empty = (parameters.kv_sequence_length_ == 0);
+  if (!kv_empty && present_key == nullptr) {
+    TensorShapeVector present_kv_shape({parameters.batch_size_, present_kv_heads,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_key = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_key = &internal_present_key;
   }
-  if (present_value == nullptr) {
-    TensorShapeVector present_kv_shape({parameters.batch_size_, parameters.num_heads_,
+  if (!kv_empty && present_value == nullptr) {
+    TensorShapeVector present_kv_shape({parameters.batch_size_, present_kv_heads,
                                         parameters.total_sequence_length_, parameters.head_size_});
     internal_present_value = context.CreateGPUTensor(Q->DataType(), TensorShape(present_kv_shape));
     present_value = &internal_present_value;
   }
-
-  // Extract present_sequence_length directly from present_key tensor shape:
-  // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
-  const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
   const bool use_seqlen_k = seqlen_k != nullptr && context.IsGraphCaptureEnabled();
 
@@ -450,7 +451,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor indirect_buffer;
 
   // Prepare indirect dispatch buffer for decode path with static KV cache
-  const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
+  const bool use_indirect_dispatch = !kv_empty &&
+                                     parameters.sequence_length_ == 1 &&
                                      parameters.past_present_share_buffer_ &&
                                      seqlen_k != nullptr &&
                                      context.IsGraphCaptureEnabled();
@@ -462,7 +464,24 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
   const bool do_rotary = (cos_cache != nullptr && sin_cache != nullptr);
 
-  if (do_rotary) {
+  if (kv_empty) {
+    // kv_sequence_length==0: K/V inputs are empty (shared KV layer).
+    // Skip CopyKVCache and fused split+rotary+copyKV.
+    // Use past_key/past_value directly as the present buffers for attention.
+    // Note: do_rotary is always false here because GQA passes cos_cache=nullptr, sin_cache=nullptr
+    // for kv_empty layers (rotary is applied to Q separately in GQA before calling ApplyFlashAttention).
+    ORT_ENFORCE(!do_rotary, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV should not be used with kv_sequence_length==0.");
+    ORT_ENFORCE(past_key != nullptr && past_value != nullptr,
+                "kv_empty path requires past KV context (KV-shared layers reuse another layer's cache).");
+    // When past_present_share_buffer_ is true (MayInplace optimization), present already
+    // shares the past buffer. No aliasing needed — the data is already in place.
+    if (!parameters.past_present_share_buffer_) {
+      // Alias past as present — flash attention only reads present_key/present_value,
+      // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
+      present_key = const_cast<Tensor*>(past_key);
+      present_value = const_cast<Tensor*>(past_value);
+    }
+  } else if (do_rotary) {
     ORT_ENFORCE(parameters.is_packed_qkv_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires packed QKV input.");
     ORT_ENFORCE(parameters.past_present_share_buffer_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires static KV cache.");
 
@@ -479,10 +498,17 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   }
 
+  // Extract present_sequence_length directly from present_key tensor shape
+  // after kv_empty aliasing ensures present_key is valid:
+  // (batch_size, num_heads, total_sequence_length/max_sequence_length, head_size)
+  const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
+
   if (parameters.sequence_length_ > 1) {
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+    bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
+    bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
     bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
     bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
     bool has_head_sink = head_sink != nullptr;
@@ -494,6 +520,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                   parameters.num_heads_,
                                   parameters.is_unidirectional_,
                                   is_nvidia,
+                                  is_apple,
+                                  has_subgroups,
                                   q_BNSH,
                                   use_seqlen_k,
                                   has_head_sink};
@@ -512,7 +540,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
     const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                   : parameters.scale_;
-    const uint32_t num_seq_tile = (parameters.sequence_length_ + tile_size - 1) / tile_size;
+
+    // On Apple GPUs, use a larger workgroup size to reduce barrier overhead.
+    const uint32_t prefill_tile_size = is_apple ? 128 : tile_size;
+    const uint32_t num_seq_tile = (parameters.sequence_length_ + prefill_tile_size - 1) / prefill_tile_size;
 
     // Get attention bias dimensions for broadcasting
     uint32_t attn_bias_dim0 = 1;
@@ -524,8 +555,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     }
 
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
-        .SetWorkgroupSize(tile_size)
-        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, q_BNSH, use_seqlen_k, has_head_sink)
+        .SetWorkgroupSize(prefill_tile_size)
+        .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_, parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple, has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, program.max_k_step())
         .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                               {static_cast<uint32_t>(parameters.total_sequence_length_)},
                               {static_cast<uint32_t>(present_sequence_length)},
@@ -577,7 +608,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   return !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
-         context.HasFeature(wgpu::FeatureName::Subgroups) &&
          ((context.AdapterInfo().vendor == std::string_view{"qualcomm"} && parameters.head_size_ % 8 == 0) || parameters.head_size_ % 4 == 0);
 }
 

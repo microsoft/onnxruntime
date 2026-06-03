@@ -124,6 +124,18 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 // Default is an empty string which means no optimizers are disabled.
 static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
+// Maximum total output size in bytes that the constant folding optimizer is allowed to produce per node.
+// Prevents malicious models from causing excessive memory allocation during optimization.
+// If the estimated or actual output size of a constant-foldable node exceeds this limit, the node will
+// not be constant folded and will instead be executed at runtime.
+//
+// Option values:
+// - A positive integer (as string): Maximum allowed output size in bytes per constant-folded node.
+//   Default is "1073741824" (1 GB).
+// - "0": Disable the size limit (not recommended for untrusted models).
+static const char* const kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes =
+    "optimization.constant_folding_max_output_size_in_bytes";
+
 // It controls whether to run graph optimizations in loop or not.
 //
 // "0": disable. Graph Optimization Loop is disabled.
@@ -443,6 +455,15 @@ static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_e
 // By default, this option is not set, meaning all initializers will be included within the ONNX file.
 static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
     "ep.context_model_external_initializers_file_name";
+
+// Internal-only flag set by OrtCompileAPI::CompileModel() to signal EPs that this session
+// is being used for compilation only and will never be used for inference.
+// EPs can use this to skip GPU deserialization and execution context creation, which would
+// otherwise be wasteful since the session is destroyed immediately after compilation.
+// This is NOT a user-facing option and must not be set directly by application code.
+// "0": normal session (default)
+// "1": compile-only session (set internally by OrtCompileAPI::CompileModel)
+static const char* const kOrtSessionOptionCompileOnly = "session.compile_only";
 
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:

@@ -8,6 +8,7 @@
 #include "contrib_ops/webgpu/bert/rotary_embedding.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 
+#include "core/common/narrow.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/shader_helper.h"
 
@@ -212,7 +213,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 scale_,
                                                                 softcap_,
                                                                 0,
-                                                                context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+                                                                onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup)));
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
@@ -239,7 +240,13 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
-  parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
+
+  // When present_key/present_value outputs are not requested (nullptr), this is a
+  // KV-shared layer. Flash attention will create internal GPU buffers as needed.
+  parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr &&
+                                          past_key != nullptr && past_value != nullptr &&
+                                          past_key->DataRaw() == present_key->DataRaw() &&
+                                          past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
 
@@ -250,17 +257,47 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor qRotary;
   Tensor kRotary;
 
+  // kv_sequence_length==0 fast path: K/V inputs are empty (shared KV layer).
+  // Skip all K/V processing; only apply RoPE to Q if needed.
+  // Use past_key/past_value directly as the KV context.
+  const bool kv_empty = (parameters.kv_sequence_length_ == 0);
+
   // Use a sliding window if the total sequence exceeds the window's length.
   bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
   bool will_use_flash_attention = false;
-  if (!use_smooth_softmax_ && !use_sliding_window) {
+  // For kv_empty layers (shared KV), sliding window is irrelevant — there's no new KV to window
+  // over, the layer reuses another layer's already-computed KV cache. Flash attention is required
+  // for these layers, so we bypass the sliding window check to allow it.
+  if (!use_smooth_softmax_ && (!use_sliding_window || kv_empty)) {
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
     will_use_flash_attention = CanApplyFlashAttention(temp_params, context);
   }
 
-  if (parameters.is_packed_qkv_ && do_rotary_) {
+  if (kv_empty) {
+    // KV inputs are empty - shared KV layer. Only need to optionally apply RoPE to Q.
+    ORT_ENFORCE(!parameters.is_packed_qkv_, "Packed QKV is not supported with kv_sequence_length==0 (shared KV layers).");
+    if (do_rotary_) {
+      // Apply RoPE to Q only — K doesn't need rotation since we reuse another layer's already-rotated KV cache.
+      qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
+      // Query is BSD (3 dims): [batch, sequence, hidden]. Strides for bsnh layout:
+      // {batch_stride, hidden_size, head_size, 1}.
+      const auto batch_stride = static_cast<uint32_t>(parameters.sequence_length_ * parameters.hidden_size_);
+      const std::vector<uint32_t> q_input_output_strides{
+          batch_stride,
+          static_cast<uint32_t>(parameters.hidden_size_),
+          static_cast<uint32_t>(parameters.head_size_),
+          1u};
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context,
+                                             query, seqlen_k, cos_cache, sin_cache, &qRotary,
+                                             parameters.batch_size_, parameters.sequence_length_,
+                                             parameters.hidden_size_, parameters.head_size_,
+                                             parameters.scale_, parameters.rotary_interleaved_,
+                                             /*use_seqlens_for_position=*/true, q_input_output_strides));
+      query = &qRotary;
+    }
+  } else if (parameters.is_packed_qkv_ && do_rotary_) {
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
     if (will_use_flash_attention && parameters.past_present_share_buffer_) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
@@ -311,6 +348,13 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink);
+  }
+
+  // Non-flash attention path does not support kv_sequence_length==0 (shared KV layers).
+  if (kv_empty) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "WebGPU non-flash attention path does not support kv_sequence_length==0 (shared KV layers). "
+                           "Flash attention is required for KV-shared decoder layers.");
   }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,

@@ -1323,13 +1323,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present state key with support for format BNSH. When past_key uses same tensor as present_key"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T_CACHE")
+                "T_CACHE",
+                OpSchema::Optional)
         .Output(2,
                 "present_value",
                 "present state value with support for format BNSH. When past_value uses same tensor as present_value"
                 "(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +"
                 "kv_sequence_length.",
-                "T_CACHE")
+                "T_CACHE",
+                OpSchema::Optional)
         .Output(3,
                 "output_qk",
                 "Values of QK matrix multiplication, either before or after softmax normalization",
